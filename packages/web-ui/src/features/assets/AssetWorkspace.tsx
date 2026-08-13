@@ -1,6 +1,5 @@
-import { useCallback, useMemo } from 'react';
-import type { ProjectCanvas, ProjectTimeline } from '@clash/shared-types';
-import type { ProjectAsset } from '@clash/web-ui/lib/types';
+import { useCallback, useMemo, useState } from 'react';
+import type { ProjectCanvas, ProjectTimeline, ResolvedAsset } from '@clash/shared-types';
 import { useAsset } from '../../lib/hooks/useAsset';
 import type { EditApplyResult } from './action-client';
 import { ImageEditorPanel } from '../../components/ImageEditorContext';
@@ -10,6 +9,7 @@ import {
   type ProjectAssetEditMetadata,
 } from '../../components/ProjectWorkspaceSurfaces';
 import { AssetRelationsPanel } from './AssetRelationsPanel';
+import { Button } from '../../components/ui/button';
 import {
   buildAssetRelationSummary,
   type AssetRelationEdge,
@@ -32,11 +32,13 @@ export function EditableProjectAssetSurface({
   onOpenTimeline,
   onOpenAsset,
   onApplied,
+  isProjectCover = false,
+  onProjectCoverChange,
   headerEndInset = 0,
 }: {
-  asset: ProjectAsset;
+  asset: ResolvedAsset;
   projectId: string;
-  projectAssets?: ProjectAsset[];
+  projectAssets?: ResolvedAsset[];
   canvases?: ProjectCanvas[];
   timelines?: ProjectTimeline[];
   relationNodes?: AssetRelationNode[];
@@ -45,11 +47,14 @@ export function EditableProjectAssetSurface({
   onOpenTimeline?: (timelineId: string) => void;
   onOpenAsset?: (assetId: string) => void;
   onApplied: (result: EditApplyResult) => void | Promise<void>;
+  isProjectCover?: boolean;
+  onProjectCoverChange?: (isCover: boolean) => void | Promise<void>;
   headerEndInset?: number;
 }) {
-  const sourceR2Key = asset.storageKey?.trim();
-  const sourceAssetId = asset.assetId ?? asset.id;
-  const assetRecord = useAsset(sourceAssetId);
+  const sourceUrl = asset.url?.trim();
+  const sourceAssetId = asset.id;
+  const assetRecord = useAsset(projectId, sourceAssetId);
+  const [coverBusy, setCoverBusy] = useState(false);
   const relations = useMemo(
     () => buildAssetRelationSummary({
       assetId: sourceAssetId,
@@ -65,14 +70,14 @@ export function EditableProjectAssetSurface({
 
   const renderEditor = useCallback(
     (metadata: ProjectAssetEditMetadata, close: () => void) => {
-      if (!sourceR2Key) return null;
-      if (asset.type === 'image' && 'naturalWidth' in metadata) {
+      if (!sourceUrl) return null;
+      if (asset.kind === 'image' && 'naturalWidth' in metadata) {
         return (
           <ImageEditorPanel
             input={{
               projectId,
               sourceAssetId,
-              sourceR2Key,
+              sourceUrl,
               naturalWidth: metadata.naturalWidth,
               naturalHeight: metadata.naturalHeight,
               initialParams: {},
@@ -84,13 +89,13 @@ export function EditableProjectAssetSurface({
           />
         );
       }
-      if (asset.type === 'video' && 'durationSec' in metadata) {
+      if (asset.kind === 'video' && 'durationSec' in metadata) {
         return (
           <VideoClipperPanel
             input={{
               projectId,
               sourceAssetId,
-              sourceR2Key,
+              sourceUrl,
               durationSec: metadata.durationSec,
               initialParams: undefined,
               origin: 'asset-preview',
@@ -103,14 +108,38 @@ export function EditableProjectAssetSurface({
       }
       return null;
     },
-    [asset.type, onApplied, projectId, sourceAssetId, sourceR2Key],
+    [asset.kind, onApplied, projectId, sourceAssetId, sourceUrl],
   );
+
+  const toggleProjectCover = useCallback(async () => {
+    if (!onProjectCoverChange || coverBusy) return;
+    setCoverBusy(true);
+    try {
+      await onProjectCoverChange(!isProjectCover);
+    } finally {
+      setCoverBusy(false);
+    }
+  }, [coverBusy, isProjectCover, onProjectCoverChange]);
+
+  const canBeProjectCover = asset.kind === 'image' || asset.kind === 'video';
 
   return (
     <ProjectAssetSurface
       asset={asset}
       headerEndInset={headerEndInset}
-      renderEditor={sourceR2Key ? renderEditor : undefined}
+      headerAction={canBeProjectCover && onProjectCoverChange ? (
+        <Button
+          size="sm"
+          shape="rounded"
+          aria-pressed={isProjectCover}
+          disabled={coverBusy}
+          onClick={() => void toggleProjectCover()}
+          className="h-7 min-h-7 rounded-md border-warm-border bg-warm-surface px-2.5 text-xs font-semibold text-content-secondary shadow-none hover:bg-warm-hover hover:text-content-primary"
+        >
+          {isProjectCover ? 'Remove project cover' : 'Use as project cover'}
+        </Button>
+      ) : undefined}
+      renderEditor={sourceUrl ? renderEditor : undefined}
       inspector={(
         <AssetRelationsPanel
           relations={relations}

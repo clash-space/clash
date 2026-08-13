@@ -33,11 +33,7 @@ it("ActionsHost scans actions under CLASH_HOME", async () => {
   const originalClashHome = process.env.CLASH_HOME;
   const clashHome = await mkdtemp(join(tmpdir(), "clash-actions-home-"));
   process.env.CLASH_HOME = clashHome;
-  const host = new ActionsHost({
-    serverUrl: "http://127.0.0.1:49321",
-    apiKey: "clsh_test",
-    runtimeId: "runtime-test",
-  });
+  const host = new ActionsHost({});
 
   try {
     const result = await host.start();
@@ -110,16 +106,26 @@ it("ActionsHost strictly validates executable plugin Cards before spawning", asy
 
   await writePlugin("test.valid-plugin", "test-action");
   await writePlugin("invalid-plugin", "wrong-id");
-  const host = new ActionsHost({
-    serverUrl: "http://127.0.0.1:49321",
-    apiKey: "clsh_must_not_reach_new_plugins",
-    runtimeId: "runtime-test",
-  });
+  const retired = join(clashHome, "actions", "retired-websocket-action");
+  await mkdir(retired, { recursive: true });
+  await writeFile(join(retired, "handler.py"), "raise SystemExit(0)\n");
+  await writeFile(
+    join(retired, "manifest.json"),
+    JSON.stringify({
+      id: "retired-websocket-action",
+      name: "Retired websocket action",
+      runtime: "local",
+      entrypoint: "handler.py",
+    }),
+  );
+  const host = new ActionsHost({});
 
   try {
     const result = await host.start();
     expect(new Set(result.spawned)).toEqual(new Set(["test.valid-plugin"]));
-    expect(new Set(result.skipped)).toEqual(new Set(["invalid-plugin"]));
+    expect(new Set(result.skipped)).toEqual(
+      new Set(["invalid-plugin", "retired-websocket-action"]),
+    );
     expect(host.listIds()).toEqual(["test.valid-plugin"]);
   } finally {
     await host.stopAll();
@@ -209,9 +215,6 @@ it("ActionsHost discovers independently exported Providers and model bindings", 
   );
   await attestTestPlugin(actionsRoot, root);
   const host = new ActionsHost({
-    serverUrl: "http://127.0.0.1:49321",
-    apiKey: "clsh_test",
-    runtimeId: "runtime-test",
     actionsRoot,
   }) as InstanceType<typeof ActionsHost> & {
     listProviders(): Array<{
@@ -343,9 +346,6 @@ it("ActionsHost invokes a supervised Python v1 plugin over host-owned stdio", as
   );
   await attestTestPlugin(join(clashHome, "actions"), root);
   const host = new ActionsHost({
-    serverUrl: "http://127.0.0.1:49321",
-    apiKey: "clsh_legacy_only",
-    runtimeId: "runtime-test",
     providerHttpInstrumentation: {
       mode: "replay",
       trafficPath,
@@ -642,9 +642,6 @@ it("ActionsHost refuses executable code changed outside atomic activation", asyn
   await writeFile(path, JSON.stringify(await createReceipt(pluginDir)));
 
   const first = new ActionsHost({
-    serverUrl: "http://127.0.0.1:49321",
-    apiKey: "clsh_test",
-    runtimeId: "runtime-test",
     actionsRoot,
   });
   try {
@@ -660,9 +657,6 @@ it("ActionsHost refuses executable code changed outside atomic activation", asyn
     "// changed without version bump\nsetInterval(() => {}, 1000);\n",
   );
   const second = new ActionsHost({
-    serverUrl: "http://127.0.0.1:49321",
-    apiKey: "clsh_test",
-    runtimeId: "runtime-test",
     actionsRoot,
   });
   try {

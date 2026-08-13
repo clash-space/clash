@@ -6,24 +6,28 @@ describe("buildFallbackCanvasFromAssets", () => {
     const { nodes, edges } = buildFallbackCanvasFromAssets([
       {
         id: "asset-image",
-        type: "image",
-        url: "/assets/image.png?signed=1",
-        storageKey: "projects/p/assets/image.png",
-        createdAt: "2026-06-03T00:00:00.000Z",
+        kind: "image",
+        url: "https://media.clash.test/assets/asset-image",
+        metadata: {},
+        lifecycle: { state: "active" },
+        status: "ready",
       },
       {
         id: "asset-video",
-        type: "video",
-        url: "/assets/video-cover.png?signed=1",
-        storageKey: "projects/p/assets/video.mp4",
-        createdAt: "2026-06-03T00:01:00.000Z",
+        kind: "video",
+        url: "https://media.clash.test/assets/asset-video",
+        thumbnailUrl: "https://media.clash.test/thumbnails/asset-video",
+        metadata: {},
+        lifecycle: { state: "active" },
+        status: "ready",
       },
       {
         id: "asset-audio",
-        type: "audio",
-        url: "/assets/voice.wav?signed=1",
-        storageKey: "projects/p/assets/voice.wav",
-        createdAt: "2026-06-03T00:02:00.000Z",
+        kind: "audio",
+        url: "https://media.clash.test/assets/asset-audio",
+        metadata: {},
+        lifecycle: { state: "active" },
+        status: "ready",
       },
     ]);
 
@@ -34,7 +38,6 @@ describe("buildFallbackCanvasFromAssets", () => {
       type: "image",
       data: {
         assetId: "asset-image",
-        src: "projects/p/assets/image.png",
         status: "completed",
       },
     });
@@ -43,7 +46,6 @@ describe("buildFallbackCanvasFromAssets", () => {
       type: "video",
       data: {
         assetId: "asset-video",
-        src: "projects/p/assets/video.mp4",
         status: "completed",
       },
     });
@@ -53,9 +55,12 @@ describe("buildFallbackCanvasFromAssets", () => {
       data: {
         label: "Recovered Audio",
         assetId: "asset-audio",
-        src: "projects/p/assets/voice.wav",
         status: "completed",
       },
     });
+    for (const node of nodes) {
+      expect(node.data).not.toHaveProperty("src");
+      expect(node.data).not.toHaveProperty("previewUrl");
+    }
   });
 });

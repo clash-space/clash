@@ -155,8 +155,6 @@ export const NodeDataSchema = z.object({
   stageId: z.string().optional(),
   /** Latest registered reference-video output from a Director Stage node. */
   outputVideoAssetId: z.string().optional(),
-  outputVideoSrc: z.string().optional(),
-  outputVideoPreviewUrl: z.string().optional(),
   outputVideoDurationSeconds: z.number().optional(),
   outputVideoFps: z.number().optional(),
   outputVideoStageRevisionId: z.string().optional(),
@@ -489,13 +487,13 @@ export function buildPendingAssetNode(input: BuildPendingAssetNodeInput): Pendin
   // where the manifest's `promptModalities` declared (say) image
   // input but the pending node dropped all refs, leaving the action
   // unable to consume canvas assets.
-  if (referenceImageAssetIds && referenceImageAssetIds.length > 0 && !isAudio) {
+  if (referenceImageAssetIds && referenceImageAssetIds.length > 0) {
     data.referenceImageAssetIds = referenceImageAssetIds;
   }
-  if ((isVideo || isText || isCustom) && referenceVideoAssetIds && referenceVideoAssetIds.length > 0) {
+  if (referenceVideoAssetIds && referenceVideoAssetIds.length > 0) {
     data.referenceVideoAssetIds = referenceVideoAssetIds;
   }
-  if ((isVideo || isText || isCustom) && referenceAudioAssetIds && referenceAudioAssetIds.length > 0) {
+  if (referenceAudioAssetIds && referenceAudioAssetIds.length > 0) {
     data.referenceAudioAssetIds = referenceAudioAssetIds;
   }
 
@@ -759,6 +757,9 @@ export function buildGenerationPayload(input: BuildGenerationPayloadInput): Buil
   const modelParams: Record<string, string | number | boolean> = input.config.kind === 'model'
     ? { ...input.config.modelParams }
     : {};
+  // Provider/account selection belongs to the owner-private execution handoff. Accept legacy
+  // authored input during validation, but never project it into the pending Loro node.
+  delete modelParams.provider_id;
   if (musicInput?.lyricsTarget === 'modelParam' && musicInput.lyricsParam) {
     modelParams[musicInput.lyricsParam] = musicLyrics;
   }

@@ -27,12 +27,11 @@
     "test": "vitest run",
     "test:agent:real-codex": "pnpm prepare:harnesses && CLASH_E2E_REAL_CODEX=1 node e2e/real-codex-acp-backend.mjs",
     "test:e2e": "node e2e/smoke.mjs",
-    "test:e2e:agent-browser": "node e2e/agent-browser-smoke.mjs",
+    "test:e2e:agent-browser": "tsx e2e/agent-browser-smoke.ts",
     "test:e2e:voice-input": "node e2e/voice-input-agent-browser.mjs",
     "test:e2e:timeline-keyframes": "node e2e/timeline-keyframes-agent-browser.mjs",
     "test:e2e:director-stage-webgl": "node e2e/director-stage-webgl-smoke.mjs",
-    "test:e2e:agent-first-local-v1": "node e2e/agent-first-local-v1-gate.mjs",
-    "test:e2e:asset-receipts": "tsx e2e/agent-first-asset-receipt-smoke.mjs",
+    "test:e2e:agent-first-local-v1": "tsx e2e/agent-first-local-v1-gate.ts",
     "test:e2e:agent-first-cas": "node e2e/agent-first-cas-smoke.mjs",
     "test:e2e:qa-agent": "node e2e/qa-agent-codex.mjs",
     "test:e2e:project-workspace-cli": "tsx e2e/project-workspace-cli-smoke.ts",
@@ -46,7 +45,7 @@
     "test:startup:real-codex": "node scripts/prepare-clash-cli.mjs && pnpm prepare:harnesses && CLASH_E2E_REAL_CODEX=1 node e2e/real-codex-agent-browser.mjs",
     "test:startup:real-codex-resume": "node scripts/prepare-clash-cli.mjs && pnpm prepare:harnesses && CLASH_E2E_REAL_CODEX=1 node e2e/real-codex-resume-agent-browser.mjs",
     "test:startup:static": "node scripts/prepare-clash-cli.mjs && pnpm prepare:harnesses && node e2e/startup-static.mjs",
-    "test:startup:ui": "node e2e/startup-ui-smoke.mjs",
+    "test:startup:ui": "tsx e2e/startup-ui-smoke.ts",
     "test:watch": "vitest"
   },
   "dependencies": {

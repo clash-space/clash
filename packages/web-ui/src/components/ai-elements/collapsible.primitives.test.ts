@@ -28,11 +28,14 @@ describe("AI element collapsible triggers", () => {
   });
 
   it("routes controllable state through the shared primitive boundary", () => {
-    const primitivePath = join(process.cwd(), "packages/web-ui/src/components/ui/controllable-state.ts");
+    const primitivePath = join(process.cwd(), "packages/gui/src/components/ui/controllable-state.ts");
     const source = readAiElementSource("reasoning.tsx");
 
     expect(existsSync(primitivePath)).toBe(true);
-    expect(readComponentSource("ui/controllable-state.ts")).toContain("@radix-ui/react-use-controllable-state");
+    expect(readFileSync(primitivePath, "utf8")).toContain("@radix-ui/react-use-controllable-state");
+    expect(readComponentSource("ui/controllable-state.ts")).toContain(
+      "@clash/gui/components/ui/controllable-state",
+    );
     expect(source).toContain("../ui/controllable-state");
     expect(source).toContain("useControllableState");
     expect(source).not.toContain("@radix-ui/react-use-controllable-state");

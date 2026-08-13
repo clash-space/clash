@@ -126,7 +126,7 @@ describe("AcpMessageList primitives", () => {
   it("uses the shared tooltip primitive for truncated ACP labels instead of browser title attributes", () => {
     const source = readCopilotSource("AcpMessageList.tsx");
     const tooltipSource = readFileSync(
-      join(process.cwd(), "packages/web-ui/src/components/ui/tooltip.tsx"),
+      join(process.cwd(), "packages/gui/src/components/ui/tooltip.tsx"),
       "utf8",
     );
 

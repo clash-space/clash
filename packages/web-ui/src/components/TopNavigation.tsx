@@ -9,6 +9,7 @@ import {
   ArrowRight,
   House,
   FolderOpen,
+  Images,
   SidebarSimple,
   Storefront,
   X,
@@ -52,6 +53,7 @@ declare global {
 const navItems = [
   { name: 'Home', href: '/', icon: House },
   { name: 'Projects', href: '/projects', icon: FolderOpen },
+  { name: 'Assets', href: '/assets', icon: Images },
   { name: 'Store', href: '/marketplace/manage', icon: Storefront },
 ];
 

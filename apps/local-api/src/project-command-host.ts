@@ -369,6 +369,8 @@ export type ProjectCommandHostContext = {
   actorUserId?: string;
   effectiveModelCards?: readonly ModelCard[];
   trustedCustomActions?: readonly Record<string, unknown>[];
+  /** Host-private pending output identity, preallocated before the Project snapshot commits. */
+  generationId?: () => string;
 };
 
 export function handleProjectCommand(
@@ -400,7 +402,6 @@ const READ_ONLY_PROJECT_COMMANDS = new Set([
   "list_timeline_renders",
   "list_director_stages",
   "capture_director_stage",
-  "list_custom_actions",
   "list",
   "edges",
   "batch_delete_plan",
@@ -449,10 +450,7 @@ function handleCommand(
     action === "create_director_stage" ||
     action === "update_director_stage_state" ||
     action === "attach_director_stage" ||
-    action === "detach_director_stage" ||
-    action === "list_custom_actions" ||
-    action === "register_custom_action" ||
-    action === "unregister_custom_action";
+    action === "detach_director_stage";
   if (!projectWorkspaceAction) {
     try {
       client.selectCanvas(
@@ -466,36 +464,6 @@ function handleCommand(
   }
 
   switch (action) {
-    case "list_custom_actions": {
-      return {
-        actions: Object.fromEntries(client.doc.getMap("customActions").entries()),
-      };
-    }
-
-    case "register_custom_action": {
-      if (typeof cmd.actionId !== "string" || !cmd.actionId.trim()) {
-        return { error: "register_custom_action requires actionId" };
-      }
-      if (!cmd.definition || typeof cmd.definition !== "object" || Array.isArray(cmd.definition)) {
-        return { error: "register_custom_action requires an object definition" };
-      }
-      client.doc.getMap("customActions").set(cmd.actionId.trim(), cmd.definition);
-      client.doc.commit({ origin: "local-api:register-custom-action" });
-      return { registered: true, actionId: cmd.actionId.trim() };
-    }
-
-    case "unregister_custom_action": {
-      if (typeof cmd.actionId !== "string" || !cmd.actionId.trim()) {
-        return { error: "unregister_custom_action requires actionId" };
-      }
-      const actionId = cmd.actionId.trim();
-      const actions = client.doc.getMap("customActions");
-      const existed = actions.get(actionId) !== undefined;
-      actions.delete(actionId);
-      client.doc.commit({ origin: "local-api:unregister-custom-action" });
-      return { removed: existed, actionId };
-    }
-
     case "list_canvases": {
       const canvases = client.listCanvases();
       return {
@@ -1732,7 +1700,10 @@ function handleCommand(
             currentVersion: currentReadToken,
           });
       if (!guard.ok) return guardError(guard);
-      const r = client.canvas.execute(cmd.nodeId, () => crypto.randomUUID().slice(0, 8));
+      const r = client.canvas.execute(
+        cmd.nodeId,
+        context.generationId ?? (() => crypto.randomUUID().slice(0, 8)),
+      );
       if (r.error) return { error: r.error };
       // Echo `kind` so the CLI can pick the right log line. Both
       // pipelines also fill `childNodeId` so the agent can poll the

@@ -79,7 +79,9 @@ describe("the loopback callback", () => {
     const started = await flow.started;
     const response = await fetch(`${started.redirectUri}?code=abc&state=wrong`);
     expect(response.status).toBe(400);
+    const cancelled = expect(flow.result).rejects.toThrow(/cancelled/i);
     flow.cancel();
+    await cancelled;
   });
 
   it("hands back the parameters when the state matches", async () => {

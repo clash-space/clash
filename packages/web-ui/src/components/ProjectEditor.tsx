@@ -62,7 +62,7 @@ import {
 } from "@phosphor-icons/react";
 import { useLocation, useNavigate } from "react-router";
 import { useHotkeys } from "react-hotkeys-hook";
-import type { Project, ProjectAsset } from "@clash/web-ui/lib/types";
+import type { Project } from "@clash/web-ui/lib/types";
 import {
   hasProjectAssetDragData,
   readProjectAssetDrag,
@@ -71,7 +71,10 @@ import ChatbotCopilot from "./ChatbotCopilot";
 import type { ClashProjectEntity } from "./copilot/AcpMessageList";
 import { clampCopilotPanelWidthForViewport } from "./copilotPanelLayout";
 import { useSessionHistory } from "@clash/web-ui/hooks/useSessionHistory";
-import { updateProjectName } from "@clash/web-ui/lib/clientActions";
+import {
+  updateProjectCover,
+  updateProjectName,
+} from "@clash/web-ui/lib/clientActions";
 import VideoNode from "./nodes/VideoNode";
 import ImageNode from "./nodes/ImageNode";
 import TextNode from "./nodes/TextNode";
@@ -128,6 +131,7 @@ import {
   applyDirectorStageCommand,
   createDirectorReferencePacket,
   createDefaultDirectorStageState,
+  listActionAssetBindings,
   projectDirectorStageRevisionId,
   projectTimelineReadToken,
   type AssetScopeTarget,
@@ -135,7 +139,7 @@ import {
   type AgentAnnotationDraft,
   type AgentAnnotationObjectRef,
   type AgentAnnotationTarget,
-  type Asset,
+  type ResolvedAsset,
   type ProjectCanvas,
   type ProjectTimeline,
   type ProjectDirectorStage,
@@ -150,8 +154,7 @@ import { PresenceAwarenessProvider } from "./PresenceAwarenessContext";
 import { usePresenceAwareness } from "@clash/web-ui/hooks/usePresenceAwareness";
 import type { AwarenessBroadcastMessage } from "@clash/shared-types";
 import { CascadeRunnerMount } from "@clash/web-ui/hooks/useCascadeRunner";
-import { CustomActionDefinitionSchema, MODEL_CARDS, customActionDefaultParams } from "@clash/shared-types";
-import { useCustomActions } from "@clash/web-ui/hooks/useCustomActions";
+import { MODEL_CARDS, customActionDefaultParams } from "@clash/shared-types";
 import { useExecutablePluginActions } from "@clash/web-ui/hooks/useExecutablePluginActions";
 import { CustomActionsProvider } from "./CustomActionsContext";
 import {
@@ -162,8 +165,16 @@ import {
   calculateDimensionsFromAspectRatio,
   calculateScaledDimensions,
 } from "./nodes/assetNodeSizing";
-import { getAsset, useAsset } from "@clash/web-ui/lib/hooks/useAsset";
-import { getSignedUrl } from "@clash/web-ui/lib/hooks/useSignedUrl";
+import {
+  admitPersonalGlobalAssetToProject,
+  getAsset,
+  importProjectAssetFile as importProjectAssetBytes,
+  listPersonalGlobalAssets,
+  publishProjectAssetToPersonalLibrary,
+  restoreProjectAsset as restoreProjectAssetThroughHost,
+  trashProjectAsset as trashProjectAssetThroughHost,
+  useAsset,
+} from "@clash/web-ui/lib/hooks/useAsset";
 import { runtimeApiUrl } from "@clash/web-ui/lib/runtimeConfig";
 import betterAuthClient from "@clash/web-ui/lib/betterAuthClient";
 import {
@@ -239,7 +250,6 @@ import {
 import type { EditApplyResult } from "../features/assets/action-client";
 import { EditableProjectAssetSurface } from "../features/assets/AssetWorkspace";
 import { AssetThumbnail } from "../features/assets/AssetThumbnail";
-import { resolveAssetMediaUrl } from "../features/assets/media-url";
 import {
   canvasNodeAssetDisplayName,
   projectAssetDisplayName,
@@ -282,7 +292,7 @@ const CANVAS_FOLDER_ASSET_TYPES = new Set([
 type CanvasFolderEntry = {
   kind: "group" | "asset";
   node: AppNode;
-  asset?: ProjectAsset;
+  asset?: ResolvedAsset;
   depth: number;
   label: string;
 };
@@ -299,52 +309,16 @@ function isProjectAssetRenderNode(value: unknown): boolean {
   );
 }
 
-function assetMetadataDisplayName(asset: Asset): string | undefined {
-  for (const value of [
-    asset.metadata?.originalName,
-    asset.metadata?.mockText,
-    asset.metadata?.transcript,
-  ]) {
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return undefined;
-}
-
-function projectAssetFromAsset(
-  asset: Asset,
-  sourceUrl: string,
-  thumbnailUrl: string,
-  fallback?: ProjectAsset,
-): ProjectAsset {
-  if (asset.kind === "model") {
-    throw new Error(
-      "3D model assets are resolved inside Director Stage, not the media collection",
-    );
-  }
-  const candidate: ProjectAsset = {
-    id: asset.id,
-    assetId: asset.id,
-    name: assetMetadataDisplayName(asset) ?? fallback?.name,
-    url: sourceUrl,
-    thumbnailUrl,
-    type: asset.kind,
-    storageKey: asset.srcR2Key,
-    createdAt: asset.createdAt ?? fallback?.createdAt ?? Date.now(),
+function mergeResolvedAsset(
+  asset: ResolvedAsset,
+  fallback?: ResolvedAsset,
+): ResolvedAsset {
+  return {
+    ...fallback,
+    ...asset,
+    metadata: { ...fallback?.metadata, ...asset.metadata },
+    name: asset.name ?? fallback?.name,
   };
-  return { ...candidate, name: projectAssetDisplayName(candidate) };
-}
-
-async function hydrateProjectAsset(
-  asset: Asset,
-  fallback?: ProjectAsset,
-): Promise<ProjectAsset> {
-  const sourceUrl = asset.signedUrl || (await getSignedUrl(asset.srcR2Key));
-  const thumbnailUrl = asset.signedCoverUrl
-    ? asset.signedCoverUrl
-    : asset.coverR2Key
-      ? await getSignedUrl(asset.coverR2Key)
-      : fallback?.thumbnailUrl || sourceUrl;
-  return projectAssetFromAsset(asset, sourceUrl, thumbnailUrl, fallback);
 }
 
 async function normalizeDirectorPanorama(
@@ -474,15 +448,12 @@ function canvasFolderNodeLabel(node: AppNode): string {
   for (const value of [data.label, data.name, data.fileName]) {
     if (typeof value === "string" && value.trim()) return value.trim();
   }
-  if (typeof data.src === "string" && data.src.trim()) {
-    return data.src.split(/[\\/]/).filter(Boolean).at(-1) ?? data.src;
-  }
   return node.type === "group" ? "Untitled group" : "Untitled asset";
 }
 
 function buildCanvasFolderEntries(
   nodes: AppNode[],
-  projectAssets: readonly ProjectAsset[],
+  projectAssets: readonly ResolvedAsset[],
 ): CanvasFolderEntry[] {
   const folderNodes = nodes.filter((node) => node.type === "group");
   const folderIds = new Set(folderNodes.map((node) => node.id));
@@ -591,24 +562,22 @@ function filterCanvasFolderEntries(
   return entries.filter((entry) => visibleIds.has(entry.node.id));
 }
 
-function CanvasFolderEntryVisual({ entry }: { entry: CanvasFolderEntry }) {
+function CanvasFolderEntryVisual({
+  entry,
+  projectId,
+}: {
+  entry: CanvasFolderEntry;
+  projectId: string;
+}) {
   const assetId =
     typeof entry.node.data?.assetId === "string"
       ? entry.node.data.assetId
       : undefined;
-  const asset = useAsset(assetId);
-  const previewSource = [
-    asset?.signedCoverUrl,
-    asset?.signedUrl,
-    entry.asset?.thumbnailUrl,
-    entry.asset ? projectAssetThumbnailSource(entry.asset) : undefined,
-    asset?.coverR2Key,
-    asset?.srcR2Key,
-    entry.node.data?.previewUrl,
-    entry.node.data?.src,
-  ].find(
-    (value): value is string => typeof value === "string" && value.length > 0,
-  );
+  const asset = useAsset(projectId, assetId);
+  const resolvedAsset = asset ?? entry.asset;
+  const previewSource = resolvedAsset
+    ? projectAssetThumbnailSource(resolvedAsset)
+    : "";
 
   if (entry.kind === "group") {
     return (
@@ -625,7 +594,7 @@ function CanvasFolderEntryVisual({ entry }: { entry: CanvasFolderEntry }) {
   ) {
     return (
       <AssetThumbnail
-        type={entry.node.type}
+        kind={entry.node.type}
         src={previewSource ?? ""}
         label={entry.label}
         variant="sidebar"
@@ -648,10 +617,12 @@ function CanvasFolderEntryVisual({ entry }: { entry: CanvasFolderEntry }) {
 
 function CanvasFolderEntries({
   entries,
+  projectId,
   onSelect,
   nested = false,
 }: {
   entries: CanvasFolderEntry[];
+  projectId: string;
   onSelect: (node: AppNode) => void;
   nested?: boolean;
 }) {
@@ -665,7 +636,7 @@ function CanvasFolderEntries({
           paddingLeft: `${8 + entry.depth * 14 + (nested ? 8 : 0)}px`,
         }}
       >
-        <CanvasFolderEntryVisual entry={entry} />
+        <CanvasFolderEntryVisual entry={entry} projectId={projectId} />
         <span className="min-w-0 flex-1 truncate">{entry.label}</span>
       </button>
     </li>
@@ -724,20 +695,6 @@ interface ProjectEditorProps {
   project: Project;
   initialPrompt?: string;
   initialThreadId?: string;
-  /** Globally installed actions from D1 (passed from server component) */
-  globalActions?: Array<{
-    actionId: string;
-    name: string;
-    description: string | null;
-    runtime: string;
-    version: string | null;
-    author: string | null;
-    workerUrl: string | null;
-    icon: string | null;
-    color: string | null;
-    tags: string | null;
-    manifest: string;
-  }>;
 }
 
 const nodeTypes = {
@@ -919,8 +876,13 @@ export default function ProjectEditor({
   project,
   initialPrompt,
   initialThreadId,
-  globalActions = [],
 }: ProjectEditorProps) {
+  const [projectCoverAssetId, setProjectCoverAssetId] = useState<string | null>(
+    project.coverAssetId ?? null,
+  );
+  useEffect(() => {
+    setProjectCoverAssetId(project.coverAssetId ?? null);
+  }, [project.coverAssetId, project.id]);
   const session = betterAuthClient.useSession();
   const timelineExportActorUserId = session.data?.user?.id || project.ownerId;
   const transientUiStore = useMemo(() => createCanvasTransientUiStore(), []);
@@ -1352,10 +1314,10 @@ export default function ProjectEditor({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const assetFileInputRef = useRef<HTMLInputElement>(null);
   const [locallyAddedProjectAssets, setLocallyAddedProjectAssets] = useState<
-    ProjectAsset[]
+    ResolvedAsset[]
   >([]);
   const [globalProjectAssets, setGlobalProjectAssets] = useState<
-    ProjectAsset[]
+    ResolvedAsset[]
   >([]);
   const hydratingProjectAssetIdsRef = useRef(new Set<string>());
   const activeProjectAssetProjectIdRef = useRef(project.id);
@@ -1379,30 +1341,16 @@ export default function ProjectEditor({
 
   useEffect(() => {
     let cancelled = false;
-    void fetch(runtimeApiUrl("/api/v1/assets"), { credentials: "include" })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(await response.text());
-        return response.json() as Promise<{ assets?: Asset[] }>;
-      })
-      .then(({ assets = [] }) => {
+    void listPersonalGlobalAssets()
+      .then((assets) => {
         if (cancelled) return;
         setGlobalProjectAssets(
-          assets.flatMap((asset): ProjectAsset[] => {
-            if (
-              asset.kind !== "image" &&
-              asset.kind !== "video" &&
-              asset.kind !== "audio"
-            )
-              return [];
-            const sourceUrl =
-              asset.signedUrl ?? runtimeApiUrl(`/assets/${asset.srcR2Key}`);
-            const thumbnailUrl =
-              asset.signedCoverUrl ??
-              (asset.coverR2Key
-                ? runtimeApiUrl(`/assets/${asset.coverR2Key}`)
-                : sourceUrl);
-            return [projectAssetFromAsset(asset, sourceUrl, thumbnailUrl)];
-          }),
+          assets.filter(
+            (asset) =>
+              asset.kind === "image" ||
+              asset.kind === "video" ||
+              asset.kind === "audio",
+          ),
         );
       })
       .catch((error) => console.warn("[Global assets] load failed", error));
@@ -1909,48 +1857,9 @@ export default function ProjectEditor({
   // Reliable sync handlers
   const onNodesDelete = useCallback(
     (deletedNodes: Node[]) => {
-      const persistedDeletedNodes = loroSync.removeNodes(
-        deletedNodes.map((node) => node.id),
-      )
-        ? deletedNodes
-        : [];
-
-      // Drop project's asset_refs row for any assetId no longer referenced by any surviving node.
-      // Other projects sharing the same asset are unaffected (M:N).
-      const deletedIds = new Set(persistedDeletedNodes.map((n) => n.id));
-      const survivingAssetIds = new Set(
-        nodes
-          .filter((n) => !deletedIds.has(n.id))
-          .map(
-            (n) =>
-              (n.data as Record<string, unknown>)?.assetId as
-                string | undefined,
-          )
-          .filter((v): v is string => !!v),
-      );
-      const orphanedAssetIds = new Set(
-        persistedDeletedNodes
-          .map(
-            (n) =>
-              (n.data as Record<string, unknown>)?.assetId as
-                string | undefined,
-          )
-          .filter((v): v is string => !!v && !survivingAssetIds.has(v)),
-      );
-      orphanedAssetIds.forEach((assetId) => {
-        void fetch(
-          runtimeApiUrl(
-            `/api/v1/assets/${encodeURIComponent(assetId)}/ref?projectId=${encodeURIComponent(project.id)}`,
-          ),
-          {
-            method: "DELETE",
-          },
-        ).catch((e) =>
-          console.warn("[onNodesDelete] removeAssetRef failed", assetId, e),
-        );
-      });
+      loroSync.removeNodes(deletedNodes.map((node) => node.id));
     },
-    [loroSync, nodes, project.id],
+    [loroSync],
   );
 
   const onNodeDragStop = useCallback(
@@ -2445,41 +2354,10 @@ export default function ProjectEditor({
     [handleSpaceKeyUp],
   );
 
-  // Merge local (Loro) + global (D1) custom actions, deduplicate by ID
-  const loroActions = useCustomActions(loroSync.doc);
+  // Activated executable plugin Cards are the only Action catalog. Runtime registrations in
+  // Project Loro belonged to the retired ClashAgent websocket protocol.
   const executablePluginActions = useExecutablePluginActions();
-  const customActions = useMemo(() => {
-    const merged = new Map<string, (typeof loroActions)[number]>();
-    // Global actions first (from D1)
-    for (const ga of globalActions) {
-      try {
-        const parsed = CustomActionDefinitionSchema.safeParse({
-          ...JSON.parse(ga.manifest),
-          id: ga.actionId,
-          name: ga.name,
-          description: ga.description || undefined,
-          runtime: (ga.runtime as "local" | "worker") || "worker",
-          version: ga.version || undefined,
-          author: ga.author || undefined,
-          workerUrl: ga.workerUrl || undefined,
-          icon: ga.icon || undefined,
-          color: ga.color || undefined,
-        });
-        if (parsed.success) merged.set(ga.actionId, parsed.data);
-      } catch {
-        /* skip invalid manifest */
-      }
-    }
-    // Activated Executable Plugin Cards override marketplace definitions.
-    for (const pluginAction of executablePluginActions) {
-      merged.set(pluginAction.id, pluginAction);
-    }
-    // Loro actions override (local registrations take precedence)
-    for (const la of loroActions) {
-      merged.set(la.id, la);
-    }
-    return Array.from(merged.values());
-  }, [loroActions, globalActions, executablePluginActions]);
+  const customActions = executablePluginActions;
 
   const toolbarMenu = [
     {
@@ -2496,11 +2374,13 @@ export default function ProjectEditor({
         { id: "action-badge-video", label: "Video Gen", icon: FilmSlate },
         { id: "action-badge-audio", label: "Audio Gen", icon: SpeakerHigh },
         { id: "action-badge-text", label: "Text Gen", icon: TextT },
-        ...customActions.filter((a) => a.presentation.type === "form").map((a) => ({
-          id: `action-badge-custom-${a.id}`,
-          label: `${a.runtime === "worker" ? "☁️ " : ""}${a.name}`,
-          icon: PuzzlePiece,
-        })),
+        ...customActions
+          .filter((a) => a.presentation.type === "form")
+          .map((a) => ({
+            id: `action-badge-custom-${a.id}`,
+            label: `${a.runtime === "worker" ? "☁️ " : ""}${a.name}`,
+            icon: PuzzlePiece,
+          })),
       ],
     },
     { id: "video-editor", label: "Editor", icon: FilmSlate },
@@ -2637,6 +2517,7 @@ export default function ProjectEditor({
           actionType: `custom:${customId}`,
           customActionId: customId,
           customActionParams: def ? customActionDefaultParams(def) : {},
+          ...(def?.pluginBinding ? { pluginBinding: def.pluginBinding } : {}),
           content: "# Prompt\nEnter your prompt here...",
           ...nodeData,
         };
@@ -3186,7 +3067,7 @@ export default function ProjectEditor({
   );
 
   const importProjectAssetFile = useCallback(
-    async (file: File): Promise<ProjectAsset> => {
+    async (file: File): Promise<ResolvedAsset & { url: string }> => {
       const assetType = file.type.startsWith("video/")
         ? "video"
         : file.type.startsWith("image/")
@@ -3199,57 +3080,74 @@ export default function ProjectEditor({
           `Unsupported project asset type: ${file.type || file.name}`,
         );
 
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("projectId", project.id);
-      formData.append("type", assetType);
-
-      const uploadResponse = await fetch(runtimeApiUrl("/upload"), {
-        method: "POST",
-        body: formData,
+      const projectAsset = await importProjectAssetBytes(project.id, file, {
+        kind: assetType,
       });
-      if (!uploadResponse.ok) {
-        throw new Error(
-          (await uploadResponse.text()) || "Failed to upload project asset",
-        );
+      if (!projectAsset.url) {
+        throw new Error("Imported project asset is not locally available");
       }
-      const { storageKey } = (await uploadResponse.json()) as {
-        storageKey: string;
-      };
-
-      const registerResponse = await fetch(runtimeApiUrl("/api/v1/assets"), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          projectId: project.id,
-          kind: assetType,
-          srcR2Key: storageKey,
-          originalName: file.name,
-        }),
-      });
-      if (!registerResponse.ok) {
-        throw new Error(
-          (await registerResponse.text()) || "Failed to register project asset",
-        );
-      }
-      const { id } = (await registerResponse.json()) as { id: string };
-      const registeredAsset = await getAsset(id);
-      const projectAsset = await hydrateProjectAsset(registeredAsset, {
-        id,
-        assetId: id,
-        name: file.name,
-        url: runtimeApiUrl(`/assets/${storageKey}`),
-        type: assetType,
-        storageKey,
-        createdAt: registeredAsset.createdAt ?? Date.now(),
-      });
       setLocallyAddedProjectAssets((current) => [
         projectAsset,
         ...current.filter((asset) => asset.id !== projectAsset.id),
       ]);
-      return projectAsset;
+      return { ...projectAsset, url: projectAsset.url };
     },
     [project.id],
+  );
+
+  const admitTimelineLibraryMedia = useCallback(
+    async (
+      input: EditorAssetInput & { catalogId: string },
+    ): Promise<EditorAssetInput> => {
+      if (!input.src) throw new Error("Catalog media bytes are unavailable");
+      const response = await fetch(input.src);
+      if (!response.ok) {
+        throw new Error(
+          `Could not read catalog media (HTTP ${response.status})`,
+        );
+      }
+      const blob = await response.blob();
+      const mime =
+        blob.type ||
+        (input.type === "audio"
+          ? "audio/wav"
+          : input.type === "video"
+            ? "video/mp4"
+            : "image/svg+xml");
+      const extension = mime.includes("wav")
+        ? "wav"
+        : mime.includes("svg")
+          ? "svg"
+          : mime.includes("png")
+            ? "png"
+            : mime.includes("jpeg")
+              ? "jpg"
+              : mime.includes("webm")
+                ? "webm"
+                : "mp4";
+      const baseName =
+        (input.name || input.catalogId)
+          .replace(/[^a-z0-9_-]+/gi, "-")
+          .replace(/^-+|-+$/g, "") || "catalog-media";
+      const projectAsset = await importProjectAssetFile(
+        new File([blob], `${baseName}.${extension}`, { type: mime }),
+      );
+      return {
+        ...input,
+        id: input.catalogId,
+        sourceNodeId: input.catalogId,
+        projectAssetId: projectAsset.id,
+        src: projectAsset.url,
+        thumbnail: projectAsset.thumbnailUrl,
+        width: projectAsset.metadata.width,
+        height: projectAsset.metadata.height,
+        duration: projectAsset.metadata.durationMs
+          ? projectAsset.metadata.durationMs / 1000
+          : input.duration,
+        waveform: projectAsset.metadata.waveform ?? input.waveform,
+      };
+    },
+    [importProjectAssetFile],
   );
 
   const openProjectAssetPicker = useCallback(() => {
@@ -3282,7 +3180,7 @@ export default function ProjectEditor({
       type: "image" | "video" | "audio";
       assetId?: string;
       sourceNodeId?: string;
-      backingAssetId?: string;
+      projectAssetId?: string;
       src: string;
       name: string;
       width?: number;
@@ -3343,9 +3241,20 @@ export default function ProjectEditor({
         id: placeholderId,
         label: file.name,
         status: "uploading",
-        previewUrl: localPreviewUrl, // transient blob URL (revoke on completion)
         createdAt: Date.now(),
       });
+      // Upload previews are device-local UI only. Never write blob URLs into
+      // the Project Loro replica shared with collaborators.
+      setNodes((current) =>
+        current.map((node) =>
+          node.id === placeholderId
+            ? {
+                ...node,
+                data: { ...node.data, previewUrl: localPreviewUrl },
+              }
+            : node,
+        ),
+      );
 
       // Seed the node's measuredSize with the probed dimensions so the
       // placeholder renders at the correct aspect ratio immediately.
@@ -3376,61 +3285,20 @@ export default function ProjectEditor({
       }
 
       try {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("projectId", project.id);
-        formData.append("type", assetType);
-
-        const res = await fetch(runtimeApiUrl("/upload"), {
-          method: "POST",
-          body: formData,
+        const importedAsset = await importProjectAssetBytes(project.id, file, {
+          kind: assetType,
         });
+        const assetId = importedAsset.id;
+        setLocallyAddedProjectAssets((current) => [
+          importedAsset,
+          ...current.filter((asset) => asset.id !== importedAsset.id),
+        ]);
 
-        if (!res.ok) {
-          const errorText = await res.text();
-          throw new Error(errorText || "Failed to upload to R2");
-        }
-
-        const { storageKey } = (await res.json()) as { storageKey: string };
-
-        // Register the asset in D1. Server probes width/height/
-        // durationMs/waveform/bytes itself from the R2 object — we
-        // only hand it the reference + kind.
-        let assetId: string | undefined;
-        try {
-          const regRes = await fetch(runtimeApiUrl("/api/v1/assets"), {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              projectId: project.id,
-              kind: assetType,
-              srcR2Key: storageKey,
-            }),
-          });
-          if (regRes.ok) {
-            ({ id: assetId } = (await regRes.json()) as { id: string });
-          } else {
-            console.warn(
-              "[Upload] asset registration failed",
-              regRes.status,
-              await regRes.text(),
-            );
-          }
-        } catch (e) {
-          console.warn("[Upload] asset registration threw", e);
-        }
-
-        // Node data gets `assetId` + `status=completed`. Preview
-        // fields stay in place on purpose: there's a short window
-        // between the status flip and `useAsset(assetId)` actually
-        // resolving the asset row — clearing preview*/previewUrl
-        // here would make the node render "No Image" for that
-        // window. Node components are responsible for preferring
-        // asset.* once it lands. The blob URL stays alive until
-        // the tab closes; a few MB of preview blobs per session
-        // is cheap insurance against the flash.
+        // The import primes the Project-scoped ResolvedAsset cache before the
+        // node becomes completed. projectVisibleNodeData strips previewUrl
+        // from synchronized state as soon as status leaves `uploading`.
         const completedPatch = {
-          ...(assetId ? { assetId } : {}),
+          assetId,
           status: "completed" as const,
         };
         setNodes((nds) =>
@@ -3441,36 +3309,24 @@ export default function ProjectEditor({
           ),
         );
         loroSync.updateNode(placeholderId, { data: completedPatch });
+        URL.revokeObjectURL(localPreviewUrl);
 
         // Resolve the asset row for the VideoEditor's internal Asset
         // shape (it wants a signed src / dimensions / duration).
-        // Uses the same cached getAsset() / getSignedUrl() path that
-        // VideoEditorNode.handleOpenEditor uses — no extra round-trip
-        // beyond the one we'd need anyway to display the media.
-        let resolvedSrc = "";
-        let width: number | undefined;
-        let height: number | undefined;
-        let duration: number | undefined;
-        if (assetId) {
-          try {
-            const asset = await getAsset(assetId);
-            resolvedSrc = await getSignedUrl(asset.srcR2Key);
-            width = asset.metadata?.width;
-            height = asset.metadata?.height;
-            duration =
-              asset.metadata?.durationMs != null
-                ? asset.metadata.durationMs / 1000
-                : undefined;
-          } catch (e) {
-            console.warn("[Upload] post-upload asset resolve failed", e);
-          }
-        }
+        // Uses the same Project-scoped ResolvedAsset projection as Canvas nodes.
+        const resolvedSrc = importedAsset.url ?? "";
+        const width = importedAsset.metadata.width;
+        const height = importedAsset.metadata.height;
+        const duration =
+          importedAsset.metadata.durationMs != null
+            ? importedAsset.metadata.durationMs / 1000
+            : undefined;
         return {
           id: placeholderId,
           type: assetType,
           assetId,
           sourceNodeId: placeholderId,
-          backingAssetId: assetId,
+          projectAssetId: assetId,
           src: resolvedSrc,
           name: file.name,
           width,
@@ -3660,7 +3516,7 @@ export default function ProjectEditor({
     () => ({ relayoutParent, ungroup }),
     [relayoutParent, ungroup],
   );
-  const projectAssets = useMemo(() => {
+  const allProjectAssets = useMemo(() => {
     const persistedAssets = project.assets ?? [];
     const persistedIds = new Set(persistedAssets.map((asset) => asset.id));
     const localById = new Map(
@@ -3673,6 +3529,16 @@ export default function ProjectEditor({
       ...persistedAssets.map((asset) => localById.get(asset.id) ?? asset),
     ];
   }, [locallyAddedProjectAssets, project.assets]);
+  const projectAssets = useMemo(
+    () =>
+      allProjectAssets.filter((asset) => asset.lifecycle.state === "active"),
+    [allProjectAssets],
+  );
+  const activeGlobalProjectAssets = useMemo(
+    () =>
+      globalProjectAssets.filter((asset) => asset.lifecycle.state === "active"),
+    [globalProjectAssets],
+  );
   const projectTextAssets = useMemo<ProjectTextAsset[]>(() => {
     const byId = new Map<string, ProjectTextAsset>();
     if (loroSync.doc) {
@@ -3854,10 +3720,10 @@ export default function ProjectEditor({
   ]);
 
   useEffect(() => {
-    const assetsToHydrate = new Map<string, ProjectAsset | undefined>();
+    const assetsToHydrate = new Map<string, ResolvedAsset | undefined>();
     for (const asset of projectAssets) {
-      if (!asset.name || !asset.thumbnailUrl) {
-        assetsToHydrate.set(asset.assetId ?? asset.id, asset);
+      if (asset.status !== "ready" || !asset.url) {
+        assetsToHydrate.set(asset.id, asset);
       }
     }
     for (const node of nodes) {
@@ -3867,7 +3733,7 @@ export default function ProjectEditor({
         typeof assetId === "string" &&
         assetId &&
         !assetsToHydrate.has(assetId) &&
-        !projectAssets.some((asset) => (asset.assetId ?? asset.id) === assetId)
+        !projectAssets.some((asset) => asset.id === assetId)
       ) {
         assetsToHydrate.set(assetId, undefined);
       }
@@ -3880,9 +3746,7 @@ export default function ProjectEditor({
           continue;
         if (
           !assetsToHydrate.has(data.assetId) &&
-          !projectAssets.some(
-            (asset) => (asset.assetId ?? asset.id) === data.assetId,
-          )
+          !projectAssets.some((asset) => asset.id === data.assetId)
         ) {
           assetsToHydrate.set(data.assetId, undefined);
         }
@@ -3892,8 +3756,8 @@ export default function ProjectEditor({
     for (const [assetId, fallback] of assetsToHydrate) {
       if (hydratingProjectAssetIdsRef.current.has(assetId)) continue;
       hydratingProjectAssetIdsRef.current.add(assetId);
-      void getAsset(assetId)
-        .then(async (asset) => {
+      void getAsset(project.id, assetId)
+        .then((asset) => {
           if (activeProjectAssetProjectIdRef.current !== project.id) return;
           if (
             asset.kind !== "image" &&
@@ -3901,7 +3765,7 @@ export default function ProjectEditor({
             asset.kind !== "audio"
           )
             return;
-          const projectAsset = await hydrateProjectAsset(asset, fallback);
+          const projectAsset = mergeResolvedAsset(asset, fallback);
           setLocallyAddedProjectAssets((current) => [
             projectAsset,
             ...current.filter((candidate) => candidate.id !== projectAsset.id),
@@ -3934,100 +3798,119 @@ export default function ProjectEditor({
     : undefined;
   const handleEditedAssetApplied = useCallback(
     async (result: EditApplyResult) => {
-      const asset = await getAsset(result.assetId);
+      const asset = await getAsset(project.id, result.assetId);
       if (
         asset.kind !== "image" &&
         asset.kind !== "video" &&
         asset.kind !== "audio"
       )
         return;
-      const projectAsset = await hydrateProjectAsset(asset);
+      const projectAsset = asset;
       setLocallyAddedProjectAssets((current) => [
         projectAsset,
         ...current.filter((candidate) => candidate.id !== projectAsset.id),
       ]);
       setWorkspaceSurface({ kind: "asset", assetId: projectAsset.id });
     },
-    [],
+    [project.id],
+  );
+  const handleProjectCoverChange = useCallback(
+    async (assetId: string, isCover: boolean) => {
+      const nextCoverAssetId = isCover ? assetId : null;
+      await updateProjectCover(project.id, nextCoverAssetId);
+      setProjectCoverAssetId(nextCoverAssetId);
+    },
+    [project.id],
   );
 
   const addProjectAssetToLibrary = useCallback(
     async (assetId: string) => {
-      const response = await fetch(
-        runtimeApiUrl(`/api/v1/assets/${encodeURIComponent(assetId)}/library`),
-        {
-          method: "POST",
-          credentials: "include",
-        },
+      const asset = await publishProjectAssetToPersonalLibrary(
+        project.id,
+        assetId,
       );
-      if (!response.ok)
-        throw new Error(
-          (await response.text()) || "Failed to add asset to global library",
-        );
-      const asset = projectAssets.find(
-        (candidate) => (candidate.assetId ?? candidate.id) === assetId,
-      );
-      if (asset)
-        setGlobalProjectAssets((current) => [
-          asset,
-          ...current.filter((candidate) => candidate.id !== asset.id),
-        ]);
-    },
-    [projectAssets],
-  );
-  const addGlobalAssetToProject = useCallback(
-    async (assetId: string) => {
-      const asset = globalProjectAssets.find(
-        (candidate) => (candidate.assetId ?? candidate.id) === assetId,
-      );
-      if (
-        !asset ||
-        projectAssets.some((candidate) => candidate.id === asset.id)
-      )
-        return;
-      const response = await fetch(
-        runtimeApiUrl(`/api/v1/assets/${encodeURIComponent(assetId)}/ref`),
-        {
-          method: "POST",
-          credentials: "include",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ projectId: project.id }),
-        },
-      );
-      if (!response.ok)
-        throw new Error(
-          (await response.text()) || "Failed to add global asset to project",
-        );
-      setLocallyAddedProjectAssets((current) => [
+      setGlobalProjectAssets((current) => [
         asset,
         ...current.filter((candidate) => candidate.id !== asset.id),
       ]);
     },
-    [globalProjectAssets, project.id, projectAssets],
+    [project.id],
+  );
+  const addGlobalAssetToProject = useCallback(
+    async (globalAssetId: string): Promise<string> => {
+      const projectAsset = await admitPersonalGlobalAssetToProject(
+        project.id,
+        globalAssetId,
+      );
+      setLocallyAddedProjectAssets((current) => [
+        projectAsset,
+        ...current.filter((candidate) => candidate.id !== projectAsset.id),
+      ]);
+      return projectAsset.id;
+    },
+    [project.id],
+  );
+  const replaceProjectAssetProjection = useCallback((asset: ResolvedAsset) => {
+    setLocallyAddedProjectAssets((current) => [
+      asset,
+      ...current.filter((candidate) => candidate.id !== asset.id),
+    ]);
+  }, []);
+  const trashProjectAssetFromNavigator = useCallback(
+    async (assetId: string) => {
+      const asset = projectAssets.find((candidate) => candidate.id === assetId);
+      if (!asset) return;
+      const label = projectAssetDisplayName(asset);
+      if (!window.confirm(`Move "${label}" to Trash?`)) return;
+      try {
+        const trashed = await trashProjectAssetThroughHost(project.id, assetId);
+        replaceProjectAssetProjection(trashed);
+        if (
+          workspaceSurface.kind === "asset" &&
+          workspaceSurface.assetId === assetId
+        ) {
+          setWorkspaceSurface({ kind: "canvas", canvasId: activeCanvasId });
+        }
+      } catch (cause) {
+        window.alert(cause instanceof Error ? cause.message : String(cause));
+      }
+    },
+    [
+      activeCanvasId,
+      project.id,
+      projectAssets,
+      replaceProjectAssetProjection,
+      workspaceSurface,
+    ],
+  );
+  const restoreProjectAssetFromNavigator = useCallback(
+    async (assetId: string) => {
+      try {
+        replaceProjectAssetProjection(
+          await restoreProjectAssetThroughHost(project.id, assetId),
+        );
+      } catch (cause) {
+        window.alert(cause instanceof Error ? cause.message : String(cause));
+      }
+    },
+    [project.id, replaceProjectAssetProjection],
   );
   const assetPickerSections = useMemo(
     () =>
       assetPickerTarget
         ? buildScopedAssetSections({
             target: assetPickerTarget,
+            bindings: loroSync.doc ? listActionAssetBindings(loroSync.doc) : [],
             projectAssets,
-            globalAssets: globalProjectAssets,
+            globalAssets: activeGlobalProjectAssets,
             nodes: assetRelationGraph.nodes,
-            edges: assetRelationGraph.edges,
-            targetState:
-              assetPickerTarget.kind === "timeline"
-                ? loroSync.timelines.find(
-                    (timeline) => timeline.id === assetPickerTarget.timelineId,
-                  )?.state
-                : undefined,
           })
         : [],
     [
       assetPickerTarget,
-      assetRelationGraph.edges,
       assetRelationGraph.nodes,
-      globalProjectAssets,
-      loroSync.timelines,
+      activeGlobalProjectAssets,
+      loroSync.doc,
       projectAssets,
     ],
   );
@@ -4041,21 +3924,6 @@ export default function ProjectEditor({
       setAssetPickerBusy(true);
       try {
         const steps = planAssetScopeCascade({ source: option.source, target });
-        const projectAsset = projectAssets.find(
-          (asset) => (asset.assetId ?? asset.id) === option.assetId,
-        ) ??
-          globalProjectAssets.find(
-            (asset) => (asset.assetId ?? asset.id) === option.assetId,
-          ) ?? {
-            id: option.assetId,
-            assetId: option.assetId,
-            name: option.name,
-            url: option.src,
-            thumbnailUrl: option.thumbnail,
-            type: option.type,
-            storageKey: null,
-            createdAt: null,
-          };
 
         const cascade = await executeAssetScopeCascade({
           steps,
@@ -4081,7 +3949,7 @@ export default function ProjectEditor({
               ).length;
               const node = {
                 id: nodeId,
-                type: projectAsset.type,
+                type: option.type,
                 position: {
                   x: 120 + (canvasNodeCount % 5) * 36,
                   y: 120 + (canvasNodeCount % 7) * 36,
@@ -4089,8 +3957,6 @@ export default function ProjectEditor({
                 data: {
                   assetId,
                   label: option.name,
-                  src: projectAsset.url,
-                  previewUrl: projectAsset.thumbnailUrl,
                   status: "completed",
                 },
               } satisfies Pick<AppNode, "id" | "type" | "position" | "data">;
@@ -4106,69 +3972,6 @@ export default function ProjectEditor({
               }
               return nodeId;
             },
-            ensureTimelineReference: async ({ timelineId, assetId }) => {
-              const timeline = loroSync.timelines.find(
-                (candidate) => candidate.id === timelineId,
-              );
-              const state =
-                timeline?.state && typeof timeline.state === "object"
-                  ? (timeline.state as Record<string, unknown>)
-                  : {};
-              const refs = Array.isArray(state.mediaAssetRefs)
-                ? state.mediaAssetRefs.filter(
-                    (ref): ref is { assetId: string } =>
-                      Boolean(
-                        ref &&
-                        typeof ref === "object" &&
-                        typeof (ref as { assetId?: unknown }).assetId ===
-                          "string",
-                      ),
-                  )
-                : [];
-              if (!refs.some((ref) => ref.assetId === assetId)) {
-                if (
-                  !loroSync.applyTimelineState(timelineId, {
-                    ...state,
-                    mediaAssetRefs: [...refs, { assetId }],
-                  })
-                ) {
-                  throw new Error("Failed to add the asset to the Timeline");
-                }
-              }
-            },
-            ensureCanvasTimelineInput: async ({
-              timelineId,
-              canvasId,
-              actionNodeId,
-              sourceNodeId,
-            }) => {
-              const alreadyConnected = assetRelationGraph.edges.some(
-                (edge) =>
-                  edge.canvasId === canvasId &&
-                  edge.source === sourceNodeId &&
-                  edge.target === actionNodeId,
-              );
-              if (alreadyConnected) return;
-              const edgeId = `timeline-input-${timelineId}-${sourceNodeId}`;
-              const edge = {
-                id: edgeId,
-                source: sourceNodeId,
-                target: actionNodeId,
-                canvasId,
-                targetHandle: "assets",
-                type: "default",
-              };
-              if (!loroSync.addEdge(edgeId, edge)) {
-                throw new Error("Failed to connect the asset to the Timeline");
-              }
-              if (canvasId === activeCanvasId) {
-                setEdges((current) =>
-                  current.some((candidate) => candidate.id === edgeId)
-                    ? current
-                    : [...current, edge],
-                );
-              }
-            },
           },
         });
         if (
@@ -4177,17 +3980,18 @@ export default function ProjectEditor({
         ) {
           const sourceNodeId =
             cascade.sourceNodeId ?? `timeline-asset:${option.assetId}`;
-          const backingAssetId = cascade.assetId ?? option.assetId;
-          const authoritativeAsset = await getAsset(backingAssetId).catch(
-            () => undefined,
-          );
+          const projectAssetId = cascade.assetId ?? option.assetId;
+          const authoritativeAsset = await getAsset(
+            project.id,
+            projectAssetId,
+          ).catch(() => undefined);
           setTimelineInsertRequest({
             timelineId: target.timelineId,
             requestId: `${target.timelineId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
             asset: buildScopedTimelineAssetInput({
               option,
               sourceNodeId,
-              backingAssetId,
+              projectAssetId,
               asset: authoritativeAsset,
             }),
           });
@@ -4201,12 +4005,10 @@ export default function ProjectEditor({
     [
       activeCanvasId,
       addGlobalAssetToProject,
-      assetRelationGraph.edges,
       assetRelationGraph.nodes,
-      globalProjectAssets,
       loroSync,
+      project.id,
       projectAssets,
-      setEdges,
       setNodes,
     ],
   );
@@ -4219,12 +4021,12 @@ export default function ProjectEditor({
         const asset = await importProjectAssetFile(file);
         await applyScopedAssetSelection(
           {
-            assetId: asset.assetId ?? asset.id,
+            assetId: asset.id,
             name: asset.name || file.name,
-            type: asset.type,
-            src: asset.url,
+            type: asset.kind as "image" | "video" | "audio",
+            src: asset.url ?? "",
             thumbnail: asset.thumbnailUrl,
-            source: { kind: "project", assetId: asset.assetId ?? asset.id },
+            source: { kind: "project", assetId: asset.id },
           },
           assetPickerTarget,
         );
@@ -4370,6 +4172,7 @@ export default function ProjectEditor({
         ? selectTimelineMediaInputs({
             timeline: selectedTimeline,
             assets: projectAssets,
+            bindings: loroSync.doc ? listActionAssetBindings(loroSync.doc) : [],
             nodes: assetRelationGraph.nodes,
             edges: assetRelationGraph.edges,
           })
@@ -4379,6 +4182,7 @@ export default function ProjectEditor({
       assetRelationGraph.nodes,
       projectAssets,
       selectedTimeline,
+      loroSync.doc,
     ],
   );
   const handleTimelineProjectAssetDrop = useCallback(
@@ -4388,12 +4192,13 @@ export default function ProjectEditor({
         (candidate) => candidate.id === projectAssetId,
       );
       if (!asset) return;
-      const assetId = asset.assetId ?? asset.id;
+      const assetId = asset.id;
+      if (asset.kind === "model" || !asset.url) return;
       void applyScopedAssetSelection(
         {
           assetId,
           name: safeScopedAssetName(asset),
-          type: asset.type,
+          type: asset.kind,
           src: asset.url,
           thumbnail: asset.thumbnailUrl,
           source: { kind: "project", assetId },
@@ -4512,7 +4317,7 @@ export default function ProjectEditor({
   const openRelatedAsset = useCallback(
     (assetId: string) => {
       const relatedAsset = projectAssets.find(
-        (candidate) => (candidate.assetId ?? candidate.id) === assetId,
+        (candidate) => candidate.id === assetId,
       );
       if (!relatedAsset) return;
       stopFollowingAgent();
@@ -5143,7 +4948,7 @@ export default function ProjectEditor({
         { type: "image/png" },
       );
       const asset = await importProjectAssetFile(file);
-      const assetId = asset.assetId ?? asset.id;
+      const assetId = asset.id;
       const shotId = `director-shot-${Date.now().toString(36)}`;
       const applied = applyDirectorStageCommand(input.state, {
         op: "shot.register",
@@ -5205,8 +5010,6 @@ export default function ProjectEditor({
         data: {
           label: `${stage.name} · Shot ${input.state.shots.length + 1}`,
           assetId,
-          src: asset.url,
-          previewUrl: asset.thumbnailUrl ?? asset.url,
           status: "completed",
           aspectRatio: input.aspectRatio,
           sourceDirectorStageId: input.stageId,
@@ -5291,7 +5094,7 @@ export default function ProjectEditor({
           render,
           camera,
           asset,
-          assetId: asset.assetId ?? asset.id,
+          assetId: asset.id,
         });
 
         for (const [
@@ -5304,7 +5107,7 @@ export default function ProjectEditor({
             { type: referenceFrame.blob.type || "image/png" },
           );
           const referenceAsset = await importProjectAssetFile(referenceFile);
-          const referenceAssetId = referenceAsset.assetId ?? referenceAsset.id;
+          const referenceAssetId = referenceAsset.id;
           const registered = applyDirectorStageCommand(packetState, {
             op: "shot.register",
             shot: {
@@ -5348,8 +5151,6 @@ export default function ProjectEditor({
               : {}),
             referenceVideo: {
               assetId,
-              src: asset.url,
-              previewUrl: asset.thumbnailUrl ?? asset.url,
               mimeType: render.blob.type || "video/webm",
             },
           }),
@@ -5381,9 +5182,6 @@ export default function ProjectEditor({
               }
             : {
                 outputVideoAssetId: firstAsset.assetId,
-                outputVideoSrc: firstAsset.asset.url,
-                outputVideoPreviewUrl:
-                  firstAsset.asset.thumbnailUrl ?? firstAsset.asset.url,
                 outputVideoDurationSeconds: firstAsset.render.durationSeconds,
                 outputVideoFps: input.fps,
                 outputVideoStageRevisionId: stageRevisionId,
@@ -5485,11 +5283,11 @@ export default function ProjectEditor({
   const directorPanoramaOptions = useMemo(
     () =>
       projectAssets
-        .filter((asset) => asset.type === "image")
+        .filter((asset) => asset.kind === "image" && Boolean(asset.url))
         .map((asset) => ({
-          assetId: asset.assetId ?? asset.id,
+          assetId: asset.id,
           label: projectAssetDisplayName(asset),
-          url: resolveAssetMediaUrl(asset.url) ?? asset.url,
+          url: asset.url!,
         })),
     [projectAssets],
   );
@@ -5499,9 +5297,9 @@ export default function ProjectEditor({
       const normalizedFile = await normalizeDirectorPanorama(file, file.name);
       const asset = await importProjectAssetFile(normalizedFile);
       return {
-        assetId: asset.assetId ?? asset.id,
+        assetId: asset.id,
         label: projectAssetDisplayName(asset),
-        url: resolveAssetMediaUrl(asset.url) ?? asset.url,
+        url: asset.url ?? "",
       };
     },
     [importProjectAssetFile],
@@ -5518,7 +5316,7 @@ export default function ProjectEditor({
         ? await importProjectAssetFile(calibrationReference.file)
         : undefined;
       const referenceImageAssetIds = calibrationReferenceAsset
-        ? [calibrationReferenceAsset.assetId ?? calibrationReferenceAsset.id]
+        ? [calibrationReferenceAsset.id]
         : input.referenceAssetId
           ? [input.referenceAssetId]
           : [];
@@ -5572,7 +5370,6 @@ export default function ProjectEditor({
             quality: "high",
             output_format: "webp",
             count: 1,
-            provider_id: "fal",
             require_real_provider: true,
           },
           aspectRatio: "2:1",
@@ -5649,18 +5446,17 @@ export default function ProjectEditor({
         throw new Error("AI panorama generation timed out");
       }
 
-      const generatedAsset = await getAsset(generatedAssetId);
-      const hydratedGeneratedAsset = await hydrateProjectAsset(generatedAsset);
+      const generatedAsset = await getAsset(project.id, generatedAssetId);
+      if (!generatedAsset.url)
+        throw new Error("Generated panorama is not locally available");
       const normalizedFile = await normalizeDirectorPanorama(
-        hydratedGeneratedAsset.url,
+        generatedAsset.url,
         brief,
       );
       const panoramaAsset = await importProjectAssetFile(normalizedFile);
-      const panoramaAssetId = panoramaAsset.assetId ?? panoramaAsset.id;
+      const panoramaAssetId = panoramaAsset.id;
       const completedData = {
         assetId: panoramaAssetId,
-        src: panoramaAsset.url,
-        previewUrl: panoramaAsset.thumbnailUrl ?? panoramaAsset.url,
         status: "completed",
         sourceGeneratedAssetId: generatedAssetId,
         panoramaProjection: "equirectangular",
@@ -5685,7 +5481,7 @@ export default function ProjectEditor({
       return {
         assetId: panoramaAssetId,
         label: projectAssetDisplayName(panoramaAsset),
-        url: resolveAssetMediaUrl(panoramaAsset.url) ?? panoramaAsset.url,
+        url: panoramaAsset.url,
         calibration: input.calibration,
       };
     },
@@ -5714,41 +5510,13 @@ export default function ProjectEditor({
           return undefined;
         },
       );
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("projectId", project.id);
-      formData.append("type", "model");
-      const uploadResponse = await fetch(runtimeApiUrl("/upload"), {
-        method: "POST",
-        body: formData,
+      const registered = await importProjectAssetBytes(project.id, file, {
+        kind: "model",
       });
-      if (!uploadResponse.ok) {
-        throw new Error(
-          (await uploadResponse.text()) || "Failed to upload 3D model",
-        );
-      }
-      const { storageKey } = (await uploadResponse.json()) as {
-        storageKey: string;
-      };
-      const registerResponse = await fetch(runtimeApiUrl("/api/v1/assets"), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          projectId: project.id,
-          kind: "model",
-          srcR2Key: storageKey,
-          originalName: file.name,
-        }),
-      });
-      if (!registerResponse.ok) {
-        throw new Error(
-          (await registerResponse.text()) || "Failed to register 3D model",
-        );
-      }
-      const { id } = (await registerResponse.json()) as { id: string };
-      const registered = await getAsset(id);
-      const sourceUrl =
-        registered.signedUrl || (await getSignedUrl(registered.srcR2Key));
+      const id = registered.id;
+      if (!registered.url)
+        throw new Error("Registered 3D model is not locally available");
+      const sourceUrl = registered.url;
       const animationMetadata = await animationMetadataPromise;
       return {
         assetId: id,
@@ -5762,33 +5530,75 @@ export default function ProjectEditor({
 
   const generateDirectorModel = useCallback(
     async (input: DirectorStageModelGenerationInput) => {
-      const response = await fetch(
-        runtimeApiUrl("/api/v1/director-model-generations"),
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ projectId: project.id, ...input }),
-        },
-      );
-      const body = await response.text();
-      if (!response.ok) {
-        let message = body || "Failed to generate 3D model";
-        try {
-          const parsed = JSON.parse(body) as { error?: string };
-          message = parsed.error || message;
-        } catch {
-          // Preserve the server's exact non-JSON response.
-        }
-        throw new Error(message);
-      }
-      return JSON.parse(body) as {
-        assetId: string;
-        name: string;
-        sourceUrl: string;
+      type DirectorGenerationResponse = {
+        status?: "queued" | "running" | "completed" | "failed";
+        actionRunId?: string;
+        statusUrl?: string;
+        retryAfterMs?: number;
+        asset?: ResolvedAsset;
         provider?: string;
         modelEndpoint?: string;
         requestId?: string;
         thumbnailUrl?: string;
+        error?: string;
+      };
+      const parseResponse = async (
+        response: Response,
+      ): Promise<DirectorGenerationResponse> => {
+        const text = await response.text();
+        let result: DirectorGenerationResponse;
+        try {
+          result = JSON.parse(text) as DirectorGenerationResponse;
+        } catch {
+          throw new Error(text || "Failed to generate 3D model");
+        }
+        if (!response.ok || result.status === "failed") {
+          throw new Error(
+            result.error || text || "Failed to generate 3D model",
+          );
+        }
+        return result;
+      };
+      const actionRunId = `director:${crypto.randomUUID()}`;
+      let result = await parseResponse(
+        await fetch(runtimeApiUrl("/api/v1/director-model-generations"), {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            actionRunId,
+            projectId: project.id,
+            ...input,
+          }),
+        }),
+      );
+      while (result.status === "queued" || result.status === "running") {
+        if (!result.statusUrl) {
+          throw new Error("Director generation returned no durable status URL");
+        }
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.max(250, result.retryAfterMs ?? 1_000)),
+        );
+        result = await parseResponse(
+          await fetch(runtimeApiUrl(result.statusUrl)),
+        );
+      }
+      if (!result.asset?.url) {
+        throw new Error("Generated 3D model is not locally available");
+      }
+      return {
+        assetId: result.asset.id,
+        name: projectAssetDisplayName(result.asset),
+        sourceUrl: result.asset.url,
+        ...(result.provider ? { provider: result.provider } : {}),
+        ...(result.modelEndpoint
+          ? { modelEndpoint: result.modelEndpoint }
+          : {}),
+        ...(result.requestId ? { requestId: result.requestId } : {}),
+        ...((result.thumbnailUrl ?? result.asset.thumbnailUrl)
+          ? {
+              thumbnailUrl: result.thumbnailUrl ?? result.asset.thumbnailUrl!,
+            }
+          : {}),
       };
     },
     [project.id],
@@ -5812,9 +5622,10 @@ export default function ProjectEditor({
     void Promise.all(
       models.map(async (object) => {
         try {
-          const asset = await getAsset(object.model.assetId);
-          const sourceUrl =
-            asset.signedUrl || (await getSignedUrl(asset.srcR2Key));
+          const asset = await getAsset(project.id, object.model.assetId);
+          if (!asset.url)
+            throw new Error("Director model is not locally available");
+          const sourceUrl = asset.url;
           return [object.model.assetId, sourceUrl] as const;
         } catch (error) {
           console.warn(
@@ -5822,9 +5633,7 @@ export default function ProjectEditor({
             object.model.assetId,
             error,
           );
-          return object.model.sourceUrl
-            ? ([object.model.assetId, object.model.sourceUrl] as const)
-            : null;
+          return null;
         }
       }),
     ).then((entries) => {
@@ -5881,13 +5690,13 @@ export default function ProjectEditor({
       const instance = reactFlowInstanceRef.current;
       clearCanvasAssetDropTarget();
       if (!asset || !instance) return;
+      if (asset.kind === "model") return;
 
       event.preventDefault();
       stopFollowingAgent();
-      const path = asset.storageKey?.trim() || asset.id;
-      const label = path.split(/[\\/]/).filter(Boolean).at(-1) || path;
-      addNode(asset.type, {
-        assetId: asset.assetId ?? asset.id,
+      const label = projectAssetDisplayName(asset);
+      addNode(asset.kind, {
+        assetId: asset.id,
         label,
         status: "completed",
         position: instance.screenToFlowPosition({
@@ -5903,25 +5712,21 @@ export default function ProjectEditor({
     async (assetId: string) => {
       stopFollowingAgent();
       let projectAsset = projectAssets.find(
-        (candidate) =>
-          candidate.id === assetId || candidate.assetId === assetId,
+        (candidate) => candidate.id === assetId,
       );
       if (!projectAsset) {
         try {
-          const asset = await getAsset(assetId);
+          const asset = await getAsset(project.id, assetId);
           if (
             asset.kind !== "image" &&
             asset.kind !== "video" &&
             asset.kind !== "audio"
           )
             return;
-          const hydratedProjectAsset = await hydrateProjectAsset(asset);
-          projectAsset = hydratedProjectAsset;
+          projectAsset = asset;
           setLocallyAddedProjectAssets((current) => [
-            hydratedProjectAsset,
-            ...current.filter(
-              (candidate) => candidate.id !== hydratedProjectAsset.id,
-            ),
+            asset,
+            ...current.filter((candidate) => candidate.id !== asset.id),
           ]);
         } catch (error) {
           console.warn(
@@ -5934,7 +5739,7 @@ export default function ProjectEditor({
       }
       setWorkspaceSurface({ kind: "asset", assetId: projectAsset.id });
     },
-    [projectAssets, stopFollowingAgent],
+    [project.id, projectAssets, stopFollowingAgent],
   );
   const handleCanvasNodeAnnotationTarget = useCallback(
     (node: AppNode) => {
@@ -6185,9 +5990,9 @@ export default function ProjectEditor({
                                     canvases={loroSync.canvases}
                                     timelines={loroSync.timelines}
                                     directorStages={loroSync.directorStages}
-                                    assets={projectAssets}
+                                    assets={allProjectAssets}
                                     textAssets={projectTextAssets}
-                                    globalAssets={globalProjectAssets}
+                                    globalAssets={activeGlobalProjectAssets}
                                     surface={workspaceSurface}
                                     onSelectCanvas={selectCanvasFromNavigator}
                                     onSelectTimeline={(timelineId) => {
@@ -6232,10 +6037,18 @@ export default function ProjectEditor({
                                       attachDirectorStageFromNavigator
                                     }
                                     onAddAsset={openProjectAssetPicker}
-                                    onAddGlobalAsset={addGlobalAssetToProject}
+                                    onAddGlobalAsset={async (assetId) => {
+                                      await addGlobalAssetToProject(assetId);
+                                    }}
                                     onAddAssetToLibrary={(assetId) => {
                                       void addProjectAssetToLibrary(assetId);
                                     }}
+                                    onTrashAsset={
+                                      trashProjectAssetFromNavigator
+                                    }
+                                    onRestoreAsset={
+                                      restoreProjectAssetFromNavigator
+                                    }
                                     onAnnotate={(target) =>
                                       queueAgentAnnotation({
                                         ...target,
@@ -6370,6 +6183,16 @@ export default function ProjectEditor({
                                           }
                                           onOpenAsset={openRelatedAsset}
                                           onApplied={handleEditedAssetApplied}
+                                          isProjectCover={
+                                            selectedAsset.id ===
+                                            projectCoverAssetId
+                                          }
+                                          onProjectCoverChange={(isCover) =>
+                                            handleProjectCoverChange(
+                                              selectedAsset.id,
+                                              isCover,
+                                            )
+                                          }
                                           headerEndInset={copilotHeaderInset}
                                         />
                                       )}
@@ -6377,14 +6200,22 @@ export default function ProjectEditor({
                                       {selectedTimeline && (
                                         <ProjectTimelineEditorSurface
                                           key={selectedTimeline.id}
+                                          projectId={project.id}
                                           timeline={selectedTimeline}
                                           mediaInputs={timelineMediaInputs}
                                           runtimeNodes={assetRelationGraph.nodes
-                                            .filter((node) => node.type === "remotion-component")
+                                            .filter(
+                                              (node) =>
+                                                node.type ===
+                                                "remotion-component",
+                                            )
                                             .map((node) => ({
                                               id: node.id,
                                               type: "remotion-component",
-                                              data: node.data as Record<string, unknown>,
+                                              data: node.data as Record<
+                                                string,
+                                                unknown
+                                              >,
                                             }))}
                                           canvases={loroSync.canvases}
                                           onSave={saveTimelineFromNavigator}
@@ -6407,6 +6238,9 @@ export default function ProjectEditor({
                                           }
                                           onInsertAssetRequestHandled={
                                             handleTimelineInsertAssetRequestHandled
+                                          }
+                                          onAdmitTimelineLibraryMedia={
+                                            admitTimelineLibraryMedia
                                           }
                                           onProjectAssetDrop={
                                             handleTimelineProjectAssetDrop
@@ -6855,6 +6689,7 @@ export default function ProjectEditor({
                                                     entries={
                                                       filteredCanvasFolderEntries
                                                     }
+                                                    projectId={project.id}
                                                     onSelect={
                                                       focusCanvasFolderNode
                                                     }
@@ -6905,6 +6740,9 @@ export default function ProjectEditor({
                                                             <CanvasFolderEntries
                                                               entries={
                                                                 filteredCanvasFolderEntries
+                                                              }
+                                                              projectId={
+                                                                project.id
                                                               }
                                                               onSelect={
                                                                 focusCanvasFolderNode

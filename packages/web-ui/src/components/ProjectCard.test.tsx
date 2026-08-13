@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import type { ReactNode } from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { deleteProject } from "@clash/web-ui/lib/clientActions";
@@ -15,12 +21,24 @@ vi.mock("@clash/web-ui/lib/clientActions", () => ({
 vi.mock("framer-motion", async () => {
   const React = await import("react");
   return {
-    AnimatePresence: ({ children }: { children?: ReactNode }) => <>{children}</>,
+    AnimatePresence: ({ children }: { children?: ReactNode }) => (
+      <>{children}</>
+    ),
     motion: new Proxy(
       {},
       {
-        get: (_target, tag: string) =>
-          ({ children, whileHover: _whileHover, whileTap: _whileTap, transition: _transition, ...props }: { children?: ReactNode; [key: string]: unknown }) =>
+        get:
+          (_target, tag: string) =>
+          ({
+            children,
+            whileHover: _whileHover,
+            whileTap: _whileTap,
+            transition: _transition,
+            ...props
+          }: {
+            children?: ReactNode;
+            [key: string]: unknown;
+          }) =>
             React.createElement(tag, props, children),
       },
     ),
@@ -64,105 +82,138 @@ describe("ProjectCard", () => {
     expect(link.contains(deleteButton)).toBe(false);
   });
 
-  it("renders four decorative preview assets from signed URLs and storage keys", () => {
+  it("renders only the explicitly selected Project Asset cover", () => {
     const { container } = renderCard({
+      coverAssetId: "video-cover",
       assets: [
         {
+          id: "newer-but-not-cover",
+          kind: "image",
+          url: "https://media.clash.test/assets/newer",
+          metadata: {},
+          status: "ready",
+        },
+        {
           id: "video-cover",
-          type: "video",
-          srcR2Key: "projects/project-1/assets/clip.mp4",
-          coverR2Key: "projects/project-1/assets/clip-cover.jpg",
-          createdAt: "2026-06-03T00:04:00.000Z",
-        },
-        {
-          id: "signed-image",
-          type: "image",
-          signedUrl: "https://cdn.clash.test/assets/projects/project-1/assets/signed.png?exp=1&sig=test",
-          createdAt: "2026-06-03T00:03:00.000Z",
-        },
-        {
-          id: "storage-image",
-          type: "image",
-          storageKey: "projects/project-1/assets/storage.png",
-          createdAt: "2026-06-03T00:02:00.000Z",
-        },
-        {
-          id: "legacy-src",
-          type: "image",
-          src: "/assets/projects/project-1/assets/legacy.png?signed=1",
-          createdAt: "2026-06-03T00:01:00.000Z",
+          kind: "video",
+          url: "https://media.clash.test/assets/video-cover",
+          thumbnailUrl: "https://media.clash.test/thumbnails/video-cover",
+          metadata: {},
+          status: "ready",
         },
       ],
     });
 
-    const images = Array.from(container.querySelectorAll<HTMLImageElement>(".clash-project-card-preview-img"));
+    const images = Array.from(
+      container.querySelectorAll<HTMLImageElement>(
+        ".clash-project-card-preview-img",
+      ),
+    );
 
-    expect(images).toHaveLength(4);
+    expect(images).toHaveLength(1);
     expect(images.map((image) => image.getAttribute("src"))).toEqual([
-      "/assets/projects/project-1/assets/clip-cover.jpg",
-      "https://cdn.clash.test/assets/projects/project-1/assets/signed.png?exp=1&sig=test",
-      "/assets/projects/project-1/assets/storage.png",
-      "/assets/projects/project-1/assets/legacy.png?signed=1",
+      "https://media.clash.test/thumbnails/video-cover",
     ]);
-    expect(images.every((image) => image.getAttribute("alt") === "")).toBe(true);
+    expect(images.every((image) => image.getAttribute("alt") === "")).toBe(
+      true,
+    );
   });
 
-  it("resolves local runtime asset previews against the runtime API origin", () => {
+  it("does not infer a cover from available Project Assets", () => {
+    const { container } = renderCard({
+      assets: [
+        {
+          id: "available-image",
+          kind: "image",
+          url: "https://media.clash.test/assets/available-image",
+          metadata: {},
+          status: "ready",
+        },
+      ],
+    });
+
+    expect(
+      container.querySelector(".clash-project-card-preview-img"),
+    ).toBeNull();
+    expect(
+      container.querySelector(".clash-project-card-empty-mark"),
+    ).not.toBeNull();
+  });
+
+  it("does not rewrite a Host-projected preview against the runtime API origin", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = {
       apiBaseUrl: "http://127.0.0.1:49321",
     };
 
     const { container } = renderCard({
+      coverAssetId: "local-api-asset",
       assets: [
         {
           id: "local-api-asset",
-          type: "image",
-          url: "/assets/generated/local-gen-cqj1uit7.svg",
-          storageKey: "generated/local-gen-cqj1uit7.svg",
-          createdAt: "2026-06-21T00:00:00.000Z",
+          kind: "image",
+          url: "https://media.clash.test/assets/local-api-asset",
+          metadata: {},
+          status: "ready",
         },
       ],
     });
 
-    const image = container.querySelector<HTMLImageElement>(".clash-project-card-preview-img");
+    const image = container.querySelector<HTMLImageElement>(
+      ".clash-project-card-preview-img",
+    );
 
-    expect(image?.getAttribute("src")).toBe("http://127.0.0.1:49321/assets/generated/local-gen-cqj1uit7.svg");
+    expect(image?.getAttribute("src")).toBe(
+      "https://media.clash.test/assets/local-api-asset",
+    );
   });
 
   it("does not try to render audio assets as project-cover images", () => {
     const { container } = renderCard({
+      coverAssetId: "voice",
       assets: [
         {
           id: "voice",
-          type: "audio",
-          signedUrl: "https://cdn.clash.test/assets/voice.mp3",
-          createdAt: "2026-06-03T00:02:00.000Z",
+          kind: "audio",
+          url: "https://media.clash.test/assets/voice",
+          metadata: {},
+          status: "ready",
         },
         {
           id: "music",
           kind: "audio",
-          storageKey: "projects/project-1/assets/music.mp3",
-          createdAt: "2026-06-03T00:01:00.000Z",
+          url: "https://media.clash.test/assets/music",
+          metadata: {},
+          status: "ready",
         },
       ],
     });
 
-    expect(container.querySelectorAll(".clash-project-card-preview-img")).toHaveLength(0);
-    expect(container.querySelector(".clash-project-card-preview-grid")).toBeNull();
-    expect(container.querySelector(".clash-project-card-empty-mark")).not.toBeNull();
+    expect(
+      container.querySelectorAll(".clash-project-card-preview-img"),
+    ).toHaveLength(0);
+    expect(
+      container.querySelector(".clash-project-card-preview-grid"),
+    ).toBeNull();
+    expect(
+      container.querySelector(".clash-project-card-empty-mark"),
+    ).not.toBeNull();
   });
 
   it("uses the app confirm dialog for destructive deletion", async () => {
     renderCard();
 
-    fireEvent.click(screen.getByRole("button", {
-      name: /delete project storyboard draft/i,
-    }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /delete project storyboard draft/i,
+      }),
+    );
 
     const dialog = screen.getByRole("alertdialog");
     expect(dialog.getAttribute("data-state")).toBe("open");
     expect(dialog.textContent).toContain("Delete project?");
-    expect(dialog.textContent).toContain("Storyboard draft will be removed from this workspace.");
+    expect(dialog.textContent).toContain(
+      "Storyboard draft will be removed from this workspace.",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 

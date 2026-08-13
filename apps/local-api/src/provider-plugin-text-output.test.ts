@@ -73,37 +73,66 @@ describe("provider plugin text output", () => {
       taskId: "video-task",
       model: "minimax-h3",
       prompt: "Keep the subject moving with the reference audio.",
-      referenceImageUrls: ["data:image/png;base64,AA=="],
-      referenceAudioUrls: [
-        "data:audio/mpeg;base64,AQID",
-        "data:audio/x-wav;base64,BAUG",
-      ],
-      orderedContentParts: [
-        { type: "text", text: "Keep " },
-        { type: "image", url: "data:image/png;base64,AA==" },
-        { type: "text", text: " moving with " },
-        { type: "audio", url: "data:audio/mpeg;base64,AQID" },
-        { type: "text", text: " and " },
-        { type: "audio", url: "data:audio/x-wav;base64,BAUG" },
-        { type: "text", text: "." },
+      references: [
+        { slot: "content", index: 0, text: { nodeId: "t0", value: "Keep " } },
+        {
+          slot: "content",
+          index: 1,
+          asset: {
+            assetId: "image-1",
+            uri: "clash-asset://image-1",
+            kind: "image",
+            mediaType: "image/png",
+            url: "data:image/png;base64,AA==",
+            reach: "public",
+          },
+        },
+        { slot: "content", index: 2, text: { nodeId: "t2", value: " moving with " } },
+        {
+          slot: "content",
+          index: 3,
+          asset: {
+            assetId: "audio-1",
+            uri: "clash-asset://audio-1",
+            kind: "audio",
+            mediaType: "audio/mpeg",
+            url: "data:audio/mpeg;base64,AQID",
+            reach: "public",
+          },
+        },
+        { slot: "content", index: 4, text: { nodeId: "t4", value: " and " } },
+        {
+          slot: "content",
+          index: 5,
+          asset: {
+            assetId: "audio-2",
+            uri: "clash-asset://audio-2",
+            kind: "audio",
+            mediaType: "audio/x-wav",
+            url: "data:audio/x-wav;base64,BAUG",
+            reach: "public",
+          },
+        },
+        { slot: "content", index: 6, text: { nodeId: "t6", value: "." } },
       ],
     });
 
     expect(requests).toHaveLength(1);
-    expect(requests[0]?.input.values).toMatchObject({
-      referenceAudioUrls: [
-        "data:audio/mpeg;base64,AQID",
-        "data:audio/x-wav;base64,BAUG",
-      ],
-      orderedContentParts: [
-        { type: "text", text: "Keep " },
-        { type: "image", url: "data:image/png;base64,AA==" },
-        { type: "text", text: " moving with " },
-        { type: "audio", url: "data:audio/mpeg;base64,AQID" },
-        { type: "text", text: " and " },
-        { type: "audio", url: "data:audio/x-wav;base64,BAUG" },
-        { type: "text", text: "." },
-      ],
-    });
+    expect(requests[0]?.input.references).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          slot: "content",
+          index: 3,
+          asset: expect.objectContaining({ mediaType: "audio/mpeg" }),
+        }),
+        expect.objectContaining({
+          slot: "content",
+          index: 5,
+          asset: expect.objectContaining({ mediaType: "audio/x-wav" }),
+        }),
+      ]),
+    );
+    expect(requests[0]?.input.values).not.toHaveProperty("referenceAudioUrls");
+    expect(requests[0]?.input.values).not.toHaveProperty("orderedContentParts");
   });
 });

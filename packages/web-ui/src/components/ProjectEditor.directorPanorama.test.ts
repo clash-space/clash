@@ -8,13 +8,9 @@ const source = readFileSync(
 );
 
 describe("ProjectEditor director panorama media URLs", () => {
-  it("resolves project-local panorama URLs through the desktop runtime API", () => {
-    expect(source).toContain(
-      'import { resolveAssetMediaUrl } from "../features/assets/media-url";',
-    );
-    expect(source).toContain(
-      "url: resolveAssetMediaUrl(asset.url) ?? asset.url",
-    );
+  it("keeps the Host-projected Project Asset URL instead of reconstructing storage URLs", () => {
+    expect(source).not.toContain("resolveAssetMediaUrl");
+    expect(sourceContains(source, "url: panoramaAsset.url")).toBe(true);
   });
 
   it("uses a 2:1 reference image and rejects only mismatched aspect ratios", () => {
@@ -31,7 +27,6 @@ describe("ProjectEditor director panorama media URLs", () => {
     expect(source).toContain("height: 1024");
     expect(source).toContain('quality: "high"');
     expect(source).toContain('output_format: "webp"');
-    expect(source).toContain('provider_id: "fal"');
     expect(source).toContain("require_real_provider: true");
     expect(source).toContain("sourceWidth !== sourceHeight * 2");
     expect(source).not.toContain("strictSize: true");

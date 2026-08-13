@@ -78,13 +78,14 @@ describe("mediaListFromResult", () => {
     });
   });
 
-  it("refuses when it has neither a published url nor somewhere to serve from", () => {
-    // Nothing projected: there is no address to hand anyone.
-    expect(() => mediaListFromResult(output({
+  it("preserves a Host staging receipt without inventing a projection URL", () => {
+    // The durable output store resolves the project-scoped receipt directly from CAS. Requiring a
+    // loopback URL here would make the Host fetch bytes it already owns.
+    expect(mediaListFromResult(output({
       assetId: "a-3",
       uri: "clash-asset://a-3",
       kind: "image",
-    }))).toThrow(/url/i);
+    }))).toEqual([{ assetId: "a-3" }]);
   });
 
 });

@@ -9,24 +9,13 @@ export interface AssetScopeCascadeAdapter {
   createProjectAsset?: (
     step: Extract<AssetScopeCascadeStep, { kind: "create-project-asset" }>,
   ) => Promise<AssetCascadeContext>;
-  ensureProjectReference: (assetId: string) => Promise<void>;
+  ensureProjectReference: (globalAssetId: string) => Promise<string>;
   ensureGlobalLibraryReference?: (assetId?: string) => Promise<void>;
   ensureCanvasPlacement: (input: {
     canvasId: string;
     assetId: string;
     sourceNodeId?: string;
   }) => Promise<string>;
-  ensureTimelineReference: (input: {
-    timelineId: string;
-    assetId: string;
-  }) => Promise<void>;
-  ensureCanvasTimelineInput: (input: {
-    timelineId: string;
-    canvasId: string;
-    actionNodeId: string;
-    assetId: string;
-    sourceNodeId: string;
-  }) => Promise<void>;
 }
 
 function requireAssetId(context: AssetCascadeContext): string {
@@ -37,9 +26,8 @@ function requireAssetId(context: AssetCascadeContext): string {
 
 /**
  * Executes a domain-planned cascade without knowing how any scope is stored.
- * The returned Canvas placement becomes the source of the following Timeline
- * edge, so the propagation chain extends naturally rather than being rebuilt
- * independently by each surface.
+ * Timeline item insertion is intentionally outside this scope cascade: that
+ * mutation writes the item and its Action binding together.
  */
 export async function executeAssetScopeCascade({
   steps,
@@ -61,8 +49,7 @@ export async function executeAssetScopeCascade({
       continue;
     }
     if (step.kind === "ensure-project-reference") {
-      await adapter.ensureProjectReference(step.assetId);
-      context.assetId = step.assetId;
+      context.assetId = await adapter.ensureProjectReference(step.assetId);
       continue;
     }
     if (step.kind === "ensure-global-library-reference") {
@@ -84,27 +71,6 @@ export async function executeAssetScopeCascade({
       });
       continue;
     }
-
-    const assetId = step.assetId ?? requireAssetId(context);
-    context.assetId = assetId;
-    if (step.via === "timeline-reference") {
-      await adapter.ensureTimelineReference({
-        timelineId: step.timelineId,
-        assetId,
-      });
-      continue;
-    }
-    const sourceNodeId = step.sourceNodeId ?? context.sourceNodeId;
-    if (!sourceNodeId)
-      throw new Error("Timeline input needs a Canvas placement");
-    context.sourceNodeId = sourceNodeId;
-    await adapter.ensureCanvasTimelineInput({
-      timelineId: step.timelineId,
-      canvasId: step.canvasId,
-      actionNodeId: step.actionNodeId,
-      assetId,
-      sourceNodeId,
-    });
   }
 
   return context;

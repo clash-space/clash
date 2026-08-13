@@ -51,6 +51,7 @@ describe("bundled plugins", () => {
     // One plugin per Provider. A list with a single entry is what left clash.google and
     // clash.minimax unseeded after the split.
     const ids = BUNDLED_PLUGINS.map((plugin) => plugin.id);
+    expect(ids).toContain("clash.fal");
     expect(ids).toContain("clash.google");
     expect(ids).toContain("clash.minimax");
     expect(ids).toContain("clash.volcengine");

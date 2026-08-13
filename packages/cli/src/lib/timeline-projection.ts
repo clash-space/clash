@@ -3,6 +3,7 @@ import {
   timelineDslCanonicalJson,
   timelineDslFromYaml,
   TIMELINE_DSL_FIELD_ANNOTATIONS,
+  normalizeProjectTimelinePersistenceState,
   validateTimelineDsl,
   type ResolvedTimelineDsl,
 } from "@clash/shared-types";
@@ -142,10 +143,19 @@ export function parseTimelineFileForApply(raw: string): ParseTimelineApplyResult
   }
   const result = timelineDslFromYaml(raw);
   if (!result.ok) return result;
+  const persisted = normalizeProjectTimelinePersistenceState(result.dsl);
+  if (!persisted.ok) {
+    return {
+      ok: false,
+      error: `${persisted.error.replace(/ persisted$/, " applied")}; import the media first and set assetId`,
+    };
+  }
   return {
     ok: true,
-    dsl: result.dsl,
-    sources: sourceNodeIdsFromResolved(result.dsl),
+    dsl: persisted.state as ResolvedTimelineDsl,
+    sources: sourceNodeIdsFromResolved(
+      persisted.state as ResolvedTimelineDsl,
+    ),
   };
 }
 
@@ -224,8 +234,6 @@ export function normalizeTimelineDslForYaml(raw: unknown): ResolvedTimelineDsl {
           value && typeof value === "object" && !Array.isArray(value)
             ? value
             : OMIT_TIMELINE_FIELD,
-        mediaAssetRefs: (value) =>
-          Array.isArray(value) ? value : OMIT_TIMELINE_FIELD,
       },
     ),
   } as ResolvedTimelineDsl;

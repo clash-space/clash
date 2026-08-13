@@ -2544,7 +2544,6 @@ export function ProjectDirectorStageSurface({
       transform: identityTransform(),
       model: {
         assetId: uploaded.assetId,
-        sourceUrl: uploaded.sourceUrl,
         animation: uploaded.animation ? {
           jointCount: uploaded.animation.jointCount,
           clipNames: [...uploaded.animation.clipNames],
@@ -2572,7 +2571,7 @@ export function ProjectDirectorStageSurface({
         kind: "model",
         visible: true,
         transform: identityTransform(),
-        model: { assetId: uploaded.assetId, sourceUrl: uploaded.sourceUrl },
+        model: { assetId: uploaded.assetId },
       });
       setModelGenerationReceipt(uploaded);
       setModelGenerationStatus("idle");

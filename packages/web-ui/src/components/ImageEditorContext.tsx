@@ -21,7 +21,6 @@ import React, { createContext, useCallback, useContext, useMemo, useRef, useStat
 import type { Edge, Node } from '@xyflow/react';
 import { EditorModalDialog } from './EditorModalDialog';
 import { useOptionalLoroSyncContext } from './LoroSyncContext';
-import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { autoInsertNode } from '@clash/web-ui/lib/layout';
 import { applyImageEdit, type EditApplyResult } from '../features/assets/action-client';
@@ -34,7 +33,7 @@ export interface OpenImageEditorInput {
     editorNodeId?: string;
     projectId: string;
     sourceAssetId: string;
-    sourceR2Key: string;
+    sourceUrl: string;
     naturalWidth: number;
     naturalHeight: number;
     initialParams: ImageEditParams;
@@ -116,7 +115,7 @@ export function ImageEditorPanel({
     loroSync: ReturnType<typeof useOptionalLoroSyncContext>;
     onClose: () => void;
 }) {
-    const signedUrl = useSignedUrl(input.sourceR2Key);
+    const signedUrl = input.sourceUrl;
     const [crop, setCrop] = useState<CropRect>(
         input.initialParams.crop ?? {
             x: 0, y: 0, width: input.naturalWidth, height: input.naturalHeight,
@@ -176,7 +175,7 @@ export function ImageEditorPanel({
             const result = await applyImageEdit({
                 projectId: input.projectId,
                 sourceAssetId: input.sourceAssetId,
-                sourceR2Key: input.sourceR2Key,
+                sourceUrl: input.sourceUrl,
                 params,
                 origin: input.origin,
             });

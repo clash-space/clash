@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Readable, Writable } from "node:stream";
 import {
   ClientSideConnection,
@@ -14,6 +15,9 @@ import { describe, expect, it } from "vitest";
 import { parseCodexAppServerOutput, runCodexDebug } from "./codex-app-server-acp";
 
 const require = createRequire(import.meta.url);
+const adapterEntrypoint = fileURLToPath(
+  new URL("./codex-app-server-acp.ts", import.meta.url),
+);
 const tsxLoader = (() => {
   try {
     return require.resolve("tsx");
@@ -155,7 +159,7 @@ process.exit(0);
 
     const child = spawn(
       process.execPath,
-      ["--import", tsxLoader, "apps/local-api/src/runtime/host/codex-app-server-acp.ts", "--codex", fakeCodex],
+      ["--import", tsxLoader, adapterEntrypoint, "--codex", fakeCodex],
       {
         cwd: join(import.meta.dirname, "../../.."),
         stdio: ["pipe", "pipe", "inherit"],
@@ -229,7 +233,7 @@ process.exit(0);
 
     const child = spawn(
       process.execPath,
-      ["--import", tsxLoader, "apps/local-api/src/runtime/host/codex-app-server-acp.ts", "--codex", fakeCodex],
+      ["--import", tsxLoader, adapterEntrypoint, "--codex", fakeCodex],
       {
         cwd: join(import.meta.dirname, "../../.."),
         stdio: ["pipe", "pipe", "inherit"],
@@ -339,7 +343,7 @@ for (const event of events) {
 
     const child = spawn(
       process.execPath,
-      ["--import", tsxLoader, "apps/local-api/src/runtime/host/codex-app-server-acp.ts", "--codex", fakeCodex],
+      ["--import", tsxLoader, adapterEntrypoint, "--codex", fakeCodex],
       {
         cwd: join(import.meta.dirname, "../../.."),
         stdio: ["pipe", "pipe", "inherit"],

@@ -39,6 +39,11 @@ export const CODEX_IMAGEGEN_MARKETPLACE_ACTION = {
  */
 export const BUNDLED_PLUGINS = [
   {
+    id: "clash.fal",
+    packageName: "@clash-plugin/fal",
+    workspaceDir: "fal",
+  },
+  {
     id: "clash.google",
     packageName: "@clash-plugin/google",
     workspaceDir: "google",

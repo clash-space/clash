@@ -12,7 +12,7 @@ describe("GroupChatPanel primitives", () => {
   it("uses the shared tab primitive instead of direct Ariakit or handwritten tab semantics", () => {
     const panelSource = readSource("packages/web-ui/src/components/GroupChatPanel.tsx");
     const pillSource = readSource("packages/web-ui/src/_group-chat/TabPill.tsx");
-    const tabsPath = repoPath("packages/web-ui/src/components/ui/tabs.tsx");
+    const tabsPath = repoPath("packages/gui/src/components/ui/tabs.tsx");
     const tabsSource = existsSync(tabsPath) ? readFileSync(tabsPath, "utf8") : "";
 
     expect(existsSync(tabsPath)).toBe(true);
@@ -100,7 +100,7 @@ describe("GroupChatPanel primitives", () => {
   it("uses the shared tooltip primitive for rail icon controls instead of browser title attributes", () => {
     const panelSource = readSource("packages/web-ui/src/components/GroupChatPanel.tsx");
     const pillSource = readSource("packages/web-ui/src/_group-chat/TabPill.tsx");
-    const tooltipSource = readSource("packages/web-ui/src/components/ui/tooltip.tsx");
+    const tooltipSource = readSource("packages/gui/src/components/ui/tooltip.tsx");
 
     expect(tooltipSource).toContain("@ariakit/react");
     expect(tooltipSource).toContain("TooltipProvider");

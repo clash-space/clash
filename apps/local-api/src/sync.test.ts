@@ -6,6 +6,7 @@ import {
   rm,
   stat,
   symlink,
+  writeFile,
 } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { createRequire } from "node:module";
@@ -14,7 +15,17 @@ import { join } from "node:path";
 import { LoroDoc } from "loro-crdt";
 
 import { createMockExternalAigcService } from "./local-aigc.js";
-import { Canvas, MODEL_CARDS } from "@clash/shared-types";
+import {
+  Canvas,
+  createActionAssetBinding,
+  createProjectAsset,
+  listActionAssetReferences,
+  markActionAssetBindingAuthority,
+  MODEL_CARDS,
+  readActionAssetBinding,
+  readProjectAsset,
+  trashProjectAssetIfUnreferenced,
+} from "@clash/shared-types";
 import WebSocket from "ws";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -22,10 +33,13 @@ import {
   createHttpRemoteLoroPersistence,
   createRemoteLoroPersistenceFromEnv,
   LocalLoroRoom,
+  LocalLoroRoomHub,
 } from "./sync";
 import { createLocalWorkflowProcessor } from "./local-processor";
 import { createLocalMetadataStore } from "./local-metadata-store";
 import { FileReplicaStore } from "./loro/file-replica-store";
+import { createLocalResourceStore } from "./local-resource-store";
+import { createLocalPluginAssetStagingStore } from "./local-plugin-asset-staging";
 
 let dataDir = "";
 
@@ -100,6 +114,47 @@ describe("LocalLoroRoom", () => {
       }),
     });
   }
+
+  it("drains in-flight Project work and cancels future polls when its hub closes", async () => {
+    let releaseWork!: () => void;
+    let notifyStarted!: () => void;
+    const workStarted = new Promise<void>((resolve) => {
+      notifyStarted = resolve;
+    });
+    const workGate = new Promise<void>((resolve) => {
+      releaseWork = resolve;
+    });
+    let processCalls = 0;
+    const hub = new LocalLoroRoomHub(dataDir, undefined, {
+      minimumPollDelayMs: 1,
+      async process() {
+        processCalls += 1;
+        notifyStarted();
+        await workGate;
+        return false;
+      },
+      async nextWakeAt() {
+        return Date.now() + 10;
+      },
+    });
+
+    const opening = hub.room("project/shutdown-drain");
+    await workStarted;
+    let closeResolved = false;
+    const closing = hub.close().then(() => {
+      closeResolved = true;
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(closeResolved).toBe(false);
+
+    releaseWork();
+    await opening;
+    await closing;
+    await new Promise<void>((resolve) => setTimeout(resolve, 25));
+
+    expect(processCalls).toBe(1);
+  });
+
   it("acknowledges a peer update after persisting it", async () => {
     const room = await LocalLoroRoom.open({
       dataDir,
@@ -138,6 +193,87 @@ describe("LocalLoroRoom", () => {
         ),
       ),
     ).toBe(1);
+  });
+
+  it("restores a trashed Project Asset when a concurrent input binding arrives", async () => {
+    const projectId = "project/asset-binding-race";
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: null,
+    });
+    const seedSender = room.addPeer(() => {});
+    const base = new LoroDoc();
+    expect(
+      createProjectAsset(base, {
+        id: "asset-1",
+        kind: "image",
+        source: { kind: "owned", resourceId: "sha256:asset-1" },
+        lifecycle: { state: "active" },
+        metadata: {},
+      }),
+    ).toMatchObject({ ok: true });
+    expect(markActionAssetBindingAuthority(base)).toMatchObject({ ok: true });
+    await room.receive(seedSender, base.export({ mode: "snapshot" }));
+
+    const snapshot = base.export({ mode: "snapshot" });
+    const deletingPeer = LoroDoc.fromSnapshot(snapshot);
+    const bindingPeer = LoroDoc.fromSnapshot(snapshot);
+    const deletingVersion = deletingPeer.version();
+    const bindingVersion = bindingPeer.version();
+    expect(
+      trashProjectAssetIfUnreferenced(deletingPeer, {
+        id: "asset-1",
+        deleteOperationId: "delete-1",
+        deletedAt: "2026-08-13T00:00:00.000Z",
+        purgeAfter: "2026-08-20T00:00:00.000Z",
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      createActionAssetBinding(bindingPeer, {
+        id: "binding-1",
+        owner: { kind: "draft", actionId: "action-1" },
+        direction: "input",
+        slot: "reference",
+        projectAssetId: "asset-1",
+        role: "reference",
+      }),
+    ).toMatchObject({ ok: true });
+
+    const deletingSender = room.addPeer(() => {});
+    await room.receive(
+      deletingSender,
+      deletingPeer.export({ mode: "update", from: deletingVersion }),
+    );
+    expect(
+      readProjectAsset(LoroDoc.fromSnapshot(room.snapshot()), "asset-1")
+        ?.lifecycle.state,
+    ).toBe("trashed");
+
+    const observerUpdates: Uint8Array[] = [];
+    const observer = new LoroDoc();
+    room.addPeer((update) => observerUpdates.push(update));
+    observer.import(observerUpdates.shift()!);
+    const bindingSender = room.addPeer(() => {});
+    await room.receive(
+      bindingSender,
+      bindingPeer.export({ mode: "update", from: bindingVersion }),
+    );
+    for (const update of observerUpdates) observer.import(update);
+
+    expect(readProjectAsset(observer, "asset-1")?.lifecycle).toEqual({
+      state: "active",
+    });
+    expect(readActionAssetBinding(observer, "binding-1")).toMatchObject({
+      projectAssetId: "asset-1",
+      direction: "input",
+    });
+    const persisted = await new FileReplicaStore(
+      join(dataDir, "projects"),
+    ).recover(projectId);
+    expect(readProjectAsset(persisted, "asset-1")?.lifecycle.state).toBe(
+      "active",
+    );
   });
 
   it("serializes concurrent pending-work scans so one Canvas execute submits once", async () => {
@@ -210,9 +346,10 @@ describe("LocalLoroRoom", () => {
     expect(generateVideo).toHaveBeenCalledTimes(1);
   });
 
-  it("does not schedule another poll for a terminal node carrying legacy poll state", async () => {
+  it("schedules durable recovery from the processor journal wake time, not node poll fields", async () => {
     vi.useFakeTimers();
-    const projectId = "project/terminal-provider-poll";
+    const now = Date.now();
+    const projectId = "project/durable-provider-wake";
     const seedRoom = await LocalLoroRoom.open({
       dataDir,
       projectId,
@@ -220,162 +357,35 @@ describe("LocalLoroRoom", () => {
     });
     const seedPeer = seedRoom.addPeer(() => {});
     const seed = new LoroDoc();
-    seed.getMap("nodes").set("completed-provider-node", {
-      id: "completed-provider-node",
+    seed.getMap("nodes").set("legacy-private-state", {
+      id: "legacy-private-state",
       type: "video",
       position: { x: 0, y: 0 },
       data: {
-        status: "completed",
+        status: "generating",
         actionType: "video-gen",
-        assetId: "asset-complete",
         providerPollState: { taskId: "legacy-task" },
-        providerPollAt: Date.now(),
+        providerPollAt: now + 100,
       },
     });
     await seedRoom.receive(seedPeer, seed.export({ mode: "snapshot" }));
 
     const process = vi.fn(async () => false);
+    const nextWakeAt = vi
+      .fn()
+      .mockResolvedValueOnce(now + 5_000)
+      .mockResolvedValue(undefined);
     await LocalLoroRoom.open({
       dataDir,
       projectId,
-      workflowProcessor: { process },
+      workflowProcessor: { process, nextWakeAt },
     });
-    await vi.advanceTimersByTimeAsync(1_100);
+    await vi.advanceTimersByTimeAsync(4_999);
 
     expect(process).toHaveBeenCalledTimes(1);
-  });
-
-  it("persists the final-poll marker before invoking the expired upstream task", async () => {
-    const projectId = "project/final-poll-checkpoint";
-    const now = Date.now();
-    const seedRoom = await LocalLoroRoom.open({
-      dataDir,
-      projectId,
-      workflowProcessor: null,
-    });
-    const seedPeer = seedRoom.addPeer(() => {});
-    const seed = new LoroDoc();
-    seed.getMap("nodes").set("expired-provider-node", {
-      id: "expired-provider-node",
-      type: "image",
-      position: { x: 0, y: 0 },
-      data: {
-        status: "generating",
-        actionType: "image-gen",
-        prompt: "final poll persistence",
-        modelId: "checkpoint-image",
-        providerPollState: { taskId: "paid-task" },
-        providerStartedAt: now - 30 * 60 * 1_000 - 1,
-        providerDeadlineAt: now - 1,
-        providerPollAt: now + 60_000,
-      },
-    });
-    await seedRoom.receive(seedPeer, seed.export({ mode: "snapshot" }));
-
-    let markStarted!: () => void;
-    let releasePoll!: () => void;
-    const started = new Promise<void>((resolve) => {
-      markStarted = resolve;
-    });
-    const gate = new Promise<void>((resolve) => {
-      releasePoll = resolve;
-    });
-    const generateImage = vi.fn(async () => {
-      markStarted();
-      await gate;
-      return {
-        status: "accepted" as const,
-        pollState: { taskId: "paid-task" },
-      };
-    });
-    const opening = LocalLoroRoom.open({
-      dataDir,
-      projectId,
-      workflowProcessor: createLocalWorkflowProcessor({
-        dataDir,
-        modelCards: async () => [],
-        aigc: {
-          generateImage,
-          generateVideo: vi.fn(),
-          generateAudio: vi.fn(),
-          generateText: vi.fn(),
-        },
-      }),
-    });
-
-    await started;
-    const persistedDuringPoll = await new FileReplicaStore(
-      join(dataDir, "projects"),
-    ).recover(projectId);
-    const persistedNode = persistedDuringPoll
-      .getMap("nodes")
-      .get("expired-provider-node") as { data: Record<string, unknown> };
-    releasePoll();
-    await opening;
-
-    expect(persistedNode.data.providerFinalPolledAt).toEqual(
-      expect.any(Number),
-    );
-    expect(generateImage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        pollState: { taskId: "paid-task" },
-      }),
-    );
-  });
-
-  it("reuses the persisted provider account when a restarted room polls accepted work", async () => {
-    const projectId = "project/account-bound-provider-poll";
-    const seedRoom = await LocalLoroRoom.open({
-      dataDir,
-      projectId,
-      workflowProcessor: null,
-    });
-    const seedPeer = seedRoom.addPeer(() => {});
-    const seed = new LoroDoc();
-    seed.getMap("nodes").set("account-bound-node", {
-      id: "account-bound-node",
-      type: "image",
-      position: { x: 0, y: 0 },
-      data: {
-        status: "generating",
-        actionType: "image-gen",
-        prompt: "resume with the billed account",
-        modelId: "account-bound-image",
-        providerAccountId: "provider-account-original",
-        providerPollState: { taskId: "paid-task" },
-        providerPollAt: 0,
-      },
-    });
-    await seedRoom.receive(seedPeer, seed.export({ mode: "snapshot" }));
-
-    const generateImage = vi.fn(async () => ({
-      status: "completed" as const,
-      bytes: new Uint8Array([137, 80, 78, 71]),
-      contentType: "image/png",
-    }));
-    await LocalLoroRoom.open({
-      dataDir,
-      projectId,
-      workflowProcessor: createLocalWorkflowProcessor({
-        dataDir,
-        modelCards: async () => [],
-        aigc: {
-          generateImage,
-          generateVideo: vi.fn(),
-          generateAudio: vi.fn(),
-          generateText: vi.fn(),
-        },
-      }),
-    });
-
-    expect(generateImage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        pollState: { taskId: "paid-task" },
-        modelParams: expect.objectContaining({
-          provider_id: "provider-account-original",
-        }),
-      }),
-    );
+    await vi.advanceTimersByTimeAsync(1);
+    expect(process).toHaveBeenCalledTimes(2);
+    expect(nextWakeAt).toHaveBeenCalledWith(projectId);
   });
 
   it("flattens authored inline references only at the local provider boundary", async () => {
@@ -442,6 +452,20 @@ describe("LocalLoroRoom", () => {
     });
     const peer = room.addPeer(() => {});
     const clientDoc = new LoroDoc();
+    for (const [id, originalName] of [
+      ["asset-start", "start.png"],
+      ["asset-end", "end.png"],
+    ] as const) {
+      expect(
+        createProjectAsset(clientDoc, {
+          id,
+          kind: "image",
+          source: { kind: "owned", resourceId: `sha256:${id}` },
+          lifecycle: { state: "active" },
+          metadata: { contentType: "image/png", originalName },
+        }),
+      ).toMatchObject({ ok: true });
+    }
     clientDoc.getMap("nodes").set("h3-startend-node", {
       id: "h3-startend-node",
       type: "video",
@@ -451,10 +475,7 @@ describe("LocalLoroRoom", () => {
         actionType: "video-gen",
         prompt: "transition between frames",
         modelId: "minimax-h3-startend",
-        referenceImageUrls: [
-          "https://media.clash.test/start.png",
-          "https://media.clash.test/end.png",
-        ],
+        referenceImageAssetIds: ["asset-start", "asset-end"],
       },
     });
 
@@ -463,8 +484,28 @@ describe("LocalLoroRoom", () => {
     expect(generateVideo).toHaveBeenCalledWith(
       expect.objectContaining({
         model: "minimax-h3-startend",
-        startFrameUrl: "https://media.clash.test/start.png",
-        endFrameUrl: "https://media.clash.test/end.png",
+        references: [
+          {
+            slot: "startFrame",
+            index: 0,
+            asset: {
+              assetId: "asset-start",
+              uri: "clash-asset://asset-start",
+              kind: "image",
+              mediaType: "image/png",
+            },
+          },
+          {
+            slot: "endFrame",
+            index: 0,
+            asset: {
+              assetId: "asset-end",
+              uri: "clash-asset://asset-end",
+              kind: "image",
+              mediaType: "image/png",
+            },
+          },
+        ],
       }),
     );
     expect(generateVideo).toHaveBeenCalledWith(
@@ -506,6 +547,20 @@ describe("LocalLoroRoom", () => {
     });
     const peer = room.addPeer(() => {});
     const clientDoc = new LoroDoc();
+    for (const [id, originalName] of [
+      ["plugin-asset-start", "start.png"],
+      ["plugin-asset-end", "end.png"],
+    ] as const) {
+      expect(
+        createProjectAsset(clientDoc, {
+          id,
+          kind: "image",
+          source: { kind: "owned", resourceId: `sha256:${id}` },
+          lifecycle: { state: "active" },
+          metadata: { contentType: "image/png", originalName },
+        }),
+      ).toMatchObject({ ok: true });
+    }
     clientDoc.getMap("nodes").set("plugin-startend-node", {
       id: "plugin-startend-node",
       type: "video",
@@ -515,9 +570,9 @@ describe("LocalLoroRoom", () => {
         actionType: "video-gen",
         prompt: "transition",
         modelId: "agent-start-end",
-        referenceImageUrls: [
-          "https://media.clash.test/start.png",
-          "https://media.clash.test/end.png",
+        referenceImageAssetIds: [
+          "plugin-asset-start",
+          "plugin-asset-end",
         ],
       },
     });
@@ -527,8 +582,28 @@ describe("LocalLoroRoom", () => {
     expect(generateVideo).toHaveBeenCalledWith(
       expect.objectContaining({
         model: "agent-start-end",
-        startFrameUrl: "https://media.clash.test/start.png",
-        endFrameUrl: "https://media.clash.test/end.png",
+        references: [
+          {
+            slot: "startFrame",
+            index: 0,
+            asset: {
+              assetId: "plugin-asset-start",
+              uri: "clash-asset://plugin-asset-start",
+              kind: "image",
+              mediaType: "image/png",
+            },
+          },
+          {
+            slot: "endFrame",
+            index: 0,
+            asset: {
+              assetId: "plugin-asset-end",
+              uri: "clash-asset://plugin-asset-end",
+              kind: "image",
+              mediaType: "image/png",
+            },
+          },
+        ],
       }),
     );
   });
@@ -601,6 +676,96 @@ describe("LocalLoroRoom", () => {
     expect(finalDoc.getMap("nodes").get("plugin-action-node")).toMatchObject({
       data: { status: "completed", content: "Done", pluginBinding: binding },
     });
+  });
+
+  it("publishes a staged plugin output and its Action binding in the live Project replica", async () => {
+    const projectId = "project/plugin-media-action";
+    const taskId = "local-custom-plugin-media-node";
+    const staged = await createLocalPluginAssetStagingStore({ dataDir }).stage({
+      projectId,
+      taskId,
+      slot: "media",
+      pluginId: "test.agent-image-actions",
+      pluginVersion: "1.0.0",
+      invocationId: "invoke-media-1",
+      kind: "image",
+      mediaType: "image/png",
+      bytes: new Uint8Array([1, 2, 3]),
+    });
+    const binding = {
+      pluginId: "test.agent-image-actions",
+      version: "1.0.0",
+      exportId: "run-image-helper",
+      schemaHash: `sha256:${"d".repeat(64)}`,
+    } as const;
+    const executablePluginAction = vi.fn(async () => ({
+      protocol: "clash.plugin.result/v1" as const,
+      invocationId: "result-media-1",
+      status: "completed" as const,
+      outputs: [
+        {
+          slot: "media",
+          kind: "asset" as const,
+          asset: {
+            assetId: staged.projectAssetId,
+            uri: `clash-asset://${staged.projectAssetId}`,
+            kind: "image" as const,
+            mediaType: "image/png",
+          },
+        },
+      ],
+    }));
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: createLocalWorkflowProcessor({
+        dataDir,
+        executablePluginAction,
+        aigc: {
+          generateVideo: vi.fn(),
+          generateImage: vi.fn(),
+          generateAudio: vi.fn(),
+          generateText: vi.fn(),
+        },
+      }),
+    });
+    const peer = room.addPeer(() => {});
+    const clientDoc = new LoroDoc();
+    clientDoc.getMap("nodes").set("plugin-media-node", {
+      id: "plugin-media-node",
+      type: "image",
+      position: { x: 0, y: 0 },
+      data: {
+        status: "pending",
+        actionType: "custom:image-helper",
+        customActionId: "test.image-helper",
+        outputType: "image",
+        prompt: "Create this",
+        pluginBinding: binding,
+      },
+    });
+
+    await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
+
+    const finalDoc = new LoroDoc();
+    finalDoc.import(room.snapshot());
+    expect(finalDoc.getMap("nodes").get("plugin-media-node")).toMatchObject({
+      data: { status: "completed", assetId: staged.projectAssetId },
+    });
+    expect(readProjectAsset(finalDoc, staged.projectAssetId)).toMatchObject({
+      id: staged.projectAssetId,
+      kind: "image",
+      source: { kind: "owned", resourceId: staged.resourceId },
+      lifecycle: { state: "active" },
+    });
+    expect(listActionAssetReferences(finalDoc, staged.projectAssetId)).toEqual([
+      expect.objectContaining({
+        direction: "output",
+        slot: "media",
+        projectAssetId: staged.projectAssetId,
+        owner: expect.objectContaining({ actionRunId: taskId }),
+      }),
+    ]);
   });
 
   it("pins the exact executable provider plugin binding on the generated Canvas node", async () => {
@@ -683,6 +848,42 @@ describe("LocalLoroRoom", () => {
     });
     const peer = room.addPeer(() => {});
     const clientDoc = new LoroDoc();
+    for (const asset of [
+      {
+        id: "asset-image",
+        kind: "image" as const,
+        contentType: "image/png",
+        originalName: "subject.png",
+      },
+      {
+        id: "asset-video",
+        kind: "video" as const,
+        contentType: "video/mp4",
+        originalName: "motion.mp4",
+      },
+      {
+        id: "asset-audio",
+        kind: "audio" as const,
+        contentType: "audio/mpeg",
+        originalName: "ambience.mp3",
+      },
+    ]) {
+      expect(
+        createProjectAsset(clientDoc, {
+          id: asset.id,
+          kind: asset.kind,
+          source: {
+            kind: "owned",
+            resourceId: `sha256:${asset.id}`,
+          },
+          lifecycle: { state: "active" },
+          metadata: {
+            contentType: asset.contentType,
+            originalName: asset.originalName,
+          },
+        }),
+      ).toMatchObject({ ok: true });
+    }
     clientDoc.getMap("nodes").set("image-ref", {
       id: "image-ref",
       type: "image",
@@ -708,9 +909,6 @@ describe("LocalLoroRoom", () => {
         referenceImageAssetIds: ["asset-image"],
         referenceVideoAssetIds: ["asset-video"],
         referenceAudioAssetIds: ["asset-audio"],
-        referenceImageUrls: ["https://media.clash.test/subject.png"],
-        referenceVideoUrls: ["https://media.clash.test/motion.mp4"],
-        referenceAudioUrls: ["https://media.clash.test/ambience.mp3"],
       },
     });
 
@@ -718,13 +916,52 @@ describe("LocalLoroRoom", () => {
 
     expect(generateVideo).toHaveBeenCalledWith(
       expect.objectContaining({
-        orderedContentParts: [
-          { type: "text", text: "Use " },
-          { type: "image", url: "https://media.clash.test/subject.png" },
-          { type: "text", text: ", then " },
-          { type: "video", url: "https://media.clash.test/motion.mp4" },
-          { type: "text", text: "." },
-          { type: "audio", url: "https://media.clash.test/ambience.mp3" },
+        references: [
+          {
+            slot: "content",
+            index: 0,
+            text: { nodeId: "h3-ref-node:prompt:0", value: "Use " },
+          },
+          {
+            slot: "content",
+            index: 1,
+            asset: {
+              assetId: "asset-image",
+              uri: "clash-asset://asset-image",
+              kind: "image",
+              mediaType: "image/png",
+            },
+          },
+          {
+            slot: "content",
+            index: 2,
+            text: { nodeId: "h3-ref-node:prompt:2", value: ", then " },
+          },
+          {
+            slot: "content",
+            index: 3,
+            asset: {
+              assetId: "asset-video",
+              uri: "clash-asset://asset-video",
+              kind: "video",
+              mediaType: "video/mp4",
+            },
+          },
+          {
+            slot: "content",
+            index: 4,
+            text: { nodeId: "h3-ref-node:prompt:4", value: "." },
+          },
+          {
+            slot: "content",
+            index: 5,
+            asset: {
+              assetId: "asset-audio",
+              uri: "clash-asset://asset-audio",
+              kind: "audio",
+              mediaType: "audio/mpeg",
+            },
+          },
         ],
       }),
     );
@@ -851,15 +1088,16 @@ describe("LocalLoroRoom", () => {
     });
   });
 
-  it("registers local custom actions from JSON sideband messages", async () => {
+  it("rejects legacy custom-action registration sideband messages", async () => {
     const room = await LocalLoroRoom.open({
       dataDir,
       projectId: "project/custom-register",
       workflowProcessor: null,
     });
+    const sideband: Record<string, unknown>[] = [];
     const peer = room.addPeer(() => {}, {
       runtimeId: "runtime-1",
-      sendJson: () => {},
+      sendJson: (message) => sideband.push(message),
     });
 
     await room.receiveJson(peer, {
@@ -874,31 +1112,28 @@ describe("LocalLoroRoom", () => {
       ],
     });
 
+    expect(sideband).toContainEqual({
+      type: "register_custom_actions.rejected",
+      code: "LEGACY_CUSTOM_ACTION_PROTOCOL_RETIRED",
+      error:
+        "Legacy ClashAgent custom-action transport is retired; install a clash.plugin/v1 executable plugin.",
+    });
     const doc = new LoroDoc();
     doc.import(room.snapshot());
-    expect(doc.getMap("customActions").get("grid-split")).toMatchObject({
-      id: "grid-split",
-      name: "Grid Split",
-      registeredByRuntime: "runtime-1",
-    });
+    expect(doc.getMap("customActions").get("grid-split")).toBeUndefined();
   });
 
-  it("dispatches pending local custom action nodes over JSON sideband", async () => {
+  it("fails legacy custom-action nodes without dispatching sideband work", async () => {
     const room = await LocalLoroRoom.open({
       dataDir,
       projectId: "project/custom-dispatch",
+      workflowProcessor: testAigc(),
     });
     const sideband: Record<string, unknown>[] = [];
     const peer = room.addPeer(() => {}, {
       runtimeId: "runtime-1",
       sendJson: (msg) => sideband.push(msg),
     });
-
-    await room.receiveJson(peer, {
-      type: "register_custom_actions",
-      actions: [{ id: "grid-split", name: "Grid Split", outputType: "image" }],
-    });
-    sideband.length = 0;
 
     const clientDoc = new LoroDoc();
     clientDoc.getMap("nodes").set("custom-child", {
@@ -918,25 +1153,21 @@ describe("LocalLoroRoom", () => {
 
     await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
 
-    const assigned = sideband.find(
-      (msg) => msg.type === "custom_task_assigned",
-    ) as any;
-    expect(assigned?.task).toMatchObject({
-      nodeId: "custom-child",
-      customActionId: "grid-split",
-      params: { grid_size: "2x2" },
-      status: "waiting_for_agent",
-    });
+    expect(sideband).not.toContainEqual(
+      expect.objectContaining({ type: "custom_task_assigned" }),
+    );
 
     const doc = new LoroDoc();
     doc.import(room.snapshot());
-    expect((doc.getMap("nodes").get("custom-child") as any).data.status).toBe(
-      "generating",
+    expect((doc.getMap("nodes").get("custom-child") as any).data).toMatchObject(
+      {
+        status: "failed",
+        failureCode: "LEGACY_CUSTOM_ACTION_PROTOCOL_RETIRED",
+        error:
+          "Legacy custom action grid-split has no executable plugin binding. Install a clash.plugin/v1 plugin and recreate the Action.",
+      },
     );
-    expect(doc.getMap("tasks").get(assigned.task.taskId)).toMatchObject({
-      customActionId: "grid-split",
-      registeredByRuntime: "runtime-1",
-    });
+    expect(doc.getMap("tasks").size).toBe(0);
   });
 
   it("imports a client update, broadcasts it to peers, and persists a snapshot", async () => {
@@ -978,6 +1209,35 @@ describe("LocalLoroRoom", () => {
     );
   });
 
+  it("does not invent a workflow processor for a bare CRDT room", async () => {
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/crdt-only",
+    });
+    const peer = room.addPeer(() => {});
+    const clientDoc = new LoroDoc();
+    clientDoc.getMap("nodes").set("pending-image", {
+      id: "pending-image",
+      type: "image",
+      position: { x: 0, y: 0 },
+      data: {
+        status: "pending",
+        actionType: "image-gen",
+        prompt: "must remain pending",
+        modelId: "gemini-3.1-flash-image",
+      },
+    });
+
+    await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
+
+    const finalDoc = new LoroDoc();
+    finalDoc.import(room.snapshot());
+    expect((finalDoc.getMap("nodes").get("pending-image") as any).data).toMatchObject({
+      status: "pending",
+      prompt: "must remain pending",
+    });
+  });
+
   it("processes pending image generation nodes through the local mock fal service", async () => {
     const room = await LocalLoroRoom.open({
       dataDir,
@@ -1013,62 +1273,23 @@ describe("LocalLoroRoom", () => {
     expect(imageNode.data.assetId).toMatch(/^local-asset-/);
     expect(imageNode.data.pendingTask).toBeUndefined();
 
-    const sqlite = openSqlite();
-    let srcR2Key = "";
-    try {
-      const asset = sqlite
-        .prepare(
-          "select id, kind, src_r2_key, source_model, source_prompt, source_task_id, metadata from assets",
-        )
-        .get();
-      expect(asset).toMatchObject({
-        id: imageNode.data.assetId,
-        kind: "image",
-        source_model: "gemini-3.1-flash-image",
-        source_prompt: "小狗一只",
-        source_task_id: expect.stringMatching(/^fal-mock-/),
-      });
-      expect(JSON.parse(String(asset?.metadata))).toMatchObject({
-        provider: "fal-mock",
-        requestId: expect.stringMatching(/^fal-mock-/),
-        modelEndpoint: expect.stringContaining("fal-ai/"),
-      });
-      expect(
-        sqlite.prepare("select asset_id, project_id from asset_refs").get(),
-      ).toMatchObject({
-        asset_id: imageNode.data.assetId,
-        project_id: "project/local-gen",
-      });
-      const audit = sqlite
-        .prepare(
-          "select operation, entity_kind, entity_id, actor_client_type, accepted, reason, result_entity_id, mutation_json from mutation_audit where operation = ? and entity_id = ?",
-        )
-        .get("asset_generate", imageNode.data.assetId);
-      expect(audit).toMatchObject({
-        operation: "asset_generate",
-        entity_kind: "asset",
-        entity_id: imageNode.data.assetId,
-        actor_client_type: null,
-        accepted: 1,
-        reason: "workflow generated asset",
-        result_entity_id: imageNode.data.assetId,
-      });
-      const mutation = JSON.parse(String(audit?.mutation_json));
-      expect(mutation).toMatchObject({
-        operation: "asset_generate",
-        entity: { kind: "asset", id: imageNode.data.assetId },
-        accepted: true,
-        resultEntityId: imageNode.data.assetId,
-      });
-      expect(mutation.expectedReadToken).toBeUndefined();
-      expect(mutation.beforeReadToken).toBeUndefined();
-      expect(mutation.afterReadToken).toBeUndefined();
-      srcR2Key = String(asset?.src_r2_key);
-    } finally {
-      sqlite.close();
-    }
-
-    const generated = await readFile(join(dataDir, "assets", srcR2Key), "utf8");
+    const asset = readProjectAsset(finalDoc, imageNode.data.assetId);
+    expect(asset).toMatchObject({
+      id: imageNode.data.assetId,
+      kind: "image",
+      source: { kind: "owned", resourceId: expect.stringMatching(/^sha256:/) },
+      metadata: { contentType: "image/svg+xml", bytes: expect.any(Number) },
+      provenance: {
+        kind: "generation",
+        actionRunId: expect.stringMatching(/^fal-mock-/),
+        model: expect.stringContaining("fal-ai/"),
+        prompt: "小狗一只",
+      },
+    });
+    const projection = await createLocalResourceStore({ dataDir }).resolve(
+      asset!.source.resourceId,
+    );
+    const generated = await readFile(projection!.path, "utf8");
     expect(generated).toContain("小狗一只");
     expect(generated).toContain("Mock fal");
     expect(peerUpdates.length).toBeGreaterThan(0);
@@ -1076,30 +1297,38 @@ describe("LocalLoroRoom", () => {
 
   it("renders pending Timeline video nodes through the local backend renderer", async () => {
     const importedAt = Math.floor(Date.now() / 1000);
-    await createLocalMetadataStore(dataDir).upsertAsset(
-      {
-        id: "music-asset-1",
-        userId: "local-user",
-        kind: "audio",
-        srcR2Key: "uploads/music.wav",
-        coverR2Key: null,
-        metadata: { contentType: "audio/wav", durationMs: 2000 },
-        sourceModel: null,
-        sourcePrompt: null,
-        sourceTaskId: null,
-        sources: null,
-        signedUrl: "http://127.0.0.1:49431/assets/uploads/music.wav",
-        signedUrlExp: importedAt + 3600,
-        createdAt: importedAt,
-        updatedAt: importedAt,
-        projectId: "project/local-render",
-      },
-      {
-        assetId: "music-asset-1",
-        projectId: "project/local-render",
-        importedAt,
-      },
+    await mkdir(join(dataDir, "assets", "uploads"), { recursive: true });
+    await writeFile(
+      join(dataDir, "assets", "uploads", "music.wav"),
+      "music bytes",
     );
+    const metadata = createLocalMetadataStore(dataDir);
+    const legacy = await metadata.load();
+    legacy.assets.push({
+      id: "music-asset-1",
+      userId: "local-user",
+      kind: "audio",
+      srcR2Key: "uploads/music.wav",
+      coverR2Key: null,
+      metadata: { contentType: "audio/wav", durationMs: 2000 },
+      sourceModel: null,
+      sourcePrompt: null,
+      sourceTaskId: null,
+      sources: null,
+      signedUrl: "http://127.0.0.1:49431/assets/uploads/music.wav",
+      signedUrlExp: importedAt + 3600,
+      createdAt: importedAt,
+      updatedAt: importedAt,
+      projectId: "project/local-render",
+    });
+    legacy.assetRefs.push({
+      assetId: "music-asset-1",
+      projectId: "project/local-render",
+      importedAt,
+    });
+    await metadata.save(legacy, {
+      replaceLegacyAssetMigrationInput: true,
+    });
     const renderTimeline = vi.fn(async () => ({
       bytes: new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]),
       contentType: "video/mp4",
@@ -1167,7 +1396,7 @@ describe("LocalLoroRoom", () => {
             expect.objectContaining({
               items: [
                 expect.objectContaining({
-                  src: "http://127.0.0.1:49321/assets/uploads/music.wav",
+                  src: "http://127.0.0.1:49321/api/v1/projects/project%2Flocal-render/assets/music-asset-1/media",
                   audioDucking: {
                     amountDb: -18,
                     attackFrames: 6,
@@ -1196,7 +1425,7 @@ describe("LocalLoroRoom", () => {
     );
     try {
       await mkdir(join(dataDir, "assets"), { recursive: true });
-      await symlink(outsideDir, join(dataDir, "assets", "generated"));
+      await symlink(outsideDir, join(dataDir, "assets", "blobs"));
       const room = await LocalLoroRoom.open({
         dataDir,
         projectId: "project/local-gen-symlink",
@@ -1230,9 +1459,14 @@ describe("LocalLoroRoom", () => {
         "Asset path escapes local asset storage",
       );
       await expect(readdir(outsideDir)).resolves.toEqual([]);
-      await expect(stat(join(dataDir, "local.sqlite"))).rejects.toMatchObject({
-        code: "ENOENT",
-      });
+      const sqlite = openSqlite();
+      try {
+        expect(
+          sqlite.prepare("select count(*) as count from local_resources").get(),
+        ).toEqual({ count: 0 });
+      } finally {
+        sqlite.close();
+      }
     } finally {
       await rm(outsideDir, { recursive: true, force: true });
     }
@@ -1285,55 +1519,41 @@ describe("LocalLoroRoom", () => {
     expect(videoNode.data.assetId).toMatch(/^local-asset-/);
     expect(audioNode.data.assetId).toMatch(/^local-asset-/);
 
-    const sqlite = openSqlite();
-    let videoAsset: Record<string, unknown> | undefined;
-    let audioAsset: Record<string, unknown> | undefined;
-    try {
-      videoAsset = sqlite
-        .prepare(
-          "select id, kind, source_prompt, source_task_id, metadata, src_r2_key from assets where id = ?",
-        )
-        .get(videoNode.data.assetId);
-      audioAsset = sqlite
-        .prepare(
-          "select id, kind, source_prompt, source_task_id, metadata, src_r2_key from assets where id = ?",
-        )
-        .get(audioNode.data.assetId);
-    } finally {
-      sqlite.close();
-    }
+    const videoAsset = readProjectAsset(finalDoc, videoNode.data.assetId);
+    const audioAsset = readProjectAsset(finalDoc, audioNode.data.assetId);
     expect(videoAsset).toMatchObject({
       kind: "video",
-      source_prompt: "竖屏小狗视频",
-      source_task_id: expect.stringMatching(/^fal-mock-/),
-    });
-    expect(JSON.parse(String(videoAsset?.metadata))).toMatchObject({
-      provider: "fal-mock",
-      width: 720,
-      height: 1280,
-      durationMs: 4000,
-      contentType: "video/mp4",
-      modelEndpoint: expect.stringContaining("fal-ai/"),
-      mockText: "竖屏小狗视频",
+      provenance: {
+        kind: "generation",
+        prompt: "竖屏小狗视频",
+        actionRunId: expect.stringMatching(/^fal-mock-/),
+        model: expect.stringContaining("fal-ai/"),
+      },
+      metadata: {
+        width: 720,
+        height: 1280,
+        durationMs: 4000,
+        contentType: "video/mp4",
+      },
     });
     expect(audioAsset).toMatchObject({
       kind: "audio",
-      source_prompt: "这是一段三秒 mock 音频",
-      source_task_id: expect.stringMatching(/^fal-mock-/),
+      provenance: {
+        kind: "generation",
+        prompt: "这是一段三秒 mock 音频",
+        actionRunId: expect.stringMatching(/^fal-mock-/),
+      },
+      metadata: {
+        durationMs: 3000,
+        contentType: "audio/wav",
+        waveform: expect.any(Array),
+      },
     });
-    const audioMetadata = JSON.parse(String(audioAsset?.metadata));
-    expect(audioMetadata).toMatchObject({
-      provider: "fal-mock",
-      durationMs: 3000,
-      contentType: "audio/wav",
-      transcript: "这是一段三秒 mock 音频",
-    });
-    expect(audioMetadata.waveform).toHaveLength(128);
-
-    const audioBytes = await readFile(
-      join(dataDir, "assets", String(audioAsset?.src_r2_key)),
-      "utf8",
+    expect(audioAsset!.metadata.waveform).toHaveLength(128);
+    const audioProjection = await createLocalResourceStore({ dataDir }).resolve(
+      audioAsset!.source.resourceId,
     );
+    const audioBytes = await readFile(audioProjection!.path, "utf8");
     expect(audioBytes).toContain("这是一段三秒 mock 音频");
   });
 
@@ -1481,6 +1701,7 @@ describe("LocalLoroRoom", () => {
       dataDir,
       projectId: "project/remote",
       remotePersistence: { appendUpdate },
+      workflowProcessor: null,
     });
     const peer = room.addPeer(() => {});
 

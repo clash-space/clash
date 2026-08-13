@@ -135,11 +135,7 @@ it("runs a host-owned action Card through activation, hot discovery, and exact s
   await activateHostExecutablePluginPackage(v1, actionsRoot);
 
   const host = new ActionsHost({
-    serverUrl: "http://127.0.0.1:49321",
-    apiKey: "",
-    runtimeId: "plugin-action-e2e",
     actionsRoot,
-    executablePluginsOnly: true,
   });
   const socketPath = join(workspace, "plugin-host.sock");
   let ipc: Awaited<ReturnType<typeof startPluginHostIpcServer>> | null = null;

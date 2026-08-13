@@ -2,7 +2,9 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "lib": ["ES2022", "DOM"],
+    "rootDir": "..",
     "paths": {
+      "@clash/asset-sdk": ["../asset-sdk/src/index.ts"],
       "@clash/shared-layout": ["../shared-layout/src/index.ts"],
       "@clash/shared-types": ["../shared-types/src/index.ts"],
       "@clash/shared-types/*": ["../shared-types/src/*.ts"],

@@ -9,7 +9,6 @@ import { editsRoutes } from "./edits";
 import { runtimesRoutes } from "./runtimes";
 import { sessionsRuntimeRoutes } from "./sessions-runtime";
 import { agentRoutes } from "./agents";
-import { actionsRoutes } from "./actions";
 import { modelProviderRoutes } from "./model-providers";
 import { providerUsageRoutes } from "./provider-usage";
 
@@ -25,10 +24,6 @@ v1Routes.route("/runtimes", runtimesRoutes);
 v1Routes.route("/agents", agentRoutes);
 v1Routes.route("/", modelProviderRoutes);
 v1Routes.route("/", providerUsageRoutes);
-// Curated registry of installable actions — served as packages
-// (manifest + base64-encoded source files) for the CLI `action install`
-// command to write into ~/.clash/actions/.
-v1Routes.route("/actions", actionsRoutes);
 // Local-runtime session lifecycle (BYO local agent; distinct from cloud
 // /api/v1/sessions). Browser opens WS to /api/v1/local-sessions/:id/_stream
 // for the duplex event/prompt stream. Session creation lives next to it

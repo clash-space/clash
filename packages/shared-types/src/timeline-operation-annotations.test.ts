@@ -182,6 +182,23 @@ describe("Timeline operation annotations", () => {
     }
   });
 
+  it("allows a Timeline render to use the full default Run budget", () => {
+    const schema = registry.agent["timeline.render"].inputSchema;
+
+    expect(schema.safeParse({
+      timelineId: "long-render",
+      timeoutMs: 1_800_000,
+    }).success).toBe(true);
+    expect(schema.safeParse({
+      timelineId: "long-render",
+      timeoutMs: 0,
+    }).success).toBe(false);
+    expect(schema.safeParse({
+      timelineId: "long-render",
+      timeoutMs: 1_000.5,
+    }).success).toBe(false);
+  });
+
   it("links every document-bearing operation to the canonical field contract", () => {
     expect(registry.agent["timeline.validate"].inputContractRefs).toEqual({
       document: "TIMELINE_DSL_DEFINITION.jsonSchema",

@@ -1270,7 +1270,7 @@ describe("headless benchmark runner", () => {
     });
   });
 
-  it("binds a fresh workspace and waits for the project daemon before launching Codex", async () => {
+  it("binds a fresh workspace and verifies the Project Host before launching Codex", async () => {
     const root = await mkdtemp(join(tmpdir(), "clash-host-runner-"));
     const suiteRoot = join(root, "suite");
     const outputRoot = join(root, "runs");
@@ -1307,7 +1307,9 @@ describe("headless benchmark runner", () => {
         "fs.rmSync(pluginSocket, {force:true})",
         "const ipc = net.createServer((socket) => socket.end())",
         "ipc.listen(pluginSocket)",
-        'const server = http.createServer((_request, response) => { response.setHeader("content-type", "application/json"); response.end("{}") })',
+        `const stage = ${JSON.stringify(productStage)}`,
+        `const receipt = ${JSON.stringify(productStageReceipt)}`,
+        'const server = http.createServer((request, response) => { const chunks = []; request.on("data", (chunk) => chunks.push(chunk)); request.on("end", () => { let body = {}; if (request.method === "POST" && /\\/api\\/v1\\/projects\\/[^/]+\\/host-command$/.test(request.url || "")) { const command = JSON.parse(Buffer.concat(chunks).toString("utf8")); body = command.action === "ping" ? {pong:true} : command.action === "list_director_stages" ? {stages:[stage],versions:{[stage.id]:receipt}} : {error:"unsupported"} } response.setHeader("content-type", "application/json"); response.end(JSON.stringify(body)) }) })',
         'server.listen(0, "127.0.0.1", () => { const port = server.address().port; fs.writeFileSync(discovery, JSON.stringify({endpoint:"http://127.0.0.1:" + port,pid:process.pid,profile:process.env.CLASH_PROFILE,launchMode:"user-service",startedBy:"plugin",agentCliPath:process.env.CLASH_CLI_ENTRY_PATH})) })',
         'process.on("SIGTERM", () => { server.close(); ipc.close(); fs.rmSync(discovery, {force:true}); fs.rmSync(pluginSocket, {force:true}); process.exit(0) })',
       ].join("\n"),
@@ -1318,38 +1320,19 @@ describe("headless benchmark runner", () => {
       fakeClashCli,
       [
         `#!${process.execPath}`,
-        'const crypto = require("node:crypto")',
         'const fs = require("node:fs")',
-        'const http = require("node:http")',
-        'const net = require("node:net")',
         'const path = require("node:path")',
-        'const socketRoot = path.join(process.env.CLASH_HOME, "sockets")',
         "const argv = process.argv.slice(2)",
         'const command = argv.join(" ")',
         'const marker = path.join(process.cwd(), ".clash", "project.toml")',
         'if (argv[0] === "init") { const requested = argv.includes("--project") ? argv[argv.indexOf("--project") + 1] : undefined; let reused = false; let projectId = requested; if (fs.existsSync(marker)) { const source = fs.readFileSync(marker, "utf8"); projectId = /project_id\\s*=\\s*"([^"]+)"/.exec(source)?.[1]; if (requested && requested !== projectId) process.exit(41); reused = true } else { if (!projectId) process.exit(42); fs.mkdirSync(path.dirname(marker), {recursive:true}); fs.writeFileSync(marker, "schema_version = 1\\nproject_id = " + JSON.stringify(projectId) + "\\nworkspace_id = \\"managed:test\\"\\nstore = \\"managed\\"\\n") } process.stdout.write(JSON.stringify({projectId,markerPath:marker,workspaceId:"managed:test",reused}) + "\\n"); process.exit(0) }',
         "if (!fs.existsSync(marker)) process.exit(43)",
         'const projectId = /project_id\\s*=\\s*"([^"]+)"/.exec(fs.readFileSync(marker, "utf8"))?.[1]',
-        'const key = crypto.createHash("sha256").update(projectId).digest("hex").slice(0, 32)',
-        'const pidPath = path.join(socketRoot, key + ".pid")',
-        'const mcpPath = path.join(socketRoot, key + ".mcp.json")',
-        'const socketPath = path.join(socketRoot, key + ".sock")',
         "const tracePath = process.env.CLASH_CLI_TRACE_PATH",
         "const startedAt = new Date().toISOString()",
         'if (tracePath) fs.appendFileSync(tracePath, JSON.stringify({type:"clash.cli.started",startedAt,pid:process.pid,cwd:process.cwd(),argv}) + "\\n")',
         'if (command === "timeline render --timeline smoke --json") { if (tracePath) fs.appendFileSync(tracePath, JSON.stringify({type:"clash.cli.completed",startedAt,finishedAt:new Date().toISOString(),durationMs:1,pid:process.pid,cwd:process.cwd(),argv,exitCode:0,signal:null}) + "\\n"); process.exit(0) }',
-        'if (command === "canvas disconnect") { const pid = Number(fs.readFileSync(pidPath, "utf8")); process.kill(pid, "SIGTERM"); process.exit(0) }',
-        'if (command !== "canvas connect") process.exit(2)',
-        "fs.mkdirSync(socketRoot, {recursive:true})",
-        "fs.rmSync(socketPath, {force:true})",
-        `const stage = ${JSON.stringify(productStage)}`,
-        `const receipt = ${JSON.stringify(productStageReceipt)}`,
-        'const server = net.createServer((connection) => { let data = ""; connection.on("data", (chunk) => { data += chunk.toString(); if (!data.includes("\\n")) return; const request = JSON.parse(data.slice(0, data.indexOf("\\n"))); if (request.action === "ping") return connection.end(JSON.stringify({pong:true}) + "\\n"); if (request.action !== "list_director_stages") return connection.end(JSON.stringify({error:"unsupported"}) + "\\n"); connection.end(JSON.stringify({stages:[stage],versions:{[stage.id]:receipt}}) + "\\n") }) })',
-        'const mcpServer = http.createServer((request, response) => { if (request.url !== "/health") { response.statusCode = 404; return response.end() } response.setHeader("content-type", "application/json"); response.end(JSON.stringify({status:"ok",transport:"streamable-http",endpoint:"/mcp"})) })',
-        'mcpServer.listen(0, "127.0.0.1", () => { const port = mcpServer.address().port; server.listen(socketPath, () => { fs.writeFileSync(pidPath, String(process.pid)); fs.writeFileSync(mcpPath, JSON.stringify({url:"http://127.0.0.1:" + port + "/mcp"})) }) })',
-        "const cleanup = () => { server.close(); mcpServer.close(); fs.rmSync(pidPath, {force:true}); fs.rmSync(mcpPath, {force:true}); fs.rmSync(socketPath, {force:true}); process.exit(0) }",
-        'process.on("SIGTERM", cleanup)',
-        "setInterval(() => {}, 1000)",
+        "process.exit(2)",
       ].join("\n"),
       "utf8",
     );
@@ -1519,7 +1502,7 @@ describe("headless benchmark runner", () => {
       finalWorkspace: string;
       initDisposition: string;
       localApiReadyAt: string;
-      projectDaemonReadyAt: string;
+      projectHostReadyAt: string;
     };
     const args = JSON.parse(
       await readFile(join(workspace, "argv.json"), "utf8"),
@@ -1581,7 +1564,7 @@ describe("headless benchmark runner", () => {
     expect(hostManifest.persistedClashHome).toBe(join(caseRoot, "clash-home"));
     expect(hostManifest.initDisposition).toBe("created");
     expect(Date.parse(hostManifest.localApiReadyAt)).toBeLessThanOrEqual(
-      Date.parse(hostManifest.projectDaemonReadyAt),
+      Date.parse(hostManifest.projectHostReadyAt),
     );
     expect(hostManifest.executionWorkspace).not.toBe(workspace);
     expect(hostManifest.finalWorkspace).toBe(workspace);

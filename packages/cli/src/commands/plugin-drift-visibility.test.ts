@@ -8,7 +8,7 @@ const source = readFileSync(join(__dirname, "plugin.ts"), "utf8");
 /**
  * A plugin that has drifted from its activation receipt must say so where it is listed.
  *
- * local-api computes drift against its activation receipt. `plugin list --local`
+ * local-api computes drift against its activation receipt. `plugin list`
  * must preserve that host-reported state in JSON and human output:
  *
  *   clash.media  0.4.1        <- looks fine
@@ -30,11 +30,7 @@ test("local listing reports host-computed receipt drift", () => {
 
 test("drifted entries are visible in both output modes", () => {
   // The JSON caller is the one that cannot see a hint printed for humans.
-  assert.match(source, /drift/i);
-  const jsonBranch = source.slice(source.indexOf("if (options.local)"));
-  assert.match(
-    jsonBranch.slice(0, 1200),
-    /drift/i,
-    "the JSON payload must carry the drift flag",
-  );
+  const listCommand = source.slice(source.indexOf('.command("list")'));
+  assert.match(listCommand.slice(0, 1800), /printJson\(installed\)/);
+  assert.match(listCommand.slice(0, 1800), /plugin\.drifted/);
 });

@@ -48,7 +48,9 @@ await plugin.start();
 ```
 
 The manifest contributes the `acme-execute` function. Assembly verifies that
-the code supplies exactly that id and kind before the first invocation.
+the code supplies exactly that id and kind before the first invocation. There
+is deliberately no `context` assembly option: only the Host invocation may
+inject account/project-scoped SDK implementations.
 
 ## Executor context
 
@@ -58,8 +60,9 @@ already-scoped dependencies:
 | API                            | Purpose                                            |
 | ------------------------------ | -------------------------------------------------- |
 | `context.store.get/put/remove` | Account credentials and settings                   |
-| `context.reference(reference)` | Resolve a typed text/bytes/URL reference           |
-| `context.upload(request)`      | Stream large bytes into Host-managed asset storage |
+| `context.reference(reference)` | Resolve typed text, decoded bytes, or a Provider URL |
+| `context.asset(request)`       | Persist a small typed Asset output                 |
+| `context.upload(request)`      | Persist bytes or an upstream URL outside the stdio frame |
 | typed media/value outputs      | Return canonical text and project assets           |
 
 Store methods take a key, never an account id. Do not read credentials from
@@ -68,9 +71,12 @@ authorization channel.
 
 ## Direct I/O
 
-Provider HTTP, uploads to vendor endpoints, downloads, retries, and error
-parsing belong to the plugin. Use normal runtime libraries. The SDK does not
-inject an HTTP client and the Host does not proxy vendor traffic.
+Provider HTTP, uploads to vendor endpoints, downloads, and vendor error parsing
+belong to the plugin. One invocation performs one semantic `submit` or `poll`;
+retry policy, polling cadence, total lifetime, persistence, and restart
+recovery belong to the Host Durable Run Engine. Use normal runtime libraries.
+The SDK does not inject an HTTP client and the Host does not proxy vendor
+traffic.
 
 For tests, stub the process-level client (`globalThis.fetch`) or run under the
 external traffic recorder/replayer. Production plugin code stays unchanged.
@@ -81,36 +87,25 @@ Resolve every Clash reference through `context.reference`. Adapt the returned
 form according to the vendor API:
 
 ```ts
-const resolved = await context.reference?.(invocation.input.references[0]);
+const resolved = await context.reference(invocation.input.references[0]);
 
-if (resolved?.form === "bytes") {
+if (resolved.form === "bytes") {
   await uploadVendorFile(resolved.bytes, resolved.mediaType);
-} else if (resolved?.form === "url") {
-  await submitVendorUrl(resolved.url);
+} else if (resolved.form === "provider-url") {
+  await submitVendorUrl(resolved.providerUrl);
+} else {
+  await submitVendorText(resolved.text);
 }
 ```
 
-Return small results as typed media. Use `context.upload` for large bytes so
-the stdio frame carries a handle rather than base64 payloads.
+The broker wire uses `bytesBase64`; the SDK decodes it before plugin business
+code sees the `bytes` form. There is no public `url`/`forwardable` reference
+shape and no second `resolveAssetReference` helper. Return small results as
+typed media or with `context.asset`. Use `context.upload` for large bytes or an
+upstream result URL so the stdio result carries a handle rather than the media
+payload.
 
-## Worker actions
-
-Project-level HTTP worker actions still use `ActionRequest` and
-`ActionResponse`:
-
-```ts
-import type { ActionRequest, ActionResponse } from "@clash/action-sdk";
-
-export default {
-  async fetch(request: Request): Promise<Response> {
-    const input = (await request.json()) as ActionRequest;
-    return Response.json({
-      type: "text",
-      content: `Received: ${input.prompt}`,
-    } satisfies ActionResponse);
-  },
-};
-```
-
-This HTTP action surface is separate from the executable-plugin stdio
-runtime.
+The retired Project-level HTTP Worker action protocol is not part of this SDK.
+There is one executable-plugin invocation/result ABI; a future Cloud Host must
+adapt that same ABI and inject the same scoped context instead of introducing a
+second `ActionRequest`/`ActionResponse` surface.

@@ -18,7 +18,7 @@ describe("ConfirmDialog primitives", () => {
   it("uses the shared Radix-backed alert dialog shell", () => {
     const source = readSource("packages/web-ui/src/components/ConfirmDialog.tsx");
     const shell = readSource(
-      "packages/web-ui/src/components/ui/alert-dialog.tsx",
+      "packages/gui/src/components/ui/alert-dialog.tsx",
     );
 
     expect(source).toContain("./ui/alert-dialog");

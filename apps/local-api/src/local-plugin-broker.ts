@@ -1,80 +1,15 @@
-import { randomUUID } from "node:crypto";
-
 import {
   executablePluginDependencyError,
   type PluginBroker,
 } from "./runtime/host/lib/actions-loader.js";
-import {
-  assetReachForRuntime,
-  ExecutablePluginAssetReadResultSchema,
-} from "@clash/shared-types";
+import { ExecutablePluginResolvedReferenceSchema } from "@clash/shared-types";
 import type {
   AssetKind,
   ExecutablePluginAssetHandle,
-  ExecutablePluginAssetReadResult,
   ExecutablePluginJsonValue,
 } from "@clash/shared-types";
 
 import type { RuntimeProviderAccountAvailability } from "./provider-accounts.js";
-
-/**
- * Resolves one asset into something the plugin can use, decided by its run mode.
- *
- * A published URL wins whenever one exists: nothing is read, encoded, or copied. Otherwise a
- * `local` plugin gets the host's own asset endpoint, which it can fetch because it runs here, and
- * a `hosted` plugin gets bytes -- handing it that same address would point it at whatever answers
- * on its own network, and both forms are `https?://` strings that nothing downstream can
- * distinguish.
- *
- * Nothing here reads a manifest field. `runtime.kind` is mandatory and already settles the
- * question; a second declaration could only repeat it or disagree with it.
- */
-export async function readAssetForPlugin(options: {
-  asset: ExecutablePluginAssetHandle;
-  runtimeKind: "local" | "hosted";
-  readAsset: (asset: { assetId: string; projectId?: string }) => Promise<{
-    kind: AssetKind;
-    bytes: Uint8Array;
-    mediaType?: string;
-  }>;
-  projectId?: string;
-  publicUrl?: () => string | undefined;
-  localUrl?: () => string | undefined;
-}): Promise<ExecutablePluginAssetReadResult> {
-  const reachable = assetReachForRuntime(options.runtimeKind);
-  const publicUrl = options.publicUrl?.();
-  const localUrl = reachable.includes("private")
-    ? options.localUrl?.()
-    : undefined;
-  const asset = await options.readAsset({
-    assetId: options.asset.assetId,
-    ...(options.projectId ? { projectId: options.projectId } : {}),
-  });
-  const common = {
-    handle: `clash-plugin-asset://${randomUUID()}`,
-    kind: asset.kind,
-    ...(asset.mediaType ? { mediaType: asset.mediaType } : {}),
-    byteLength: asset.bytes.byteLength,
-  };
-  if (publicUrl) {
-    return ExecutablePluginAssetReadResultSchema.parse({
-      ...common,
-      url: publicUrl,
-      reach: "public",
-    });
-  }
-  if (localUrl) {
-    return ExecutablePluginAssetReadResultSchema.parse({
-      ...common,
-      url: localUrl,
-      reach: "private",
-    });
-  }
-  return ExecutablePluginAssetReadResultSchema.parse({
-    ...common,
-    dataBase64: Buffer.from(asset.bytes).toString("base64"),
-  });
-}
 
 export interface LocalPluginBrokerAuditRecord {
   pluginId: string;
@@ -83,7 +18,7 @@ export interface LocalPluginBrokerAuditRecord {
   invocationId: string;
   requestId: string;
   operation:
-    | "asset.read"
+    | "asset.resolve"
     | "asset.write"
     | "asset.upload-slot"
     | "store.get"
@@ -98,7 +33,9 @@ export interface LocalPluginBrokerAuditRecord {
 export interface LocalPluginBrokerAssetReadResult {
   kind: AssetKind;
   mediaType?: string;
+  resourceDigest: string;
   bytes: Uint8Array;
+  providerUrl?: { providerUrl: string; expiresAt: string };
 }
 
 export interface LocalExecutablePluginBrokerOptions {
@@ -107,6 +44,18 @@ export interface LocalExecutablePluginBrokerOptions {
     assetId: string;
     projectId: string;
   }) => Promise<LocalPluginBrokerAssetReadResult>;
+  /** Publish one immutable Resource when no reusable public projection exists. */
+  publishAsset?: (input: {
+    pluginId: string;
+    pluginVersion: string;
+    projectId: string;
+    invocationId: string;
+    assetId: string;
+    resourceDigest: string;
+    kind: AssetKind;
+    mediaType?: string;
+    bytes: Uint8Array;
+  }) => Promise<{ url: string; expiresAt: string }>;
   writeAsset?: (input: {
     pluginId: string;
     pluginVersion: string;
@@ -145,6 +94,7 @@ export interface LocalExecutablePluginBrokerOptions {
   }>;
   finishUpload?: (input: {
     pluginId: string;
+    pluginVersion: string;
     projectId: string;
     invocationId: string;
     taskId: string;
@@ -191,7 +141,11 @@ function requestTarget(
 ): string {
   if (operation.kind === "store.get" || operation.kind === "store.put")
     return operation.key;
-  if (operation.kind === "asset.read") return operation.asset.assetId;
+  if (operation.kind === "asset.resolve") {
+    return "asset" in operation.reference
+      ? operation.reference.asset.assetId
+      : `${operation.reference.slot}:${operation.reference.index}`;
+  }
   if (
     operation.kind === "asset.write" ||
     operation.kind === "asset.upload-slot"
@@ -241,27 +195,80 @@ export function createLocalExecutablePluginBroker(
       }
       let result: ExecutablePluginJsonValue;
       const operation = request.operation;
-      if (operation.kind === "asset.read") {
+      if (operation.kind === "asset.resolve") {
+        if ("text" in operation.reference) {
+          result = ExecutablePluginResolvedReferenceSchema.parse({
+            form: "text",
+            text: operation.reference.text.value,
+          });
+          await audit("ok");
+          return result;
+        }
         if (!options.readAsset)
           throw new Error("Local asset broker is unavailable.");
+        const reference = operation.reference;
         const asset = await options.readAsset({
-          assetId: operation.asset.assetId,
+          assetId: reference.asset.assetId,
           projectId: context.invocation.projectId,
         });
-        if (asset.kind !== operation.asset.kind) {
+        if (asset.kind !== reference.asset.kind) {
           throw new Error(
-            `Asset ${operation.asset.assetId} kind ${asset.kind} does not match ${operation.asset.kind}.`,
+            `Asset ${reference.asset.assetId} kind ${asset.kind} does not match ${reference.asset.kind}.`,
           );
         }
-        // Validated against the shared contract so the hosted broker can answer the same
-        // request with a short-lived `url` and no bytes, without any plugin change.
-        result = ExecutablePluginAssetReadResultSchema.parse({
-          handle: `clash-plugin-asset://${randomUUID()}`,
-          kind: asset.kind,
-          ...(asset.mediaType ? { mediaType: asset.mediaType } : {}),
-          byteLength: asset.bytes.byteLength,
-          dataBase64: Buffer.from(asset.bytes).toString("base64"),
-        });
+        const delivery = context.invocation.assetInputs.find(
+          (entry) => {
+            const kindMatches = !entry.match.kinds?.length || entry.match.kinds.includes(asset.kind);
+            const slotMatches = !entry.match.slots?.length || entry.match.slots.includes(reference.slot);
+            const mediaTypeMatches = !entry.mediaTypes?.length ||
+              (!!asset.mediaType && entry.mediaTypes.includes(asset.mediaType));
+            return kindMatches && slotMatches && mediaTypeMatches;
+          },
+        );
+        if (!delivery) {
+          throw new Error(
+            `Provider binding declares no delivery for ${reference.slot} ${asset.kind}` +
+              `${asset.mediaType ? ` (${asset.mediaType})` : ""}.`,
+          );
+        }
+        if (delivery.representations.includes("provider-url")) {
+          const published = asset.providerUrl ?? (options.publishAsset
+            ? await options.publishAsset({
+            pluginId: context.manifest.id,
+            pluginVersion: context.manifest.version,
+            projectId: context.invocation.projectId,
+            invocationId: context.invocation.invocationId,
+            assetId: reference.asset.assetId,
+            resourceDigest: asset.resourceDigest,
+            kind: asset.kind,
+            ...(asset.mediaType ? { mediaType: asset.mediaType } : {}),
+            bytes: asset.bytes,
+            })
+            : undefined);
+          if (published) {
+            result = ExecutablePluginResolvedReferenceSchema.parse({
+              form: "provider-url",
+              providerUrl: "providerUrl" in published ? published.providerUrl : published.url,
+              expiresAt: published.expiresAt,
+              kind: asset.kind,
+              ...(asset.mediaType ? { mediaType: asset.mediaType } : {}),
+            });
+            await audit("ok");
+            return result;
+          }
+        }
+        if (delivery.representations.includes("bytes")) {
+          result = ExecutablePluginResolvedReferenceSchema.parse({
+            form: "bytes",
+            bytesBase64: Buffer.from(asset.bytes).toString("base64"),
+            kind: asset.kind,
+            ...(asset.mediaType ? { mediaType: asset.mediaType } : {}),
+          });
+        } else {
+          throw new Error(
+            `Provider binding requires a public URL for ${reference.slot}, but the Host cannot provide one.`,
+          );
+        }
       } else if (operation.kind === "store.get") {
         if (!options.storeGet)
           throw new Error("Local plugin store is unavailable.");
@@ -342,6 +349,7 @@ export function createLocalExecutablePluginBroker(
             throw new Error("Local upload slots are unavailable.");
           result = (await options.finishUpload({
             pluginId: context.manifest.id,
+            pluginVersion: context.manifest.version,
             projectId: context.invocation.projectId,
             invocationId: context.invocation.invocationId,
             taskId: context.invocation.taskId,
@@ -350,6 +358,7 @@ export function createLocalExecutablePluginBroker(
             ...(operation.mediaType ? { mediaType: operation.mediaType } : {}),
             assetId: operation.assetId,
           })) as never;
+          await audit("ok");
           return result;
         }
         if (!options.writeAsset)

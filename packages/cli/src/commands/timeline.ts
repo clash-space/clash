@@ -497,14 +497,14 @@ timelineCommand
   .requiredOption("--timeline <id>", "Timeline ID")
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .option("--no-wait", "Return the durable render-node receipt without waiting for completion")
-  .option("--timeout-ms <milliseconds>", "Maximum completion wait in milliseconds", "600000")
+  .option("--timeout-ms <milliseconds>", "Maximum completion wait in milliseconds", "1800000")
   .option("--json", "Output the render receipt as JSON")
   .action(async (options) => {
     const context = await resolveCanvasProjectContext(options);
     const timelineId = String(options.timeline);
     const timeoutMs = Number(options.timeoutMs);
-    if (!Number.isInteger(timeoutMs) || timeoutMs < 1_000 || timeoutMs > 900_000) {
-      throw new Error("--timeout-ms must be an integer between 1000 and 900000");
+    if (!Number.isInteger(timeoutMs) || timeoutMs < 1_000) {
+      throw new Error("--timeout-ms must be an integer of at least 1000");
     }
     const actor = await resolveCanvasActor();
     const submitted = await sendProjectCommand<{
@@ -547,7 +547,15 @@ timelineCommand
         if (typeof data.assetId !== "string" || !data.assetId.trim()) {
           receipt = { ...base, completed: false, status: "failed", error: "Timeline render completed without an immutable Asset id" };
         } else {
-          receipt = { ...base, completed: true, status: "completed", asset: await fetchAssetRecord({ assetId: data.assetId.trim() }) };
+          receipt = {
+            ...base,
+            completed: true,
+            status: "completed",
+            asset: await fetchAssetRecord({
+              assetId: data.assetId.trim(),
+              projectId: context.projectId,
+            }),
+          };
         }
         break;
       }

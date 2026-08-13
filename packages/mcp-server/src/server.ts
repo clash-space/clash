@@ -6,11 +6,24 @@ import {
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { ClashMcpServer, describeClashTool } from "@clash/shared-mcp";
-import { initializeClashWorkspace } from "@clash/shared-runtime";
+import {
+  createProjectAssetHostClient,
+  initializeClashWorkspace,
+  type ProjectAssetHostClient,
+} from "@clash/shared-runtime";
 import {
   createProjectHostClient,
   type ProjectHostClient,
 } from "@clash/shared-runtime/project-host-client";
+import {
+  ASSET_MCP_TOOL_NAMES,
+  type AssetMcpToolName,
+  type AssetToolInput,
+} from "./asset-contract";
+import {
+  createAssetProjectHostGateway,
+  type AssetProjectHostGateway,
+} from "./asset-gateway";
 import {
   CANVAS_MCP_TOOL_NAMES,
   canvasToolVisibility,
@@ -48,6 +61,114 @@ const scope = {
     .min(1)
     .optional()
     .describe("Canvas ID; defaults to main"),
+};
+
+const assetScope = {
+  cwd: scope.cwd,
+  projectId: scope.projectId,
+};
+
+const assetToolDefinitions: Record<
+  AssetMcpToolName,
+  {
+    title: string;
+    description: string;
+    inputSchema: Record<string, z.ZodTypeAny>;
+    annotations?: Record<string, boolean>;
+    metadata?: Record<string, unknown>;
+  }
+> = {
+  clash_assets_list: {
+    title: "List Project Assets",
+    description: describeClashTool({
+      useWhen: "you need candidate media identities in the selected Project",
+      effect:
+        "reads storage-neutral ResolvedAsset summaries without changing product state",
+      returns: "the Project's ResolvedAsset list with stable Project Asset IDs",
+      next: "read the selected Asset with get before trashing or restoring it",
+    }),
+    inputSchema: assetScope,
+    annotations: { readOnlyHint: true },
+  },
+  clash_assets_get: {
+    title: "Read Project Asset",
+    description: describeClashTool({
+      useWhen:
+        "you have a Project Asset ID and need its current resolved state",
+      effect:
+        "reads one storage-neutral ResolvedAsset and records the Host observation internally",
+      returns: "one ResolvedAsset; internal CAS receipts are never returned",
+      next: "inspect its state and references before choosing trash, restore, or no mutation",
+    }),
+    inputSchema: { ...assetScope, assetId: z.string().trim().min(1) },
+    annotations: { readOnlyHint: true },
+    metadata: { "clash/readProof": { recordsObservation: true } },
+  },
+  clash_assets_references: {
+    title: "List Project Asset references",
+    description: describeClashTool({
+      useWhen:
+        "you need to know which Action inputs or outputs reference a Project Asset",
+      effect:
+        "reads authoritative ActionAssetBindings and records the Host observation internally",
+      returns: "the Project Asset ID and its Action-level references",
+      next: "do not trash an Asset with blocking input references; otherwise use the recorded observation",
+    }),
+    inputSchema: { ...assetScope, assetId: z.string().trim().min(1) },
+    annotations: { readOnlyHint: true },
+    metadata: { "clash/readProof": { recordsObservation: true } },
+  },
+  clash_assets_import_file: {
+    title: "Import Project Asset file",
+    description: describeClashTool({
+      useWhen:
+        "a local workspace media file should become an immutable Project Asset",
+      effect:
+        "uploads the file once through the Host's canonical multipart import-file route",
+      returns: "the newly created Project-scoped ResolvedAsset",
+      next: "use the returned Project Asset ID in Actions or read it before a lifecycle mutation",
+    }),
+    inputSchema: {
+      ...assetScope,
+      filePath: z
+        .string()
+        .trim()
+        .min(1)
+        .describe(
+          "Absolute path or path relative to cwd/the selected Clash workspace",
+        ),
+      kind: z
+        .enum(["image", "video", "audio", "model"])
+        .optional()
+        .describe(
+          "Optional media kind; when omitted it is inferred from the file extension",
+        ),
+    },
+  },
+  clash_assets_trash: {
+    title: "Trash Project Asset",
+    description: describeClashTool({
+      useWhen:
+        "the user authorized logical deletion of an unreferenced Project Asset",
+      effect:
+        "logically trashes the Asset using the most recent internal Host observation",
+      returns: "the updated storage-neutral ResolvedAsset",
+      next: "read it back to confirm lifecycle state; resolve ASSET_IN_USE references instead of forcing deletion",
+    }),
+    inputSchema: { ...assetScope, assetId: z.string().trim().min(1) },
+    annotations: { destructiveHint: true },
+  },
+  clash_assets_restore: {
+    title: "Restore Project Asset",
+    description: describeClashTool({
+      useWhen: "a logically trashed Project Asset should return to active use",
+      effect:
+        "restores the Asset using the most recent internal Host observation",
+      returns: "the restored storage-neutral ResolvedAsset",
+      next: "read it back before any later lifecycle mutation",
+    }),
+    inputSchema: { ...assetScope, assetId: z.string().trim().min(1) },
+  },
 };
 
 const toolDefinitions: Record<
@@ -303,6 +424,118 @@ function contentSummary(name: CanvasMcpToolName, value: unknown): string {
   return JSON.stringify(value);
 }
 
+function assetContentSummary(name: AssetMcpToolName, value: unknown): string {
+  if (name === "clash_assets_list") {
+    const count = Array.isArray(value) ? value.length : 0;
+    return `Found ${count} Project Asset${count === 1 ? "" : "s"}.`;
+  }
+  if (name === "clash_assets_references") {
+    const references = (value as { references?: unknown[] } | undefined)
+      ?.references;
+    const count = Array.isArray(references) ? references.length : 0;
+    return `Found ${count} Project Asset reference${count === 1 ? "" : "s"}.`;
+  }
+  const id = (value as { id?: unknown } | undefined)?.id;
+  return typeof id === "string"
+    ? `${name.replace("clash_assets_", "")} ${id}.`
+    : JSON.stringify(value);
+}
+
+function assetErrorResult(
+  name: AssetMcpToolName,
+  input: AssetToolInput,
+  error: unknown,
+) {
+  const errorBody =
+    error && typeof error === "object" && "body" in error
+      ? (error as { body?: unknown }).body
+      : undefined;
+  const body =
+    errorBody && typeof errorBody === "object" && !Array.isArray(errorBody)
+      ? (errorBody as Record<string, unknown>)
+      : undefined;
+  const message =
+    typeof body?.error === "string"
+      ? body.error
+      : error instanceof Error
+        ? error.message
+        : String(error);
+  const code =
+    typeof body?.code === "string"
+      ? body.code
+      : (/^([A-Z][A-Z0-9_]+):/.exec(message)?.[1] ??
+        (message.startsWith("READ_REQUIRED")
+          ? "READ_REQUIRED"
+          : "PROJECT_ASSET_OPERATION_FAILED"));
+  const retryTool =
+    ["READ_REQUIRED", "STALE_READ", "INVALID_READ_PROOF"].includes(code) &&
+    input.assetId?.trim()
+      ? {
+          name: "clash_assets_get",
+          arguments: {
+            ...(input.cwd ? { cwd: input.cwd } : {}),
+            ...(input.projectId ? { projectId: input.projectId } : {}),
+            assetId: input.assetId.trim(),
+          },
+        }
+      : undefined;
+  return {
+    content: [{ type: "text" as const, text: message }],
+    structuredContent: {
+      error: {
+        code,
+        message,
+        operation: name,
+        ...(body?.projectAssetId
+          ? { projectAssetId: body.projectAssetId }
+          : {}),
+        ...(body?.references ? { references: body.references } : {}),
+        ...(retryTool ? { retryTool } : {}),
+      },
+    },
+    isError: true,
+  };
+}
+
+export function registerClashAssetMcp(
+  server: Pick<McpServer, "registerTool">,
+  gateway: AssetProjectHostGateway,
+): void {
+  for (const name of ASSET_MCP_TOOL_NAMES) {
+    const definition = assetToolDefinitions[name];
+    registerAppTool(
+      server,
+      name,
+      {
+        title: definition.title,
+        description: definition.description,
+        inputSchema: definition.inputSchema,
+        annotations: definition.annotations,
+        _meta: {
+          ...(definition.metadata ?? {}),
+          ui: { visibility: ["model"] },
+        },
+      },
+      async (input) => {
+        try {
+          const value = await gateway.invoke(name, input as AssetToolInput);
+          const structuredContent = Array.isArray(value)
+            ? { items: value }
+            : (value as Record<string, unknown>);
+          return {
+            content: [
+              { type: "text" as const, text: assetContentSummary(name, value) },
+            ],
+            structuredContent,
+          };
+        } catch (error) {
+          return assetErrorResult(name, input as AssetToolInput, error);
+        }
+      },
+    );
+  }
+}
+
 export function registerClashCanvasMcp(
   server: Pick<McpServer, "registerTool" | "registerResource">,
   gateway: CanvasProjectHostGateway,
@@ -521,6 +754,8 @@ export function registerClashCanvasMcp(
 export function createClashMcpServer(
   options: {
     client?: ProjectHostClient;
+    assetClient?: ProjectAssetHostClient;
+    assetGateway?: AssetProjectHostGateway;
     gateway?: CanvasProjectHostGateway;
     bundledAppJavascript?: string;
     bundledStudioAppJavascript?: string;
@@ -538,11 +773,22 @@ export function createClashMcpServer(
     options.bundledStudioAppJavascript ??
     options.bundledAppJavascript ??
     readFileSync(new URL("./studio-app-client.js", import.meta.url), "utf8");
+  registerClashAssetMcp(
+    server,
+    options.assetGateway ??
+      createAssetProjectHostGateway(
+        options.assetClient ??
+          createProjectAssetHostClient({
+            ...(options.client ? { hostClient: options.client } : {}),
+          }),
+      ),
+  );
   registerClashCanvasMcp(
     server,
-    options.gateway ?? createCanvasProjectHostGateway(
-      options.client ?? createProjectHostClient(),
-    ),
+    options.gateway ??
+      createCanvasProjectHostGateway(
+        options.client ?? createProjectHostClient(),
+      ),
     bundledAppJavascript,
     bundledStudioAppJavascript,
     { appSurfaces: options.appSurfaces },

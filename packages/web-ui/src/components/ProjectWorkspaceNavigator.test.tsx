@@ -8,9 +8,21 @@ import {
 } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ResolvedAsset } from "@clash/shared-types";
 import ProjectWorkspaceNavigator from "./ProjectWorkspaceNavigator";
 
 afterEach(cleanup);
+
+function resolvedAsset(
+  input: Pick<ResolvedAsset, "id" | "kind"> & Partial<ResolvedAsset>,
+): ResolvedAsset {
+  return {
+    status: "ready",
+    metadata: {},
+    lifecycle: { state: "active" },
+    ...input,
+  };
+}
 
 describe("ProjectWorkspaceNavigator", () => {
   it("lists Canvas text nodes in Assets and selects their first-class workspace page", () => {
@@ -43,7 +55,9 @@ describe("ProjectWorkspaceNavigator", () => {
 
     expect(screen.getByRole("list", { name: "Project assets" })).toBeTruthy();
     const row = screen.getByRole("tab", { name: textAsset.label });
-    expect(row.querySelector('[data-project-text-asset-icon="true"]')).toBeTruthy();
+    expect(
+      row.querySelector('[data-project-text-asset-icon="true"]'),
+    ).toBeTruthy();
     fireEvent.click(row);
     expect(onSelectTextAsset).toHaveBeenCalledWith(textAsset);
   });
@@ -193,19 +207,24 @@ describe("ProjectWorkspaceNavigator", () => {
       <ProjectWorkspaceNavigator
         canvases={[{ id: "main", name: "Main", position: 0 }]}
         timelines={[]}
-        directorStages={[{
-          id: "stage-opening",
-          name: "Opening blocking",
-          owner: { kind: "project" },
-          revisionId: "revision-1",
-          state: {
-            schemaVersion: 1,
-            scene: { backgroundColor: "#101114", grid: { visible: true, snap: false, size: 1 } },
-            objects: [],
-            cameras: [],
-            shots: [],
+        directorStages={[
+          {
+            id: "stage-opening",
+            name: "Opening blocking",
+            owner: { kind: "project" },
+            revisionId: "revision-1",
+            state: {
+              schemaVersion: 1,
+              scene: {
+                backgroundColor: "#101114",
+                grid: { visible: true, snap: false, size: 1 },
+              },
+              objects: [],
+              cameras: [],
+              shots: [],
+            },
           },
-        }]}
+        ]}
         assets={[]}
         surface={{ kind: "director-stage", stageId: "stage-opening" }}
         onSelectCanvas={vi.fn()}
@@ -222,7 +241,11 @@ describe("ProjectWorkspaceNavigator", () => {
       />,
     );
 
-    expect(screen.getByRole("tab", { name: "Opening blocking" }).getAttribute("aria-selected")).toBe("true");
+    expect(
+      screen
+        .getByRole("tab", { name: "Opening blocking" })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "New Director Stage" }));
     expect(onCreateDirectorStage).toHaveBeenCalledOnce();
   });
@@ -233,16 +256,13 @@ describe("ProjectWorkspaceNavigator", () => {
         canvases={[{ id: "main", name: "Main", position: 0 }]}
         timelines={[]}
         assets={[
-          {
+          resolvedAsset({
             id: "image-hero",
-            assetId: "image-hero",
+            kind: "image",
             url: "/hero-source.png",
             thumbnailUrl: "/hero-cover.webp",
             name: "Opening frame",
-            type: "image",
-            storageKey: "generated/local-gen-abcd1234.png",
-            createdAt: null,
-          },
+          }),
         ]}
         surface={{ kind: "canvas", canvasId: "main" }}
         onSelectCanvas={vi.fn()}
@@ -274,27 +294,24 @@ describe("ProjectWorkspaceNavigator", () => {
         canvases={[{ id: "main", name: "Main", position: 0 }]}
         timelines={[]}
         assets={[
-          {
+          resolvedAsset({
             id: "image-1",
             url: "/image.png",
-            type: "image",
-            storageKey: "image.png",
-            createdAt: null,
-          },
-          {
+            kind: "image",
+            metadata: { originalName: "image.png" },
+          }),
+          resolvedAsset({
             id: "video-1",
             url: "/video.mp4",
-            type: "video",
-            storageKey: "video.mp4",
-            createdAt: null,
-          },
-          {
+            kind: "video",
+            metadata: { originalName: "video.mp4" },
+          }),
+          resolvedAsset({
             id: "audio-1",
             url: "/audio.wav",
-            type: "audio",
-            storageKey: "audio.wav",
-            createdAt: null,
-          },
+            kind: "audio",
+            metadata: { originalName: "audio.wav" },
+          }),
         ]}
         surface={{ kind: "canvas", canvasId: "main" }}
         onSelectCanvas={vi.fn()}
@@ -330,24 +347,20 @@ describe("ProjectWorkspaceNavigator", () => {
         canvases={[{ id: "main", name: "Main", position: 0 }]}
         timelines={[]}
         assets={[
-          {
+          resolvedAsset({
             id: "project-asset",
-            assetId: "project-asset",
             url: "/project.png",
-            type: "image",
-            storageKey: "project.png",
-            createdAt: null,
-          },
+            kind: "image",
+            metadata: { originalName: "project.png" },
+          }),
         ]}
         globalAssets={[
-          {
+          resolvedAsset({
             id: "global-asset",
-            assetId: "global-asset",
             url: "/global.png",
-            type: "image",
-            storageKey: "global.png",
-            createdAt: null,
-          },
+            kind: "image",
+            metadata: { originalName: "global.png" },
+          }),
         ]}
         surface={{ kind: "canvas", canvasId: "main" }}
         onSelectCanvas={vi.fn()}
@@ -509,13 +522,12 @@ describe("ProjectWorkspaceNavigator", () => {
           },
         ]}
         assets={[
-          {
+          resolvedAsset({
             id: "asset-1",
             url: "/asset-1.png",
-            type: "image",
-            storageKey: "asset-1.png",
-            createdAt: null,
-          },
+            kind: "image",
+            metadata: { originalName: "asset-1.png" },
+          }),
         ]}
         footer={<button type="button">Project settings</button>}
         surface={{ kind: "canvas", canvasId: "main" }}
@@ -579,13 +591,12 @@ describe("ProjectWorkspaceNavigator", () => {
           },
         ]}
         assets={[
-          {
+          resolvedAsset({
             id: "asset-1",
             url: "/asset-1.png",
-            type: "image",
-            storageKey: "asset-1.png",
-            createdAt: null,
-          },
+            kind: "image",
+            metadata: { originalName: "asset-1.png" },
+          }),
         ]}
         surface={{ kind: "asset", assetId: "asset-1" }}
         onSelectCanvas={vi.fn()}
@@ -661,20 +672,18 @@ describe("ProjectWorkspaceNavigator", () => {
   it("lists every project asset beneath Assets and makes each item selectable and draggable", () => {
     const onSelectAsset = vi.fn();
     const assets = [
-      {
+      resolvedAsset({
         id: "asset-image",
         url: "/hero-frame.png",
-        type: "image" as const,
-        storageKey: "shots/hero-frame.png",
-        createdAt: null,
-      },
-      {
+        kind: "image",
+        metadata: { originalName: "hero-frame.png" },
+      }),
+      resolvedAsset({
         id: "asset-video",
         url: "/teaser.mp4",
-        type: "video" as const,
-        storageKey: "cuts/teaser.mp4",
-        createdAt: null,
-      },
+        kind: "video",
+        metadata: { originalName: "teaser.mp4" },
+      }),
     ];
     const props = {
       canvases: [{ id: "main", name: "Main", position: 0 }],
@@ -715,11 +724,8 @@ describe("ProjectWorkspaceNavigator", () => {
     expect(dragData.get("text/plain")).toBe("asset-video");
     expect(JSON.parse(dragData.get("asset") ?? "{}")).toMatchObject({
       id: "asset-video",
-      backingAssetId: "asset-video",
-      // Video `url` may be a cover image, so playback resolves from the
-      // immutable storageKey through the asset serving route. Asserting the raw
-      // `url` here would lock in dragging a poster frame instead of the media.
-      src: "/assets/cuts/teaser.mp4",
+      projectAssetId: "asset-video",
+      src: "/teaser.mp4",
       type: "video",
     });
 
@@ -730,6 +736,65 @@ describe("ProjectWorkspaceNavigator", () => {
     rerender(<ProjectWorkspaceNavigator {...props} />);
     expect(screen.getByRole("list", { name: "Project assets" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "hero-frame.png" })).toBeTruthy();
+  });
+
+  it("separates Project Trash from device availability and exposes logical trash and restore actions", async () => {
+    const onTrashAsset = vi.fn();
+    const onRestoreAsset = vi.fn();
+    render(
+      <ProjectWorkspaceNavigator
+        canvases={[{ id: "main", name: "Main", position: 0 }]}
+        timelines={[]}
+        assets={[
+          resolvedAsset({
+            id: "remote-only",
+            kind: "video",
+            name: "remote.mp4",
+            status: "unavailable",
+          }),
+          resolvedAsset({
+            id: "trashed-image",
+            kind: "image",
+            name: "old.png",
+            status: "unavailable",
+            lifecycle: {
+              state: "trashed",
+              deleteOperationId: "delete-old",
+              deletedAt: "2026-08-13T00:00:00.000Z",
+              purgeAfter: "2026-09-12T00:00:00.000Z",
+            },
+          }),
+        ]}
+        surface={{ kind: "canvas", canvasId: "main" }}
+        onSelectCanvas={vi.fn()}
+        onSelectTimeline={vi.fn()}
+        onSelectAsset={vi.fn()}
+        onCreateCanvas={vi.fn()}
+        onRenameCanvas={vi.fn()}
+        onDeleteCanvas={vi.fn()}
+        onCreateTimeline={vi.fn()}
+        onAttachTimeline={vi.fn()}
+        onAddAsset={vi.fn()}
+        onTrashAsset={onTrashAsset}
+        onRestoreAsset={onRestoreAsset}
+      />,
+    );
+
+    expect(screen.getByRole("tab", { name: "remote.mp4" })).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: "old.png" })).toBeNull();
+    expect(
+      screen.getByRole("list", { name: "Project asset trash" }),
+    ).toBeTruthy();
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "More options for remote.mp4" }),
+      { button: 0 },
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Move to Trash" }));
+    expect(onTrashAsset).toHaveBeenCalledWith("remote-only");
+
+    fireEvent.click(screen.getByRole("button", { name: "Restore old.png" }));
+    expect(onRestoreAsset).toHaveBeenCalledWith("trashed-image");
   });
 
   it("keeps an empty Timeline section quiet instead of spending space on a redundant message", () => {

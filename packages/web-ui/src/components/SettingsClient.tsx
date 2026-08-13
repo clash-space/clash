@@ -54,6 +54,7 @@ export type SettingsSection =
     | 'appearance'
     | 'agents'
     | 'sync'
+    | 'public-storage'
     | 'audio'
     | 'tokens'
     | 'providers'
@@ -1215,6 +1216,9 @@ export default function SettingsClient({
                 {/* ── Sync ── */}
                 {showSection('sync') && <SyncSection />}
 
+                {/* ── Public storage ── */}
+                {showSection('public-storage') && <PublicStorageSection />}
+
                 {showAll && <hr className="border-warm-border" />}
 
                 {/* ── Audio ── */}
@@ -1811,10 +1815,12 @@ function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId
             description: provider.pluginProvider.description ?? `Models served by the ${provider.pluginProvider.name} plugin Provider.`,
             apiKey: fields[0]?.credentialId ?? '',
             credentials,
-            ...(windowSource ? { oauthProviderId: windowSource.id } : {}),
+            // The HTTP route names the Provider; the source's methodId names which declared way
+            // credentials are obtained. A credential storage key such as `accessToken` is neither.
+            ...(windowSource ? { oauthProviderId: provider.pluginProvider.id } : {}),
             ...(actionSource ? {
                 localTokenImport: {
-                    providerId: actionSource.id,
+                    providerId: provider.pluginProvider.id,
                     label: actionSource.label,
                 },
             } : {}),
@@ -1988,7 +1994,7 @@ function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId
     if (isGoogleAiStudio(provider)) {
         return {
             title: 'Google AI Studio',
-            description: 'Gemini API models through a direct API key or an authenticated Cloudflare AI Gateway.',
+            description: 'Gemini models through a Google API key or Google Cloud service account.',
             apiKey: 'apiKey',
             credentials: [
                 {
@@ -1998,7 +2004,15 @@ function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId
                     placeholder: 'Paste API key',
                     allowMultiple: false,
                 },
+                {
+                    key: 'serviceAccountKey',
+                    label: 'Service account JSON',
+                    ariaLabel: 'Google Cloud service account JSON',
+                    placeholder: 'Paste service account JSON',
+                    allowMultiple: false,
+                },
             ],
+            credentialRequirements: { anyOf: [['apiKey'], ['serviceAccountKey']] },
             baseUrlKey: 'baseUrl',
             baseUrlPlaceholder: 'https://gateway.ai.cloudflare.com/v1/{account}/{gateway}/google-ai-studio',
         };
@@ -5309,6 +5323,303 @@ function SyncSection() {
                         )}
                     </div>
                 </SettingsAnimatedBody>
+            )}
+        </section>
+    );
+}
+
+type PublicStorageMode = 'disabled' | 'byos' | 'managed';
+type PublicStorageProvider = 'r2' | 'aws-s3' | 'tos' | 'custom-s3';
+
+interface PublicStorageConfig {
+    capability: 'public-asset-storage';
+    mode: PublicStorageMode;
+    available: boolean;
+    provider: PublicStorageProvider | null;
+    account_id: string | null;
+    endpoint: string | null;
+    bucket: string | null;
+    region: string | null;
+    key_prefix: string;
+    force_path_style: boolean;
+    has_access_key_id: boolean;
+    has_secret_access_key: boolean;
+    has_session_token: boolean;
+    managed: { available: boolean; authenticated: boolean };
+}
+
+const PUBLIC_STORAGE_PROVIDER_OPTIONS: SelectOption<PublicStorageProvider>[] = [
+    { value: 'r2', label: 'Cloudflare R2' },
+    { value: 'aws-s3', label: 'AWS S3' },
+    { value: 'tos', label: 'Volcengine TOS' },
+    { value: 'custom-s3', label: 'Custom S3-compatible' },
+];
+
+function PublicStorageSection() {
+    const feedback = useAppFeedback();
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [testing, setTesting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [config, setConfig] = useState<PublicStorageConfig | null>(null);
+    const [mode, setMode] = useState<PublicStorageMode>('disabled');
+    const [provider, setProvider] = useState<PublicStorageProvider>('r2');
+    const [accountId, setAccountId] = useState('');
+    const [endpoint, setEndpoint] = useState('');
+    const [bucket, setBucket] = useState('');
+    const [region, setRegion] = useState('auto');
+    const [keyPrefix, setKeyPrefix] = useState('clash-temporary');
+    const [forcePathStyle, setForcePathStyle] = useState(false);
+    const [accessKeyId, setAccessKeyId] = useState('');
+    const [secretAccessKey, setSecretAccessKey] = useState('');
+    const [sessionToken, setSessionToken] = useState('');
+
+    const applyConfig = useCallback((next: PublicStorageConfig) => {
+        setConfig(next);
+        setMode(next.mode);
+        setProvider(next.provider ?? 'r2');
+        setAccountId(next.account_id ?? '');
+        setEndpoint(next.endpoint ?? '');
+        setBucket(next.bucket ?? '');
+        setRegion(next.region ?? (next.provider === 'r2' || !next.provider ? 'auto' : ''));
+        setKeyPrefix(next.key_prefix || 'clash-temporary');
+        setForcePathStyle(next.force_path_style);
+        setAccessKeyId('');
+        setSecretAccessKey('');
+        setSessionToken('');
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        setLoading(true);
+        fetch(runtimeApiUrl('/api/v1/local/public-storage'), { credentials: 'include' })
+            .then(async (response) => {
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return (await response.json()) as PublicStorageConfig;
+            })
+            .then((next) => {
+                if (!cancelled) applyConfig(next);
+            })
+            .catch((caught) => {
+                if (!cancelled) setError(displayErrorMessage(caught));
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
+        return () => { cancelled = true; };
+    }, [applyConfig]);
+
+    const credentialsReady = Boolean(
+        (accessKeyId.trim() || config?.has_access_key_id) &&
+        (secretAccessKey.trim() || config?.has_secret_access_key),
+    );
+    const locationReady = provider === 'r2'
+        ? Boolean(accountId.trim())
+        : provider === 'custom-s3'
+            ? Boolean(endpoint.trim() && region.trim())
+            : Boolean(region.trim());
+    const canSave = !saving && (
+        mode === 'disabled' ||
+        (mode === 'managed' && Boolean(config?.managed.available && config.managed.authenticated)) ||
+        (mode === 'byos' && Boolean(bucket.trim() && locationReady && credentialsReady))
+    );
+
+    const save = useCallback(async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        if (!canSave) return;
+        setSaving(true);
+        setError(null);
+        const body: Record<string, unknown> = mode === 'byos'
+            ? {
+                mode,
+                provider,
+                account_id: accountId.trim() || null,
+                endpoint: endpoint.trim() || null,
+                bucket: bucket.trim(),
+                region: provider === 'r2' ? 'auto' : region.trim(),
+                key_prefix: keyPrefix.trim() || 'clash-temporary',
+                force_path_style: provider === 'custom-s3' && forcePathStyle,
+                ...(accessKeyId.trim() ? { access_key_id: accessKeyId.trim() } : {}),
+                ...(secretAccessKey.trim() ? { secret_access_key: secretAccessKey.trim() } : {}),
+                ...(sessionToken.trim() ? { session_token: sessionToken.trim() } : {}),
+            }
+            : { mode };
+        try {
+            const response = await fetch(runtimeApiUrl('/api/v1/local/public-storage'), {
+                method: 'PATCH',
+                credentials: 'include',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const payload = await response.json().catch(() => null) as (PublicStorageConfig & { error?: string }) | null;
+            if (!response.ok || !payload) throw new Error(payload?.error ?? `HTTP ${response.status}`);
+            applyConfig(payload);
+            feedback.notify({ variant: 'success', title: 'Public storage saved' });
+        } catch (caught) {
+            const message = displayErrorMessage(caught);
+            setError(message);
+            feedback.notify({ variant: 'error', title: 'Could not save public storage', message });
+        } finally {
+            setSaving(false);
+        }
+    }, [accessKeyId, accountId, applyConfig, bucket, canSave, endpoint, feedback, forcePathStyle, keyPrefix, mode, provider, region, secretAccessKey, sessionToken]);
+
+    const testConnection = useCallback(async () => {
+        setTesting(true);
+        setError(null);
+        try {
+            const response = await fetch(runtimeApiUrl('/api/v1/local/public-storage/test'), {
+                method: 'POST',
+                credentials: 'include',
+            });
+            const payload = await response.json().catch(() => null) as { error?: string } | null;
+            if (!response.ok) throw new Error(payload?.error ?? `HTTP ${response.status}`);
+            feedback.notify({ variant: 'success', title: 'Public storage is reachable' });
+        } catch (caught) {
+            const message = displayErrorMessage(caught);
+            setError(message);
+            feedback.notify({ variant: 'error', title: 'Public storage test failed', message });
+        } finally {
+            setTesting(false);
+        }
+    }, [feedback]);
+
+    return (
+        <section>
+            <div className="mb-5 flex items-center gap-3">
+                <CloudArrowUp className="h-5 w-5 text-stone-600 dark:text-stone-300" weight="bold" />
+                <div className="flex-1">
+                    <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">Public storage</h2>
+                    <p className="text-sm text-stone-600 dark:text-stone-300">
+                        Publishes short-lived signed URLs when a model provider requires an internet-reachable asset.
+                    </p>
+                </div>
+                {config ? (
+                    <span className="rounded-lg border border-warm-border bg-warm-muted px-3 py-1 text-xs font-medium text-stone-700 dark:text-stone-200">
+                        {config.available ? 'Ready' : 'Not configured'}
+                    </span>
+                ) : null}
+            </div>
+
+            {loading ? (
+                <SettingsFormSkeleton ariaLabel="Loading public storage settings" variant="sync" />
+            ) : (
+                <form onSubmit={(event) => { void save(event); }} className="space-y-4">
+                    <RadioGroup
+                        aria-label="Public storage mode"
+                        value={mode}
+                        onValueChange={(value) => {
+                            if (value === 'disabled' || value === 'byos' || value === 'managed') setMode(value);
+                        }}
+                        className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+                    >
+                        <RadioGroupItem value="disabled" className="rounded-xl p-4">
+                            <span className="block text-sm font-semibold text-slate-900 dark:text-slate-50">Disabled</span>
+                            <span className="mt-1 block text-xs text-stone-600 dark:text-stone-300">Functions that require public storage stay unavailable.</span>
+                        </RadioGroupItem>
+                        <RadioGroupItem value="byos" className="rounded-xl p-4">
+                            <span className="block text-sm font-semibold text-slate-900 dark:text-slate-50">Use my storage</span>
+                            <span className="mt-1 block text-xs text-stone-600 dark:text-stone-300">R2, S3, TOS, or another S3-compatible service.</span>
+                        </RadioGroupItem>
+                        {config?.managed.available && config.managed.authenticated ? (
+                            <RadioGroupItem value="managed" className="rounded-xl p-4">
+                                <span className="block text-sm font-semibold text-slate-900 dark:text-slate-50">Clash managed</span>
+                                <span className="mt-1 block text-xs text-stone-600 dark:text-stone-300">Storage included with your signed-in Clash account.</span>
+                            </RadioGroupItem>
+                        ) : null}
+                    </RadioGroup>
+
+                    {mode === 'byos' ? (
+                        <div className="space-y-4 rounded-xl border border-warm-border bg-warm-surface p-4">
+                            <label className="block space-y-1.5 text-sm font-medium text-slate-900 dark:text-slate-50">
+                                <span>Storage provider</span>
+                                <SelectMenu
+                                    ariaLabel="Storage provider"
+                                    value={provider}
+                                    options={PUBLIC_STORAGE_PROVIDER_OPTIONS}
+                                    onValueChange={(value) => {
+                                        setProvider(value);
+                                        if (value === 'r2') setRegion('auto');
+                                        if (value === 'tos') setForcePathStyle(false);
+                                    }}
+                                    variant="field"
+                                    triggerClassName={settingsSelectTriggerClass}
+                                />
+                            </label>
+
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                {provider === 'r2' ? (
+                                    <label className="block space-y-1.5 text-sm font-medium text-slate-900 dark:text-slate-50">
+                                        <span>Account ID</span>
+                                        <Input aria-label="Account ID" value={accountId} onChange={(event) => setAccountId(event.target.value)} className={settingsMonoFieldClass} />
+                                    </label>
+                                ) : null}
+                                {provider === 'custom-s3' ? (
+                                    <label className="block space-y-1.5 text-sm font-medium text-slate-900 dark:text-slate-50">
+                                        <span>Endpoint</span>
+                                        <Input aria-label="Endpoint" type="url" value={endpoint} onChange={(event) => setEndpoint(event.target.value)} placeholder="https://objects.example.com" className={settingsMonoFieldClass} />
+                                    </label>
+                                ) : null}
+                                <label className="block space-y-1.5 text-sm font-medium text-slate-900 dark:text-slate-50">
+                                    <span>Bucket</span>
+                                    <Input aria-label="Bucket" value={bucket} onChange={(event) => setBucket(event.target.value)} className={settingsMonoFieldClass} />
+                                </label>
+                                {provider !== 'r2' ? (
+                                    <label className="block space-y-1.5 text-sm font-medium text-slate-900 dark:text-slate-50">
+                                        <span>Region</span>
+                                        <Input aria-label="Region" value={region} onChange={(event) => setRegion(event.target.value)} placeholder={provider === 'tos' ? 'cn-beijing' : 'us-east-1'} className={settingsMonoFieldClass} />
+                                    </label>
+                                ) : null}
+                                <label className="block space-y-1.5 text-sm font-medium text-slate-900 dark:text-slate-50">
+                                    <span>Access key ID</span>
+                                    <Input aria-label="Access key ID" type="password" autoComplete="new-password" value={accessKeyId} onChange={(event) => setAccessKeyId(event.target.value)} placeholder={config?.has_access_key_id ? 'Saved; leave blank to keep' : ''} className={settingsMonoFieldClass} />
+                                </label>
+                                <label className="block space-y-1.5 text-sm font-medium text-slate-900 dark:text-slate-50">
+                                    <span>Secret access key</span>
+                                    <Input aria-label="Secret access key" type="password" autoComplete="new-password" value={secretAccessKey} onChange={(event) => setSecretAccessKey(event.target.value)} placeholder={config?.has_secret_access_key ? 'Saved; leave blank to keep' : ''} className={settingsMonoFieldClass} />
+                                </label>
+                                {(provider === 'aws-s3' || provider === 'custom-s3') ? (
+                                    <label className="block space-y-1.5 text-sm font-medium text-slate-900 dark:text-slate-50">
+                                        <span>Session token (optional)</span>
+                                        <Input aria-label="Session token" type="password" autoComplete="new-password" value={sessionToken} onChange={(event) => setSessionToken(event.target.value)} placeholder={config?.has_session_token ? 'Saved; leave blank to keep' : ''} className={settingsMonoFieldClass} />
+                                    </label>
+                                ) : null}
+                                <label className="block space-y-1.5 text-sm font-medium text-slate-900 dark:text-slate-50">
+                                    <span>Key prefix</span>
+                                    <Input aria-label="Key prefix" value={keyPrefix} onChange={(event) => setKeyPrefix(event.target.value)} className={settingsMonoFieldClass} />
+                                </label>
+                            </div>
+
+                            {provider === 'custom-s3' ? (
+                                <label className="flex items-center gap-3 text-sm font-medium text-slate-900 dark:text-slate-50">
+                                    <Switch aria-label="Use path-style URLs" checked={forcePathStyle} onCheckedChange={setForcePathStyle} />
+                                    <span>Use path-style URLs</span>
+                                </label>
+                            ) : null}
+                            {provider === 'tos' ? (
+                                <p className="text-xs leading-5 text-stone-600 dark:text-stone-300">
+                                    Clash uses TOS&apos;s documented S3-compatible endpoint and virtual-hosted addressing for the selected region.
+                                </p>
+                            ) : null}
+                        </div>
+                    ) : null}
+
+                    {error ? <div role="alert" className={settingsErrorAlertClass}>{error}</div> : null}
+                    <div className="flex flex-wrap justify-end gap-2">
+                        <Button
+                            type="button"
+                            aria-label="Test public storage"
+                            onClick={() => { void testConnection(); }}
+                            disabled={!config?.available || testing || saving}
+                            className={settingsSecondaryButtonClass}
+                        >
+                            {testing ? 'Testing…' : 'Test connection'}
+                        </Button>
+                        <Button type="submit" aria-label="Save public storage" disabled={!canSave} className={settingsPrimaryButtonClass}>
+                            {saving ? 'Saving…' : 'Save'}
+                        </Button>
+                    </div>
+                </form>
             )}
         </section>
     );

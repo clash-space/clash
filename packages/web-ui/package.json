@@ -27,6 +27,7 @@
   "dependencies": {
     "@ai-sdk/react": "^3.0.140",
     "@ariakit/react": "^0.4.31",
+    "@clash/asset-sdk": "workspace:*",
     "@clash/gui": "workspace:*",
     "@clash/director-ui": "workspace:*",
     "@clash/shared-layout": "workspace:^",

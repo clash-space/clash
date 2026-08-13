@@ -5345,7 +5345,7 @@ var zodToJsonSchema = (schema, options) => {
   return combined;
 };
 
-// ../../packages/shared-types/dist/chunk-XAYWVA4T.js
+// ../../packages/shared-types/dist/chunk-RUA5QFGJ.js
 var TIMELINE_KEYFRAME_INTERPOLATIONS = ["hold", "linear"];
 var DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION = "linear";
 var TIMELINE_KEYFRAME_SAMPLING_POLICY = Object.freeze({
@@ -6861,7 +6861,7 @@ var agent = {
     inputSchema: z.object({
       timelineId: IdentifierSchema,
       wait: z.boolean().optional(),
-      timeoutMs: z.number().int().min(1e3).max(9e5).optional()
+      timeoutMs: z.number().int().min(1e3).optional()
     }).strict(),
     outputSchema: TimelineRenderReceiptSchema,
     access: "write",
@@ -8306,7 +8306,7 @@ function timelineDslContractFingerprint(value) {
   return `fnv1a32:${(hash2 >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition = {
-  schemaVersion: 6,
+  schemaVersion: 7,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,
@@ -23303,7 +23303,7 @@ function createTimelineAdapter(options = {}) {
         target: submitted.target
       };
       if (input.wait === false) return { ...base, completed: false, status: "pending" };
-      const deadline = Date.now() + (input.timeoutMs ?? 6e5);
+      const deadline = Date.now() + (input.timeoutMs ?? 18e5);
       while (true) {
         const polled = await request(input, {
           action: "get",

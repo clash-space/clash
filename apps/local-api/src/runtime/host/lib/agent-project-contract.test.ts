@@ -3,7 +3,10 @@ import { expect, it } from "vitest";
 
 it("keeps Clash navigation out of generated repository instruction files", async () => {
   const bundleScript = await readFile(
-    new URL("../../scripts/bundle-agents.mjs", import.meta.url),
+    new URL(
+      "../../../../../../packages/cli/scripts/bundle-agents.mjs",
+      import.meta.url,
+    ),
     "utf8",
   );
 
@@ -13,7 +16,7 @@ it("keeps Clash navigation out of generated repository instruction files", async
 
 it("pins the local-first project invariants for repository coding agents", async () => {
   const repositoryContract = await readFile(
-    new URL("../../../../AGENTS.md", import.meta.url),
+    new URL("../../../../../../AGENTS.md", import.meta.url),
     "utf8",
   );
 

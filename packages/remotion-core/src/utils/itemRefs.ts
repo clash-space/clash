@@ -36,7 +36,7 @@ export function findAssetForItem(item: TimelineItemLookup, assets: Asset[]): Ass
   }
 
   if (item.assetId) {
-    const found = assets.find((asset) => asset.backingAssetId === item.assetId || asset.id === item.assetId);
+    const found = assets.find((asset) => asset.projectAssetId === item.assetId || asset.id === item.assetId);
     if (found) {
       return found;
     }

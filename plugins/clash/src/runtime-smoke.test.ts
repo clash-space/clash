@@ -86,6 +86,7 @@ test("bundled CLI and peer plugin MCP share one persistent Clash daemon", async 
       const tools = await client.listTools();
       assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), [
         "clash",
+        "clash_assets",
         "clash_canvas",
         "clash_composition",
         "clash_workspace_init",

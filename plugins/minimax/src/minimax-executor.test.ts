@@ -81,7 +81,14 @@ describe("minimax executor", () => {
       // on work it can never ask about, while the job may well be running and billable upstream.
       const fetch = async () =>
         jsonResponse({ base_resp: { status_msg: "ok" } });
-      await expect(submitVideo(fetch)).rejects.toThrow(/task_id/);
+      await expect(submitVideo(fetch)).rejects.toMatchObject({
+        failure: {
+          code: "invalid_response",
+          message: expect.stringMatching(/task_id/),
+          retryable: false,
+          requestState: "unknown",
+        },
+      });
     });
 
     it("reports still-running work as unfinished, with the same state", async () => {
@@ -119,7 +126,15 @@ describe("minimax executor", () => {
         });
       await expect(
         minimaxPoll({ state, apiKey, fetch: fetch as never }),
-      ).rejects.toThrow(/content policy/);
+      ).rejects.toMatchObject({
+        failure: {
+          code: "provider_failed",
+          message: expect.stringMatching(/content policy/),
+          retryable: false,
+          requestState: "accepted",
+          providerCode: "failed",
+        },
+      });
     });
 
     it("treats a cancelled job as terminal, spelled the way MiniMax spells it", async () => {
@@ -223,7 +238,15 @@ describe("minimax executor", () => {
           base_resp: { status_code: 1004, status_msg: "invalid api key" },
           data: {},
         });
-      await expect(submitAudio(fetch)).rejects.toThrow(/invalid api key/);
+      await expect(submitAudio(fetch)).rejects.toMatchObject({
+        failure: {
+          code: "authentication_failed",
+          message: expect.stringMatching(/invalid api key/),
+          retryable: false,
+          requestState: "rejected",
+          providerCode: "1004",
+        },
+      });
     });
 
     it("refuses a response with no audio payload", async () => {
@@ -303,7 +326,15 @@ describe("minimax executor", () => {
         body: {},
         fetch: fetch as never,
       }),
-    ).rejects.toThrow(/upstream down/);
+    ).rejects.toMatchObject({
+      failure: {
+        code: "provider_unavailable",
+        message: expect.stringMatching(/upstream down/),
+        retryable: true,
+        requestState: "unknown",
+        providerCode: "HTTP_500",
+      },
+    });
   });
 
   it("never sleeps", async () => {

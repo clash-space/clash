@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ProjectAsset } from "../../lib/types";
+import type { ResolvedAsset } from "@clash/shared-types";
 import {
   canvasNodeAssetDisplayName,
   projectAssetDisplayName,
@@ -7,31 +7,34 @@ import {
   resolveCanvasNodeProjectAsset,
 } from "./projectAssetPresentation";
 
-const assets: ProjectAsset[] = [
+const assets: ResolvedAsset[] = [
   {
     id: "asset-upload",
-    assetId: "asset-upload",
-    url: "/assets/uploads/8f73f0e81ad04c93b9f2.JPG",
-    type: "image",
-    storageKey: "uploads/8f73f0e81ad04c93b9f2.JPG",
-    createdAt: null,
+    url: "https://media.clash.test/assets/asset-upload",
+    kind: "image",
+    lifecycle: { state: "active" },
+    status: "ready",
+    metadata: { originalName: "8f73f0e81ad04c93b9f2.JPG" },
+    provenance: { kind: "import" },
   },
   {
     id: "asset-edit",
-    assetId: "asset-edit",
-    url: "/assets/projects/project/edits/cab88315-e647.png",
-    type: "image",
-    storageKey: "projects/project/edits/cab88315-e647.png",
-    createdAt: null,
+    url: "https://media.clash.test/assets/asset-edit",
+    kind: "image",
+    lifecycle: { state: "active" },
+    status: "ready",
+    metadata: {},
+    provenance: { kind: "edit" },
   },
   {
     id: "asset-generated",
-    assetId: "asset-generated",
-    url: "/assets/generated/local-gen-uzfqsk94.svg",
-    thumbnailUrl: "/assets/generated/local-gen-uzfqsk94-cover.webp",
-    type: "image",
-    storageKey: "generated/local-gen-uzfqsk94.svg",
-    createdAt: null,
+    url: "https://media.clash.test/assets/asset-generated",
+    thumbnailUrl: "https://media.clash.test/thumbnails/asset-generated",
+    kind: "image",
+    lifecycle: { state: "active" },
+    status: "ready",
+    metadata: {},
+    provenance: { kind: "generation" },
   },
 ];
 
@@ -47,11 +50,11 @@ describe("project asset presentation", () => {
 
   it("uses the cover thumbnail before the source media", () => {
     expect(projectAssetThumbnailSource(assets[2])).toBe(
-      "/assets/generated/local-gen-uzfqsk94-cover.webp",
+      "https://media.clash.test/thumbnails/asset-generated",
     );
   });
 
-  it("resolves current and legacy canvas nodes to their project asset", () => {
+  it("resolves canvas nodes only by their stable Project Asset id", () => {
     expect(
       resolveCanvasNodeProjectAsset(
         { data: { assetId: "asset-upload" } },
@@ -63,7 +66,13 @@ describe("project asset presentation", () => {
         { data: { fileName: "8f73f0e81ad04c93b9f2.JPG" } },
         assets,
       ),
-    ).toBe(assets[0]);
+    ).toBeUndefined();
+    expect(
+      resolveCanvasNodeProjectAsset(
+        { data: { src: assets[0].url, name: "asset-upload" } },
+        assets,
+      ),
+    ).toBeUndefined();
   });
 
   it("keeps a meaningful canvas label but replaces machine filenames", () => {

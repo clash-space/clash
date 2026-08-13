@@ -1,12 +1,12 @@
 import { FilmSlate, Image as ImageIcon, SpeakerHigh } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
-import type { ProjectAsset } from '../../lib/types';
+import type { AssetKind } from '@clash/shared-types';
 import { resolveAssetMediaUrl } from './media-url';
 
 export type AssetThumbnailVariant = 'sidebar' | 'card';
 
 export interface AssetThumbnailProps {
-  type: ProjectAsset['type'];
+  kind: AssetKind;
   src: string;
   label: string;
   active?: boolean;
@@ -21,7 +21,7 @@ const mediaFrameClass: Record<AssetThumbnailVariant, string> = {
 
 /** Shared visual representation for assets in compact lists and media pickers. */
 export function AssetThumbnail({
-  type,
+  kind,
   src,
   label,
   active = false,
@@ -31,12 +31,12 @@ export function AssetThumbnail({
   const [failed, setFailed] = useState(false);
   const mediaUrl = resolveAssetMediaUrl(src) ?? '';
 
-  useEffect(() => setFailed(false), [src, type]);
+  useEffect(() => setFailed(false), [src, kind]);
 
   const frameClass = `${mediaFrameClass[variant]} relative flex items-center justify-center overflow-hidden border border-warm-border/80 bg-warm-muted`;
   const fallbackLabel = decorative ? undefined : `${label} thumbnail unavailable`;
 
-  if (type === 'audio') {
+  if (kind === 'audio') {
     return (
       <span
         className={variant === 'sidebar' ? 'flex h-5 w-5 shrink-0 items-center justify-center' : frameClass}
@@ -54,7 +54,7 @@ export function AssetThumbnail({
   }
 
   if (failed) {
-    const FallbackIcon = type === 'video' ? FilmSlate : ImageIcon;
+    const FallbackIcon = kind === 'video' ? FilmSlate : ImageIcon;
     return (
       <span className={frameClass} aria-label={fallbackLabel} aria-hidden={decorative || undefined}>
         <FallbackIcon className={variant === 'sidebar' ? 'h-3 w-3 text-stone-400' : 'h-8 w-8 text-stone-400'} />
@@ -62,7 +62,7 @@ export function AssetThumbnail({
     );
   }
 
-  if (type === 'video') {
+  if (kind === 'video') {
     return (
       <span className={`${frameClass} bg-stone-800`}>
         <video
@@ -98,4 +98,3 @@ export function AssetThumbnail({
     </span>
   );
 }
-

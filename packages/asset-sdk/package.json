@@ -1,0 +1,36 @@
+{
+  "name": "@clash/asset-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Host-neutral Project Asset resolution and semantic client core",
+  "type": "module",
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@clash/shared-types": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^4.1.2"
+  },
+  "files": [
+    "dist",
+    "src",
+    "agents.json"
+  ]
+}

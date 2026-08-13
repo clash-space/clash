@@ -2,7 +2,7 @@
   "name": "@clash/sdk",
   "version": "0.1.0",
   "private": true,
-  "description": "Clash SDK \u2014 register and run local Node.js code as canvas actions",
+  "description": "Clash SDK - typed clients for Clash local model runtimes",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -21,17 +21,13 @@
     "node": ">=24.18.0 <25"
   },
   "scripts": {
-    "build": "tsup src/index.ts src/types.ts src/agent.ts src/local-models.ts --format esm --clean --target node24 && tsc --emitDeclarationOnly --outDir dist",
+    "build": "tsup src/index.ts src/local-models.ts --format esm --clean --target node24 && tsc --emitDeclarationOnly --outDir dist",
     "dev": "tsup src/index.ts --format esm --watch --target node24",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
-  "dependencies": {
-    "ws": "^8.18.0"
-  },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "@types/ws": "^8.5.10",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
     "vitest": "^4.1.0"

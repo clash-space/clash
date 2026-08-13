@@ -24,8 +24,8 @@ describe("ChatInput primitives", () => {
     const source = readSource("packages/web-ui/src/components/copilot/ChatInput.tsx");
 
     expect(source).toContain("../ui/icon-button");
-    expect(source).toMatch(/<IconButton[\s\S]{0,400}onClick=\{handleFormSubmit\}[\s\S]{0,400}label=\{t\('copilot\.chatInput\.send'\)\}/);
-    expect(source).toMatch(/<IconButton[\s\S]{0,400}onClick=\{onStop\}[\s\S]{0,400}label=\{t\('copilot\.chatInput\.stop'\)\}/);
+    expect(source).toMatch(/<IconButton[\s\S]{0,400}onClick=\{handleFormSubmit\}[\s\S]{0,400}label=\{t\(["']copilot\.chatInput\.send["']\)\}/);
+    expect(source).toMatch(/<IconButton[\s\S]{0,400}onClick=\{onStop\}[\s\S]{0,400}label=\{t\(["']copilot\.chatInput\.stop["']\)\}/);
     expect(source).not.toMatch(/<button[\s\S]*copilot\.chatInput\.send/);
     expect(source).not.toMatch(/<button[\s\S]*copilot\.chatInput\.stop/);
   });

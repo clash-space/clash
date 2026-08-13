@@ -42,6 +42,13 @@ client; they do not call a Host network API.
    failures, and malformed responses.
 4. Large-result upload and URL-result persistence paths.
 
+For first-party providers, each executor invocation may make at most one
+corresponding upstream submit or status request. The Host owns retry timing;
+provider executors must neither sleep nor retry internally, and transport
+errors must be surfaced rather than translated into `accepted`. A successful
+status response may still require one follow-up file fetch when the provider
+returns a file identifier instead of the result URL.
+
 Contract cases must be deterministic and credential-free. They prove the
 plugin package and SDK shape. They do not claim a vendor currently accepts the
 request.

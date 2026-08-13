@@ -148,6 +148,12 @@ export async function prepareDevelopmentBundledPlugins(options: {
   const watchRoots: Record<string, readonly string[]> = {};
   const refreshed: string[] = [];
   const actionSdkSource = join(root, "packages", "action-sdk", "src");
+  const sharedRuntimeSource = join(
+    root,
+    "packages",
+    "shared-runtime",
+    "src",
+  );
   const sharedTypesSource = join(root, "packages", "shared-types", "src");
   await mkdir(options.actionsRoot, { recursive: true });
 
@@ -172,6 +178,7 @@ export async function prepareDevelopmentBundledPlugins(options: {
       plugin.id === "clash.volcengine"
         ? [actionSdkSource]
         : []),
+      ...(plugin.id === "clash.minimax" ? [sharedRuntimeSource] : []),
       sharedTypesSource,
     ];
     if (await activePackageMatches(options.actionsRoot, input)) continue;

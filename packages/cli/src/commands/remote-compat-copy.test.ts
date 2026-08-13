@@ -17,9 +17,8 @@ test("model provider help does not present vars as the local provider auth path"
   assert.doesNotMatch(source, /No model providers configured\.[^`]+`clash vars set <KEY>`/);
 });
 
-test("remote worker action secret copy does not point to local vars CLI", () => {
+test("retired remote worker secret flow does not restore the local vars CLI", () => {
   const pluginSource = commandSource("plugin.ts");
 
-  assert.match(pluginSource, /Remote worker action secrets are managed in hosted\/remote Settings/);
   assert.doesNotMatch(pluginSource, /clash vars/);
 });

@@ -9,6 +9,7 @@ import {
   MODEL_CARDS,
   ModelProviderImplementationSchema,
   normalizeModelId,
+  resolveAspectRatio,
 } from "./models.js";
 
 function card(id: string) {
@@ -77,17 +78,11 @@ describe("Seedance and H3 unified model cards", () => {
   });
 
   it("keeps the FLUX text-to-video model card independent from its other input modes", () => {
-    const pureTextVideoCards = MODEL_CARDS.filter((model) => {
-      if (model.kind !== "video") return false;
-      const input = model.input.inputMode;
-      return !input.images && !input.videos && !input.audios && !input.startEnd;
-    });
-
-    expect(pureTextVideoCards.map((model) => model.id)).toEqual([
-      "flux-3-video",
-    ]);
-    expect(pureTextVideoCards[0]).not.toHaveProperty("family");
-    expect(pureTextVideoCards[0]).not.toHaveProperty("workflow");
+    const flux = card("flux-3-video");
+    expect(flux.kind).toBe("video");
+    expect(flux.input.inputMode).toEqual({});
+    expect(flux).not.toHaveProperty("family");
+    expect(flux).not.toHaveProperty("workflow");
     expect(MODEL_CARDS.some((model) => model.id === "veo-3.1-lite")).toBe(
       false,
     );
@@ -271,9 +266,10 @@ describe("Seedance and H3 unified model cards", () => {
     );
 
     expect(duration?.options?.map((option) => option.value)).toEqual(
-      Array.from({ length: 27 }, (_, index) => index + 4),
+      ["auto", ...Array.from({ length: 27 }, (_, index) => index + 4)],
     );
     expect(ratio?.options?.map((option) => option.value)).toEqual([
+      "auto",
       "1:1",
       "3:4",
       "16:9",
@@ -370,16 +366,16 @@ describe("Seedance and H3 unified model cards", () => {
           effective.parameters
             .find((parameter) => parameter.id === "duration")
             ?.options?.map((option) => option.value),
-        ).toEqual([-1, ...Array.from({ length: 27 }, (_, index) => index + 4)]);
+        ).toEqual(["auto", ...Array.from({ length: 27 }, (_, index) => index + 4)]);
         expect(
           effective.parameters
             .find((parameter) => parameter.id === "aspect_ratio")
             ?.options?.map((option) => option.value),
-        ).toEqual(["21:9", "16:9", "4:3", "1:1", "3:4", "9:16", "adaptive"]);
+        ).toEqual(["21:9", "16:9", "4:3", "1:1", "3:4", "9:16", "auto"]);
         expect(
           effective.parameters
             .find((parameter) => parameter.id === "aspect_ratio")
-            ?.options?.find((option) => option.value === "adaptive")?.label,
+            ?.options?.find((option) => option.value === "auto")?.label,
         ).toBe("Auto");
       }
       expect(
@@ -389,6 +385,44 @@ describe("Seedance and H3 unified model cards", () => {
       ).toBe(false);
       expect(effective.defaultParams).not.toHaveProperty("output_format");
     }
+  });
+
+  it("keeps intelligent duration as product-level auto on every Volcengine Seedance card", () => {
+    for (const modelId of [
+      "seedance-2-startend",
+      "seedance-2-ref",
+      "seedance-2-extend",
+      "seedance-2.5-ref",
+      "seedance-2.5-startend",
+      "seedance-2.5-extend",
+    ]) {
+      const model = card(modelId);
+      const [route] = listModelUpstreamRoutes({
+        modelCode: modelId,
+        kind: "video",
+        configuredProviders: [
+          {
+            providerId: "volcengine",
+            upstreamId: "volcengine",
+            enabled: true,
+            configuredCredentials: ["apiKey"],
+          },
+        ],
+      });
+      const effective = applyModelProviderImplementation(model, route);
+      const duration = effective.parameters.find(
+        (parameter) => parameter.id === "duration",
+      );
+      expect(duration?.options?.some((option) => option.value === "auto")).toBe(true);
+      expect(duration?.options?.some((option) => option.value === -1)).toBe(false);
+      expect(effective.defaultParams.duration).toBe("auto");
+    }
+  });
+
+  it("keeps the product-level auto aspect-ratio sentinel when building a Seedance node", () => {
+    expect(
+      resolveAspectRatio("seedance-2.5-ref", { aspect_ratio: "auto" }),
+    ).toBe("auto");
   });
 
   it("executes every Volcengine Seedance capability through the bundled Provider plugin", () => {
@@ -600,7 +634,7 @@ describe("Seedance and H3 unified model cards", () => {
     );
   });
 
-  it("publishes Gemini Omni Flash as one optional-reference card without unsupported inputs", () => {
+  it("publishes only the captured text input capability for Gemini Omni Flash", () => {
     const model = card("gemini-omni-flash");
 
     expect(model).toMatchObject({
@@ -609,11 +643,8 @@ describe("Seedance and H3 unified model cards", () => {
       availableProviders: ["official"],
       defaultProvider: "official",
       input: {
-        promptModalities: ["text", "image"],
-        referenceBinding: { type: "ordered-content-parts" },
-        inputMode: {
-          images: { max: 6 },
-        },
+        promptModalities: ["text"],
+        inputMode: {},
       },
     });
     expect(
@@ -645,6 +676,8 @@ describe("Seedance and H3 unified model cards", () => {
         }),
       ]),
     );
+    expect(model.input.referenceBinding).toBeUndefined();
+    expect(model.input.inputMode.images).toBeUndefined();
     expect(model.input.inputMode.videos).toBeUndefined();
     expect(model.input.inputMode.audios).toBeUndefined();
 

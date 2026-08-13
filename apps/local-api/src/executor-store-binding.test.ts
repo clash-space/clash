@@ -46,18 +46,20 @@ function stubClient(captured: CapturedCall[]) {
         // A real media output, because the executor refuses a completed result that carries none.
         // The assertions below are about the frame the executor sent, so the reply only has to be
         // one the executor accepts.
-        outputs: [{
-          slot: "media" as const,
-          kind: "asset" as const,
-          asset: {
-            assetId: "a-1",
-            uri: "clash-asset://a-1",
-            kind: "image" as const,
-            mediaType: "image/png",
-            url: "https://cdn.example.test/a.png",
-            reach: "public" as const,
+        outputs: [
+          {
+            slot: "media" as const,
+            kind: "asset" as const,
+            asset: {
+              assetId: "a-1",
+              uri: "clash-asset://a-1",
+              kind: "image" as const,
+              mediaType: "image/png",
+              url: "https://cdn.example.test/a.png",
+              reach: "public" as const,
+            },
           },
-        }],
+        ],
       };
     },
   };
@@ -76,45 +78,58 @@ const request = (over: Record<string, unknown> = {}) => ({
 describe("executor store binding", () => {
   it("binds the chosen account in host invoke options, not plugin-visible values", async () => {
     const captured: CapturedCall[] = [];
-    const execute = createProviderPluginExecutor({ client: stubClient(captured) });
+    const execute = createProviderPluginExecutor({
+      client: stubClient(captured),
+    });
 
     await execute(request({ accountId: "acct-google-1" }) as never);
 
     expect(captured[0]?.options).toEqual({
-      timeoutMs: 30 * 60_000,
       accountId: "acct-google-1",
     });
-    expect(captured[0]?.invocation.input.values).not.toHaveProperty("accountId");
+    expect(captured[0]?.invocation.input.values).not.toHaveProperty(
+      "accountId",
+    );
   });
 
   it("never serializes resolved credentials into the plugin invocation", async () => {
     const captured: CapturedCall[] = [];
-    const execute = createProviderPluginExecutor({ client: stubClient(captured) });
+    const execute = createProviderPluginExecutor({
+      client: stubClient(captured),
+    });
 
-    await execute(request({
-      accountId: "acct-google-1",
-      credentials: { apiKey: "google-key" },
-    }) as never);
+    await execute(
+      request({
+        accountId: "acct-google-1",
+        credentials: { apiKey: "google-key" },
+      }) as never,
+    );
 
-    expect(captured[0]?.invocation.input.values).not.toHaveProperty("credentials");
+    expect(captured[0]?.invocation.input.values).not.toHaveProperty(
+      "credentials",
+    );
     expect(JSON.stringify(captured[0]?.invocation)).not.toContain("google-key");
   });
 
   it("drops account and credential fields forged inside caller values", async () => {
     const captured: CapturedCall[] = [];
-    const execute = createProviderPluginExecutor({ client: stubClient(captured) });
+    const execute = createProviderPluginExecutor({
+      client: stubClient(captured),
+    });
 
-    await execute(request({
-      accountId: "host-account",
-      input: {
-        values: {
-          prompt: "a leaf",
-          accountId: "forged-account",
-          credentials: { apiKey: "forged-key" },
+    await execute(
+      request({
+        accountId: "host-account",
+        input: {
+          values: {
+            prompt: "a leaf",
+            accountId: "forged-account",
+            credentials: { apiKey: "forged-key" },
+          },
+          references: [],
         },
-        references: [],
-      },
-    }) as never);
+      }) as never,
+    );
 
     expect(captured[0]?.options?.accountId).toBe("host-account");
     expect(captured[0]?.invocation.input.values).toEqual({
@@ -125,17 +140,23 @@ describe("executor store binding", () => {
 
   it("binds submit and poll to the same host-selected account", async () => {
     const captured: CapturedCall[] = [];
-    const execute = createProviderPluginExecutor({ client: stubClient(captured) });
+    const execute = createProviderPluginExecutor({
+      client: stubClient(captured),
+    });
 
-    await execute(request({
-      taskId: "task-submit",
-      accountId: "acct-google-1",
-    }) as never);
-    await execute(request({
-      taskId: "task-poll",
-      accountId: "acct-google-1",
-      pollState: { taskId: "upstream-task-1" },
-    }) as never);
+    await execute(
+      request({
+        taskId: "task-submit",
+        accountId: "acct-google-1",
+      }) as never,
+    );
+    await execute(
+      request({
+        taskId: "task-poll",
+        accountId: "acct-google-1",
+        pollState: { taskId: "upstream-task-1" },
+      }) as never,
+    );
 
     expect(captured.map(({ options }) => options?.accountId)).toEqual([
       "acct-google-1",

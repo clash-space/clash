@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { AigcActionKindSchema, type AigcActionKind } from './actions.js';
+import { AssetKindSchema } from './assets.js';
 
 import { GPT_IMAGE_ASPECT_RATIOS, GPT_IMAGE_RESOLUTION_TIERS } from './gpt-image-size.js';
 import { CANONICAL_RESOLUTION_TIERS, type CanonicalResolutionTier } from './resolution-tiers.js';
@@ -548,6 +549,27 @@ export const ProviderInputAdaptationSchema = z.object({
 });
 export type ProviderInputAdaptation = z.infer<typeof ProviderInputAdaptationSchema>;
 
+/** How a Provider binding can receive one Asset input from the Host. */
+export const ProviderAssetRepresentationSchema = z.enum(['provider-url', 'bytes']);
+export type ProviderAssetRepresentation = z.infer<typeof ProviderAssetRepresentationSchema>;
+
+export const ProviderAssetInputSchema = z.object({
+  match: z.object({
+    kinds: z.array(AssetKindSchema).min(1).optional(),
+    slots: z.array(z.string().trim().min(1)).min(1).optional(),
+  }).strict().superRefine((match, ctx) => {
+    if (!match.kinds?.length && !match.slots?.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Asset input match must declare at least one kind or slot.',
+      });
+    }
+  }),
+  representations: z.array(ProviderAssetRepresentationSchema).min(1),
+  mediaTypes: z.array(z.string().trim().min(1)).min(1).optional(),
+}).strict();
+export type ProviderAssetInput = z.infer<typeof ProviderAssetInputSchema>;
+
 export const ModelProviderImplementationSchema = z
   .object({
     providerId: ProviderSchema,
@@ -578,6 +600,8 @@ export const ModelProviderImplementationSchema = z
     referenceBinding: ReferenceBindingSchema.optional(),
     /** Provider-specific wire spellings applied after this route is selected. */
     inputAdaptation: ProviderInputAdaptationSchema.optional(),
+    /** Asset delivery forms accepted by this exact Provider/model binding. */
+    assetInputs: z.array(ProviderAssetInputSchema).optional(),
     /** Full replacements for parameters whose candidates or ranges differ on this provider.
      * Parameters absent from this list are reused from the base model card. */
     parameterOverrides: z.array(ModelParameterSchema).optional(),
@@ -924,6 +948,10 @@ export function resolveAspectRatio(
 
   // If value is already canonical format (N:M), return directly
   if (typeof value === 'string' && /^\d+:\d+$/.test(value)) return value;
+
+  // Product-level sentinels are already canonical values. Do not replace them
+  // with their presentation labels (for example `auto` -> `Auto`).
+  if (value === 'auto') return value;
 
   // Reverse-lookup: provider value → our label
   const option = arParam.options?.find(o => o.value === value);
@@ -1805,13 +1833,13 @@ const MODEL_CARD_DEFINITIONS = [
         label: 'Duration',
         type: 'select',
         options: [
-          { label: 'Auto', value: -1 },
+          { label: 'Auto', value: 'auto' },
           ...Array.from({ length: 12 }, (_, index) => ({
             label: `${index + 4}s`,
             value: index + 4,
           })),
         ],
-        defaultValue: -1,
+        defaultValue: 'auto',
       },
       {
         id: 'resolution',
@@ -1830,7 +1858,7 @@ const MODEL_CARD_DEFINITIONS = [
         defaultValue: true,
       },
     ],
-    defaultParams: { duration: -1, resolution: '720p', generate_audio: true },
+    defaultParams: { duration: 'auto', resolution: '720p', generate_audio: true },
     input: {
       requiresPrompt: true,
       inputMode: {
@@ -1865,18 +1893,21 @@ const MODEL_CARD_DEFINITIONS = [
         id: 'duration',
         label: 'Duration',
         type: 'select',
-        options: Array.from({ length: 27 }, (_, index) => ({
-          label: `${index + 4}s`,
-          value: index + 4,
-        })),
+        options: [
+          { label: 'Auto', value: 'auto' },
+          ...Array.from({ length: 27 }, (_, index) => ({
+            label: `${index + 4}s`,
+            value: index + 4,
+          })),
+        ],
         defaultValue: 5,
       },
       {
         id: 'aspect_ratio',
         label: 'Aspect Ratio',
         type: 'select',
-        options: ['1:1', '3:4', '16:9', '4:3', '9:16', '21:9'].map(value => ({
-          label: value,
+        options: ['auto', '1:1', '3:4', '16:9', '4:3', '9:16', '21:9'].map(value => ({
+          label: value === 'auto' ? 'Auto' : value,
           value,
         })),
         defaultValue: '16:9',
@@ -1950,10 +1981,13 @@ const MODEL_CARD_DEFINITIONS = [
         id: 'duration',
         label: 'Duration',
         type: 'select',
-        options: Array.from({ length: 27 }, (_, index) => ({
-          label: `${index + 4}s`,
-          value: index + 4,
-        })),
+        options: [
+          { label: 'Auto', value: 'auto' },
+          ...Array.from({ length: 27 }, (_, index) => ({
+            label: `${index + 4}s`,
+            value: index + 4,
+          })),
+        ],
         defaultValue: 5,
       },
       {
@@ -2000,13 +2034,13 @@ const MODEL_CARD_DEFINITIONS = [
         label: 'Duration',
         type: 'select',
         options: [
-          { label: 'Auto', value: -1 },
+          { label: 'Auto', value: 'auto' },
           ...Array.from({ length: 27 }, (_, index) => ({
             label: `${index + 4}s`,
             value: index + 4,
           })),
         ],
-        defaultValue: -1,
+        defaultValue: 'auto',
       },
       {
         id: 'resolution',
@@ -2023,7 +2057,7 @@ const MODEL_CARD_DEFINITIONS = [
       },
     ],
     defaultParams: {
-      duration: -1,
+      duration: 'auto',
       resolution: '720p',
       generate_audio: true,
     },
@@ -2493,8 +2527,8 @@ const MODEL_CARD_DEFINITIONS = [
     defaultProvider: 'official',
     kind: 'video',
     defaultAspectRatio: '16:9',
-    description: 'Google Gemini Omni Flash preview — video generation with optional ordered image references and native audio output.',
-    promptGuidance: 'Describe scene, motion, camera, lighting, timing, and desired audio. Image references remain in authored prompt order.',
+    description: 'Google Gemini Omni Flash preview — text-to-video generation with native audio output.',
+    promptGuidance: 'Describe scene, motion, camera, lighting, timing, and desired audio.',
     parameters: [
       {
         id: 'duration',
@@ -2548,23 +2582,9 @@ const MODEL_CARD_DEFINITIONS = [
       frame_rate: 24,
       native_audio: true,
     },
-    input: {
-      requiresPrompt: true,
-      inputMode: {
-        // Google's guide demonstrates six independently addressed image refs.
-        // Video/audio refs are deliberately not exposed while the current API
-        // documents them as unsupported or incorrectly processed.
-        images: {
-          max: 6,
-          constraints: {
-            mimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'],
-            fileExtensions: ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'],
-          },
-        },
-      },
-      promptModalities: ['text', 'image'],
-      referenceBinding: ORDERED_REFERENCE_BINDING,
-    },
+    // The captured Interactions request is text-only. Do not advertise reference media until a
+    // real accepted request establishes the wire shape; the Provider adapter fails closed too.
+    input: { requiresPrompt: true, inputMode: {}, promptModalities: ['text'] },
     maxRuntimeMs: 15 * 60 * 1000,
   },
   // ─── Text ────────────────────────────────────────────────────
@@ -4108,13 +4128,13 @@ const SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES: ModelParameter[] = [
     type: 'select',
     required: false,
     options: [
-      { label: 'Auto', value: -1 },
+      { label: 'Auto', value: 'auto' },
       ...Array.from({ length: 12 }, (_, index) => ({
         label: `${index + 4}s`,
         value: index + 4,
       })),
     ],
-    defaultValue: -1,
+    defaultValue: 'auto',
   },
   {
     id: 'resolution',
@@ -4139,9 +4159,9 @@ const SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER: ModelParameter = {
       label: value,
       value,
     })),
-    { label: 'Auto', value: 'adaptive' },
+    { label: 'Auto', value: 'auto' },
   ],
-  defaultValue: 'adaptive',
+  defaultValue: 'auto',
 };
 
 const SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES: ModelParameter[] = [
@@ -4151,13 +4171,13 @@ const SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES: ModelParameter[] = [
     type: 'select',
     required: false,
     options: [
-      { label: 'Auto', value: -1 },
+      { label: 'Auto', value: 'auto' },
       ...Array.from({ length: 27 }, (_, index) => ({
         label: `${index + 4}s`,
         value: index + 4,
       })),
     ],
-    defaultValue: -1,
+    defaultValue: 'auto',
   },
   {
     id: 'resolution',
@@ -4534,7 +4554,7 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
       executorPluginId: 'clash.volcengine',
       executorExportId: 'volcengine-execute',
       parameterOverrides: SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES,
-      defaultParamOverrides: { duration: -1, resolution: '720p' },
+      defaultParamOverrides: { duration: 'auto', resolution: '720p' },
       excludedParameterIds: ['seed'],
     },
   ],
@@ -4551,8 +4571,8 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
       executorExportId: 'volcengine-execute',
       parameterOverrides: [...SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES, SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER],
       defaultParamOverrides: {
-        duration: -1,
-        aspect_ratio: 'adaptive',
+        duration: 'auto',
+        aspect_ratio: 'auto',
         resolution: '720p',
       },
       excludedParameterIds: ['seed'],
@@ -4594,8 +4614,8 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
       executorExportId: 'volcengine-execute',
       parameterOverrides: [...SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES, SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER],
       defaultParamOverrides: {
-        duration: -1,
-        aspect_ratio: 'adaptive',
+        duration: 'auto',
+        aspect_ratio: 'auto',
         resolution: '720p',
       },
       referenceBinding: {
@@ -4618,7 +4638,7 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
       executorExportId: 'volcengine-execute',
       parameterOverrides: SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES,
       defaultParamOverrides: {
-        duration: -1,
+        duration: 'auto',
         resolution: '720p',
       },
     },

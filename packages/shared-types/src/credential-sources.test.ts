@@ -58,6 +58,57 @@ describe('credential source classification', () => {
     expect(resolveCredentialSources(hiloAuth)[0].control).toBe('button-window');
   });
 
+  it('exposes flow-only and import-only methods as controls without inventing form fields', () => {
+    const methodOnly = parse({
+      methods: [
+        {
+          id: 'sign-in',
+          label: 'Sign in to Hub',
+          flow: {
+            open: 'https://hub.example.test/login',
+            callback: { type: 'scheme', scheme: 'example-hub' },
+            credential: {
+              from: 'query',
+              name: 'accessToken',
+              storeAs: 'accessToken',
+            },
+          },
+        },
+        {
+          id: 'reuse-local-login',
+          label: 'Reuse local login',
+          import: {
+            format: 'electron-store-aes-256-gcm-v2',
+            appDataSubdirectory: 'Example Hub',
+            configFile: 'config.json',
+            keyFile: '.key',
+            tokenPath: ['tokens', 'accessToken'],
+            storeAs: 'accessToken',
+          },
+        },
+      ],
+    });
+
+    expect(resolveCredentialSources(methodOnly)).toMatchObject([
+      {
+        id: 'accessToken',
+        methodId: 'sign-in',
+        label: 'Sign in to Hub',
+        control: 'button-window',
+        interactive: true,
+        credentialId: 'accessToken',
+      },
+      {
+        id: 'accessToken',
+        methodId: 'reuse-local-login',
+        label: 'Reuse local login',
+        control: 'button-action',
+        interactive: false,
+        credentialId: 'accessToken',
+      },
+    ]);
+  });
+
   it('reports a button with no flow as a host action', () => {
     const localOnly = parse({
       methods: [{
@@ -135,7 +186,7 @@ describe('uniform presentation', () => {
 
   it('carries the originating item for host code that needs its fields', () => {
     const [source] = resolveCredentialSources(apiKeyAuth);
-    expect(source.item.kind).toBe('field');
+    expect(source.item?.kind).toBe('field');
   });
 
   it('points every source at the key it populates', () => {

@@ -163,30 +163,32 @@ class ExecutablePluginContext:
         self.host_tools = PluginHostTools(request_host)
 
     async def reference(self, reference: Mapping[str, Any]) -> Mapping[str, Any]:
-        text = reference.get("text")
-        if isinstance(text, Mapping):
-            return {"form": "text", "text": str(text.get("value", ""))}
-
-        asset = reference.get("asset")
-        if not isinstance(asset, Mapping):
-            raise ValueError("This reference carries neither text nor an asset.")
-        if asset.get("url") and asset.get("reach") == "public":
-            return {
-                "form": "url",
-                "url": asset["url"],
-                **({"mediaType": asset["mediaType"]} if asset.get("mediaType") else {}),
-                **({"kind": asset["kind"]} if asset.get("kind") else {}),
-            }
-
-        answer = await self._request_host({"kind": "asset.read", "asset": dict(asset)})
-        if not isinstance(answer, Mapping) or not answer.get("dataBase64"):
+        answer = await self._request_host(
+            {"kind": "asset.resolve", "reference": dict(reference)}
+        )
+        if not isinstance(answer, Mapping):
             raise HostDependencyError(
                 "invalid_asset",
-                f"The Host returned no bytes for asset {asset.get('assetId', 'unknown')}.",
+                "The Host returned an invalid resolved reference.",
+            )
+        form = answer.get("form")
+        if form == "provider-url":
+            if not answer.get("providerUrl") or not answer.get("expiresAt"):
+                raise HostDependencyError(
+                    "invalid_asset",
+                    "The Host returned an incomplete Provider URL.",
+                )
+            return dict(answer)
+        if form == "text":
+            return {"form": "text", "text": str(answer.get("text", ""))}
+        if form != "bytes" or not answer.get("bytesBase64"):
+            raise HostDependencyError(
+                "invalid_asset",
+                "The Host returned no supported Asset representation.",
             )
         return {
             "form": "bytes",
-            "bytes": base64.b64decode(str(answer["dataBase64"])),
+            "bytes": base64.b64decode(str(answer["bytesBase64"])),
             **({"mediaType": answer["mediaType"]} if answer.get("mediaType") else {}),
             **({"kind": answer["kind"]} if answer.get("kind") else {}),
         }

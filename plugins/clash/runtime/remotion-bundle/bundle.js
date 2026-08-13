@@ -1,7 +1,7 @@
 /******/ (() => { // webpackBootstrap
 /******/ 	var __webpack_modules__ = ({
 
-/***/ 3668
+/***/ 9943
 (__unused_webpack_module, __unused_webpack___webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -4423,7 +4423,7 @@ var z = /*#__PURE__*/Object.freeze({
 
 
 
-;// ../shared-types/dist/chunk-M2EI3OAT.js
+;// ../shared-types/dist/chunk-JZFWVH64.js
 
 
 function agentReadToken(options) {
@@ -4714,6 +4714,119 @@ function fnv1a64(input) {
   return hash.toString(16).padStart(16, "0");
 }
 var AssetKindSchema = z.enum(["image", "video", "audio", "model"]);
+var ResourceIdSchema = z.string().trim().min(1);
+var ResourceSchema = z.object({
+  id: ResourceIdSchema,
+  kind: AssetKindSchema,
+  digest: z.object({
+    algorithm: z.literal("sha256"),
+    value: z.string().regex(/^[a-f0-9]{64}$/)
+  }).strict(),
+  byteLength: z.number().int().nonnegative(),
+  contentType: z.string().trim().min(1).optional()
+}).strict();
+var ProjectAssetMetadataSchema = z.object({
+  width: z.number().int().nonnegative().optional(),
+  height: z.number().int().nonnegative().optional(),
+  durationMs: z.number().int().nonnegative().optional(),
+  bytes: z.number().int().nonnegative().optional(),
+  waveform: z.array(z.number()).optional(),
+  contentType: z.string().trim().min(1).optional(),
+  frameRate: z.number().positive().optional(),
+  videoCodec: z.string().trim().min(1).optional(),
+  audioCodec: z.string().trim().min(1).optional(),
+  originalName: z.string().trim().min(1).optional()
+}).strict();
+var ProjectAssetProvenanceSchema = z.object({
+  kind: z.enum(["import", "generation", "edit", "render", "admission"]),
+  actionRunId: z.string().trim().min(1).optional(),
+  model: z.string().trim().min(1).optional(),
+  prompt: z.string().optional()
+}).strict();
+var ProjectAssetSourceSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("owned"),
+    resourceId: ResourceIdSchema
+  }).strict(),
+  z.object({
+    kind: z.literal("linked"),
+    resourceId: ResourceIdSchema,
+    origin: z.object({
+      scope: z.enum(["global", "catalog", "project"]),
+      entryId: z.string().trim().min(1)
+    }).strict()
+  }).strict()
+]);
+var ProjectAssetLifecycleSchema = z.discriminatedUnion("state", [
+  z.object({ state: z.literal("active") }).strict(),
+  z.object({
+    state: z.literal("trashed"),
+    deleteOperationId: z.string().trim().min(1),
+    deletedAt: z.string().trim().min(1),
+    purgeAfter: z.string().trim().min(1)
+  }).strict(),
+  z.object({
+    state: z.literal("purged"),
+    deleteOperationId: z.string().trim().min(1),
+    deletedAt: z.string().trim().min(1),
+    purgedAt: z.string().trim().min(1)
+  }).strict()
+]);
+var ProjectAssetEntrySchema = z.object({
+  id: z.string().trim().min(1),
+  kind: AssetKindSchema,
+  source: ProjectAssetSourceSchema,
+  lifecycle: ProjectAssetLifecycleSchema,
+  name: z.string().trim().min(1).optional(),
+  metadata: ProjectAssetMetadataSchema,
+  provenance: ProjectAssetProvenanceSchema.optional()
+}).strict();
+var GlobalAssetEntrySchema = z.object({
+  id: z.string().trim().min(1),
+  kind: AssetKindSchema,
+  resourceId: ResourceIdSchema,
+  lifecycle: ProjectAssetLifecycleSchema,
+  name: z.string().trim().min(1).optional(),
+  metadata: ProjectAssetMetadataSchema,
+  provenance: ProjectAssetProvenanceSchema.optional()
+}).strict();
+var ActionBindingOwnerSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("draft"),
+    actionId: z.string().trim().min(1)
+  }).strict(),
+  z.object({
+    kind: z.literal("revision"),
+    actionId: z.string().trim().min(1),
+    actionRevisionId: z.string().trim().min(1)
+  }).strict(),
+  z.object({
+    kind: z.literal("run"),
+    actionId: z.string().trim().min(1),
+    actionRevisionId: z.string().trim().min(1),
+    actionRunId: z.string().trim().min(1)
+  }).strict()
+]);
+var ActionAssetBindingSchema = z.object({
+  id: z.string().trim().min(1),
+  owner: ActionBindingOwnerSchema,
+  direction: z.enum(["input", "output"]),
+  slot: z.string().trim().min(1),
+  projectAssetId: z.string().trim().min(1),
+  role: z.enum(["primary", "reference", "source"]).optional()
+}).strict();
+var ResolvedAssetSchema = z.object({
+  id: z.string().trim().min(1),
+  kind: AssetKindSchema,
+  name: z.string().trim().min(1).optional(),
+  metadata: ProjectAssetMetadataSchema,
+  provenance: ProjectAssetProvenanceSchema.optional(),
+  status: z.enum(["uploading", "ready", "downloading", "unavailable", "failed"]),
+  url: z.string().url().optional(),
+  thumbnailUrl: z.string().url().optional(),
+  progress: z.number().min(0).max(1).optional(),
+  error: z.string().trim().min(1).optional()
+}).strict();
 var AssetMetadataSchema = z.object({
   width: z.number().int().optional(),
   height: z.number().int().optional(),
@@ -4797,7 +4910,7 @@ function assetRefReadToken(ref) {
 }
 
 
-;// ../shared-types/dist/chunk-ZDCOV6OE.js
+;// ../shared-types/dist/chunk-GNYSXLHQ.js
 /* unused harmony import specifier */ var z6;
 
 
@@ -5425,20 +5538,7 @@ var GEMINI_TTS_VOICES = [
   { label: "Sulafat - Warm", value: "Sulafat" }
 ];
 var ModelParameterTypeSchema = z.enum(["select", "slider", "number", "text", "boolean"]);
-var BuiltinProviderSchema = z.enum([
-  "local",
-  "official",
-  "fal",
-  "pika",
-  "replicate",
-  "kling",
-  "minimax",
-  "volcengine",
-  "elevenlabs",
-  "suno",
-  "mock",
-  "custom"
-]);
+var BuiltinProviderSchema = z.enum(["local", "official", "fal", "pika", "replicate", "kling", "minimax", "volcengine", "elevenlabs", "suno", "mock", "custom"]);
 var ProviderSchema = z.string().trim().regex(
   /^[a-z0-9][a-z0-9._-]*$/,
   "Provider ids must be lowercase plugin-safe identifiers."
@@ -5682,7 +5782,11 @@ var ModelCardSchema = z.object({
    * This is OUR representation — provider-specific values live in parameters/defaultParams.
    */
   defaultAspectRatio: z.string().default("16:9"),
-  input: ModelInputRuleSchema.default({ requiresPrompt: true, inputMode: {}, promptModalities: ["text"] }),
+  input: ModelInputRuleSchema.default({
+    requiresPrompt: true,
+    inputMode: {},
+    promptModalities: ["text"]
+  }),
   musicInput: MusicInputMappingSchema.optional(),
   /** Shared UI/runtime constraints. Providers may still translate the final
    * valid configuration into different wire shapes. */
@@ -5698,9 +5802,55 @@ var ModelCardSchema = z.object({
    */
   maxRuntimeMs: z.number().int().positive().optional()
 }).superRefine((model, ctx) => {
-  var _a, _b;
+  var _a, _b, _c;
   const parameterIds = /* @__PURE__ */ new Set();
+  const parametersById = /* @__PURE__ */ new Map();
   const sameCandidate = (left, right) => left === right;
+  const validateProviderParameterValue = (parameter, value, path, source) => {
+    var _a2;
+    if (value === void 0) return;
+    if (parameter.type === "select") {
+      const optionValues = ((_a2 = parameter.options) == null ? void 0 : _a2.map((option) => option.value)) ?? [];
+      if (!optionValues.some((candidate) => sameCandidate(candidate, value))) {
+        ctx.addIssue({
+          code: "custom",
+          path,
+          message: `${parameter.label} ${source} must be one of its provider candidates.`
+        });
+      }
+      return;
+    }
+    if (parameter.type === "number" || parameter.type === "slider") {
+      if (typeof value !== "number" || !Number.isFinite(value)) {
+        ctx.addIssue({
+          code: "custom",
+          path,
+          message: `${parameter.label} ${source} must be a finite number.`
+        });
+      } else if (parameter.min !== void 0 && value < parameter.min || parameter.max !== void 0 && value > parameter.max) {
+        ctx.addIssue({
+          code: "custom",
+          path,
+          message: `${parameter.label} ${source} must stay within its provider range.`
+        });
+      }
+      return;
+    }
+    if (parameter.type === "boolean" && typeof value !== "boolean") {
+      ctx.addIssue({
+        code: "custom",
+        path,
+        message: `${parameter.label} ${source} must be a boolean.`
+      });
+    }
+    if (parameter.type === "text" && typeof value !== "string") {
+      ctx.addIssue({
+        code: "custom",
+        path,
+        message: `${parameter.label} ${source} must be text.`
+      });
+    }
+  };
   for (const [index, parameter] of model.parameters.entries()) {
     if (parameterIds.has(parameter.id)) {
       ctx.addIssue({
@@ -5710,6 +5860,7 @@ var ModelCardSchema = z.object({
       });
     }
     parameterIds.add(parameter.id);
+    parametersById.set(parameter.id, parameter);
     if (parameter.type === "select") {
       if (!((_a = parameter.options) == null ? void 0 : _a.length)) {
         ctx.addIssue({
@@ -5789,6 +5940,88 @@ var ModelCardSchema = z.object({
       rule.when.forEach((condition, conditionIndex) => validateConstraintField(condition.field, ["constraints", index, "when", conditionIndex, "field"]));
     }
   }
+  for (const [implementationIndex, implementation] of (model.providerImplementations ?? []).entries()) {
+    const overrideIds = /* @__PURE__ */ new Set();
+    const overridesById = /* @__PURE__ */ new Map();
+    for (const [overrideIndex, parameter] of (implementation.parameterOverrides ?? []).entries()) {
+      if (overrideIds.has(parameter.id)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["providerImplementations", implementationIndex, "parameterOverrides", overrideIndex, "id"],
+          message: "Provider parameter override ids must be unique."
+        });
+      }
+      overrideIds.add(parameter.id);
+      overridesById.set(parameter.id, parameter);
+      if (!parameterIds.has(parameter.id)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["providerImplementations", implementationIndex, "parameterOverrides", overrideIndex, "id"],
+          message: `Provider parameter override ${parameter.id} must reference a declared parameter on the canonical Model Card.`
+        });
+      }
+      if (parameter.type === "select" && !((_c = parameter.options) == null ? void 0 : _c.length)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["providerImplementations", implementationIndex, "parameterOverrides", overrideIndex, "options"],
+          message: "Provider select parameter overrides require at least one candidate."
+        });
+      }
+      validateProviderParameterValue(
+        parameter,
+        parameter.defaultValue,
+        ["providerImplementations", implementationIndex, "parameterOverrides", overrideIndex, "defaultValue"],
+        "defaultValue"
+      );
+    }
+    const excludedIds = /* @__PURE__ */ new Set();
+    for (const [excludedIndex, parameterId] of (implementation.excludedParameterIds ?? []).entries()) {
+      const path = ["providerImplementations", implementationIndex, "excludedParameterIds", excludedIndex];
+      if (excludedIds.has(parameterId)) {
+        ctx.addIssue({
+          code: "custom",
+          path,
+          message: "Provider excluded parameter ids must be unique."
+        });
+      }
+      excludedIds.add(parameterId);
+      if (!parameterIds.has(parameterId)) {
+        ctx.addIssue({
+          code: "custom",
+          path,
+          message: `Provider exclusion ${parameterId} must reference a declared parameter on the canonical Model Card.`
+        });
+      }
+      if (overrideIds.has(parameterId)) {
+        ctx.addIssue({
+          code: "custom",
+          path,
+          message: `Provider cannot both override and exclude parameter ${parameterId}.`
+        });
+      }
+    }
+    for (const [parameterId, value] of Object.entries(implementation.defaultParamOverrides ?? {})) {
+      const path = ["providerImplementations", implementationIndex, "defaultParamOverrides", parameterId];
+      if (!parameterIds.has(parameterId)) {
+        ctx.addIssue({
+          code: "custom",
+          path,
+          message: `Provider default override ${parameterId} must reference a declared parameter on the canonical Model Card.`
+        });
+      }
+      if (excludedIds.has(parameterId)) {
+        ctx.addIssue({
+          code: "custom",
+          path,
+          message: `Provider cannot set a default for excluded parameter ${parameterId}.`
+        });
+      }
+      const effectiveParameter = overridesById.get(parameterId) ?? parametersById.get(parameterId);
+      if (effectiveParameter) {
+        validateProviderParameterValue(effectiveParameter, value, path, "default override");
+      }
+    }
+  }
   const providers = model.availableProviders ?? [];
   if (providers.length === 0) return;
   if (!model.defaultProvider) {
@@ -5817,6 +6050,7 @@ function resolveAspectRatio(modelId, modelParams) {
   const value = modelParams[paramId];
   if (!value) return card.defaultAspectRatio;
   if (typeof value === "string" && /^\d+:\d+$/.test(value)) return value;
+  if (value === "auto") return value;
   const option = (_a = arParam.options) == null ? void 0 : _a.find((o) => o.value === value);
   return (option == null ? void 0 : option.label) ?? card.defaultAspectRatio;
 }
@@ -5902,6 +6136,43 @@ var MINIMAX_H3_AUDIO_CONSTRAINTS = {
   maxDurationMs: 15e3
 };
 var MINIMAX_H3_MAX_EMBEDDED_REQUEST_BYTES = 64 * 1024 * 1024;
+var SEEDANCE_IMAGE_CONSTRAINTS = {
+  mimeTypes: ["image/jpeg", "image/png", "image/webp", "image/bmp", "image/tiff", "image/gif", "image/heic", "image/heif"],
+  fileExtensions: ["jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff", "gif", "heic", "heif"],
+  maxBytes: 30 * 1024 * 1024,
+  minWidth: 300,
+  maxWidth: 6e3,
+  minHeight: 300,
+  maxHeight: 6e3,
+  minAspectRatio: 0.4,
+  maxAspectRatio: 2.5
+};
+var SEEDANCE_VIDEO_CONSTRAINTS = {
+  mimeTypes: ["video/mp4", "video/quicktime"],
+  fileExtensions: ["mp4", "mov"],
+  maxBytes: 200 * 1024 * 1024,
+  minDurationMs: 2e3,
+  minFrameRate: 24,
+  maxFrameRate: 60
+};
+var SEEDANCE_AUDIO_CONSTRAINTS = {
+  mimeTypes: ["audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp3"],
+  fileExtensions: ["wav", "mp3"],
+  maxBytes: 15 * 1024 * 1024,
+  minDurationMs: 2e3
+};
+var SEEDANCE_MAX_EMBEDDED_REQUEST_BYTES = 64 * 1024 * 1024;
+var SEED_AUDIO_IMAGE_CONSTRAINTS = {
+  mimeTypes: ["image/jpeg", "image/png", "image/webp"],
+  fileExtensions: ["jpg", "jpeg", "png", "webp"],
+  maxBytes: 10 * 1024 * 1024
+};
+var SEED_AUDIO_AUDIO_CONSTRAINTS = {
+  mimeTypes: ["audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp3", "audio/pcm", "audio/ogg", "audio/opus"],
+  fileExtensions: ["wav", "mp3", "pcm", "ogg", "opus"],
+  maxBytes: 10 * 1024 * 1024,
+  maxDurationMs: 3e4
+};
 var GROUPED_REFERENCE_BINDING = {
   type: "grouped-references"
 };
@@ -5993,7 +6264,17 @@ var MODEL_CARD_DEFINITIONS = [
     kind: "audio",
     defaultAspectRatio: "1:1",
     description: "Google Lyria 3 Pro music generation from the current Pika catalog.",
-    parameters: [{ id: "duration", label: "Duration", type: "number", min: 10, max: 180, step: 1, defaultValue: 30 }],
+    parameters: [
+      {
+        id: "duration",
+        label: "Duration",
+        type: "number",
+        min: 10,
+        max: 180,
+        step: 1,
+        defaultValue: 30
+      }
+    ],
     defaultParams: { duration: 30 },
     input: { requiresPrompt: true, inputMode: {} }
   },
@@ -6006,7 +6287,14 @@ var MODEL_CARD_DEFINITIONS = [
     kind: "audio",
     defaultAspectRatio: "1:1",
     description: "MiniMax Speech 2.8 HD text-to-speech from the current Pika catalog.",
-    parameters: [{ id: "voice_id", label: "Voice ID", type: "text", defaultValue: "English_Graceful_Lady" }],
+    parameters: [
+      {
+        id: "voice_id",
+        label: "Voice ID",
+        type: "text",
+        defaultValue: "English_Graceful_Lady"
+      }
+    ],
     defaultParams: { voice_id: "English_Graceful_Lady" },
     input: { requiresPrompt: true, inputMode: {} }
   },
@@ -6026,14 +6314,20 @@ var MODEL_CARD_DEFINITIONS = [
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: NANO_BANANA_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: NANO_BANANA_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "16:9"
       },
       {
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: NANO_BANANA_RESOLUTIONS.map((s) => ({ label: s.label, value: s.value })),
+        options: NANO_BANANA_RESOLUTIONS.map((s) => ({
+          label: s.label,
+          value: s.value
+        })),
         defaultValue: "1K"
       },
       {
@@ -6052,7 +6346,12 @@ var MODEL_CARD_DEFINITIONS = [
       resolution: "1K",
       count: 1
     },
-    input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ["text", "image"], referenceBinding: GROUPED_REFERENCE_BINDING }
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 8 } },
+      promptModalities: ["text", "image"],
+      referenceBinding: GROUPED_REFERENCE_BINDING
+    }
   },
   // ─── Image: Nano Banana 2 Lite (Google) ────────────────────
   {
@@ -6094,14 +6393,20 @@ var MODEL_CARD_DEFINITIONS = [
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: GPT_IMAGE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: GPT_IMAGE_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "1:1"
       },
       {
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: GPT_IMAGE_RESOLUTION_TIERS.map((t) => ({ label: t.label, value: t.value })),
+        options: GPT_IMAGE_RESOLUTION_TIERS.map((t) => ({
+          label: t.label,
+          value: t.value
+        })),
         defaultValue: "2K"
       },
       {
@@ -6166,7 +6471,12 @@ var MODEL_CARD_DEFINITIONS = [
       moderation: "auto",
       count: 1
     },
-    input: { requiresPrompt: true, inputMode: { images: { max: 16 } }, promptModalities: ["text", "image"], referenceBinding: GROUPED_REFERENCE_BINDING },
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 16 } },
+      promptModalities: ["text", "image"],
+      referenceBinding: GROUPED_REFERENCE_BINDING
+    },
     maxRuntimeMs: 3 * 60 * 1e3
   },
   // ─── Image: Seedream 4.5 (fal.ai) ───────────────────────────
@@ -6443,7 +6753,10 @@ var MODEL_CARD_DEFINITIONS = [
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+        options: [
+          { label: "480p", value: "480p" },
+          { label: "720p", value: "720p" }
+        ],
         defaultValue: "720p"
       },
       {
@@ -6451,6 +6764,13 @@ var MODEL_CARD_DEFINITIONS = [
         label: "Native audio",
         type: "boolean",
         defaultValue: true
+      },
+      {
+        id: "seed",
+        label: "Seed",
+        type: "number",
+        required: false,
+        description: "Optional deterministic seed. The same seed may still produce minor variations."
       }
     ],
     defaultParams: {
@@ -6458,7 +6778,13 @@ var MODEL_CARD_DEFINITIONS = [
       resolution: "720p",
       generate_audio: true
     },
-    input: { requiresPrompt: true, inputMode: { startEnd: {} } }
+    input: {
+      requiresPrompt: true,
+      inputMode: {
+        startEnd: { constraints: SEEDANCE_IMAGE_CONSTRAINTS },
+        maxEmbeddedRequestBytes: SEEDANCE_MAX_EMBEDDED_REQUEST_BYTES
+      }
+    }
   },
   // ─── Video: Seedance 2.0 reference-to-video ────────────────
   // Separate endpoint with multi-modal refs. Up to 15 total files across
@@ -6493,14 +6819,20 @@ var MODEL_CARD_DEFINITIONS = [
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "auto"
       },
       {
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+        options: [
+          { label: "480p", value: "480p" },
+          { label: "720p", value: "720p" }
+        ],
         defaultValue: "720p"
       },
       {
@@ -6508,22 +6840,48 @@ var MODEL_CARD_DEFINITIONS = [
         label: "Native audio",
         type: "boolean",
         defaultValue: true
+      },
+      {
+        id: "seed",
+        label: "Seed",
+        type: "number",
+        required: false,
+        description: "Optional deterministic seed. The same seed may still produce minor variations."
+      },
+      {
+        id: "edit_mode",
+        label: "Edit referenced video",
+        type: "boolean",
+        required: false,
+        description: "Edit the attached video instead of generating a new clip from references.",
+        defaultValue: false
       }
     ],
     defaultParams: {
       duration: "auto",
       aspect_ratio: "auto",
       resolution: "720p",
-      generate_audio: true
+      generate_audio: true,
+      edit_mode: false
     },
     input: {
       requiresPrompt: true,
       referenceBinding: POSITIONAL_REFERENCE_BINDING,
       inputMode: {
-        images: { max: 9 },
-        videos: { max: 3 },
-        audios: { max: 3, requiresAnyOf: ["image", "video"] },
-        maxTotalReferences: 15
+        images: { max: 9, constraints: SEEDANCE_IMAGE_CONSTRAINTS },
+        videos: {
+          max: 3,
+          constraints: { ...SEEDANCE_VIDEO_CONSTRAINTS, maxDurationMs: 15e3 },
+          maxTotalDurationMs: 15e3
+        },
+        audios: {
+          max: 3,
+          requiresAnyOf: ["image", "video"],
+          constraints: { ...SEEDANCE_AUDIO_CONSTRAINTS, maxDurationMs: 15e3 },
+          maxTotalDurationMs: 15e3
+        },
+        maxTotalReferences: 15,
+        maxEmbeddedRequestBytes: SEEDANCE_MAX_EMBEDDED_REQUEST_BYTES
       },
       promptModalities: ["text", "image", "video", "audio"]
     }
@@ -6544,16 +6902,22 @@ var MODEL_CARD_DEFINITIONS = [
         label: "Duration",
         type: "select",
         options: [
-          { label: "Auto", value: -1 },
-          ...Array.from({ length: 12 }, (_, index) => ({ label: `${index + 4}s`, value: index + 4 }))
+          { label: "Auto", value: "auto" },
+          ...Array.from({ length: 12 }, (_, index) => ({
+            label: `${index + 4}s`,
+            value: index + 4
+          }))
         ],
-        defaultValue: -1
+        defaultValue: "auto"
       },
       {
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: ["480p", "720p", "1080p", "4k"].map((value) => ({ label: value, value })),
+        options: ["480p", "720p", "1080p", "4k"].map((value) => ({
+          label: value,
+          value
+        })),
         defaultValue: "720p"
       },
       {
@@ -6563,12 +6927,18 @@ var MODEL_CARD_DEFINITIONS = [
         defaultValue: true
       }
     ],
-    defaultParams: { duration: -1, resolution: "720p", generate_audio: true },
+    defaultParams: { duration: "auto", resolution: "720p", generate_audio: true },
     input: {
       requiresPrompt: true,
       inputMode: {
-        videos: { min: 1, max: 3, maxTotalDurationMs: 15e3 },
-        maxTotalReferences: 3
+        videos: {
+          min: 1,
+          max: 3,
+          constraints: { ...SEEDANCE_VIDEO_CONSTRAINTS, maxDurationMs: 15e3 },
+          maxTotalDurationMs: 15e3
+        },
+        maxTotalReferences: 3,
+        maxEmbeddedRequestBytes: SEEDANCE_MAX_EMBEDDED_REQUEST_BYTES
       },
       promptModalities: ["text", "video"],
       referenceBinding: POSITIONAL_REFERENCE_BINDING,
@@ -6592,48 +6962,74 @@ var MODEL_CARD_DEFINITIONS = [
         id: "duration",
         label: "Duration",
         type: "select",
-        options: Array.from({ length: 27 }, (_, index) => ({
-          label: `${index + 4}s`,
-          value: index + 4
-        })),
+        options: [
+          { label: "Auto", value: "auto" },
+          ...Array.from({ length: 27 }, (_, index) => ({
+            label: `${index + 4}s`,
+            value: index + 4
+          }))
+        ],
         defaultValue: 5
       },
       {
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: ["1:1", "3:4", "16:9", "4:3", "9:16", "21:9"].map((value) => ({ label: value, value })),
+        options: ["auto", "1:1", "3:4", "16:9", "4:3", "9:16", "21:9"].map((value) => ({
+          label: value === "auto" ? "Auto" : value,
+          value
+        })),
         defaultValue: "16:9"
       },
       {
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+        options: [
+          { label: "480p", value: "480p" },
+          { label: "720p", value: "720p" }
+        ],
         defaultValue: "720p"
+      },
+      {
+        id: "generate_audio",
+        label: "Native audio",
+        type: "boolean",
+        defaultValue: true
+      },
+      {
+        id: "edit_mode",
+        label: "Edit referenced video",
+        type: "boolean",
+        required: false,
+        description: "Edit the attached video instead of generating a new clip from references.",
+        defaultValue: false
       }
     ],
     defaultParams: {
       duration: 5,
       aspect_ratio: "16:9",
-      resolution: "720p"
+      resolution: "720p",
+      generate_audio: true,
+      edit_mode: false
     },
     input: {
       requiresPrompt: true,
       referenceBinding: POSITIONAL_REFERENCE_BINDING,
       inputMode: {
-        images: { max: 30 },
+        images: { max: 30, constraints: SEEDANCE_IMAGE_CONSTRAINTS },
         videos: {
           max: 10,
-          constraints: { minDurationMs: 2e3, maxDurationMs: 3e4 },
+          constraints: { ...SEEDANCE_VIDEO_CONSTRAINTS, maxDurationMs: 3e4 },
           maxTotalDurationMs: 3e4
         },
         audios: {
           max: 10,
-          constraints: { minDurationMs: 2e3, maxDurationMs: 3e4 },
+          constraints: { ...SEEDANCE_AUDIO_CONSTRAINTS, maxDurationMs: 3e4 },
           maxTotalDurationMs: 3e4
         },
-        maxTotalReferences: 50
+        maxTotalReferences: 50,
+        maxEmbeddedRequestBytes: SEEDANCE_MAX_EMBEDDED_REQUEST_BYTES
       },
       promptModalities: ["text", "image", "video", "audio"]
     },
@@ -6654,24 +7050,39 @@ var MODEL_CARD_DEFINITIONS = [
         id: "duration",
         label: "Duration",
         type: "select",
-        options: Array.from({ length: 27 }, (_, index) => ({
-          label: `${index + 4}s`,
-          value: index + 4
-        })),
+        options: [
+          { label: "Auto", value: "auto" },
+          ...Array.from({ length: 27 }, (_, index) => ({
+            label: `${index + 4}s`,
+            value: index + 4
+          }))
+        ],
         defaultValue: 5
       },
       {
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+        options: [
+          { label: "480p", value: "480p" },
+          { label: "720p", value: "720p" }
+        ],
         defaultValue: "720p"
+      },
+      {
+        id: "generate_audio",
+        label: "Native audio",
+        type: "boolean",
+        defaultValue: true
       }
     ],
-    defaultParams: { duration: 5, resolution: "720p" },
+    defaultParams: { duration: 5, resolution: "720p", generate_audio: true },
     input: {
       requiresPrompt: true,
-      inputMode: { startEnd: {} },
+      inputMode: {
+        startEnd: { constraints: SEEDANCE_IMAGE_CONSTRAINTS },
+        maxEmbeddedRequestBytes: SEEDANCE_MAX_EMBEDDED_REQUEST_BYTES
+      },
       promptModalities: ["text"]
     },
     maxRuntimeMs: 30 * 60 * 1e3
@@ -6692,10 +7103,13 @@ var MODEL_CARD_DEFINITIONS = [
         label: "Duration",
         type: "select",
         options: [
-          { label: "Auto", value: -1 },
-          ...Array.from({ length: 27 }, (_, index) => ({ label: `${index + 4}s`, value: index + 4 }))
+          { label: "Auto", value: "auto" },
+          ...Array.from({ length: 27 }, (_, index) => ({
+            label: `${index + 4}s`,
+            value: index + 4
+          }))
         ],
-        defaultValue: -1
+        defaultValue: "auto"
       },
       {
         id: "resolution",
@@ -6709,26 +7123,24 @@ var MODEL_CARD_DEFINITIONS = [
         label: "Native audio",
         type: "boolean",
         defaultValue: true
-      },
-      {
-        id: "output_format",
-        label: "Output format",
-        type: "select",
-        options: ["mp4", "mov"].map((value) => ({ label: value.toUpperCase(), value })),
-        defaultValue: "mp4"
       }
     ],
     defaultParams: {
-      duration: -1,
+      duration: "auto",
       resolution: "720p",
-      generate_audio: true,
-      output_format: "mp4"
+      generate_audio: true
     },
     input: {
       requiresPrompt: true,
       inputMode: {
-        videos: { min: 1, max: 10, maxTotalDurationMs: 3e4 },
-        maxTotalReferences: 10
+        videos: {
+          min: 1,
+          max: 10,
+          constraints: { ...SEEDANCE_VIDEO_CONSTRAINTS, maxDurationMs: 3e4 },
+          maxTotalDurationMs: 3e4
+        },
+        maxTotalReferences: 10,
+        maxEmbeddedRequestBytes: SEEDANCE_MAX_EMBEDDED_REQUEST_BYTES
       },
       promptModalities: ["text", "video"],
       referenceBinding: POSITIONAL_REFERENCE_BINDING,
@@ -6996,7 +7408,12 @@ var MODEL_CARD_DEFINITIONS = [
       image_size: "landscape_4_3",
       safety_tolerance: "2"
     },
-    input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ["text", "image"], referenceBinding: GROUPED_REFERENCE_BINDING }
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 8 } },
+      promptModalities: ["text", "image"],
+      referenceBinding: GROUPED_REFERENCE_BINDING
+    }
   },
   // ─── Image: Nano Banana Pro (Google) ────────────────────────
   {
@@ -7178,8 +7595,8 @@ var MODEL_CARD_DEFINITIONS = [
     defaultProvider: "official",
     kind: "video",
     defaultAspectRatio: "16:9",
-    description: "Google Gemini Omni Flash preview \u2014 video generation with optional ordered image references and native audio output.",
-    promptGuidance: "Describe scene, motion, camera, lighting, timing, and desired audio. Image references remain in authored prompt order.",
+    description: "Google Gemini Omni Flash preview \u2014 text-to-video generation with native audio output.",
+    promptGuidance: "Describe scene, motion, camera, lighting, timing, and desired audio.",
     parameters: [
       {
         id: "duration",
@@ -7233,23 +7650,9 @@ var MODEL_CARD_DEFINITIONS = [
       frame_rate: 24,
       native_audio: true
     },
-    input: {
-      requiresPrompt: true,
-      inputMode: {
-        // Google's guide demonstrates six independently addressed image refs.
-        // Video/audio refs are deliberately not exposed while the current API
-        // documents them as unsupported or incorrectly processed.
-        images: {
-          max: 6,
-          constraints: {
-            mimeTypes: ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"],
-            fileExtensions: ["jpg", "jpeg", "png", "webp", "heic", "heif"]
-          }
-        }
-      },
-      promptModalities: ["text", "image"],
-      referenceBinding: ORDERED_REFERENCE_BINDING
-    },
+    // The captured Interactions request is text-only. Do not advertise reference media until a
+    // real accepted request establishes the wire shape; the Provider adapter fails closed too.
+    input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
     maxRuntimeMs: 15 * 60 * 1e3
   },
   // ─── Text ────────────────────────────────────────────────────
@@ -7280,6 +7683,7 @@ var MODEL_CARD_DEFINITIONS = [
     },
     maxRuntimeMs: 5 * 60 * 1e3
   },
+  // ─── Text ────────────────────────────────────────────────────
   {
     id: "gpt-5.4",
     name: "GPT-5.4 Text",
@@ -8102,9 +8506,33 @@ var MODEL_CARD_DEFINITIONS = [
         ratios: ["21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"],
         defaultValue: "1:1"
       }),
-      { id: "stylize", label: "Stylize", type: "number", min: 0, max: 1e3, step: 1, defaultValue: 100 },
-      { id: "chaos", label: "Chaos", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 },
-      { id: "weird", label: "Weird", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 }
+      {
+        id: "stylize",
+        label: "Stylize",
+        type: "number",
+        min: 0,
+        max: 1e3,
+        step: 1,
+        defaultValue: 100
+      },
+      {
+        id: "chaos",
+        label: "Chaos",
+        type: "number",
+        min: 0,
+        max: 100,
+        step: 1,
+        defaultValue: 0
+      },
+      {
+        id: "weird",
+        label: "Weird",
+        type: "number",
+        min: 0,
+        max: 100,
+        step: 1,
+        defaultValue: 0
+      }
     ],
     defaultParams: { aspect_ratio: "1:1", stylize: 100, chaos: 0, weird: 0 },
     input: {
@@ -8126,9 +8554,33 @@ var MODEL_CARD_DEFINITIONS = [
         ratios: ["21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"],
         defaultValue: "1:1"
       }),
-      { id: "stylize", label: "Stylize", type: "number", min: 0, max: 1e3, step: 1, defaultValue: 100 },
-      { id: "chaos", label: "Chaos", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 },
-      { id: "weird", label: "Weird", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 }
+      {
+        id: "stylize",
+        label: "Stylize",
+        type: "number",
+        min: 0,
+        max: 1e3,
+        step: 1,
+        defaultValue: 100
+      },
+      {
+        id: "chaos",
+        label: "Chaos",
+        type: "number",
+        min: 0,
+        max: 100,
+        step: 1,
+        defaultValue: 0
+      },
+      {
+        id: "weird",
+        label: "Weird",
+        type: "number",
+        min: 0,
+        max: 100,
+        step: 1,
+        defaultValue: 0
+      }
     ],
     defaultParams: { aspect_ratio: "1:1", stylize: 100, chaos: 0, weird: 0 },
     input: {
@@ -8150,9 +8602,33 @@ var MODEL_CARD_DEFINITIONS = [
         ratios: ["21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"],
         defaultValue: "1:1"
       }),
-      { id: "stylize", label: "Stylize", type: "number", min: 0, max: 1e3, step: 1, defaultValue: 100 },
-      { id: "chaos", label: "Chaos", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 },
-      { id: "weird", label: "Weird", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 }
+      {
+        id: "stylize",
+        label: "Stylize",
+        type: "number",
+        min: 0,
+        max: 1e3,
+        step: 1,
+        defaultValue: 100
+      },
+      {
+        id: "chaos",
+        label: "Chaos",
+        type: "number",
+        min: 0,
+        max: 100,
+        step: 1,
+        defaultValue: 0
+      },
+      {
+        id: "weird",
+        label: "Weird",
+        type: "number",
+        min: 0,
+        max: 100,
+        step: 1,
+        defaultValue: 0
+      }
     ],
     defaultParams: { aspect_ratio: "1:1", stylize: 100, chaos: 0, weird: 0 },
     input: {
@@ -8175,21 +8651,41 @@ var MODEL_CARD_DEFINITIONS = [
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 Fast all-purpose generation with optional image, video, and audio references.",
     parameters: [
-      durationParameter({ seconds: [4, 6, 8, 10, 15], defaultValue: "auto", auto: { label: "Auto" } }),
+      durationParameter({
+        seconds: [4, 6, 8, 10, 15],
+        defaultValue: "auto",
+        auto: { label: "Auto" }
+      }),
       {
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "auto"
       },
       resolutionParameter({
-        tiers: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+        tiers: [
+          { label: "480p", value: "480p" },
+          { label: "720p", value: "720p" }
+        ],
         defaultValue: "720p"
       }),
-      { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false }
+      {
+        id: "generate_audio",
+        label: "Native audio",
+        type: "boolean",
+        defaultValue: false
+      }
     ],
-    defaultParams: { duration: "auto", aspect_ratio: "auto", resolution: "720p", generate_audio: false },
+    defaultParams: {
+      duration: "auto",
+      aspect_ratio: "auto",
+      resolution: "720p",
+      generate_audio: false
+    },
     input: {
       requiresPrompt: true,
       referenceBinding: POSITIONAL_REFERENCE_BINDING,
@@ -8212,21 +8708,41 @@ var MODEL_CARD_DEFINITIONS = [
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 Fast animation between a first and an optional last frame.",
     parameters: [
-      durationParameter({ seconds: [4, 6, 8, 10, 15], defaultValue: "auto", auto: { label: "Auto" } }),
+      durationParameter({
+        seconds: [4, 6, 8, 10, 15],
+        defaultValue: "auto",
+        auto: { label: "Auto" }
+      }),
       {
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "auto"
       },
       resolutionParameter({
-        tiers: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+        tiers: [
+          { label: "480p", value: "480p" },
+          { label: "720p", value: "720p" }
+        ],
         defaultValue: "720p"
       }),
-      { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false }
+      {
+        id: "generate_audio",
+        label: "Native audio",
+        type: "boolean",
+        defaultValue: false
+      }
     ],
-    defaultParams: { duration: "auto", aspect_ratio: "auto", resolution: "720p", generate_audio: false },
+    defaultParams: {
+      duration: "auto",
+      aspect_ratio: "auto",
+      resolution: "720p",
+      generate_audio: false
+    },
     input: { requiresPrompt: true, inputMode: { startEnd: {} } }
   },
   {
@@ -8239,21 +8755,41 @@ var MODEL_CARD_DEFINITIONS = [
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 Mini all-purpose generation with optional image, video, and audio references.",
     parameters: [
-      durationParameter({ seconds: [4, 6, 8, 10, 15], defaultValue: "auto", auto: { label: "Auto" } }),
+      durationParameter({
+        seconds: [4, 6, 8, 10, 15],
+        defaultValue: "auto",
+        auto: { label: "Auto" }
+      }),
       {
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "auto"
       },
       resolutionParameter({
-        tiers: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+        tiers: [
+          { label: "480p", value: "480p" },
+          { label: "720p", value: "720p" }
+        ],
         defaultValue: "720p"
       }),
-      { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false }
+      {
+        id: "generate_audio",
+        label: "Native audio",
+        type: "boolean",
+        defaultValue: false
+      }
     ],
-    defaultParams: { duration: "auto", aspect_ratio: "auto", resolution: "720p", generate_audio: false },
+    defaultParams: {
+      duration: "auto",
+      aspect_ratio: "auto",
+      resolution: "720p",
+      generate_audio: false
+    },
     input: {
       requiresPrompt: true,
       referenceBinding: POSITIONAL_REFERENCE_BINDING,
@@ -8276,21 +8812,41 @@ var MODEL_CARD_DEFINITIONS = [
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 Mini animation between a first and an optional last frame.",
     parameters: [
-      durationParameter({ seconds: [4, 6, 8, 10, 15], defaultValue: "auto", auto: { label: "Auto" } }),
+      durationParameter({
+        seconds: [4, 6, 8, 10, 15],
+        defaultValue: "auto",
+        auto: { label: "Auto" }
+      }),
       {
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "auto"
       },
       resolutionParameter({
-        tiers: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+        tiers: [
+          { label: "480p", value: "480p" },
+          { label: "720p", value: "720p" }
+        ],
         defaultValue: "720p"
       }),
-      { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false }
+      {
+        id: "generate_audio",
+        label: "Native audio",
+        type: "boolean",
+        defaultValue: false
+      }
     ],
-    defaultParams: { duration: "auto", aspect_ratio: "auto", resolution: "720p", generate_audio: false },
+    defaultParams: {
+      duration: "auto",
+      aspect_ratio: "auto",
+      resolution: "720p",
+      generate_audio: false
+    },
     input: { requiresPrompt: true, inputMode: { startEnd: {} } }
   },
   // ─── Video: Kling Omni ─────────────────────────────────────
@@ -8457,27 +9013,74 @@ var MODEL_CARD_DEFINITIONS = [
     }
   },
   // ─── Audio: Seed Audio ─────────────────────────────────────
-  // Seed Audio clones a voice from a reference rather than selecting a preset one, so
-  // it takes an audio or image reference instead of a voice id.
+  // Seed Audio accepts pure text, one image, or up to three audio references. Image and
+  // audio references are mutually exclusive; the executable Provider enforces that rule.
   {
     id: "seed-audio-1",
     name: "Seed Audio 1.0",
     provider: "ByteDance",
-    availableProviders: ["volcengine"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-speech"],
+    defaultProvider: "volcengine-speech",
     kind: "audio",
     defaultAspectRatio: "1:1",
-    description: "Speech synthesis that reproduces the voice in a reference clip.",
+    description: "Generate expressive speech, sound effects, and complete audio scenes from text and optional references.",
+    promptGuidance: "Refer to audio inputs as @\u97F3\u98911, @\u97F3\u98912, and @\u97F3\u98913. A Voice ID counts as an audio reference. A request may use audio references or one image, but not both.",
     parameters: [
-      { id: "speed", label: "Speed", type: "number", min: 0.5, max: 2, step: 0.1, defaultValue: 1 }
+      {
+        id: "voice_id",
+        label: "Voice ID",
+        type: "text",
+        defaultValue: "",
+        description: "Optional Doubao TTS or voice-clone speaker ID."
+      },
+      { id: "speed", label: "Speed", type: "slider", min: 0.5, max: 2, step: 0.05, defaultValue: 1 },
+      { id: "volume", label: "Volume", type: "slider", min: 0.5, max: 2, step: 0.05, defaultValue: 1 },
+      { id: "pitch", label: "Pitch", type: "slider", min: -12, max: 12, step: 1, defaultValue: 0 },
+      {
+        id: "sample_rate",
+        label: "Sample Rate",
+        type: "select",
+        options: [8e3, 16e3, 24e3, 32e3, 44100, 48e3].map((value) => ({
+          label: value === 44100 ? "44.1 kHz" : `${value / 1e3} kHz`,
+          value
+        }))
+      },
+      {
+        id: "format",
+        label: "Audio Format",
+        type: "select",
+        options: [
+          { label: "WAV", value: "wav" },
+          { label: "MP3", value: "mp3" },
+          { label: "PCM", value: "pcm" },
+          { label: "Ogg Opus", value: "ogg_opus" }
+        ],
+        defaultValue: "wav"
+      }
     ],
-    defaultParams: { speed: 1 },
+    defaultParams: { voice_id: "", speed: 1, volume: 1, pitch: 0, format: "wav" },
     input: {
       requiresPrompt: true,
-      referenceBinding: { type: "grouped-references" },
-      inputMode: { audios: { max: 1 }, images: { max: 1 } },
+      referenceBinding: {
+        type: "positional-tokens",
+        modalityScopedIndexes: true,
+        tokens: { audio: "@\u97F3\u9891{n}" }
+      },
+      inputMode: {
+        audios: { max: 3, constraints: SEED_AUDIO_AUDIO_CONSTRAINTS },
+        images: { max: 1, constraints: SEED_AUDIO_IMAGE_CONSTRAINTS },
+        maxTotalReferences: 3
+      },
       promptModalities: ["text", "audio", "image"]
-    }
+    },
+    constraints: [
+      {
+        type: "max-length",
+        field: "prompt",
+        max: 3e3,
+        message: "Seed Audio prompts support at most 3000 characters."
+      }
+    ]
   },
   // ─── Audio: music ──────────────────────────────────────────
   // Music generation is length-driven rather than duration-per-shot: the request names
@@ -8530,13 +9133,6 @@ var SEEDANCE_2_FAL_PARAMETER_OVERRIDES = [
       ...Array.from({ length: 12 }, (_, index) => ({ label: `${index + 4}s`, value: index + 4 }))
     ],
     defaultValue: "auto"
-  },
-  {
-    id: "seed",
-    label: "Seed",
-    type: "number",
-    required: false,
-    description: "Optional deterministic seed. The same seed may still produce minor variations."
   }
 ];
 var MINIMAX_H3_FAL_PARAMETER_OVERRIDES = [{
@@ -8572,17 +9168,23 @@ var SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES = [
     type: "select",
     required: false,
     options: [
-      { label: "Auto", value: -1 },
-      ...Array.from({ length: 12 }, (_, index) => ({ label: `${index + 4}s`, value: index + 4 }))
+      { label: "Auto", value: "auto" },
+      ...Array.from({ length: 12 }, (_, index) => ({
+        label: `${index + 4}s`,
+        value: index + 4
+      }))
     ],
-    defaultValue: -1
+    defaultValue: "auto"
   },
   {
     id: "resolution",
     label: "Resolution",
     type: "select",
     required: false,
-    options: ["480p", "720p", "1080p", "4k"].map((value) => ({ label: value, value })),
+    options: ["480p", "720p", "1080p", "4k"].map((value) => ({
+      label: value,
+      value
+    })),
     defaultValue: "720p"
   }
 ];
@@ -8592,18 +9194,13 @@ var SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER = {
   type: "select",
   required: false,
   options: [
-    ...["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].map((value) => ({ label: value, value })),
-    { label: "Adaptive", value: "adaptive" }
+    ...["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].map((value) => ({
+      label: value,
+      value
+    })),
+    { label: "Auto", value: "auto" }
   ],
-  defaultValue: "adaptive"
-};
-var SEEDANCE_VOLCENGINE_EDIT_PARAMETER = {
-  id: "edit_mode",
-  label: "Edit referenced video",
-  type: "boolean",
-  required: false,
-  description: "Edit the attached video instead of generating a new clip from references.",
-  defaultValue: false
+  defaultValue: "auto"
 };
 var SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES = [
   {
@@ -8612,10 +9209,13 @@ var SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES = [
     type: "select",
     required: false,
     options: [
-      { label: "Auto", value: -1 },
-      ...Array.from({ length: 27 }, (_, index) => ({ label: `${index + 4}s`, value: index + 4 }))
+      { label: "Auto", value: "auto" },
+      ...Array.from({ length: 27 }, (_, index) => ({
+        label: `${index + 4}s`,
+        value: index + 4
+      }))
     ],
-    defaultValue: -1
+    defaultValue: "auto"
   },
   {
     id: "resolution",
@@ -8624,21 +9224,6 @@ var SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES = [
     required: false,
     options: ["480p", "720p"].map((value) => ({ label: value, value })),
     defaultValue: "720p"
-  },
-  {
-    id: "generate_audio",
-    label: "Native audio",
-    type: "boolean",
-    required: false,
-    defaultValue: true
-  },
-  {
-    id: "output_format",
-    label: "Output format",
-    type: "select",
-    required: false,
-    options: ["mp4", "mov"].map((value) => ({ label: value.toUpperCase(), value })),
-    defaultValue: "mp4"
   }
 ];
 var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
@@ -8662,28 +9247,49 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ["flux-3-video", "fal", "fal", "fal", "blackforestlabs/flux-3/text-to-video", 20, { credentials: ["apiKey"] }],
   ["flux-3-video-keyframes", "fal", "fal", "fal", "blackforestlabs/flux-3/keyframes-to-video", 20, { credentials: ["apiKey"] }],
   ["flux-3-video-continue", "fal", "fal", "fal", "blackforestlabs/flux-3/extend-video", 20, { credentials: ["apiKey"] }],
-  ["seedance-2-startend", "fal", "fal", "fal", "bytedance/seedance-2.0/image-to-video", 20, {
-    credentials: ["apiKey"],
-    parameterOverrides: SEEDANCE_2_FAL_PARAMETER_OVERRIDES,
-    defaultParamOverrides: { duration: "auto" }
-  }],
-  ["seedance-2-ref", "fal", "fal", "fal", "bytedance/seedance-2.0/reference-to-video", 20, {
-    credentials: ["apiKey"],
-    parameterOverrides: SEEDANCE_2_FAL_PARAMETER_OVERRIDES,
-    defaultParamOverrides: { duration: "auto" },
-    referenceBinding: {
-      type: "positional-tokens",
-      modalityScopedIndexes: true,
-      tokens: { image: "@Image{n}", video: "@Video{n}", audio: "@Audio{n}" }
+  [
+    "seedance-2-startend",
+    "fal",
+    "fal",
+    "fal",
+    "bytedance/seedance-2.0/image-to-video",
+    20,
+    {
+      credentials: ["apiKey"],
+      parameterOverrides: SEEDANCE_2_FAL_PARAMETER_OVERRIDES,
+      defaultParamOverrides: { duration: "auto" }
     }
-  }],
+  ],
+  [
+    "seedance-2-ref",
+    "fal",
+    "fal",
+    "fal",
+    "bytedance/seedance-2.0/reference-to-video",
+    20,
+    {
+      credentials: ["apiKey"],
+      parameterOverrides: SEEDANCE_2_FAL_PARAMETER_OVERRIDES,
+      defaultParamOverrides: { duration: "auto" },
+      excludedParameterIds: ["edit_mode"],
+      referenceBinding: {
+        type: "positional-tokens",
+        modalityScopedIndexes: true,
+        tokens: { image: "@Image{n}", video: "@Video{n}", audio: "@Audio{n}" }
+      }
+    }
+  ],
   ["minimax-tts", "fal", "fal", "fal", "fal-ai/minimax/speech-02-hd", 20, { credentials: ["apiKey"] }],
   ["pika-2.5", "pika", "pika", "pika", "pika/pika-2.5/image-to-video", 18, { credentials: ["apiKey"] }],
   ["nano-banana-2", "pika", "pika", "pika", "google/gemini-3.1-flash-image/text-to-image", 18, { credentials: ["apiKey"] }],
   ["gpt-image-2", "pika", "pika", "pika", "openai/gpt-image-2/text-to-image", 18, { credentials: ["apiKey"] }],
-  ["seedance-2-startend", "pika", "pika", "pika", "bytedance/seedance-2.0/image-to-video", 18, { credentials: ["apiKey"] }],
+  ["seedance-2-startend", "pika", "pika", "pika", "bytedance/seedance-2.0/image-to-video", 18, {
+    credentials: ["apiKey"],
+    excludedParameterIds: ["seed"]
+  }],
   ["seedance-2-ref", "pika", "pika", "pika", "bytedance/seedance-2.0/reference-to-video", 18, {
     credentials: ["apiKey"],
+    excludedParameterIds: ["seed", "edit_mode"],
     referenceBinding: {
       type: "positional-tokens",
       modalityScopedIndexes: true,
@@ -8720,9 +9326,13 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ["nano-banana-2", "replicate", "replicate", "replicate", "google/nano-banana-2", 25, { credentials: ["apiKey"] }],
   ["gpt-image-2", "replicate", "replicate", "replicate", "openai/gpt-image-2", 25, { credentials: ["apiKey"] }],
   ["flux-schnell", "replicate", "replicate", "replicate", "black-forest-labs/flux-schnell", 25, { credentials: ["apiKey"] }],
-  ["seedance-2-startend", "replicate", "replicate", "replicate", "bytedance/seedance-2.0", 25, { credentials: ["apiKey"] }],
+  ["seedance-2-startend", "replicate", "replicate", "replicate", "bytedance/seedance-2.0", 25, {
+    credentials: ["apiKey"],
+    excludedParameterIds: ["seed"]
+  }],
   ["seedance-2-ref", "replicate", "replicate", "replicate", "bytedance/seedance-2.0", 25, {
     credentials: ["apiKey"],
+    excludedParameterIds: ["seed", "edit_mode"],
     referenceBinding: {
       type: "positional-tokens",
       modalityScopedIndexes: true,
@@ -8737,147 +9347,465 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   // second upstream, and carried no executor: a request that matched one found nothing to run, our
   // own gate demanded a service account, found none, and hilo-hub answered instead. The asset looked
   // exactly like a successful Google generation.
-  ["nano-banana-2", "official", "google-ai-studio", "google-ai-studio", "gemini-3.1-flash-image", 12, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
+  [
+    "nano-banana-2",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "gemini-3.1-flash-image",
+    12,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
   ["flux-3-video", "official", "bfl", "bfl", "flux-3-video", 10, { region: "global", credentials: ["apiKey"] }],
   ["flux-3-video-keyframes", "official", "bfl", "bfl", "flux-3-video", 10, { region: "global", credentials: ["apiKey"] }],
   ["flux-3-video-continue", "official", "bfl", "bfl", "flux-3-video", 10, { region: "global", credentials: ["apiKey"] }],
-  ["nano-banana-pro", "official", "google-ai-studio", "google-ai-studio", "gemini-3-pro-image", 12, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
-  ["gemini-3.1-flash-tts", "official", "google-ai-studio", "google-ai-studio", "gemini-3.1-flash-tts-preview", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
-  ["gemini-2.5-pro-tts", "official", "google-ai-studio", "google-ai-studio", "gemini-2.5-pro-tts", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
-  ["nano-banana-2-lite", "official", "google-ai-studio", "google-ai-studio", "gemini-3.1-flash-lite-image", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
-  ["veo-3.1", "official", "google-ai-studio", "google-ai-studio", "veo-3.1-generate-001", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
-  ["veo-3.1-startend", "official", "google-ai-studio", "google-ai-studio", "veo-3.1-generate-001", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
-  ["veo-3.1-fast", "official", "google-ai-studio", "google-ai-studio", "veo-3.1-fast-generate-001", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
-  ["veo-3.1-fast-startend", "official", "google-ai-studio", "google-ai-studio", "veo-3.1-fast-generate-001", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
+  [
+    "nano-banana-pro",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "gemini-3-pro-image",
+    12,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
+  [
+    "gemini-3.1-flash-tts",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "gemini-3.1-flash-tts-preview",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
+  [
+    "gemini-2.5-pro-tts",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "gemini-2.5-pro-tts",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
+  [
+    "nano-banana-2-lite",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "gemini-3.1-flash-lite-image",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
+  [
+    "veo-3.1",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "veo-3.1-generate-001",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
+  [
+    "veo-3.1-startend",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "veo-3.1-generate-001",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
+  [
+    "veo-3.1-fast",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "veo-3.1-fast-generate-001",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
+  [
+    "veo-3.1-fast-startend",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "veo-3.1-fast-generate-001",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
   // Two surfaces serve this model and they take different credentials, both measured:
   //   aiplatform  /v1beta1/projects/{p}/locations/global/interactions -> 401, wants a Bearer token
   //   generativelanguage /v1beta/interactions                         -> 403, routed, wants the
   //                                                                      project's Gemini API on
   // A service account is the unattended way to hold a token; the Developer API takes a key directly.
   // generateContent refuses the model on either host: 400 "only supported in the Interactions API".
-  ["gemini-omni-flash", "official", "google-ai-studio", "google-ai-studio-interactions", "gemini-omni-flash-preview", 10, {
-    region: "global",
-    executorPluginId: "clash.google",
-    executorExportId: "google-execute",
-    credentialRequirements: {
-      anyOf: [["serviceAccountKey"], ["apiKey"], ["baseUrl"]],
-      exclusive: true
+  [
+    "gemini-omni-flash",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio-interactions",
+    "gemini-omni-flash-preview",
+    10,
+    {
+      region: "global",
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      credentialRequirements: {
+        anyOf: [["serviceAccountKey"], ["apiKey"], ["baseUrl"]],
+        exclusive: true
+      }
     }
-  }],
-  ["gemini-3.5-flash", "official", "google-ai-studio", "google-ai-studio", "gemini-3.5-flash", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
-  ["gemini-3.1-pro", "official", "google-ai-studio", "google-ai-studio", "gemini-3.1-pro-preview", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
-  ["gemini-3-flash", "official", "google-ai-studio", "google-ai-studio", "gemini-3-flash-preview", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
+  ],
+  [
+    "gemini-3.5-flash",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "gemini-3.5-flash",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
+  [
+    "gemini-3.1-pro",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "gemini-3.1-pro-preview",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
+  [
+    "gemini-3-flash",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "gemini-3-flash-preview",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
   // The eleven `google-agent-platform` routes that followed are gone. Google is one Provider:
   // the same key, the same SDK, and a surface the account picks with its `service` field. They
   // also carried no executor binding, so the split was not merely redundant -- a request that
   // matched one found no executor, our own gate demanded a service account, and hilo-hub answered
   // instead. The asset looked exactly like a successful Google generation.
-  ["gemini-3.1-flash-lite", "official", "google-ai-studio", "google-ai-studio", "gemini-3.1-flash-lite", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
+  [
+    "gemini-3.1-flash-lite",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "gemini-3.1-flash-lite",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
   ["gpt-image-2", "official", "openai", "openai-images", "gpt-image-2", 10, { region: "global", credentials: ["apiKey"] }],
   ["gpt-5.4", "official", "openai", "openai-compatible", "gpt-5.4", 10, { region: "global", credentials: ["apiKey"] }],
   ["openai-compatible-text", "official", "openai", "openai-compatible", "gpt-5.4", 15, { region: "global", credentials: ["apiKey"] }],
   ["claude-sonnet-4", "official", "anthropic", "anthropic-compatible", "claude-sonnet-4-20250514", 10, { region: "global", credentials: ["apiKey"] }],
   ["anthropic-compatible-text", "official", "anthropic", "anthropic-compatible", "claude-sonnet-4-20250514", 15, { region: "global", credentials: ["apiKey"] }],
   ["kling-3", "kling", "kling", "kling", "kling-v3", 8, { credentials: ["accessKey", "secretKey"] }],
-  ["seedance-2-startend", "volcengine", "volcengine", "modelark", "doubao-seedance-2-0-260128", 9, {
-    credentials: ["apiKey"],
-    parameterOverrides: SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES,
-    defaultParamOverrides: { duration: -1, resolution: "720p" }
-  }],
-  ["seedance-2-ref", "volcengine", "volcengine", "modelark", "doubao-seedance-2-0-260128", 9, {
-    credentials: ["apiKey"],
-    parameterOverrides: [
-      ...SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES,
-      SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER,
-      SEEDANCE_VOLCENGINE_EDIT_PARAMETER
-    ],
-    defaultParamOverrides: {
-      duration: -1,
-      aspect_ratio: "adaptive",
-      resolution: "720p",
-      edit_mode: false
-    },
-    referenceBinding: {
-      type: "positional-tokens",
-      modalityScopedIndexes: true,
-      tokens: { image: "@\u56FE\u50CF{n}", video: "@\u89C6\u9891{n}", audio: "@\u97F3\u9891{n}" }
+  [
+    "seed-audio-1",
+    "volcengine-speech",
+    "volcengine-speech",
+    "volcengine-speech",
+    "seed-audio-1.0",
+    9,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-speech-execute"
     }
-  }],
-  ["seedance-2-extend", "volcengine", "volcengine", "modelark", "doubao-seedance-2-0-260128", 9, {
-    credentials: ["apiKey"],
-    referenceBinding: {
-      type: "positional-tokens",
-      modalityScopedIndexes: true,
-      tokens: { image: "@\u56FE\u50CF{n}", video: "@\u89C6\u9891{n}", audio: "@\u97F3\u9891{n}" }
+  ],
+  [
+    "seedance-2-startend",
+    "volcengine",
+    "volcengine",
+    "modelark",
+    "doubao-seedance-2-0-260128",
+    9,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-execute",
+      parameterOverrides: SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES,
+      defaultParamOverrides: { duration: "auto", resolution: "720p" },
+      excludedParameterIds: ["seed"]
     }
-  }],
-  ["seedance-2.5-ref", "volcengine", "volcengine", "modelark", "doubao-seedance-2-5-260628", 9, {
-    credentials: ["apiKey"],
-    parameterOverrides: [
-      ...SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES,
-      SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER,
-      SEEDANCE_VOLCENGINE_EDIT_PARAMETER
-    ],
-    defaultParamOverrides: {
-      duration: -1,
-      aspect_ratio: "adaptive",
-      resolution: "720p",
-      generate_audio: true,
-      output_format: "mp4",
-      edit_mode: false
-    },
-    referenceBinding: {
-      type: "positional-tokens",
-      modalityScopedIndexes: true,
-      tokens: { image: "@\u56FE\u50CF{n}", video: "@\u89C6\u9891{n}", audio: "@\u97F3\u9891{n}" }
+  ],
+  [
+    "seedance-2-ref",
+    "volcengine",
+    "volcengine",
+    "modelark",
+    "doubao-seedance-2-0-260128",
+    9,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-execute",
+      parameterOverrides: [...SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES, SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER],
+      defaultParamOverrides: {
+        duration: "auto",
+        aspect_ratio: "auto",
+        resolution: "720p"
+      },
+      excludedParameterIds: ["seed"],
+      referenceBinding: {
+        type: "positional-tokens",
+        modalityScopedIndexes: true,
+        tokens: { image: "@\u56FE\u50CF{n}", video: "@\u89C6\u9891{n}", audio: "@\u97F3\u9891{n}" }
+      }
     }
-  }],
-  ["seedance-2.5-startend", "volcengine", "volcengine", "modelark", "doubao-seedance-2-5-260628", 9, {
-    credentials: ["apiKey"],
-    parameterOverrides: SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES,
-    defaultParamOverrides: {
-      duration: -1,
-      resolution: "720p",
-      generate_audio: true,
-      output_format: "mp4"
+  ],
+  [
+    "seedance-2-extend",
+    "volcengine",
+    "volcengine",
+    "modelark",
+    "doubao-seedance-2-0-260128",
+    9,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-execute",
+      referenceBinding: {
+        type: "positional-tokens",
+        modalityScopedIndexes: true,
+        tokens: { image: "@\u56FE\u50CF{n}", video: "@\u89C6\u9891{n}", audio: "@\u97F3\u9891{n}" }
+      }
     }
-  }],
-  ["seedance-2.5-extend", "volcengine", "volcengine", "modelark", "doubao-seedance-2-5-260628", 9, {
-    credentials: ["apiKey"],
-    referenceBinding: {
-      type: "positional-tokens",
-      modalityScopedIndexes: true,
-      tokens: { image: "@\u56FE\u50CF{n}", video: "@\u89C6\u9891{n}", audio: "@\u97F3\u9891{n}" }
+  ],
+  [
+    "seedance-2.5-ref",
+    "volcengine",
+    "volcengine",
+    "modelark",
+    "doubao-seedance-2-5-260628",
+    9,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-execute",
+      parameterOverrides: [...SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES, SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER],
+      defaultParamOverrides: {
+        duration: "auto",
+        aspect_ratio: "auto",
+        resolution: "720p"
+      },
+      referenceBinding: {
+        type: "positional-tokens",
+        modalityScopedIndexes: true,
+        tokens: { image: "@\u56FE\u50CF{n}", video: "@\u89C6\u9891{n}", audio: "@\u97F3\u9891{n}" }
+      }
     }
-  }],
-  ["minimax-m3", "minimax", "minimax", "minimax", "MiniMax-M3", 8, { credentials: ["apiKey"], executorPluginId: "clash.minimax", executorExportId: "minimax-execute" }],
-  ["minimax-tts", "minimax", "minimax", "minimax", "speech-02-hd", 8, { credentials: ["apiKey"], executorPluginId: "clash.minimax", executorExportId: "minimax-execute" }],
-  ["minimax-music-3", "minimax", "minimax", "minimax", "music-3.0", 8, { credentials: ["apiKey"], executorPluginId: "clash.minimax", executorExportId: "minimax-execute" }],
-  ["minimax-h3", "minimax", "minimax", "minimax", "MiniMax-H3", 8, {
-    credentials: ["apiKey"],
-    executorPluginId: "clash.minimax",
-    executorExportId: "minimax-execute"
-  }],
-  ["minimax-h3-startend", "minimax", "minimax", "minimax", "MiniMax-H3", 8, { credentials: ["apiKey"], executorPluginId: "clash.minimax", executorExportId: "minimax-execute" }],
-  ["minimax-music-3", "fal", "fal", "fal", "fal-ai/minimax-music/v3", 9, {
-    credentials: ["apiKey"],
-    excludedParameterIds: ["aigc_watermark"]
-  }],
-  ["minimax-h3", "fal", "fal", "fal", "minimax/h3/reference-to-video", 9, {
-    credentials: ["apiKey"],
-    referenceBinding: {
-      type: "positional-tokens",
-      modalityScopedIndexes: true,
-      tokens: { image: "Image {n}", video: "Video {n}", audio: "Audio {n}" }
-    },
-    parameterOverrides: MINIMAX_H3_FAL_OMNI_PARAMETER_OVERRIDES,
-    defaultParamOverrides: { duration: 5, aspect_ratio: "16:9" }
-  }],
-  ["minimax-h3-startend", "fal", "fal", "fal", "minimax/h3/image-to-video", 9, {
-    credentials: ["apiKey"],
-    parameterOverrides: MINIMAX_H3_FAL_PARAMETER_OVERRIDES,
-    defaultParamOverrides: { duration: 5 }
-  }],
+  ],
+  [
+    "seedance-2.5-startend",
+    "volcengine",
+    "volcengine",
+    "modelark",
+    "doubao-seedance-2-5-260628",
+    9,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-execute",
+      parameterOverrides: SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES,
+      defaultParamOverrides: {
+        duration: "auto",
+        resolution: "720p"
+      }
+    }
+  ],
+  [
+    "seedance-2.5-extend",
+    "volcengine",
+    "volcengine",
+    "modelark",
+    "doubao-seedance-2-5-260628",
+    9,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-execute",
+      referenceBinding: {
+        type: "positional-tokens",
+        modalityScopedIndexes: true,
+        tokens: { image: "@\u56FE\u50CF{n}", video: "@\u89C6\u9891{n}", audio: "@\u97F3\u9891{n}" }
+      }
+    }
+  ],
+  [
+    "minimax-m3",
+    "minimax",
+    "minimax",
+    "minimax",
+    "MiniMax-M3",
+    8,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.minimax",
+      executorExportId: "minimax-execute"
+    }
+  ],
+  [
+    "minimax-tts",
+    "minimax",
+    "minimax",
+    "minimax",
+    "speech-02-hd",
+    8,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.minimax",
+      executorExportId: "minimax-execute"
+    }
+  ],
+  [
+    "minimax-music-3",
+    "minimax",
+    "minimax",
+    "minimax",
+    "music-3.0",
+    8,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.minimax",
+      executorExportId: "minimax-execute"
+    }
+  ],
+  [
+    "minimax-h3",
+    "minimax",
+    "minimax",
+    "minimax",
+    "MiniMax-H3",
+    8,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.minimax",
+      executorExportId: "minimax-execute"
+    }
+  ],
+  [
+    "minimax-h3-startend",
+    "minimax",
+    "minimax",
+    "minimax",
+    "MiniMax-H3",
+    8,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.minimax",
+      executorExportId: "minimax-execute"
+    }
+  ],
+  [
+    "minimax-music-3",
+    "fal",
+    "fal",
+    "fal",
+    "fal-ai/minimax-music/v3",
+    9,
+    {
+      credentials: ["apiKey"],
+      excludedParameterIds: ["aigc_watermark"]
+    }
+  ],
+  [
+    "minimax-h3",
+    "fal",
+    "fal",
+    "fal",
+    "minimax/h3/reference-to-video",
+    9,
+    {
+      credentials: ["apiKey"],
+      referenceBinding: {
+        type: "positional-tokens",
+        modalityScopedIndexes: true,
+        tokens: { image: "Image {n}", video: "Video {n}", audio: "Audio {n}" }
+      },
+      parameterOverrides: MINIMAX_H3_FAL_OMNI_PARAMETER_OVERRIDES,
+      defaultParamOverrides: { duration: 5, aspect_ratio: "16:9" }
+    }
+  ],
+  [
+    "minimax-h3-startend",
+    "fal",
+    "fal",
+    "fal",
+    "minimax/h3/image-to-video",
+    9,
+    {
+      credentials: ["apiKey"],
+      parameterOverrides: MINIMAX_H3_FAL_PARAMETER_OVERRIDES,
+      defaultParamOverrides: { duration: 5 }
+    }
+  ],
   ["suno-v5.5", "suno", "suno", "suno", "V5_5", 8, { credentials: ["apiKey", "callbackUrl"] }],
   ["elevenlabs-tts", "elevenlabs", "elevenlabs", "elevenlabs", "eleven_v3", 8, { credentials: ["apiKey"] }]
 ];
@@ -8904,7 +9832,9 @@ function implementationFromRow(row) {
       inputAdaptation: {
         ...options.inputAdaptation.audio ? {
           audio: {
-            mimeAliases: { ...options.inputAdaptation.audio.mimeAliases }
+            mimeAliases: {
+              ...options.inputAdaptation.audio.mimeAliases
+            }
           }
         } : {}
       }
@@ -9190,7 +10120,18 @@ var ExecutablePluginCardDocumentSchema = z.discriminatedUnion("kind", [
     kind: z.literal("action-card"),
     spec: ExecutableActionCardSchema
   }).strict()
-]);
+]).superRefine((document, ctx) => {
+  var _a;
+  if (document.kind !== "model-card") return;
+  (_a = document.spec.providerImplementations) == null ? void 0 : _a.forEach((implementation, index) => {
+    if (implementation.accountId === void 0) return;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["spec", "providerImplementations", index, "accountId"],
+      message: "Plugin model Cards cannot select a Provider account; the Host selects it at runtime."
+    });
+  });
+});
 var ExecutablePluginProviderDefinitionSchema = z.object({
   /**
    * What this provider needs to authenticate, and how to draw it.
@@ -9218,8 +10159,7 @@ var ExecutablePluginProviderDefinitionSchema = z.object({
   bindingDefaults: z.object({
     priority: z.number().nonnegative().optional(),
     weight: z.number().nonnegative().optional(),
-    region: z.string().trim().min(1).optional(),
-    accountId: z.string().trim().min(1).optional()
+    region: z.string().trim().min(1).optional()
   }).strict().optional()
 }).strict();
 var ExecutablePluginProviderDocumentSchema = z.object({
@@ -9233,7 +10173,14 @@ var ExecutablePluginModelBindingSpecSchema = z.intersection(
     modelId: z.string().trim().min(1)
   }),
   ModelProviderImplementationSchema
-);
+).superRefine((binding, ctx) => {
+  if (binding.accountId === void 0) return;
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    path: ["accountId"],
+    message: "Plugin model bindings cannot select a Provider account; the Host selects it at runtime."
+  });
+});
 var ExecutablePluginModelBindingInputSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN).optional(),
   modelId: z.string().trim().min(1, "A binding must name the model it routes (modelId)."),
@@ -9245,9 +10192,15 @@ var ExecutablePluginModelBindingInputSchema = z.object({
   requiredOAuth: z.array(z.string()).optional(),
   priority: z.number().optional(),
   weight: z.number().optional(),
-  region: z.string().trim().min(1).optional(),
-  accountId: z.string().trim().min(1).optional()
-}).passthrough();
+  region: z.string().trim().min(1).optional()
+}).passthrough().superRefine((binding, ctx) => {
+  if (binding.accountId === void 0) return;
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    path: ["accountId"],
+    message: "Plugin model bindings cannot select a Provider account; the Host selects it at runtime."
+  });
+});
 function resolveModelBindingFromProvider(binding, provider) {
   const parsed = ExecutablePluginModelBindingInputSchema.parse(binding);
   const defaults = provider.bindingDefaults ?? {};
@@ -9261,7 +10214,7 @@ function resolveModelBindingFromProvider(binding, provider) {
   };
   if (parsed.requiredOAuth) resolved.requiredOAuth = parsed.requiredOAuth;
   else delete resolved.requiredOAuth;
-  for (const key of ["priority", "weight", "region", "accountId"]) {
+  for (const key of ["priority", "weight", "region"]) {
     const value = parsed[key] ?? defaults[key];
     if (value === void 0) delete resolved[key];
     else resolved[key] = value;
@@ -9275,11 +10228,16 @@ var ExecutablePluginModelBindingDocumentSchema = z.object({
 }).strict();
 var PLUGIN_ENTRY_OPERATIONS = ["submit", "poll", "callback"];
 var PluginEntryOperationSchema = z.enum(PLUGIN_ENTRY_OPERATIONS);
+var ExecutablePluginHostDependencySchema = z.enum([
+  "public-asset-storage"
+]);
 var ExecutablePluginFunctionExportSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
   kind: z.enum(["action", "provider-projector", "provider-executor"]),
   /** Defaults to submit-only: the simplest plugin declares nothing and gets the simplest contract. */
-  operations: z.array(PluginEntryOperationSchema).nonempty().default(["submit"])
+  operations: z.array(PluginEntryOperationSchema).nonempty().default(["submit"]),
+  /** Optional machine capabilities this one entry point requires before it may run. */
+  requires: z.array(ExecutablePluginHostDependencySchema).default([])
 }).strict().superRefine((entry, ctx) => {
   if (!entry.operations.includes("submit")) {
     ctx.addIssue({
@@ -9357,10 +10315,9 @@ function composeExecutablePluginModelCards(baseModelsInput, registrationsInput, 
       ...implementationInput.executorExportId && !implementationInput.executorPluginId ? { executorPluginId: registration.pluginId } : {}
     });
     const entries = bindingsByModel.get(modelId) ?? [];
-    const routeKey = [implementation.providerId, implementation.accountId ?? "", implementation.region ?? ""].join(":");
+    const routeKey = [implementation.providerId, implementation.region ?? ""].join(":");
     const duplicate = entries.find((entry) => [
       entry.implementation.providerId,
-      entry.implementation.accountId ?? "",
       entry.implementation.region ?? ""
     ].join(":") === routeKey);
     if (duplicate) {
@@ -9376,10 +10333,9 @@ function composeExecutablePluginModelCards(baseModelsInput, registrationsInput, 
     if (external.length === 0) return model;
     const implementations = [...model.providerImplementations ?? []];
     for (const entry of external) {
-      const routeKey = [entry.implementation.providerId, entry.implementation.accountId ?? "", entry.implementation.region ?? ""].join(":");
+      const routeKey = [entry.implementation.providerId, entry.implementation.region ?? ""].join(":");
       const duplicate = implementations.some((implementation) => [
         implementation.providerId,
-        implementation.accountId ?? "",
         implementation.region ?? ""
       ].join(":") === routeKey);
       if (duplicate) {
@@ -9622,6 +10578,38 @@ var ExecutablePluginOutputSchema = z.union([
     value: ExecutablePluginJsonValueSchema
   }).strict()
 ]);
+var ExecutablePluginFailureCodeSchema = z.enum([
+  "invalid_request",
+  "authentication_failed",
+  "permission_denied",
+  "content_rejected",
+  "rate_limited",
+  "quota_exhausted",
+  "provider_unavailable",
+  "provider_failed",
+  "task_not_found",
+  "task_expired",
+  "transport_timeout",
+  "transport_error",
+  "invalid_response",
+  "execution_failed",
+  "contract_violation",
+  "cancelled",
+  "plugin_unavailable",
+  "deadline_exceeded",
+  "output_persistence_failed",
+  "publication_failed"
+]);
+var ExecutablePluginFailureErrorSchema = z.object({
+  /** Stable Clash category. Provider-specific spellings belong in `providerCode`. */
+  code: ExecutablePluginFailureCodeSchema,
+  message: z.string().trim().min(1),
+  retryable: z.boolean(),
+  /** Whether the provider definitely rejected, may have accepted, or later failed the work. */
+  requestState: z.enum(["rejected", "unknown", "accepted"]),
+  providerCode: z.string().trim().min(1).optional(),
+  details: ExecutablePluginJsonValueSchema.optional()
+}).strict();
 var ExecutablePluginResultSchema = z.discriminatedUnion("status", [
   z.object({
     protocol: z.literal("clash.plugin.result/v1"),
@@ -9660,12 +10648,7 @@ var ExecutablePluginResultSchema = z.discriminatedUnion("status", [
     protocol: z.literal("clash.plugin.result/v1"),
     invocationId: z.string().trim().min(1),
     status: z.literal("failed"),
-    error: z.object({
-      code: z.string().trim().min(1),
-      message: z.string().trim().min(1),
-      retryable: z.boolean().default(false),
-      details: ExecutablePluginJsonValueSchema.optional()
-    }).strict()
+    error: ExecutablePluginFailureErrorSchema
   }).strict()
 ]);
 var ExecutablePluginBrokerOperationSchema = z.union([
@@ -9871,12 +10854,7 @@ var ExecutablePluginContractTestDocumentSchema = z.object({
     }).strict(),
     z.object({
       status: z.literal("failed"),
-      error: z.object({
-        code: z.string().trim().min(1),
-        message: z.string().trim().min(1),
-        retryable: z.boolean().default(false),
-        details: ExecutablePluginJsonValueSchema.optional()
-      }).strict()
+      error: ExecutablePluginFailureErrorSchema
     }).strict()
   ]),
   timeoutMs: z.number().int().positive().max(12e4).default(1e4)
@@ -11652,7 +12630,7 @@ const zodToJsonSchema = (schema, options) => {
 
 /* harmony default export */ const dist_esm = ((/* unused pure expression or super */ null && (esm_zodToJsonSchema)));
 
-;// ../shared-types/dist/chunk-XAYWVA4T.js
+;// ../shared-types/dist/chunk-RUA5QFGJ.js
 /* unused harmony import specifier */ var z5;
 
 var TIMELINE_KEYFRAME_INTERPOLATIONS = ["hold", "linear"];
@@ -13282,7 +14260,7 @@ var agent = {
     inputSchema: z.object({
       timelineId: IdentifierSchema,
       wait: z.boolean().optional(),
-      timeoutMs: z.number().int().min(1e3).max(9e5).optional()
+      timeoutMs: z.number().int().min(1e3).optional()
     }).strict(),
     outputSchema: TimelineRenderReceiptSchema,
     access: "write",
@@ -14735,7 +15713,7 @@ function timelineDslContractFingerprint(value) {
   return `fnv1a32:${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition = {
-  schemaVersion: 6,
+  schemaVersion: 7,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,
@@ -24958,6 +25936,9 @@ function public_api_stringify(value, replacer, options) {
 /* unused harmony import specifier */ var dist_ModelCardSchema;
 /* unused harmony import specifier */ var dist_MOCK_MODEL_CARDS;
 /* unused harmony import specifier */ var dist_AssetKindSchema;
+/* unused harmony import specifier */ var dist_ProjectAssetLifecycleSchema;
+/* unused harmony import specifier */ var dist_ProjectAssetEntrySchema;
+/* unused harmony import specifier */ var dist_ActionAssetBindingSchema;
 /* unused harmony import specifier */ var dist_agentReadToken;
 /* unused harmony import specifier */ var dist_validateAgentReadProof;
 /* unused harmony import specifier */ var dist_TIMELINE_DSL_TRACK_CATEGORIES;
@@ -24968,11 +25949,13 @@ function public_api_stringify(value, replacer, options) {
 /* unused harmony import specifier */ var dist_timelineMaskKeyframeSemanticIssues;
 /* unused harmony import specifier */ var dist_TIMELINE_DSL_DEFINITION;
 /* unused harmony import specifier */ var dist_publicField;
-/* unused harmony import specifier */ var LoroMap3;
+/* unused harmony import specifier */ var LoroMap5;
 /* unused harmony import specifier */ var dist_NEEDS_LAYOUT_POSITION;
 /* unused harmony import specifier */ var dist_autoInsertNode;
+/* unused harmony import specifier */ var LoroMap4;
 /* unused harmony import specifier */ var LoroMap2;
 /* unused harmony import specifier */ var LoroMap;
+/* unused harmony import specifier */ var LoroMap3;
 /* unused harmony import specifier */ var z14;
 /* unused harmony import specifier */ var dist_LoroDoc;
 /* unused harmony import specifier */ var dist_stringify;
@@ -26538,22 +27521,22 @@ function coerceModelParameterInput(card, parameterId, value) {
   }
   return value;
 }
-function fieldValue(card, input, field) {
+function fieldValue(card, input, field3) {
   var _a;
-  if (field === "prompt") return input.prompt ?? "";
-  if (field === "lyrics") return input.lyrics ?? "";
-  if (!field.startsWith("modelParams.")) return void 0;
-  const parameterId = field.slice("modelParams.".length);
+  if (field3 === "prompt") return input.prompt ?? "";
+  if (field3 === "lyrics") return input.lyrics ?? "";
+  if (!field3.startsWith("modelParams.")) return void 0;
+  const parameterId = field3.slice("modelParams.".length);
   return ((_a = input.modelParams) == null ? void 0 : _a[parameterId]) ?? card.defaultParams[parameterId];
 }
 function empty(value) {
   return value === void 0 || typeof value === "string" && !value.trim();
 }
-function fieldLabel(card, field) {
+function fieldLabel(card, field3) {
   var _a;
-  if (field === "prompt") return "Prompt";
-  if (field === "lyrics") return "Lyrics";
-  const id2 = field.slice("modelParams.".length);
+  if (field3 === "prompt") return "Prompt";
+  if (field3 === "lyrics") return "Lyrics";
+  const id2 = field3.slice("modelParams.".length);
   return ((_a = card.parameters.find((parameter) => parameter.id === id2)) == null ? void 0 : _a.label) ?? id2;
 }
 function sameValue(left, right) {
@@ -26625,9 +27608,9 @@ function validateParameterContractConfiguration(card, input, options = {}) {
       }
       continue;
     }
-    const active = rule.fields.filter((field) => sameValue(fieldValue(card, input, field), rule.activeValue));
+    const active = rule.fields.filter((field3) => sameValue(fieldValue(card, input, field3), rule.activeValue));
     if (active.length > 1) {
-      return rule.message ?? `${active.map((field) => fieldLabel(card, field)).join(" and ")} cannot be enabled together.`;
+      return rule.message ?? `${active.map((field3) => fieldLabel(card, field3)).join(" and ")} cannot be enabled together.`;
     }
   }
   return null;
@@ -26643,9 +27626,9 @@ function applyModelParameterChange(card, current, parameterId, value) {
   const changedField = `modelParams.${parameterId}`;
   for (const rule of card.constraints ?? []) {
     if (rule.type !== "mutually-exclusive" || !sameValue(value, rule.activeValue) || !rule.fields.includes(changedField)) continue;
-    for (const field of rule.fields) {
-      if (field === changedField || !field.startsWith("modelParams.")) continue;
-      next[field.slice("modelParams.".length)] = rule.inactiveValue;
+    for (const field3 of rule.fields) {
+      if (field3 === changedField || !field3.startsWith("modelParams.")) continue;
+      next[field3.slice("modelParams.".length)] = rule.inactiveValue;
     }
   }
   return next;
@@ -26832,14 +27815,10 @@ var DirectorReferenceStillSchema = z.object({
   aspectRatio: DirectorReferenceAspectRatioSchema,
   stageRevisionId: z.string().min(1),
   timeSeconds: z.number().nonnegative().optional(),
-  sequenceTimeSeconds: z.number().nonnegative().optional(),
-  src: z.string().url().optional(),
-  previewUrl: z.string().url().optional()
+  sequenceTimeSeconds: z.number().nonnegative().optional()
 });
 var DirectorReferenceVideoSchema = z.object({
   assetId: z.string().min(1),
-  src: z.string().url().optional(),
-  previewUrl: z.string().url().optional(),
   mimeType: z.string().min(1)
 });
 var DirectorReferencePacketSchema = z.object({
@@ -26962,10 +27941,18 @@ var NO_BOUND = { accepts: false, min: 0, max: 0 };
 function capability(card) {
   const im = card.input.inputMode;
   const requiresPrompt = card.input.requiresPrompt ?? true;
-  const promptModalities = card.input.promptModalities ?? ["text"];
+  const promptModalities = card.input.promptModalities ?? [
+    "text"
+  ];
   let image;
   if (im.startEnd) {
-    image = { accepts: true, min: 1, max: 2, isStartEnd: true, constraints: im.startEnd.constraints };
+    image = {
+      accepts: true,
+      min: 1,
+      max: 2,
+      isStartEnd: true,
+      constraints: im.startEnd.constraints
+    };
   } else if (im.images) {
     image = {
       accepts: true,
@@ -27130,7 +28117,9 @@ function validateRefs(cardOrCap, counts, opts = {}) {
     return `Selected model accepts at most ${cap.maxTotalReferences} total references (got ${totalMediaReferences}).`;
   }
   const requiredReferenceModalities = cap.requiresAnyReferenceOf;
-  if ((requiredReferenceModalities == null ? void 0 : requiredReferenceModalities.length) && !requiredReferenceModalities.some((modality) => countsByModality[modality] > 0)) {
+  if ((requiredReferenceModalities == null ? void 0 : requiredReferenceModalities.length) && !requiredReferenceModalities.some(
+    (modality) => countsByModality[modality] > 0
+  )) {
     const requirement = requiredReferenceModalities.length === 1 ? `reference ${requiredReferenceModalities[0]}` : `reference ${requiredReferenceModalities.slice(0, -1).join(", ")} or ${requiredReferenceModalities[requiredReferenceModalities.length - 1]}`;
     return `Selected model requires at least one ${requirement}.`;
   }
@@ -27173,21 +28162,24 @@ function validateRefs(cardOrCap, counts, opts = {}) {
   }
   if (cap.ref.video.accepts) {
     const { min, max } = cap.ref.video;
-    if (enforceMinimums && vidCount < min) return `Selected model requires at least ${min} reference video(s).`;
+    if (enforceMinimums && vidCount < min)
+      return `Selected model requires at least ${min} reference video(s).`;
     if (vidCount > max) {
       return `Selected model accepts at most ${max} reference video(s) (got ${vidCount}).`;
     }
   }
   if (cap.ref.audio.accepts) {
     const { min, max } = cap.ref.audio;
-    if (enforceMinimums && audCount < min) return `Selected model requires at least ${min} reference audio clip(s).`;
+    if (enforceMinimums && audCount < min)
+      return `Selected model requires at least ${min} reference audio clip(s).`;
     if (audCount > max) {
       return `Selected model accepts at most ${max} reference audio clip(s) (got ${audCount}).`;
     }
   }
   if (cap.ref.text.accepts) {
     const { min, max } = cap.ref.text;
-    if (enforceMinimums && textCount < min) return `Selected model requires at least ${min} reference text node(s).`;
+    if (enforceMinimums && textCount < min)
+      return `Selected model requires at least ${min} reference text node(s).`;
     if (textCount > max) {
       return `Selected model accepts at most ${max} reference text node(s) (got ${textCount}).`;
     }
@@ -27270,7 +28262,9 @@ function partitionRefs(refs, cardOrCap) {
     }
     const modality = referenceModality(n);
     if (modality === "text" && cap.ref.text.accepts) {
-      const text = normalizePromptInput(((_a = n.data) == null ? void 0 : _a.content) ?? ((_b = n.data) == null ? void 0 : _b.prompt) ?? ((_c = n.data) == null ? void 0 : _c.label)).trim();
+      const text = normalizePromptInput(
+        ((_a = n.data) == null ? void 0 : _a.content) ?? ((_b = n.data) == null ? void 0 : _b.prompt) ?? ((_c = n.data) == null ? void 0 : _c.label)
+      ).trim();
       if (text) out.texts.push(text);
       continue;
     }
@@ -27289,9 +28283,11 @@ function partitionRefs(refs, cardOrCap) {
 function findCompatibleModels(opts) {
   const sameKind = opts.cards.filter((card) => card.kind === opts.outputKind);
   if (opts.referenceCounts) {
-    return sameKind.filter((card) => validateRefs(card, opts.referenceCounts, {
-      enforceMinimums: opts.enforceMinimums
-    }) === null);
+    return sameKind.filter(
+      (card) => validateRefs(card, opts.referenceCounts, {
+        enforceMinimums: opts.enforceMinimums
+      }) === null
+    );
   }
   if (!opts.sourceKind) return sameKind;
   const sourceKind = opts.sourceKind;
@@ -27507,8 +28503,6 @@ var NodeDataSchema = z.object({
   stageId: z.string().optional(),
   /** Latest registered reference-video output from a Director Stage node. */
   outputVideoAssetId: z.string().optional(),
-  outputVideoSrc: z.string().optional(),
-  outputVideoPreviewUrl: z.string().optional(),
   outputVideoDurationSeconds: z.number().optional(),
   outputVideoFps: z.number().optional(),
   outputVideoStageRevisionId: z.string().optional(),
@@ -27698,13 +28692,13 @@ function buildPendingAssetNode(input) {
     if (!isCustom) data.aspectRatio = dist_resolveAspectRatio(modelId, modelParams);
     data.referenceMode = referenceMode || "none";
   }
-  if (referenceImageAssetIds && referenceImageAssetIds.length > 0 && !isAudio) {
+  if (referenceImageAssetIds && referenceImageAssetIds.length > 0) {
     data.referenceImageAssetIds = referenceImageAssetIds;
   }
-  if ((isVideo || isText || isCustom) && referenceVideoAssetIds && referenceVideoAssetIds.length > 0) {
+  if (referenceVideoAssetIds && referenceVideoAssetIds.length > 0) {
     data.referenceVideoAssetIds = referenceVideoAssetIds;
   }
-  if ((isVideo || isText || isCustom) && referenceAudioAssetIds && referenceAudioAssetIds.length > 0) {
+  if (referenceAudioAssetIds && referenceAudioAssetIds.length > 0) {
     data.referenceAudioAssetIds = referenceAudioAssetIds;
   }
   if (isVideo && !isCustom) {
@@ -27802,6 +28796,7 @@ function buildGenerationPayload(input) {
   }) : null);
   const totalAssetRefs = partition.imageAssetIds.length + partition.videoAssetIds.length + partition.audioAssetIds.length;
   const modelParams = input.config.kind === "model" ? { ...input.config.modelParams } : {};
+  delete modelParams.provider_id;
   if ((musicInput == null ? void 0 : musicInput.lyricsTarget) === "modelParam" && musicInput.lyricsParam) {
     modelParams[musicInput.lyricsParam] = musicLyrics;
   }
@@ -28172,6 +29167,781 @@ var ProjectContextSchema = z.object({
   }))
 });
 
+function dist_isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function dist_nonEmptyString(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : void 0;
+}
+function storageFreeMediaRecord(input, label) {
+  const source = dist_nonEmptyString(input.src);
+  if (!source) return { ok: true, value: { ...input } };
+  const projectAssetId = dist_nonEmptyString(input.assetId) ?? dist_nonEmptyString(input.backingAssetId);
+  if (!projectAssetId && !source.startsWith("data:")) {
+    return {
+      ok: false,
+      error: `${label} must reference a Project Asset before it can be persisted`
+    };
+  }
+  if (!projectAssetId) return { ok: true, value: { ...input } };
+  const {
+    src: _src,
+    previewUrl: _previewUrl,
+    thumbnailUrl: _thumbnailUrl,
+    url: _url,
+    localPath: _localPath,
+    storageKey: _storageKey,
+    srcR2Key: _srcR2Key,
+    ...persisted
+  } = input;
+  return { ok: true, value: { ...persisted, assetId: projectAssetId } };
+}
+function normalizeProjectTimelinePersistenceState(input) {
+  if (!dist_isRecord(input)) return { ok: true, state: input };
+  const tracks = Array.isArray(input.tracks) ? input.tracks : void 0;
+  if (!tracks) return { ok: true, state: structuredClone(input) };
+  const nextTracks = [];
+  for (const track of tracks) {
+    if (!dist_isRecord(track) || !Array.isArray(track.items)) {
+      nextTracks.push(structuredClone(track));
+      continue;
+    }
+    const items = [];
+    for (const candidate of track.items) {
+      if (!dist_isRecord(candidate)) {
+        items.push(structuredClone(candidate));
+        continue;
+      }
+      const itemId = dist_nonEmptyString(candidate.id) ?? "<unknown>";
+      const normalized = storageFreeMediaRecord(
+        candidate,
+        `Timeline item ${itemId}`
+      );
+      if (!normalized.ok) return normalized;
+      items.push(normalized.value);
+    }
+    nextTracks.push({ ...structuredClone(track), items });
+  }
+  const next = {
+    ...structuredClone(input),
+    tracks: nextTracks
+  };
+  if (Array.isArray(input.assets)) {
+    const assets = [];
+    for (const candidate of input.assets) {
+      if (!dist_isRecord(candidate)) {
+        assets.push(structuredClone(candidate));
+        continue;
+      }
+      const assetId = dist_nonEmptyString(candidate.backingAssetId) ?? dist_nonEmptyString(candidate.assetId) ?? dist_nonEmptyString(candidate.id) ?? "<unknown>";
+      const normalized = storageFreeMediaRecord(
+        candidate,
+        `Timeline Asset ${assetId}`
+      );
+      if (!normalized.ok) return normalized;
+      assets.push(normalized.value);
+    }
+    next.assets = assets;
+  }
+  return { ok: true, state: next };
+}
+
+
+var PROJECT_ASSETS_CONTAINER = "projectAssets";
+var PROJECT_ASSET_SCHEMA_CONTAINER = "projectAssetSchema";
+var PROJECT_ASSET_AUTHORITY_VERSION = 1;
+var PROJECT_ASSET_AUTHORITY_VERSION_KEY = "authorityVersion";
+var PROJECT_ASSET_AUTHORITY_VERSIONS_KEY = "authorityVersions";
+function dist_isRecord2(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function isLoroMap(value) {
+  return value instanceof LoroMap || Boolean(
+    value && typeof value === "object" && typeof value.get === "function" && typeof value.set === "function" && typeof value.entries === "function"
+  );
+}
+function dist_field(raw, key) {
+  if (isLoroMap(raw)) return raw.get(key);
+  return dist_isRecord2(raw) ? raw[key] : void 0;
+}
+function nonEmptyString2(value) {
+  return typeof value === "string" && value.trim() ? value : void 0;
+}
+function lifecycleFromFields(raw) {
+  const terminalRaw = dist_field(raw, "terminalLifecycle");
+  if (terminalRaw !== void 0) {
+    const terminal = dist_ProjectAssetLifecycleSchema.safeParse(terminalRaw);
+    if (!terminal.success || terminal.data.state !== "purged") {
+      throw new Error("Invalid Project Asset terminal lifecycle.");
+    }
+    return terminal.data;
+  }
+  const purgedAt = nonEmptyString2(dist_field(raw, "purgedAt"));
+  const deleteOperationId = nonEmptyString2(dist_field(raw, "deleteOperationId"));
+  const deletedAt = nonEmptyString2(dist_field(raw, "deletedAt"));
+  if (purgedAt) {
+    if (!deleteOperationId || !deletedAt) {
+      throw new Error("A purged Project Asset is missing its delete operation or deletion time.");
+    }
+    return { state: "purged", deleteOperationId, deletedAt, purgedAt };
+  }
+  const lifecycleState = dist_field(raw, "lifecycleState");
+  if (lifecycleState === "trashed") {
+    const purgeAfter = nonEmptyString2(dist_field(raw, "purgeAfter"));
+    if (!deleteOperationId || !deletedAt || !purgeAfter) {
+      throw new Error("A trashed Project Asset is missing its recovery-window facts.");
+    }
+    return { state: "trashed", deleteOperationId, deletedAt, purgeAfter };
+  }
+  if (lifecycleState === "active") return { state: "active" };
+  throw new Error(`Invalid Project Asset lifecycle state: ${String(lifecycleState)}`);
+}
+function parseProjectAsset(id2, raw) {
+  var _a;
+  if (!dist_isRecord2(raw) && !isLoroMap(raw)) return null;
+  const candidate = {
+    id: id2,
+    kind: dist_field(raw, "kind"),
+    source: dist_field(raw, "source"),
+    lifecycle: lifecycleFromFields(raw),
+    ...nonEmptyString2(dist_field(raw, "name")) ? { name: dist_field(raw, "name") } : {},
+    metadata: dist_field(raw, "metadata"),
+    ...dist_field(raw, "provenance") === void 0 ? {} : { provenance: dist_field(raw, "provenance") }
+  };
+  const parsed = dist_ProjectAssetEntrySchema.safeParse(candidate);
+  if (!parsed.success) {
+    throw new Error(
+      `Invalid Project Asset ${id2}: ${((_a = parsed.error.issues[0]) == null ? void 0 : _a.message) ?? "invalid entry"}`
+    );
+  }
+  return parsed.data;
+}
+function mutationError(code, message, projectAssetId) {
+  return {
+    ok: false,
+    error: { code, message, ...projectAssetId ? { projectAssetId } : {} }
+  };
+}
+function authorityError(version) {
+  return {
+    ok: false,
+    error: {
+      code: "UNSUPPORTED_PROJECT_ASSET_AUTHORITY",
+      message: `Unsupported Project Asset authority version: ${String(version)}`
+    }
+  };
+}
+function projectAssetAuthorityVersion(doc) {
+  const value = rawProjectAssetAuthorityVersion(doc);
+  return typeof value === "number" && Number.isInteger(value) ? value : void 0;
+}
+function rawProjectAssetAuthorityVersion(doc) {
+  const schema = doc.getMap(PROJECT_ASSET_SCHEMA_CONTAINER);
+  const versions = [];
+  const legacy = schema.get(PROJECT_ASSET_AUTHORITY_VERSION_KEY);
+  if (legacy !== void 0) {
+    if (typeof legacy !== "number" || !Number.isInteger(legacy) || legacy < 1) return legacy;
+    versions.push(legacy);
+  }
+  const facts = schema.get(PROJECT_ASSET_AUTHORITY_VERSIONS_KEY);
+  if (facts !== void 0) {
+    if (!isLoroMap(facts)) return facts;
+    for (const [key, value] of facts.entries()) {
+      const version = Number(key);
+      if (value !== true || !Number.isInteger(version) || version < 1 || String(version) !== key) {
+        return `invalid authority version fact ${key}`;
+      }
+      versions.push(version);
+    }
+  }
+  return versions.length === 0 ? void 0 : Math.max(...versions);
+}
+function mutationAuthorityError(doc) {
+  const version = rawProjectAssetAuthorityVersion(doc);
+  if (version === void 0 || version === PROJECT_ASSET_AUTHORITY_VERSION) return void 0;
+  return { ok: false, error: authorityError(version).error };
+}
+function markProjectAssetAuthority(doc) {
+  const current = rawProjectAssetAuthorityVersion(doc);
+  if (current !== void 0 && current !== PROJECT_ASSET_AUTHORITY_VERSION) {
+    return authorityError(current);
+  }
+  doc.getMap(PROJECT_ASSET_SCHEMA_CONTAINER).ensureMergeableMap(PROJECT_ASSET_AUTHORITY_VERSIONS_KEY).set(String(PROJECT_ASSET_AUTHORITY_VERSION), true);
+  return { ok: true, version: PROJECT_ASSET_AUTHORITY_VERSION };
+}
+function readProjectAsset(doc, id2) {
+  const normalizedId = id2.trim();
+  if (!normalizedId) return null;
+  return parseProjectAsset(
+    normalizedId,
+    doc.getMap(PROJECT_ASSETS_CONTAINER).get(normalizedId)
+  );
+}
+function listProjectAssets(doc) {
+  const entries = [];
+  for (const [id2, raw] of doc.getMap(PROJECT_ASSETS_CONTAINER).entries()) {
+    const entry = parseProjectAsset(id2, raw);
+    if (entry) entries.push(entry);
+  }
+  return entries.sort((left, right) => left.id.localeCompare(right.id));
+}
+function writeEntry(fields, entry) {
+  fields.set("kind", entry.kind);
+  fields.set("source", entry.source);
+  fields.set("metadata", entry.metadata);
+  fields.set("lifecycleState", entry.lifecycle.state);
+  if (entry.name === void 0) fields.delete("name");
+  else fields.set("name", entry.name);
+  if (entry.provenance === void 0) fields.delete("provenance");
+  else fields.set("provenance", entry.provenance);
+  if (entry.lifecycle.state === "trashed") {
+    fields.set("deleteOperationId", entry.lifecycle.deleteOperationId);
+    fields.set("deletedAt", entry.lifecycle.deletedAt);
+    fields.set("purgeAfter", entry.lifecycle.purgeAfter);
+  }
+  if (entry.lifecycle.state === "purged") {
+    fields.set("terminalLifecycle", entry.lifecycle);
+  }
+}
+function createProjectAsset(doc, input) {
+  var _a;
+  const parsed = dist_ProjectAssetEntrySchema.safeParse(input);
+  if (!parsed.success) {
+    return mutationError(
+      "INVALID_PROJECT_ASSET",
+      ((_a = parsed.error.issues[0]) == null ? void 0 : _a.message) ?? "Invalid Project Asset"
+    );
+  }
+  const unsupported = mutationAuthorityError(doc);
+  if (unsupported) return unsupported;
+  const entries = doc.getMap(PROJECT_ASSETS_CONTAINER);
+  if (entries.get(parsed.data.id) !== void 0) {
+    return mutationError(
+      "PROJECT_ASSET_EXISTS",
+      `Project Asset ${parsed.data.id} already exists.`,
+      parsed.data.id
+    );
+  }
+  writeEntry(entries.ensureMergeableMap(parsed.data.id), parsed.data);
+  return { ok: true, entry: parsed.data };
+}
+function mutableEntry(doc, id2) {
+  const unsupported = mutationAuthorityError(doc);
+  if (unsupported) return unsupported;
+  const normalizedId = id2.trim();
+  const raw = doc.getMap(PROJECT_ASSETS_CONTAINER).get(normalizedId);
+  const entry = parseProjectAsset(normalizedId, raw);
+  if (!entry || !isLoroMap(raw)) {
+    return mutationError(
+      "PROJECT_ASSET_NOT_FOUND",
+      `Project Asset ${normalizedId} not found.`,
+      normalizedId
+    );
+  }
+  return { entry, fields: raw };
+}
+function trashProjectAsset(doc, input) {
+  var _a;
+  const found = mutableEntry(doc, input.id);
+  if ("ok" in found) return found;
+  if (found.entry.lifecycle.state === "purged") {
+    return mutationError(
+      "PROJECT_ASSET_PURGED",
+      `Project Asset ${input.id} was purged and cannot be trashed again.`,
+      input.id
+    );
+  }
+  if (found.entry.lifecycle.state === "trashed") {
+    if (found.entry.lifecycle.deleteOperationId === input.deleteOperationId) {
+      return { ok: true, entry: found.entry };
+    }
+    return mutationError(
+      "PROJECT_ASSET_ALREADY_TRASHED",
+      `Project Asset ${input.id} is already trashed by another operation.`,
+      input.id
+    );
+  }
+  const lifecycle = dist_ProjectAssetLifecycleSchema.safeParse({
+    state: "trashed",
+    deleteOperationId: input.deleteOperationId,
+    deletedAt: input.deletedAt,
+    purgeAfter: input.purgeAfter
+  });
+  if (!lifecycle.success) {
+    return mutationError(
+      "INVALID_PROJECT_ASSET",
+      ((_a = lifecycle.error.issues[0]) == null ? void 0 : _a.message) ?? "Invalid Project Asset lifecycle",
+      input.id
+    );
+  }
+  if (lifecycle.data.state !== "trashed") {
+    return mutationError("INVALID_PROJECT_ASSET", "Invalid trashed lifecycle.", input.id);
+  }
+  found.fields.set("lifecycleState", "trashed");
+  found.fields.set("deleteOperationId", lifecycle.data.deleteOperationId);
+  found.fields.set("deletedAt", lifecycle.data.deletedAt);
+  found.fields.set("purgeAfter", lifecycle.data.purgeAfter);
+  return { ok: true, entry: { ...found.entry, lifecycle: lifecycle.data } };
+}
+function restoreProjectAsset(doc, id2) {
+  const found = mutableEntry(doc, id2);
+  if ("ok" in found) return found;
+  if (found.entry.lifecycle.state === "purged") {
+    return mutationError(
+      "PROJECT_ASSET_PURGED",
+      `Project Asset ${id2} was purged and cannot be restored.`,
+      id2
+    );
+  }
+  if (found.entry.lifecycle.state === "active") {
+    return { ok: true, entry: found.entry };
+  }
+  found.fields.set("lifecycleState", "active");
+  return {
+    ok: true,
+    entry: { ...found.entry, lifecycle: { state: "active" } }
+  };
+}
+function purgeProjectAsset(doc, input) {
+  var _a;
+  const found = mutableEntry(doc, input.id);
+  if ("ok" in found) return found;
+  if (found.entry.lifecycle.state === "purged") {
+    if (found.entry.lifecycle.deleteOperationId === input.deleteOperationId) {
+      return { ok: true, entry: found.entry };
+    }
+    return mutationError(
+      "PROJECT_ASSET_DELETE_CONFLICT",
+      `Project Asset ${input.id} was purged by another delete operation.`,
+      input.id
+    );
+  }
+  if (found.entry.lifecycle.state !== "trashed") {
+    return mutationError(
+      "PROJECT_ASSET_NOT_TRASHED",
+      `Project Asset ${input.id} must be trashed before it can be purged.`,
+      input.id
+    );
+  }
+  if (found.entry.lifecycle.deleteOperationId !== input.deleteOperationId) {
+    return mutationError(
+      "PROJECT_ASSET_DELETE_CONFLICT",
+      `Project Asset ${input.id} belongs to another delete operation.`,
+      input.id
+    );
+  }
+  const lifecycle = dist_ProjectAssetLifecycleSchema.safeParse({
+    state: "purged",
+    deleteOperationId: input.deleteOperationId,
+    deletedAt: found.entry.lifecycle.deletedAt,
+    purgedAt: input.purgedAt
+  });
+  if (!lifecycle.success) {
+    return mutationError(
+      "INVALID_PROJECT_ASSET",
+      ((_a = lifecycle.error.issues[0]) == null ? void 0 : _a.message) ?? "Invalid Project Asset lifecycle",
+      input.id
+    );
+  }
+  if (lifecycle.data.state !== "purged") {
+    return mutationError("INVALID_PROJECT_ASSET", "Invalid purged lifecycle.", input.id);
+  }
+  found.fields.set("terminalLifecycle", lifecycle.data);
+  return { ok: true, entry: { ...found.entry, lifecycle: lifecycle.data } };
+}
+var ACTION_ASSET_BINDINGS_CONTAINER = "actionAssetBindings";
+var ACTION_ASSET_BINDING_SCHEMA_CONTAINER = "actionAssetBindingSchema";
+var ACTION_ASSET_BINDING_AUTHORITY_VERSION = 1;
+var ACTION_ASSET_BINDING_AUTHORITY_VERSION_KEY = "authorityVersion";
+var ACTION_ASSET_BINDING_AUTHORITY_VERSIONS_KEY = "authorityVersions";
+function isRecord3(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function isLoroMap2(value) {
+  return value instanceof LoroMap2 || Boolean(
+    value && typeof value === "object" && typeof value.get === "function" && typeof value.set === "function" && typeof value.entries === "function"
+  );
+}
+function field2(raw, key) {
+  if (isLoroMap2(raw)) return raw.get(key);
+  return isRecord3(raw) ? raw[key] : void 0;
+}
+function rawActionAssetBindingAuthorityVersion(doc) {
+  const schema = doc.getMap(ACTION_ASSET_BINDING_SCHEMA_CONTAINER);
+  const versions = [];
+  const legacy = schema.get(ACTION_ASSET_BINDING_AUTHORITY_VERSION_KEY);
+  if (legacy !== void 0) {
+    if (typeof legacy !== "number" || !Number.isInteger(legacy) || legacy < 1)
+      return legacy;
+    versions.push(legacy);
+  }
+  const facts = schema.get(ACTION_ASSET_BINDING_AUTHORITY_VERSIONS_KEY);
+  if (facts !== void 0) {
+    if (!isLoroMap2(facts)) return facts;
+    for (const [key, value] of facts.entries()) {
+      const version = Number(key);
+      if (value !== true || !Number.isInteger(version) || version < 1 || String(version) !== key) {
+        return `invalid authority version fact ${key}`;
+      }
+      versions.push(version);
+    }
+  }
+  return versions.length === 0 ? void 0 : Math.max(...versions);
+}
+function actionAssetBindingAuthorityVersion(doc) {
+  const value = rawActionAssetBindingAuthorityVersion(doc);
+  return typeof value === "number" && Number.isInteger(value) ? value : void 0;
+}
+function authorityError2(version) {
+  return {
+    ok: false,
+    error: {
+      code: "UNSUPPORTED_ACTION_ASSET_BINDING_AUTHORITY",
+      message: `Unsupported Action Asset binding authority version: ${String(version)}`
+    }
+  };
+}
+function mutationAuthorityError2(doc) {
+  const version = rawActionAssetBindingAuthorityVersion(doc);
+  if (version === void 0 || version === ACTION_ASSET_BINDING_AUTHORITY_VERSION) {
+    return void 0;
+  }
+  return authorityError2(version);
+}
+function markActionAssetBindingAuthority(doc) {
+  const current = rawActionAssetBindingAuthorityVersion(doc);
+  if (current !== void 0 && current !== ACTION_ASSET_BINDING_AUTHORITY_VERSION) {
+    return authorityError2(current);
+  }
+  doc.getMap(ACTION_ASSET_BINDING_SCHEMA_CONTAINER).ensureMergeableMap(ACTION_ASSET_BINDING_AUTHORITY_VERSIONS_KEY).set(String(ACTION_ASSET_BINDING_AUTHORITY_VERSION), true);
+  return { ok: true, version: ACTION_ASSET_BINDING_AUTHORITY_VERSION };
+}
+function parseBinding(id2, raw) {
+  var _a;
+  if (!isRecord3(raw) && !isLoroMap2(raw) || field2(raw, "unbound") === true)
+    return null;
+  const parsed = dist_ActionAssetBindingSchema.safeParse({
+    id: id2,
+    owner: field2(raw, "owner"),
+    direction: field2(raw, "direction"),
+    slot: field2(raw, "slot"),
+    projectAssetId: field2(raw, "projectAssetId"),
+    ...field2(raw, "role") === void 0 ? {} : { role: field2(raw, "role") }
+  });
+  if (!parsed.success) {
+    throw new Error(
+      `Invalid Action Asset binding ${id2}: ${((_a = parsed.error.issues[0]) == null ? void 0 : _a.message) ?? "invalid binding"}`
+    );
+  }
+  return parsed.data;
+}
+function mutationError2(code, message, details = {}) {
+  return { ok: false, error: { code, message, ...details } };
+}
+function requireActiveProjectAsset(doc, binding) {
+  const asset = readProjectAsset(doc, binding.projectAssetId);
+  if (!asset) {
+    return mutationError2(
+      "PROJECT_ASSET_NOT_FOUND",
+      `Project Asset ${binding.projectAssetId} not found.`,
+      { bindingId: binding.id, projectAssetId: binding.projectAssetId }
+    );
+  }
+  if (asset.lifecycle.state !== "active") {
+    return mutationError2(
+      "PROJECT_ASSET_NOT_ACTIVE",
+      `Project Asset ${binding.projectAssetId} is not active.`,
+      { bindingId: binding.id, projectAssetId: binding.projectAssetId }
+    );
+  }
+  return void 0;
+}
+function writeBinding(fields, binding) {
+  fields.set("owner", binding.owner);
+  fields.set("direction", binding.direction);
+  fields.set("slot", binding.slot);
+  fields.set("projectAssetId", binding.projectAssetId);
+  if (binding.role === void 0) fields.delete("role");
+  else fields.set("role", binding.role);
+}
+function assertActiveBindingTarget(doc, binding) {
+  if (binding.direction === "output") return;
+  const asset = readProjectAsset(doc, binding.projectAssetId);
+  if (!asset || asset.lifecycle.state !== "active") {
+    throw new Error(
+      `Action Asset binding ${binding.id} points to Project Asset ${binding.projectAssetId}, which is not active.`
+    );
+  }
+}
+function listStoredBindings(doc) {
+  const bindings = [];
+  for (const [id2, raw] of doc.getMap(ACTION_ASSET_BINDINGS_CONTAINER).entries()) {
+    const binding = parseBinding(id2, raw);
+    if (binding) bindings.push(binding);
+  }
+  return bindings.sort((left, right) => left.id.localeCompare(right.id));
+}
+function readActionAssetBinding(doc, id2) {
+  const normalizedId = id2.trim();
+  if (!normalizedId) return null;
+  const binding = parseBinding(
+    normalizedId,
+    doc.getMap(ACTION_ASSET_BINDINGS_CONTAINER).get(normalizedId)
+  );
+  if (binding) assertActiveBindingTarget(doc, binding);
+  return binding;
+}
+function listActionAssetBindings(doc) {
+  const bindings = listStoredBindings(doc);
+  for (const binding of bindings) assertActiveBindingTarget(doc, binding);
+  return bindings;
+}
+function listActionAssetReferences(doc, projectAssetId) {
+  return listStoredBindings(doc).filter((binding) => binding.projectAssetId === projectAssetId).sort((left, right) => left.id.localeCompare(right.id));
+}
+function projectAssetMutationReadToken(input) {
+  const inputBindings = input.references.filter((binding) => binding.direction === "input").map((binding) => ({
+    id: binding.id,
+    owner: binding.owner,
+    direction: binding.direction,
+    slot: binding.slot,
+    projectAssetId: binding.projectAssetId,
+    ...binding.role === void 0 ? {} : { role: binding.role }
+  })).sort((left, right) => left.id.localeCompare(right.id));
+  return dist_agentReadToken({
+    namespace: "project-asset",
+    subject: {
+      projectId: input.projectId.trim(),
+      entry: input.entry,
+      inputBindings
+    }
+  });
+}
+function projectAssetMutationReadTokenFromDoc(doc, projectId, projectAssetId) {
+  const entry = readProjectAsset(doc, projectAssetId);
+  if (!entry) return null;
+  return projectAssetMutationReadToken({
+    projectId,
+    entry,
+    references: listActionAssetReferences(doc, entry.id)
+  });
+}
+function reconcileActionAssetBindingTargets(doc) {
+  if (actionAssetBindingAuthorityVersion(doc) !== ACTION_ASSET_BINDING_AUTHORITY_VERSION) {
+    return { restoredProjectAssetIds: [] };
+  }
+  const restoredProjectAssetIds = [];
+  const visited = /* @__PURE__ */ new Set();
+  for (const binding of listStoredBindings(doc)) {
+    if (binding.direction !== "input" || visited.has(binding.projectAssetId)) {
+      continue;
+    }
+    visited.add(binding.projectAssetId);
+    const entry = readProjectAsset(doc, binding.projectAssetId);
+    if ((entry == null ? void 0 : entry.lifecycle.state) !== "trashed") continue;
+    const restored = restoreProjectAsset(doc, entry.id);
+    if (!restored.ok) continue;
+    restoredProjectAssetIds.push(entry.id);
+  }
+  return { restoredProjectAssetIds: restoredProjectAssetIds.sort() };
+}
+function createActionAssetBinding(doc, input) {
+  var _a;
+  const parsed = dist_ActionAssetBindingSchema.safeParse(input);
+  if (!parsed.success) {
+    return mutationError2(
+      "INVALID_ACTION_ASSET_BINDING",
+      ((_a = parsed.error.issues[0]) == null ? void 0 : _a.message) ?? "Invalid Action Asset binding."
+    );
+  }
+  const unsupported = mutationAuthorityError2(doc);
+  if (unsupported) return unsupported;
+  const activeError = requireActiveProjectAsset(doc, parsed.data);
+  if (activeError) return activeError;
+  const bindings = doc.getMap(ACTION_ASSET_BINDINGS_CONTAINER);
+  if (bindings.get(parsed.data.id) !== void 0) {
+    return mutationError2(
+      "ACTION_ASSET_BINDING_EXISTS",
+      `Action Asset binding ${parsed.data.id} already exists.`,
+      { bindingId: parsed.data.id }
+    );
+  }
+  writeBinding(bindings.ensureMergeableMap(parsed.data.id), parsed.data);
+  return { ok: true, binding: parsed.data };
+}
+function updateActionAssetBinding(doc, input) {
+  var _a;
+  const parsed = dist_ActionAssetBindingSchema.safeParse(input);
+  if (!parsed.success) {
+    return mutationError2(
+      "INVALID_ACTION_ASSET_BINDING",
+      ((_a = parsed.error.issues[0]) == null ? void 0 : _a.message) ?? "Invalid Action Asset binding."
+    );
+  }
+  const unsupported = mutationAuthorityError2(doc);
+  if (unsupported) return unsupported;
+  const bindings = doc.getMap(ACTION_ASSET_BINDINGS_CONTAINER);
+  const raw = bindings.get(parsed.data.id);
+  const existing = parseBinding(parsed.data.id, raw);
+  if (!existing || !isLoroMap2(raw)) {
+    return mutationError2(
+      "ACTION_ASSET_BINDING_NOT_FOUND",
+      `Action Asset binding ${parsed.data.id} not found.`,
+      { bindingId: parsed.data.id }
+    );
+  }
+  const activeError = requireActiveProjectAsset(doc, parsed.data);
+  if (activeError) return activeError;
+  writeBinding(raw, parsed.data);
+  return { ok: true, binding: parsed.data };
+}
+function unbindActionAssetBinding(doc, id2) {
+  const unsupported = mutationAuthorityError2(doc);
+  if (unsupported) return unsupported;
+  const normalizedId = id2.trim();
+  const raw = doc.getMap(ACTION_ASSET_BINDINGS_CONTAINER).get(normalizedId);
+  const binding = parseBinding(normalizedId, raw);
+  if (!binding || !isLoroMap2(raw)) {
+    return mutationError2(
+      "ACTION_ASSET_BINDING_NOT_FOUND",
+      `Action Asset binding ${normalizedId} not found.`,
+      { bindingId: normalizedId }
+    );
+  }
+  raw.set("unbound", true);
+  return { ok: true, binding };
+}
+function sameOwner(left, right) {
+  return left.kind === "draft" && right.kind === "draft" && left.actionId === right.actionId;
+}
+function newDirectBindingId() {
+  const cryptoObject = globalThis.crypto;
+  const suffix = (cryptoObject == null ? void 0 : cryptoObject.randomUUID) ? cryptoObject.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return `action-asset:direct:${suffix}`;
+}
+function replaceDraftActionAssetInputBindings(doc, actionIdInput, desiredInputs) {
+  const actionId = actionIdInput.trim();
+  if (!actionId) return { ok: false, error: "Action id is required" };
+  const authority = rawActionAssetBindingAuthorityVersion(doc);
+  if (authority === void 0) {
+    return { ok: true, managed: false, bindings: [] };
+  }
+  if (authority !== ACTION_ASSET_BINDING_AUTHORITY_VERSION) {
+    return {
+      ok: false,
+      error: `Unsupported Action Asset binding authority version: ${String(authority)}`
+    };
+  }
+  const desiredBySlot = /* @__PURE__ */ new Map();
+  for (const candidate of desiredInputs) {
+    const slot = candidate.slot.trim();
+    const projectAssetId = candidate.projectAssetId.trim();
+    if (!slot || !projectAssetId) {
+      return { ok: false, error: "Action Asset input slot and Project Asset id are required" };
+    }
+    if (desiredBySlot.has(slot)) {
+      return { ok: false, error: `Action Asset input slot ${slot} is duplicated` };
+    }
+    const asset = readProjectAsset(doc, projectAssetId);
+    if (!asset || asset.lifecycle.state !== "active") {
+      return {
+        ok: false,
+        error: `Project Asset ${projectAssetId} is not active`
+      };
+    }
+    desiredBySlot.set(slot, {
+      slot,
+      projectAssetId,
+      ...candidate.role ? { role: candidate.role } : {}
+    });
+  }
+  const owner = { kind: "draft", actionId };
+  const currentBySlot = /* @__PURE__ */ new Map();
+  for (const binding of listActionAssetBindings(doc)) {
+    if (binding.direction !== "input" || !sameOwner(binding.owner, owner)) {
+      continue;
+    }
+    const current = currentBySlot.get(binding.slot) ?? [];
+    current.push(binding);
+    currentBySlot.set(binding.slot, current);
+  }
+  const bindings = [];
+  for (const [slot, desired] of desiredBySlot) {
+    const existing = [...currentBySlot.get(slot) ?? []].sort(
+      (left, right) => left.id.localeCompare(right.id)
+    );
+    const first = existing.shift();
+    if (first) {
+      const next = {
+        ...first,
+        owner,
+        direction: "input",
+        slot,
+        projectAssetId: desired.projectAssetId,
+        ...desired.role ? { role: desired.role } : { role: void 0 }
+      };
+      const updated = updateActionAssetBinding(doc, next);
+      if (!updated.ok) return { ok: false, error: updated.error.message };
+      bindings.push(updated.binding);
+    } else {
+      const created = createActionAssetBinding(doc, {
+        id: newDirectBindingId(),
+        owner,
+        direction: "input",
+        slot,
+        projectAssetId: desired.projectAssetId,
+        ...desired.role ? { role: desired.role } : {}
+      });
+      if (!created.ok) return { ok: false, error: created.error.message };
+      bindings.push(created.binding);
+    }
+    for (const duplicate of existing) {
+      const unbound = unbindActionAssetBinding(doc, duplicate.id);
+      if (!unbound.ok) return { ok: false, error: unbound.error.message };
+    }
+    currentBySlot.delete(slot);
+  }
+  for (const obsolete of currentBySlot.values()) {
+    for (const binding of obsolete) {
+      const unbound = unbindActionAssetBinding(doc, binding.id);
+      if (!unbound.ok) return { ok: false, error: unbound.error.message };
+    }
+  }
+  return {
+    ok: true,
+    managed: true,
+    bindings: bindings.sort((left, right) => left.id.localeCompare(right.id))
+  };
+}
+function trashProjectAssetIfUnreferenced(doc, input) {
+  const currentVersion = actionAssetBindingAuthorityVersion(doc);
+  if (currentVersion !== ACTION_ASSET_BINDING_AUTHORITY_VERSION) {
+    return {
+      ok: false,
+      error: {
+        code: "ACTION_ASSET_BINDING_AUTHORITY_REQUIRED",
+        message: "Project Asset deletion is unavailable until legacy Action Asset references are materialized.",
+        ...currentVersion === void 0 ? {} : { currentVersion },
+        requiredVersion: ACTION_ASSET_BINDING_AUTHORITY_VERSION
+      }
+    };
+  }
+  const references = listActionAssetReferences(doc, input.id);
+  const blockingReferences = references.filter(
+    (binding) => binding.direction === "input"
+  );
+  if (blockingReferences.length > 0) {
+    return {
+      ok: false,
+      error: {
+        code: "ASSET_IN_USE",
+        projectAssetId: input.id,
+        references: blockingReferences
+      }
+    };
+  }
+  return trashProjectAsset(doc, input);
+}
 
 var NODE_UPSTREAMS_CONTAINER = "nodeUpstreams";
 var EDGE_IDENTITY_CONTAINER = "edgeIdentity";
@@ -28181,16 +29951,16 @@ var EDGE_IDENTITY_VERSION = 1;
 function canvasGraphReconciliationChanged(result) {
   return result.initializedIdentity || result.migratedLegacyEdgeIds.length > 0 || result.removedOrphanEdgeIds.length > 0 || result.removedDuplicateRefs > 0;
 }
-function dist_isRecord(value) {
+function isRecord4(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
-function isLoroMap(value) {
-  return value instanceof LoroMap || Boolean(
+function isLoroMap3(value) {
+  return value instanceof LoroMap3 || Boolean(
     value && typeof value === "object" && typeof value.entries === "function" && typeof value.set === "function" && typeof value.delete === "function"
   );
 }
 function normalizeUpstreamRef(edgeId, value) {
-  if (!dist_isRecord(value) || typeof value.nodeId !== "string" || !value.nodeId.trim()) {
+  if (!isRecord4(value) || typeof value.nodeId !== "string" || !value.nodeId.trim()) {
     return null;
   }
   return {
@@ -28202,7 +29972,7 @@ function normalizeUpstreamRef(edgeId, value) {
   };
 }
 function normalizeLegacyGlobalEdge(edgeId, value) {
-  if (!dist_isRecord(value) || typeof value.source !== "string" || !value.source.trim() || typeof value.target !== "string" || !value.target.trim()) {
+  if (!isRecord4(value) || typeof value.source !== "string" || !value.source.trim() || typeof value.target !== "string" || !value.target.trim()) {
     return null;
   }
   return {
@@ -28215,16 +29985,16 @@ function normalizeLegacyGlobalEdge(edgeId, value) {
   };
 }
 function legacyUpstreamRefs(rawNode) {
-  if (!dist_isRecord(rawNode) || !Array.isArray(rawNode.upstream)) return [];
+  if (!isRecord4(rawNode) || !Array.isArray(rawNode.upstream)) return [];
   return rawNode.upstream.flatMap((value) => {
-    if (!dist_isRecord(value) || typeof value.edgeId !== "string") return [];
+    if (!isRecord4(value) || typeof value.edgeId !== "string") return [];
     const normalized = normalizeUpstreamRef(value.edgeId, value);
     return normalized ? [normalized] : [];
   });
 }
 function existingUpstreamMap(doc, nodeId) {
   const value = doc.getMap(NODE_UPSTREAMS_CONTAINER).get(nodeId);
-  return isLoroMap(value) ? value : null;
+  return isLoroMap3(value) ? value : null;
 }
 function rawNodeUpstreamRefs(doc, nodeId, rawNode) {
   const refs = existingUpstreamMap(doc, nodeId);
@@ -28239,7 +30009,7 @@ function rawNodeUpstreamRefs(doc, nodeId, rawNode) {
 function ensureUpstreamMap(doc, nodeId, rawNode) {
   const root = doc.getMap(NODE_UPSTREAMS_CONTAINER);
   const existing = root.get(nodeId);
-  if (existing !== void 0 && !isLoroMap(existing)) {
+  if (existing !== void 0 && !isLoroMap3(existing)) {
     throw new Error(`Invalid upstream container for node ${nodeId}`);
   }
   const refs = existingUpstreamMap(doc, nodeId) ?? root.ensureMergeableMap(nodeId);
@@ -28262,12 +30032,12 @@ function hasStoredGraphRelationships(doc) {
   return false;
 }
 function parseEdgeIdentity(value) {
-  if (!dist_isRecord(value)) return null;
+  if (!isRecord4(value)) return null;
   if (value.deleted === true) return { deleted: true };
   return typeof value.target === "string" && value.target.trim() ? { target: value.target } : null;
 }
 function nodeCanvasId(rawNode) {
-  return dist_isRecord(rawNode) && typeof rawNode.canvasId === "string" ? rawNode.canvasId : "main";
+  return isRecord4(rawNode) && typeof rawNode.canvasId === "string" ? rawNode.canvasId : "main";
 }
 function legacyEdges(doc) {
   const byId = /* @__PURE__ */ new Map();
@@ -28450,6 +30220,50 @@ function projectCanvasReadToken(canvas) {
     }
   });
 }
+function projectTimelineActionId(timelineId, owner) {
+  return owner.kind === "canvas-action" ? `node:${owner.actionNodeId}` : `timeline:${timelineId}`;
+}
+function projectTimelineAssetInputs(state) {
+  if (!isRecord5(state) || !Array.isArray(state.tracks)) return [];
+  const inputs = [];
+  for (const track of state.tracks) {
+    if (!isRecord5(track) || !Array.isArray(track.items)) continue;
+    for (const item of track.items) {
+      if (!isRecord5(item) || typeof item.id !== "string" || !item.id.trim()) {
+        continue;
+      }
+      const projectAssetId = typeof item.assetId === "string" && item.assetId.trim() ? item.assetId.trim() : typeof item.backingAssetId === "string" && item.backingAssetId.trim() ? item.backingAssetId.trim() : void 0;
+      if (!projectAssetId) continue;
+      inputs.push({
+        slot: `timeline:item:${item.id.trim()}`,
+        projectAssetId,
+        role: "source"
+      });
+    }
+  }
+  return inputs;
+}
+function syncProjectTimelineAssetInputs(doc, timeline) {
+  const synced = replaceDraftActionAssetInputBindings(
+    doc,
+    projectTimelineActionId(timeline.id, timeline.owner),
+    projectTimelineAssetInputs(timeline.state)
+  );
+  return synced.ok ? void 0 : { ok: false, error: synced.error };
+}
+function rehomeProjectTimelineAssetInputs(doc, previous, next) {
+  const nextError = syncProjectTimelineAssetInputs(doc, next);
+  if (nextError) return nextError;
+  const previousActionId = projectTimelineActionId(previous.id, previous.owner);
+  const nextActionId = projectTimelineActionId(next.id, next.owner);
+  if (previousActionId === nextActionId) return void 0;
+  const cleared = replaceDraftActionAssetInputBindings(
+    doc,
+    previousActionId,
+    []
+  );
+  return cleared.ok ? void 0 : { ok: false, error: cleared.error };
+}
 function projectTimelineRevisionId(timelineId, state) {
   return dist_agentReadToken({
     namespace: "timeline-revision",
@@ -28471,37 +30285,37 @@ function projectTimelineReadToken(timeline) {
 function defaultCanvasName(canvasId) {
   return canvasId.split(/[-_\s]+/).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") || "Untitled";
 }
-function dist_isRecord2(value) {
+function isRecord5(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
-function isLoroMap2(value) {
-  return value instanceof LoroMap2 || Boolean(
+function isLoroMap4(value) {
+  return value instanceof LoroMap4 || Boolean(
     value && typeof value === "object" && typeof value.get === "function" && typeof value.set === "function" && typeof value.entries === "function" && typeof value.delete === "function"
   );
 }
-function timelineField(raw, field) {
-  if (isLoroMap2(raw)) return raw.get(field);
-  return dist_isRecord2(raw) ? raw[field] : void 0;
+function timelineField(raw, field3) {
+  if (isLoroMap4(raw)) return raw.get(field3);
+  return isRecord5(raw) ? raw[field3] : void 0;
 }
 function timelineActionTimelineId(raw) {
-  if (!dist_isRecord2(raw) || raw.type !== "video-editor" || !dist_isRecord2(raw.data)) return null;
+  if (!isRecord5(raw) || raw.type !== "video-editor" || !isRecord5(raw.data)) return null;
   return typeof raw.data.timelineId === "string" ? raw.data.timelineId : null;
 }
 function nodeCanvasId2(raw) {
-  return dist_isRecord2(raw) && typeof raw.canvasId === "string" ? raw.canvasId : DEFAULT_CANVAS_ID;
+  return isRecord5(raw) && typeof raw.canvasId === "string" ? raw.canvasId : DEFAULT_CANVAS_ID;
 }
 function parseTimeline(id2, raw) {
-  if (!dist_isRecord2(raw) && !isLoroMap2(raw)) return null;
+  if (!isRecord5(raw) && !isLoroMap4(raw)) return null;
   const nameValue = timelineField(raw, "name");
   const ownerField = timelineField(raw, "owner");
-  const ownerValue = dist_isRecord2(ownerField) ? ownerField : {};
+  const ownerValue = isRecord5(ownerField) ? ownerField : {};
   const owner = ownerValue.kind === "canvas-action" && typeof ownerValue.canvasId === "string" && typeof ownerValue.actionNodeId === "string" ? {
     kind: "canvas-action",
     canvasId: ownerValue.canvasId,
     actionNodeId: ownerValue.actionNodeId
   } : { kind: "project" };
   const revisionField = timelineField(raw, "revision");
-  const revisionValue = dist_isRecord2(revisionField) ? revisionField : {};
+  const revisionValue = isRecord5(revisionField) ? revisionField : {};
   const state = "state" in revisionValue ? revisionValue.state : timelineField(raw, "state");
   const legacyRevisionId = timelineField(raw, "revisionId");
   return {
@@ -28526,7 +30340,7 @@ function setTimelineFields(fields, timeline) {
 function ensureTimelineFields(doc, timelineId, parsedTimeline) {
   const timelines = doc.getMap("timelines");
   const existing = timelines.get(timelineId);
-  if (isLoroMap2(existing)) return existing;
+  if (isLoroMap4(existing)) return existing;
   const legacyTimeline = parsedTimeline ?? parseTimeline(timelineId, existing);
   if (existing !== void 0) timelines.delete(timelineId);
   const fields = timelines.ensureMergeableMap(timelineId);
@@ -28622,24 +30436,32 @@ function createProjectTimeline(doc, input) {
   if (!name) return { ok: false, error: "Timeline name is required" };
   const timelines = doc.getMap("timelines");
   if (timelines.get(id2)) return { ok: false, error: `Timeline ${id2} already exists` };
+  const persisted = normalizeProjectTimelinePersistenceState(input.state);
+  if (!persisted.ok) return persisted;
   const timeline = {
     id: id2,
     name,
     owner: { kind: "project" },
-    revisionId: projectTimelineRevisionId(id2, input.state),
-    state: input.state
+    revisionId: projectTimelineRevisionId(id2, persisted.state),
+    state: persisted.state
   };
+  const bindingError = syncProjectTimelineAssetInputs(doc, timeline);
+  if (bindingError) return bindingError;
   setTimelineFields(timelines.ensureMergeableMap(id2), timeline);
   return { ok: true, timeline };
 }
 function updateProjectTimelineState(doc, timelineId, state) {
   const timeline = readProjectTimeline(doc, timelineId);
   if (!timeline) return { ok: false, error: `Timeline ${timelineId} not found` };
+  const persisted = normalizeProjectTimelinePersistenceState(state);
+  if (!persisted.ok) return persisted;
   const next = {
     ...timeline,
-    revisionId: projectTimelineRevisionId(timelineId, state),
-    state
+    revisionId: projectTimelineRevisionId(timelineId, persisted.state),
+    state: persisted.state
   };
+  const bindingError = syncProjectTimelineAssetInputs(doc, next);
+  if (bindingError) return bindingError;
   ensureTimelineFields(doc, timelineId, timeline).set("revision", {
     state: next.state,
     revisionId: next.revisionId
@@ -28655,6 +30477,12 @@ function deleteProjectTimeline(doc, timelineId, expectedReadToken) {
       error: `STALE_READ: Timeline ${timelineId} changed after it was read`
     };
   }
+  const cleared = replaceDraftActionAssetInputBindings(
+    doc,
+    projectTimelineActionId(timeline.id, timeline.owner),
+    []
+  );
+  if (!cleared.ok) return { ok: false, error: cleared.error };
   const nodes = doc.getMap("nodes");
   for (const [nodeId, raw] of [...nodes.entries()]) {
     if (timelineActionTimelineId(raw) !== timelineId) continue;
@@ -28690,6 +30518,8 @@ function attachTimelineToCanvas(doc, input) {
       actionNodeId: input.actionNodeId
     }
   };
+  const bindingError = rehomeProjectTimelineAssetInputs(doc, timeline, next);
+  if (bindingError) return bindingError;
   ensureTimelineFields(doc, input.timelineId, timeline).set("owner", next.owner);
   nodes.set(input.actionNodeId, {
     canvasId: input.canvasId,
@@ -28712,6 +30542,8 @@ function detachTimelineFromCanvas(doc, timelineId) {
     }, timeline.owner.canvasId).deleteNode(actionNodeId);
   }
   const next = { ...timeline, owner: { kind: "project" } };
+  const bindingError = rehomeProjectTimelineAssetInputs(doc, timeline, next);
+  if (bindingError) return bindingError;
   ensureTimelineFields(doc, timelineId, timeline).set("owner", next.owner);
   return { ok: true, timeline: next };
 }
@@ -28740,7 +30572,7 @@ function copyTimelineActionToCanvas(doc, input) {
     return { ok: false, error: `Node ${input.newActionNodeId} already exists` };
   }
   const sourceAction = nodes.get(source.owner.actionNodeId);
-  const sourceActionData = dist_isRecord2(sourceAction) && dist_isRecord2(sourceAction.data) ? sourceAction.data : {};
+  const sourceActionData = isRecord5(sourceAction) && isRecord5(sourceAction.data) ? sourceAction.data : {};
   const timeline = {
     id: input.newTimelineId,
     name: source.name,
@@ -28752,6 +30584,8 @@ function copyTimelineActionToCanvas(doc, input) {
     revisionId: projectTimelineRevisionId(input.newTimelineId, source.state),
     state: cloneTimelineState(source.state)
   };
+  const bindingError = syncProjectTimelineAssetInputs(doc, timeline);
+  if (bindingError) return bindingError;
   setTimelineFields(timelines.ensureMergeableMap(input.newTimelineId), timeline);
   nodes.set(input.newActionNodeId, {
     canvasId: input.targetCanvasId,
@@ -28803,6 +30637,16 @@ function reconcileProjectTimelineOwnership(doc) {
     const rawOwner = nodes.get(timeline.owner.actionNodeId);
     const ownerMatches = timelineActionTimelineId(rawOwner) === timeline.id && nodeCanvasId2(rawOwner) === timeline.owner.canvasId;
     if (ownerMatches) continue;
+    const detached = {
+      ...timeline,
+      owner: { kind: "project" }
+    };
+    const bindingError = rehomeProjectTimelineAssetInputs(
+      doc,
+      timeline,
+      detached
+    );
+    if (bindingError) throw new Error(bindingError.error);
     ensureTimelineFields(doc, timeline.id, timeline).set("owner", { kind: "project" });
     detachedTimelineIds.push(timeline.id);
   }
@@ -28810,6 +30654,176 @@ function reconcileProjectTimelineOwnership(doc) {
     removedActionNodeIds: removedActionNodeIds.sort(),
     detachedTimelineIds: detachedTimelineIds.sort()
   };
+}
+function isRecord6(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function nonEmptyString3(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : void 0;
+}
+function stringList(value) {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((candidate) => {
+    const normalized = nonEmptyString3(candidate);
+    return normalized ? [normalized] : [];
+  });
+}
+function mediaModality(node) {
+  if (node.type === "image" || node.type === "video" || node.type === "audio") {
+    return node.type;
+  }
+  const outputType = nonEmptyString3(node.data.outputType);
+  return outputType === "image" || outputType === "video" || outputType === "audio" ? outputType : void 0;
+}
+function isCanvasManagedAssetAction(node) {
+  if (nonEmptyString3(node.data.timelineId) || nonEmptyString3(node.data.stageId)) {
+    return false;
+  }
+  return Boolean(
+    nonEmptyString3(node.data.actionType) || nonEmptyString3(node.data.modelId) || nonEmptyString3(node.data.model) || nonEmptyString3(node.data.customActionId) || isRecord6(node.data.pluginBinding) || /(?:^|[-_])(action|gen)(?:$|[-_])/.test(node.type)
+  );
+}
+function canvasActionAssetInputs(input) {
+  if (!isCanvasManagedAssetAction(input.node)) return null;
+  const nodesById = new Map(input.nodes.map((node) => [node.id, node]));
+  const inputs = [];
+  const mergedMultiplicity = /* @__PURE__ */ new Map();
+  const nextIndex = {
+    image: 0,
+    video: 0,
+    audio: 0
+  };
+  const mergeProjectedSource = (candidates) => {
+    const sourceMultiplicity = /* @__PURE__ */ new Map();
+    for (const candidate of candidates) {
+      const projectAssetId = candidate.projectAssetId.trim();
+      if (!projectAssetId) continue;
+      const key = `${candidate.modality}\0${projectAssetId}`;
+      const occurrence = (sourceMultiplicity.get(key) ?? 0) + 1;
+      sourceMultiplicity.set(key, occurrence);
+      if (occurrence <= (mergedMultiplicity.get(key) ?? 0)) continue;
+      mergedMultiplicity.set(key, occurrence);
+      const index = nextIndex[candidate.modality]++;
+      inputs.push({
+        slot: `${candidate.modality}:${index}`,
+        projectAssetId,
+        role: "reference"
+      });
+    }
+  };
+  mergeProjectedSource(
+    [
+      ["referenceImageAssetIds", "image"],
+      ["referenceVideoAssetIds", "video"],
+      ["referenceAudioAssetIds", "audio"]
+    ].flatMap(
+      ([field3, modality]) => stringList(input.node.data[field3]).map((projectAssetId) => ({
+        modality,
+        projectAssetId
+      }))
+    )
+  );
+  const incomingSourceIds = input.edges.filter((edge) => edge.target === input.node.id).map((edge) => edge.source);
+  const orderHint = stringList(input.node.data.referenceImageOrder);
+  const incomingSet = new Set(incomingSourceIds);
+  const orderedSourceIds = orderHint.filter((id2) => incomingSet.has(id2));
+  const orderedSet = new Set(orderedSourceIds);
+  orderedSourceIds.push(
+    ...incomingSourceIds.filter((id2) => !orderedSet.has(id2))
+  );
+  mergeProjectedSource(
+    orderedSourceIds.flatMap((sourceId) => {
+      const source = nodesById.get(sourceId);
+      if (!source) return [];
+      const modality = mediaModality(source);
+      const projectAssetId = nonEmptyString3(source.data.assetId);
+      return modality && projectAssetId ? [{ modality, projectAssetId }] : [];
+    })
+  );
+  const prompt = nonEmptyString3(input.node.data.prompt) ?? nonEmptyString3(input.node.data.content);
+  if (prompt) {
+    mergeProjectedSource(
+      extractAssetRefs(parsePromptParts(prompt)).flatMap((reference) => {
+        const source = nodesById.get(reference.nodeId);
+        if (!source) return [];
+        const modality = mediaModality(source);
+        const projectAssetId = nonEmptyString3(source.data.assetId);
+        return modality && projectAssetId ? [{ modality, projectAssetId }] : [];
+      })
+    );
+  }
+  const packets = [
+    input.node.data.directorReferencePacket,
+    ...Array.isArray(input.node.data.directorShotReferencePackets) ? input.node.data.directorShotReferencePackets : []
+  ].flatMap((candidate) => {
+    const parsed = DirectorReferencePacketSchema.safeParse(candidate);
+    return parsed.success ? [parsed.data] : [];
+  });
+  mergeProjectedSource(
+    packets.flatMap((packet) => [
+      {
+        modality: "video",
+        projectAssetId: packet.referenceVideo.assetId
+      },
+      ...packet.referenceStills.map((still) => ({
+        modality: "image",
+        projectAssetId: still.assetId
+      }))
+    ])
+  );
+  return inputs;
+}
+function projectVisibleNodeData(data) {
+  const visible = { ...data };
+  delete visible.providerAccountId;
+  delete visible.provider_id;
+  delete visible.src;
+  delete visible.url;
+  delete visible.remoteUrl;
+  delete visible.signedUrl;
+  delete visible.signedCoverUrl;
+  delete visible.storageKey;
+  delete visible.srcR2Key;
+  delete visible.localPath;
+  delete visible.filePath;
+  delete visible.thumbnail;
+  delete visible.thumbnailUrl;
+  delete visible.poster;
+  delete visible.posterUrl;
+  delete visible.coverUrl;
+  delete visible.previewUrl;
+  delete visible.sourceUrl;
+  delete visible.referenceImageUrls;
+  delete visible.referenceVideoUrls;
+  delete visible.referenceAudioUrls;
+  delete visible.referenceImageR2Keys;
+  delete visible.referenceVideoR2Keys;
+  delete visible.referenceAudioR2Keys;
+  delete visible.startFrameUrl;
+  delete visible.endFrameUrl;
+  delete visible.outputVideoSrc;
+  delete visible.outputVideoPreviewUrl;
+  if (visible.directorReferencePacket !== void 0) {
+    const packet = DirectorReferencePacketSchema.safeParse(
+      visible.directorReferencePacket
+    );
+    if (packet.success) visible.directorReferencePacket = packet.data;
+    else delete visible.directorReferencePacket;
+  }
+  if (Array.isArray(visible.directorShotReferencePackets)) {
+    visible.directorShotReferencePackets = visible.directorShotReferencePackets.flatMap((candidate) => {
+      const packet = DirectorReferencePacketSchema.safeParse(candidate);
+      return packet.success ? [packet.data] : [];
+    });
+  }
+  if (visible.modelParams && typeof visible.modelParams === "object" && !Array.isArray(visible.modelParams)) {
+    const modelParams = {
+      ...visible.modelParams
+    };
+    delete modelParams.provider_id;
+    visible.modelParams = modelParams;
+  }
+  return visible;
 }
 function randomIdPart() {
   const cryptoObject = globalThis.crypto;
@@ -28889,11 +30903,14 @@ var Canvas = class {
   findNode(idOrAssetId) {
     const byId = this.readNode(idOrAssetId);
     if (byId) return byId;
-    return this.listNodes().find((n) => n.data.assetId === idOrAssetId) ?? null;
+    return this.listNodes().find(
+      (n) => n.data.assetId === idOrAssetId
+    ) ?? null;
   }
   getNodeStatus(nodeIdOrAssetId) {
     const node = this.findNode(nodeIdOrAssetId);
-    if (!node) return { status: TaskStatus.NodeNotFound, error: "Node not found" };
+    if (!node)
+      return { status: TaskStatus.NodeNotFound, error: "Node not found" };
     const status = node.data.status ?? TaskStatus.Completed;
     const error = node.data.error;
     return error ? { status, error } : { status };
@@ -28918,33 +30935,90 @@ var Canvas = class {
   }
   // ── Write ────────────────────────────────────────────
   insertNode(nodeId, nodeType, data, parentId, position2) {
-    const versionBefore = this.doc.version();
-    this.ensureWritableCanvas();
-    const nodesMap = this.doc.getMap("nodes");
-    nodesMap.set(nodeId, {
+    this.insertNodeRecord(nodeId, {
       canvasId: this.canvasId,
       type: nodeType,
       data,
       parentId: parentId ?? void 0,
       position: position2
     });
+  }
+  /**
+   * Inserts one framework node without bypassing Canvas-owned binding writes.
+   * GUI adapters use this form to preserve layout fields alongside node data.
+   */
+  insertNodeRecord(nodeId, input) {
+    const versionBefore = this.doc.version();
+    const visibleData = projectVisibleNodeData(
+      input.data && typeof input.data === "object" && !Array.isArray(input.data) ? input.data : {}
+    );
+    const raw = {
+      ...input,
+      canvasId: this.canvasId,
+      data: visibleData
+    };
+    const nextNode = {
+      id: nodeId,
+      canvas_id: this.canvasId,
+      upstream: Array.isArray(raw.upstream) ? raw.upstream : [],
+      type: typeof raw.type === "string" ? raw.type : "text",
+      data: visibleData,
+      parent_id: typeof raw.parentId === "string" ? raw.parentId : typeof raw.parent_id === "string" ? raw.parent_id : null,
+      position: raw.position && typeof raw.position === "object" ? raw.position : { x: 0, y: 0 },
+      width: typeof raw.width === "number" ? raw.width : null,
+      height: typeof raw.height === "number" ? raw.height : null,
+      style: raw.style && typeof raw.style === "object" && !Array.isArray(raw.style) ? raw.style : null
+    };
+    const bindingPlans = this.planActionAssetBindings(
+      [...this.listNodes(), nextNode],
+      this.listEdges()
+    );
+    this.validateActionAssetBindingPlans(bindingPlans);
+    this.ensureWritableCanvas();
+    const nodesMap = this.doc.getMap("nodes");
+    nodesMap.set(nodeId, raw);
+    this.applyActionAssetBindingPlans(bindingPlans);
     const update = this.doc.export({ mode: "update", from: versionBefore });
     this.broadcast(update);
   }
   insertEdge(edgeId, source, target, edgeType = "default", sourceHandle, targetHandle) {
     const sourceNode = this.readNode(source);
     const targetNode = this.readNode(target);
-    if (!sourceNode) throw new Error(`Source node ${source} not found in canvas ${this.canvasId}`);
-    if (!targetNode) throw new Error(`Target node ${target} not found in canvas ${this.canvasId}`);
+    if (!sourceNode)
+      throw new Error(
+        `Source node ${source} not found in canvas ${this.canvasId}`
+      );
+    if (!targetNode)
+      throw new Error(
+        `Target node ${target} not found in canvas ${this.canvasId}`
+      );
     const versionBefore = this.doc.version();
+    const bindingPlans = this.planActionAssetBindings(this.listNodes(), [
+      ...this.listEdges(),
+      {
+        id: edgeId,
+        source,
+        target,
+        type: edgeType ?? "default",
+        ...sourceHandle ? { sourceHandle } : {},
+        ...targetHandle ? { targetHandle } : {}
+      }
+    ]);
+    this.validateActionAssetBindingPlans(bindingPlans);
     const raw = this.doc.getMap("nodes").get(target);
-    upsertNodeUpstreamRef(this.doc, target, {
-      nodeId: source,
-      edgeId,
-      type: edgeType ?? "default",
-      ...sourceHandle ? { sourceHandle } : {},
-      ...targetHandle ? { targetHandle } : {}
-    }, raw);
+    upsertNodeUpstreamRef(
+      this.doc,
+      target,
+      {
+        nodeId: source,
+        edgeId,
+        type: edgeType ?? "default",
+        ...sourceHandle ? { sourceHandle } : {},
+        ...targetHandle ? { targetHandle } : {}
+      },
+      raw
+    );
+    this.applyActionAssetBindingPlans(bindingPlans);
     const update = this.doc.export({ mode: "update", from: versionBefore });
     this.broadcast(update);
   }
@@ -28953,20 +31027,45 @@ var Canvas = class {
     if (!existing) return false;
     const source = patch.source ?? existing.source;
     const target = patch.target ?? existing.target;
-    if (!this.readNode(source)) throw new Error(`Source node ${source} not found in canvas ${this.canvasId}`);
-    if (!this.readNode(target)) throw new Error(`Target node ${target} not found in canvas ${this.canvasId}`);
+    if (!this.readNode(source))
+      throw new Error(
+        `Source node ${source} not found in canvas ${this.canvasId}`
+      );
+    if (!this.readNode(target))
+      throw new Error(
+        `Target node ${target} not found in canvas ${this.canvasId}`
+      );
     const versionBefore = this.doc.version();
+    const nextEdge = {
+      ...existing,
+      ...patch,
+      id: edgeId,
+      source,
+      target,
+      type: patch.type ?? existing.type
+    };
+    const bindingPlans = this.planActionAssetBindings(
+      this.listNodes(),
+      this.listEdges().map((edge) => edge.id === edgeId ? nextEdge : edge)
+    );
+    this.validateActionAssetBindingPlans(bindingPlans);
     const nodesMap = this.doc.getMap("nodes");
     const previousTarget = nodesMap.get(existing.target);
     deleteNodeUpstreamRef(this.doc, existing.target, edgeId, previousTarget);
     const nextTarget = nodesMap.get(target);
-    upsertNodeUpstreamRef(this.doc, target, {
-      nodeId: source,
-      edgeId,
-      type: patch.type ?? existing.type,
-      ...patch.sourceHandle ?? existing.sourceHandle ? { sourceHandle: patch.sourceHandle ?? existing.sourceHandle } : {},
-      ...patch.targetHandle ?? existing.targetHandle ? { targetHandle: patch.targetHandle ?? existing.targetHandle } : {}
-    }, nextTarget);
+    upsertNodeUpstreamRef(
+      this.doc,
+      target,
+      {
+        nodeId: source,
+        edgeId,
+        type: patch.type ?? existing.type,
+        ...patch.sourceHandle ?? existing.sourceHandle ? { sourceHandle: patch.sourceHandle ?? existing.sourceHandle } : {},
+        ...patch.targetHandle ?? existing.targetHandle ? { targetHandle: patch.targetHandle ?? existing.targetHandle } : {}
+      },
+      nextTarget
+    );
+    this.applyActionAssetBindingPlans(bindingPlans);
     const update = this.doc.export({ mode: "update", from: versionBefore });
     this.broadcast(update);
     return true;
@@ -28975,18 +31074,56 @@ var Canvas = class {
     const existing = this.listEdges().find((edge) => edge.id === edgeId);
     if (!existing) return false;
     const versionBefore = this.doc.version();
+    const bindingPlans = this.planActionAssetBindings(
+      this.listNodes(),
+      this.listEdges().filter((edge) => edge.id !== edgeId)
+    );
+    this.validateActionAssetBindingPlans(bindingPlans);
     const raw = this.doc.getMap("nodes").get(existing.target);
     deleteNodeUpstreamRef(this.doc, existing.target, edgeId, raw);
+    this.applyActionAssetBindingPlans(bindingPlans);
     const update = this.doc.export({ mode: "update", from: versionBefore });
     this.broadcast(update);
     return true;
   }
   updateNode(nodeId, updates) {
+    return this.updateNodeRecord(nodeId, { data: updates });
+  }
+  /** Updates one complete framework node through the Canvas authority. */
+  updateNodeRecord(nodeId, patch) {
     const nodesMap = this.doc.getMap("nodes");
     const raw = nodesMap.get(nodeId);
     if (!raw) return false;
+    const currentNode = this.readNode(nodeId);
+    if (!currentNode) return false;
     const versionBefore = this.doc.version();
-    nodesMap.set(nodeId, { ...raw, data: { ...raw.data ?? {}, ...updates } });
+    const patchData = patch.data && typeof patch.data === "object" && !Array.isArray(patch.data) ? patch.data : {};
+    const nextData = projectVisibleNodeData({
+      ...raw.data ?? {},
+      ...patchData
+    });
+    const nextNode = {
+      ...currentNode,
+      type: typeof patch.type === "string" ? patch.type : currentNode.type,
+      data: nextData,
+      parent_id: typeof patch.parentId === "string" ? patch.parentId : patch.parentId === null ? null : currentNode.parent_id,
+      position: patch.position && typeof patch.position === "object" ? patch.position : currentNode.position,
+      width: typeof patch.width === "number" ? patch.width : currentNode.width,
+      height: typeof patch.height === "number" ? patch.height : currentNode.height,
+      style: patch.style && typeof patch.style === "object" && !Array.isArray(patch.style) ? patch.style : currentNode.style
+    };
+    const bindingPlans = this.planActionAssetBindings(
+      this.listNodes().map((node) => node.id === nodeId ? nextNode : node),
+      this.listEdges(),
+      isCanvasManagedAssetAction(currentNode) && !isCanvasManagedAssetAction(nextNode) ? [`node:${nodeId}`] : []
+    );
+    this.validateActionAssetBindingPlans(bindingPlans);
+    nodesMap.set(nodeId, {
+      ...raw,
+      ...patch,
+      data: nextData
+    });
+    this.applyActionAssetBindingPlans(bindingPlans);
     const update = this.doc.export({ mode: "update", from: versionBefore });
     this.broadcast(update);
     return true;
@@ -29008,13 +31145,29 @@ var Canvas = class {
     return this.deleteNodes([nodeId]).deletedNodeIds.length === 1;
   }
   deleteNodes(nodeIds) {
-    const uniqueNodeIds = [...new Set(nodeIds.map((nodeId) => nodeId.trim()).filter(Boolean))];
-    if (uniqueNodeIds.length === 0) return { deletedNodeIds: [], deletedEdgeIds: [] };
+    const uniqueNodeIds = [
+      ...new Set(nodeIds.map((nodeId) => nodeId.trim()).filter(Boolean))
+    ];
+    if (uniqueNodeIds.length === 0)
+      return { deletedNodeIds: [], deletedEdgeIds: [] };
     const nodesMap = this.doc.getMap("nodes");
-    const deletedNodeIds = uniqueNodeIds.filter((nodeId) => Boolean(this.readNode(nodeId)));
-    if (deletedNodeIds.length === 0) return { deletedNodeIds: [], deletedEdgeIds: [] };
+    const deletedNodeIds = uniqueNodeIds.filter(
+      (nodeId) => Boolean(this.readNode(nodeId))
+    );
+    if (deletedNodeIds.length === 0)
+      return { deletedNodeIds: [], deletedEdgeIds: [] };
     const deletedSet = new Set(deletedNodeIds);
     const versionBefore = this.doc.version();
+    const bindingPlans = this.planActionAssetBindings(
+      this.listNodes().filter((node) => !deletedSet.has(node.id)),
+      this.listEdges().filter(
+        (edge) => !deletedSet.has(edge.source) && !deletedSet.has(edge.target)
+      ),
+      this.listNodes().filter(
+        (node) => deletedSet.has(node.id) && isCanvasManagedAssetAction(node)
+      ).map((node) => `node:${node.id}`)
+    );
+    this.validateActionAssetBindingPlans(bindingPlans);
     for (const [key, value] of nodesMap.entries()) {
       const raw = value;
       if (!raw || typeof raw !== "object") continue;
@@ -29037,9 +31190,11 @@ var Canvas = class {
         if (remove) deletedEdgeIds.push(ref.edgeId);
         if (remove) deleteNodeUpstreamRef(this.doc, targetId, ref.edgeId, raw);
       }
-      if (deletedSet.has(targetId)) clearNodeUpstreamRefs(this.doc, targetId, raw);
+      if (deletedSet.has(targetId))
+        clearNodeUpstreamRefs(this.doc, targetId, raw);
     }
     for (const nodeId of deletedNodeIds) nodesMap.delete(nodeId);
+    this.applyActionAssetBindingPlans(bindingPlans);
     const update = this.doc.export({ mode: "update", from: versionBefore });
     this.broadcast(update);
     return { deletedNodeIds, deletedEdgeIds };
@@ -29093,7 +31248,11 @@ var Canvas = class {
         parentId: parentId ?? void 0,
         data: nodeData
       };
-      const result = dist_autoInsertNode(nodeId, [...existingNodes, virtualNode], this.listEdges());
+      const result = dist_autoInsertNode(
+        nodeId,
+        [...existingNodes, virtualNode],
+        this.listEdges()
+      );
       finalPos = result.position;
       this.insertNode(nodeId, rfType, nodeData, parentId ?? null, finalPos);
       if (result.pushedNodes.size > 0) {
@@ -29120,7 +31279,12 @@ var Canvas = class {
       const deduped = [...new Set(upstreamNodeIds.filter(Boolean))];
       if (deduped.length) proposal.upstreamNodeIds = deduped;
     }
-    return { node_id: nodeId, error: null, proposal, asset_id: resolvedAssetId };
+    return {
+      node_id: nodeId,
+      error: null,
+      proposal,
+      asset_id: resolvedAssetId
+    };
   }
   createLinkedNode(opts) {
     const { nodeId, nodeType, data, parentId, sourceNodeId } = opts;
@@ -29172,20 +31336,50 @@ var Canvas = class {
   execute(nodeId, generateId, providerAccountId) {
     const node = this.readNode(nodeId);
     if (!node) {
-      return { kind: null, childNodeId: "", childNodeType: "", position: { x: 0, y: 0 }, error: `Node ${nodeId} not found` };
+      return {
+        kind: null,
+        childNodeId: "",
+        childNodeType: "",
+        position: { x: 0, y: 0 },
+        error: `Node ${nodeId} not found`
+      };
     }
     if (node.type === "video-editor") {
       const r2 = this.executeRender(nodeId, generateId);
       if (r2.error) {
-        return { kind: null, childNodeId: "", childNodeType: "", position: { x: 0, y: 0 }, error: r2.error };
+        return {
+          kind: null,
+          childNodeId: "",
+          childNodeType: "",
+          position: { x: 0, y: 0 },
+          error: r2.error
+        };
       }
-      return { kind: "render", childNodeId: r2.renderNodeId, childNodeType: "video", position: r2.position, error: null };
+      return {
+        kind: "render",
+        childNodeId: r2.renderNodeId,
+        childNodeType: "video",
+        position: r2.position,
+        error: null
+      };
     }
     const r = this.executeGeneration(nodeId, generateId, providerAccountId);
     if (r.error) {
-      return { kind: null, childNodeId: "", childNodeType: "", position: { x: 0, y: 0 }, error: r.error };
+      return {
+        kind: null,
+        childNodeId: "",
+        childNodeType: "",
+        position: { x: 0, y: 0 },
+        error: r.error
+      };
     }
-    return { kind: "generation", childNodeId: r.assetNodeId, childNodeType: r.assetNodeType, position: r.position, error: null };
+    return {
+      kind: "generation",
+      childNodeId: r.assetNodeId,
+      childNodeType: r.assetNodeType,
+      position: r.position,
+      error: null
+    };
   }
   /**
    * Execute a generation node: validate, build pending asset, insert with edge.
@@ -29193,11 +31387,16 @@ var Canvas = class {
    * Public for back-compat (api-cf agent tool + tests call this directly);
    * new code should prefer `execute()` which dispatches by node type.
    */
-  executeGeneration(nodeId, generateId, providerAccountId) {
+  executeGeneration(nodeId, generateId, _providerAccountId) {
     var _a;
     const node = this.readNode(nodeId);
     if (!node) {
-      return { assetNodeId: "", assetNodeType: "", position: { x: 0, y: 0 }, error: `Node ${nodeId} not found` };
+      return {
+        assetNodeId: "",
+        assetNodeType: "",
+        position: { x: 0, y: 0 },
+        error: `Node ${nodeId} not found`
+      };
     }
     const nodeData = node.data || {};
     const nodeType = node.type;
@@ -29206,25 +31405,42 @@ var Canvas = class {
     const isBuiltInGen = actionType === ACTION_TYPE.ImageGen || actionType === ACTION_TYPE.VideoGen || actionType === ACTION_TYPE.AudioGen || actionType === ACTION_TYPE.TextGen;
     const isCustomGen = typeof actionType === "string" && actionType.startsWith("custom:");
     if (!isActionBadge || !isBuiltInGen && !isCustomGen) {
-      return { assetNodeId: "", assetNodeType: "", position: { x: 0, y: 0 }, error: `Node ${nodeId} is not a generation node` };
+      return {
+        assetNodeId: "",
+        assetNodeType: "",
+        position: { x: 0, y: 0 },
+        error: `Node ${nodeId} is not a generation node`
+      };
     }
     const prompt = nodeData.content || nodeData.prompt || "";
     if (isBuiltInGen && !prompt.trim()) {
-      return { assetNodeId: "", assetNodeType: "", position: { x: 0, y: 0 }, error: "No prompt provided" };
+      return {
+        assetNodeId: "",
+        assetNodeType: "",
+        position: { x: 0, y: 0 },
+        error: "No prompt provided"
+      };
     }
     let config;
     if (isCustomGen) {
       const customActionId = nodeData.customActionId || actionType.replace("custom:", "");
       const customDef = this.getCustomAction(customActionId);
       if (!customDef) {
-        return { assetNodeId: "", assetNodeType: "", position: { x: 0, y: 0 }, error: `Custom action not installed: ${customActionId}` };
+        return {
+          assetNodeId: "",
+          assetNodeType: "",
+          position: { x: 0, y: 0 },
+          error: `Custom action not installed: ${customActionId}`
+        };
       }
       const customActionParams = nodeData.customActionParams || {};
       config = { kind: "custom", customDef, customActionParams };
     } else {
       const requestedModelId = nodeData.modelId || nodeData.model || "";
       const modelId = dist_normalizeModelId(requestedModelId) ?? requestedModelId;
-      const modelCard = this.modelCards.find((c) => c.id === modelId);
+      const modelCard = this.modelCards.find(
+        (c) => c.id === modelId
+      );
       if (!modelCard) {
         return {
           assetNodeId: "",
@@ -29265,10 +31481,17 @@ var Canvas = class {
       actionType,
       label: nodeData.label,
       referenceMode: nodeData.referenceMode,
-      pluginBinding: dist_ExecutablePluginBindingSchema.safeParse(nodeData.pluginBinding).success ? dist_ExecutablePluginBindingSchema.parse(nodeData.pluginBinding) : void 0
+      pluginBinding: dist_ExecutablePluginBindingSchema.safeParse(
+        nodeData.pluginBinding
+      ).success ? dist_ExecutablePluginBindingSchema.parse(nodeData.pluginBinding) : void 0
     });
     if (validationError) {
-      return { assetNodeId: "", assetNodeType: "", position: { x: 0, y: 0 }, error: validationError };
+      return {
+        assetNodeId: "",
+        assetNodeType: "",
+        position: { x: 0, y: 0 },
+        error: validationError
+      };
     }
     const assetNodeId = generateId();
     if (this.readNode(assetNodeId)) {
@@ -29279,10 +31502,10 @@ var Canvas = class {
         error: `Node ${assetNodeId} already exists`
       };
     }
-    const pendingNode = buildPendingAssetNode({ ...pendingInput, nodeId: assetNodeId });
-    if (providerAccountId) {
-      pendingNode.data.providerAccountId = providerAccountId;
-    }
+    const pendingNode = buildPendingAssetNode({
+      ...pendingInput,
+      nodeId: assetNodeId
+    });
     const pendingData = { ...pendingNode.data };
     if (nodeData.actorType === "user" || nodeData.actorType === "agent") {
       pendingData.actorType = nodeData.actorType;
@@ -29322,7 +31545,11 @@ var Canvas = class {
     var _a;
     const node = this.readNode(editorNodeId);
     if (!node) {
-      return { renderNodeId: "", position: { x: 0, y: 0 }, error: `Node ${editorNodeId} not found` };
+      return {
+        renderNodeId: "",
+        position: { x: 0, y: 0 },
+        error: `Node ${editorNodeId} not found`
+      };
     }
     const timelineId = typeof ((_a = node.data) == null ? void 0 : _a.timelineId) === "string" ? node.data.timelineId : void 0;
     if (!timelineId) {
@@ -29342,12 +31569,23 @@ var Canvas = class {
     }
     const timelineDsl = timeline.state;
     if (!timelineDsl || typeof timelineDsl !== "object") {
-      return { renderNodeId: "", position: { x: 0, y: 0 }, error: `Node ${editorNodeId} has no timelineDsl \u2014 pull / edit / push one first.` };
+      return {
+        renderNodeId: "",
+        position: { x: 0, y: 0 },
+        error: `Node ${editorNodeId} has no timelineDsl \u2014 pull / edit / push one first.`
+      };
     }
     const tracks = Array.isArray(timelineDsl.tracks) ? timelineDsl.tracks : [];
-    const totalItems = tracks.reduce((n, t) => n + (Array.isArray(t.items) ? t.items.length : 0), 0);
+    const totalItems = tracks.reduce(
+      (n, t) => n + (Array.isArray(t.items) ? t.items.length : 0),
+      0
+    );
     if (totalItems === 0) {
-      return { renderNodeId: "", position: { x: 0, y: 0 }, error: `Node ${editorNodeId} timelineDsl has no items \u2014 nothing to render.` };
+      return {
+        renderNodeId: "",
+        position: { x: 0, y: 0 },
+        error: `Node ${editorNodeId} timelineDsl has no items \u2014 nothing to render.`
+      };
     }
     let maxEnd = 0;
     for (const track of tracks) {
@@ -29390,6 +31628,48 @@ var Canvas = class {
     return { renderNodeId, position: linked.position, error: null };
   }
   // ── Private ──────────────────────────────────────────
+  planActionAssetBindings(nodes, edges, clearedActionIds = []) {
+    const plans = /* @__PURE__ */ new Map();
+    for (const actionId of clearedActionIds) plans.set(actionId, []);
+    for (const node of nodes) {
+      const inputs = canvasActionAssetInputs({ node, nodes, edges });
+      if (inputs === null) continue;
+      plans.set(`node:${node.id}`, inputs);
+    }
+    return [...plans.entries()].map(([actionId, inputs]) => ({
+      actionId,
+      inputs
+    }));
+  }
+  validateActionAssetBindingPlans(plans) {
+    const authority = actionAssetBindingAuthorityVersion(this.doc);
+    if (authority === void 0) return;
+    if (authority !== ACTION_ASSET_BINDING_AUTHORITY_VERSION) {
+      throw new Error(
+        `Unsupported Action Asset binding authority version: ${String(authority)}`
+      );
+    }
+    for (const plan of plans) {
+      for (const input of plan.inputs) {
+        const asset = readProjectAsset(this.doc, input.projectAssetId);
+        if (!asset || asset.lifecycle.state !== "active") {
+          throw new Error(
+            `Project Asset ${input.projectAssetId} is not active`
+          );
+        }
+      }
+    }
+  }
+  applyActionAssetBindingPlans(plans) {
+    for (const plan of plans) {
+      const result = replaceDraftActionAssetInputBindings(
+        this.doc,
+        plan.actionId,
+        plan.inputs
+      );
+      if (!result.ok) throw new Error(result.error);
+    }
+  }
   batchUpdatePositions(updates) {
     if (updates.size === 0) return;
     const versionBefore = this.doc.version();
@@ -29540,7 +31820,6 @@ var DirectorStageObjectSchema = z.discriminatedUnion("kind", [
     kind: z.literal("model"),
     model: z.object({
       assetId: z.string().min(1),
-      sourceUrl: z.string().url().optional(),
       animation: z.object({
         jointCount: z.number().int().positive(),
         clipNames: z.array(z.string().min(1)).min(1),
@@ -29904,7 +32183,7 @@ function directorDefaultAttachmentOffset(socket) {
     scale: [1, 1, 1]
   };
 }
-function isRecord3(value) {
+function isRecord7(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 function attachmentGraphError(objects) {
@@ -29932,27 +32211,27 @@ function attachmentGraphError(objects) {
   }
   return void 0;
 }
-function isLoroMap3(value) {
-  return value instanceof LoroMap3 || Boolean(
+function isLoroMap5(value) {
+  return value instanceof LoroMap5 || Boolean(
     value && typeof value === "object" && typeof value.get === "function" && typeof value.set === "function" && typeof value.entries === "function"
   );
 }
-function stageField(raw, field) {
-  if (isLoroMap3(raw)) return raw.get(field);
-  return isRecord3(raw) ? raw[field] : void 0;
+function stageField(raw, field3) {
+  if (isLoroMap5(raw)) return raw.get(field3);
+  return isRecord7(raw) ? raw[field3] : void 0;
 }
 function parseDirectorStage(id2, raw) {
-  if (!isRecord3(raw) && !isLoroMap3(raw)) return null;
+  if (!isRecord7(raw) && !isLoroMap5(raw)) return null;
   const nameValue = stageField(raw, "name");
   const ownerValue = stageField(raw, "owner");
-  const ownerRecord = isRecord3(ownerValue) ? ownerValue : {};
+  const ownerRecord = isRecord7(ownerValue) ? ownerValue : {};
   const owner = ownerRecord.kind === "canvas-action" && typeof ownerRecord.canvasId === "string" && typeof ownerRecord.actionNodeId === "string" ? {
     kind: "canvas-action",
     canvasId: ownerRecord.canvasId,
     actionNodeId: ownerRecord.actionNodeId
   } : { kind: "project" };
   const revisionValue = stageField(raw, "revision");
-  if (!isRecord3(revisionValue)) return null;
+  if (!isRecord7(revisionValue)) return null;
   const parsedState = DirectorStageStateSchema.safeParse(revisionValue.state);
   if (!parsedState.success) return null;
   const revisionId = typeof revisionValue.revisionId === "string" ? revisionValue.revisionId : projectDirectorStageRevisionId(id2, parsedState.data);
@@ -30003,6 +32282,65 @@ function listProjectDirectorStages(doc) {
     (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id)
   );
 }
+function projectDirectorActionId(stageId, owner) {
+  return owner.kind === "canvas-action" ? `node:${owner.actionNodeId}` : `director:${stageId}`;
+}
+function projectDirectorAssetInputs(state) {
+  var _a;
+  const inputs = [];
+  if (state.scene.environmentAssetId && !state.scene.environmentAssetId.startsWith("builtin:")) {
+    inputs.push({
+      slot: "director:environment",
+      projectAssetId: state.scene.environmentAssetId,
+      role: "source"
+    });
+  }
+  for (const object of state.objects) {
+    if (object.kind !== "model" || object.model.assetId.startsWith("builtin:")) {
+      continue;
+    }
+    inputs.push({
+      slot: `director:model:${object.id}`,
+      projectAssetId: object.model.assetId,
+      role: "source"
+    });
+  }
+  const motionById = new Map(
+    (state.motionAssets ?? []).map((motion) => [motion.id, motion])
+  );
+  for (const clip of ((_a = state.animation) == null ? void 0 : _a.actionClips) ?? []) {
+    if (!clip.motionAssetId) continue;
+    const motion = motionById.get(clip.motionAssetId);
+    if (!motion || motion.assetId.startsWith("builtin:")) continue;
+    inputs.push({
+      slot: `director:action:${clip.id}:motion`,
+      projectAssetId: motion.assetId,
+      role: "source"
+    });
+  }
+  return inputs;
+}
+function syncProjectDirectorAssetInputs(doc, stage) {
+  const synced = replaceDraftActionAssetInputBindings(
+    doc,
+    projectDirectorActionId(stage.id, stage.owner),
+    projectDirectorAssetInputs(stage.state)
+  );
+  return synced.ok ? void 0 : { ok: false, error: synced.error };
+}
+function rehomeProjectDirectorAssetInputs(doc, previous, next) {
+  const nextError = syncProjectDirectorAssetInputs(doc, next);
+  if (nextError) return nextError;
+  const previousActionId = projectDirectorActionId(previous.id, previous.owner);
+  const nextActionId = projectDirectorActionId(next.id, next.owner);
+  if (previousActionId === nextActionId) return void 0;
+  const cleared = replaceDraftActionAssetInputBindings(
+    doc,
+    previousActionId,
+    []
+  );
+  return cleared.ok ? void 0 : { ok: false, error: cleared.error };
+}
 function createProjectDirectorStage(doc, input) {
   var _a;
   const id2 = input.id.trim();
@@ -30022,6 +32360,8 @@ function createProjectDirectorStage(doc, input) {
     revisionId: projectDirectorStageRevisionId(id2, parsedState.data),
     state: parsedState.data
   };
+  const bindingError = syncProjectDirectorAssetInputs(doc, stage);
+  if (bindingError) return bindingError;
   setDirectorStageFields(stages.ensureMergeableMap(id2), stage);
   return { ok: true, stage };
 }
@@ -30038,8 +32378,10 @@ function updateProjectDirectorStageState(doc, stageId, state) {
     revisionId: projectDirectorStageRevisionId(stageId, parsedState.data),
     state: parsedState.data
   };
+  const bindingError = syncProjectDirectorAssetInputs(doc, next);
+  if (bindingError) return bindingError;
   const fields = doc.getMap("directorStages").get(stageId);
-  if (!isLoroMap3(fields)) return { ok: false, error: `Director Stage ${stageId} not found` };
+  if (!isLoroMap5(fields)) return { ok: false, error: `Director Stage ${stageId} not found` };
   fields.set("revision", {
     state: next.state,
     revisionId: next.revisionId
@@ -30072,8 +32414,10 @@ function attachDirectorStageToCanvas(doc, input) {
       actionNodeId: input.actionNodeId
     }
   };
+  const bindingError = rehomeProjectDirectorAssetInputs(doc, stage, next);
+  if (bindingError) return bindingError;
   const fields = doc.getMap("directorStages").get(input.stageId);
-  if (!isLoroMap3(fields)) return { ok: false, error: `Director Stage ${input.stageId} not found` };
+  if (!isLoroMap5(fields)) return { ok: false, error: `Director Stage ${input.stageId} not found` };
   fields.set("owner", next.owner);
   nodes.set(input.actionNodeId, {
     canvasId: input.canvasId,
@@ -30084,13 +32428,13 @@ function attachDirectorStageToCanvas(doc, input) {
   return { ok: true, stage: next };
 }
 function directorStageActionStageId(raw) {
-  if (!isRecord3(raw) || raw.type !== "director-stage" || !isRecord3(raw.data)) {
+  if (!isRecord7(raw) || raw.type !== "director-stage" || !isRecord7(raw.data)) {
     return void 0;
   }
   return typeof raw.data.stageId === "string" ? raw.data.stageId : void 0;
 }
 function directorStageActionCanvasId(raw) {
-  return isRecord3(raw) && typeof raw.canvasId === "string" ? raw.canvasId : DEFAULT_CANVAS_ID;
+  return isRecord7(raw) && typeof raw.canvasId === "string" ? raw.canvasId : DEFAULT_CANVAS_ID;
 }
 function reconcileProjectDirectorStageOwnership(doc) {
   const stages = new Map(
@@ -30118,7 +32462,17 @@ function reconcileProjectDirectorStageOwnership(doc) {
     const ownerMatches = directorStageActionStageId(rawOwner) === stage.id && directorStageActionCanvasId(rawOwner) === stage.owner.canvasId;
     if (ownerMatches) continue;
     const fields = doc.getMap("directorStages").get(stage.id);
-    if (isLoroMap3(fields)) {
+    if (isLoroMap5(fields)) {
+      const detached = {
+        ...stage,
+        owner: { kind: "project" }
+      };
+      const bindingError = rehomeProjectDirectorAssetInputs(
+        doc,
+        stage,
+        detached
+      );
+      if (bindingError) throw new Error(bindingError.error);
       fields.set("owner", { kind: "project" });
       detachedStageIds.push(stage.id);
     }
@@ -30604,8 +32958,10 @@ function detachDirectorStageFromCanvas(doc, stageId) {
     canvas.deleteNode(actionNodeId);
   }
   const next = { ...stage, owner: { kind: "project" } };
+  const bindingError = rehomeProjectDirectorAssetInputs(doc, stage, next);
+  if (bindingError) return bindingError;
   const fields = doc.getMap("directorStages").get(stageId);
-  if (!isLoroMap3(fields)) return { ok: false, error: `Director Stage ${stageId} not found` };
+  if (!isLoroMap5(fields)) return { ok: false, error: `Director Stage ${stageId} not found` };
   fields.set("owner", next.owner);
   return { ok: true, stage: next };
 }
@@ -30710,12 +33066,6 @@ var addCommand = z.object({
   actorAgentId: id.optional()
 }).strict();
 var ProjectHostCommandSchema = z.discriminatedUnion("action", [
-  command("list_custom_actions"),
-  command("register_custom_action", {
-    actionId: id,
-    definition: z.record(z.string(), z.unknown())
-  }),
-  command("unregister_custom_action", { actionId: id }),
   command("list_canvases"),
   command("create_canvas", { canvasId: id, name: id }),
   command("rename_canvas", { canvasId: id, name: id, ...observed }),
@@ -30993,9 +33343,9 @@ function validateCanvasEdgesReadProof(options) {
 function validateCanvasUpdateDataFields(fields) {
   const projectionOwned = [];
   const runtimeOwned = [];
-  for (const field of fields) {
-    if (PROJECTION_OWNED_DATA_FIELDS.has(field)) projectionOwned.push(field);
-    if (RUNTIME_OWNED_DATA_FIELDS.has(field)) runtimeOwned.push(field);
+  for (const field3 of fields) {
+    if (PROJECTION_OWNED_DATA_FIELDS.has(field3)) projectionOwned.push(field3);
+    if (RUNTIME_OWNED_DATA_FIELDS.has(field3)) runtimeOwned.push(field3);
   }
   if (projectionOwned.length > 0) {
     return {
@@ -31041,7 +33391,7 @@ function validateCanvasMediaAssetPatch(options) {
   };
 }
 function assetIdPatchValue(patch) {
-  if (isRecord4(patch.data) && Object.prototype.hasOwnProperty.call(patch.data, "assetId")) {
+  if (isRecord8(patch.data) && Object.prototype.hasOwnProperty.call(patch.data, "assetId")) {
     return patch.data.assetId;
   }
   if (Object.prototype.hasOwnProperty.call(patch, "assetId")) {
@@ -31059,14 +33409,14 @@ function validateCanvasCheckpointPatch(options) {
   if (!isActionCheckpointNode(options.node)) return { ok: true };
   const downstream = canvasCheckpointDownstreamTargets(options.nodeId, options.edges, options.nodes);
   if (downstream.length === 0) return { ok: true };
-  const semanticFields = [.../* @__PURE__ */ new Set([...options.fields])].filter((field) => ACTION_CHECKPOINT_SEMANTIC_FIELDS.has(field));
+  const semanticFields = [.../* @__PURE__ */ new Set([...options.fields])].filter((field3) => ACTION_CHECKPOINT_SEMANTIC_FIELDS.has(field3));
   if (semanticFields.length === 0) return { ok: true };
   return {
     ok: false,
     error: `Refusing to patch materialized-checkpoint action field(s): ${semanticFields.join(", ")}. Action node ${options.nodeId} has materialized downstream node(s): ${downstream.join(", ")}. Use copy-on-write/replace workflow instead.`
   };
 }
-function isRecord4(value) {
+function isRecord8(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 function normalizeCanvasNodeReadSubject(node) {
@@ -31091,7 +33441,7 @@ function canvasPatchFields(patch) {
   for (const key of Object.keys(patch)) {
     if (key !== "data") fields.add(key);
   }
-  if (isRecord4(patch.data)) {
+  if (isRecord8(patch.data)) {
     for (const key of Object.keys(patch.data)) fields.add(key);
   }
   return [...fields];
@@ -31363,12 +33713,17 @@ var CredentialSourceKindSchema = z.enum([
   "display-code"
 ]);
 function resolveCredentialSources(declaration) {
+  var _a;
   if (!declaration) return [];
   const sources = [];
   for (const method of declaration.methods) {
     const opensWindow = method.flow !== void 0;
+    let flowHasDeclaredButton = false;
     for (const item of method.form ?? []) {
       if (item.kind === "notice") continue;
+      if (item.kind === "button" && method.flow) {
+        flowHasDeclaredButton = true;
+      }
       const control = item.kind === "button" ? opensWindow ? "button-window" : "button-action" : "field";
       sources.push({
         id: item.key,
@@ -31380,8 +33735,34 @@ function resolveCredentialSources(declaration) {
         // blocked by it; a button that calls the host needs nobody at all.
         interactive: control === "button-window",
         credentialId: item.key,
+        methodId: method.id,
         secret: item.kind === "field" ? item.secret === true : false,
         item
+      });
+    }
+    if (method.flow && !flowHasDeclaredButton) {
+      const credentialId = ((_a = method.flow.credential) == null ? void 0 : _a.storeAs) ?? method.id;
+      sources.push({
+        id: credentialId,
+        kind: "button",
+        label: method.label,
+        control: "button-window",
+        interactive: true,
+        credentialId,
+        methodId: method.id,
+        secret: true
+      });
+    }
+    if (method.import) {
+      sources.push({
+        id: method.import.storeAs,
+        kind: "button",
+        label: method.label,
+        control: "button-action",
+        interactive: false,
+        credentialId: method.import.storeAs,
+        methodId: method.id,
+        secret: true
       });
     }
   }
@@ -32134,8 +34515,21 @@ function candidateRoutes(query) {
     ...query.allowMock ? MOCK_ROUTES : []
   ] : MODEL_UPSTREAM_ROUTES;
   return direct ? [direct] : routes.filter(
-    (route) => route.modelCode === modelCode && (!query.kind || route.kind === query.kind)
+    (route) => route.modelCode === modelCode && (!query.kind || route.kind === query.kind) && modelRouteSupportsParameters(route, query.requestedParameterIds ?? [])
   );
+}
+function activeModelParameterIds(modelParams) {
+  return Object.entries(modelParams ?? {}).flatMap(([parameterId, value]) => {
+    if (value === void 0 || value === null) return [];
+    if (typeof value === "string" && value.trim().length === 0) return [];
+    return [parameterId];
+  });
+}
+function modelRouteSupportsParameters(route, requestedParameterIds) {
+  var _a;
+  if (!((_a = route.excludedParameterIds) == null ? void 0 : _a.length) || requestedParameterIds.length === 0) return true;
+  const excluded = new Set(route.excludedParameterIds);
+  return requestedParameterIds.every((parameterId) => !excluded.has(parameterId));
 }
 function listModelUpstreamRoutes(query) {
   const candidates = candidateRoutes(query);
@@ -32172,6 +34566,7 @@ function resolveModelUpstreamRoute(query) {
 }
 function applyModelProviderImplementation(model, route) {
   if (!route) return model;
+  const { providerImplementations: _providerImplementations, ...canonicalCard } = model;
   const excludedParameterIds = new Set(route.excludedParameterIds ?? []);
   const overrides = new Map((route.parameterOverrides ?? []).map((parameter) => [parameter.id, parameter]));
   const parameterIds = new Set(model.parameters.map((parameter) => parameter.id));
@@ -32183,9 +34578,19 @@ function applyModelProviderImplementation(model, route) {
     Object.entries(model.defaultParams).filter(([parameterId]) => !excludedParameterIds.has(parameterId))
   );
   return dist_ModelCardSchema.parse({
-    ...model,
+    ...canonicalCard,
     parameters,
     defaultParams: { ...defaultParams, ...route.defaultParamOverrides ?? {} },
+    input: route.referenceBinding ? { ...model.input, referenceBinding: route.referenceBinding } : model.input
+  });
+}
+function applyModelProviderPresentation(model, route) {
+  if (!route) return model;
+  const overrides = new Map((route.parameterOverrides ?? []).map((parameter) => [parameter.id, parameter]));
+  return dist_ModelCardSchema.parse({
+    ...model,
+    parameters: model.parameters.map((parameter) => overrides.get(parameter.id) ?? parameter),
+    defaultParams: { ...model.defaultParams, ...route.defaultParamOverrides ?? {} },
     input: route.referenceBinding ? { ...model.input, referenceBinding: route.referenceBinding } : model.input
   });
 }
@@ -32223,13 +34628,18 @@ function listModelCatalogEntries(options = {}) {
     const missingOAuth = [
       ...new Set(configuredCandidates.flatMap((route) => missingRequiredOAuth(route, configForRoute(query, route))))
     ];
+    const unavailableParameterIds = configuredCandidates.length === 0 ? [] : model.parameters.filter((parameter) => configuredCandidates.every((route) => {
+      var _a;
+      return ((_a = route.excludedParameterIds) == null ? void 0 : _a.includes(parameter.id)) === true;
+    })).map((parameter) => parameter.id);
     const tier = selectedRoute ? "available" : configuredCandidates.length > 0 ? "configured-provider" : "all";
     return {
-      model: applyModelProviderImplementation(model, selectedRoute),
+      model: applyModelProviderPresentation(model, selectedRoute),
       tier,
       routes,
       selectedRoute,
       candidateProviders: uniqueProviderIds(configuredCandidates.length ? configuredCandidates : allRoutes),
+      unavailableParameterIds,
       missingCredentials,
       missingOAuth
     };
@@ -32337,7 +34747,7 @@ function registerAssetMetadataKind(declaration) {
     const result = declaration.schema.safeParse(probe);
     return result.success ? [] : result.error.issues;
   };
-  const complainsAbout = (issues, field) => issues.some((issue) => issue.path.length === 1 && issue.path[0] === field);
+  const complainsAbout = (issues, field3) => issues.some((issue) => issue.path.length === 1 && issue.path[0] === field3);
   if (complainsAbout(issuesFor({ schemaVersion: 1, kind: declaration.kind }), "kind")) {
     throw new Error(
       `Asset metadata kind ${declaration.kind} must declare a schema that pins its own kind`
@@ -33244,10 +35654,10 @@ function timelineDslFromYaml(yamlText) {
       };
       if (track.role === "subtitle" && out2.type === "text" && Array.isArray(out2.cues)) {
         if (typeof out2.text !== "string") {
-          out2.text = out2.cues.map((cue) => isRecord5(cue) && typeof cue.text === "string" ? cue.text : "").filter(Boolean).join("\n");
+          out2.text = out2.cues.map((cue) => isRecord9(cue) && typeof cue.text === "string" ? cue.text : "").filter(Boolean).join("\n");
         }
         if (typeof out2.color !== "string") {
-          const style = isRecord5(out2.style) ? out2.style : null;
+          const style = isRecord9(out2.style) ? out2.style : null;
           out2.color = style && typeof style.color === "string" ? style.color : "#ffffff";
         }
       }
@@ -33332,20 +35742,20 @@ function validateSemanticTimelineItem(item, track) {
   return null;
 }
 function validateClipAnimationFields(item) {
-  for (const field of ["entranceAnimation", "exitAnimation"]) {
-    const animation = item[field];
+  for (const field3 of ["entranceAnimation", "exitAnimation"]) {
+    const animation = item[field3];
     if (animation === void 0) continue;
     if (item.type !== "video") {
-      return `Timeline item ${item.id} ${field} is only valid on video items`;
+      return `Timeline item ${item.id} ${field3} is only valid on video items`;
     }
-    if (!isRecord5(animation)) {
-      return `Timeline item ${item.id} ${field} must be an object`;
+    if (!isRecord9(animation)) {
+      return `Timeline item ${item.id} ${field3} must be an object`;
     }
     if (typeof animation.type !== "string" || !CLIP_ANIMATION_TYPES.has(animation.type)) {
-      return `Timeline item ${item.id} ${field}.type is unsupported`;
+      return `Timeline item ${item.id} ${field3}.type is unsupported`;
     }
     if (typeof animation.durationInFrames !== "number" || !Number.isInteger(animation.durationInFrames) || animation.durationInFrames < 1 || animation.durationInFrames > Math.max(1, item.durationInFrames)) {
-      return `Timeline item ${item.id} ${field}.durationInFrames must be between 1 and the clip duration`;
+      return `Timeline item ${item.id} ${field3}.durationInFrames must be between 1 and the clip duration`;
     }
   }
   return null;
@@ -33360,14 +35770,14 @@ function validateAudioTimelineFields(item, track) {
       return `Timeline item ${item.id} audioGainDb must be between -60 and 12`;
     }
   }
-  for (const field of ["audioFadeInFrames", "audioFadeOutFrames"]) {
-    const value = item[field];
+  for (const field3 of ["audioFadeInFrames", "audioFadeOutFrames"]) {
+    const value = item[field3];
     if (value === void 0) continue;
     if (!supportsAudio) {
-      return `Timeline item ${item.id} ${field} is only valid on audio or video items`;
+      return `Timeline item ${item.id} ${field3} is only valid on audio or video items`;
     }
     if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-      return `Timeline item ${item.id} ${field} must be a non-negative integer`;
+      return `Timeline item ${item.id} ${field3} must be a non-negative integer`;
     }
   }
   if (item.audioDucking !== void 0) {
@@ -33377,17 +35787,17 @@ function validateAudioTimelineFields(item, track) {
     if (track.role !== "music") {
       return `Timeline item ${item.id} audioDucking requires a music track`;
     }
-    if (!isRecord5(item.audioDucking)) {
+    if (!isRecord9(item.audioDucking)) {
       return `Timeline item ${item.id} audioDucking must be an object`;
     }
     const amountDb = item.audioDucking.amountDb;
     if (typeof amountDb !== "number" || !Number.isFinite(amountDb) || amountDb < -60 || amountDb > 0) {
       return `Timeline item ${item.id} audioDucking.amountDb must be between -60 and 0`;
     }
-    for (const field of ["attackFrames", "releaseFrames"]) {
-      const value = item.audioDucking[field];
+    for (const field3 of ["attackFrames", "releaseFrames"]) {
+      const value = item.audioDucking[field3];
       if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-        return `Timeline item ${item.id} audioDucking.${field} must be a non-negative integer`;
+        return `Timeline item ${item.id} audioDucking.${field3} must be a non-negative integer`;
       }
     }
   }
@@ -33402,7 +35812,7 @@ function validateSubtitleTextTimelineItem(item) {
   }
   const wordIds = /* @__PURE__ */ new Set();
   for (const wordRef of wordRefs) {
-    if (!isRecord5(wordRef)) return `Subtitle text item ${item.id} has invalid wordRefs`;
+    if (!isRecord9(wordRef)) return `Subtitle text item ${item.id} has invalid wordRefs`;
     if (typeof wordRef.id !== "string" || wordRef.id.length === 0) return `Subtitle text item ${item.id} has invalid wordRefs`;
     if (typeof wordRef.text !== "string") return `Subtitle text item ${item.id} has invalid wordRefs`;
     if (!isValidFrameRange(wordRef.sourceStartFrame, wordRef.sourceEndFrame)) {
@@ -33411,13 +35821,13 @@ function validateSubtitleTextTimelineItem(item) {
     wordIds.add(wordRef.id);
   }
   for (const map of sourceToOutputMap) {
-    if (!isRecord5(map)) return `Subtitle text item ${item.id} has invalid sourceToOutputMap`;
+    if (!isRecord9(map)) return `Subtitle text item ${item.id} has invalid sourceToOutputMap`;
     if (!isValidFrameRange(map.sourceStartFrame, map.sourceEndFrame) || !isValidFrameRange(map.outputStartFrame, map.outputEndFrame)) {
       return `Subtitle text item ${item.id} has invalid sourceToOutputMap frame range`;
     }
   }
   for (const cue of cues) {
-    if (!isRecord5(cue)) return `Subtitle text item ${item.id} has invalid cues`;
+    if (!isRecord9(cue)) return `Subtitle text item ${item.id} has invalid cues`;
     if (typeof cue.id !== "string" || cue.id.length === 0) return `Subtitle text item ${item.id} has invalid cues`;
     if (typeof cue.text !== "string" || cue.text.trim().length === 0) return `Subtitle text item ${item.id} has invalid cues`;
     if (typeof cue.startFrame !== "number" || !Number.isInteger(cue.startFrame) || cue.startFrame < 0) {
@@ -33448,7 +35858,7 @@ function validateSubtitleTextTimelineItem(item) {
     }
     const cueEndFrame = cueStartFrame + cueDurationInFrames;
     const coveredByMap = sourceToOutputMap.some((map) => {
-      if (!isRecord5(map)) return false;
+      if (!isRecord9(map)) return false;
       if (!isValidFrameRange(map.sourceStartFrame, map.sourceEndFrame)) return false;
       if (!isValidFrameRange(map.outputStartFrame, map.outputEndFrame)) return false;
       const frameMap = map;
@@ -33474,7 +35884,7 @@ function validateDerivedOverlayTimelineItem(item) {
   if (item.sourceAssetId === item.derivedAssetId) {
     return `Derived overlay item ${item.id} must be copy-on-write`;
   }
-  if (!isRecord5(item.derivation) || typeof item.derivation.kind !== "string" || item.derivation.kind.length === 0) {
+  if (!isRecord9(item.derivation) || typeof item.derivation.kind !== "string" || item.derivation.kind.length === 0) {
     return `Derived overlay item ${item.id} must include sourceAssetId, derivedAssetId, and derivation.kind`;
   }
   return null;
@@ -33503,7 +35913,7 @@ function validateCompositionTimelineItem(item) {
   }
   return null;
 }
-function isRecord5(value) {
+function isRecord9(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 function isValidFrameRange(startFrame, endFrame) {
@@ -33582,8 +35992,8 @@ ${rows.join("\n")}`;
 function renderTimelineDslMarkdown() {
   const feature = dist_TIMELINE_DSL_DEFINITION.features.clipMask;
   const fields = feature.fieldDefinitions;
-  const fieldRows = Object.entries(fields).map(([field, definition]) => `| \`${field}\` | \`${definition.unit}\` | ${inlineJson(definition.defaultValue)} | ${definition.animatedChannel ? `\`${definition.animatedChannel}\`` : "static"} | ${definition.invalidValueDescription} | ${definition.description} |`);
-  const channelLines = Object.entries(fields).filter(([, definition]) => definition.animatedChannel).map(([field, definition]) => `- \`${definition.animatedChannel}\` animates \`mask.${field}\`.`);
+  const fieldRows = Object.entries(fields).map(([field3, definition]) => `| \`${field3}\` | \`${definition.unit}\` | ${inlineJson(definition.defaultValue)} | ${definition.animatedChannel ? `\`${definition.animatedChannel}\`` : "static"} | ${definition.invalidValueDescription} | ${definition.description} |`);
+  const channelLines = Object.entries(fields).filter(([, definition]) => definition.animatedChannel).map(([field3, definition]) => `- \`${definition.animatedChannel}\` animates \`mask.${field3}\`.`);
   const operationLines = Object.entries(feature.operations).map(([operation, description]) => `- \`${operation}\`: ${description}.`);
   const runtimeLines = Object.entries(feature.runtimeBehavior).map(([behavior, value]) => `- \`${behavior}\`: ${typeof value === "boolean" ? String(value) : words(value)}.`);
   const semantics = feature.semantics;
@@ -33683,7 +36093,7 @@ ${samplingVerb(semantics.afterLastKeyframe)}. An absent or empty channel uses th
 ${words(semantics.emptyChannelFallback)}. Store keys in ascending frame order;
 the runtime also sorts defensively.
 
-${semantics.staticOnlyFields.map((field) => `\`${field}\``).join(" and ")} are static only. Any mask keyframe channel requires
+${semantics.staticOnlyFields.map((field3) => `\`${field3}\``).join(" and ")} are static only. Any mask keyframe channel requires
 the complete static \`item.mask\` fallback.
 
 ## Declarative operations
@@ -33706,8 +36116,8 @@ function renderTimelineMaskKeyframesExampleYaml() {
 function renderTimelineMaskSkillReference() {
   const feature = dist_TIMELINE_DSL_DEFINITION.features.clipMask;
   const fields = feature.fieldDefinitions;
-  const fieldNames = Object.keys(fields).map((field) => `\`${field}\``).join(", ");
-  const channels = Object.values(fields).flatMap((field) => field.animatedChannel ? [`\`${field.animatedChannel}\``] : []).join(", ");
+  const fieldNames = Object.keys(fields).map((field3) => `\`${field3}\``).join(", ");
+  const channels = Object.values(fields).flatMap((field3) => field3.animatedChannel ? [`\`${field3.animatedChannel}\``] : []).join(", ");
   return `<!-- BEGIN GENERATED TIMELINE MASK CONTRACT -->
 The implementation-side capability annotations define all required mask fields:
 ${fieldNames}. The generated animated channels are ${channels}.
@@ -33757,7 +36167,7 @@ function planAssetScopeCascade({
       );
     }
   }
-  const assetId = source.kind === "local-file" ? void 0 : source.assetId;
+  const assetId = source.kind === "local-file" || source.kind === "global-library" ? void 0 : source.assetId;
   const steps = [];
   if (source.kind === "local-file") {
     steps.push({ kind: "create-project-asset", addToGlobalLibrary: false });
@@ -33805,6 +36215,380 @@ function planAssetScopeCascade({
     }
   }
   return steps;
+}
+var PROJECT_PRESENTATION_CONTAINER = "projectPresentation";
+var PROJECT_COVER_ACTION_ID = "project-cover";
+var COVER_BINDING_ID_KEY = "coverBindingId";
+function isProjectCoverBinding(binding) {
+  return binding.owner.kind === "draft" && binding.owner.actionId === PROJECT_COVER_ACTION_ID && binding.direction === "input" && binding.slot === "cover";
+}
+function projectCoverBindings(doc) {
+  return listProjectAssets(doc).flatMap((asset) => listActionAssetReferences(doc, asset.id)).filter(isProjectCoverBinding).sort((left, right) => left.id.localeCompare(right.id));
+}
+function storedCoverBindingId(doc) {
+  const presentation = doc.getMap(PROJECT_PRESENTATION_CONTAINER);
+  const bindingId = presentation.get(COVER_BINDING_ID_KEY);
+  return typeof bindingId === "string" && bindingId ? bindingId : null;
+}
+function currentCoverBinding(doc) {
+  const bindingId = storedCoverBindingId(doc);
+  if (!bindingId) return null;
+  return projectCoverBindings(doc).find((binding) => binding.id === bindingId) ?? null;
+}
+function readProjectCoverAssetId(doc) {
+  var _a;
+  return ((_a = currentCoverBinding(doc)) == null ? void 0 : _a.projectAssetId) ?? null;
+}
+function setProjectCoverAsset(doc, input) {
+  var _a, _b;
+  const projectAssetId = ((_a = input.projectAssetId) == null ? void 0 : _a.trim()) || null;
+  const current = currentCoverBinding(doc);
+  if ((current == null ? void 0 : current.projectAssetId) === projectAssetId) {
+    return { ok: true, coverAssetId: projectAssetId, changed: false };
+  }
+  if (projectAssetId) {
+    const asset = readProjectAsset(doc, projectAssetId);
+    if (!asset) {
+      return {
+        ok: false,
+        error: {
+          code: "PROJECT_ASSET_NOT_FOUND",
+          message: `Project Asset ${projectAssetId} not found.`
+        }
+      };
+    }
+    if (asset.lifecycle.state !== "active") {
+      return {
+        ok: false,
+        error: {
+          code: "PROJECT_ASSET_NOT_ACTIVE",
+          message: `Project Asset ${projectAssetId} is not active.`
+        }
+      };
+    }
+    if (!((_b = input.bindingId) == null ? void 0 : _b.trim())) {
+      return {
+        ok: false,
+        error: {
+          code: "INVALID_COVER_BINDING_ID",
+          message: "A new Project cover requires a unique binding id."
+        }
+      };
+    }
+    if (readActionAssetBinding(doc, input.bindingId.trim())) {
+      return {
+        ok: false,
+        error: {
+          code: "INVALID_COVER_BINDING_ID",
+          message: `Action Asset binding ${input.bindingId.trim()} already exists.`
+        }
+      };
+    }
+  }
+  const presentation = doc.getMap(PROJECT_PRESENTATION_CONTAINER);
+  if (!projectAssetId) {
+    if (current) {
+      const unbound = unbindActionAssetBinding(doc, current.id);
+      if (!unbound.ok) {
+        return {
+          ok: false,
+          error: {
+            code: "PROJECT_COVER_BINDING_FAILED",
+            message: unbound.error.message
+          }
+        };
+      }
+    }
+    presentation.delete(COVER_BINDING_ID_KEY);
+    return { ok: true, coverAssetId: null, changed: current !== null };
+  }
+  const binding = {
+    id: input.bindingId.trim(),
+    owner: { kind: "draft", actionId: PROJECT_COVER_ACTION_ID },
+    direction: "input",
+    slot: "cover",
+    projectAssetId,
+    role: "primary"
+  };
+  const created = createActionAssetBinding(doc, binding);
+  if (!created.ok) {
+    return {
+      ok: false,
+      error: {
+        code: "PROJECT_COVER_BINDING_FAILED",
+        message: created.error.message
+      }
+    };
+  }
+  if (current) {
+    const unbound = unbindActionAssetBinding(doc, current.id);
+    if (!unbound.ok) {
+      return {
+        ok: false,
+        error: {
+          code: "PROJECT_COVER_BINDING_FAILED",
+          message: unbound.error.message
+        }
+      };
+    }
+  }
+  presentation.set(COVER_BINDING_ID_KEY, binding.id);
+  return { ok: true, coverAssetId: projectAssetId, changed: true };
+}
+function reconcileProjectCoverBindings(doc) {
+  const current = currentCoverBinding(doc);
+  const presentation = doc.getMap(PROJECT_PRESENTATION_CONTAINER);
+  let changed = false;
+  if (!current && presentation.get(COVER_BINDING_ID_KEY) !== void 0) {
+    presentation.delete(COVER_BINDING_ID_KEY);
+    changed = true;
+  }
+  const unboundBindingIds = [];
+  for (const binding of projectCoverBindings(doc)) {
+    if (binding.id === (current == null ? void 0 : current.id)) continue;
+    const result = unbindActionAssetBinding(doc, binding.id);
+    if (!result.ok) continue;
+    unboundBindingIds.push(binding.id);
+    changed = true;
+  }
+  return {
+    coverAssetId: (current == null ? void 0 : current.projectAssetId) ?? null,
+    unboundBindingIds,
+    changed
+  };
+}
+function isRecord10(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function nonEmptyString4(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : void 0;
+}
+function ownerKey(owner) {
+  if (owner.kind === "draft") return `draft:${owner.actionId}`;
+  if (owner.kind === "revision") {
+    return `revision:${owner.actionId}:${owner.actionRevisionId}`;
+  }
+  return `run:${owner.actionId}:${owner.actionRevisionId}:${owner.actionRunId}`;
+}
+function legacyBindingId(owner, direction, slot) {
+  return [
+    "action-asset",
+    "legacy",
+    encodeURIComponent(ownerKey(owner)),
+    direction,
+    encodeURIComponent(slot)
+  ].join(":");
+}
+function draftOwner(actionId) {
+  return { kind: "draft", actionId };
+}
+function actionIdForCanvasNode(nodeId) {
+  return `node:${nodeId}`;
+}
+function actionIdForTimeline(timeline) {
+  return timeline.owner.kind === "canvas-action" ? actionIdForCanvasNode(timeline.owner.actionNodeId) : `timeline:${timeline.id}`;
+}
+function actionIdForDirectorStage(stage) {
+  return stage.owner.kind === "canvas-action" ? actionIdForCanvasNode(stage.owner.actionNodeId) : `director:${stage.id}`;
+}
+function timelineItems(state) {
+  if (!isRecord10(state)) return [];
+  const catalog = /* @__PURE__ */ new Map();
+  if (Array.isArray(state.assets)) {
+    for (const candidate of state.assets) {
+      if (!isRecord10(candidate)) continue;
+      const id2 = nonEmptyString4(candidate.id);
+      if (!id2) continue;
+      catalog.set(id2, nonEmptyString4(candidate.backingAssetId) ?? id2);
+    }
+  }
+  if (!Array.isArray(state.tracks)) return [];
+  const result = [];
+  for (const track of state.tracks) {
+    if (!isRecord10(track) || !Array.isArray(track.items)) continue;
+    for (const candidate of track.items) {
+      if (!isRecord10(candidate)) continue;
+      const id2 = nonEmptyString4(candidate.id);
+      const direct = nonEmptyString4(candidate.backingAssetId);
+      const itemAssetId = nonEmptyString4(candidate.assetId);
+      const projectAssetId = direct ?? (itemAssetId ? catalog.get(itemAssetId) ?? itemAssetId : void 0);
+      if (id2 && projectAssetId) result.push({ id: id2, projectAssetId });
+    }
+  }
+  return result;
+}
+function planLegacyActionAssetBindingMaterialization(input) {
+  var _a;
+  const projectAssetIds = new Set(
+    input.projectAssetIds.map((id2) => id2.trim()).filter(Boolean)
+  );
+  const bindings = /* @__PURE__ */ new Map();
+  const conflicts = /* @__PURE__ */ new Map();
+  const addBinding = (options) => {
+    const projectAssetId = options.projectAssetId.trim();
+    if (!projectAssetId) return;
+    const actionId = options.owner.actionId;
+    if (!projectAssetIds.has(projectAssetId)) {
+      if (projectAssetId.startsWith("builtin:")) return;
+      const key2 = [
+        options.source,
+        options.sourceId,
+        actionId,
+        options.slot,
+        projectAssetId
+      ].join("\0");
+      conflicts.set(key2, {
+        code: "PROJECT_ASSET_NOT_FOUND",
+        source: options.source,
+        sourceId: options.sourceId,
+        actionId,
+        slot: options.slot,
+        projectAssetId,
+        message: `${options.source} ${options.sourceId} uses missing Project Asset ${projectAssetId} at ${options.slot}.`
+      });
+      return;
+    }
+    const id2 = legacyBindingId(options.owner, options.direction, options.slot);
+    const binding = {
+      id: id2,
+      owner: options.owner,
+      direction: options.direction,
+      slot: options.slot,
+      projectAssetId,
+      ...options.role ? { role: options.role } : {}
+    };
+    const existing = bindings.get(id2);
+    if (!existing) {
+      bindings.set(id2, binding);
+      return;
+    }
+    if (JSON.stringify(existing) === JSON.stringify(binding)) return;
+    const key = [
+      options.source,
+      options.sourceId,
+      actionId,
+      options.slot,
+      projectAssetId
+    ].join("\0");
+    conflicts.set(key, {
+      code: "ACTION_ASSET_SLOT_CONFLICT",
+      source: options.source,
+      sourceId: options.sourceId,
+      actionId,
+      slot: options.slot,
+      projectAssetId,
+      message: `Action ${actionId} has conflicting legacy Assets for stable slot ${options.slot}.`
+    });
+  };
+  const canvasNodes = input.canvasNodes ?? [];
+  const canvasEdges = canvasNodes.flatMap(
+    (target) => target.upstream.map((reference) => ({
+      source: reference.nodeId,
+      target: target.id
+    }))
+  );
+  for (const node of canvasNodes) {
+    const owner = draftOwner(actionIdForCanvasNode(node.id));
+    const desiredInputs = canvasActionAssetInputs({
+      node,
+      nodes: canvasNodes,
+      edges: canvasEdges
+    });
+    if (desiredInputs === null) continue;
+    for (const desired of desiredInputs) {
+      addBinding({
+        source: "canvas",
+        sourceId: node.id,
+        owner,
+        direction: "input",
+        slot: desired.slot,
+        projectAssetId: desired.projectAssetId,
+        role: desired.role
+      });
+    }
+  }
+  for (const timeline of input.timelines ?? []) {
+    const owner = draftOwner(actionIdForTimeline(timeline));
+    for (const item of timelineItems(timeline.state)) {
+      addBinding({
+        source: "timeline",
+        sourceId: timeline.id,
+        owner,
+        direction: "input",
+        slot: `timeline:item:${item.id}`,
+        projectAssetId: item.projectAssetId,
+        role: "source"
+      });
+    }
+  }
+  for (const stage of input.directorStages ?? []) {
+    const actionId = actionIdForDirectorStage(stage);
+    const owner = draftOwner(actionId);
+    if (stage.state.scene.environmentAssetId) {
+      addBinding({
+        source: "director",
+        sourceId: stage.id,
+        owner,
+        direction: "input",
+        slot: "director:environment",
+        projectAssetId: stage.state.scene.environmentAssetId,
+        role: "source"
+      });
+    }
+    for (const object of stage.state.objects) {
+      if (object.kind !== "model") continue;
+      addBinding({
+        source: "director",
+        sourceId: stage.id,
+        owner,
+        direction: "input",
+        slot: `director:model:${object.id}`,
+        projectAssetId: object.model.assetId,
+        role: "source"
+      });
+    }
+    const motionById = new Map(
+      (stage.state.motionAssets ?? []).map((motion) => [motion.id, motion])
+    );
+    for (const clip of ((_a = stage.state.animation) == null ? void 0 : _a.actionClips) ?? []) {
+      if (!clip.motionAssetId) continue;
+      const motion = motionById.get(clip.motionAssetId);
+      if (!motion) continue;
+      addBinding({
+        source: "director",
+        sourceId: stage.id,
+        owner,
+        direction: "input",
+        slot: `director:action:${clip.id}:motion`,
+        projectAssetId: motion.assetId,
+        role: "source"
+      });
+    }
+    for (const shot of stage.state.shots) {
+      addBinding({
+        source: "director",
+        sourceId: stage.id,
+        owner: {
+          kind: "run",
+          actionId,
+          actionRevisionId: shot.stageRevisionId,
+          actionRunId: `legacy-director-shot:${shot.id}`
+        },
+        direction: "output",
+        slot: `director:shot:${shot.id}`,
+        projectAssetId: shot.assetId,
+        role: "primary"
+      });
+    }
+  }
+  return {
+    bindings: [...bindings.values()].sort(
+      (left, right) => left.id.localeCompare(right.id)
+    ),
+    conflicts: [...conflicts.values()].sort(
+      (left, right) => left.source.localeCompare(right.source) || left.sourceId.localeCompare(right.sourceId) || left.slot.localeCompare(right.slot) || left.projectAssetId.localeCompare(right.projectAssetId)
+    )
+  };
 }
 var MEDIA_NODE_TYPES = /* @__PURE__ */ new Set(["image", "video", "audio"]);
 function isMediaNodeType(type) {
@@ -279333,7 +282117,7 @@ var NoReactInternals = {
 /******/ 	// Load entry module and return exports
 /******/ 	// This entry module is referenced by other modules so it can't be inlined
 /******/ 	__webpack_require__(7835);
-/******/ 	__webpack_require__(3668);
+/******/ 	__webpack_require__(9943);
 /******/ 	__webpack_require__(6426);
 /******/ 	var __webpack_exports__ = __webpack_require__(1366);
 /******/ 	

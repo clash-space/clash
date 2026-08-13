@@ -14,7 +14,7 @@ whichever ones your provider actually offers.
 |---|---|---|---|
 | **Synchronous** | Answers within the call | `completed` | Nothing more |
 | **Polled** | Takes the work, exposes a status check | `accepted` + `pollState` | Asks you again on a timer |
-| **Callback** | Takes the work, calls back when done | `accepted` + `pollState` | Waits to be called, then hands you the message |
+| **Callback (future)** | Takes the work, calls back when done | `accepted` + `pollState` | Current Host keeps polling; a future callback adapter may deliver the signed message |
 
 ### Synchronous
 
@@ -29,7 +29,9 @@ would technically work.
 ### Polled
 
 The provider takes the work and gives you something to ask about later. Return that
-something as `pollState`; the host stores it and calls you back with it.
+something as `pollState`; the host records it in its owner-private durable operation journal and
+calls you back with it. Local owners use Local SQLite; a future cloud owner may use a Cloud
+Workflow. Neither path writes provider run state into Project Loro or a canvas node.
 
 This is the default for anything slow, and the one to implement first. It needs nothing from
 the host beyond durable scheduling and poll-state persistence, works on a laptop with no public
@@ -39,12 +41,15 @@ so there is no public inbound message to be fooled by.
 
 ### Callback
 
+> Future protocol: the current Host does not issue callback URLs or accept
+> callback delivery. Providers must retain a working poll path today.
+
 The provider calls a URL when it finishes. This is not polling with a different alarm clock;
 it needs two things polling does not.
 
 It needs an address, and you cannot supply one — a `local` plugin listens on nothing, and a
-translator that exists for the length of one call has nowhere to keep a listener. The host
-issues it, as `callbackUrl` on the submit invocation.
+translator that exists for the length of one call has nowhere to keep a listener. A future Host
+callback adapter would issue it as `callbackUrl` on the submit invocation.
 
 And it needs the arriving message to be translated and believed, because a POST from the
 open internet is a stranger until proven otherwise. Both are covered under
@@ -66,8 +71,13 @@ return {
 };
 ```
 
-`pollState` is any JSON, stored verbatim and handed back untouched. The host reads none of
-it.
+Return `accepted` only after the provider has explicitly accepted the submission and given you
+durable state with which to find it again. A timeout, closed connection, or transient polling
+failure is not acceptance: the provider may or may not have taken the work, and saying `accepted`
+without evidence can turn an uncertain submission into a task the host can never collect.
+
+`pollState` is any JSON, stored verbatim in that private journal and handed back untouched. The
+host reads none of it.
 
 It is deliberately not called `taskId`. Plenty of providers have no id: one returns a
 status URL, another needs a region alongside a job name, a third hands back a cursor. A
@@ -123,40 +133,33 @@ an upgrade, a laptop lid — the work cannot be found again. The node stays pend
 and the generation has already been billed. The loop also has to be written once per
 plugin, and every copy gets the retry budget and the backoff slightly differently.
 
-Hand the state back instead. The host stores it beside the node in the same document that
-holds the canvas, so resuming after a restart is not a special path — it is the ordinary
-one, reading the same record it would have read anyway.
+Hand the state back instead. The owner stores it in a durable private operation journal: Local
+SQLite for a local owner, and potentially a Cloud Workflow for a future cloud owner. Acceptance,
+poll state, callback receipts, retry counters, and deadlines never enter Project Loro or node data.
+
+The transaction boundary is terminal publication. The owner first settles the run and durably
+persists its output; only then may a separate finalization step publish the resulting product fact
+to the project. A crash resumes the private journal. It does not replay half-written provider state
+through Loro sync.
 
 ## Callbacks
 
-The host issues the address; the plugin never invents one. A `local` plugin listens on
-nothing, and a translator that exists for the length of one call has nowhere to keep a
-listener. This is the same rule as upload targets: an address the host issues is reachable
-by construction, where an address a plugin claims is a claim.
+This section defines a future extension; neither `callbackUrl` nor a callback
+operation exists in the current invocation schema. Today every asynchronous
+Provider must return `accepted` with poll state and remain collectable through
+polling.
 
-At submit time the invocation may carry `callbackUrl`. Include it in the provider's request
-if the provider supports one. If it is absent, submit for polling instead. Either way you
-return `accepted`.
+In the future design, the Host issues the address; the plugin never invents one.
+A `local` plugin listens on nothing, and a translator that exists for one call
+has nowhere to keep a listener. The submit invocation may then carry a
+Host-issued `callbackUrl`; its absence means the plugin submits for polling only.
 
-Its presence is the whole signal, and it is a fact about the host rather than a setting. A
-local host on a laptop has no address a provider could reach, so it issues none and polls. A
-cloud host does. The plugin needs no flag distinguishing the two and should not try to
-detect which one it is running under: it reads whether an address was handed to it, and that
-answer is already correct.
-
-When the provider calls, the host hands the message back to you:
-
-```ts
-if (invocation.operation === "callback") {
-  if (!verifySignature(invocation.callbackHeaders, invocation.callbackPayload)) {
-    return { ...ack, status: "failed", error: { code: "bad_signature", message: "..." } };
-  }
-  return { ...ack, status: "completed", outputs: [...] };
-}
-```
-
-The host does not read the body. It is in the provider's shape, which is the thing this
-plugin exists to translate, so the host routes it rather than parsing it.
+On delivery, the Host authenticates the one-run address and routes the raw body
+and headers to the matching Provider translator. The plugin verifies the
+Provider signature before translating the payload. Signature rejection is a
+callback-channel result, not a Provider step result: it leaves the original run
+`accepted` and polling continues. A future callback contract must model that
+distinction explicitly before this path is implemented.
 
 ### Believing a callback
 
@@ -176,11 +179,14 @@ why `callbackHeaders` is handed to you alongside the body.
 Verify before you translate. Check the timestamp too, or a captured message can be replayed
 later.
 
-If you cannot verify, return `failed`. This does not strand the work: the poll path is
-still there, and polling authenticates in the other direction — the Host invokes the plugin on a
-timer; the plugin reads its account-scoped state and calls the provider over an outbound
-authenticated connection, which a forger cannot stand in the middle of. Refusing an unverified
-message costs one round trip. Believing one costs whatever the forger wanted.
+If a future callback adapter cannot verify a message, it must reject that
+callback channel without converting the Provider run into terminal `failed`.
+The Host keeps the original `accepted` state and its poll schedule. Polling
+authenticates in the other direction — the Host invokes the plugin on a timer;
+the plugin reads its account-scoped state and calls the provider over an
+outbound authenticated connection, which a forger cannot stand in the middle
+of. Refusing an unverified message costs one round trip. Believing one costs
+whatever the forger wanted.
 
 ## Sizing the choice
 
@@ -204,6 +210,69 @@ rule about the last of them:
 
 **A status you do not recognise is a failure, not a wait.**
 
+A failure keeps the host's decision facts separate from the provider's diagnostics:
+
+```ts
+return {
+  ...ack,
+  status: "failed",
+  error: {
+    code: "execution_failed",       // stable Clash category
+    message: "The provider refused the request.",
+    retryable: true,
+    requestState: "rejected",
+    providerCode: "quota_exceeded", // optional provider spelling
+    details: { limit: 10 },          // optional JSON diagnostics
+  },
+};
+```
+
+`code` is a stable canonical category used by Clash policy. Do not copy a provider's changing
+error spelling into it; preserve that spelling as `providerCode`. `retryable` says whether the
+condition may succeed later. It does not by itself authorize resubmission: the host also needs
+`requestState` to know what happened at the submission boundary.
+
+| `requestState` | Meaning | Submission consequence |
+|---|---|---|
+| `rejected` | The provider definitely did not accept the request | Host policy may submit again when `retryable` permits |
+| `unknown` | The boundary was ambiguous; the provider may have accepted | Reuse the same `actionRunId`, output slot, and idempotency key; reconcile when the provider supports it, otherwise Host policy may resubmit and must accept that duplicate upstream work is possible |
+| `accepted` | The provider accepted the task and it later failed | Never resubmit as though the original request was rejected |
+
+`retryable` is an input to Host policy, not the policy itself. In particular, it cannot make an
+`accepted` request safe to submit again. For `unknown`, a durable owner first uses the same stable
+run identity to reconcile or deduplicate; only when the provider offers no reconciliation path may
+Host policy choose a fresh attempt with the explicit trade-off that upstream work may be duplicated.
+
+Use one of these canonical `code` values. Put a provider's own code in `providerCode`.
+
+| `code` | Use when |
+|---|---|
+| `invalid_request` | The submitted values or operation are invalid |
+| `authentication_failed` | Provider credentials are missing, expired, or rejected |
+| `permission_denied` | Identity is known but not allowed to perform the operation |
+| `content_rejected` | Provider safety or content policy rejected the input |
+| `rate_limited` | A request-rate limit was reached |
+| `quota_exhausted` | A credit, balance, or usage quota was exhausted |
+| `provider_unavailable` | The provider service is temporarily unavailable |
+| `provider_failed` | The provider reported a terminal task failure without a narrower category |
+| `task_not_found` | Previously accepted provider work no longer exists |
+| `task_expired` | Previously accepted provider work expired |
+| `transport_timeout` | A provider network operation timed out |
+| `transport_error` | Another provider network or protocol transport failed |
+| `invalid_response` | The provider response could not be validated or interpreted |
+| `execution_failed` | Plugin execution failed without a narrower category |
+| `contract_violation` | A plugin or Host boundary violated the executable-plugin contract |
+| `cancelled` | The operation was cancelled |
+| `plugin_unavailable` | The Host could not start or reach the plugin process |
+| `deadline_exceeded` | The Host's overall run deadline expired |
+| `output_persistence_failed` | Finished output could not be stored durably |
+| `publication_failed` | Stored output could not be published or attached to its destination |
+
+A polling error does not erase known acceptance. Report a transient transport problem as a
+retryable failure with `requestState: "accepted"`; the host may retry the poll, but must not submit
+the work again. A terminal provider verdict is also `failed` with `requestState: "accepted"`.
+In particular, never turn an unrecognised provider status into `accepted` just to keep waiting.
+
 The tempting default runs the other way. Listing the words you know and letting everything else mean
 "not finished yet" reads as cautious, and it is the one mistake here with no symptom: a state added
 upstream next month, a spelling off by a letter, a terminal failure phrased unfamiliarly, and the
@@ -221,6 +290,8 @@ Being wrong in this direction costs one surfaced error naming the word you did n
 someone can fix. Being wrong in the other costs an indefinite wait that names nothing. Those are not
 comparable.
 
-The host bounds the silence as a backstop -- forty-five minutes, against a longest-measured
-generation of 275 seconds -- but that is there for a provider that stops answering, not as a
-substitute for reading what it said.
+The Host also bounds the **whole run**, including synchronous work, polling,
+retry scheduling, output staging, and publication. The default deadline is 30
+minutes and products may configure it. That is a recovery and product-policy
+backstop for work that stops making progress, not a per-HTTP-call timeout and
+not a substitute for reading the provider's terminal state.

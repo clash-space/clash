@@ -49,6 +49,22 @@ function context() {
   };
 }
 
+function publicStorageContext() {
+  const storageManifest = ExecutablePluginManifestSchema.parse({
+    ...manifest,
+    contributes: {
+      ...manifest.contributes,
+      functions: [{
+        id: "run",
+        kind: "provider-executor",
+        operations: ["submit", "poll"],
+        requires: ["public-asset-storage"],
+      }],
+    },
+  });
+  return { ...context(), manifest: storageManifest };
+}
+
 describe("local executable plugin host dependencies", () => {
   it("reads only project-scoped assets through the host context", async () => {
     const broker = createLocalExecutablePluginBroker({
@@ -90,6 +106,57 @@ describe("local executable plugin host dependencies", () => {
       byteLength: 3,
       dataBase64: "AQID",
     });
+  });
+
+  it("publishes asset reads for a function that requires public Asset storage", async () => {
+    // Regression caught: satisfying the launch gate alone still handed Volcengine base64, while
+    // its video reference contract can consume only an internet-reachable URL.
+    const publishAsset = vi.fn(async () => ({
+      url: "https://objects.example.test/reference.png?signature=test",
+      expiresAt: "2026-08-13T12:00:00.000Z",
+    }));
+    const broker = createLocalExecutablePluginBroker({
+      loadProviderAccounts: async () => [],
+      readAsset: async () => ({
+        kind: "image",
+        mediaType: "image/png",
+        bytes: new Uint8Array([1, 2, 3]),
+      }),
+      publishAsset,
+    });
+
+    await expect(
+      broker(
+        {
+          protocol: "clash.plugin.broker-request/v1",
+          requestId: "public-asset-1",
+          invocationId: "invocation-1",
+          operation: {
+            kind: "asset.read",
+            asset: {
+              assetId: "asset-1",
+              uri: "clash-asset://asset-1",
+              kind: "image",
+            },
+          },
+        },
+        publicStorageContext(),
+      ),
+    ).resolves.toMatchObject({
+      kind: "image",
+      mediaType: "image/png",
+      byteLength: 3,
+      url: "https://objects.example.test/reference.png?signature=test",
+      reach: "public",
+    });
+    expect(publishAsset).toHaveBeenCalledWith(expect.objectContaining({
+      pluginId: manifest.id,
+      projectId: "project-1",
+      invocationId: "invocation-1",
+      assetId: "asset-1",
+      bytes: new Uint8Array([1, 2, 3]),
+      mediaType: "image/png",
+    }));
   });
 
   it("writes plugin-produced bytes through the project asset context", async () => {

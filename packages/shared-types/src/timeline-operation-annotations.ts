@@ -436,7 +436,7 @@ const agent = {
     inputSchema: z.object({
       timelineId: IdentifierSchema,
       wait: z.boolean().optional(),
-      timeoutMs: z.number().int().min(1_000).max(900_000).optional(),
+      timeoutMs: z.number().int().min(1_000).optional(),
     }).strict(),
     outputSchema: TimelineRenderReceiptSchema,
     access: "write",

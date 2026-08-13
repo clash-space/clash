@@ -48,6 +48,33 @@ export {
 export { visibleUserPromptText } from "./prompt-content.js";
 
 export {
+  DurableRunEngine,
+  createBoundedRetryPolicy,
+  createDurableRunRecord,
+  durableRunIdempotencyKey,
+  type DurableOutputStore,
+  type DurableOwnerGuard,
+  type DurableProjectPublisher,
+  type DurableProviderExecutor,
+  type DurableProviderFailure,
+  type DurableProviderStep,
+  type DurableRetryPolicy,
+  type DurableRetryPolicyInput,
+  type DurableRunAdvanceResult,
+  type DurableRunAttempt,
+  type DurableRunAttemptCounts,
+  type DurableRunClock,
+  type DurableRunEngineOptions,
+  type DurableRunFailureCounts,
+  type DurableRunIdentity,
+  type DurableRunJournal,
+  type DurableRunOperation,
+  type DurableRunOwner,
+  type DurableRunPhase,
+  type DurableRunRecord,
+} from "./durable-run-engine.js";
+
+export {
   buildMiniMaxH3Content,
   type MiniMaxH3ContentInput,
   type MiniMaxH3OrderedContentPart,
@@ -139,6 +166,15 @@ export {
   type ClashMcpCommandMenu,
   type ClashMcpToolFamily,
 } from "./mcp-command-menu.js";
+
+export {
+  PROJECT_ASSET_READ_RECEIPT_HEADER,
+  createProjectAssetHostClient,
+  type ProjectAssetHostClient,
+  type ProjectAssetHostObservation,
+  type ProjectAssetHostResult,
+  type ProjectAssetHostScope,
+} from "./project-asset-client.js";
 
 export const LOCAL_HOST_RECORD_SCHEMA_VERSION = 1;
 export const LOCAL_HOST_PROTOCOL_VERSION = 1;

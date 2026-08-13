@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { executablePluginDependencyError } from "./executable-plugin.js";
+import {
+  executablePluginDependencyError,
+} from "./executable-plugin.js";
 
 /**
  * Dependency injection checks the same thing the spawn checked: what the plugin contributes.

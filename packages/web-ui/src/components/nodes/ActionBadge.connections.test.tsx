@@ -116,10 +116,6 @@ vi.mock("@clash/web-ui/lib/hooks/useSignedUrl", () => ({
   getSignedUrl: vi.fn(),
 }));
 
-vi.mock("@clash/web-ui/hooks/useCustomActions", () => ({
-  useCustomActions: () => [],
-}));
-
 vi.mock("@clash/web-ui/hooks/useRuntimes", () => ({
   RUNTIME_OFFLINE_LABEL: "Offline",
   RUNTIME_OFFLINE_TOOLTIP: "Runtime offline",

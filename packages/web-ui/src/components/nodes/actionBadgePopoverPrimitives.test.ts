@@ -11,7 +11,7 @@ describe("ActionBadge popover primitives", () => {
 
         expect(source).toContain("NodeToolbar");
         expect(source).toContain("isVisible={showPanel}");
-        expect(source).toContain("useCanvasTransientUiOwner('action-panel', id)");
+        expect(source).toContain('useCanvasTransientUiOwner("action-panel", id)');
         expect(source).toContain("../ui/popover");
         expect(source).toContain("PopoverContent");
         expect(source).toContain("PopoverTrigger asChild");
@@ -41,9 +41,12 @@ describe("ActionBadge popover primitives", () => {
         const source = readNodeSource("ActionBadge.tsx");
         const comboboxPath = join(process.cwd(), "packages/web-ui/src/components/ui/combobox.tsx");
         const comboboxSource = existsSync(comboboxPath) ? readFileSync(comboboxPath, "utf8") : "";
+        const guiComboboxPath = join(process.cwd(), "packages/gui/src/components/ui/combobox.tsx");
+        const guiComboboxSource = existsSync(guiComboboxPath) ? readFileSync(guiComboboxPath, "utf8") : "";
 
         expect(existsSync(comboboxPath)).toBe(true);
-        expect(comboboxSource).toContain("@ariakit/react");
+        expect(comboboxSource).toContain("@clash/gui/components/ui/combobox");
+        expect(guiComboboxSource).toContain("@ariakit/react");
         expect(source).toContain("../ui/combobox");
         expect(source).toContain("ComboboxProvider");
         expect(source).toContain("ComboboxList");

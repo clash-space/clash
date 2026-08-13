@@ -1,7 +1,26 @@
 # Asset System: Product and Technical Design
 
-> Status: target architecture. The current implementation is transitional and
-> does not yet satisfy every invariant in this document.
+> Status: implemented for the Local Host except for the explicitly listed Local
+> purge delivery gap; Cloud replication and hosted storage are design-only
+> in the current work.
+
+The Local product now has one authority and one public read shape.
+`@clash/shared-types` defines the storage-free `ProjectAssetEntry`, immutable
+`Resource`, `GlobalAssetEntry`, `ActionAssetBinding`, and read-only
+`ResolvedAsset` contracts. `@clash/asset-sdk` owns the semantic clients and the
+only `ProjectAssetEntry -> ResolvedAsset` resolver. local-api supplies the
+Project Loro authority, local Resource CAS, personal Global library, legacy
+one-way materializer, and HTTP adapter. GUI, CLI, MCP, Timeline, Director,
+project covers, executable plugins, and the Local Durable Run publisher consume
+that Project-scoped contract.
+
+The old Local `/api/v1/assets*` storage-row protocol is retired and returns
+`410`; new Local writes do not update `asset_refs` or storage-shaped Asset rows.
+Legacy rows remain readable only by the one-way materializer and storage doctor.
+The hosted api-cf Asset rows are not migrated in this work because Cloud
+execution, OSS binding, Project claims, and multi-device transfer are explicitly
+design-only. They must converge on the same contracts before Cloud delivery is
+claimed.
 
 This document defines one product model for media across Global Assets,
 Project Assets, Canvas, Timeline, Director, CLI, MCP, executable plugins, local
@@ -177,7 +196,7 @@ flowchart TD
   unbind --> keepEntry["Keep ProjectAssetEntry and Resource"]
 
   target -->|"ProjectAssetEntry"| read["Read observed Project revision"]
-  read --> refs{"Any Action bindings remain?"}
+  read --> refs{"Any downstream Action input bindings remain?"}
   refs -->|"Yes"| reject["ASSET_IN_USE\nreturn owner + action + slot"]
   reject --> rewire["User removes or rewires usage, then retries"]
   rewire --> read
@@ -206,6 +225,13 @@ explicit Restore changes the lifecycle back to `active` during the configured
 recovery window, so no upload or Registry round trip is required. Purge is the
 later terminal transition that releases the claim and authorizes asynchronous
 byte deletion only when no other claim remains.
+
+The Local product currently ships the diagram through Trash and Restore. The
+terminal `purged` state and its stale-CRDT protection are implemented in the
+shared authority and Asset SDK, but no Local HTTP/CLI/MCP command or background
+scheduler advances an Asset into that state yet. Claim release and physical
+Resource deletion therefore remain delivery work; the diagram specifies their
+required behavior rather than claiming a running cleanup worker.
 
 An upload that finishes while the entry is trashed may make the retained
 Resource available for Restore, but it cannot reactivate the ProjectAsset.
@@ -251,6 +277,21 @@ Resource claim during the configured recovery window. Purging it releases only
 the Global claim. Neither transition may break a Project that previously
 admitted the Resource.
 
+```ts
+type GlobalAssetEntry = Readonly<{
+  id: string;
+  kind: "image" | "video" | "audio" | "model";
+  resourceId: string;
+  lifecycle: ProjectAssetEntry["lifecycle"];
+  name?: string;
+  metadata: ProjectAssetMetadata;
+  provenance?: ProjectAssetProvenance;
+}>;
+```
+
+The library ID is authority context, not part of the entry or Resource identity. Global entries
+never carry a Project ID, storage key, path, URL, or projection state.
+
 ### ProjectAssetEntry
 
 A ProjectAssetEntry is the only media identity that Canvas, Timeline, Director,
@@ -287,10 +328,16 @@ type ProjectAssetEntry = Readonly<{
         purgedAt: string;
       }>;
   name?: string;
-  metadata: AssetMetadata;
-  provenance?: AssetProvenance;
+  metadata: ProjectAssetMetadata;
+  provenance?: ProjectAssetProvenance;
 }>;
 ```
+
+`ProjectAssetMetadata` is deliberately narrower than the transitional Asset-row metadata. It may
+contain descriptive media facts such as dimensions, duration, codecs, content type, and original
+name. It cannot contain a URL, local path, blob key, object-store key, signed projection, or
+transfer state. `ProjectAssetProvenance` carries sanitized product lineage only; Provider task
+tokens and raw execution state remain owner-private.
 
 `active -> trashed` is the synchronized logical delete. During the recovery
 window, CRDT Undo and the explicit Restore command both produce the same
@@ -360,8 +407,9 @@ type ResolvedAsset = Readonly<{
   id: string;
   kind: "image" | "video" | "audio" | "model";
   name?: string;
-  metadata: AssetMetadata;
-  provenance?: AssetProvenance;
+  metadata: ProjectAssetMetadata;
+  provenance?: ProjectAssetProvenance;
+  lifecycle: ProjectAssetLifecycle;
   status: "uploading" | "ready" | "downloading" | "unavailable" | "failed";
   url?: string;
   thumbnailUrl?: string;
@@ -409,12 +457,23 @@ Timeline is an Action, not a special media reference subsystem.
 
 - A Project-owned Timeline has a persistent Timeline Action.
 - A Canvas-owned Timeline uses the corresponding Canvas Action.
-- A Timeline item stores a binding ID such as `timeline:item:<item-id>`.
+- A Timeline item has a stable slot such as `timeline:item:<item-id>`; the Host
+  writes that slot's ActionAssetBinding in the same Project mutation.
 - The binding resolves to a ProjectAssetEntry.
 - Rendering freezes a Timeline Action revision and produces an output binding.
 
-`mediaAssetRefs`, `sourceNodeId`, `backingAssetId`, and persisted runtime `src`
-fallbacks are migration inputs, not target authorities.
+Current Local writes persist `assetId` as the Project Asset identity and never
+persist an external runtime `src`: the shared Project authority strips Host
+projections and rejects a URL/path-only item. The item `assetId` and stable
+`timeline:item:<item-id>` slot compile directly to the Action binding in the
+same Project Loro mutation. `sourceNodeId` is only an optional live
+Canvas-navigation hint; GUI, CLI, render, and deletion never treat it as media
+identity or reference authority.
+
+Director Stage state follows the same split. Models, environments, shots, and
+reference packets persist Project Asset identities only. `sourceUrl`, packet
+`src`/`previewUrl`, and Canvas `outputVideoSrc` projections are Host-runtime
+data and are stripped before a Loro write.
 
 ### Built-in catalogs
 
@@ -483,10 +542,16 @@ It never adds the Asset to Global Assets implicitly.
 Selecting a Global, catalog, or permitted cross-Project Asset:
 
 1. verifies access to the origin Resource;
-2. creates a Project-scoped access and retention claim;
-3. creates a linked ProjectAssetEntry with a new Project-local identity;
-4. returns the `projectAssetId` used by every downstream Action;
-5. optionally binds it to the selected Action.
+2. obtains an idempotent, TTL-bound admission lease/access proof; this is not a Project claim;
+3. creates a linked ProjectAssetEntry with a Project-local identity;
+4. lets the Registry reconciler derive the durable Project claim from that authoritative entry;
+5. returns the `projectAssetId` used by every downstream Action;
+6. optionally binds it to the selected Action.
+
+The pre-publication Registry call may verify or stage the immutable Resource, but it cannot commit
+Project membership. A crash before the Loro write therefore leaves only reusable staging state or a
+lease that expires. A crash after the Loro write is repaired by reconciliation. There is no
+distributed transaction between Project Loro and the Resource Registry.
 
 The current `ensureProjectReference(assetId)` model must therefore become an
 identity-producing operation:
@@ -573,7 +638,7 @@ Logical deletion is a Project Loro operation. The Host atomically, within the
 Project transaction:
 
 1. reads the current Project revision;
-2. queries every Action binding for the `projectAssetId`;
+2. queries every downstream Action input binding for the `projectAssetId`;
 3. rejects with `ASSET_IN_USE` and structured references if any remain;
 4. changes the ProjectAssetEntry lifecycle from `active` to `trashed`.
 
@@ -585,10 +650,11 @@ configured recovery window.
 CRDT Undo and the explicit Restore operation both change the lifecycle from
 `trashed` back to `active`. A successful Restore cancels pending purge without
 moving or uploading bytes. Once the recovery window expires, or when an
-authorized user explicitly empties Trash, the Host writes the terminal
-`purged` tombstone. The Registry asynchronously observes that state and
-releases the Project claim. Only then may a physical-delete worker act, and
-only if no other claim remains.
+authorized user explicitly empties Trash, the target Host behavior is to write
+the terminal `purged` tombstone. The Registry then asynchronously observes that
+state and releases the Project claim. Only then may a physical-delete worker
+act, and only if no other claim remains. This transition is implemented at the
+shared authority/SDK layer but is not yet exposed by the Local product Host.
 
 There is no force bypass. The user or agent must remove or rewire dependants and
 retry against the new Project revision.
@@ -597,22 +663,25 @@ retry against the new Project revision.
 type AssetInUseError = Readonly<{
   code: "ASSET_IN_USE";
   projectAssetId: string;
-  references: ReadonlyArray<{
-    owner: ActionBindingOwner;
-    bindingId: string;
-    direction: "input" | "output";
-    slot: string;
-    actionType: string;
-  }>;
+  references: ReadonlyArray<ActionAssetBinding>;
 }>;
 ```
+
+The owner `actionId` is sufficient to derive presentation details such as action type. Those
+details are not duplicated into the authoritative media reference.
+
+Only `direction: "input"` is a downstream use that blocks logical deletion.
+An output binding records how an Asset was produced; it remains useful lineage,
+but it does not make the producing Action a consumer of its own output.
 
 ### Trash, restore, and purge a Global Asset
 
 Trashing a GlobalAssetEntry retains its Global claim during the library's
 recovery window. Purging it releases only that Global claim. Existing Projects
 remain valid because admission created independent Project claims and pinned
-ProjectAsset entries.
+ProjectAsset entries. The Local GUI and Host currently expose Trash and Restore;
+the terminal purge primitive exists below the transport boundary but has no
+product command or scheduler yet.
 
 ### Physical Resource deletion
 
@@ -635,6 +704,14 @@ Project recovery window. Restoring the Project therefore requires no claim or
 byte reconstruction. Purging the Project writes terminal Asset tombstones and
 asynchronously releases its claims. Resources retained by Global Assets or
 another Project survive.
+
+That paragraph is the required collaborative Project deletion protocol. The
+current `/api/v1/projects/:id/purge` operation is deliberately narrower: it
+purges only the machine's local Project recovery point and replica after its
+recovery window. It does not mutate a hosted ProjectRoom, publish terminal Asset
+tombstones to collaborators, or release cloud Registry claims, and must not be
+presented as a shared-Project purge. A future hosted purge must publish and
+replicate those tombstones before any replica or claim is reclaimed.
 
 ### Operational cleanup that remains
 
@@ -711,21 +788,25 @@ state so restart recovery and polling remain local to that Host.
 
 ### Restart and finalization recovery
 
-Local and cloud execution use the same durable phase model:
+Local and cloud execution expose the same coarse Project status model:
 
 ```text
-queued -> preparing -> running -> finalizing -> succeeded
-                                      |
-                                      +----------> failed
+queued -> running -> finalizing -> succeeded
+   \         \          \----------> failed
+    \---------\--------------------> failed
 ```
 
-`finalizing` means the Provider result exists or can still be polled, but every
-required output has not yet been durably installed and published. Local and
-cloud execution share one Durable Run Engine and one step graph; only the step
-storage adapter differs. local-api persists steps in SQLite and local CAS, while
-the cloud adapter uses Workflow state and OSS staging. Provider task tokens,
-polling cursors, local paths, and staging details remain owner-private and never
-enter Project Loro.
+This is the collaboration projection, not the owner-private journal state
+machine. The shared Durable Run Engine uses
+`queued -> submitting -> polling -> finalizing -> succeeded|failed`; `running`
+is the coarse product status that covers input admission and multiple private
+Provider attempts. `finalizing` means the Provider result is checkpointed, but
+every required output has not yet been durably installed and published. Local
+and cloud execution share that one Durable Run Engine and one private step
+graph; only the step storage adapter differs. local-api persists steps in
+SQLite and local CAS, while the cloud adapter uses Workflow state and OSS
+staging. Provider task tokens, polling cursors, local paths, and staging details
+remain owner-private and never enter Project Loro.
 
 The shared runner applies normal durable-step retry semantics. One attempt calls
 the Provider submit operation once. A network error, timeout, or process crash
@@ -884,9 +965,13 @@ team or deleting the source library entry cannot break the Project.
 - Concurrent Action rewiring is resolved in Project Loro. Materialized Action
   revisions continue to pin their original inputs.
 - Logical delete uses Project CAS plus the lifecycle register. A concurrent new
-  binding causes the delete to fail or merge as a visible conflict; an offline
-  stale binding may not reactivate a trashed or purged Project Asset. Only an
-  explicit Restore may change `trashed` back to `active` before purge.
+  input binding either makes the local delete fail its observation check or,
+  after two valid offline operations merge, wins over a non-terminal
+  `trashed` state so the Host restores the Asset and does not leave a dangling
+  Action input. This reference-wins reconciliation is narrowly scoped to the
+  concurrent delete/bind race; it cannot reactivate a terminal `purged` Asset.
+  Without such a concurrent input, only CRDT Undo or an explicit Restore may
+  change `trashed` back to `active` before purge.
 
 ## Previews, thumbnails, and Project covers
 
@@ -918,13 +1003,20 @@ and do not construct URLs or know storage topology.
 
 ### CLI and MCP
 
-CLI and MCP are peer clients of local-api. They expose equivalent semantic
-operations:
+CLI and MCP are peer clients of local-api. Their currently implemented,
+equivalent Project Asset surface is deliberately smaller than the complete
+Host API:
 
-- read a Global or Project Asset;
-- import, link/admit, publish, and project a Resource;
+- list or read a Project Asset;
+- import local bytes into a Project;
 - list Action references;
-- remove an Action binding or Asset entry with structured conflict reporting.
+- trash or restore a Project Asset with structured conflict reporting.
+
+Global-library reads, Project admission, and Project-to-Global publication
+remain Host/GUI capabilities or future CLI/MCP commands. The CLI additionally
+offers a local workspace-file projection and Canvas copy-on-write replacement;
+MCP does not expose those filesystem conveniences. These client-specific
+commands are not part of the equivalent peer surface.
 
 The CLI may create a workspace file projection. MCP normally returns the same
 resolved descriptor or asks the Host for an invocation-scoped readable handle;
@@ -944,10 +1036,11 @@ plugin business logic.
 
 ### Renderers
 
-Preview, local render, and hosted render all resolve ProjectAsset entries
-through the same Host/storage abstraction. They do not rewrite R2 keys into
-private route dialects. A render freezes the Timeline Action revision and its
-resolved input manifest before execution.
+Preview and local render currently resolve ProjectAsset entries through the
+same Host/storage abstraction. They do not rewrite storage keys into private
+route dialects. A local render freezes the Timeline Action revision and its
+resolved input manifest before execution. Hosted render must adopt this same
+resolver in the future Cloud adapter; that cutover is design-only here.
 
 ## Storage and authority
 
@@ -969,10 +1062,36 @@ transactions, Project CAS, claim checks, and tombstones enforce integrity.
 Indexes may accelerate checks but cannot replace the authoritative Project or
 claim state.
 
-## API direction
+## API and SDK surface
 
-The exact route names may evolve, but the Host protocol has one semantic
-surface:
+Every caller uses the same semantic Asset operations. The Local Host's
+canonical HTTP adapter is Project-scoped and returns `ResolvedAsset` for every
+product read or lifecycle result:
+
+```text
+GET    /api/v1/projects/:projectId/assets
+POST   /api/v1/projects/:projectId/assets/batch
+POST   /api/v1/projects/:projectId/assets/import-file
+POST   /api/v1/projects/:projectId/assets/admit
+GET    /api/v1/projects/:projectId/assets/:assetId
+GET    /api/v1/projects/:projectId/assets/:assetId/media
+GET    /api/v1/projects/:projectId/assets/:assetId/references
+DELETE /api/v1/projects/:projectId/assets/:assetId
+POST   /api/v1/projects/:projectId/assets/:assetId/restore
+
+GET    /api/v1/libraries/personal/assets
+POST   /api/v1/libraries/personal/assets/import-file
+POST   /api/v1/libraries/personal/assets/publish
+GET    /api/v1/libraries/personal/assets/:assetId
+GET    /api/v1/libraries/personal/assets/:assetId/media
+DELETE /api/v1/libraries/personal/assets/:assetId
+POST   /api/v1/libraries/personal/assets/:assetId/restore
+```
+
+There is no JSON import route that accepts a local path, `localBlobKey`, object
+key, digest assertion, or storage row. Importing bytes always uses the one
+multipart `import-file` path; the Host verifies and installs them before
+publishing the entry. The corresponding SDK vocabulary is:
 
 ```text
 readResolvedAsset(scope, entryId)
@@ -991,35 +1110,97 @@ purgeGlobalAsset(globalAssetId)
 projectAssetToWorkspace(projectAssetId, name?)
 ```
 
+`/upload`, `/assets/sign`, and `/assets/sign-batch` are generic blob transport
+compatibility surfaces, not Project Asset APIs. They may still serve
+non-Project attachment/embed flows or project an existing opaque blob key, but
+their `storageKey` is never a Project Asset identity and cannot create or bind
+one. Every product media import uses the Project-scoped `import-file` operation
+above and returns `ResolvedAsset`.
+
 Batch read returns the same resolved shape. Byte serving, signing, upload slots,
 and plugin broker calls are internal protocol adapters rather than alternate
-business APIs.
+business APIs. Read observations are carried in an internal Host receipt header
+and recorded by CLI/MCP clients; a receipt, storage key, or local path is never
+added to `ResolvedAsset`.
 
-## Current-state gaps
+### Implemented SDK boundary
 
-The current implementation has four independent protocols: Asset REST plus
-byte serving, Project Host commands, executable-plugin broker/upload calls, and
-CLI workspace manifest/blob projections. It also has at least six base Asset
-shapes, with additional resolved-reference projections inside the plugin SDK.
+`@clash/asset-sdk` owns the Host-neutral semantic boundary:
 
-Important gaps include:
+- `resolveProjectAsset` is the only `ProjectAssetEntry -> ResolvedAsset` resolver;
+- `createProjectAssetHttpClient` is the one browser-safe Project HTTP transport. It owns Project
+  route construction, auth headers, opaque read receipts, multipart import, Global-to-Project
+  admission, and response validation;
+- `createPersonalGlobalAssetHttpClient` is the matching browser-safe personal-library transport. It
+  owns list/read/import, Project-to-Global publish, trash/restore, and the same `ResolvedAsset`
+  response validation;
+- `createAssetClient` exposes read, list, create-owned, admit-linked, trash, restore, and logical
+  purge plus bind, explicit unbind, and stable reference listing;
+- `ProjectAssetAuthorityPort` owns Project Loro reads and mutations, including implicit
+  observation/CAS checks inside the adapter. Its `trashIfUnreferenced` operation must list bindings
+  and write the trashed lifecycle in one Project-authority transaction;
+- `ResourceRegistryPort` verifies or stages immutable Resources but never commits a durable Project
+  claim; and
+- `ResourceProjectionPort` supplies replaceable read-only URLs for the current Host.
 
-- Asset rows mix stable identity, storage keys, metadata, and temporary URLs.
-- Project membership is an `asset_refs` table outside Project Loro.
-- Global Assets exists in data and API, while its standalone product route is
-  retired and removal is absent.
-- Canvas deletion may remove Project membership without accounting for
-  Timeline usage.
-- Timeline persists and reconstructs media identity through several overlapping
-  fields and independent resolvers.
-- Canvas, Timeline, and render surfaces maintain separate thumbnail caches and
-  URL rewriting rules.
-- Plugin execution has an injected reference capability, but primary provider
-  paths can still pass URL/data-URL values around it.
-- Project Loro synchronizes while Asset rows and bytes do not; a collaborator
-  can receive an Asset ID that the device cannot resolve.
-- Hosted Asset reads are owner-oriented rather than Project-permission-oriented.
-- Background Asset GC can reason from incomplete reference projections.
+`createGlobalAssetClient` exposes the same host-neutral library-entry lifecycle over a
+`GlobalAssetAuthorityPort`. The SDK does not supply a Global store or claim implementation.
+
+The SDK validates every adapter result against the shared-types schemas. It accepts no URL, path,
+object key, storage key, or force/CAS-bypass mutation input. Its atomic boundary ends at the
+Project authority adapter. Registry staging and later claim reconciliation are idempotent external
+steps, not part of a cross-system transaction. local-api implements this boundary. The Web hook
+adds only React caching over the shared HTTP client; shared-runtime adds only cwd/Host discovery
+and result envelopes; GUI Global-library and admit/publish flows use the same SDK transports, while
+CLI and MCP consume the Project wrapper. api-cf remains the future Cloud adapter.
+
+## Delivery status and deliberate gaps
+
+The Local authority foundation is implemented; the product cutover status is:
+
+- Project membership and lifecycle live in the Project Loro `projectAssets`
+  authority collection, not `asset_refs`.
+- immutable bytes and verification facts live in the local Resource CAS;
+  storage keys never enter synchronized identity;
+- the personal Global library has its own authority and admits pinned links into
+  Projects without merging the two lifecycles;
+- Action inputs and outputs use the Project Loro `actionAssetBindings`
+  collection. Legacy fields are materialized once before the authority marker;
+  they are never rescanned as a live index after cutover. Timeline and Director
+  mutations now update their draft input bindings directly in the same Loro
+  transaction, including owner attach/detach and terminal unbind semantics;
+- imports, generation, edits, Director output, Timeline/render output, covers,
+  GUI, CLI, MCP, and executable-plugin Asset capabilities resolve through the
+  same Project Asset service and `ResolvedAsset` shape;
+- deleting an active Project Asset checks authoritative Action bindings and
+  returns structured `ASSET_IN_USE`; there is no orphan-GC product command;
+- deletion is logical and CRDT-visible; physical Resource reclamation is a
+  separate claim/recovery-window concern; and
+- legacy Local routes return `410`, while legacy tables are migration input
+  only and receive no new product writes.
+
+Canvas editable inputs now use the same direct authority model as Timeline and
+Director. Node and edge insert/update/delete, prompt/reference edits, source
+Asset rewiring, and the GUI's record-level mutation path all call the shared
+Canvas binding compiler in the same Loro mutation. The legacy materializer
+uses that compiler only before the authority marker; there is no periodic
+post-marker field scanner.
+
+The following are intentionally **not implemented** in this work:
+
+- hosted api-cf migration from owner-oriented Asset rows to Project permission
+  and Project claims;
+- OSS upload/finalization and the Cloud Resource Registry;
+- ProjectRoom claim reconciliation and Resource readiness events;
+- verified multi-device download and per-device availability projection;
+- Cloud/Web Durable Run staging and publication; and
+- asynchronous physical deletion after every Project/library claim and undo
+  window has expired.
+
+Those are Cloud delivery items, not alternate Local APIs. The design in this
+document fixes their required identities, state transitions, collaboration
+rules, and failure behavior so they can be implemented without creating a
+second Asset model.
 
 ## Migration plan
 
@@ -1030,7 +1211,7 @@ phase lands.
 
 ### Phase 1: contracts and vocabulary
 
-- Define `GlobalAssetEntry`, `ProjectAssetEntry`, `ActionAssetBinding`, and
+- **Complete for Local.** Define `GlobalAssetEntry`, `ProjectAssetEntry`, `ActionAssetBinding`, and
   `ResolvedAsset` once in shared-types.
 - Reserve `Resource` for immutable media and `Projection` for Host-local access.
 - Rename operating-system link output to `WorkspaceAssetProjection` so it is
@@ -1039,42 +1220,94 @@ phase lands.
 
 ### Phase 2: Project Asset authority
 
-- Add the Project Asset collection to Project Loro.
-- Convert current `asset_refs` and discovered Canvas/Timeline Assets into
-  ProjectAsset entries.
-- Keep SQLite/D1 tables only as derived query and Resource claim indexes.
-- Make new imports and provider outputs write ProjectAsset entries first.
+- **Complete for Local (2A):** define the storage-free Project Asset contract, add the dedicated
+  `projectAssets` Loro collection and monotonic authority-version facts, and provide shared
+  lifecycle operations whose whole `purged` tombstone cannot be reactivated or field-spliced by a
+  stale concurrent Restore/Trash.
+- **Complete for Local (SDK core):** provide the shared resolver and semantic client ports in
+  `@clash/asset-sdk`; local-api supplies the authority, Registry, projection, and HTTP adapters.
+- **Complete for Local (2B):** convert current `asset_refs` and discovered Canvas/Timeline Assets into
+  ProjectAsset entries in one materialization pass. Before the authority marker is written,
+  readers may verify legacy and converted views; after it is written, Project Loro is the only
+  membership authority and legacy rows cannot receive product writes.
+- **Complete for Local (2C):** imports and Provider output finalization install the immutable Resource
+  first, then create the ProjectAsset entry. A plugin upload stages a Resource; it does not publish
+  a half-finished Project Asset by itself.
+- **Complete for Local (2D):** Project reads and capability checks resolve ProjectAsset first.
+  Legacy SQLite reference tables remain read-only migration/doctor input, not a derived authority.
+  The hosted D1 conversion is part of the future Cloud adapter.
+
+The migration boundary is intentionally one-way. A short pre-marker dual-read may validate the
+conversion, but there is no long-lived dual-write mode. `ProjectAssetEntry.id` is scoped by
+`projectId`: a valid legacy Asset ID is preserved verbatim as that Project's entry ID when it maps
+unambiguously to one legacy Asset inside the Project. The same literal ID may therefore exist in
+several Project documents. It is not deterministically rewritten merely because several Projects
+referenced the old row. If one Project contains genuinely different legacy Assets with the same ID,
+materialization stops with `PROJECT_ASSET_ID_COLLISION`; it does not invent suffixes that existing
+Canvas/Timeline references could not distinguish. Every reference is rewritten in the same Loro
+materialization commit.
+
+`ResourceId` is never derived from a legacy Asset ID, URL, path, R2 key, or local blob key. If the
+legacy row already names a canonical Registry Resource, migration preserves that ID only after the
+Registry verifies its immutable facts. Otherwise a verified legacy SHA-256 content hash produces
+`sha256:<lowercase-hex>`. If no verified digest exists, the materializer must read the bytes and
+compute SHA-256 plus byte length before writing any Project entry. Inaccessible bytes produce
+`RESOURCE_DIGEST_UNAVAILABLE`; a declared hash that disagrees with the bytes produces
+`RESOURCE_DIGEST_MISMATCH`; incompatible kind facts for one digest produce
+`RESOURCE_KIND_CONFLICT`. All are structured migration conflicts handled by doctor/repair. No
+conflict may invent a Resource or silently fall back to `asset_refs` after cutover.
 
 ### Phase 3: Action bindings
 
+- **Complete for Local (contracts/authority core):** canonical owner and binding schemas, the Project Loro
+  `actionAssetBindings` collection, active-target validation, stable reverse listing, terminal
+  explicit unbind, and atomic trash-if-unreferenced helper/SDK port.
+- **Complete for the one-way Local migration boundary:** materialize existing Canvas, Timeline,
+  prompt, generation, edit, Director, and render usage before writing the authority marker. The
+  Host does not continuously reconstruct bindings from legacy fields after that marker.
+- **Complete for Timeline and Director editable inputs:** their shared mutation functions create,
+  update, unbind, and re-home draft bindings atomically with state/ownership changes.
+- **Complete for Canvas editable inputs:** node, prompt, edge, source-Asset, rewiring, and deletion
+  mutations compile the complete draft input set and replace its bindings in the same Project
+  mutation. Removing and later re-adding a use receives a fresh binding identity. The one-way
+  materializer uses the same compiler before the authority marker; it is not a post-marker index.
+- Raw `reference*Urls` and `reference*R2Keys` are not a second migration authority. An external URL
+  must be fetched, verified, and imported as a Project Asset before it can become an Action input;
+  execution must not fall back to storage-shaped node fields after cutover.
 - Give every standalone Timeline a persistent Timeline Action.
 - Separate editable Actions, immutable ActionRevisions, and single-owner
   ActionRuns.
 - Move Canvas Action inputs, Timeline items, prompt mentions, Director inputs,
   generation references, edits, and renders to Action bindings.
-- Make Timeline items point to binding IDs.
+- **Complete for Local Timeline:** items persist one Project Asset identity in
+  `assetId`; their stable item slot compiles directly to the draft Action input
+  binding. GUI, CLI, and render paths read that binding instead of compatibility
+  reference collections or runtime asset identities.
 - Build and verify the derived reverse index.
-- Remove authoritative `asset_node_refs`, `mediaAssetRefs`, and identity
-  fallback chains after conversion.
+- Remove the remaining legacy `asset_node_refs` store after every pre-cutover
+  Project has passed the one-way authority materializer.
 
 ### Phase 4: library links and claims
 
-- Separate Global and Project entry stores.
-- Implement `admitToProject` as an identity-producing operation.
-- Give admitted Project links an independent Project permission/retention claim.
-- Implement Project-to-Global publish as a new independent library entry over
+- **Complete for the Local personal library:** separate Global and Project entry stores.
+- **Complete for Local:** implement `admitToProject` as an identity-producing operation.
+- **Designed for Cloud:** give admitted Project links an independent Project permission/retention claim.
+- **Complete for Local:** implement Project-to-Global publish as a new independent library entry over
   the same Resource.
-- Make catalog-backed media use the same admission path.
+- **Future:** make hosted catalog-backed media use the same admission path.
 
 ### Phase 5: one resolver and one projection path
 
-- Return `ResolvedAsset` from local and hosted controllers.
-- Move preview, Canvas, Timeline, waveform, local render, hosted render, CLI,
-  and MCP to the shared resolver.
-- Adapt plugin capability handles from frozen Action bindings.
-- Delete duplicate URL resolvers, route dialect rewrites, and thumbnail caches.
+- **Complete for Local:** return `ResolvedAsset` from local controllers and move
+  preview, Canvas, Timeline, waveform, local render, CLI, and MCP to the shared resolver.
+- **Complete for Local:** adapt plugin capability handles from frozen Action bindings.
+- **Complete for Local product paths:** delete storage-row URL dialects and duplicate
+  identity resolvers. Device-local derived preview caches remain caches, never authorities.
+- **Future Cloud adapter:** migrate hosted controllers and hosted render to the same resolver.
 
 ### Phase 6: team Resource replication
+
+**Design complete; implementation intentionally deferred.**
 
 - Add Resource upload/verification and Project claim admission.
 - Derive Project claims by reconciling synchronized ProjectAsset lifecycle;
@@ -1102,58 +1335,78 @@ phase lands.
 
 ### Phase 7: explicit deletion
 
-- Implement Action-reference reverse lookup and structured `ASSET_IN_USE`.
-- Add `active -> trashed -> purged` Project/Global lifecycle, CRDT Undo/Restore,
-  terminal tombstones, and stale-write rejection.
-- Keep Resource claims throughout the recovery window; only purge releases a
+- **Complete for Local:** implement Action-reference reverse lookup and structured `ASSET_IN_USE`.
+- **Complete for Local product behavior:** add `active -> trashed`, CRDT Undo/Restore, reference checks,
+  and stale-write rejection.
+- **Complete in shared authority/SDK, not yet exposed by the Local Host:** terminal `purged`
+  Project/Global tombstones and their no-resurrection semantics. A later product command or scheduler
+  must invoke this transition after the recovery window.
+- **Designed for Cloud/physical reclamation:** keep Resource claims throughout the recovery window; only purge releases a
   claim and authorizes asynchronous physical deletion when all claims are gone.
-- Replace Asset GC commands and routes with explicit remove/delete operations.
-- Remove implicit Project membership deletion from Canvas node deletion.
-- Retain only staging cleanup, cache eviction, and authorized delete-queue
+- **Complete for Local:** replace Asset GC commands and routes with explicit logical delete/restore operations.
+- **Complete for Local:** remove implicit Project membership deletion from Canvas node deletion.
+- **Future physical worker:** retain only staging cleanup, cache eviction, and authorized delete-queue
   processing.
 
 ### Phase 8: product surfaces
 
-- Restore a real Global Assets surface or remove language that refers to one.
-- Present Project Assets as one explicit collection rather than mixing media,
-  text revisions, and catalogs under one ambiguous label.
-- Add clear operations for link, publish, fork, refresh, unlink, and inspect
-  references.
-- Make Project cover selection stable and ProjectAsset-based.
+- **Complete for Local:** expose a real personal Global Assets route backed by the canonical
+  personal-library endpoint. The GUI imports image/video/audio files without requiring a Project,
+  keeps active entries that are unavailable on this device in the library, and presents logically
+  trashed entries in a separate recovery surface.
+- **Complete for Local:** present Project Assets as one explicit collection rather than mixing media,
+  text revisions, and catalogs under one ambiguous label. Active-but-unavailable entries remain
+  selectable Project members, while logically trashed entries leave the active collection and appear
+  in a separate Project recovery surface.
+- **Complete in the Local Host/GUI:** add Global-to-Project admit and Project-to-Global publish. The
+  GUI updates its Project and Global collections from the returned canonical `ResolvedAsset`; it does
+  not manufacture a client-side URL, storage identity, lifecycle, or availability state.
+- **Covered by Local product tests:** the Global surface verifies direct import, the distinction
+  between device unavailability and Trash, and recovery; the Project navigator verifies the same
+  lifecycle/availability split and its Trash/Restore actions. Route and Host-client tests separately
+  verify lifecycle-required decoding, observed-CAS mutation, and structured `ASSET_IN_USE` delivery.
+- **Complete in both CLI and MCP:** list/read, import, inspect references, and logical
+  delete/restore. Admission, publication, and Global-library reads remain future peer-client
+  commands. Workspace projection is intentionally CLI-only today.
+- **Complete for Local:** make Project cover selection stable and ProjectAsset-based.
 
 ## Acceptance invariants
 
-The migration is complete only when all of the following are true:
+The current work is accepted when every **Local** invariant below is backed by
+implementation and tests, and every **Cloud design** invariant has an explicit
+owner, state transition, and failure path in this document. Cloud-design items
+do not claim deployed Cloud behavior.
 
-1. Canvas, Timeline, Director, prompts, plugins, and renderers reference media
+1. **Local:** Canvas, Timeline, Director, prompts, plugins, and renderers reference media
    through ActionAssetBinding.
-2. Canvas and Timeline never persist URL, local path, storage key, or transfer
+2. **Local:** Canvas and Timeline never persist URL, local path, storage key, or transfer
    state.
-3. A Global Asset admitted to a Project survives Global removal and creator
+3. **Local:** A Global Asset admitted to a Project survives Global removal and creator
    departure.
-4. Editing a linked Asset produces a new owned Project Asset.
-5. Deleting a Canvas node or Timeline item never removes Project membership.
-6. Removing a Project Asset reports every blocking Action reference and has no
+4. **Local:** Editing a linked Asset produces a new owned Project Asset.
+5. **Local:** Deleting a Canvas node or Timeline item never removes Project membership.
+6. **Local:** Removing a Project Asset reports every blocking Action reference and has no
    force bypass.
-7. No background process may infer Asset orphanhood and delete canonical media.
-8. Logical deletion completes through Project Loro alone; CRDT Undo/Restore
+7. **Local:** No background process may infer Asset orphanhood and delete canonical media.
+8. **Local:** Logical deletion completes through Project Loro alone; CRDT Undo/Restore
    works throughout the recovery window without Registry or OSS writes.
-9. Physical deletion is asynchronous after terminal purge, and its failure can
+9. **Cloud design:** Physical deletion is asynchronous after terminal purge, and its failure can
    retain extra bytes but cannot change synchronized product state.
-10. Another device can receive a Project Asset, download it asynchronously, and
+10. **Cloud design:** Another device can receive a Project Asset, download it asynchronously, and
     expose the same resolved shape with a different local URL.
-11. Web, Desktop, CLI, MCP, plugins, preview, and render consume one Host
-    resolver and one Asset read contract.
-12. Global and Project entries have independent logical lifecycles while their
+11. **Local:** Desktop, CLI, MCP, plugins, preview, and local render consume one
+    Host resolver and one Asset read contract. **Cloud design:** Web and hosted
+    render must use the same contract.
+12. **Local:** Global and Project entries have independent logical lifecycles while their
     immutable Resources remain physically deduplicated.
-13. A Web submission has one cloud execution owner; a Desktop, CLI, or MCP
+13. **Cloud design:** A Web submission has one cloud execution owner; a Desktop, CLI, or MCP
     submission has one designated local Host owner. Project sync never appoints
     a second owner.
-14. Local and cloud use the same durable step graph and retry policy. An
+14. **Local + Cloud design:** Local and cloud use the same durable step graph and retry policy. An
     ambiguous interrupted submit may be attempted again as an explicit product
     trade-off; once a task token is checkpointed, recovery only polls that task,
     and output finalization remains idempotent.
-15. Local-origin nodes and Asset metadata may synchronize before OSS readiness;
+15. **Cloud design:** Local-origin nodes and Asset metadata may synchronize before OSS readiness;
     cloud-origin ActionRun and placeholder-node state may also synchronize
     early, while its ProjectAsset and output binding appear only after OSS
     verification. Both realms converge to the same ProjectAsset contract

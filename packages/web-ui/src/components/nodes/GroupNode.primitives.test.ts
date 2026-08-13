@@ -8,7 +8,7 @@ function readSource(path: string): string {
 describe('GroupNode action primitives', () => {
   it('uses the shared tooltip primitive for selected-group actions instead of browser title attributes', () => {
     const source = readSource('packages/web-ui/src/components/nodes/GroupNode.tsx');
-    const tooltipSource = readSource('packages/web-ui/src/components/ui/tooltip.tsx');
+    const tooltipSource = readSource('packages/gui/src/components/ui/tooltip.tsx');
 
     expect(tooltipSource).toContain('@ariakit/react');
     expect(source).toContain('../ui/tooltip');

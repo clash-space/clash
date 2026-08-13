@@ -3,6 +3,10 @@ import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { agentReadToken } from "./agent-read-proof.js";
 import { Canvas } from "./canvas-ops.js";
+import {
+  replaceDraftActionAssetInputBindings,
+  type DraftActionAssetInput,
+} from "./action-asset-bindings.js";
 export {
   DirectorReferencePacketSchema,
   DirectorReferenceShotSchema,
@@ -156,7 +160,6 @@ export const DirectorStageObjectSchema = z.discriminatedUnion("kind", [
     kind: z.literal("model"),
     model: z.object({
       assetId: z.string().min(1),
-      sourceUrl: z.string().url().optional(),
       animation: z.object({
         jointCount: z.number().int().positive(),
         clipNames: z.array(z.string().min(1)).min(1),
@@ -815,6 +818,88 @@ export function listProjectDirectorStages(doc: LoroDoc): ProjectDirectorStage[] 
   );
 }
 
+function projectDirectorActionId(
+  stageId: string,
+  owner: DirectorStageOwner,
+): string {
+  return owner.kind === "canvas-action"
+    ? `node:${owner.actionNodeId}`
+    : `director:${stageId}`;
+}
+
+function projectDirectorAssetInputs(
+  state: DirectorStageState,
+): DraftActionAssetInput[] {
+  const inputs: DraftActionAssetInput[] = [];
+  if (
+    state.scene.environmentAssetId &&
+    !state.scene.environmentAssetId.startsWith("builtin:")
+  ) {
+    inputs.push({
+      slot: "director:environment",
+      projectAssetId: state.scene.environmentAssetId,
+      role: "source",
+    });
+  }
+  for (const object of state.objects) {
+    if (
+      object.kind !== "model" ||
+      object.model.assetId.startsWith("builtin:")
+    ) {
+      continue;
+    }
+    inputs.push({
+      slot: `director:model:${object.id}`,
+      projectAssetId: object.model.assetId,
+      role: "source",
+    });
+  }
+  const motionById = new Map(
+    (state.motionAssets ?? []).map((motion) => [motion.id, motion]),
+  );
+  for (const clip of state.animation?.actionClips ?? []) {
+    if (!clip.motionAssetId) continue;
+    const motion = motionById.get(clip.motionAssetId);
+    if (!motion || motion.assetId.startsWith("builtin:")) continue;
+    inputs.push({
+      slot: `director:action:${clip.id}:motion`,
+      projectAssetId: motion.assetId,
+      role: "source",
+    });
+  }
+  return inputs;
+}
+
+function syncProjectDirectorAssetInputs(
+  doc: LoroDoc,
+  stage: Pick<ProjectDirectorStage, "id" | "owner" | "state">,
+): Extract<ProjectDirectorStageMutationResult, { ok: false }> | undefined {
+  const synced = replaceDraftActionAssetInputBindings(
+    doc,
+    projectDirectorActionId(stage.id, stage.owner),
+    projectDirectorAssetInputs(stage.state),
+  );
+  return synced.ok ? undefined : { ok: false, error: synced.error };
+}
+
+function rehomeProjectDirectorAssetInputs(
+  doc: LoroDoc,
+  previous: Pick<ProjectDirectorStage, "id" | "owner" | "state">,
+  next: Pick<ProjectDirectorStage, "id" | "owner" | "state">,
+): Extract<ProjectDirectorStageMutationResult, { ok: false }> | undefined {
+  const nextError = syncProjectDirectorAssetInputs(doc, next);
+  if (nextError) return nextError;
+  const previousActionId = projectDirectorActionId(previous.id, previous.owner);
+  const nextActionId = projectDirectorActionId(next.id, next.owner);
+  if (previousActionId === nextActionId) return undefined;
+  const cleared = replaceDraftActionAssetInputBindings(
+    doc,
+    previousActionId,
+    [],
+  );
+  return cleared.ok ? undefined : { ok: false, error: cleared.error };
+}
+
 export function createProjectDirectorStage(
   doc: LoroDoc,
   input: { id: string; name: string; state: unknown },
@@ -836,6 +921,8 @@ export function createProjectDirectorStage(
     revisionId: projectDirectorStageRevisionId(id, parsedState.data),
     state: parsedState.data,
   };
+  const bindingError = syncProjectDirectorAssetInputs(doc, stage);
+  if (bindingError) return bindingError;
   setDirectorStageFields(stages.ensureMergeableMap(id), stage);
   return { ok: true, stage };
 }
@@ -856,6 +943,8 @@ export function updateProjectDirectorStageState(
     revisionId: projectDirectorStageRevisionId(stageId, parsedState.data),
     state: parsedState.data,
   };
+  const bindingError = syncProjectDirectorAssetInputs(doc, next);
+  if (bindingError) return bindingError;
   const fields = doc.getMap("directorStages").get(stageId);
   if (!isLoroMap(fields)) return { ok: false, error: `Director Stage ${stageId} not found` };
   fields.set("revision", {
@@ -899,6 +988,8 @@ export function attachDirectorStageToCanvas(
       actionNodeId: input.actionNodeId,
     },
   };
+  const bindingError = rehomeProjectDirectorAssetInputs(doc, stage, next);
+  if (bindingError) return bindingError;
   const fields = doc.getMap("directorStages").get(input.stageId);
   if (!isLoroMap(fields)) return { ok: false, error: `Director Stage ${input.stageId} not found` };
   fields.set("owner", next.owner);
@@ -962,6 +1053,16 @@ export function reconcileProjectDirectorStageOwnership(
     if (ownerMatches) continue;
     const fields = doc.getMap("directorStages").get(stage.id);
     if (isLoroMap(fields)) {
+      const detached: ProjectDirectorStage = {
+        ...stage,
+        owner: { kind: "project" },
+      };
+      const bindingError = rehomeProjectDirectorAssetInputs(
+        doc,
+        stage,
+        detached,
+      );
+      if (bindingError) throw new Error(bindingError.error);
       fields.set("owner", { kind: "project" });
       detachedStageIds.push(stage.id);
     }
@@ -1518,6 +1619,8 @@ export function detachDirectorStageFromCanvas(
     canvas.deleteNode(actionNodeId);
   }
   const next: ProjectDirectorStage = { ...stage, owner: { kind: "project" } };
+  const bindingError = rehomeProjectDirectorAssetInputs(doc, stage, next);
+  if (bindingError) return bindingError;
   const fields = doc.getMap("directorStages").get(stageId);
   if (!isLoroMap(fields)) return { ok: false, error: `Director Stage ${stageId} not found` };
   fields.set("owner", next.owner);

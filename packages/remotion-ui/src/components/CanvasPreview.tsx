@@ -175,8 +175,8 @@ export const CanvasPreview: React.FC<CanvasPreviewProps> = React.memo(({
       if (asset.sourceNodeId && asset.sourceNodeId !== asset.id) {
         map.set(asset.sourceNodeId, nodeData);
       }
-      if (asset.backingAssetId) {
-        map.set(asset.backingAssetId, nodeData);
+      if (asset.projectAssetId) {
+        map.set(asset.projectAssetId, nodeData);
       }
     }
     for (const node of runtimeNodes) {

@@ -5,10 +5,10 @@ import { runtimeApiUrl } from "@clash/web-ui/lib/runtimeConfig";
 
 export async function loader({ params }: LoaderFunctionArgs) {
   const id = params.id!;
-  const [projRes, actionsRes] = await Promise.all([
-    fetch(runtimeApiUrl(`/api/v1/projects/${encodeURIComponent(id)}`), { credentials: "include" }),
-    fetch(runtimeApiUrl("/api/settings/actions"), { credentials: "include" }),
-  ]);
+  const projRes = await fetch(
+    runtimeApiUrl(`/api/v1/projects/${encodeURIComponent(id)}`),
+    { credentials: "include" },
+  );
 
   if (projRes.status === 401) throw redirect("/login");
   if (projRes.status === 404) throw new Response("Project not found", { status: 404 });
@@ -19,12 +19,11 @@ export async function loader({ params }: LoaderFunctionArgs) {
   }
 
   const project = (await projRes.json()) as unknown;
-  const globalActions = actionsRes.ok ? await actionsRes.json() : [];
-  return { project, globalActions };
+  return { project };
 }
 
 export default function ProjectRoute() {
-  const { project, globalActions } = useLoaderData<typeof loader>();
+  const { project } = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
   const prompt = searchParams.get("prompt") ?? undefined;
   const thread = searchParams.get("thread") ?? undefined;
@@ -33,7 +32,6 @@ export default function ProjectRoute() {
       project={project as any}
       initialPrompt={prompt}
       initialThreadId={thread}
-      globalActions={globalActions as any}
     />
   );
 }

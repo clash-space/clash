@@ -112,7 +112,7 @@ describe("UserControls", () => {
       "utf8",
     );
     const tooltipSource = readFileSync(
-      resolve(process.cwd(), "packages/web-ui/src/components/ui/tooltip.tsx"),
+      resolve(process.cwd(), "packages/gui/src/components/ui/tooltip.tsx"),
       "utf8",
     );
 

@@ -3,11 +3,17 @@ import { describe, expect, it } from "vitest";
 import * as sharedTypes from "./index.js";
 import {
   ExecutablePluginBrokerOperationSchema,
+  ExecutablePluginCardDocumentSchema,
   ExecutablePluginCardRegistrationSchema,
   ExecutablePluginManifestSchema,
+  ExecutablePluginModelBindingDocumentSchema,
   ExecutablePluginModelBindingRegistrationSchema,
+  ExecutablePluginProviderDefinitionSchema,
   ExecutablePluginProviderRegistrationSchema,
+  composeExecutablePluginModelCards,
+  resolveModelBindingFromProvider,
 } from "./executable-plugin.js";
+import { ModelProviderImplementationSchema } from "./models.js";
 
 const runtime = {
   kind: "local" as const,
@@ -24,6 +30,104 @@ const contributes = {
 };
 
 describe("executable plugin contributions contract", () => {
+  it("rejects account selection from every plugin-owned provider route declaration", () => {
+    const provider = {
+      id: "acme",
+      name: "Acme",
+      upstreamId: "acme",
+      apiShape: "acme",
+      executorExportId: "execute",
+    };
+    expect(ExecutablePluginProviderDefinitionSchema.safeParse({
+      ...provider,
+      bindingDefaults: { accountId: "author-picked-account" },
+    }).success).toBe(false);
+
+    expect(() => resolveModelBindingFromProvider({
+      modelId: "acme-image",
+      upstreamModel: "image-v1",
+      accountId: "author-picked-account",
+    }, ExecutablePluginProviderDefinitionSchema.parse(provider))).toThrow();
+
+    const implementation = {
+      providerId: "acme",
+      accountId: "author-picked-account",
+      upstreamId: "acme",
+      upstreamModel: "image-v1",
+      apiShape: "acme",
+    };
+    expect(ExecutablePluginModelBindingDocumentSchema.safeParse({
+      apiVersion: "clash.binding/v1",
+      kind: "model-provider-binding",
+      spec: { id: "acme-image", modelId: "acme-image", ...implementation },
+    }).success).toBe(false);
+    expect(ExecutablePluginCardDocumentSchema.safeParse({
+      apiVersion: "clash.card/v1",
+      kind: "model-card",
+      spec: {
+        id: "acme-image",
+        name: "Acme Image",
+        provider: "Acme",
+        kind: "image",
+        parameters: [],
+        input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
+        providerImplementations: [implementation],
+      },
+    }).success).toBe(false);
+  });
+
+  it("keeps accountId available for a Host-selected runtime route", () => {
+    expect(ModelProviderImplementationSchema.parse({
+      providerId: "acme",
+      accountId: "host-selected-account",
+      upstreamId: "acme",
+      upstreamModel: "image-v1",
+      apiShape: "acme",
+    }).accountId).toBe("host-selected-account");
+  });
+
+  it("detects duplicate contributed routes independently of a Host-selected account", () => {
+    const base = {
+      id: "acme-image",
+      aliases: [],
+      name: "Acme Image",
+      provider: "Acme",
+      kind: "image" as const,
+      parameters: [],
+      defaultParams: {},
+      defaultAspectRatio: "16:9",
+      input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text" as const] },
+      providerImplementations: [{
+        providerId: "acme",
+        accountId: "host-selected-account",
+        upstreamId: "acme",
+        upstreamModel: "image-v1",
+        apiShape: "acme",
+      }],
+    };
+    const binding = {
+      pluginId: "acme.provider",
+      version: "1.0.0",
+      schemaHash: `sha256:${"a".repeat(64)}`,
+      runtime: { ...runtime, args: [] },
+      document: {
+        apiVersion: "clash.binding/v1" as const,
+        kind: "model-provider-binding" as const,
+        spec: {
+          id: "acme-image",
+          modelId: "acme-image",
+          providerId: "acme",
+          upstreamId: "acme",
+          upstreamModel: "image-v1",
+          apiShape: "acme",
+        },
+      },
+    };
+
+    expect(() => composeExecutablePluginModelCards([base], [], [binding]))
+      .toThrow(/already declares provider binding/);
+  });
+
   it("accepts contributes and rejects the removed exports and permissions fields", () => {
     const input = {
       apiVersion: "clash.plugin/v1",

@@ -141,3 +141,45 @@ test("Timeline render submits directly after an observed read", async () => {
     ifMatch: "timeline-host-receipt",
   });
 });
+
+test("Timeline render waits for the 30-minute default budget", async (t) => {
+  const { createTimelineAdapter } = await import("./adapter.js");
+  const calls: ProjectHostRequest[] = [];
+  let now = 0;
+  t.mock.method(Date, "now", () => now);
+  t.mock.method(globalThis, "setTimeout", ((callback: () => void) => {
+    now += 700_000;
+    callback();
+    return 0 as unknown as NodeJS.Timeout;
+  }) as typeof setTimeout);
+  const adapter = createTimelineAdapter({
+    client: hostClient(calls, (request) => {
+      if (request.command.action === "list_timelines") {
+        return { timelines: [timeline], versions: { "rough-cut": "timeline-host-receipt" } };
+      }
+      if (request.command.action === "request_timeline_render") {
+        return {
+          submitted: true,
+          timelineId: "rough-cut",
+          sourceTimelineRevisionId: "revision-1",
+          renderNodeId: "render-1",
+          target: { kind: "project-assets" },
+        };
+      }
+      return { node: { data: { status: "generating" } } };
+    }),
+  });
+
+  await adapter.get({ projectId: "project-1", timelineId: "rough-cut" });
+  const result = await adapter.render({
+    projectId: "project-1",
+    timelineId: "rough-cut",
+    wait: true,
+  });
+
+  assert.equal(result.status, "pending");
+  assert.equal(
+    calls.filter(({ command }) => command.action === "get").length,
+    4,
+  );
+});

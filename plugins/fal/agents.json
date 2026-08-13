@@ -1,0 +1,19 @@
+{
+  "summary": "First-party executable Provider plugin for fal.ai queued generation.",
+  "context_hints": [
+    "The Provider id is clash.fal and account authentication is declared in providers/fal.json",
+    "The plugin performs one submit or one poll translation per invocation; scheduling and retries belong to the Host Durable Run Engine",
+    "Generated media is returned through the injected SDK upload capability and never downloaded into plugin business code"
+  ],
+  "subdirectories": {
+    "providers": "fal.ai Provider declaration and API-key form.",
+    "src": "Typed stdio entrypoint and native fal queue adapter.",
+    "contract-tests": "Declarative activation-gating ABI fixtures."
+  },
+  "key_files": {
+    "manifest.json": "Versioned executable package and contribution declarations.",
+    "providers/fal.json": "Provider metadata and account authentication form.",
+    "src/fal-adapter.ts": "Native fal queue submit/poll and Hunyuan3D request translation."
+  },
+  "verification": ["pnpm --filter @clash-plugin/fal test"]
+}

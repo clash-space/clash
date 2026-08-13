@@ -61,8 +61,8 @@ describe("provider plugin media output", () => {
     );
   });
 
-  it("refuses a stored asset handle without a storage projection", () => {
-    expect(() => mediaFromResult(result([{
+  it("preserves a Host staging receipt without requiring a loopback projection", () => {
+    expect(mediaFromResult(result([{
       slot: "media",
       kind: "asset",
       asset: {
@@ -70,7 +70,7 @@ describe("provider plugin media output", () => {
         uri: "clash-asset://upstream-2",
         kind: "video",
       },
-    }]))).toThrow(/projection|url/i);
+    }]))).toEqual({ assetId: "upstream-2" });
   });
 
   it("still accepts the value channel so installed plugins keep working", () => {

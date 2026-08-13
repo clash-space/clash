@@ -1,404 +1,308 @@
-
-import { forwardRef, useState, useRef, useCallback, useEffect, useImperativeHandle, type ForwardedRef, type ReactNode } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowUp, Plus, Microphone, CircleNotch } from '@phosphor-icons/react';
-import { lazy } from 'react';
-import { useTranslation } from 'react-i18next';
-import { useDropzone, type Accept } from 'react-dropzone';
-import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
-import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
-import { Button } from '../ui/button';
-import { IconButton } from '../ui/icon-button';
-import { Input } from '../ui/input';
 import {
-    SpeechInputRecording,
-    type SpeechInputCompletionIntent,
-} from '../ai-elements/speech-input';
-import type { AgentAnnotationDraft } from '@clash/shared-types';
-import type { MilkdownEditorHandle, MentionableNode } from '../MilkdownEditor';
-import { AgentAnnotationTray } from './AgentAnnotationBlock';
+  forwardRef,
+  useState,
+  useRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  type ForwardedRef,
+  type ReactNode,
+} from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ArrowUp, Plus, Microphone, CircleNotch } from "@phosphor-icons/react";
+import { lazy } from "react";
+import { useTranslation } from "react-i18next";
+import { useDropzone, type Accept } from "react-dropzone";
+import { importProjectAssetFile } from "@clash/web-ui/lib/hooks/useAsset";
+import { runtimeApiUrl } from "@clash/web-ui/lib/runtimeConfig";
+import { Button } from "../ui/button";
+import { IconButton } from "../ui/icon-button";
+import { Input } from "../ui/input";
 import {
-    VoiceInputSetupPopover,
-    type VoiceInputNotice,
-} from './VoiceInputSetupPopover';
+  SpeechInputRecording,
+  type SpeechInputCompletionIntent,
+} from "../ai-elements/speech-input";
+import type { AgentAnnotationDraft } from "@clash/shared-types";
+import type { MilkdownEditorHandle, MentionableNode } from "../MilkdownEditor";
+import { AgentAnnotationTray } from "./AgentAnnotationBlock";
+import {
+  VoiceInputSetupPopover,
+  type VoiceInputNotice,
+} from "./VoiceInputSetupPopover";
 
 // Lazy load MilkdownEditor to avoid SSR issues
-const MilkdownEditor = lazy(() => import('../MilkdownEditor'));
+const MilkdownEditor = lazy(() => import("../MilkdownEditor"));
 
 // ─── Types ───────────────────────────────────────────────────
 
 export interface UploadedAttachment {
-    id: string;
-    fileName: string;
-    fileType: string;
-    type: 'image' | 'video' | 'audio' | 'document';
-    storageKey: string;
-    url: string;
-    naturalWidth?: number;
-    naturalHeight?: number;
+  id: string;
+  fileName: string;
+  fileType: string;
+  type: "image" | "video" | "audio";
+  assetId: string;
+  url: string;
+  naturalWidth?: number;
+  naturalHeight?: number;
 }
 
 interface ChatInputProps {
-    input: string;
-    onInputChange: (value: string) => void;
-    /** Called with markdown text + extracted asset keys on send */
-    onSubmit: (
-        text: string,
-        attachments: UploadedAttachment[],
-        annotations: AgentAnnotationDraft[],
-    ) => void;
-    onStop?: () => void;
-    isProcessing?: boolean;
-    isCreatingSession?: boolean;
-    connected?: boolean;
-    error?: string | null;
-    onDismissError?: () => void;
-    disabled?: boolean;
-    /** Runtime mode can accept follow-up prompts while the current agent loop is still running. */
-    allowSubmitWhileProcessing?: boolean;
-    placeholder?: string;
-    variant?: 'default' | 'hero';
-    mentionableNodes?: MentionableNode[];
-    connectedNodeIds?: string[];
-    onMentionAdded?: (nodeId: string) => void;
-    /** When present, chat attachments also get registered in the assets table under this project. */
-    projectId?: string;
-    /** Optional controls rendered inside the composer's bottom toolbar, next to attach. */
-    toolbarAccessory?: ReactNode;
-    /** Optional controls rendered on the right side before voice/send. */
-    rightToolbarAccessory?: ReactNode;
-    onCaretTargetChange?: (target: { x: number; y: number } | null) => void;
-    /** Structured review context attached from Canvas, Timeline, or Director Stage. */
-    annotationBlocks?: AgentAnnotationDraft[];
-    onAnnotationOpen?: (annotationId: string) => void;
-    onAnnotationChange?: (annotationId: string, note: string) => void;
-    onAnnotationRemove?: (annotationId: string) => void;
-    /** Jumps the workspace to the annotated object and flashes a highlight. */
-    onAnnotationLocate?: (annotationId: string) => void;
+  input: string;
+  onInputChange: (value: string) => void;
+  /** Called with markdown text + extracted asset keys on send */
+  onSubmit: (
+    text: string,
+    attachments: UploadedAttachment[],
+    annotations: AgentAnnotationDraft[],
+  ) => void;
+  onStop?: () => void;
+  isProcessing?: boolean;
+  isCreatingSession?: boolean;
+  connected?: boolean;
+  error?: string | null;
+  onDismissError?: () => void;
+  disabled?: boolean;
+  /** Runtime mode can accept follow-up prompts while the current agent loop is still running. */
+  allowSubmitWhileProcessing?: boolean;
+  placeholder?: string;
+  variant?: "default" | "hero";
+  mentionableNodes?: MentionableNode[];
+  connectedNodeIds?: string[];
+  onMentionAdded?: (nodeId: string) => void;
+  /** Attachments are available only with an owning Project Asset scope. */
+  projectId?: string;
+  /** Optional controls rendered inside the composer's bottom toolbar, next to attach. */
+  toolbarAccessory?: ReactNode;
+  /** Optional controls rendered on the right side before voice/send. */
+  rightToolbarAccessory?: ReactNode;
+  onCaretTargetChange?: (target: { x: number; y: number } | null) => void;
+  /** Structured review context attached from Canvas, Timeline, or Director Stage. */
+  annotationBlocks?: AgentAnnotationDraft[];
+  onAnnotationOpen?: (annotationId: string) => void;
+  onAnnotationChange?: (annotationId: string, note: string) => void;
+  onAnnotationRemove?: (annotationId: string) => void;
+  /** Jumps the workspace to the annotated object and flashes a highlight. */
+  onAnnotationLocate?: (annotationId: string) => void;
 }
 
 export interface ChatInputHandle {
-    focus: () => void;
+  focus: () => void;
 }
 
 interface LocalAudioConfig {
-    asr: {
-        enabled: boolean;
-        ready: boolean;
-        provider: string;
-        base_url: string | null;
-        model: string;
-        setup?: {
-            provider: string;
-            runtime?: 'builtin-rpc' | 'provider-route';
-            status: 'disabled' | 'needs-install' | 'ready';
-        };
+  asr: {
+    enabled: boolean;
+    ready: boolean;
+    provider: string;
+    base_url: string | null;
+    model: string;
+    setup?: {
+      provider: string;
+      runtime?: "builtin-rpc" | "provider-route";
+      status: "disabled" | "needs-install" | "ready";
     };
+  };
 }
 
 interface VoiceConfigCacheEntry {
-    promise: Promise<LocalAudioConfig>;
-    expiresAt: number;
-    value?: LocalAudioConfig;
+  promise: Promise<LocalAudioConfig>;
+  expiresAt: number;
+  value?: LocalAudioConfig;
 }
 
 const voiceConfigCacheByFetch = new WeakMap<
-    typeof fetch,
-    Map<string, VoiceConfigCacheEntry>
+  typeof fetch,
+  Map<string, VoiceConfigCacheEntry>
 >();
 const VOICE_CONFIG_READY_CACHE_TTL_MS = 30_000;
 const VOICE_CONFIG_UNAVAILABLE_CACHE_TTL_MS = 1_000;
 
 function voiceConfigNotice(config?: LocalAudioConfig): VoiceInputNotice {
-    if (!config || !config.asr.enabled) {
-        return {
-            message: 'Enable voice input in Voice input settings first.',
-            action: { label: 'Open Voice input', href: '/settings?section=audio' },
-        };
-    }
+  if (!config || !config.asr.enabled) {
     return {
-        message: 'Deploy the selected ASR model in Models first.',
-        action: { label: 'Open Models', href: '/settings?section=models' },
+      message: "Enable voice input in Voice input settings first.",
+      action: { label: "Open Voice input", href: "/settings?section=audio" },
     };
+  }
+  return {
+    message: "Deploy the selected ASR model in Models first.",
+    action: { label: "Open Models", href: "/settings?section=models" },
+  };
 }
 
 function voiceTranscriptionNotice(error: unknown): VoiceInputNotice {
-    const message = error instanceof Error ? error.message : String(error);
-    if (/Local ASR is not enabled/i.test(message)) return voiceConfigNotice();
-    if (/Selected ASR model is not deployed/i.test(message)) return voiceConfigNotice({
-        asr: {
-            enabled: true,
-            ready: false,
-            provider: 'builtin-funasr',
-            base_url: null,
-            model: '',
-        },
+  const message = error instanceof Error ? error.message : String(error);
+  if (/Local ASR is not enabled/i.test(message)) return voiceConfigNotice();
+  if (/Selected ASR model is not deployed/i.test(message))
+    return voiceConfigNotice({
+      asr: {
+        enabled: true,
+        ready: false,
+        provider: "builtin-funasr",
+        base_url: null,
+        model: "",
+      },
     });
-    return { message };
+  return { message };
 }
 
 async function loadLocalAudioConfig(): Promise<LocalAudioConfig> {
-    const fetchImpl = globalThis.fetch;
-    const url = runtimeApiUrl('/api/v1/local/audio/voice-input');
-    let cache = voiceConfigCacheByFetch.get(fetchImpl);
-    if (!cache) {
-        cache = new Map();
-        voiceConfigCacheByFetch.set(fetchImpl, cache);
-    }
+  const fetchImpl = globalThis.fetch;
+  const url = runtimeApiUrl("/api/v1/local/audio/voice-input");
+  let cache = voiceConfigCacheByFetch.get(fetchImpl);
+  if (!cache) {
+    cache = new Map();
+    voiceConfigCacheByFetch.set(fetchImpl, cache);
+  }
 
-    const cached = cache.get(url);
-    if (cached && cached.expiresAt > Date.now()) return cached.promise;
+  const cached = cache.get(url);
+  if (cached && cached.expiresAt > Date.now()) return cached.promise;
 
-    const request = fetchImpl(url, { credentials: 'include' }).then(async (res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return (await res.json()) as LocalAudioConfig;
-    });
-    const entry: VoiceConfigCacheEntry = {
-        promise: request,
-        expiresAt: Number.POSITIVE_INFINITY,
-    };
-    cache.set(url, entry);
-    void request.then(
-        (config) => {
-            if (cache?.get(url) === entry) {
-                entry.value = config;
-                entry.expiresAt = Date.now() + (
-                    config.asr.enabled && config.asr.ready
-                        ? VOICE_CONFIG_READY_CACHE_TTL_MS
-                        : VOICE_CONFIG_UNAVAILABLE_CACHE_TTL_MS
-                );
-            }
-        },
-        () => {
-            if (cache?.get(url) === entry) cache.delete(url);
-        },
-    );
-    return request;
+  const request = fetchImpl(url, { credentials: "include" }).then(
+    async (res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()) as LocalAudioConfig;
+    },
+  );
+  const entry: VoiceConfigCacheEntry = {
+    promise: request,
+    expiresAt: Number.POSITIVE_INFINITY,
+  };
+  cache.set(url, entry);
+  void request.then(
+    (config) => {
+      if (cache?.get(url) === entry) {
+        entry.value = config;
+        entry.expiresAt =
+          Date.now() +
+          (config.asr.enabled && config.asr.ready
+            ? VOICE_CONFIG_READY_CACHE_TTL_MS
+            : VOICE_CONFIG_UNAVAILABLE_CACHE_TTL_MS);
+      }
+    },
+    () => {
+      if (cache?.get(url) === entry) cache.delete(url);
+    },
+  );
+  return request;
 }
 
 function peekLocalAudioConfig(): LocalAudioConfig | undefined {
-    const fetchImpl = globalThis.fetch;
-    const url = runtimeApiUrl('/api/v1/local/audio/voice-input');
-    const cached = voiceConfigCacheByFetch.get(fetchImpl)?.get(url);
-    if (!cached || cached.expiresAt <= Date.now()) return undefined;
-    return cached.value;
+  const fetchImpl = globalThis.fetch;
+  const url = runtimeApiUrl("/api/v1/local/audio/voice-input");
+  const cached = voiceConfigCacheByFetch.get(fetchImpl)?.get(url);
+  if (!cached || cached.expiresAt <= Date.now()) return undefined;
+  return cached.value;
 }
 
 async function transcribeLocalAudio(blob: Blob): Promise<string> {
-    const type = blob.type || 'audio/webm';
-    const form = new FormData();
-    form.append('file', new File([blob], `voice-${Date.now()}.webm`, { type }));
-    const res = await fetch(runtimeApiUrl('/api/v1/local/audio/transcriptions'), {
-        method: 'POST',
-        credentials: 'include',
-        body: form,
-    });
-    const json = await res.json().catch(() => null) as { text?: string; error?: string } | null;
-    if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
-    if (!json?.text) throw new Error('Local ASR returned no transcript');
-    return json.text;
+  const type = blob.type || "audio/webm";
+  const form = new FormData();
+  form.append("file", new File([blob], `voice-${Date.now()}.webm`, { type }));
+  const res = await fetch(runtimeApiUrl("/api/v1/local/audio/transcriptions"), {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+  const json = (await res.json().catch(() => null)) as {
+    text?: string;
+    error?: string;
+  } | null;
+  if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
+  if (!json?.text) throw new Error("Local ASR returned no transcript");
+  return json.text;
 }
 
 async function warmupLocalVoiceInput(): Promise<void> {
-    const res = await fetch(runtimeApiUrl('/api/v1/local/audio/voice-input/warmup'), {
-        method: 'POST',
-        credentials: 'include',
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const res = await fetch(
+    runtimeApiUrl("/api/v1/local/audio/voice-input/warmup"),
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
 
-function classifyFile(file: File): UploadedAttachment['type'] {
-    if (file.type.startsWith('image/')) return 'image';
-    if (file.type.startsWith('video/')) return 'video';
-    if (file.type.startsWith('audio/')) return 'audio';
-    return 'document';
+function classifyFile(file: File): UploadedAttachment["type"] | undefined {
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("video/")) return "video";
+  if (file.type.startsWith("audio/")) return "audio";
+  return undefined;
 }
 
-async function uploadFile(file: File): Promise<{ storageKey: string; url: string }> {
-    const form = new FormData();
-    form.append('file', file);
-    const res = await fetch(runtimeApiUrl('/upload'), { method: 'POST', body: form });
-    if (!res.ok) throw new Error('Upload failed');
-    return res.json();
+const PROJECT_ASSET_MARKER_PREFIX = "clash-project-asset:";
+
+function projectAssetMarker(assetId: string): string {
+  return `${PROJECT_ASSET_MARKER_PREFIX}${encodeURIComponent(assetId)}`;
 }
 
-/** Probe dimensions / duration for an uploaded file so the asset row carries real metadata. */
-async function probeMediaMetadata(
-    file: File,
-    kind: 'image' | 'video' | 'audio',
-): Promise<{ width?: number; height?: number; durationMs?: number }> {
-    const objectUrl = URL.createObjectURL(file);
-    try {
-        if (kind === 'image') {
-            return await new Promise((resolve) => {
-                const img = new Image();
-                img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
-                img.onerror = () => resolve({});
-                img.src = objectUrl;
-            });
-        }
-        if (kind === 'video') {
-            return await new Promise((resolve) => {
-                const video = document.createElement('video');
-                video.preload = 'metadata';
-                video.onloadedmetadata = () =>
-                    resolve({
-                        width: video.videoWidth,
-                        height: video.videoHeight,
-                        durationMs: Math.round((video.duration || 0) * 1000),
-                    });
-                video.onerror = () => resolve({});
-                video.src = objectUrl;
-            });
-        }
-        if (kind === 'audio') {
-            return await new Promise((resolve) => {
-                const audio = document.createElement('audio');
-                audio.preload = 'metadata';
-                audio.onloadedmetadata = () => resolve({ durationMs: Math.round((audio.duration || 0) * 1000) });
-                audio.onerror = () => resolve({});
-                audio.src = objectUrl;
-            });
-        }
-        return {};
-    } finally {
-        URL.revokeObjectURL(objectUrl);
-    }
+function projectAssetIdFromMarker(encodedAssetId: string): string | undefined {
+  try {
+    const assetId = decodeURIComponent(encodedAssetId);
+    return assetId || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
-/** Capture a JPEG poster from a video file by seeking to a tiny offset
- *  (so we land past the black first frame), drawing to a canvas, and
- *  returning a `data:image/jpeg` URI sized at most 512px wide. Returns
- *  `null` on any failure (corrupt video, decode error, blank frame).
- *
- *  Lifted from `VideoNode.tsx:captureThumbnail` — same trick as the
- *  legacy ChatbotCopilot's `<video src='url#t=0.1'>` preview, but
- *  rasterized so the chat editor (which only knows `image` nodes) can
- *  display it inline as a normal image chip. */
-async function captureVideoCover(file: File): Promise<string | null> {
-    const objectUrl = URL.createObjectURL(file);
-    try {
-        return await new Promise<string | null>((resolve) => {
-            const video = document.createElement('video');
-            video.preload = 'auto';
-            video.muted = true;
-            video.playsInline = true;
-            video.crossOrigin = 'anonymous';
-            const cleanup = () => {
-                video.removeAttribute('src');
-                video.load();
-            };
-            let resolved = false;
-            const finish = (out: string | null) => {
-                if (resolved) return;
-                resolved = true;
-                cleanup();
-                resolve(out);
-            };
-            video.onerror = () => finish(null);
-            video.onloadeddata = () => {
-                try {
-                    // Seek a hair past zero — first frame is often black on
-                    // many codecs / muxers.
-                    video.currentTime = Math.min(0.1, (video.duration || 0) * 0.05);
-                } catch {
-                    finish(null);
-                }
-            };
-            video.onseeked = () => {
-                try {
-                    if (!video.videoWidth || !video.videoHeight) { finish(null); return; }
-                    const canvas = document.createElement('canvas');
-                    const maxW = 512;
-                    const ratio = video.videoWidth / video.videoHeight;
-                    canvas.width = Math.min(maxW, video.videoWidth);
-                    canvas.height = Math.max(1, Math.round(canvas.width / ratio));
-                    const ctx = canvas.getContext('2d');
-                    if (!ctx) { finish(null); return; }
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    finish(canvas.toDataURL('image/jpeg', 0.7));
-                } catch {
-                    finish(null);
-                }
-            };
-            video.src = objectUrl;
-            // Fail-safe timeout: don't hang the upload toast forever if
-            // the decoder never fires `seeked`.
-            setTimeout(() => finish(null), 4000);
-        });
-    } finally {
-        URL.revokeObjectURL(objectUrl);
-    }
-}
-
-/** Register the uploaded file as an asset row. Silently no-ops if no project context. */
-async function registerAsset(
-    projectId: string | undefined,
-    storageKey: string,
-    file: File,
-    kind: 'image' | 'video' | 'audio' | 'document',
-): Promise<void> {
-    if (!projectId) return;
-    if (kind === 'document') return; // documents aren't media assets
-    try {
-        const meta = await probeMediaMetadata(file, kind);
-        await fetch(runtimeApiUrl('/api/v1/assets'), {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-                projectId,
-                kind,
-                srcR2Key: storageKey,
-                bytes: file.size,
-                ...meta,
-            }),
-        });
-    } catch (e) {
-        console.warn('[ChatInput] asset registration failed', e);
-    }
-}
-
-/** Extract asset keys from markdown images: ![...](/assets/uploads/xxx?sig=...) */
+/** Extract stable Project Asset identities from composer markdown. */
 function extractAssetKeys(markdown: string): UploadedAttachment[] {
-    const results: UploadedAttachment[] = [];
-    // Match /assets/{storageKey}?exp=...&sig=... — extract storageKey before query params
-    const regex = /!\[([^\]]*)\]\(\/assets\/(uploads\/[^?)]+)[^)]*\)/g;
-    let m;
-    while ((m = regex.exec(markdown)) !== null) {
-        const fileName = m[1] || m[2].split('/').pop() || '';
-        const storageKey = m[2];
-        const ext = storageKey.split('.').pop()?.toLowerCase() || '';
-        const type = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) ? 'image' as const
-            : ['mp4', 'mov', 'webm'].includes(ext) ? 'video' as const
-            : ['mp3', 'wav', 'ogg'].includes(ext) ? 'audio' as const
-            : 'document' as const;
-        results.push({ id: storageKey, fileName, fileType: '', type, storageKey, url: '' });
-    }
-    return results;
+  const results: UploadedAttachment[] = [];
+  const seen = new Set<string>();
+  const addProjectAsset = (
+    fileName: string,
+    url: string,
+    type: "image" | "video" | "audio",
+    encodedAssetId: string | undefined,
+  ) => {
+    if (!encodedAssetId) return;
+    const assetId = projectAssetIdFromMarker(encodedAssetId);
+    if (!assetId || seen.has(assetId)) return;
+    seen.add(assetId);
+    results.push({ id: assetId, assetId, fileName, fileType: "", type, url });
+  };
+  for (const match of markdown.matchAll(
+    /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"clash-project-asset:([^"]+)")?\)/g,
+  )) {
+    addProjectAsset(match[1] || "image", match[2], "image", match[3]);
+  }
+  for (const match of markdown.matchAll(
+    /\[(🎬|🔊)\s+([^\]]+)\]\(([^)\s]+)(?:\s+"clash-project-asset:([^"]+)")?\)/g,
+  )) {
+    addProjectAsset(
+      match[2],
+      match[3],
+      match[1] === "🎬" ? "video" : "audio",
+      match[4],
+    );
+  }
+
+  return results;
 }
 
 /** Convert inline mention images ![mention:nodeId:label](url) back to @[label](node:id) */
 function restoreMentions(markdown: string): string {
-    return markdown.replace(/!\[mention:([^:]+):([^\]]*)\]\([^)]*\)/g, (_match, nodeId, label) => {
-        return `@[${label}](node:${nodeId})`;
-    });
+  return markdown.replace(
+    /!\[mention:([^:]+):([^\]]*)\]\([^)]*\)/g,
+    (_match, nodeId, label) => {
+      return `@[${label}](node:${nodeId})`;
+    },
+  );
 }
 
 const DROPZONE_ACCEPT = {
-    'image/*': [],
-    'video/*': [],
-    'audio/*': [],
-    'application/pdf': ['.pdf'],
-    'application/json': ['.json'],
-    'text/csv': ['.csv'],
-    'text/plain': ['.txt', '.md', '.markdown', '.srt', '.vtt'],
+  "image/*": [],
+  "video/*": [],
+  "audio/*": [],
 } satisfies Accept;
 
 // ─── Component ───────────────────────────────────────────────
 
-function ChatInputInner({
+function ChatInputInner(
+  {
     input,
     onInputChange,
     onSubmit,
@@ -409,8 +313,8 @@ function ChatInputInner({
     onDismissError,
     disabled = false,
     allowSubmitWhileProcessing = false,
-    placeholder = 'Ask anything...',
-    variant = 'default',
+    placeholder = "Ask anything...",
+    variant = "default",
     mentionableNodes,
     connectedNodeIds,
     onMentionAdded,
@@ -423,472 +327,539 @@ function ChatInputInner({
     onAnnotationChange,
     onAnnotationRemove,
     onAnnotationLocate,
-}: ChatInputProps, ref: ForwardedRef<ChatInputHandle>) {
-    const { t } = useTranslation();
-    const editorRef = useRef<MilkdownEditorHandle>(null);
-    const editorHostRef = useRef<HTMLDivElement | null>(null);
-    const [uploading, setUploading] = useState(0);
+  }: ChatInputProps,
+  ref: ForwardedRef<ChatInputHandle>,
+) {
+  const { t } = useTranslation();
+  const editorRef = useRef<MilkdownEditorHandle>(null);
+  const editorHostRef = useRef<HTMLDivElement | null>(null);
+  const [uploading, setUploading] = useState(0);
 
-    useImperativeHandle(ref, () => ({
-        focus() {
-            editorRef.current?.focus();
-        },
-    }), []);
+  useImperativeHandle(
+    ref,
+    () => ({
+      focus() {
+        editorRef.current?.focus();
+      },
+    }),
+    [],
+  );
 
-    // ─── File upload → insert into editor on complete ──────────
-    const handleFiles = useCallback((files: FileList | File[]) => {
-        Array.from(files).forEach(async (file) => {
-            const type = classifyFile(file);
-            const name = file.name;
+  // ─── File upload → insert into editor on complete ──────────
+  const handleFiles = useCallback(
+    (files: FileList | File[]) => {
+      if (!projectId) return;
+      Array.from(files).forEach(async (file) => {
+        const type = classifyFile(file);
+        if (!type) return;
+        const name = file.name;
 
-            setUploading(n => n + 1);
-            try {
-                const { storageKey } = await uploadFile(file);
-                void registerAsset(projectId, storageKey, file, type);
-                const signedUrl = await getSignedUrl(storageKey);
-
-                let md: string;
-                if (type === 'image') {
-                    md = `![${name}](${signedUrl})`;
-                } else if (type === 'video') {
-                    const cover = await captureVideoCover(file);
-                    md = cover
-                        ? `![video:${storageKey}:${name}](${cover})`
-                        : `[🎬 ${name}](${signedUrl})`;
-                } else if (type === 'audio') {
-                    md = `[🔊 ${name}](${signedUrl})`;
-                } else {
-                    md = `[📄 ${name}](${signedUrl})`;
-                }
-                editorRef.current?.insertAtCursor(md + ' ');
-            } catch (err) {
-                console.error('[ChatInput] upload failed:', err);
-                editorRef.current?.insertAtCursor(t('copilot.chatInput.uploadFailed', { name }));
-            } finally {
-                setUploading(n => n - 1);
-            }
-        });
-    }, [projectId, t]);
-
-    const actionLocked = isCreatingSession || disabled;
-    const submitLocked = actionLocked || (isProcessing && !allowSubmitWhileProcessing);
-    const hasAnnotationContent = annotationBlocks.some(
-        (annotation) => annotation.note.trim() || annotation.target.selection?.exact.trim(),
-    );
-    const canSend = Boolean(input.trim() || hasAnnotationContent) && !submitLocked && uploading === 0;
-    const showQueuedSend = isProcessing && allowSubmitWhileProcessing && canSend;
-    const isHero = variant === 'hero';
-
-    // ─── Submit ──────────────────────────────────────────────
-    const handleFormSubmit = useCallback(() => {
-        const raw = input.trim();
-        if ((!raw && !hasAnnotationContent) || uploading > 0 || submitLocked) return;
-        const text = restoreMentions(raw);
-        const attachments = extractAssetKeys(text);
-        onInputChange('');
-        editorRef.current?.clear();
-        onCaretTargetChange?.(null);
-        onSubmit(text, attachments, annotationBlocks);
-    }, [
-        annotationBlocks,
-        hasAnnotationContent,
-        input,
-        onCaretTargetChange,
-        onInputChange,
-        onSubmit,
-        submitLocked,
-        uploading,
-    ]);
-
-    const updateCaretTarget = useCallback(() => {
-        if (!onCaretTargetChange) return;
-        const host = editorHostRef.current;
-        const selection = document.getSelection?.();
-        if (!host || !selection || selection.rangeCount === 0 || !selection.isCollapsed) {
-            onCaretTargetChange(null);
-            return;
-        }
-
-        const anchor = selection.anchorNode;
-        const anchorElement = anchor?.nodeType === Node.ELEMENT_NODE
-            ? anchor
-            : anchor?.parentNode;
-        if (!anchorElement || !host.contains(anchorElement)) {
-            onCaretTargetChange(null);
-            return;
-        }
-
-        const range = selection.getRangeAt(0).cloneRange();
-        let rect = range.getBoundingClientRect();
-        if (rect.width === 0 && rect.height === 0) {
-            const marker = document.createElement('span');
-            marker.textContent = '\u200b';
-            range.insertNode(marker);
-            rect = marker.getBoundingClientRect();
-            marker.remove();
-        }
-
-        if (rect.width === 0 && rect.height === 0) {
-            onCaretTargetChange(null);
-            return;
-        }
-
-        onCaretTargetChange({
-            x: rect.left + rect.width / 2,
-            y: rect.top + rect.height / 2,
-        });
-    }, [onCaretTargetChange]);
-
-    useEffect(() => {
-        if (!onCaretTargetChange) return;
-        return () => onCaretTargetChange(null);
-    }, [onCaretTargetChange]);
-
-    // ─── ASR ─────────────────────────────────────────────────
-    const [isListening, setIsListening] = useState(false);
-    const [isTranscribing, setIsTranscribing] = useState(false);
-    const [isCheckingVoice, setIsCheckingVoice] = useState(false);
-    const [voiceNotice, setVoiceNotice] = useState<VoiceInputNotice | null>(null);
-    const [recordingElapsedSeconds, setRecordingElapsedSeconds] = useState(0);
-    const [voiceCompletionIntent, setVoiceCompletionIntent] = useState<SpeechInputCompletionIntent | null>(null);
-    const voiceAttemptRef = useRef(0);
-    const getLocalAudioConfig = useCallback(() => loadLocalAudioConfig(), []);
-
-    useEffect(() => {
-        void getLocalAudioConfig().catch(() => undefined);
-    }, [getLocalAudioConfig]);
-
-    const startListening = useCallback(() => {
-        if (isCheckingVoice || isListening) return;
-        setVoiceNotice(null);
-        const cachedConfig = peekLocalAudioConfig();
-        if (cachedConfig && (!cachedConfig.asr.enabled || !cachedConfig.asr.ready)) {
-            setVoiceNotice(voiceConfigNotice(cachedConfig));
-            return;
-        }
-
-        if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-            setVoiceNotice({ message: 'Local microphone recording is unavailable in this browser.' });
-            return;
-        }
-
-        const attempt = voiceAttemptRef.current + 1;
-        voiceAttemptRef.current = attempt;
-        setRecordingElapsedSeconds(0);
-        setVoiceCompletionIntent(null);
-        setIsListening(true);
-        setIsCheckingVoice(true);
-
-        // Readiness was prefetched when the composer mounted. A cold or slow
-        // request must not sit in front of microphone startup, so validate it
-        // in parallel and only interrupt this exact attempt if it is unusable.
-        void getLocalAudioConfig().then(
-            (audioConfig) => {
-                if (voiceAttemptRef.current !== attempt) return;
-                if (!audioConfig.asr.enabled || !audioConfig.asr.ready) {
-                    setIsCheckingVoice(false);
-                    voiceAttemptRef.current += 1;
-                    setIsListening(false);
-                    setVoiceNotice(voiceConfigNotice(audioConfig));
-                    return;
-                }
-                if (audioConfig.asr.setup?.runtime === 'builtin-rpc') {
-                    void warmupLocalVoiceInput().catch(() => undefined);
-                }
-            },
-            () => {
-                if (voiceAttemptRef.current !== attempt) return;
-                setIsCheckingVoice(false);
-                voiceAttemptRef.current += 1;
-                setIsListening(false);
-                setVoiceNotice(voiceConfigNotice());
-            },
-        ).finally(() => {
-            if (voiceAttemptRef.current === attempt) setIsCheckingVoice(false);
-        });
-    }, [getLocalAudioConfig, isCheckingVoice, isListening]);
-
-    const finishVoice = useCallback(async (blob: Blob, intent: SpeechInputCompletionIntent) => {
-        if (isTranscribing) return;
-        voiceAttemptRef.current += 1;
-        setVoiceCompletionIntent(intent);
-        setIsTranscribing(true);
-        setIsListening(false);
-        setIsCheckingVoice(false);
-        setVoiceNotice(null);
+        setUploading((n) => n + 1);
         try {
-            if (!blob.size) {
-                setVoiceNotice({ message: 'No microphone audio was captured.' });
-                return;
-            }
-            const text = (await transcribeLocalAudio(blob)).trim();
-            if (!text) return;
-            const combinedText = input.trim() ? `${input.trim()} ${text}` : text;
-            if (intent === 'send') {
-                const submittedText = restoreMentions(combinedText);
-                onInputChange('');
-                editorRef.current?.clear();
-                onCaretTargetChange?.(null);
-                onSubmit(
-                    submittedText,
-                    extractAssetKeys(submittedText),
-                    annotationBlocks,
-                );
-            } else {
-                onInputChange(combinedText);
-            }
+          let md: string;
+          const asset = await importProjectAssetFile(projectId, file, {
+            kind: type,
+          });
+          if (!asset.url)
+            throw new Error("Imported Project Asset is not locally available");
+          const marker = projectAssetMarker(asset.id);
+          if (type === "image") md = `![${name}](${asset.url} "${marker}")`;
+          else if (type === "video")
+            md = `[🎬 ${name}](${asset.url} "${marker}")`;
+          else md = `[🔊 ${name}](${asset.url} "${marker}")`;
+          editorRef.current?.insertAtCursor(md + " ");
         } catch (err) {
-            setVoiceNotice(voiceTranscriptionNotice(err));
+          console.error("[ChatInput] upload failed:", err);
+          editorRef.current?.insertAtCursor(
+            t("copilot.chatInput.uploadFailed", { name }),
+          );
         } finally {
-            setIsTranscribing(false);
-            setVoiceCompletionIntent(null);
+          setUploading((n) => n - 1);
         }
-    }, [
-        annotationBlocks,
-        input,
-        isTranscribing,
-        onCaretTargetChange,
-        onInputChange,
-        onSubmit,
-    ]);
+      });
+    },
+    [projectId, t],
+  );
 
-    const handleRecordingError = useCallback((error: unknown) => {
-        voiceAttemptRef.current += 1;
-        setIsListening(false);
-        setIsCheckingVoice(false);
-        setVoiceCompletionIntent(null);
-        const message = error instanceof Error ? error.message : String(error);
-        setVoiceNotice({
-            message: /permission|denied|notallowed/i.test(message)
-                ? 'Microphone permission is required for local ASR.'
-                : 'Local microphone recording failed.',
-        });
-    }, []);
+  const actionLocked = isCreatingSession || disabled;
+  const attachmentsEnabled = Boolean(projectId);
+  const submitLocked =
+    actionLocked || (isProcessing && !allowSubmitWhileProcessing);
+  const hasAnnotationContent = annotationBlocks.some(
+    (annotation) =>
+      annotation.note.trim() || annotation.target.selection?.exact.trim(),
+  );
+  const canSend =
+    Boolean(input.trim() || hasAnnotationContent) &&
+    !submitLocked &&
+    uploading === 0;
+  const showQueuedSend = isProcessing && allowSubmitWhileProcessing && canSend;
+  const isHero = variant === "hero";
 
-    const handleDropAccepted = useCallback((files: File[]) => {
-        if (files.length > 0) handleFiles(files);
-    }, [handleFiles]);
-    const { getRootProps, getInputProps, open, isDragActive } = useDropzone({
-        accept: DROPZONE_ACCEPT,
-        disabled: actionLocked,
-        multiple: true,
-        noClick: true,
-        noKeyboard: true,
-        onDropAccepted: handleDropAccepted,
+  // ─── Submit ──────────────────────────────────────────────
+  const handleFormSubmit = useCallback(() => {
+    const raw = input.trim();
+    if ((!raw && !hasAnnotationContent) || uploading > 0 || submitLocked)
+      return;
+    const text = restoreMentions(raw);
+    const attachments = extractAssetKeys(text);
+    onInputChange("");
+    editorRef.current?.clear();
+    onCaretTargetChange?.(null);
+    onSubmit(text, attachments, annotationBlocks);
+  }, [
+    annotationBlocks,
+    hasAnnotationContent,
+    input,
+    onCaretTargetChange,
+    onInputChange,
+    onSubmit,
+    submitLocked,
+    uploading,
+  ]);
+
+  const updateCaretTarget = useCallback(() => {
+    if (!onCaretTargetChange) return;
+    const host = editorHostRef.current;
+    const selection = document.getSelection?.();
+    if (
+      !host ||
+      !selection ||
+      selection.rangeCount === 0 ||
+      !selection.isCollapsed
+    ) {
+      onCaretTargetChange(null);
+      return;
+    }
+
+    const anchor = selection.anchorNode;
+    const anchorElement =
+      anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentNode;
+    if (!anchorElement || !host.contains(anchorElement)) {
+      onCaretTargetChange(null);
+      return;
+    }
+
+    const range = selection.getRangeAt(0).cloneRange();
+    let rect = range.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) {
+      const marker = document.createElement("span");
+      marker.textContent = "\u200b";
+      range.insertNode(marker);
+      rect = marker.getBoundingClientRect();
+      marker.remove();
+    }
+
+    if (rect.width === 0 && rect.height === 0) {
+      onCaretTargetChange(null);
+      return;
+    }
+
+    onCaretTargetChange({
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
     });
-    const disabledPlaceholder = actionLocked && !input.trim() ? placeholder : null;
+  }, [onCaretTargetChange]);
 
-    return (
-        <div className={isHero ? '' : 'px-4 pb-4'}>
-            <Input
-                {...getInputProps({
-                    'aria-hidden': true,
-                    tabIndex: -1,
-                })}
-                className="hidden"
-            />
+  useEffect(() => {
+    if (!onCaretTargetChange) return;
+    return () => onCaretTargetChange(null);
+  }, [onCaretTargetChange]);
 
-            {/* Error banner */}
-            <AnimatePresence>
-                {!isHero && error && (
-                    <motion.div
-                        role="alert"
-                        initial={{ opacity: 0, y: 4 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 4 }}
-                        className="mb-2"
-                    >
-                        <Button
-                            onClick={onDismissError}
-                            size="sm"
-                            shape="rounded"
-                            className="clash-chat-input-alert-error min-h-0 w-full justify-center rounded-lg border-transparent px-3 py-1.5 text-center text-xs font-normal shadow-none focus-visible:ring-brand focus-visible:ring-offset-1"
-                        >
-                            {error}
-                        </Button>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+  // ─── ASR ─────────────────────────────────────────────────
+  const [isListening, setIsListening] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isCheckingVoice, setIsCheckingVoice] = useState(false);
+  const [voiceNotice, setVoiceNotice] = useState<VoiceInputNotice | null>(null);
+  const [recordingElapsedSeconds, setRecordingElapsedSeconds] = useState(0);
+  const [voiceCompletionIntent, setVoiceCompletionIntent] =
+    useState<SpeechInputCompletionIntent | null>(null);
+  const voiceAttemptRef = useRef(0);
+  const getLocalAudioConfig = useCallback(() => loadLocalAudioConfig(), []);
 
-            {/* Main input card */}
-            <div
-                {...getRootProps({
-                    className: `clash-chat-input-surface ${isHero ? 'p-2' : ''} ${isDragActive ? 'ring-2 ring-brand/40 ring-offset-2 ring-offset-warm-surface' : ''}`,
-                })}
+  useEffect(() => {
+    void getLocalAudioConfig().catch(() => undefined);
+  }, [getLocalAudioConfig]);
+
+  const startListening = useCallback(() => {
+    if (isCheckingVoice || isListening) return;
+    setVoiceNotice(null);
+    const cachedConfig = peekLocalAudioConfig();
+    if (
+      cachedConfig &&
+      (!cachedConfig.asr.enabled || !cachedConfig.asr.ready)
+    ) {
+      setVoiceNotice(voiceConfigNotice(cachedConfig));
+      return;
+    }
+
+    if (
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === "undefined"
+    ) {
+      setVoiceNotice({
+        message: "Local microphone recording is unavailable in this browser.",
+      });
+      return;
+    }
+
+    const attempt = voiceAttemptRef.current + 1;
+    voiceAttemptRef.current = attempt;
+    setRecordingElapsedSeconds(0);
+    setVoiceCompletionIntent(null);
+    setIsListening(true);
+    setIsCheckingVoice(true);
+
+    // Readiness was prefetched when the composer mounted. A cold or slow
+    // request must not sit in front of microphone startup, so validate it
+    // in parallel and only interrupt this exact attempt if it is unusable.
+    void getLocalAudioConfig()
+      .then(
+        (audioConfig) => {
+          if (voiceAttemptRef.current !== attempt) return;
+          if (!audioConfig.asr.enabled || !audioConfig.asr.ready) {
+            setIsCheckingVoice(false);
+            voiceAttemptRef.current += 1;
+            setIsListening(false);
+            setVoiceNotice(voiceConfigNotice(audioConfig));
+            return;
+          }
+          if (audioConfig.asr.setup?.runtime === "builtin-rpc") {
+            void warmupLocalVoiceInput().catch(() => undefined);
+          }
+        },
+        () => {
+          if (voiceAttemptRef.current !== attempt) return;
+          setIsCheckingVoice(false);
+          voiceAttemptRef.current += 1;
+          setIsListening(false);
+          setVoiceNotice(voiceConfigNotice());
+        },
+      )
+      .finally(() => {
+        if (voiceAttemptRef.current === attempt) setIsCheckingVoice(false);
+      });
+  }, [getLocalAudioConfig, isCheckingVoice, isListening]);
+
+  const finishVoice = useCallback(
+    async (blob: Blob, intent: SpeechInputCompletionIntent) => {
+      if (isTranscribing) return;
+      voiceAttemptRef.current += 1;
+      setVoiceCompletionIntent(intent);
+      setIsTranscribing(true);
+      setIsListening(false);
+      setIsCheckingVoice(false);
+      setVoiceNotice(null);
+      try {
+        if (!blob.size) {
+          setVoiceNotice({ message: "No microphone audio was captured." });
+          return;
+        }
+        const text = (await transcribeLocalAudio(blob)).trim();
+        if (!text) return;
+        const combinedText = input.trim() ? `${input.trim()} ${text}` : text;
+        if (intent === "send") {
+          const submittedText = restoreMentions(combinedText);
+          onInputChange("");
+          editorRef.current?.clear();
+          onCaretTargetChange?.(null);
+          onSubmit(
+            submittedText,
+            extractAssetKeys(submittedText),
+            annotationBlocks,
+          );
+        } else {
+          onInputChange(combinedText);
+        }
+      } catch (err) {
+        setVoiceNotice(voiceTranscriptionNotice(err));
+      } finally {
+        setIsTranscribing(false);
+        setVoiceCompletionIntent(null);
+      }
+    },
+    [
+      annotationBlocks,
+      input,
+      isTranscribing,
+      onCaretTargetChange,
+      onInputChange,
+      onSubmit,
+    ],
+  );
+
+  const handleRecordingError = useCallback((error: unknown) => {
+    voiceAttemptRef.current += 1;
+    setIsListening(false);
+    setIsCheckingVoice(false);
+    setVoiceCompletionIntent(null);
+    const message = error instanceof Error ? error.message : String(error);
+    setVoiceNotice({
+      message: /permission|denied|notallowed/i.test(message)
+        ? "Microphone permission is required for local ASR."
+        : "Local microphone recording failed.",
+    });
+  }, []);
+
+  const handleDropAccepted = useCallback(
+    (files: File[]) => {
+      if (files.length > 0) handleFiles(files);
+    },
+    [handleFiles],
+  );
+  const { getRootProps, getInputProps, open, isDragActive } = useDropzone({
+    accept: DROPZONE_ACCEPT,
+    disabled: actionLocked || !attachmentsEnabled,
+    multiple: true,
+    noClick: true,
+    noKeyboard: true,
+    onDropAccepted: handleDropAccepted,
+  });
+  const disabledPlaceholder =
+    actionLocked && !input.trim() ? placeholder : null;
+
+  return (
+    <div className={isHero ? "" : "px-4 pb-4"}>
+      <Input
+        {...getInputProps({
+          "aria-hidden": true,
+          tabIndex: -1,
+        })}
+        className="hidden"
+      />
+
+      {/* Error banner */}
+      <AnimatePresence>
+        {!isHero && error && (
+          <motion.div
+            role="alert"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            className="mb-2"
+          >
+            <Button
+              onClick={onDismissError}
+              size="sm"
+              shape="rounded"
+              className="clash-chat-input-alert-error min-h-0 w-full justify-center rounded-lg border-transparent px-3 py-1.5 text-center text-xs font-normal shadow-none focus-visible:ring-brand focus-visible:ring-offset-1"
             >
-                <div className={isHero ? 'flex min-h-[142px] flex-col' : ''}>
-                        <AgentAnnotationTray
-                            annotations={annotationBlocks}
-                            disabled={actionLocked}
-                            onOpen={onAnnotationOpen}
-                            onChange={onAnnotationChange}
-                            onRemove={onAnnotationRemove}
-                            onLocate={onAnnotationLocate}
-                        />
-                        <div
-                            ref={editorHostRef}
-                            aria-disabled={actionLocked || undefined}
-                            className={`clash-chat-input-editor relative ${isHero ? 'clash-chat-input-editor--hero' : 'clash-chat-input-editor--default'} milkdown-chat-input w-full text-left chat-scroll-hidden ${isHero ? 'min-h-[100px] flex-1 px-5 pt-4' : 'min-h-[52px] max-h-[200px]'} overflow-y-auto ${actionLocked ? 'pointer-events-none opacity-60' : ''}`}
-                            onFocusCapture={() => window.requestAnimationFrame(updateCaretTarget)}
-                            onBlurCapture={(event) => {
-                                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                                    onCaretTargetChange?.(null);
-                                }
-                            }}
-                            onKeyUp={() => window.requestAnimationFrame(updateCaretTarget)}
-                            onPointerUp={() => window.requestAnimationFrame(updateCaretTarget)}
-                            onInput={() => window.requestAnimationFrame(updateCaretTarget)}
-                        >
-                            {disabledPlaceholder ? (
-                                <div className="pointer-events-none absolute inset-x-0 top-0 z-10 px-[18px] py-4 text-sm text-stone-500 dark:text-stone-400">
-                                    {disabledPlaceholder}
-                                </div>
-                            ) : null}
-                            <MilkdownEditor
-                                ref={editorRef}
-                                value={input}
-                                onChange={onInputChange}
-                                onSubmit={handleFormSubmit}
-                                promptModalities={['text', 'image', 'video', 'audio']}
-                                mentionableNodes={mentionableNodes}
-                                connectedNodeIds={connectedNodeIds}
-                                onMentionAdded={onMentionAdded}
-                            />
-                        </div>
+              {error}
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-                        {/* Uploading indicator */}
-                        {uploading > 0 && (
-                            <div
-                                role="status"
-                                aria-live="polite"
-                                className="flex items-center gap-1.5 px-4 pb-1 text-xs text-slate-700 dark:text-slate-300"
-                            >
-                                <CircleNotch className="w-3 h-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                                <span>{t('copilot.chatInput.uploading', { count: uploading })}</span>
-                            </div>
-                        )}
+      {/* Main input card */}
+      <div
+        {...getRootProps({
+          className: `clash-chat-input-surface ${isHero ? "p-2" : ""} ${isDragActive ? "ring-2 ring-brand/40 ring-offset-2 ring-offset-warm-surface" : ""}`,
+        })}
+      >
+        <div className={isHero ? "flex min-h-[142px] flex-col" : ""}>
+          <AgentAnnotationTray
+            annotations={annotationBlocks}
+            disabled={actionLocked}
+            onOpen={onAnnotationOpen}
+            onChange={onAnnotationChange}
+            onRemove={onAnnotationRemove}
+            onLocate={onAnnotationLocate}
+          />
+          <div
+            ref={editorHostRef}
+            aria-disabled={actionLocked || undefined}
+            className={`clash-chat-input-editor relative ${isHero ? "clash-chat-input-editor--hero" : "clash-chat-input-editor--default"} milkdown-chat-input w-full text-left chat-scroll-hidden ${isHero ? "min-h-[100px] flex-1 px-5 pt-4" : "min-h-[52px] max-h-[200px]"} overflow-y-auto ${actionLocked ? "pointer-events-none opacity-60" : ""}`}
+            onFocusCapture={() =>
+              window.requestAnimationFrame(updateCaretTarget)
+            }
+            onBlurCapture={(event) => {
+              if (
+                !event.currentTarget.contains(
+                  event.relatedTarget as Node | null,
+                )
+              ) {
+                onCaretTargetChange?.(null);
+              }
+            }}
+            onKeyUp={() => window.requestAnimationFrame(updateCaretTarget)}
+            onPointerUp={() => window.requestAnimationFrame(updateCaretTarget)}
+            onInput={() => window.requestAnimationFrame(updateCaretTarget)}
+          >
+            {disabledPlaceholder ? (
+              <div className="pointer-events-none absolute inset-x-0 top-0 z-10 px-[18px] py-4 text-sm text-stone-500 dark:text-stone-400">
+                {disabledPlaceholder}
+              </div>
+            ) : null}
+            <MilkdownEditor
+              ref={editorRef}
+              value={input}
+              onChange={onInputChange}
+              onSubmit={handleFormSubmit}
+              promptModalities={["text", "image", "video", "audio"]}
+              mentionableNodes={mentionableNodes}
+              connectedNodeIds={connectedNodeIds}
+              onMentionAdded={onMentionAdded}
+            />
+          </div>
 
-                        {/* Bottom toolbar */}
-                        {isListening || isTranscribing ? (
-                            <SpeechInputRecording
-                                elapsedSeconds={recordingElapsedSeconds}
-                                processingIntent={voiceCompletionIntent}
-                                regionLabel={t('copilot.chatInput.voice')}
-                                recordingDurationLabel={t('copilot.chatInput.recordingDuration')}
-                                stopAndTranscribeLabel={t('copilot.chatInput.stopAndTranscribe')}
-                                stopTranscribeAndSendLabel={t('copilot.chatInput.stopTranscribeAndSend')}
-                                onCompletionIntentChange={setVoiceCompletionIntent}
-                                onRecordingProgress={setRecordingElapsedSeconds}
-                                onRecordingComplete={(blob, intent) => void finishVoice(blob, intent)}
-                                onRecordingError={handleRecordingError}
-                                className={isHero ? 'px-5' : 'px-4'}
-                                leading={(
-                                    <IconButton
-                                        onClick={open}
-                                        disabled={actionLocked}
-                                        label={t('copilot.chatInput.attach')}
-                                        shape="rounded"
-                                        icon={<Plus className="h-4 w-4" weight="bold" />}
-                                        className="-ml-1.5 shrink-0"
-                                    />
-                                )}
-                            />
-                        ) : (
-                            <div className={`clash-chat-input-actions clash-chat-input-toolbar-row items-center pb-2.5 pt-1.5 ${isHero ? 'px-5' : 'px-4'}`}>
-                            <div className="clash-chat-input-toolbar-start flex min-w-0 items-center gap-2">
-                                <IconButton
-                                    onClick={open}
-                                    disabled={actionLocked}
-                                    label={t('copilot.chatInput.attach')}
-                                    shape="rounded"
-                                    icon={<Plus className="w-4 h-4" weight="bold" />}
-                                    className="-ml-1.5"
-                                />
-                                {toolbarAccessory ? (
-                                    <div className="clash-chat-input-toolbar-accessory min-w-0">
-                                        {toolbarAccessory}
-                                    </div>
-                                ) : null}
-                            </div>
-                            <div className="clash-chat-input-toolbar-end -mr-1.5 flex min-w-0 items-center justify-end gap-1.5">
-                                {rightToolbarAccessory ? (
-                                    <div className="clash-chat-input-toolbar-config min-w-0">
-                                        {rightToolbarAccessory}
-                                    </div>
-                                ) : null}
-                                <VoiceInputSetupPopover
-                                    open={Boolean(voiceNotice)}
-                                    onOpenChange={(open) => {
-                                        if (open) {
-                                            void startListening();
-                                        } else {
-                                            setVoiceNotice(null);
-                                        }
-                                    }}
-                                    notice={voiceNotice}
-                                    trigger={(
-                                        <IconButton
-                                            disabled={actionLocked || isCheckingVoice}
-                                            aria-busy={isCheckingVoice}
-                                            label={t('copilot.chatInput.voice')}
-                                            shape="rounded"
-                                            icon={isCheckingVoice ? (
-                                                <CircleNotch className="w-4 h-4 animate-spin motion-reduce:animate-none" weight="bold" />
-                                            ) : (
-                                                <Microphone className="w-4 h-4" weight="bold" />
-                                            )}
-                                        />
-                                    )}
-                                />
-                                {showQueuedSend ? (
-                                    <IconButton
-                                        onClick={handleFormSubmit}
-                                        disabled={!canSend}
-                                        label={t('copilot.chatInput.send')}
-                                        shape="rounded"
-                                        size="md"
-                                        className="clash-chat-input-primary w-9 h-9 min-h-[36px] min-w-[36px] rounded-xl flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
-                                        icon={<ArrowUp className="w-3.5 h-3.5" weight="bold" />}
-                                    />
-                                ) : null}
-                                {isProcessing && onStop ? (
-                                    <IconButton
-                                        onClick={onStop}
-                                        label={t('copilot.chatInput.stop')}
-                                        shape="rounded"
-                                        size="md"
-                                        className="clash-chat-input-stop w-9 h-9 min-h-[36px] min-w-[36px] rounded-xl flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
-                                        icon={<span className="h-2.5 w-2.5 rounded-[3px] bg-current" />}
-                                    />
-                                ) : (
-                                    <IconButton
-                                        onClick={handleFormSubmit}
-                                        disabled={!canSend && !isCreatingSession}
-                                        label={t('copilot.chatInput.send')}
-                                        aria-busy={isCreatingSession || uploading > 0}
-                                        shape="rounded"
-                                        size="md"
-                                        className={`w-9 h-9 min-h-[36px] min-w-[36px] rounded-xl flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface ${isCreatingSession || uploading > 0
-                                            ? 'clash-chat-input-primary focus-visible:ring-brand'
-                                            : canSend
-                                                ? 'clash-chat-input-primary focus-visible:ring-brand'
-                                                : 'bg-warm-muted text-slate-500 dark:text-slate-500 cursor-not-allowed focus-visible:ring-brand'
-                                            }`}
-                                        icon={isCreatingSession || uploading > 0 ? (
-                                            <CircleNotch className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
-                                        ) : (
-                                            <ArrowUp className="w-3.5 h-3.5" weight="bold" />
-                                        )}
-                                    />
-                                )}
-                            </div>
-                            </div>
-                        )}
-                    </div>
+          {/* Uploading indicator */}
+          {uploading > 0 && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex items-center gap-1.5 px-4 pb-1 text-xs text-slate-700 dark:text-slate-300"
+            >
+              <CircleNotch
+                className="w-3 h-3 animate-spin motion-reduce:animate-none"
+                aria-hidden="true"
+              />
+              <span>
+                {t("copilot.chatInput.uploading", { count: uploading })}
+              </span>
             </div>
+          )}
+
+          {/* Bottom toolbar */}
+          {isListening || isTranscribing ? (
+            <SpeechInputRecording
+              elapsedSeconds={recordingElapsedSeconds}
+              processingIntent={voiceCompletionIntent}
+              regionLabel={t("copilot.chatInput.voice")}
+              recordingDurationLabel={t("copilot.chatInput.recordingDuration")}
+              stopAndTranscribeLabel={t("copilot.chatInput.stopAndTranscribe")}
+              stopTranscribeAndSendLabel={t(
+                "copilot.chatInput.stopTranscribeAndSend",
+              )}
+              onCompletionIntentChange={setVoiceCompletionIntent}
+              onRecordingProgress={setRecordingElapsedSeconds}
+              onRecordingComplete={(blob, intent) =>
+                void finishVoice(blob, intent)
+              }
+              onRecordingError={handleRecordingError}
+              className={isHero ? "px-5" : "px-4"}
+              leading={attachmentsEnabled ? (
+                <IconButton
+                  onClick={open}
+                  disabled={actionLocked}
+                  label={t("copilot.chatInput.attach")}
+                  shape="rounded"
+                  icon={<Plus className="h-4 w-4" weight="bold" />}
+                  className="-ml-1.5 shrink-0"
+                />
+              ) : undefined}
+            />
+          ) : (
+            <div
+              className={`clash-chat-input-actions clash-chat-input-toolbar-row items-center pb-2.5 pt-1.5 ${isHero ? "px-5" : "px-4"}`}
+            >
+              <div className="clash-chat-input-toolbar-start flex min-w-0 items-center gap-2">
+                {attachmentsEnabled ? (
+                  <IconButton
+                    onClick={open}
+                    disabled={actionLocked}
+                    label={t("copilot.chatInput.attach")}
+                    shape="rounded"
+                    icon={<Plus className="w-4 h-4" weight="bold" />}
+                    className="-ml-1.5"
+                  />
+                ) : null}
+                {toolbarAccessory ? (
+                  <div className="clash-chat-input-toolbar-accessory min-w-0">
+                    {toolbarAccessory}
+                  </div>
+                ) : null}
+              </div>
+              <div className="clash-chat-input-toolbar-end -mr-1.5 flex min-w-0 items-center justify-end gap-1.5">
+                {rightToolbarAccessory ? (
+                  <div className="clash-chat-input-toolbar-config min-w-0">
+                    {rightToolbarAccessory}
+                  </div>
+                ) : null}
+                <VoiceInputSetupPopover
+                  open={Boolean(voiceNotice)}
+                  onOpenChange={(open) => {
+                    if (open) {
+                      void startListening();
+                    } else {
+                      setVoiceNotice(null);
+                    }
+                  }}
+                  notice={voiceNotice}
+                  trigger={
+                    <IconButton
+                      disabled={actionLocked || isCheckingVoice}
+                      aria-busy={isCheckingVoice}
+                      label={t("copilot.chatInput.voice")}
+                      shape="rounded"
+                      icon={
+                        isCheckingVoice ? (
+                          <CircleNotch
+                            className="w-4 h-4 animate-spin motion-reduce:animate-none"
+                            weight="bold"
+                          />
+                        ) : (
+                          <Microphone className="w-4 h-4" weight="bold" />
+                        )
+                      }
+                    />
+                  }
+                />
+                {showQueuedSend ? (
+                  <IconButton
+                    onClick={handleFormSubmit}
+                    disabled={!canSend}
+                    label={t("copilot.chatInput.send")}
+                    shape="rounded"
+                    size="md"
+                    className="clash-chat-input-primary w-9 h-9 min-h-[36px] min-w-[36px] rounded-xl flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+                    icon={<ArrowUp className="w-3.5 h-3.5" weight="bold" />}
+                  />
+                ) : null}
+                {isProcessing && onStop ? (
+                  <IconButton
+                    onClick={onStop}
+                    label={t("copilot.chatInput.stop")}
+                    shape="rounded"
+                    size="md"
+                    className="clash-chat-input-stop w-9 h-9 min-h-[36px] min-w-[36px] rounded-xl flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+                    icon={
+                      <span className="h-2.5 w-2.5 rounded-[3px] bg-current" />
+                    }
+                  />
+                ) : (
+                  <IconButton
+                    onClick={handleFormSubmit}
+                    disabled={!canSend && !isCreatingSession}
+                    label={t("copilot.chatInput.send")}
+                    aria-busy={isCreatingSession || uploading > 0}
+                    shape="rounded"
+                    size="md"
+                    className={`w-9 h-9 min-h-[36px] min-w-[36px] rounded-xl flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface ${
+                      isCreatingSession || uploading > 0
+                        ? "clash-chat-input-primary focus-visible:ring-brand"
+                        : canSend
+                          ? "clash-chat-input-primary focus-visible:ring-brand"
+                          : "bg-warm-muted text-slate-500 dark:text-slate-500 cursor-not-allowed focus-visible:ring-brand"
+                    }`}
+                    icon={
+                      isCreatingSession || uploading > 0 ? (
+                        <CircleNotch className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
+                      ) : (
+                        <ArrowUp className="w-3.5 h-3.5" weight="bold" />
+                      )
+                    }
+                  />
+                )}
+              </div>
+            </div>
+          )}
         </div>
-    );
+      </div>
+    </div>
+  );
 }
 
-export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(ChatInputInner);
-ChatInput.displayName = 'ChatInput';
+export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
+  ChatInputInner,
+);
+ChatInput.displayName = "ChatInput";

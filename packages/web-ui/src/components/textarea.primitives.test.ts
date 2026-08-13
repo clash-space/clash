@@ -11,7 +11,7 @@ describe("Textarea primitives", () => {
     "packages/web-ui/src/components/nodes/VideoNode.tsx",
     "packages/web-ui/src/components/nodes/StoryboardNode.tsx",
   ])("%s uses the shared Textarea primitive instead of raw textarea controls", (file) => {
-    const textareaPath = join(process.cwd(), "packages/web-ui/src/components/ui/textarea.tsx");
+    const textareaPath = join(process.cwd(), "packages/gui/src/components/ui/textarea.tsx");
     const textareaSource = existsSync(textareaPath) ? readFileSync(textareaPath, "utf8") : "";
     const source = readSource(file);
 

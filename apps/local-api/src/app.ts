@@ -1,20 +1,18 @@
 import {
-  chmod,
+  mkdtemp,
   mkdir,
   open,
   readFile,
-  readdir,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
-import { declaredBrowserFlow } from "./declared-oauth.js";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { dirname, extname, join, resolve } from "node:path";
+import { extname, join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import type { LoroDoc } from "loro-crdt";
 import { clashHomeForLocalDataDir } from "./local-paths.js";
@@ -23,37 +21,47 @@ import {
   projectCommandMutates,
 } from "./project-command-host.js";
 import { ProjectHostCommandSchema } from "./domain/requests.js";
+import { createProviderExecutionHandoffStore } from "./provider-execution-handoff.js";
+import {
+  createLocalProjectAssetService,
+  LocalProjectAssetMigrationError,
+  type LocalProjectAssetReplica,
+} from "./local-project-assets.js";
+import {
+  createLocalGlobalAssetService,
+  LocalGlobalAssetError,
+} from "./local-global-assets.js";
 import {
   importLocalProviderToken,
   type LocalTokenImportAuth,
 } from "./local-token-import.js";
+import { openPluginStore } from "./plugin-store.js";
 import {
   buildProjectRecoveryPolicy,
   buildProjectStatus,
+  createBoundedRetryPolicy,
   defaultRuntimeCapabilities,
   visibleUserPromptText,
+  type DurableRunRecord,
   type ProjectRecoveryPolicy,
 } from "@clash/shared-runtime";
+import { AssetSdkContractError } from "@clash/asset-sdk";
 import {
-  agentReadToken,
   agentReadReceiptToken,
   actionSourceModel,
   AssetEditActionInvocationSchema,
+  AssetKindSchema,
   ASSET_ACTION_ID,
-  assetReadToken,
-  assetRefReadToken,
   Canvas,
   canvasBatchDeleteReadToken,
   canvasEdgeReadToken,
   canvasEdgesReadToken,
   canvasNodeReadToken,
-  createMediaAssetCowNodeData,
   buildEffectiveModelCards,
   composeExecutablePluginModelCards,
   CustomActionDefinitionSchema,
   hostMutationRejected,
   hostMutationSucceeded,
-  isMediaNodeType,
   invalidProviderModelFilters,
   ensureCanvasGraphIdentity,
   listModelCatalogEntries,
@@ -61,7 +69,6 @@ import {
   listNodeOwnedEdges,
   listProviderModelSupport,
   invocationModeForSurface,
-  legacyEditOriginForSurface,
   MOCK_MODEL_CARDS,
   MODEL_CARDS,
   localConfigReadToken,
@@ -102,17 +109,17 @@ import {
   type TextAppliedRevision,
   type UserModelCardConfig,
   type ExecutablePluginBinding,
+  type ExecutablePluginJsonValue,
+  type ExecutablePluginOutput,
   type ExecutablePluginCardRegistration,
   type ExecutablePluginModelBindingRegistration,
   type ExecutablePluginProviderRegistration,
   missingModelRouteCredentials,
+  ExecutablePluginJsonValueSchema,
+  ExecutablePluginOutputSchema,
   type ProviderCredentialRequirements,
 } from "@clash/shared-types";
-import type {
-  Asset,
-  AssetKind,
-  AssetMetadata,
-} from "@clash/shared-types/assets";
+import type { AssetKind, ResolvedAsset } from "@clash/shared-types/assets";
 
 const execFileAsync = promisify(execFile);
 
@@ -142,23 +149,18 @@ function parseAssetEditInvocation(input: {
 }
 
 function localFfmpegPath(): string | null {
-  return [process.env.FFMPEG_PATH, "/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"]
-    .filter((candidate): candidate is string => !!candidate)
-    .find((candidate) => existsSync(candidate)) ?? null;
+  return (
+    [
+      process.env.FFMPEG_PATH,
+      "/opt/homebrew/bin/ffmpeg",
+      "/usr/local/bin/ffmpeg",
+      "/usr/bin/ffmpeg",
+    ]
+      .filter((candidate): candidate is string => !!candidate)
+      .find((candidate) => existsSync(candidate)) ?? null
+  );
 }
 
-function localFfprobePath(): string | null {
-  const ffmpeg = localFfmpegPath();
-  return [
-    process.env.FFPROBE_PATH,
-    ffmpeg ? join(dirname(ffmpeg), "ffprobe") : undefined,
-    "/opt/homebrew/bin/ffprobe",
-    "/usr/local/bin/ffprobe",
-    "/usr/bin/ffprobe",
-  ]
-    .filter((candidate): candidate is string => !!candidate)
-    .find((candidate) => existsSync(candidate)) ?? null;
-}
 import {
   storeTextRevisionContentBlob,
   textRevisionContentBlobPath,
@@ -173,18 +175,14 @@ import {
 import {
   createMockExternalAigcService,
   localExecutableModelCards,
-  settleAcceptedGeneration,
+  requireCompletedGeneration,
   type MockMediaGenerationCompleted,
   type MockMediaGenerationInput,
   type MockMediaGenerationResult,
+  type ProviderPluginExecutionPlan,
   type ProviderPluginExecutor,
+  type ProviderPluginExecutorMedia,
 } from "./local-aigc.js";
-import {
-  createJsonlProviderTestRecorder,
-  createProviderConformanceStubs,
-  createProviderTestRecordingFetch,
-  type ProviderConformanceStub,
-} from "./provider-test-recorder.js";
 import {
   createLocalAudioConfigStore,
   LocalAudioConfigError,
@@ -197,6 +195,11 @@ import {
   type LocalSyncConfigReadState,
   type LocalSyncConfigStore,
 } from "./sync-config.js";
+import {
+  createPublicAssetStorageService,
+  PublicAssetStorageConfigError,
+  type PublicAssetStorageService,
+} from "./public-asset-storage.js";
 import type { RemoteLoroPersistenceEnv } from "./sync.js";
 import {
   normalizeProviderAccountInput,
@@ -208,30 +211,23 @@ import {
   type LocalUserModelCardConfig,
 } from "./provider-accounts.js";
 import {
-  generateFalDirectorModel,
-  type DirectorModelGenerationInput,
-} from "./director-model-generation.js";
-import {
-  assetPathForDelete,
-  assetPathForRead,
-  assetPathForWrite,
-  isLocalBlobStorageKey,
-  normalizeAssetStorageKey,
-  normalizeLocalBlobStorageKey,
-} from "./local-asset-paths.js";
+  createLocalDurableRun,
+  createLocalDurableRunCoordinator,
+  DEFAULT_LOCAL_PROVIDER_RUN_DEADLINE_MS,
+  type LocalDurableRunCoordinator,
+} from "./durable-run-coordinator.js";
+import { createSqliteDurableRunJournal } from "./durable-run-journal.js";
+import { assetPathForRead, assetPathForWrite } from "./local-asset-paths.js";
 import { createLocalProviderStore } from "./local-provider-store.js";
 import {
   createLocalMetadataStore,
-  type LocalMetadataAssetNodeRef,
   type LocalMetadataAgentMember as LocalAgentMember,
   type LocalMetadataDb,
   type LocalMutationAuditFilter,
   type LocalMutationAuditRecord,
   type LocalTextRevisionFilter,
   type LocalMetadataProject as LocalProject,
-  type LocalMetadataProjectAsset as LocalProjectAsset,
   type LocalMetadataSession as LocalSession,
-  type LocalMetadataSessionMessage as PersistedLocalAcpSessionMessage,
 } from "./local-metadata-store.js";
 import { FileReplicaStore } from "./loro/file-replica-store.js";
 import type {
@@ -259,11 +255,18 @@ export interface ProviderOAuthTokenResult {
 
 export interface ProviderOAuthDriver {
   start(): Promise<ProviderOAuthDeviceFlowStart>;
-  complete(input: { deviceCode: string; oauthState?: string }): Promise<ProviderOAuthTokenResult>;
+  complete(input: {
+    deviceCode: string;
+    oauthState?: string;
+  }): Promise<ProviderOAuthTokenResult>;
 }
 
 export interface LocalApiOptions {
   dataDir: string;
+  /** Canonical loopback origin used in Project-scoped ResolvedAsset projections. */
+  projectAssetProjectionOrigin?: string | (() => string);
+  /** Host-owned live Project replica used by Project Asset routes. */
+  projectAssetReplica?: LocalProjectAssetReplica;
   /**
    * Receive bytes for an upload slot the broker handed out.
    *
@@ -286,45 +289,48 @@ export interface LocalApiOptions {
   falMock?: FalMockQueueService;
   audioConfig?: LocalAudioConfigStore;
   syncConfig?: LocalSyncConfigStore;
+  /** Machine-level public Asset storage shared by Desktop, CLI, MCP and plugins. */
+  publicAssetStorage?: PublicAssetStorageService;
   syncEnv?: RemoteLoroPersistenceEnv;
   providerOAuth?: Partial<Record<ProviderOAuthId, ProviderOAuthDriver>>;
-  providerTestFetch?: typeof fetch;
-  providerTestRecordingPath?: string;
-  providerTestOpenAiBaseUrl?: string;
-  providerTestAnthropicBaseUrl?: string;
-  providerTestFalQueueBaseUrl?: string;
-  providerTestGoogleAiStudioBaseUrl?: string;
-  providerTestPikaBaseUrl?: string;
-  providerTestReplicateBaseUrl?: string;
   providerPluginExecutor?: ProviderPluginExecutor;
+  /** Host policy for a complete durable Provider run. Defaults to 30 minutes. */
+  providerGenerationDeadlineMs?: number;
   /** Wake the shared project room after an HTTP command creates pending backend work. */
   processProjectWork?: (projectId: string) => Promise<void>;
   voiceInputFetch?: typeof fetch;
-  voiceInputGoogleAiStudioBaseUrl?: string;
-  directorModelGenerationFetch?: typeof fetch;
-  directorModelFalQueueBaseUrl?: string;
-  directorModelPollIntervalMs?: number;
-  assetProbe?: LocalAssetProbe;
   resolvePluginBinding?: (
     pluginId: string,
     exportId: string,
     kind: "action" | "provider-projector" | "provider-executor",
   ) => Promise<ExecutablePluginBinding>;
   listPluginCards?: () => Promise<ExecutablePluginCardRegistration[]>;
-  listPluginModelBindings?: () => Promise<ExecutablePluginModelBindingRegistration[]>;
+  listPluginModelBindings?: () => Promise<
+    ExecutablePluginModelBindingRegistration[]
+  >;
   listPluginProviders?: () => Promise<ExecutablePluginProviderRegistration[]>;
   /** Test/embedding override for the OS application-support directory. */
   localTokenImportAppDataRoot?: string;
-  marketplaceActions?: Array<Record<string, unknown> & {
-    id: string;
-    packageId: string;
-  }>;
-  listInstalledMarketplaceActions?: () => Promise<Array<Record<string, unknown>>>;
-  installMarketplaceAction?: (packageId: string) => Promise<Record<string, unknown>>;
+  marketplaceActions?: Array<
+    Record<string, unknown> & {
+      id: string;
+      packageId: string;
+    }
+  >;
+  listInstalledMarketplaceActions?: () => Promise<
+    Array<Record<string, unknown>>
+  >;
+  installMarketplaceAction?: (
+    packageId: string,
+  ) => Promise<Record<string, unknown>>;
   uninstallMarketplaceAction?: (actionId: string) => Promise<void>;
   marketplaceSkills?: Array<Record<string, unknown> & { id: string }>;
-  listInstalledMarketplaceSkills?: () => Promise<Array<Record<string, unknown>>>;
-  installMarketplaceSkill?: (skillId: string) => Promise<Record<string, unknown>>;
+  listInstalledMarketplaceSkills?: () => Promise<
+    Array<Record<string, unknown>>
+  >;
+  installMarketplaceSkill?: (
+    skillId: string,
+  ) => Promise<Record<string, unknown>>;
   uninstallMarketplaceSkill?: (skillId: string) => Promise<void>;
   pluginPackages?: {
     list(): Promise<object>;
@@ -337,138 +343,21 @@ export interface LocalApiOptions {
   directorStageRenderer?: LocalDirectorStageRenderer;
 }
 
-export interface LocalAssetProbeInput {
-  dataDir: string;
-  clashRoot?: string;
-  assetId: string;
-  projectId?: string;
-  kind: AssetKind;
-  srcR2Key: string;
-  generateVideoCover: boolean;
-}
-
-export interface LocalAssetProbeResult {
-  metadata: AssetMetadata;
-  coverR2Key?: string;
-}
-
-export type LocalAssetProbe = (
-  input: LocalAssetProbeInput,
-) => Promise<LocalAssetProbeResult>;
-
-function finitePositiveNumber(value: unknown): number | undefined {
-  const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-async function probeLocalAsset(
-  input: LocalAssetProbeInput,
-): Promise<LocalAssetProbeResult> {
-  const sourcePath = await assetPathForRead(
-    input.dataDir,
-    input.srcR2Key,
-    input.clashRoot,
-  );
-  const fileInfo = await stat(sourcePath);
-  const baseMetadata: AssetMetadata = { bytes: fileInfo.size };
-  if (input.kind === "model") return { metadata: baseMetadata };
-
-  const ffprobe = localFfprobePath();
-  if (!ffprobe) return { metadata: baseMetadata };
-  const { stdout } = await execFileAsync(ffprobe, [
-    "-v",
-    "error",
-    "-show_streams",
-    "-show_format",
-    "-of",
-    "json",
-    sourcePath,
-  ]);
-  const parsed = JSON.parse(stdout) as {
-    streams?: Array<{
-      codec_type?: string;
-      codec_name?: string;
-      width?: number;
-      height?: number;
-      duration?: string | number;
-      avg_frame_rate?: string;
-    }>;
-    format?: { duration?: string | number };
-  };
-  const visualStream = parsed.streams?.find(
-    (stream) => stream.codec_type === "video",
-  );
-  const durationSeconds = finitePositiveNumber(
-    parsed.format?.duration ??
-      parsed.streams?.find((stream) => stream.codec_type === "audio")?.duration ??
-      visualStream?.duration,
-  );
-  const audioStream = parsed.streams?.find((stream) => stream.codec_type === "audio");
-  const frameRateParts = visualStream?.avg_frame_rate?.split("/").map(Number);
-  const frameRate = frameRateParts?.length === 2 && frameRateParts[1]
-    ? finitePositiveNumber(frameRateParts[0] / frameRateParts[1])
-    : finitePositiveNumber(visualStream?.avg_frame_rate);
-  const metadata: AssetMetadata = {
-    ...baseMetadata,
-    ...(finitePositiveNumber(visualStream?.width)
-      ? { width: Math.round(Number(visualStream?.width)) }
-      : {}),
-    ...(finitePositiveNumber(visualStream?.height)
-      ? { height: Math.round(Number(visualStream?.height)) }
-      : {}),
-    ...(durationSeconds
-      ? { durationMs: Math.round(durationSeconds * 1000) }
-      : {}),
-    ...(frameRate ? { frameRate } : {}),
-    ...(visualStream?.codec_name ? { videoCodec: visualStream.codec_name } : {}),
-    ...(audioStream?.codec_name ? { audioCodec: audioStream.codec_name } : {}),
-  };
-
-  if (
-    input.kind !== "video" ||
-    !input.generateVideoCover ||
-    !visualStream
-  ) {
-    return { metadata };
-  }
-  const ffmpeg = localFfmpegPath();
-  if (!ffmpeg) return { metadata };
-
-  const coverR2Key = `covers/${input.assetId}.jpg`;
-  const coverPath = await assetPathForWrite(input.dataDir, coverR2Key);
-  await mkdir(dirname(coverPath), { recursive: true });
-  const seekSeconds = durationSeconds
-    ? Math.min(1, Math.max(0, durationSeconds / 2))
-    : 0;
-  await execFileAsync(ffmpeg, [
-    "-y",
-    "-ss",
-    String(seekSeconds),
-    "-i",
-    sourcePath,
-    "-frames:v",
-    "1",
-    "-q:v",
-    "2",
-    coverPath,
-  ]);
-  return { metadata, coverR2Key };
-}
-
 export type LocalAcpRuntimeStatus = "online" | "offline";
 
 export function createLocalTtsGenerationHandler(
   audioConfig: LocalAudioConfigStore,
 ): (input: MockMediaGenerationInput) => Promise<MockMediaGenerationResult> {
   return async (input) => {
-    const rawVoice = input.modelParams?.voice_name ?? input.modelParams?.voice_id;
-    const voice = typeof rawVoice === "string" && rawVoice.trim()
-      ? rawVoice.trim()
-      : null;
+    const rawVoice =
+      input.modelParams?.voice_name ?? input.modelParams?.voice_id;
+    const voice =
+      typeof rawVoice === "string" && rawVoice.trim() ? rawVoice.trim() : null;
     const rawSpeed = input.modelParams?.speed;
-    const speed = typeof rawSpeed === "number" && Number.isFinite(rawSpeed)
-      ? rawSpeed
-      : undefined;
+    const speed =
+      typeof rawSpeed === "number" && Number.isFinite(rawSpeed)
+        ? rawSpeed
+        : undefined;
     const result = await audioConfig.synthesize({
       model: input.model,
       text: input.prompt,
@@ -761,10 +650,6 @@ function localMutationEnvelope(operation: string, kind: string, id: string) {
   };
 }
 
-function sha256Hex(bytes: Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
 type LocalDb = LocalMetadataDb & {
   providerAccounts: LocalProviderAccountConfig[];
   providerOAuth: LocalProviderOAuthRecord[];
@@ -772,55 +657,31 @@ type LocalDb = LocalMetadataDb & {
 };
 
 const LOCAL_API_READ_RECEIPT_SECRET = randomBytes(32).toString("hex");
+const PROJECT_ASSET_READ_RECEIPT_HEADER = "x-clash-read-receipt";
 const PROJECT_PURGE_DELAY_MS = 7 * 24 * 60 * 60 * 1000;
+const ASSET_PURGE_DELAY_MS = PROJECT_PURGE_DELAY_MS;
+const PERSONAL_GLOBAL_ASSET_LIBRARY_ID = "personal";
 
-type ProjectCanvasAssetNodeRef = Pick<
-  LocalMetadataAssetNodeRef,
-  | "assetId"
-  | "projectId"
-  | "nodeId"
-  | "nodeType"
-  | "fieldPath"
-  | "referenceRole"
->;
+function localApiProjectAssetReadReceipt(readToken: string): string {
+  return createHmac("sha256", LOCAL_API_READ_RECEIPT_SECRET)
+    .update(`project-asset:${readToken}`)
+    .digest("base64url");
+}
 
-function refreshAssetReferenceProjectionState(
-  current: Pick<LocalDb, "assets" | "assetRefs" | "assetNodeRefs">,
-  projectIds: string[],
-  projectedCanvasAssetRefs: ProjectCanvasAssetNodeRef[],
-): void {
-  const observedAt = Math.floor(Date.now() / 1000);
-  const currentAssetIds = new Set(current.assets.map((asset) => asset.id));
-  const existingRefKeys = new Set(
-    current.assetRefs.map((ref) => `${ref.assetId}\0${ref.projectId}`),
+function projectAssetReceiptReadToken(readToken: string): string {
+  return agentReadReceiptToken({
+    readToken,
+    receipt: localApiProjectAssetReadReceipt(readToken),
+  });
+}
+
+function verifyLocalApiProjectAssetReadReceipt(
+  proof: AgentReadReceiptProof,
+): boolean {
+  return (
+    proof.namespace === "project-asset" &&
+    proof.receipt === localApiProjectAssetReadReceipt(proof.baseReadToken)
   );
-  const scannedProjectIds = new Set(projectIds);
-  const nextAssetNodeRefs = new Map<string, LocalMetadataAssetNodeRef>();
-  for (const ref of projectedCanvasAssetRefs) {
-    const refKey = `${ref.assetId}\0${ref.projectId}`;
-    if (!currentAssetIds.has(ref.assetId)) continue;
-    if (!existingRefKeys.has(refKey)) {
-      current.assetRefs.unshift({
-        assetId: ref.assetId,
-        projectId: ref.projectId,
-        importedAt: observedAt,
-      });
-      existingRefKeys.add(refKey);
-    }
-    nextAssetNodeRefs.set(
-      `${ref.projectId}\0${ref.nodeId}\0${ref.fieldPath}\0${ref.assetId}`,
-      {
-        ...ref,
-        observedAt,
-      },
-    );
-  }
-  current.assetNodeRefs = [
-    ...nextAssetNodeRefs.values(),
-    ...current.assetNodeRefs.filter(
-      (ref) => !scannedProjectIds.has(ref.projectId),
-    ),
-  ];
 }
 
 const LOCAL_RUNTIME_ID = "desktop-local";
@@ -1007,16 +868,19 @@ function contentTypeForPath(path: string): string {
   if (ext === ".webp") return "image/webp";
   if (ext === ".svg") return "image/svg+xml";
   if (ext === ".mp4") return "video/mp4";
+  if (ext === ".webm") return "video/webm";
+  if (ext === ".mov") return "video/quicktime";
   if (ext === ".mp3") return "audio/mpeg";
   if (ext === ".wav") return "audio/wav";
+  if (ext === ".m4a") return "audio/mp4";
+  if (ext === ".flac") return "audio/flac";
+  if (ext === ".glb") return "model/gltf-binary";
+  if (ext === ".gltf") return "model/gltf+json";
   if (ext === ".txt") return "text/plain";
   return "application/octet-stream";
 }
 
-type AssetByteRange =
-  | { start: number; end: number }
-  | null
-  | "unsatisfiable";
+type AssetByteRange = { start: number; end: number } | null | "unsatisfiable";
 
 function parseAssetByteRange(
   rangeHeader: string | undefined,
@@ -1057,18 +921,22 @@ function parseAssetByteRange(
   };
 }
 
-async function serveLocalAssetFile(options: {
-  dataDir: string;
-  clashRoot: string;
-  storageKey: string;
+async function serveImmutableFileProjection(options: {
+  path: string;
+  contentType: string;
+  expectedByteLength?: number;
   rangeHeader?: string;
 }): Promise<Response> {
-  const path = await assetPathForRead(
-    options.dataDir,
-    options.storageKey,
-    options.clashRoot,
-  );
-  const fileInfo = await stat(path);
+  const fileInfo = await stat(options.path);
+  if (
+    !fileInfo.isFile() ||
+    (options.expectedByteLength !== undefined &&
+      fileInfo.size !== options.expectedByteLength)
+  ) {
+    throw new Error(
+      "Immutable Asset projection no longer matches its Resource facts.",
+    );
+  }
   const range = parseAssetByteRange(options.rangeHeader, fileInfo.size);
   if (range === "unsatisfiable") {
     return new Response(null, {
@@ -1081,7 +949,7 @@ async function serveLocalAssetFile(options: {
   }
   if (range) {
     const length = range.end - range.start + 1;
-    const handle = await open(path, "r");
+    const handle = await open(options.path, "r");
     try {
       const bytes = new Uint8Array(length);
       const { bytesRead } = await handle.read(bytes, 0, length, range.start);
@@ -1089,24 +957,44 @@ async function serveLocalAssetFile(options: {
         status: 206,
         headers: {
           "accept-ranges": "bytes",
-          "content-type": contentTypeForPath(options.storageKey),
+          "content-type": options.contentType,
           "content-length": String(bytesRead),
           "content-range": `bytes ${range.start}-${range.start + bytesRead - 1}/${fileInfo.size}`,
           "cache-control": "public, max-age=31536000, immutable",
+          "x-content-type-options": "nosniff",
         },
       });
     } finally {
       await handle.close();
     }
   }
-  const bytes = await readFile(path);
+  const bytes = await readFile(options.path);
   return new Response(bytes, {
     headers: {
       "accept-ranges": "bytes",
-      "content-type": contentTypeForPath(options.storageKey),
+      "content-type": options.contentType,
       "content-length": String(bytes.byteLength),
       "cache-control": "public, max-age=31536000, immutable",
+      "x-content-type-options": "nosniff",
     },
+  });
+}
+
+async function serveLocalAssetFile(options: {
+  dataDir: string;
+  clashRoot: string;
+  storageKey: string;
+  rangeHeader?: string;
+}): Promise<Response> {
+  const path = await assetPathForRead(
+    options.dataDir,
+    options.storageKey,
+    options.clashRoot,
+  );
+  return serveImmutableFileProjection({
+    path,
+    contentType: contentTypeForPath(options.storageKey),
+    ...(options.rangeHeader ? { rangeHeader: options.rangeHeader } : {}),
   });
 }
 
@@ -1119,11 +1007,6 @@ function isoToEpochSeconds(value: string): number {
   return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : 0;
 }
 
-function epochSecondsToIso(value: number | null | undefined): string | null {
-  if (!value) return null;
-  return new Date(value * 1000).toISOString();
-}
-
 function createDb(dataDir: string) {
   const metadataStore = createLocalMetadataStore(dataDir);
   const providerStore = createLocalProviderStore(dataDir);
@@ -1131,12 +1014,13 @@ function createDb(dataDir: string) {
 
   async function load(): Promise<LocalDb> {
     await writeQueue.catch(() => undefined);
-    const [metadata, providerAccounts, providerOAuth, modelCardConfigs] = await Promise.all([
-      metadataStore.load(),
-      providerStore.loadProviderAccounts(),
-      providerStore.loadProviderOAuth(),
-      providerStore.loadModelCardConfigs(),
-    ]);
+    const [metadata, providerAccounts, providerOAuth, modelCardConfigs] =
+      await Promise.all([
+        metadataStore.load(),
+        providerStore.loadProviderAccounts(),
+        providerStore.loadProviderOAuth(),
+        providerStore.loadModelCardConfigs(),
+      ]);
     return {
       ...metadata,
       providerAccounts,
@@ -1151,12 +1035,13 @@ function createDb(dataDir: string) {
     const task = writeQueue
       .catch(() => undefined)
       .then(async () => {
-        const [metadata, providerAccounts, providerOAuth, modelCardConfigs] = await Promise.all([
-          metadataStore.load(),
-          providerStore.loadProviderAccounts(),
-          providerStore.loadProviderOAuth(),
-          providerStore.loadModelCardConfigs(),
-        ]);
+        const [metadata, providerAccounts, providerOAuth, modelCardConfigs] =
+          await Promise.all([
+            metadataStore.load(),
+            providerStore.loadProviderAccounts(),
+            providerStore.loadProviderOAuth(),
+            providerStore.loadModelCardConfigs(),
+          ]);
         const normalized: LocalDb = {
           ...metadata,
           providerAccounts,
@@ -1497,10 +1382,6 @@ function createLocalSessionMessageStore(
   };
 }
 
-function isAssetKind(value: unknown): value is AssetKind {
-  return value === "image" || value === "video" || value === "audio" || value === "model";
-}
-
 function optionalBodyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
@@ -1565,143 +1446,8 @@ function stringArray(value: unknown): string[] {
   ];
 }
 
-async function collectProjectCanvasAssetRefs(
-  dataDir: string,
-  projectIds: string[],
-): Promise<ProjectCanvasAssetNodeRef[]> {
-  if (projectIds.length === 0) return [];
-  const store = new FileReplicaStore(join(dataDir, "projects"));
-  const refs: ProjectCanvasAssetNodeRef[] = [];
-  for (const projectId of projectIds) {
-    const doc = await store.recover(projectId);
-    const nodes = doc.getMap("nodes");
-    for (const [nodeId, raw] of nodes.entries()) {
-      collectAssetNodeRefsFromValue(raw, refs, {
-        projectId,
-        nodeId,
-        nodeType: canvasNodeType(raw),
-      });
-    }
-  }
-  return refs.sort(
-    (left, right) =>
-      left.projectId.localeCompare(right.projectId) ||
-      left.nodeId.localeCompare(right.nodeId) ||
-      left.fieldPath.localeCompare(right.fieldPath) ||
-      left.assetId.localeCompare(right.assetId),
-  );
-}
-
-function canvasNodeType(value: unknown): string {
-  if (!value || typeof value !== "object") return "unknown";
-  const type = (value as Record<string, unknown>).type;
-  return typeof type === "string" && type.trim() ? type.trim() : "unknown";
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-async function discoverProjectReplicaIds(dataDir: string): Promise<string[]> {
-  try {
-    const entries = await readdir(join(dataDir, "projects"), {
-      withFileTypes: true,
-      encoding: "utf8",
-    });
-    return entries
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => {
-        try {
-          return decodeURIComponent(entry.name);
-        } catch {
-          return "";
-        }
-      })
-      .filter((projectId) => projectId.length > 0)
-      .sort();
-  } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      (error as NodeJS.ErrnoException).code === "ENOENT"
-    ) {
-      return [];
-    }
-    throw error;
-  }
-}
-
-function collectAssetNodeRefsFromValue(
-  value: unknown,
-  refs: ProjectCanvasAssetNodeRef[],
-  context: Pick<ProjectCanvasAssetNodeRef, "projectId" | "nodeId" | "nodeType">,
-  fieldPath = "",
-): void {
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => {
-      collectAssetNodeRefsFromValue(
-        item,
-        refs,
-        context,
-        `${fieldPath}[${index}]`,
-      );
-    });
-    return;
-  }
-  if (!value || typeof value !== "object") return;
-  for (const [key, nested] of Object.entries(
-    value as Record<string, unknown>,
-  )) {
-    const nestedPath = fieldPath ? `${fieldPath}.${key}` : key;
-    if (
-      isAssetReferenceKey(key) &&
-      typeof nested === "string" &&
-      nested.trim()
-    ) {
-      refs.push({
-        ...context,
-        assetId: nested.trim(),
-        fieldPath: nestedPath,
-        referenceRole: inferAssetReferenceRole(key),
-      });
-    } else if (isAssetReferenceListKey(key) && Array.isArray(nested)) {
-      nested.forEach((item, index) => {
-        if (typeof item === "string" && item.trim()) {
-          refs.push({
-            ...context,
-            assetId: item.trim(),
-            fieldPath: `${nestedPath}[${index}]`,
-            referenceRole: inferAssetReferenceRole(key),
-          });
-        }
-      });
-    }
-    collectAssetNodeRefsFromValue(nested, refs, context, nestedPath);
-  }
-}
-
-function isAssetReferenceKey(key: string): boolean {
-  return normalizeAssetReferenceKey(key).endsWith("assetid");
-}
-
-function isAssetReferenceListKey(key: string): boolean {
-  return normalizeAssetReferenceKey(key).endsWith("assetids");
-}
-
-function normalizeAssetReferenceKey(key: string): string {
-  return key.replace(/[^a-z0-9]/gi, "").toLowerCase();
-}
-
-function inferAssetReferenceRole(key: string): string {
-  const normalized = normalizeAssetReferenceKey(key);
-  if (normalized.startsWith("requiredreferenceasset"))
-    return "required-reference";
-  if (normalized.startsWith("referenceasset")) return "reference";
-  if (normalized.startsWith("sourceasset")) return "source";
-  if (normalized.startsWith("derivedasset")) return "derived";
-  if (normalized === "assetid" || normalized === "assetids") return "primary";
-  return "asset";
 }
 
 function json(data: unknown, status = 200): Response {
@@ -1717,68 +1463,138 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-function projectAssetFileName(value: string): string {
-  return value.split(/[\\/]/).filter(Boolean).at(-1)?.trim() ?? "";
+function localProjectAssetErrorResponse(error: unknown): Response {
+  if (error instanceof AssetSdkContractError) {
+    const status =
+      error.code === "PROJECT_ASSET_NOT_FOUND"
+        ? 404
+        : error.code === "INVALID_PROJECT_ASSET"
+          ? 400
+          : error.code === "RESOURCE_NOT_READY" ||
+              error.code === "RESOURCE_UNAVAILABLE"
+            ? 503
+            : error.code === "ASSET_IN_USE"
+              ? 409
+              : error.code === "ACTION_ASSET_BINDING_AUTHORITY_REQUIRED"
+                ? 409
+                : error.code === "READ_REQUIRED" ||
+                    error.code === "STALE_READ" ||
+                    error.code === "INVALID_READ_PROOF"
+                  ? 409
+                  : 500;
+    return json(
+      {
+        error: error.message,
+        code: error.code,
+        ...(error.projectAssetId
+          ? { projectAssetId: error.projectAssetId }
+          : {}),
+        ...(error.references ? { references: error.references } : {}),
+      },
+      status,
+    );
+  }
+  if (error instanceof LocalProjectAssetMigrationError) {
+    const status =
+      error.code === "PROJECT_ASSET_NOT_FOUND"
+        ? 404
+        : error.code === "RESOURCE_DIGEST_UNAVAILABLE"
+          ? 503
+          : 409;
+    return json(
+      {
+        error:
+          error.code === "PROJECT_ASSET_NOT_FOUND"
+            ? "Project Asset not found"
+            : error.message,
+        code: error.code,
+      },
+      status,
+    );
+  }
+  return json({ error: errorMessage(error) }, 500);
 }
 
-function isMachineProjectAssetName(value: string): boolean {
-  const candidate = projectAssetFileName(value).replace(/\.[^.]+$/, "");
-  return (
-    !candidate ||
-    /^local-(?:asset-)?(?:gen-)?[a-z\d-]+$/i.test(candidate) ||
-    /^upload-\d+-[a-z\d]+$/i.test(candidate) ||
-    /^[a-f\d]{16,}$/i.test(candidate) ||
-    /^(?:[a-f\d]{8}-){1,}[a-f\d-]{8,}$/i.test(candidate)
-  );
+function localGlobalAssetErrorResponse(error: unknown): Response {
+  if (error instanceof AssetSdkContractError) {
+    const status =
+      error.code === "GLOBAL_ASSET_NOT_FOUND"
+        ? 404
+        : error.code === "INVALID_GLOBAL_ASSET"
+          ? 400
+          : error.code === "RESOURCE_NOT_READY" ||
+              error.code === "RESOURCE_UNAVAILABLE"
+            ? 503
+            : 500;
+    return json({ error: error.message, code: error.code }, status);
+  }
+  if (error instanceof LocalGlobalAssetError) {
+    const status =
+      error.code === "GLOBAL_ASSET_NOT_FOUND"
+        ? 404
+        : error.code === "GLOBAL_ASSET_UNAVAILABLE"
+          ? 409
+          : 409;
+    return json(
+      {
+        error:
+          error.code === "GLOBAL_ASSET_NOT_FOUND"
+            ? "Global Asset not found"
+            : error.message,
+        code: error.code,
+      },
+      status,
+    );
+  }
+  return json({ error: errorMessage(error) }, 500);
 }
 
-function projectAssetName(asset: Asset): string {
-  const explicitName = [
-    asset.metadata?.originalName,
-    asset.metadata?.mockText,
-    asset.metadata?.transcript,
-  ].find(
-    (value): value is string =>
-      typeof value === "string" &&
-      Boolean(value.trim()) &&
-      !isMachineProjectAssetName(value),
-  );
-  if (explicitName) return explicitName.trim();
-
-  const normalizedPath = asset.srcR2Key.toLowerCase();
-  const kind = asset.kind;
-  if (/(?:^|\/)edits?(?:\/|$)/.test(normalizedPath))
-    return `Edited ${kind}`;
-  if (/(?:^|\/)generated(?:\/|$)/.test(normalizedPath))
-    return `Generated ${kind}`;
-  if (/(?:^|\/)uploads?(?:\/|$)/.test(normalizedPath))
-    return `Uploaded ${kind}`;
-  return kind[0].toUpperCase() + kind.slice(1);
-}
-
-function toProjectAsset(
-  asset: Asset,
-  importedAt?: number,
-): LocalProjectAsset | null {
+function inferProjectAssetFileKind(file: File): AssetKind | undefined {
+  const contentType = file.type.trim().toLowerCase();
+  if (contentType.startsWith("image/")) return "image";
+  if (contentType.startsWith("video/")) return "video";
+  if (contentType.startsWith("audio/")) return "audio";
   if (
-    asset.kind !== "image" &&
-    asset.kind !== "video" &&
-    asset.kind !== "audio"
-  )
-    return null;
-  if (asset.kind === "video" && !asset.coverR2Key) return null;
+    contentType === "model/gltf-binary" ||
+    contentType === "model/gltf+json"
+  ) {
+    return "model";
+  }
+  const extension = extname(file.name).toLowerCase();
+  if (
+    [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".avif"].includes(
+      extension,
+    )
+  ) {
+    return "image";
+  }
+  if ([".mp4", ".webm", ".mov", ".m4v", ".mkv"].includes(extension)) {
+    return "video";
+  }
+  if ([".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"].includes(extension)) {
+    return "audio";
+  }
+  if ([".glb", ".gltf", ".fbx", ".bvh", ".obj", ".usdz"].includes(extension)) {
+    return "model";
+  }
+  return undefined;
+}
 
-  const previewKey =
-    asset.kind === "video" ? asset.coverR2Key! : asset.srcR2Key;
-  return {
-    id: asset.id,
-    name: projectAssetName(asset),
-    url: `/assets/${previewKey}`,
-    thumbnailUrl: `/assets/${previewKey}`,
-    type: asset.kind,
-    storageKey: asset.srcR2Key,
-    createdAt: epochSecondsToIso(asset.createdAt || importedAt),
-  };
+function validateProjectAssetImportFile(
+  file: File,
+  kind: AssetKind,
+): string | undefined {
+  if (!file.name.trim()) return "Project Asset file must have a name";
+  if (file.name.length > 512) return "Project Asset file name is too long";
+  if (!Number.isSafeInteger(file.size) || file.size <= 0) {
+    return "Project Asset file must contain bytes";
+  }
+  const inferred = inferProjectAssetFileKind(file);
+  if (!inferred) return "Project Asset file type is unsupported";
+  if (inferred !== kind) {
+    return `Project Asset kind ${kind} does not match the selected ${inferred} file`;
+  }
+  return undefined;
 }
 
 function requestOrigin(c: { req: { url: string } }): string {
@@ -1792,7 +1608,11 @@ function isAllowedLocalBrowserOrigin(origin: string): boolean {
     const url = new URL(normalized);
     if (url.protocol !== "http:" && url.protocol !== "https:") return false;
     const hostname = url.hostname.toLowerCase();
-    return hostname === "127.0.0.1" || hostname === "localhost" || hostname === "[::1]";
+    return (
+      hostname === "127.0.0.1" ||
+      hostname === "localhost" ||
+      hostname === "[::1]"
+    );
   } catch {
     return false;
   }
@@ -1807,77 +1627,6 @@ function localAssetUrl(
 
 function signedUrlExp(): number {
   return Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
-}
-
-function withSignedAssetUrls<T extends Asset>(
-  c: { req: { url: string } },
-  asset: T,
-): T {
-  const exp = signedUrlExp();
-  return {
-    ...asset,
-    signedUrl: localAssetUrl(c, asset.srcR2Key),
-    signedUrlExp: exp,
-    ...(asset.coverR2Key
-      ? {
-          signedCoverUrl: localAssetUrl(c, asset.coverR2Key),
-          signedCoverUrlExp: exp,
-        }
-      : {}),
-  };
-}
-
-function projectAssets(
-  project: LocalProject,
-  state: LocalDb,
-): LocalProjectAsset[] {
-  const assetsById = new Map(state.assets.map((asset) => [asset.id, asset]));
-  const refs = [
-    ...state.assetRefs.filter((ref) => ref.projectId === project.id),
-    ...state.assets
-      .filter((asset) => asset.projectId === project.id)
-      .map((asset) => ({
-        assetId: asset.id,
-        projectId: project.id,
-        importedAt: asset.createdAt,
-      })),
-  ]
-    .sort((a, b) => b.importedAt - a.importedAt);
-
-  const seenAssetIds = new Set<string>();
-  const seenPreviewKeys = new Set<string>();
-  const resolvedAssets: LocalProjectAsset[] = [];
-
-  for (const ref of refs) {
-    if (seenAssetIds.has(ref.assetId)) continue;
-    const asset = assetsById.get(ref.assetId);
-    if (!asset) continue;
-    const preview = toProjectAsset(asset, ref.importedAt);
-    if (!preview || seenPreviewKeys.has(preview.url)) continue;
-    seenAssetIds.add(ref.assetId);
-    seenPreviewKeys.add(preview.url);
-    resolvedAssets.push(preview);
-  }
-
-  for (const legacyAsset of project.assets) {
-    if (seenAssetIds.has(legacyAsset.id) || seenPreviewKeys.has(legacyAsset.url)) continue;
-    seenAssetIds.add(legacyAsset.id);
-    seenPreviewKeys.add(legacyAsset.url);
-    resolvedAssets.push(legacyAsset);
-  }
-
-  return resolvedAssets;
-}
-
-function projectPreviewAssets(
-  project: LocalProject,
-  state: LocalDb,
-): LocalProjectAsset[] {
-  return projectAssets(project, state).slice(0, 4);
-}
-
-function projectAssetCount(project: LocalProject, state: LocalDb): number {
-  return projectAssets(project, state).length;
 }
 
 function isDeletedProject(project: LocalProject): boolean {
@@ -1963,14 +1712,6 @@ function purgeProjectFromState(state: LocalDb, projectId: string) {
     sessionMessages: state.sessionMessages.filter((message) =>
       sessionIds.has(message.session_id),
     ).length,
-    assetRowsUnlinked: state.assets.filter(
-      (asset) => asset.projectId === projectId,
-    ).length,
-    assetRefs: state.assetRefs.filter((ref) => ref.projectId === projectId)
-      .length,
-    assetNodeRefs: state.assetNodeRefs.filter(
-      (ref) => ref.projectId === projectId,
-    ).length,
   };
   state.projects = state.projects.filter(
     (candidate) => candidate.id !== projectId,
@@ -1981,34 +1722,32 @@ function purgeProjectFromState(state: LocalDb, projectId: string) {
   state.sessionMessages = state.sessionMessages.filter(
     (message) => !sessionIds.has(message.session_id),
   );
-  state.assets = state.assets.map((asset) =>
-    asset.projectId === projectId ? { ...asset, projectId: undefined } : asset,
-  );
-  state.assetRefs = state.assetRefs.filter(
-    (ref) => ref.projectId !== projectId,
-  );
-  state.assetNodeRefs = state.assetNodeRefs.filter(
-    (ref) => ref.projectId !== projectId,
-  );
+  // Legacy Asset rows are one-way migration/doctor input. Project purge must
+  // not pretend that the ordinary metadata save path rewrites that read-only
+  // source; authoritative Project Asset lifecycle is handled by Loro instead.
   return { project, counts };
 }
 
 function toV1Project(
   project: LocalProject,
-  state?: LocalDb,
+  assets: ResolvedAsset[],
   assetMode: "preview" | "all" = "preview",
+  coverAssetId: string | null = null,
 ) {
+  const projectedAssets =
+    assetMode === "all"
+      ? assets
+      : coverAssetId
+        ? assets.filter((asset) => asset.id === coverAssetId)
+        : [];
   return {
     id: project.id,
     ownerId: project.ownerId,
     name: project.name,
     description: project.description,
-    assets: state
-      ? assetMode === "all"
-        ? projectAssets(project, state)
-        : projectPreviewAssets(project, state)
-      : project.assets,
-    assetCount: state ? projectAssetCount(project, state) : project.assets.length,
+    coverAssetId,
+    assets: projectedAssets,
+    assetCount: assets.length,
     created_at: isoToEpochSeconds(project.createdAt),
     updated_at: isoToEpochSeconds(project.updatedAt),
     ...(isDeletedProject(project) ? { deletedAt: project.deletedAt } : {}),
@@ -2525,122 +2264,6 @@ function canvasNodeDataPatchFromBody(
   return { ok: true, patch };
 }
 
-function localApiAssetReadReceipt(readToken: string): string {
-  return createHmac("sha256", LOCAL_API_READ_RECEIPT_SECRET)
-    .update(`asset:${readToken}`)
-    .digest("base64url");
-}
-
-function assetReceiptReadToken(asset: Asset): string {
-  const readToken = assetReadToken(asset);
-  return agentReadReceiptToken({
-    readToken,
-    receipt: localApiAssetReadReceipt(readToken),
-  });
-}
-
-function verifyLocalApiAssetReadReceipt(proof: AgentReadReceiptProof): boolean {
-  return (
-    proof.namespace === "asset" &&
-    proof.receipt === localApiAssetReadReceipt(proof.baseReadToken)
-  );
-}
-
-type AssetRefReadTarget = {
-  assetId: string;
-  projectId: string;
-  importedAt: number;
-};
-
-function localApiAssetRefReadReceipt(readToken: string): string {
-  return createHmac("sha256", LOCAL_API_READ_RECEIPT_SECRET)
-    .update(`asset-ref:${readToken}`)
-    .digest("base64url");
-}
-
-function assetRefReceiptReadToken(ref: AssetRefReadTarget): string {
-  const readToken = assetRefReadToken(ref);
-  return agentReadReceiptToken({
-    readToken,
-    receipt: localApiAssetRefReadReceipt(readToken),
-  });
-}
-
-function verifyLocalApiAssetRefReadReceipt(
-  proof: AgentReadReceiptProof,
-): boolean {
-  return (
-    proof.namespace === "asset-ref" &&
-    proof.receipt === localApiAssetRefReadReceipt(proof.baseReadToken)
-  );
-}
-
-type AssetGarbageCollectionScope = {
-  explicitProtectedAssetIds: string[];
-  protectedProjectIds: string[];
-  canvasAssetRefs: ProjectCanvasAssetNodeRef[];
-};
-
-type AssetGarbageCollectionPlan = {
-  deletedAssets: Array<{ id: string; srcR2Key: string }>;
-  protectedAssets: string[];
-  protectedProjectIds: string[];
-  deletedBlobKeys: string[];
-  orphanedIds: Set<string>;
-  projectedCanvasAssetRefs: ProjectCanvasAssetNodeRef[];
-};
-
-function localApiAssetGcReadReceipt(readToken: string): string {
-  return createHmac("sha256", LOCAL_API_READ_RECEIPT_SECRET)
-    .update(`asset-gc:${readToken}`)
-    .digest("base64url");
-}
-
-function assetGarbageCollectionReadToken(
-  plan: Pick<
-    AssetGarbageCollectionPlan,
-    | "deletedAssets"
-    | "deletedBlobKeys"
-    | "protectedAssets"
-    | "protectedProjectIds"
-  >,
-): string {
-  return agentReadToken({
-    namespace: "asset-gc",
-    subject: {
-      deletedAssets: plan.deletedAssets
-        .map((asset) => ({ id: asset.id, srcR2Key: asset.srcR2Key }))
-        .sort(
-          (left, right) =>
-            left.id.localeCompare(right.id) ||
-            left.srcR2Key.localeCompare(right.srcR2Key),
-        ),
-      deletedBlobKeys: [...plan.deletedBlobKeys].sort(),
-      protectedAssets: [...plan.protectedAssets].sort(),
-      protectedProjectIds: [...plan.protectedProjectIds].sort(),
-    },
-  });
-}
-
-function assetGarbageCollectionReceiptReadToken(
-  plan: AssetGarbageCollectionPlan,
-): string {
-  const readToken = assetGarbageCollectionReadToken(plan);
-  return agentReadReceiptToken({
-    readToken,
-    receipt: localApiAssetGcReadReceipt(readToken),
-  });
-}
-
-function verifyLocalApiAssetGcReadReceipt(
-  proof: AgentReadReceiptProof,
-): boolean {
-  return (
-    proof.namespace === "asset-gc" &&
-    proof.receipt === localApiAssetGcReadReceipt(proof.baseReadToken)
-  );
-}
-
 type ProjectWritePreconditions = {
   actorClientType?: string;
   expectedReadToken?: string;
@@ -2693,99 +2316,6 @@ function validateAgentReadProof(
     });
   }
   return validateLegacyAgentReadProof(options);
-}
-
-async function resolveAssetGarbageCollectionScope(
-  dataDir: string,
-  body: { protectedAssetIds?: unknown; projectIds?: unknown },
-): Promise<AssetGarbageCollectionScope> {
-  const requestedProjectIds = stringArray(body.projectIds).sort();
-  const protectedProjectIds =
-    requestedProjectIds.length > 0
-      ? requestedProjectIds
-      : await discoverProjectReplicaIds(dataDir);
-  return {
-    explicitProtectedAssetIds: stringArray(body.protectedAssetIds).sort(),
-    protectedProjectIds,
-    canvasAssetRefs: await collectProjectCanvasAssetRefs(
-      dataDir,
-      protectedProjectIds,
-    ),
-  };
-}
-
-function buildAssetGarbageCollectionPlan(
-  state: Pick<LocalDb, "assets" | "assetRefs" | "libraryAssetRefs">,
-  scope: AssetGarbageCollectionScope,
-): AssetGarbageCollectionPlan {
-  const referencedAssetIds = new Set([
-    ...state.assetRefs.map((ref) => ref.assetId),
-    ...(state.libraryAssetRefs ?? []).map((ref) => ref.assetId),
-  ]);
-  const protectedAssetIds = new Set(scope.explicitProtectedAssetIds);
-  const knownAssetIds = new Set(state.assets.map((asset) => asset.id));
-  const projectedCanvasAssetRefs = scope.canvasAssetRefs.filter((ref) =>
-    knownAssetIds.has(ref.assetId),
-  );
-  for (const ref of scope.canvasAssetRefs) {
-    protectedAssetIds.add(ref.assetId);
-  }
-  const orphanedAssets = state.assets
-    .filter(
-      (asset) =>
-        !referencedAssetIds.has(asset.id) && !protectedAssetIds.has(asset.id),
-    )
-    .sort(
-      (left, right) =>
-        left.id.localeCompare(right.id) ||
-        left.srcR2Key.localeCompare(right.srcR2Key),
-    );
-  const orphanedIds = new Set(orphanedAssets.map((asset) => asset.id));
-  const liveStorageKeys = new Set(
-    state.assets
-      .filter((asset) => !orphanedIds.has(asset.id))
-      .map((asset) => asset.srcR2Key),
-  );
-  const deletedBlobKeys = orphanedAssets
-    .map((asset) => asset.srcR2Key)
-    .filter((key) => isLocalBlobStorageKey(key) && !liveStorageKeys.has(key))
-    .sort();
-  return {
-    deletedAssets: orphanedAssets.map((asset) => ({
-      id: asset.id,
-      srcR2Key: asset.srcR2Key,
-    })),
-    protectedAssets: [...protectedAssetIds].sort(),
-    protectedProjectIds: scope.protectedProjectIds,
-    deletedBlobKeys,
-    orphanedIds,
-    projectedCanvasAssetRefs,
-  };
-}
-
-function validateAssetGarbageCollectionMutation(options: {
-  plan: AssetGarbageCollectionPlan;
-  preconditions: ProjectWritePreconditions;
-}) {
-  const currentReadToken = assetGarbageCollectionReadToken(options.plan);
-  const guard = validateAgentReadProof({
-    actorClientType: options.preconditions.actorClientType,
-    operation: "asset garbage collection",
-    currentReadToken,
-    observedVersion: options.preconditions.observedVersion,
-    expectedReadToken: options.preconditions.expectedReadToken,
-    requireReceipt: true,
-    readReceiptVerifier: verifyLocalApiAssetGcReadReceipt,
-    readCommandHint:
-      "Run `clash assets gc --dry-run --json` first, then retry.",
-  });
-  return validateHostMutationEnvelope({
-    operation: "asset_gc",
-    entity: { kind: "asset-store", id: "local" },
-    expectedReadToken: options.preconditions.expectedReadToken,
-    currentReadToken,
-    guard,
-  });
 }
 
 function validateProjectReadMutation(options: {
@@ -3161,16 +2691,12 @@ function parseProviderOAuthId(value: unknown): ProviderOAuthId | null {
 }
 
 /**
- * A browser OAuth capture, as it was stored before the auth-type registry was deleted.
+ * Host-normalized browser flow frozen into a pending OAuth record.
  *
- * Declared here rather than derived from `@clash/shared-types` because a plugin can no longer
- * declare this shape. It was the `oauth` member of a union over auth types -- an authorization URL,
- * a custom URL scheme, and a configurable field to read the token out of -- and a union over auth
- * types needs a member per vendor, which is what the declarative model exists to stop.
- *
- * The type stays because pending OAuth records already hold it: `oauthState` is JSON written at
- * start and read back at complete, so a capture begun before this change still finishes. Nothing
- * mints new ones.
+ * Plugins declare acquisition through `auth.methods[].flow`; the Host resolves that declaration
+ * into this private shape so completion uses the same callback and scoped plugin-store destination
+ * even if the installed package changes while the browser is open. The normalized state is never
+ * part of the contribution contract and never contains the captured credential.
  */
 interface BrowserProviderOAuth {
   type: "oauth";
@@ -3189,6 +2715,8 @@ interface BrowserProviderOAuth {
     | { type: "loopback" }
     | { type: "poll-until"; url: string; intervalMs?: number };
   accessTokenField: string;
+  /** Host-private destination resolved from the installed Provider declaration. */
+  pluginStore?: { pluginId: string; key: string };
 }
 
 interface BrowserProviderOAuthState {
@@ -3196,11 +2724,16 @@ interface BrowserProviderOAuthState {
   auth: BrowserProviderOAuth;
 }
 
-function parseBrowserProviderOAuthState(value: string | undefined): BrowserProviderOAuthState | null {
+function parseBrowserProviderOAuthState(
+  value: string | undefined,
+): BrowserProviderOAuthState | null {
   if (!value) return null;
   try {
     const parsed = JSON.parse(value) as Partial<BrowserProviderOAuthState>;
-    if (parsed.protocol !== "clash.provider-oauth.browser/v1" || parsed.auth?.type !== "oauth") {
+    if (
+      parsed.protocol !== "clash.provider-oauth.browser/v1" ||
+      parsed.auth?.type !== "oauth"
+    ) {
       return null;
     }
     return parsed as BrowserProviderOAuthState;
@@ -3209,60 +2742,77 @@ function parseBrowserProviderOAuthState(value: string | undefined): BrowserProvi
   }
 }
 
-/**
- * No plugin can declare a browser capture any more, so there is never one to find.
- *
- * The lookup used to scan every installed provider's `auth` array for an `oauth` entry with a
- * matching id. That array is gone: a provider now declares form keys, an optional browser flow and
- * an optional renewal schedule, and the flow carries no id for a route to name and no field to read
- * a token out of.
- *
- * Kept as a function returning null rather than deleted, because both call sites already handle
- * null by answering 404 -- "OAuth provider is not configured" -- which is the truthful answer. The
- * built-in drivers in `options.providerOAuth` are checked first and are unaffected.
- */
+/** Resolve one Provider-declared browser flow and freeze its Host-owned storage destination. */
 async function pluginBrowserOAuth(
   options: Pick<LocalApiOptions, "listPluginProviders">,
   oauthId: ProviderOAuthId,
 ): Promise<BrowserProviderOAuth | null> {
-  // Read from the Provider's own declaration. This returned null unconditionally after the
-  // auth-type registry was deleted, so every plugin Provider got a 404 from the start endpoint no
-  // matter what it declared -- a definition wired to nothing.
   const registrations = (await options.listPluginProviders?.()) ?? [];
-  const flow = declaredBrowserFlow(
-    registrations.map((registration) => ({
-      id: registration.document.spec.id,
-      name: registration.document.spec.name,
-      ...(registration.document.spec.auth ? { auth: registration.document.spec.auth } : {}),
-    })),
-    oauthId,
-  );
-  if (!flow) return null;
-
-  return {
-    type: "oauth",
-    id: oauthId,
-    flow: "browser",
-    authorizationUrl: flow.open,
-    callback: flow.callback,
-    // The host stores whatever the exchange returns; this names the field it hands back as the
-    // credential so the account form has something to show as configured.
-    accessTokenField: "accessToken",
-  };
+  for (const registration of registrations) {
+    const provider = registration.document.spec;
+    if (provider.id !== oauthId) continue;
+    const method = provider.auth?.methods.find(
+      (candidate) => candidate.flow !== undefined,
+    );
+    const flow = method?.flow;
+    if (!flow) continue;
+    return {
+      type: "oauth",
+      id: oauthId,
+      flow: "browser",
+      authorizationUrl: flow.open,
+      callback: flow.callback,
+      accessTokenField: flow.credential?.name ?? "accessToken",
+      ...(flow.credential
+        ? {
+            pluginStore: {
+              pluginId: registration.pluginId,
+              key: flow.credential.storeAs,
+            },
+          }
+        : {}),
+    };
+  }
+  return null;
 }
 
-/**
- * Likewise for reading a token out of another desktop app's store.
- *
- * This was a recipe -- a path inside an installed client's encrypted config -- that a plugin wrote
- * into its manifest and the host executed. Reading another app's store is plugin code now. The
- * decryption routine in `local-token-import.ts` is unchanged and still reachable by the host's own
- * import path; what is gone is a plugin's ability to point it anywhere it likes.
- */
+/** Resolve a Provider-declared local import without letting the request choose its storage scope. */
+interface DeclaredPluginLocalTokenImport {
+  auth: LocalTokenImportAuth;
+  pluginId: string;
+  storeKey: string;
+}
+
 async function pluginLocalTokenImport(
-  _options: Pick<LocalApiOptions, "listPluginProviders">,
-  _oauthId: ProviderOAuthId,
-): Promise<LocalTokenImportAuth | null> {
+  options: Pick<LocalApiOptions, "listPluginProviders">,
+  oauthId: ProviderOAuthId,
+): Promise<DeclaredPluginLocalTokenImport | null> {
+  const registrations = (await options.listPluginProviders?.()) ?? [];
+  for (const registration of registrations) {
+    const provider = registration.document.spec;
+    if (provider.id !== oauthId) continue;
+    const method = provider.auth?.methods.find(
+      (candidate) => candidate.import !== undefined,
+    );
+    const declaredImport = method?.import;
+    if (!method || !declaredImport) continue;
+    return {
+      pluginId: registration.pluginId,
+      storeKey: declaredImport.storeAs,
+      auth: {
+        type: "local-token-import",
+        id: oauthId,
+        label: method.label,
+        source: {
+          format: declaredImport.format,
+          appDataSubdirectory: declaredImport.appDataSubdirectory,
+          configFile: declaredImport.configFile,
+          keyFile: declaredImport.keyFile,
+          tokenPath: declaredImport.tokenPath,
+        },
+      },
+    };
+  }
   return null;
 }
 
@@ -3272,18 +2822,26 @@ async function pluginLocalTokenImport(
  * A loopback flow has no scheme to name -- the port is chosen when the flow starts -- so reporting
  * one would mean inventing a value the caller could not use.
  */
-function callbackDescription(auth: BrowserProviderOAuth): { callbackScheme?: string; callbackType: string } {
+function callbackDescription(auth: BrowserProviderOAuth): {
+  callbackScheme?: string;
+  callbackType: string;
+} {
   return auth.callback.type === "scheme"
     ? { callbackType: "scheme", callbackScheme: auth.callback.scheme }
     : { callbackType: auth.callback.type };
 }
 
-function browserOAuthToken(callbackUrl: string, auth: BrowserProviderOAuth): string {
+function browserOAuthToken(
+  callbackUrl: string,
+  auth: BrowserProviderOAuth,
+): string {
   // Only the custom-scheme callback carries the token in a fragment. A loopback flow is completed
   // by `runLoopbackFlow` and `exchangeAuthorizationCode` in auth-flow.ts, which return a token
   // rather than a URL, and device code never produces a callback URL at all.
   if (auth.callback.type !== "scheme") {
-    throw new Error(`A ${auth.callback.type} flow is not completed by parsing a callback URL.`);
+    throw new Error(
+      `A ${auth.callback.type} flow is not completed by parsing a callback URL.`,
+    );
   }
   const scheme = auth.callback.scheme;
   const callback = new URL(callbackUrl);
@@ -3291,8 +2849,9 @@ function browserOAuthToken(callbackUrl: string, auth: BrowserProviderOAuth): str
     throw new Error(`OAuth callback must use the ${scheme}: scheme.`);
   }
   const fragment = new URLSearchParams(callback.hash.replace(/^#/, ""));
-  const accessToken = callback.searchParams.get(auth.accessTokenField)
-    ?? fragment.get(auth.accessTokenField);
+  const accessToken =
+    callback.searchParams.get(auth.accessTokenField) ??
+    fragment.get(auth.accessTokenField);
   if (!accessToken?.trim()) {
     throw new Error(`OAuth callback is missing ${auth.accessTokenField}.`);
   }
@@ -3316,10 +2875,12 @@ function publicProviderOAuth(record: LocalProviderOAuthRecord) {
       : {}),
     ...(record.accountLabel ? { accountLabel: record.accountLabel } : {}),
     ...(record.error ? { error: record.error } : {}),
-    ...(browserState ? {
-      flow: "browser" as const,
-      ...callbackDescription(browserState.auth),
-    } : {}),
+    ...(browserState
+      ? {
+          flow: "browser" as const,
+          ...callbackDescription(browserState.auth),
+        }
+      : {}),
     hasAccessToken:
       typeof record.accessToken === "string" &&
       record.accessToken.trim().length > 0,
@@ -3441,6 +3002,7 @@ interface ModelProviderTestResult {
   upstreamId?: string;
   region?: string;
   modelId: string;
+  actionRunId?: string;
   message: string;
   provider?: string;
   requestId?: string;
@@ -3539,6 +3101,155 @@ function providerTestMediaOutput(
   };
 }
 
+function providerTestExecutableOutput(
+  shape: ModelKind,
+  plan: ProviderPluginExecutionPlan,
+  output: ExecutablePluginOutput,
+): ModelProviderTestOutputSummary {
+  if (output.kind !== "value") {
+    throw new Error(
+      `Provider test output ${output.slot} must use the canonical value envelope.`,
+    );
+  }
+  if (shape === "text") {
+    if (typeof output.value !== "string" || !output.value.trim()) {
+      throw new Error("Provider test text output must be a non-empty string.");
+    }
+    return {
+      shape: "text",
+      provider: plan.provider,
+      endpoint: plan.modelEndpoint,
+      text: output.value,
+    };
+  }
+  if (!output.value || typeof output.value !== "object" || Array.isArray(output.value)) {
+    throw new Error(`Provider test ${shape} output must be a media object.`);
+  }
+  const media = output.value as ProviderPluginExecutorMedia;
+  const contentType =
+    media.contentType ??
+    (shape === "video"
+      ? "video/mp4"
+      : shape === "audio"
+        ? "audio/mpeg"
+        : "image/png");
+  return {
+    shape,
+    provider: plan.provider,
+    endpoint: plan.modelEndpoint,
+    ...(media.requestId ? { requestId: media.requestId } : {}),
+    ...(media.url ? { url: media.url } : {}),
+    contentType,
+    ...(typeof media.width === "number" ? { width: media.width } : {}),
+    ...(typeof media.height === "number" ? { height: media.height } : {}),
+    ...(typeof media.durationMs === "number"
+      ? { durationMs: media.durationMs }
+      : {}),
+    ...(shape === "audio" && media.transcript
+      ? { transcript: media.transcript }
+      : {}),
+  };
+}
+
+async function waitForDurableProviderTest(input: {
+  journal: ReturnType<typeof createSqliteDurableRunJournal>;
+  providerPluginExecutor: ProviderPluginExecutor;
+  plan: ProviderPluginExecutionPlan;
+  actionRunId: string;
+  outputSlot: string;
+  deadlineMs: number;
+}): Promise<{ run: DurableRunRecord; output: ExecutablePluginOutput }> {
+  const identity = {
+    actionRunId: input.actionRunId,
+    outputSlot: input.outputSlot,
+  };
+  const coordinator: LocalDurableRunCoordinator =
+    createLocalDurableRunCoordinator({
+      ownerId: "local-api-provider-test",
+      journal: input.journal,
+      providerPluginExecutor: input.providerPluginExecutor,
+      outputStore: {
+        async stage({ run, outputs }) {
+          const output = outputs.find(
+            (candidate) => candidate.slot === run.outputSlot,
+          );
+          if (!output) {
+            throw new Error(
+              `Provider test output slot ${run.outputSlot} is missing.`,
+            );
+          }
+          return ExecutablePluginOutputSchema.parse(output);
+        },
+      },
+      publisher: {
+        async publish() {
+          // A Provider diagnostic has no Project mutation. The staged canonical output remains in
+          // the durable journal and is the idempotent result returned to this or a resumed request.
+        },
+        async publishFailure() {
+          // The private journal is the diagnostic authority; there is no Project failure to expose.
+        },
+      },
+      retryPolicy: createBoundedRetryPolicy({
+        maxFailures: { submit: 3, poll: 3, stage: 3, publish: 3 },
+        baseDelayMs: 1_000,
+        maxDelayMs: 60_000,
+      }),
+    });
+  const existing = await input.journal.load(identity);
+  const values = ExecutablePluginJsonValueSchema.parse(input.plan.input.values);
+  if (!values || typeof values !== "object" || Array.isArray(values)) {
+    throw new Error("Provider test plan values must be a JSON object.");
+  }
+  await coordinator.coordinate({
+    type: "create",
+    actionRunId: input.actionRunId,
+    outputSlot: input.outputSlot,
+    deadlineAt: existing?.deadlineAt ?? Date.now() + input.deadlineMs,
+    executor: {
+      binding: input.plan.binding,
+      ...(input.plan.accountId ? { accountId: input.plan.accountId } : {}),
+      kind: input.plan.kind,
+      projectId: input.plan.projectId,
+      ...(input.plan.nodeId ? { nodeId: input.plan.nodeId } : {}),
+      provider: input.plan.provider,
+      modelEndpoint: input.plan.modelEndpoint,
+      input: {
+        values: values as Record<string, ExecutablePluginJsonValue>,
+        references: input.plan.input.references,
+      },
+    },
+  });
+
+  for (;;) {
+    const result = await coordinator.coordinate({ type: "advance", identity });
+    if (result.kind === "terminal") {
+      if (result.run.phase === "failed") {
+        const failure = result.run.failure ?? result.run.projectionFailure;
+        throw new Error(
+          failure
+            ? `Provider generation failed (${failure.code}): ${failure.message}`
+            : "Provider generation failed without a durable failure record.",
+        );
+      }
+      return {
+        run: result.run,
+        output: ExecutablePluginOutputSchema.parse(result.run.stagedOutput),
+      };
+    }
+    if (result.kind === "waiting") {
+      const delayMs = Math.max(0, result.wakeAt - Date.now());
+      if (delayMs > 0) {
+        await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, delayMs));
+      }
+      continue;
+    }
+    if (result.kind === "contended") {
+      await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 10));
+    }
+  }
+}
+
 function displayModelName(modelId: string): string {
   return (
     [...MODEL_CARDS, ...MOCK_MODEL_CARDS].find((model) => model.id === modelId)
@@ -3556,10 +3267,15 @@ function userModelCardConfigs(
 }
 
 async function effectiveModelCards(
-  state: Pick<LocalDb, "modelCardConfigs" | "providerAccounts" | "providerOAuth">,
+  state: Pick<
+    LocalDb,
+    "modelCardConfigs" | "providerAccounts" | "providerOAuth"
+  >,
   userId: string,
   listPluginCards?: () => Promise<ExecutablePluginCardRegistration[]>,
-  listPluginModelBindings?: () => Promise<ExecutablePluginModelBindingRegistration[]>,
+  listPluginModelBindings?: () => Promise<
+    ExecutablePluginModelBindingRegistration[]
+  >,
 ): Promise<ModelCard[]> {
   const providers = publicProviderAccounts(
     state.providerAccounts,
@@ -3573,18 +3289,23 @@ async function effectiveModelCards(
   return buildEffectiveModelCards({
     configs: userModelCardConfigs(state, userId),
     providers,
-    baseModels: localExecutableModelCards(composeExecutablePluginModelCards(
-      MODEL_CARDS,
-      pluginCards,
-      pluginModelBindings,
-    )),
+    baseModels: localExecutableModelCards(
+      composeExecutablePluginModelCards(
+        MODEL_CARDS,
+        pluginCards,
+        pluginModelBindings,
+      ),
+    ),
   });
 }
 
 function executablePluginActionDefinitions(
   registrations: readonly ExecutablePluginCardRegistration[],
 ) {
-  const definitions = new Map<string, { pluginId: string; definition: unknown }>();
+  const definitions = new Map<
+    string,
+    { pluginId: string; definition: unknown }
+  >();
   for (const registration of registrations) {
     if (registration.document.kind !== "action-card") continue;
     const card = registration.document.spec;
@@ -3633,7 +3354,9 @@ function normalizeModelCardConfigInput(
   modelId: string,
   value: unknown,
   accounts: LocalProviderAccountConfig[],
-  builtInModelIds: ReadonlySet<string> = new Set(MODEL_CARDS.map((model) => model.id)),
+  builtInModelIds: ReadonlySet<string> = new Set(
+    MODEL_CARDS.map((model) => model.id),
+  ),
 ): UserModelCardConfig | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;
@@ -3649,18 +3372,28 @@ function normalizeModelCardConfigInput(
     if (config.custom || config.providerBindings.length > 0) return null;
     return config;
   }
-  if (!config.custom || !config.name || config.providerBindings.length === 0) return null;
+  if (!config.custom || !config.name || config.providerBindings.length === 0)
+    return null;
   const accountsById = new Map(
     accounts
-      .filter((account): account is LocalProviderAccountConfig & { id: string } => !!account.id)
+      .filter(
+        (account): account is LocalProviderAccountConfig & { id: string } =>
+          !!account.id,
+      )
       .map((account) => [account.id, account]),
   );
   const validBindings = config.providerBindings.every((binding) => {
     const account = accountsById.get(binding.providerAccountId);
     if (!account) return false;
-    if (account.apiShape === "openai-compatible" || account.apiShape === "anthropic-compatible") return true;
-    return account.providerId === "official" &&
-      (account.upstreamId === "openai" || account.upstreamId === "anthropic");
+    if (
+      account.apiShape === "openai-compatible" ||
+      account.apiShape === "anthropic-compatible"
+    )
+      return true;
+    return (
+      account.providerId === "official" &&
+      (account.upstreamId === "openai" || account.upstreamId === "anthropic")
+    );
   });
   return validBindings ? config : null;
 }
@@ -3716,8 +3449,8 @@ function routeProviderId(route: ModelUpstreamRoute): string {
     route.upstreamId === "openai" ||
     route.upstreamId === "google-ai-studio" ||
     route.upstreamId === "google-agent-platform" ||
-    route.upstreamId === "anthropic"
-    || route.upstreamId === "bfl"
+    route.upstreamId === "anthropic" ||
+    route.upstreamId === "bfl"
   ) {
     return "official";
   }
@@ -3751,32 +3484,101 @@ function modelRoutesForProviderAccount(
   );
 }
 
-function providerTestStubForAccount(
-  account: Pick<
-    LocalProviderAccountConfig,
-    "providerId" | "upstreamId" | "region"
-  >,
-  modelId: string,
-  route?: ModelUpstreamRoute,
-): ProviderConformanceStub | undefined {
-  return createProviderConformanceStubs({
-    includeMock: account.providerId === "mock",
-  }).find(
-    (stub) =>
-      stub.providerId === account.providerId &&
-      (!account.upstreamId || stub.upstreamId === account.upstreamId) &&
-      (stub.region ?? "") === (account.region ?? "") &&
-      stub.modelId === modelId &&
-      (!route || stub.apiShape === route.apiShape),
-  );
-}
-
 export function createLocalApiApp(options: LocalApiOptions): Hono {
   const userId = options.userId ?? "local-user";
   const db = createDb(options.dataDir);
+  let importedPluginStore:
+    | Promise<Awaited<ReturnType<typeof openPluginStore>>>
+    | undefined;
+  const pluginStoreForImport = () =>
+    (importedPluginStore ??= openPluginStore({ dataDir: options.dataDir }));
   const localApiDataDir = resolve(options.dataDir);
-  const clashRoot = clashHomeForLocalDataDir(options.dataDir, options.clashRoot);
+  const clashRoot = clashHomeForLocalDataDir(
+    options.dataDir,
+    options.clashRoot,
+  );
   const replicaStore = new FileReplicaStore(join(options.dataDir, "projects"));
+  const providerExecutionHandoffs = createProviderExecutionHandoffStore(
+    options.dataDir,
+  );
+  const durableRunJournal = createSqliteDurableRunJournal(options.dataDir);
+  const providerGenerationDeadlineMs =
+    options.providerGenerationDeadlineMs ??
+    DEFAULT_LOCAL_PROVIDER_RUN_DEADLINE_MS;
+  if (
+    !Number.isSafeInteger(providerGenerationDeadlineMs) ||
+    providerGenerationDeadlineMs <= 0
+  ) {
+    throw new TypeError(
+      "providerGenerationDeadlineMs must be a positive safe integer",
+    );
+  }
+  let projectAssetService:
+    ReturnType<typeof createLocalProjectAssetService> | undefined;
+  const projectAssetServiceAt = (requestProjectionOrigin: string) => {
+    const configuredProjectionOrigin =
+      typeof options.projectAssetProjectionOrigin === "function"
+        ? options.projectAssetProjectionOrigin()
+        : options.projectAssetProjectionOrigin;
+    projectAssetService ??= createLocalProjectAssetService({
+      dataDir: options.dataDir,
+      clashRoot,
+      projectionOrigin:
+        configuredProjectionOrigin?.trim() || requestProjectionOrigin,
+      ...(options.projectAssetReplica
+        ? { replica: options.projectAssetReplica }
+        : {}),
+      readReceiptVerifier: verifyLocalApiProjectAssetReadReceipt,
+    });
+    return projectAssetService;
+  };
+  const bindEditActionAssets = async (input: {
+    service: ReturnType<typeof createLocalProjectAssetService>;
+    invocation: AssetEditActionInvocation;
+    actionRunId: string;
+    outputAssetId: string;
+  }): Promise<void> => {
+    const revisionDigest = createHash("sha256")
+      .update(JSON.stringify(input.invocation))
+      .digest("hex");
+    const owner = {
+      kind: "run" as const,
+      actionId: input.invocation.actionId,
+      actionRevisionId: `sha256:${revisionDigest}`,
+      actionRunId: input.actionRunId,
+    };
+    await input.service.bind(input.invocation.projectId, {
+      id: `action-asset:${input.actionRunId}:source:input`,
+      owner,
+      direction: "input",
+      slot: "source",
+      projectAssetId: input.invocation.source.assetId,
+      role: "source",
+    });
+    await input.service.bind(input.invocation.projectId, {
+      id: `action-asset:${input.actionRunId}:output`,
+      owner,
+      direction: "output",
+      slot: "output",
+      projectAssetId: input.outputAssetId,
+      role: "primary",
+    });
+  };
+  let globalAssetService:
+    ReturnType<typeof createLocalGlobalAssetService> | undefined;
+  const globalAssetServiceAt = (requestProjectionOrigin: string) => {
+    const configuredProjectionOrigin =
+      typeof options.projectAssetProjectionOrigin === "function"
+        ? options.projectAssetProjectionOrigin()
+        : options.projectAssetProjectionOrigin;
+    globalAssetService ??= createLocalGlobalAssetService({
+      dataDir: options.dataDir,
+      clashRoot,
+      projectionOrigin:
+        configuredProjectionOrigin?.trim() || requestProjectionOrigin,
+    });
+    return globalAssetService;
+  };
   const sessionMessageStore = createLocalSessionMessageStore(db);
   options.localAcp?.setSessionMessageStore?.(sessionMessageStore);
   const falMock = options.falMock ?? createMockFalQueueService();
@@ -3810,7 +3612,6 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       );
     },
     fetch: options.voiceInputFetch,
-    googleAiStudioBaseUrl: options.voiceInputGoogleAiStudioBaseUrl,
     providerPluginExecutor: options.providerPluginExecutor,
   });
   const syncConfig =
@@ -3819,7 +3620,110 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       dataDir: options.dataDir,
       env: options.syncEnv ?? process.env,
     });
+  const publicAssetStorage =
+    options.publicAssetStorage ??
+    createPublicAssetStorageService({ dataDir: options.dataDir });
   const app = new Hono();
+
+  const jsonRecord = (value: unknown): Record<string, unknown> | undefined =>
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+
+  function directorRunFacts(run: DurableRunRecord): {
+    projectId: string;
+    modelEndpoint: string;
+  } | null {
+    const executor = jsonRecord(run.executorInput);
+    const binding = jsonRecord(executor?.binding);
+    const delivery = jsonRecord(executor?.delivery);
+    if (
+      binding?.pluginId !== "clash.fal" ||
+      binding.exportId !== "fal-execute" ||
+      delivery?.kind !== "project-asset" ||
+      typeof executor?.projectId !== "string" ||
+      typeof executor.modelEndpoint !== "string"
+    ) {
+      return null;
+    }
+    return {
+      projectId: executor.projectId,
+      modelEndpoint: executor.modelEndpoint,
+    };
+  }
+
+  async function directorRunResponse(
+    c: Context,
+    run: DurableRunRecord,
+  ): Promise<Response> {
+    const facts = directorRunFacts(run);
+    if (!facts) return c.json({ error: "Director generation not found" }, 404);
+    const statusUrl =
+      `/api/v1/director-model-generations/${encodeURIComponent(run.actionRunId)}` +
+      `?projectId=${encodeURIComponent(facts.projectId)}`;
+    if (run.phase === "succeeded") {
+      const staged = jsonRecord(run.stagedOutput);
+      const entry = jsonRecord(staged?.projectAsset);
+      const projectAssetId =
+        typeof entry?.id === "string" ? entry.id : undefined;
+      if (!projectAssetId) {
+        return c.json(
+          { error: "Director generation published no Project Asset" },
+          500,
+        );
+      }
+      const asset = await projectAssetServiceAt(requestOrigin(c)).read(
+        facts.projectId,
+        projectAssetId,
+      );
+      if (!asset) {
+        return c.json(
+          { error: `Generated Project Asset ${projectAssetId} is unavailable` },
+          500,
+        );
+      }
+      return c.json({
+        status: "completed",
+        actionRunId: run.actionRunId,
+        requestId: run.actionRunId,
+        statusUrl,
+        asset,
+        provider: "fal",
+        modelEndpoint: facts.modelEndpoint,
+      });
+    }
+    if (run.phase === "failed") {
+      return c.json(
+        {
+          status: "failed",
+          actionRunId: run.actionRunId,
+          requestId: run.actionRunId,
+          statusUrl,
+          error: run.failure?.message ?? "Director generation failed",
+          ...(run.failure?.code ? { failureCode: run.failure.code } : {}),
+        },
+        422,
+      );
+    }
+    const now = Date.now();
+    const retryAfterMs = Math.max(
+      250,
+      Math.min(5_000, (run.nextAttemptAt ?? now + 1_000) - now),
+    );
+    c.header("retry-after", String(Math.max(1, Math.ceil(retryAfterMs / 1_000))));
+    return c.json(
+      {
+        status: run.phase === "queued" ? "queued" : "running",
+        phase: run.phase,
+        actionRunId: run.actionRunId,
+        requestId: run.actionRunId,
+        statusUrl,
+        retryAfterMs,
+        deadlineAt: run.deadlineAt,
+      },
+      202,
+    );
+  }
 
   app.use("*", async (c, next) => {
     const origin = c.req.header("origin");
@@ -3832,8 +3736,12 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.use(
     "*",
     cors({
-      origin: (origin) => origin && isAllowedLocalBrowserOrigin(origin) ? origin : "http://127.0.0.1",
-      allowHeaders: ["content-type"],
+      origin: (origin) =>
+        origin && isAllowedLocalBrowserOrigin(origin)
+          ? origin
+          : "http://127.0.0.1",
+      allowHeaders: ["content-type", "x-clash-client-type", "x-clash-if-match"],
+      exposeHeaders: [PROJECT_ASSET_READ_RECEIPT_HEADER],
       allowMethods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
       credentials: true,
     }),
@@ -3857,15 +3765,21 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 
   app.post("/api/v1/local/director-stage/capture", async (c) => {
     if (!options.directorStageRenderer) {
-      return c.json({ error: "Director Stage product renderer is unavailable" }, 503);
+      return c.json(
+        { error: "Director Stage product renderer is unavailable" },
+        503,
+      );
     }
     try {
-      const request = await c.req.json() as DirectorStageRenderRequest;
+      const request = (await c.req.json()) as DirectorStageRenderRequest;
       return c.json(await options.directorStageRenderer.render(request));
     } catch (error) {
-      return c.json({
-        error: error instanceof Error ? error.message : String(error),
-      }, 422);
+      return c.json(
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+        422,
+      );
     }
   });
 
@@ -3876,24 +3790,535 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   );
   app.get("/api/v1/me", (c) => c.json({ id: userId }));
 
-  app.get("/api/settings/actions", async (c) => c.json(
-    options.listInstalledMarketplaceActions
-      ? await options.listInstalledMarketplaceActions()
-      : [],
-  ));
+  app.get("/api/v1/projects/:projectId/assets", async (c) => {
+    try {
+      const assets = await projectAssetServiceAt(requestOrigin(c)).list(
+        c.req.param("projectId"),
+      );
+      return c.json({ assets });
+    } catch (error) {
+      return localProjectAssetErrorResponse(error);
+    }
+  });
+
+  app.post("/api/v1/projects/:projectId/assets/batch", async (c) => {
+    try {
+      const body = (await c.req.json().catch(() => ({}))) as { ids?: unknown };
+      const ids = new Set(
+        Array.isArray(body.ids)
+          ? body.ids
+              .filter((id): id is string => typeof id === "string")
+              .map((id) => id.trim())
+              .filter(Boolean)
+          : [],
+      );
+      const assets = (
+        await projectAssetServiceAt(requestOrigin(c)).list(
+          c.req.param("projectId"),
+        )
+      ).filter((asset) => ids.has(asset.id));
+      return c.json({ assets });
+    } catch (error) {
+      return localProjectAssetErrorResponse(error);
+    }
+  });
+
+  app.post("/api/v1/projects/:projectId/assets/import-file", async (c) => {
+    let form: FormData;
+    try {
+      form = await c.req.formData();
+    } catch {
+      return c.json(
+        {
+          error: "Invalid multipart Project Asset import",
+          code: "INVALID_PROJECT_ASSET_IMPORT",
+        },
+        400,
+      );
+    }
+    const file = form.get("file");
+    const kind = AssetKindSchema.safeParse(form.get("kind"));
+    const projectAssetIdValue = form.get("projectAssetId");
+    if (!file || typeof file === "string" || !kind.success) {
+      return c.json(
+        {
+          error: "Project Asset import requires file and kind",
+          code: "INVALID_PROJECT_ASSET_IMPORT",
+        },
+        400,
+      );
+    }
+    if (
+      projectAssetIdValue !== null &&
+      (typeof projectAssetIdValue !== "string" ||
+        !projectAssetIdValue.trim() ||
+        projectAssetIdValue.length > 512)
+    ) {
+      return c.json(
+        {
+          error: "Invalid Project Asset id",
+          code: "INVALID_PROJECT_ASSET_IMPORT",
+        },
+        400,
+      );
+    }
+    const fileError = validateProjectAssetImportFile(file, kind.data);
+    if (fileError) {
+      return c.json(
+        { error: fileError, code: "INVALID_PROJECT_ASSET_IMPORT" },
+        400,
+      );
+    }
+
+    try {
+      const declaredContentType = file.type.trim().toLowerCase();
+      const contentType =
+        !declaredContentType ||
+        declaredContentType === "application/octet-stream"
+          ? contentTypeForPath(file.name)
+          : declaredContentType;
+      const asset = await projectAssetServiceAt(requestOrigin(c)).installOwned({
+        projectId: c.req.param("projectId"),
+        ...(typeof projectAssetIdValue === "string"
+          ? { projectAssetId: projectAssetIdValue.trim() }
+          : {}),
+        kind: kind.data,
+        bytes: new Uint8Array(await file.arrayBuffer()),
+        contentType,
+        name: file.name,
+        metadata: {},
+        provenance: { kind: "import" },
+      });
+      return c.json(asset, 201);
+    } catch (error) {
+      return localProjectAssetErrorResponse(error);
+    }
+  });
+
+  app.get(
+    "/api/v1/projects/:projectId/assets/:projectAssetId/references",
+    async (c) => {
+      try {
+        const projectAssetId = c.req.param("projectAssetId");
+        const observed = await projectAssetServiceAt(
+          requestOrigin(c),
+        ).listReferencesObserved(c.req.param("projectId"), projectAssetId);
+        c.header(
+          PROJECT_ASSET_READ_RECEIPT_HEADER,
+          projectAssetReceiptReadToken(observed.readToken),
+        );
+        return c.json({ projectAssetId, references: observed.value });
+      } catch (error) {
+        return localProjectAssetErrorResponse(error);
+      }
+    },
+  );
+
+  app.delete(
+    "/api/v1/projects/:projectId/assets/:projectAssetId",
+    async (c) => {
+      try {
+        const now = Date.now();
+        const preconditions = requestProjectWritePreconditions(c);
+        const observed = await projectAssetServiceAt(requestOrigin(c)).trash({
+          projectId: c.req.param("projectId"),
+          projectAssetId: c.req.param("projectAssetId"),
+          deleteOperationId: crypto.randomUUID(),
+          deletedAt: new Date(now).toISOString(),
+          purgeAfter: new Date(now + ASSET_PURGE_DELAY_MS).toISOString(),
+          observation: {
+            ...(preconditions.actorClientType
+              ? { actorClientType: preconditions.actorClientType }
+              : {}),
+            ...(preconditions.expectedReadToken
+              ? { expectedReadToken: preconditions.expectedReadToken }
+              : {}),
+          },
+        });
+        c.header(
+          PROJECT_ASSET_READ_RECEIPT_HEADER,
+          projectAssetReceiptReadToken(observed.readToken),
+        );
+        return c.json(observed.value);
+      } catch (error) {
+        return localProjectAssetErrorResponse(error);
+      }
+    },
+  );
+
+  app.post(
+    "/api/v1/projects/:projectId/assets/:projectAssetId/restore",
+    async (c) => {
+      try {
+        const preconditions = requestProjectWritePreconditions(c);
+        const observed = await projectAssetServiceAt(requestOrigin(c)).restore({
+          projectId: c.req.param("projectId"),
+          projectAssetId: c.req.param("projectAssetId"),
+          observation: {
+            ...(preconditions.actorClientType
+              ? { actorClientType: preconditions.actorClientType }
+              : {}),
+            ...(preconditions.expectedReadToken
+              ? { expectedReadToken: preconditions.expectedReadToken }
+              : {}),
+          },
+        });
+        c.header(
+          PROJECT_ASSET_READ_RECEIPT_HEADER,
+          projectAssetReceiptReadToken(observed.readToken),
+        );
+        return c.json(observed.value);
+      } catch (error) {
+        return localProjectAssetErrorResponse(error);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v1/projects/:projectId/assets/:projectAssetId/media",
+    async (c) => {
+      try {
+        const projection = await projectAssetServiceAt(
+          requestOrigin(c),
+        ).openProjection(
+          c.req.param("projectId"),
+          c.req.param("projectAssetId"),
+        );
+        return await serveImmutableFileProjection({
+          path: projection.path,
+          contentType:
+            projection.resource.contentType ??
+            contentTypeForPath(projection.storageKey),
+          expectedByteLength: projection.resource.byteLength,
+          ...(c.req.header("range")
+            ? { rangeHeader: c.req.header("range") }
+            : {}),
+        });
+      } catch (error) {
+        return localProjectAssetErrorResponse(error);
+      }
+    },
+  );
+
+  app.get("/api/v1/projects/:projectId/assets/:projectAssetId", async (c) => {
+    try {
+      const observed = await projectAssetServiceAt(
+        requestOrigin(c),
+      ).readObserved(c.req.param("projectId"), c.req.param("projectAssetId"));
+      if (observed) {
+        c.header(
+          PROJECT_ASSET_READ_RECEIPT_HEADER,
+          projectAssetReceiptReadToken(observed.readToken),
+        );
+      }
+      return observed
+        ? c.json(observed.value)
+        : c.json(
+            {
+              error: "Project Asset not found",
+              code: "PROJECT_ASSET_NOT_FOUND",
+            },
+            404,
+          );
+    } catch (error) {
+      return localProjectAssetErrorResponse(error);
+    }
+  });
+
+  app.get("/api/v1/libraries/personal/assets", async (c) => {
+    try {
+      const assets = await globalAssetServiceAt(requestOrigin(c)).list(
+        PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
+      );
+      return c.json({ assets });
+    } catch (error) {
+      return localGlobalAssetErrorResponse(error);
+    }
+  });
+
+  app.post("/api/v1/libraries/personal/assets/import-file", async (c) => {
+    let form: FormData;
+    try {
+      form = await c.req.formData();
+    } catch {
+      return c.json(
+        {
+          error: "Invalid multipart Global Asset import",
+          code: "INVALID_GLOBAL_ASSET_IMPORT",
+        },
+        400,
+      );
+    }
+    const file = form.get("file");
+    const kind = AssetKindSchema.safeParse(form.get("kind"));
+    if (!file || typeof file === "string" || !kind.success) {
+      return c.json(
+        {
+          error: "Global Asset import requires file and kind",
+          code: "INVALID_GLOBAL_ASSET_IMPORT",
+        },
+        400,
+      );
+    }
+    const fileError = validateProjectAssetImportFile(file, kind.data);
+    if (fileError) {
+      return c.json(
+        { error: fileError, code: "INVALID_GLOBAL_ASSET_IMPORT" },
+        400,
+      );
+    }
+
+    try {
+      const declaredContentType = file.type.trim().toLowerCase();
+      const contentType =
+        !declaredContentType ||
+        declaredContentType === "application/octet-stream"
+          ? contentTypeForPath(file.name)
+          : declaredContentType;
+      const asset = await globalAssetServiceAt(requestOrigin(c)).importBytes({
+        libraryId: PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
+        kind: kind.data,
+        bytes: new Uint8Array(await file.arrayBuffer()),
+        contentType,
+        originalName: file.name,
+        name: file.name,
+        provenance: { kind: "import" },
+      });
+      return c.json(asset, 201);
+    } catch (error) {
+      return localGlobalAssetErrorResponse(error);
+    }
+  });
+
+  app.post("/api/v1/libraries/personal/assets/publish", async (c) => {
+    const body = (await c.req.json().catch(() => null)) as unknown;
+    const projectId = isRecord(body)
+      ? optionalBodyString(body.projectId)
+      : undefined;
+    const projectAssetId = isRecord(body)
+      ? optionalBodyString(body.projectAssetId)
+      : undefined;
+    if (!projectId || !projectAssetId) {
+      return c.json(
+        {
+          error: "projectId and projectAssetId are required",
+          code: "INVALID_GLOBAL_ASSET_PUBLISH",
+        },
+        400,
+      );
+    }
+    try {
+      const source = await projectAssetServiceAt(requestOrigin(c)).readEntry(
+        projectId,
+        projectAssetId,
+      );
+      if (!source) {
+        return c.json(
+          {
+            error: "Project Asset not found",
+            code: "PROJECT_ASSET_NOT_FOUND",
+          },
+          404,
+        );
+      }
+      if (source.lifecycle.state !== "active") {
+        return c.json(
+          {
+            error: "Only an active Project Asset can be published",
+            code: "PROJECT_ASSET_NOT_ACTIVE",
+          },
+          409,
+        );
+      }
+      const asset = await globalAssetServiceAt(
+        requestOrigin(c),
+      ).publishResource({
+        libraryId: PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
+        resourceId: source.source.resourceId,
+        kind: source.kind,
+        ...(source.name ? { name: source.name } : {}),
+        metadata: source.metadata,
+        ...(source.provenance ? { provenance: source.provenance } : {}),
+      });
+      return c.json(asset, 201);
+    } catch (error) {
+      if (
+        error instanceof LocalProjectAssetMigrationError ||
+        (error instanceof AssetSdkContractError &&
+          error.code === "PROJECT_ASSET_NOT_FOUND")
+      ) {
+        return localProjectAssetErrorResponse(error);
+      }
+      return localGlobalAssetErrorResponse(error);
+    }
+  });
+
+  app.post("/api/v1/projects/:projectId/assets/admit", async (c) => {
+    const body = (await c.req.json().catch(() => null)) as unknown;
+    const globalAssetId = isRecord(body)
+      ? optionalBodyString(body.globalAssetId)
+      : undefined;
+    if (!globalAssetId) {
+      return c.json(
+        {
+          error: "globalAssetId is required",
+          code: "INVALID_PROJECT_ASSET_ADMISSION",
+        },
+        400,
+      );
+    }
+    try {
+      const source = await globalAssetServiceAt(requestOrigin(c)).readEntry(
+        PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
+        globalAssetId,
+      );
+      if (!source) {
+        return c.json(
+          { error: "Global Asset not found", code: "GLOBAL_ASSET_NOT_FOUND" },
+          404,
+        );
+      }
+      if (source.lifecycle.state !== "active") {
+        return c.json(
+          {
+            error: "Only an active Global Asset can be admitted",
+            code: "GLOBAL_ASSET_NOT_ACTIVE",
+          },
+          409,
+        );
+      }
+      const asset = await projectAssetServiceAt(requestOrigin(c)).admitLinked({
+        projectId: c.req.param("projectId"),
+        kind: source.kind,
+        resourceId: source.resourceId,
+        originEntryId: source.id,
+        ...(source.name ? { name: source.name } : {}),
+        metadata: source.metadata,
+        provenance: { kind: "admission" },
+      });
+      return c.json(asset, 201);
+    } catch (error) {
+      if (error instanceof LocalGlobalAssetError) {
+        return localGlobalAssetErrorResponse(error);
+      }
+      return localProjectAssetErrorResponse(error);
+    }
+  });
+
+  app.get(
+    "/api/v1/libraries/personal/assets/:globalAssetId/media",
+    async (c) => {
+      try {
+        const projection = await globalAssetServiceAt(
+          requestOrigin(c),
+        ).openProjection(
+          PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
+          c.req.param("globalAssetId"),
+        );
+        return await serveImmutableFileProjection({
+          path: projection.path,
+          contentType:
+            projection.resource.contentType ??
+            contentTypeForPath(projection.storageKey),
+          expectedByteLength: projection.resource.byteLength,
+          ...(c.req.header("range")
+            ? { rangeHeader: c.req.header("range") }
+            : {}),
+        });
+      } catch (error) {
+        return localGlobalAssetErrorResponse(error);
+      }
+    },
+  );
+
+  app.get("/api/v1/libraries/personal/assets/:globalAssetId", async (c) => {
+    try {
+      const asset = await globalAssetServiceAt(requestOrigin(c)).read(
+        PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
+        c.req.param("globalAssetId"),
+      );
+      return asset
+        ? c.json(asset)
+        : c.json(
+            {
+              error: "Global Asset not found",
+              code: "GLOBAL_ASSET_NOT_FOUND",
+            },
+            404,
+          );
+    } catch (error) {
+      return localGlobalAssetErrorResponse(error);
+    }
+  });
+
+  app.delete("/api/v1/libraries/personal/assets/:globalAssetId", async (c) => {
+    try {
+      const now = Date.now();
+      const asset = await globalAssetServiceAt(requestOrigin(c)).trash({
+        libraryId: PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
+        globalAssetId: c.req.param("globalAssetId"),
+        deleteOperationId: randomUUID(),
+        deletedAt: new Date(now).toISOString(),
+        purgeAfter: new Date(now + ASSET_PURGE_DELAY_MS).toISOString(),
+      });
+      return c.json(asset);
+    } catch (error) {
+      return localGlobalAssetErrorResponse(error);
+    }
+  });
+
+  app.post(
+    "/api/v1/libraries/personal/assets/:globalAssetId/restore",
+    async (c) => {
+      try {
+        const asset = await globalAssetServiceAt(requestOrigin(c)).restore(
+          PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
+          c.req.param("globalAssetId"),
+        );
+        return c.json(asset);
+      } catch (error) {
+        return localGlobalAssetErrorResponse(error);
+      }
+    },
+  );
+
+  const legacyAssetApiRetired = (c: Context) =>
+    c.json(
+      {
+        error:
+          "Legacy Asset API retired; use Project or personal-library Asset routes",
+        code: "LEGACY_ASSET_API_RETIRED",
+      },
+      410,
+    );
+  app.all("/api/v1/assets", legacyAssetApiRetired);
+  app.all("/api/v1/assets/*", legacyAssetApiRetired);
+
+  app.get("/api/settings/actions", async (c) =>
+    c.json(
+      options.listInstalledMarketplaceActions
+        ? await options.listInstalledMarketplaceActions()
+        : [],
+    ),
+  );
   if (options.installMarketplaceAction) {
     app.post("/api/settings/actions", async (c) => {
-      const body = await c.req.json().catch(() => null) as {
+      const body = (await c.req.json().catch(() => null)) as {
         manifest?: { id?: unknown; packageId?: unknown };
       } | null;
       const id = typeof body?.manifest?.id === "string" ? body.manifest.id : "";
-      const packageId = typeof body?.manifest?.packageId === "string"
-        ? body.manifest.packageId
-        : "";
-      const item = options.marketplaceActions?.find((candidate) =>
-        candidate.id === id && candidate.packageId === packageId
+      const packageId =
+        typeof body?.manifest?.packageId === "string"
+          ? body.manifest.packageId
+          : "";
+      const item = options.marketplaceActions?.find(
+        (candidate) => candidate.id === id && candidate.packageId === packageId,
       );
-      if (!item) return c.json({ error: "Unknown local marketplace action package" }, 404);
+      if (!item)
+        return c.json(
+          { error: "Unknown local marketplace action package" },
+          404,
+        );
       return c.json(await options.installMarketplaceAction!(packageId));
     });
   }
@@ -3903,11 +4328,13 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       return new Response(null, { status: 204 });
     });
   }
-  app.get("/api/settings/skills", async (c) => c.json(
-    options.listInstalledMarketplaceSkills
-      ? await options.listInstalledMarketplaceSkills()
-      : [],
-  ));
+  app.get("/api/settings/skills", async (c) =>
+    c.json(
+      options.listInstalledMarketplaceSkills
+        ? await options.listInstalledMarketplaceSkills()
+        : [],
+    ),
+  );
   app.get("/api/settings/tokens", (c) => c.json([]));
   app.get("/api/v1/model-providers", async (c) => {
     const state = await db.load();
@@ -4170,6 +4597,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       provider?: unknown;
       modelId?: unknown;
       live?: unknown;
+      actionRunId?: unknown;
     } & ProjectWriteBody;
     const preconditions = requestProjectWritePreconditions(c, body);
     const provider = normalizeProviderAccountInput(body.provider);
@@ -4224,9 +4652,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       options.listPluginCards,
       options.listPluginModelBindings,
     );
-    const providerTestModels = account.providerId === "mock"
-      ? [...effectiveModels, ...MOCK_MODEL_CARDS]
-      : effectiveModels;
+    const providerTestModels =
+      account.providerId === "mock"
+        ? [...effectiveModels, ...MOCK_MODEL_CARDS]
+        : effectiveModels;
     const providerSupports = listProviderModelSupport({
       models: providerTestModels,
       includeMock: account.providerId === "mock",
@@ -4421,31 +4850,6 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           ? { duration: shape === "video" ? 4 : 5 }
           : {}),
       });
-      const readyRoute = routeRequirements.find(
-        (route) =>
-          (route.requiredCredentials ?? []).every((credential) =>
-            credentialKeys.has(credential),
-          ) &&
-          (route.requiredOAuth ?? []).every((providerId) =>
-            availableOAuth.has(providerId),
-          ),
-      );
-      const recorder = options.providerTestRecordingPath
-        ? await createJsonlProviderTestRecorder(
-            options.providerTestRecordingPath,
-          )
-        : undefined;
-      const recordingStub = recorder
-        ? providerTestStubForAccount(account, modelId, readyRoute)
-        : undefined;
-      const liveFetch =
-        recorder && recordingStub
-          ? createProviderTestRecordingFetch({
-              fetch: options.providerTestFetch ?? fetch,
-              recorder,
-              stub: recordingStub,
-            })
-          : (options.providerTestFetch ?? fetch);
       const testAigc =
         account.providerId === "mock"
           ? providerTestAigc
@@ -4461,27 +4865,86 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
                 },
               ],
               modelCards: async () => providerTestModels,
-              fetch: liveFetch,
-              openAiBaseUrl:
-                options.providerTestOpenAiBaseUrl ??
-                process.env.OPENAI_BASE_URL,
-              anthropicBaseUrl:
-                options.providerTestAnthropicBaseUrl ??
-                process.env.ANTHROPIC_BASE_URL,
-              falQueueBaseUrl:
-                options.providerTestFalQueueBaseUrl ??
-                process.env.CLASH_FAL_QUEUE_URL,
-              googleAiStudioBaseUrl: options.providerTestGoogleAiStudioBaseUrl,
-              pikaBaseUrl: options.providerTestPikaBaseUrl,
-              replicateBaseUrl: options.providerTestReplicateBaseUrl,
               providerPluginExecutor: options.providerPluginExecutor,
+              resolveProviderPluginBinding: options.resolvePluginBinding
+                ? (pluginId, exportId, kind) =>
+                    options.resolvePluginBinding!(pluginId, exportId, kind)
+                : undefined,
               localTts,
             });
       const providerName = displayProviderName(account);
-      const explicitMockSelection = account.providerId === "mock"
-        ? { modelParams: { provider_id: "mock" } }
-        : {};
+      const explicitMockSelection =
+        account.providerId === "mock"
+          ? { modelParams: { provider_id: "mock" } }
+          : {};
       try {
+        if (account.providerId !== "mock") {
+          if (
+            !options.providerPluginExecutor ||
+            !testAigc.planProviderPlugin
+          ) {
+            throw new Error(
+              "The local durable Provider runtime is unavailable.",
+            );
+          }
+          const requestedActionRunId =
+            typeof body.actionRunId === "string"
+              ? body.actionRunId.trim()
+              : "";
+          if (requestedActionRunId.length > 256) {
+            return c.json(
+              { error: "actionRunId must be at most 256 characters" },
+              400,
+            );
+          }
+          const actionRunId =
+            requestedActionRunId || `provider-test:${randomUUID()}`;
+          const commonInput: MockMediaGenerationInput = {
+            taskId: actionRunId,
+            projectId: "provider-test",
+            prompt,
+            model: modelId,
+            ...(shape === "image" || shape === "video"
+              ? { aspectRatio: testInput.aspectRatio }
+              : {}),
+            ...(shape === "video" || shape === "audio"
+              ? { duration: testInput.duration }
+              : {}),
+          };
+          const plan = await testAigc.planProviderPlugin(commonInput, shape);
+          if (!plan) {
+            throw new Error(
+              `${providerName} has no executable Provider contract for ${modelName}.`,
+            );
+          }
+          const durable = await waitForDurableProviderTest({
+            journal: durableRunJournal,
+            providerPluginExecutor: options.providerPluginExecutor,
+            plan,
+            actionRunId,
+            outputSlot: shape === "text" ? "text" : "media",
+            deadlineMs: providerGenerationDeadlineMs,
+          });
+          const output = providerTestExecutableOutput(
+            shape,
+            plan,
+            durable.output,
+          );
+          return providerTestResponse({
+            ok: true,
+            ...baseResult,
+            actionRunId,
+            provider: plan.provider,
+            modelEndpoint: plan.modelEndpoint,
+            ...("requestId" in output && output.requestId
+              ? { requestId: output.requestId }
+              : {}),
+            input: testInput,
+            output,
+            message: `${providerName} ran ${modelName} through ${plan.modelEndpoint}.`,
+          } satisfies ModelProviderTestResult);
+        }
+
         if (shape === "text") {
           const result = await testAigc.generateText({
             taskId,
@@ -4512,15 +4975,12 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 
         const mediaShape =
           shape === "video" || shape === "audio" ? shape : "image";
-        const generateMedia = (
-          pollState?: unknown,
-        ): Promise<MockMediaGenerationResult> => {
+        const generateMedia = (): Promise<MockMediaGenerationResult> => {
           const common = {
             taskId,
             prompt,
             model: modelId,
             ...explicitMockSelection,
-            ...(pollState === undefined ? {} : { pollState }),
           };
           return mediaShape === "video"
             ? testAigc.generateVideo({
@@ -4538,12 +4998,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
                   aspectRatio: testInput.aspectRatio,
                 });
         };
-        // A provider test answers over an open socket, so there is nowhere to put an acceptance and
-        // nobody to come back to it later. Poll it out before reading the result.
-        const result = await settleAcceptedGeneration(
-          await generateMedia(),
-          (pollState) => generateMedia(pollState),
-        );
+        const result = requireCompletedGeneration(await generateMedia());
         const output = providerTestMediaOutput(mediaShape, result);
         return providerTestResponse({
           ok: true,
@@ -4606,17 +5061,29 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       },
     };
     if (!providerId) {
-      return c.json({
-        error: "Unsupported OAuth provider",
-        mutation: hostMutationRejected(envelope, "Unsupported OAuth provider"),
-      }, 404);
+      return c.json(
+        {
+          error: "Unsupported OAuth provider",
+          mutation: hostMutationRejected(
+            envelope,
+            "Unsupported OAuth provider",
+          ),
+        },
+        404,
+      );
     }
-    const auth = await pluginLocalTokenImport(options, providerId);
-    if (!auth) {
-      return c.json({
-        error: "Local token import is not configured for this provider",
-        mutation: hostMutationRejected(envelope, "Local token import is not configured for this provider"),
-      }, 404);
+    const declaredImport = await pluginLocalTokenImport(options, providerId);
+    if (!declaredImport) {
+      return c.json(
+        {
+          error: "Local token import is not configured for this provider",
+          mutation: hostMutationRejected(
+            envelope,
+            "Local token import is not configured for this provider",
+          ),
+        },
+        404,
+      );
     }
     const body = (await c.req.json().catch(() => ({}))) as {
       accountId?: unknown;
@@ -4624,66 +5091,127 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     } & ProjectWriteBody;
     const accountId = stringBodyField(body.accountId);
     const accountLabel = stringBodyField(body.accountLabel);
+    if (!accountId) {
+      const message =
+        "Local token import requires a Host-selected provider account.";
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(envelope, message),
+        },
+        400,
+      );
+    }
     const entityId = providerOAuthEntityId(providerId, accountId);
     const preconditions = requestProjectWritePreconditions(c, body);
     const beforeState = await db.load();
+    const selectedAccount = beforeState.providerAccounts.find(
+      (account) =>
+        (account.userId ?? userId) === userId &&
+        account.id === accountId &&
+        account.providerId === providerId,
+    );
+    if (!selectedAccount) {
+      const message =
+        `Host-selected provider account ${accountId} is not available for ${providerId}.`;
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(
+            {
+              operation: "provider_oauth_import",
+              entity: { kind: "provider-oauth", id: entityId },
+            },
+            message,
+          ),
+        },
+        404,
+      );
+    }
     const beforeRecord = beforeState.providerOAuth.find((record) =>
       providerOAuthMatches(record, userId, providerId, accountId),
     );
     const needsReadProof =
       !!preconditions.actorClientType || !!preconditions.expectedReadToken;
-    const hostMutation = beforeRecord && needsReadProof
-      ? validateProviderOAuthReadMutation({
-          record: beforeRecord,
-          operation: "import",
-          preconditions,
-        })
-      : null;
+    const hostMutation =
+      beforeRecord && needsReadProof
+        ? validateProviderOAuthReadMutation({
+            record: beforeRecord,
+            operation: "import",
+            preconditions,
+          })
+        : null;
     if (hostMutation && !hostMutation.ok) {
-      return c.json({ error: hostMutation.error, mutation: hostMutation.mutation }, 409);
+      return c.json(
+        { error: hostMutation.error, mutation: hostMutation.mutation },
+        409,
+      );
     }
     if (!beforeRecord && preconditions.expectedReadToken) {
-      const message = "Provider OAuth record not found. Read /api/v1/provider-oauth first, then retry.";
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected({
-          operation: "provider_oauth_import",
-          entity: { kind: "provider-oauth", id: entityId },
-          expectedReadToken: preconditions.expectedReadToken,
-        }, message),
-      }, 409);
+      const message =
+        "Provider OAuth record not found. Read /api/v1/provider-oauth first, then retry.";
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(
+            {
+              operation: "provider_oauth_import",
+              entity: { kind: "provider-oauth", id: entityId },
+              expectedReadToken: preconditions.expectedReadToken,
+            },
+            message,
+          ),
+        },
+        409,
+      );
     }
     let imported: { accessToken: string; importedFrom: string };
     try {
       imported = await importLocalProviderToken({
-        auth,
+        auth: declaredImport.auth,
         applicationSupportRoot: options.localTokenImportAppDataRoot,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected({
-          operation: "provider_oauth_import",
-          entity: { kind: "provider-oauth", id: entityId },
-        }, message),
-      }, 422);
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(
+            {
+              operation: "provider_oauth_import",
+              entity: { kind: "provider-oauth", id: entityId },
+            },
+            message,
+          ),
+        },
+        422,
+      );
     }
-    const record = await db.update((state) => upsertProviderOAuth(state, userId, providerId, {
-      ...(accountId ? { accountId } : {}),
-      status: "authorized",
-      accessToken: imported.accessToken,
-      tokenType: "Bearer",
-      accountLabel,
-      refreshToken: undefined,
-      verificationUri: undefined,
-      userCode: undefined,
-      deviceCode: undefined,
-      oauthState: undefined,
-      intervalSeconds: undefined,
-      expiresAt: undefined,
-      error: undefined,
-    }));
+    const pluginStore = await pluginStoreForImport();
+    await pluginStore.put({
+      pluginId: declaredImport.pluginId,
+      accountId,
+      key: declaredImport.storeKey,
+      value: imported.accessToken,
+      secret: true,
+    });
+    const record = await db.update((state) =>
+      upsertProviderOAuth(state, userId, providerId, {
+        accountId,
+        status: "authorized",
+        accessToken: undefined,
+        tokenType: "Bearer",
+        accountLabel,
+        refreshToken: undefined,
+        verificationUri: undefined,
+        userCode: undefined,
+        deviceCode: undefined,
+        oauthState: undefined,
+        intervalSeconds: undefined,
+        expiresAt: undefined,
+        error: undefined,
+      }),
+    );
     const readToken = providerOAuthReceiptReadToken(record);
     const mutation = hostMutationSucceeded(
       hostMutation?.envelope ?? {
@@ -4695,11 +5223,13 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         ...(hostMutation ? { afterReadToken: readToken } : {}),
       },
     );
-    await db.appendMutationAudit(mutationAuditRecord({
-      mutation,
-      actorClientType: preconditions.actorClientType,
-      reason: "provider OAuth local token import",
-    }));
+    await db.appendMutationAudit(
+      mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "provider OAuth local token import",
+      }),
+    );
     return c.json({
       ...publicProviderOAuth(record),
       importedFrom: imported.importedFrom,
@@ -4729,7 +5259,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       );
     }
     const driver = options.providerOAuth?.[providerId];
-    const browserAuth = driver ? null : await pluginBrowserOAuth(options, providerId);
+    const browserAuth = driver
+      ? null
+      : await pluginBrowserOAuth(options, providerId);
     if (!driver && !browserAuth) {
       return c.json(
         {
@@ -4756,6 +5288,37 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const accountLabel = stringBodyField(body.accountLabel);
     const preconditions = requestProjectWritePreconditions(c, body);
     const beforeState = await db.load();
+    if (browserAuth?.pluginStore) {
+      const selectedAccount = accountId
+        ? beforeState.providerAccounts.find(
+            (account) =>
+              (account.userId ?? userId) === userId &&
+              account.id === accountId &&
+              account.providerId === providerId,
+          )
+        : undefined;
+      if (!selectedAccount) {
+        const message = accountId
+          ? `Host-selected provider account ${accountId} is not available for ${providerId}.`
+          : "Provider browser flow requires a Host-selected provider account.";
+        return c.json(
+          {
+            error: message,
+            mutation: hostMutationRejected(
+              {
+                operation: "provider_oauth_start",
+                entity: {
+                  kind: "provider-oauth",
+                  id: providerOAuthEntityId(providerId, accountId),
+                },
+              },
+              message,
+            ),
+          },
+          accountId ? 404 : 400,
+        );
+      }
+    }
     const beforeRecord = beforeState.providerOAuth.find((record) =>
       providerOAuthMatches(record, userId, providerId, accountId),
     );
@@ -4850,10 +5413,12 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     );
     return c.json({
       ...publicProviderOAuth(record),
-      ...(browserAuth ? {
-        flow: "browser",
-        ...callbackDescription(browserAuth),
-      } : {}),
+      ...(browserAuth
+        ? {
+            flow: "browser",
+            ...callbackDescription(browserAuth),
+          }
+        : {}),
       ...(hostMutation ? { readToken } : {}),
       mutation,
     });
@@ -4880,7 +5445,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       );
     }
     const driver = options.providerOAuth?.[providerId];
-    const browserAuth = driver ? null : await pluginBrowserOAuth(options, providerId);
+    const browserAuth = driver
+      ? null
+      : await pluginBrowserOAuth(options, providerId);
     if (!driver && !browserAuth) {
       return c.json(
         {
@@ -4910,6 +5477,41 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const existing = initialState.providerOAuth.find((record) =>
       providerOAuthMatches(record, userId, providerId, accountId),
     );
+    const effectiveBrowserAuth = driver
+      ? null
+      : (parseBrowserProviderOAuthState(existing?.oauthState)?.auth ??
+        browserAuth);
+    if (effectiveBrowserAuth?.pluginStore) {
+      const selectedAccount = accountId
+        ? initialState.providerAccounts.find(
+            (account) =>
+              (account.userId ?? userId) === userId &&
+              account.id === accountId &&
+              account.providerId === providerId,
+          )
+        : undefined;
+      if (!selectedAccount) {
+        const message = accountId
+          ? `Host-selected provider account ${accountId} is not available for ${providerId}.`
+          : "Provider browser flow requires a Host-selected provider account.";
+        return c.json(
+          {
+            error: message,
+            mutation: hostMutationRejected(
+              {
+                operation: "provider_oauth_complete",
+                entity: {
+                  kind: "provider-oauth",
+                  id: providerOAuthEntityId(providerId, accountId),
+                },
+              },
+              message,
+            ),
+          },
+          accountId ? 404 : 400,
+        );
+      }
+    }
     const needsReadProof =
       !!preconditions.actorClientType || !!preconditions.expectedReadToken;
     const hostMutation =
@@ -4978,12 +5580,14 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       completed = driver
         ? await driver.complete({
             deviceCode: deviceCode!,
-            ...(existing?.oauthState ? { oauthState: existing.oauthState } : {}),
+            ...(existing?.oauthState
+              ? { oauthState: existing.oauthState }
+              : {}),
           })
         : {
             accessToken: browserOAuthToken(
               callbackUrl ?? "",
-              parseBrowserProviderOAuthState(existing?.oauthState)?.auth ?? browserAuth!,
+              effectiveBrowserAuth!,
             ),
             tokenType: "Bearer",
             accountLabel: existing?.accountLabel,
@@ -5030,12 +5634,32 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         502,
       );
     }
+    if (
+      effectiveBrowserAuth?.pluginStore &&
+      !completed.availabilityError
+    ) {
+      const pluginStore = await pluginStoreForImport();
+      await pluginStore.put({
+        pluginId: effectiveBrowserAuth.pluginStore.pluginId,
+        accountId: accountId!,
+        key: effectiveBrowserAuth.pluginStore.key,
+        value: completed.accessToken,
+        secret: true,
+        ...(completed.expiresAt
+          ? { expiresAt: Date.parse(completed.expiresAt) }
+          : {}),
+      });
+    }
     const record = await db.update((state) => {
       return upsertProviderOAuth(state, userId, providerId, {
         ...(accountId ? { accountId } : {}),
         status: completed.availabilityError ? "error" : "authorized",
-        accessToken: completed.accessToken,
-        refreshToken: completed.refreshToken,
+        accessToken: effectiveBrowserAuth?.pluginStore
+          ? undefined
+          : completed.accessToken,
+        refreshToken: effectiveBrowserAuth?.pluginStore
+          ? undefined
+          : completed.refreshToken,
         tokenType: completed.tokenType,
         expiresAt: completed.expiresAt,
         accountLabel: completed.accountLabel,
@@ -5173,68 +5797,107 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   });
   app.get("/api/v1/local/plugins", async (c) => {
     if (!options.pluginPackages) {
-      return c.json({ error: "local plugin package management is unavailable" }, 503);
+      return c.json(
+        { error: "local plugin package management is unavailable" },
+        503,
+      );
     }
     return c.json(await options.pluginPackages.list());
   });
   app.post("/api/v1/local/plugins/validate", async (c) => {
     if (!options.pluginPackages) {
-      return c.json({ error: "local plugin package management is unavailable" }, 503);
+      return c.json(
+        { error: "local plugin package management is unavailable" },
+        503,
+      );
     }
     try {
       return c.json(await options.pluginPackages.validate(await c.req.json()));
     } catch (error) {
-      return c.json({ error: error instanceof Error ? error.message : String(error) }, 422);
+      return c.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        422,
+      );
     }
   });
   app.post("/api/v1/local/plugins/activate", async (c) => {
     if (!options.pluginPackages) {
-      return c.json({ error: "local plugin package management is unavailable" }, 503);
+      return c.json(
+        { error: "local plugin package management is unavailable" },
+        503,
+      );
     }
     try {
       return c.json(await options.pluginPackages.activate(await c.req.json()));
     } catch (error) {
-      return c.json({ error: error instanceof Error ? error.message : String(error) }, 422);
+      return c.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        422,
+      );
     }
   });
   app.get("/api/v1/local/plugins/:id/package", async (c) => {
     if (!options.pluginPackages) {
-      return c.json({ error: "local plugin package management is unavailable" }, 503);
+      return c.json(
+        { error: "local plugin package management is unavailable" },
+        503,
+      );
     }
     try {
       return c.json(await options.pluginPackages.read(c.req.param("id")));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return c.json({ error: message }, /ENOENT|not found/i.test(message) ? 404 : 409);
+      return c.json(
+        { error: message },
+        /ENOENT|not found/i.test(message) ? 404 : 409,
+      );
     }
   });
   app.post("/api/v1/local/plugins/:id/rollback", async (c) => {
     if (!options.pluginPackages) {
-      return c.json({ error: "local plugin package management is unavailable" }, 503);
+      return c.json(
+        { error: "local plugin package management is unavailable" },
+        503,
+      );
     }
     try {
       return c.json(await options.pluginPackages.rollback(c.req.param("id")));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return c.json({ error: message }, /No rollback version/i.test(message) ? 404 : 409);
+      return c.json(
+        { error: message },
+        /No rollback version/i.test(message) ? 404 : 409,
+      );
     }
   });
   app.delete("/api/v1/local/plugins/:id", async (c) => {
     if (!options.pluginPackages) {
-      return c.json({ error: "local plugin package management is unavailable" }, 503);
+      return c.json(
+        { error: "local plugin package management is unavailable" },
+        503,
+      );
     }
     try {
       return c.json(await options.pluginPackages.remove(c.req.param("id")));
     } catch (error) {
-      return c.json({ error: error instanceof Error ? error.message : String(error) }, 422);
+      return c.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        422,
+      );
     }
   });
   app.get("/api/v1/plugin-actions", async (c) => {
-    const registrations = options.listPluginCards ? await options.listPluginCards() : [];
-    return c.json({ actions: executablePluginActionDefinitions(registrations) });
+    const registrations = options.listPluginCards
+      ? await options.listPluginCards()
+      : [];
+    return c.json({
+      actions: executablePluginActionDefinitions(registrations),
+    });
   });
   app.get("/api/v1/plugin-providers", async (c) => {
-    const registrations = options.listPluginProviders ? await options.listPluginProviders() : [];
+    const registrations = options.listPluginProviders
+      ? await options.listPluginProviders()
+      : [];
     return c.json({
       providers: registrations.map((registration) => ({
         pluginId: registration.pluginId,
@@ -5260,62 +5923,77 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       ),
       configuredProviders,
     });
-    const models = await Promise.all(entries.map(async (entry) => {
-      const route = entry.selectedRoute;
-      const localCapability = route?.apiShape === "local-asr"
-        ? "speech-to-text"
-        : route?.apiShape === "local-tts"
-          ? "text-to-speech"
-          : undefined;
-      const runtimeStatus = localCapability && route
-        ? await audioConfig.getModelStatus({
-            capability: localCapability,
-            model: route.upstreamModel,
-          })
-        : undefined;
-      const entryWithReadiness = runtimeStatus
-        ? {
-            ...entry,
-            runtimeReadiness: {
-              capability: runtimeStatus.capability,
-              model: runtimeStatus.model,
-              readiness: runtimeStatus.available ? "ready" as const : "not-installed" as const,
-              executable: runtimeStatus.available,
-              ...(runtimeStatus.message ? { message: runtimeStatus.message } : {}),
-            },
-          }
-        : entry;
-      if (!options.resolvePluginBinding) {
-        return entryWithReadiness;
-      }
-      const routes = await Promise.all(entry.routes.map(async (candidate) => {
-        const projectorBinding = candidate.projectorPluginId && candidate.projectorExportId
-          ? await options.resolvePluginBinding!(
-              candidate.projectorPluginId,
-              candidate.projectorExportId,
-              "provider-projector",
-            )
-          : undefined;
-        const executorBinding = candidate.executorPluginId && candidate.executorExportId
-          ? await options.resolvePluginBinding!(
-              candidate.executorPluginId,
-              candidate.executorExportId,
-              "provider-executor",
-            )
-          : undefined;
+    const models = await Promise.all(
+      entries.map(async (entry) => {
+        const route = entry.selectedRoute;
+        const localCapability =
+          route?.apiShape === "local-asr"
+            ? "speech-to-text"
+            : route?.apiShape === "local-tts"
+              ? "text-to-speech"
+              : undefined;
+        const runtimeStatus =
+          localCapability && route
+            ? await audioConfig.getModelStatus({
+                capability: localCapability,
+                model: route.upstreamModel,
+              })
+            : undefined;
+        const entryWithReadiness = runtimeStatus
+          ? {
+              ...entry,
+              runtimeReadiness: {
+                capability: runtimeStatus.capability,
+                model: runtimeStatus.model,
+                readiness: runtimeStatus.available
+                  ? ("ready" as const)
+                  : ("not-installed" as const),
+                executable: runtimeStatus.available,
+                ...(runtimeStatus.message
+                  ? { message: runtimeStatus.message }
+                  : {}),
+              },
+            }
+          : entry;
+        if (!options.resolvePluginBinding) {
+          return entryWithReadiness;
+        }
+        const routes = await Promise.all(
+          entry.routes.map(async (candidate) => {
+            const projectorBinding =
+              candidate.projectorPluginId && candidate.projectorExportId
+                ? await options.resolvePluginBinding!(
+                    candidate.projectorPluginId,
+                    candidate.projectorExportId,
+                    "provider-projector",
+                  )
+                : undefined;
+            const executorBinding =
+              candidate.executorPluginId && candidate.executorExportId
+                ? await options.resolvePluginBinding!(
+                    candidate.executorPluginId,
+                    candidate.executorExportId,
+                    "provider-executor",
+                  )
+                : undefined;
+            return {
+              ...candidate,
+              ...(projectorBinding ? { projectorBinding } : {}),
+              ...(executorBinding ? { executorBinding } : {}),
+            };
+          }),
+        );
+        const selectedRouteIndex = route ? entry.routes.indexOf(route) : -1;
         return {
-          ...candidate,
-          ...(projectorBinding ? { projectorBinding } : {}),
-          ...(executorBinding ? { executorBinding } : {}),
+          ...entryWithReadiness,
+          selectedRoute:
+            selectedRouteIndex >= 0
+              ? (routes[selectedRouteIndex] ?? null)
+              : null,
+          routes,
         };
-      }));
-      const selectedRouteIndex = route ? entry.routes.indexOf(route) : -1;
-      return {
-        ...entryWithReadiness,
-        selectedRoute: selectedRouteIndex >= 0 ? routes[selectedRouteIndex] ?? null : null,
-        routes,
-      };
-    }));
+      }),
+    );
     return c.json({ models });
   });
   app.put("/api/v1/model-cards/:modelId", async (c) => {
@@ -5323,18 +6001,21 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const body = await c.req.json().catch(() => null);
     const state = await db.load();
     const builtInModelIds = new Set(
-      (await effectiveModelCards(
-        state,
-        userId,
-        options.listPluginCards,
-        options.listPluginModelBindings,
-      ))
-        .map((model) => model.id),
+      (
+        await effectiveModelCards(
+          state,
+          userId,
+          options.listPluginCards,
+          options.listPluginModelBindings,
+        )
+      ).map((model) => model.id),
     );
     const config = normalizeModelCardConfigInput(
       modelId,
       body,
-      state.providerAccounts.filter((account) => (account.userId ?? userId) === userId),
+      state.providerAccounts.filter(
+        (account) => (account.userId ?? userId) === userId,
+      ),
       builtInModelIds,
     );
     if (!config) return c.json({ error: "Invalid model card config" }, 400);
@@ -5395,7 +6076,11 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       const item = options.marketplaceActions?.find(
         (candidate) => candidate.packageId === packageId,
       );
-      if (!item) return c.json({ error: "Unknown local marketplace action package" }, 404);
+      if (!item)
+        return c.json(
+          { error: "Unknown local marketplace action package" },
+          404,
+        );
       return c.json(await options.installMarketplaceAction!(packageId));
     });
   }
@@ -5404,7 +6089,11 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       const item = options.marketplaceActions?.find(
         (candidate) => candidate.packageId === c.req.param("packageId"),
       );
-      if (!item) return c.json({ error: "Unknown local marketplace action package" }, 404);
+      if (!item)
+        return c.json(
+          { error: "Unknown local marketplace action package" },
+          404,
+        );
       await options.uninstallMarketplaceAction!(item.id);
       return new Response(null, { status: 204 });
     });
@@ -5415,7 +6104,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       const item = options.marketplaceSkills?.find(
         (candidate) => candidate.id === skillId,
       );
-      if (!item) return c.json({ error: "Unknown local marketplace skill" }, 404);
+      if (!item)
+        return c.json({ error: "Unknown local marketplace skill" }, 404);
       return c.json(await options.installMarketplaceSkill!(skillId));
     });
   }
@@ -5425,7 +6115,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       const item = options.marketplaceSkills?.find(
         (candidate) => candidate.id === skillId,
       );
-      if (!item) return c.json({ error: "Unknown local marketplace skill" }, 404);
+      if (!item)
+        return c.json({ error: "Unknown local marketplace skill" }, 404);
       await options.uninstallMarketplaceSkill!(skillId);
       return new Response(null, { status: 204 });
     });
@@ -5506,6 +6197,39 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       throw error;
     }
   });
+  app.get("/api/v1/local/public-storage", async (c) =>
+    c.json(await publicAssetStorage.getPublicConfig()),
+  );
+  app.patch("/api/v1/local/public-storage", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+    try {
+      return c.json(await publicAssetStorage.updateFromRequest(body));
+    } catch (error) {
+      if (error instanceof PublicAssetStorageConfigError) {
+        return c.json(
+          { error: error.message },
+          error.status as 400 | 409,
+        );
+      }
+      throw error;
+    }
+  });
+  app.post("/api/v1/local/public-storage/test", async (c) => {
+    try {
+      await publicAssetStorage.testConnection();
+      return c.json({ ok: true as const });
+    } catch (error) {
+      const status =
+        error instanceof PublicAssetStorageConfigError ? error.status : 502;
+      return c.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        status as 400 | 409 | 502,
+      );
+    }
+  });
   app.get("/api/v1/local/audio", async (c) =>
     c.json(publicLocalAudioConfig(await localAudioReadState(audioConfig))),
   );
@@ -5522,16 +6246,30 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     } | null;
     if (
       !body ||
-      typeof body.assetId !== "string" || !body.assetId.trim() ||
-      typeof body.metadataKind !== "string" || !body.metadataKind.trim() ||
-      typeof body.producer !== "string" || !body.producer.trim() ||
-      !body.identity || typeof body.identity !== "object" || Array.isArray(body.identity)
+      typeof body.assetId !== "string" ||
+      !body.assetId.trim() ||
+      typeof body.metadataKind !== "string" ||
+      !body.metadataKind.trim() ||
+      typeof body.producer !== "string" ||
+      !body.producer.trim() ||
+      !body.identity ||
+      typeof body.identity !== "object" ||
+      Array.isArray(body.identity)
     ) {
-      return c.json({ error: "assetId, metadataKind, producer, and an identity object are required" }, 400);
+      return c.json(
+        {
+          error:
+            "assetId, metadataKind, producer, and an identity object are required",
+        },
+        400,
+      );
     }
     const identity = body.identity as Record<string, unknown>;
     if (identity.kind !== body.metadataKind) {
-      return c.json({ error: `identity.kind must equal metadataKind ${body.metadataKind}` }, 400);
+      return c.json(
+        { error: `identity.kind must equal metadataKind ${body.metadataKind}` },
+        400,
+      );
     }
     await db.upsertAssetMetadataIndex({
       assetId: body.assetId,
@@ -5542,20 +6280,30 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       ...(typeof identity.schemaVersion === "number"
         ? { schemaVersion: identity.schemaVersion }
         : {}),
-      ...(typeof identity.contentHash === "string" ? { contentHash: identity.contentHash } : {}),
-      ...(typeof identity.bodyHash === "string" ? { bodyHash: identity.bodyHash } : {}),
+      ...(typeof identity.contentHash === "string"
+        ? { contentHash: identity.contentHash }
+        : {}),
+      ...(typeof identity.bodyHash === "string"
+        ? { bodyHash: identity.bodyHash }
+        : {}),
       producer: body.producer,
       ...(identity.summary === undefined ? {} : { summary: identity.summary }),
       identity,
     });
-    return c.json({ recorded: true, assetId: body.assetId, metadataKind: body.metadataKind });
+    return c.json({
+      recorded: true,
+      assetId: body.assetId,
+      metadataKind: body.metadataKind,
+    });
   });
 
   app.get("/api/v1/local/asset-metadata", async (c) => {
     const rows = await db.listAssetMetadataIndex({
       ...(c.req.query("assetId") ? { assetId: c.req.query("assetId") } : {}),
       ...(c.req.query("kind") ? { metadataKind: c.req.query("kind") } : {}),
-      ...(c.req.query("projectId") ? { projectId: c.req.query("projectId") } : {}),
+      ...(c.req.query("projectId")
+        ? { projectId: c.req.query("projectId") }
+        : {}),
     });
     return c.json({ metadata: rows });
   });
@@ -5582,17 +6330,22 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       ),
       configuredProviders,
     }).find((candidate) => candidate.model.id === resolvedSelection.model);
-    const route = entry?.selectedRoute ?? entry?.routes.find((candidate) => candidate.apiShape === "local-asr");
-    const isCloudReady = !!entry &&
+    const route =
+      entry?.selectedRoute ??
+      entry?.routes.find((candidate) => candidate.apiShape === "local-asr");
+    const isCloudReady =
+      !!entry &&
       entry.model.kind === "text" &&
-      (entry.model.input.promptModalities.includes("audio") || !!entry.model.input.inputMode.audios) &&
+      (entry.model.input.promptModalities.includes("audio") ||
+        !!entry.model.input.inputMode.audios) &&
       !!entry.selectedRoute &&
       entry.missingCredentials.length === 0 &&
       entry.tier === "available";
     return { resolvedSelection, entry, route, isCloudReady };
   };
   app.get("/api/v1/local/audio/voice-input", async (c) => {
-    const { resolvedSelection, route, isCloudReady } = await resolveVoiceInputRoute();
+    const { resolvedSelection, route, isCloudReady } =
+      await resolveVoiceInputRoute();
     if (!resolvedSelection.enabled) {
       return c.json({
         asr: {
@@ -5654,7 +6407,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     return c.json({ asr });
   });
   app.post("/api/v1/local/audio/voice-input/warmup", async (c) => {
-    const { resolvedSelection, route, isCloudReady } = await resolveVoiceInputRoute();
+    const { resolvedSelection, route, isCloudReady } =
+      await resolveVoiceInputRoute();
     if (!resolvedSelection.enabled) {
       return c.json({ status: "disabled", runtime: "provider-route" }, 409);
     }
@@ -5664,11 +6418,15 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     if (!audioConfig.warmupVoiceInput) {
       return c.json({ status: "unsupported", runtime: "builtin-rpc" }, 501);
     }
-    const model = route?.apiShape === "local-asr" && route.upstreamModel
-      ? route.upstreamModel
-      : resolvedSelection.model;
+    const model =
+      route?.apiShape === "local-asr" && route.upstreamModel
+        ? route.upstreamModel
+        : resolvedSelection.model;
     void audioConfig.warmupVoiceInput({ model }).catch((error) => {
-      console.warn("[local-api] Voice input warmup degraded:", errorMessage(error));
+      console.warn(
+        "[local-api] Voice input warmup degraded:",
+        errorMessage(error),
+      );
     });
     return c.json({ status: "warming", runtime: "builtin-rpc", model }, 202);
   });
@@ -5945,60 +6703,80 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           state.providerOAuth,
         ),
       });
-      const entry = catalog.find((candidate) => candidate.model.id === selection.model);
-      const localRoute = entry?.routes.find((route) => route.apiShape === "local-asr");
-      const acceptsAudio = !!entry && (
-        entry.model.input.promptModalities.includes("audio") ||
-        !!entry.model.input.inputMode.audios
+      const entry = catalog.find(
+        (candidate) => candidate.model.id === selection.model,
       );
+      const localRoute = entry?.routes.find(
+        (route) => route.apiShape === "local-asr",
+      );
+      const acceptsAudio =
+        !!entry &&
+        (entry.model.input.promptModalities.includes("audio") ||
+          !!entry.model.input.inputMode.audios);
 
-      const result = entry?.model.kind === "text" && acceptsAudio
-        ? await (async () => {
-            if (!entry.selectedRoute || entry.missingCredentials.length > 0 || entry.tier !== "available") {
-              throw new LocalAudioConfigError(
-                "The selected voice input model is not configured. Open Settings > Models and configure a provider.",
-                409,
-              );
-            }
-            const generated = await voiceInputAigc.generateText({
-              taskId: randomUUID(),
-              prompt: typeof language === "string" && language.trim()
-                ? `Transcribe the attached audio verbatim in ${language.trim()}. Return only the transcript.`
-                : "Transcribe the attached audio verbatim. Return only the transcript.",
-              model: entry.model.id,
-              modelParams: { require_real_provider: true },
-              referenceAudio: {
-                bytes: new Uint8Array(await file.arrayBuffer()),
-                contentType: file.type || "application/octet-stream",
-              },
-            });
-            const text = generated.text.trim();
-            if (!text) throw new LocalAudioConfigError("The selected voice input model returned an empty transcript.", 502);
-            return {
-              schemaVersion: 1 as const,
-              kind: "clash.asr.timed-transcript" as const,
-              timebase: "milliseconds" as const,
-              alignment: "word" as const,
-              text,
-              backendId: generated.provider ?? entry.selectedRoute.upstreamId,
-              modelId: entry.model.id,
-              ...(typeof language === "string" && language.trim() ? { language: language.trim() } : {}),
-              durationMs: 1,
-              words: [{ id: "word-000001", text, startMs: 0, endMs: 1 }],
-              segments: [{
-                id: "segment-000001",
+      const result =
+        entry?.model.kind === "text" && acceptsAudio
+          ? await (async () => {
+              if (
+                !entry.selectedRoute ||
+                entry.missingCredentials.length > 0 ||
+                entry.tier !== "available"
+              ) {
+                throw new LocalAudioConfigError(
+                  "The selected voice input model is not configured. Open Settings > Models and configure a provider.",
+                  409,
+                );
+              }
+              const generated = await voiceInputAigc.generateText({
+                taskId: randomUUID(),
+                prompt:
+                  typeof language === "string" && language.trim()
+                    ? `Transcribe the attached audio verbatim in ${language.trim()}. Return only the transcript.`
+                    : "Transcribe the attached audio verbatim. Return only the transcript.",
+                model: entry.model.id,
+                modelParams: { require_real_provider: true },
+                referenceAudio: {
+                  bytes: new Uint8Array(await file.arrayBuffer()),
+                  contentType: file.type || "application/octet-stream",
+                },
+              });
+              const text = generated.text.trim();
+              if (!text)
+                throw new LocalAudioConfigError(
+                  "The selected voice input model returned an empty transcript.",
+                  502,
+                );
+              return {
+                schemaVersion: 1 as const,
+                kind: "clash.asr.timed-transcript" as const,
+                timebase: "milliseconds" as const,
+                alignment: "word" as const,
                 text,
-                startMs: 0,
-                endMs: 1,
-                wordIds: ["word-000001"],
-              }],
-            };
-          })()
-        : await audioConfig.transcribe({
-            file,
-            language: typeof language === "string" ? language : null,
-            ...(localRoute?.upstreamModel ? { model: localRoute.upstreamModel } : {}),
-          });
+                backendId: generated.provider ?? entry.selectedRoute.upstreamId,
+                modelId: entry.model.id,
+                ...(typeof language === "string" && language.trim()
+                  ? { language: language.trim() }
+                  : {}),
+                durationMs: 1,
+                words: [{ id: "word-000001", text, startMs: 0, endMs: 1 }],
+                segments: [
+                  {
+                    id: "segment-000001",
+                    text,
+                    startMs: 0,
+                    endMs: 1,
+                    wordIds: ["word-000001"],
+                  },
+                ],
+              };
+            })()
+          : await audioConfig.transcribe({
+              file,
+              language: typeof language === "string" ? language : null,
+              ...(localRoute?.upstreamModel
+                ? { model: localRoute.upstreamModel }
+                : {}),
+            });
       const mutation = hostMutationSucceeded(envelope, {
         resultEntityId: "audio-transcription",
       });
@@ -6031,13 +6809,21 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       "local-action",
       "audio-synthesis",
     );
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (await c.req.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     const model = typeof body.model === "string" ? body.model : "";
     const text = typeof body.text === "string" ? body.text : "";
     const voice = typeof body.voice === "string" ? body.voice : null;
     const speed = typeof body.speed === "number" ? body.speed : undefined;
     try {
-      const result = await audioConfig.synthesize({ model, text, voice, speed });
+      const result = await audioConfig.synthesize({
+        model,
+        text,
+        voice,
+        speed,
+      });
       const mutation = hostMutationSucceeded(envelope, {
         resultEntityId: "audio-synthesis",
       });
@@ -6762,14 +7548,18 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 
   app.put("/api/v1/runtimes/:runtimeId/preferences", async (c) => {
     if (!options.localAcp?.updateRunPreferences) {
-      return c.json({ error: "Local agent runtime preferences unavailable" }, 404);
+      return c.json(
+        { error: "Local agent runtime preferences unavailable" },
+        404,
+      );
     }
     const body = (await c.req.json().catch(() => ({}))) as {
       agent_id?: unknown;
       config_values?: unknown;
       mode_id?: unknown;
     };
-    const agentId = typeof body.agent_id === "string" ? body.agent_id.trim() : "";
+    const agentId =
+      typeof body.agent_id === "string" ? body.agent_id.trim() : "";
     if (!agentId) return c.json({ error: "Missing agent_id" }, 400);
     const configValues =
       body.config_values &&
@@ -6782,14 +7572,17 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
             ),
           )
         : undefined;
-    const modeId = typeof body.mode_id === "string" && body.mode_id.trim()
-      ? body.mode_id.trim()
-      : undefined;
-    return c.json(await options.localAcp.updateRunPreferences({
-      agent_id: agentId,
-      ...(configValues ? { config_values: configValues } : {}),
-      ...(modeId ? { mode_id: modeId } : {}),
-    }));
+    const modeId =
+      typeof body.mode_id === "string" && body.mode_id.trim()
+        ? body.mode_id.trim()
+        : undefined;
+    return c.json(
+      await options.localAcp.updateRunPreferences({
+        agent_id: agentId,
+        ...(configValues ? { config_values: configValues } : {}),
+        ...(modeId ? { mode_id: modeId } : {}),
+      }),
+    );
   });
 
   app.post("/api/v1/runtimes/:runtimeId/sessions", async (c) => {
@@ -6957,16 +7750,18 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           : {}),
       });
       if (agentId && options.localAcp.updateRunPreferences) {
-        await options.localAcp.updateRunPreferences({
-          agent_id: agentId,
-          ...(configValues ? { config_values: configValues } : {}),
-          ...(permissionMode ? { mode_id: permissionMode } : {}),
-        }).catch((error) => {
-          console.warn(
-            "[local-api] could not persist recent ACP run choices:",
-            errorMessage(error),
-          );
-        });
+        await options.localAcp
+          .updateRunPreferences({
+            agent_id: agentId,
+            ...(configValues ? { config_values: configValues } : {}),
+            ...(permissionMode ? { mode_id: permissionMode } : {}),
+          })
+          .catch((error) => {
+            console.warn(
+              "[local-api] could not persist recent ACP run choices:",
+              errorMessage(error),
+            );
+          });
       }
       if (body.project_id && localSessionId) {
         await finalizeRuntimeSessionId(db, localSessionId, created.session_id, {
@@ -7057,23 +7852,38 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 
   app.get("/api/v1/local-sessions/:sessionId/runtime-status", async (c) => {
     if (!options.localAcp?.getSessionRuntimeStatus) {
-      return c.json({ error: "local ACP runtime status is not available" }, 501);
+      return c.json(
+        { error: "local ACP runtime status is not available" },
+        501,
+      );
     }
-    const status = await options.localAcp.getSessionRuntimeStatus(c.req.param("sessionId"));
+    const status = await options.localAcp.getSessionRuntimeStatus(
+      c.req.param("sessionId"),
+    );
     return status ? c.json(status) : c.json({ error: "not found" }, 404);
   });
 
   app.post("/api/v1/local-sessions/:sessionId/restart", async (c) => {
     if (!options.localAcp?.restartSession) {
-      return c.json({ error: "local ACP session restart is not available" }, 501);
+      return c.json(
+        { error: "local ACP session restart is not available" },
+        501,
+      );
     }
-    const body = await c.req.json().catch(() => ({})) as { mode?: unknown };
+    const body = (await c.req.json().catch(() => ({}))) as { mode?: unknown };
     const mode = body.mode === "after-turn" ? "after-turn" : "now";
     try {
-      return c.json(await options.localAcp.restartSession(c.req.param("sessionId"), { mode }));
+      return c.json(
+        await options.localAcp.restartSession(c.req.param("sessionId"), {
+          mode,
+        }),
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return c.json({ error: message }, message === "local session not found" ? 404 : 409);
+      return c.json(
+        { error: message },
+        message === "local session not found" ? 404 : 409,
+      );
     }
   });
 
@@ -7263,11 +8073,20 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 
   app.get("/api/v1/projects", async (c) => {
     const state = await db.load();
-    return c.json({
-      projects: activeProjects(state).map((project) =>
-        toV1Project(project, state),
-      ),
-    });
+    try {
+      const service = projectAssetServiceAt(requestOrigin(c));
+      return c.json({
+        projects: await Promise.all(
+          activeProjects(state).map(async (project) => {
+            const assets = await service.list(project.id);
+            const coverAssetId = await service.readProjectCover(project.id);
+            return toV1Project(project, assets, "preview", coverAssetId);
+          }),
+        ),
+      });
+    } catch (error) {
+      return localProjectAssetErrorResponse(error);
+    }
   });
 
   app.post("/api/v1/projects", async (c) => {
@@ -7480,9 +8299,22 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const project = includeDeleted
       ? state.projects.find((candidate) => candidate.id === c.req.param("id"))
       : findActiveProject(state, c.req.param("id"));
-    return project
-      ? c.json(toV1Project(project, state, "all"))
-      : c.json({ error: "Project not found" }, 404);
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    // A deleted Project read is a recovery-control-plane operation. Do not
+    // materialize legacy media or require its bytes merely to obtain the
+    // current read proof for restore/purge; missing old blobs must not make a
+    // tombstoned Project impossible to purge.
+    if (includeDeleted && isDeletedProject(project)) {
+      return c.json(toV1Project(project, [], "all"));
+    }
+    try {
+      const service = projectAssetServiceAt(requestOrigin(c));
+      const assets = await service.list(project.id);
+      const coverAssetId = await service.readProjectCover(project.id);
+      return c.json(toV1Project(project, assets, "all", coverAssetId));
+    } catch (error) {
+      return localProjectAssetErrorResponse(error);
+    }
   });
 
   app.patch("/api/v1/projects/:id", async (c) => {
@@ -7568,19 +8400,92 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     return c.json(result.body, result.status);
   });
 
+  app.put("/api/v1/projects/:id/cover", async (c) => {
+    const projectId = c.req.param("id");
+    const body = (await c.req.json().catch(() => ({}))) as {
+      coverAssetId?: unknown;
+    };
+    const hasCoverAssetId = Object.prototype.hasOwnProperty.call(
+      body,
+      "coverAssetId",
+    );
+    const normalizedCoverAssetId = normalizeString(body.coverAssetId);
+    if (
+      !hasCoverAssetId ||
+      (body.coverAssetId !== null && !normalizedCoverAssetId)
+    ) {
+      return c.json(
+        {
+          error: "coverAssetId must be a non-empty string or null",
+          code: "INVALID_PROJECT_COVER",
+        },
+        400,
+      );
+    }
+    const coverAssetId =
+      body.coverAssetId === null ? null : normalizedCoverAssetId!;
+
+    const state = await db.load();
+    if (!findActiveProject(state, projectId)) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    try {
+      const service = projectAssetServiceAt(requestOrigin(c));
+      if (coverAssetId) {
+        const coverAsset = await service.read(projectId, coverAssetId);
+        if (!coverAsset) {
+          return c.json(
+            {
+              error: "Project cover Asset not found",
+              code: "PROJECT_ASSET_NOT_FOUND",
+            },
+            404,
+          );
+        }
+        if (
+          (coverAsset.kind !== "image" && coverAsset.kind !== "video") ||
+          coverAsset.status !== "ready"
+        ) {
+          return c.json(
+            {
+              error: "Project cover must be a ready image or video Asset",
+              code: "INVALID_PROJECT_COVER",
+            },
+            400,
+          );
+        }
+      }
+      const currentCoverAssetId = await service.setProjectCover(
+        projectId,
+        coverAssetId,
+      );
+      return c.json({
+        ok: true,
+        projectId,
+        coverAssetId: currentCoverAssetId,
+      });
+    } catch (error) {
+      return localProjectAssetErrorResponse(error);
+    }
+  });
+
   app.post("/api/v1/projects/:projectId/host-command", async (c) => {
     const projectId = c.req.param("projectId");
     const raw = await c.req.json().catch(() => undefined);
     const parsed = ProjectHostCommandSchema.safeParse(raw);
     if (!parsed.success) {
-      return c.json({
-        error: "Invalid project host command",
-        details: parsed.error.issues.map((issue) => ({
-          code: issue.code,
-          path: issue.path,
-          message: issue.message,
-        })),
-      }, 400);
+      return c.json(
+        {
+          error: "Invalid project host command",
+          details: parsed.error.issues.map((issue) => ({
+            code: issue.code,
+            path: issue.path,
+            message: issue.message,
+          })),
+        },
+        400,
+      );
     }
     const body = parsed.data;
     const action = body.action;
@@ -7591,18 +8496,31 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       const captureBody = body as Extract<
         typeof body,
         { action: "capture_director_stage" }
-      > & DirectorStageRenderRequest;
+      > &
+        DirectorStageRenderRequest;
       if (!options.directorStageRenderer) {
-        return c.json({ error: "Director Stage product renderer is unavailable" }, 503);
+        return c.json(
+          { error: "Director Stage product renderer is unavailable" },
+          503,
+        );
       }
       const beforeDoc = await replicaStore.recover(projectId);
-      const before = handleProjectCommand(projectId, beforeDoc, body, hostContext) as {
+      const before = handleProjectCommand(
+        projectId,
+        beforeDoc,
+        body,
+        hostContext,
+      ) as {
         error?: string;
         code?: string;
         stage?: { state?: unknown };
         sourceStageRevisionId?: string;
       };
-      if (before.error || !before.stage?.state || !before.sourceStageRevisionId) {
+      if (
+        before.error ||
+        !before.stage?.state ||
+        !before.sourceStageRevisionId
+      ) {
         return c.json(before);
       }
       try {
@@ -7612,16 +8530,28 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           frames: captureBody.frames,
         });
         const afterDoc = await replicaStore.recover(projectId);
-        const after = handleProjectCommand(projectId, afterDoc, body, hostContext) as {
+        const after = handleProjectCommand(
+          projectId,
+          afterDoc,
+          body,
+          hostContext,
+        ) as {
           error?: string;
           code?: string;
           sourceStageRevisionId?: string;
         };
-        if (after.error || after.sourceStageRevisionId !== before.sourceStageRevisionId) {
-          return c.json(after.error ? after : {
-            code: "STALE_READ",
-            error: `Director Stage ${body.stageId} changed during capture; read it again`,
-          });
+        if (
+          after.error ||
+          after.sourceStageRevisionId !== before.sourceStageRevisionId
+        ) {
+          return c.json(
+            after.error
+              ? after
+              : {
+                  code: "STALE_READ",
+                  error: `Director Stage ${body.stageId} changed during capture; read it again`,
+                },
+          );
         }
         return c.json({
           captured: true,
@@ -7630,7 +8560,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           ...rendered,
         });
       } catch (error) {
-        return c.json({ error: error instanceof Error ? error.message : String(error) }, 422);
+        return c.json(
+          { error: error instanceof Error ? error.message : String(error) },
+          422,
+        );
       }
     }
     if (action === "add" || action === "execute") {
@@ -7644,12 +8577,49 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         async () => pluginCards,
         options.listPluginModelBindings,
       );
-      hostContext.trustedCustomActions = executablePluginActionDefinitions(pluginCards) as Record<string, unknown>[];
+      hostContext.trustedCustomActions = executablePluginActionDefinitions(
+        pluginCards,
+      ) as Record<string, unknown>[];
     }
-    const result = await replicaStore.updateSnapshotAtomic(projectId, (doc) => ({
-      value: handleProjectCommand(projectId, doc, body, hostContext),
-      save: projectCommandMutates(action),
-    }));
+    const selectedAccountId =
+      action === "execute" && typeof body.providerAccountId === "string"
+        ? body.providerAccountId
+        : undefined;
+    const handoffNodeId = selectedAccountId
+      ? randomUUID().replaceAll("-", "").slice(0, 8)
+      : undefined;
+    if (selectedAccountId && handoffNodeId) {
+      // Persist the private account choice before committing the pending Project node. A crash can
+      // leave an unreferenced handoff, but can never leave a pending node that silently routes to a
+      // different account.
+      await providerExecutionHandoffs.put({
+        projectId,
+        nodeId: handoffNodeId,
+        accountId: selectedAccountId,
+        createdAt: Date.now(),
+      });
+      hostContext.generationId = () => handoffNodeId;
+    }
+    let result: object;
+    try {
+      result = await replicaStore.updateSnapshotAtomic(projectId, (doc) => ({
+        value: handleProjectCommand(projectId, doc, body, hostContext),
+        save: projectCommandMutates(action),
+      }));
+    } catch (error) {
+      if (handoffNodeId) {
+        await providerExecutionHandoffs.remove(projectId, handoffNodeId);
+      }
+      throw error;
+    }
+    if (
+      handoffNodeId &&
+      ((result as { error?: unknown }).error ||
+        (result as { kind?: unknown }).kind !== "generation" ||
+        (result as { childNodeId?: unknown }).childNodeId !== handoffNodeId)
+    ) {
+      await providerExecutionHandoffs.remove(projectId, handoffNodeId);
+    }
     if (action === "execute" && !(result as { error?: unknown }).error) {
       void options.processProjectWork?.(projectId).catch((error) => {
         console.error(
@@ -9022,182 +9992,16 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     });
   });
 
-  app.post("/api/custom-action/upload", async (c) => {
-    const form = await c.req.formData();
-    const actorClientType =
-      normalizeString(c.req.header("x-clash-client-type")) ??
-      normalizeString(c.req.header("x-clash-actor-client-type")) ??
-      normalizeString(form.get("actorClientType"));
-    const projectId = String(form.get("projectId") ?? "");
-    const taskId = String(form.get("taskId") ?? "");
-    const nodeId = String(form.get("nodeId") ?? "");
-    const outputType = String(form.get("outputType") ?? "image");
-    const outputIndexRaw = form.get("outputIndex");
-    const outputIndex =
-      outputIndexRaw == null
-        ? 0
-        : Number.parseInt(String(outputIndexRaw), 10) || 0;
-    const indexSuffix = outputIndex > 0 ? `-${outputIndex}` : "";
-    const resultId = taskId ? `${taskId}${indexSuffix}` : "";
-    const envelope = localMutationEnvelope(
-      "custom_action_upload",
-      "custom-action-result",
-      resultId,
-    );
-    if (!projectId || !taskId || !nodeId) {
-      return c.json(
-        {
-          error: "Missing required fields: projectId, taskId, nodeId",
-          mutation: hostMutationRejected(
-            envelope,
-            "Missing required fields: projectId, taskId, nodeId",
-          ),
-        },
-        400,
-      );
-    }
-
-    if (outputType === "text") {
-      const mutation = hostMutationSucceeded(envelope, {
-        resultEntityId: resultId,
-      });
-      await db.appendMutationAudit(
-        mutationAuditRecord({
-          mutation,
-          actorClientType,
-          reason: "custom action upload",
-        }),
-      );
-      return c.json({
-        success: true,
-        storageKey: null,
-        content: String(form.get("content") ?? ""),
-        mutation,
-      });
-    }
-
-    const file = form.get("file");
-    if (!file || typeof file === "string") {
-      return c.json(
-        {
-          error: "Missing file for image/video/audio output",
-          mutation: hostMutationRejected(
-            envelope,
-            "Missing file for image/video/audio output",
-          ),
-        },
-        400,
-      );
-    }
-
-    const kind =
-      outputType === "video"
-        ? "video"
-        : outputType === "audio"
-          ? "audio"
-          : "image";
-    const ext = kind === "video" ? ".mp4" : kind === "audio" ? ".mp3" : ".png";
-    const storageKey = `projects/${sanitizeFileName(projectId)}/custom/${sanitizeFileName(taskId)}${indexSuffix}${ext}`;
-    let path: string;
-    try {
-      path = await assetPathForWrite(options.dataDir, storageKey);
-    } catch (error) {
-      const message = errorMessage(error);
-      return c.json(
-        {
-          error: message,
-          mutation: hostMutationRejected(envelope, message),
-        },
-        400,
-      );
-    }
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const contentHash = sha256Hex(bytes);
-    const assetId = outputIndex > 0 ? `${taskId}${indexSuffix}` : taskId;
-    const existingState = await db.load();
-    const existingAsset = existingState.assets.find(
-      (item) => item.id === assetId,
-    );
-    if (existingAsset) {
-      const metadata =
-        existingAsset.metadata &&
-        typeof existingAsset.metadata === "object" &&
-        !Array.isArray(existingAsset.metadata)
-          ? (existingAsset.metadata as Record<string, unknown>)
-          : {};
-      const existingContentHash =
-        typeof metadata.contentHash === "string"
-          ? metadata.contentHash
-          : undefined;
-      const checkpointConflict =
-        existingAsset.kind !== kind ||
-        existingAsset.srcR2Key !== storageKey ||
-        existingContentHash !== contentHash;
-      if (checkpointConflict) {
-        const message =
-          "Custom action output already exists with different checkpoint content. Use a new task id/output index or create an explicit replacement.";
-        return c.json(
-          {
-            error: message,
-            mutation: hostMutationRejected(envelope, message),
-          },
-          409,
-        );
-      }
-    }
-    await writeFile(path, bytes);
-
-    const at = Math.floor(Date.now() / 1000);
-    const exp = signedUrlExp();
-    const asset: Asset = {
-      id: assetId,
-      userId: String(form.get("actorUserId") ?? "") || userId,
-      kind,
-      srcR2Key: storageKey,
-      coverR2Key: null,
-      metadata: {
-        bytes: bytes.byteLength,
-        contentType: file.type || contentTypeForPath(storageKey),
-        contentHash,
+  app.all("/api/custom-action/upload", (c) =>
+    c.json(
+      {
+        error:
+          "Legacy ClashAgent custom-action transport is retired; install a clash.plugin/v1 executable plugin.",
+        code: "LEGACY_CUSTOM_ACTION_PROTOCOL_RETIRED",
       },
-      sourceModel: "custom-action",
-      sourcePrompt: null,
-      sourceTaskId: taskId,
-      sources: null,
-      signedUrl: localAssetUrl(c, storageKey),
-      signedUrlExp: exp,
-      createdAt: at,
-      updatedAt: at,
-    };
-    await db.update((state) => {
-      state.assets = [
-        { ...asset, projectId },
-        ...state.assets.filter((item) => item.id !== asset.id),
-      ];
-      state.assetRefs = [
-        { assetId: asset.id, projectId, importedAt: at },
-        ...state.assetRefs.filter(
-          (ref) => !(ref.assetId === asset.id && ref.projectId === projectId),
-        ),
-      ];
-    });
-    const mutation = hostMutationSucceeded(envelope, {
-      resultEntityId: assetId,
-    });
-    await db.appendMutationAudit(
-      mutationAuditRecord({
-        mutation,
-        actorClientType,
-        reason: "custom action upload",
-      }),
-    );
-    return c.json({
-      success: true,
-      storageKey,
-      assetId,
-      mutation,
-    });
-  });
+      410,
+    ),
+  );
 
   app.post("/upload", async (c) => {
     const form = await c.req.formData();
@@ -9264,7 +10068,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         dataDir: options.dataDir,
         clashRoot,
         storageKey,
-        ...(c.req.header("range") ? { rangeHeader: c.req.header("range") } : {}),
+        ...(c.req.header("range")
+          ? { rangeHeader: c.req.header("range") }
+          : {}),
       });
     } catch {
       return c.text("Asset not found", 404);
@@ -9287,35 +10093,27 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     return c.json({ ok: true });
   });
 
-  app.get("/api/v1/assets", async (c) => {
-    const state = await db.load();
-    const libraryIds = new Set(
-      (state.libraryAssetRefs ?? [])
-        .filter((ref) => ref.userId === userId)
-        .map((ref) => ref.assetId),
-    );
-    return c.json({
-      assets: state.assets
-        .filter((asset) => asset.userId === userId && libraryIds.has(asset.id))
-        .map((asset) => withSignedAssetUrls(c, asset)),
-    });
-  });
-
   app.post("/api/v1/director-model-generations", async (c) => {
-    const body = await c.req.json().catch(() => ({})) as {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      actionRunId?: string;
       projectId?: string;
       prompt?: string;
-      quality?: DirectorModelGenerationInput["quality"];
+      quality?: "normal" | "low-poly" | "geometry";
       pbr?: boolean;
       faceCount?: number;
     };
-    const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+    const projectId =
+      typeof body.projectId === "string" ? body.projectId.trim() : "";
     const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
-    const quality = body.quality === "low-poly" || body.quality === "geometry"
-      ? body.quality
-      : "normal";
+    const quality =
+      body.quality === "low-poly" || body.quality === "geometry"
+        ? body.quality
+        : "normal";
     if (!projectId || !prompt) {
-      return c.json({ error: "projectId and a 3D model prompt are required" }, 400);
+      return c.json(
+        { error: "projectId and a 3D model prompt are required" },
+        400,
+      );
     }
     const state = await db.load();
     if (!state.projects.some((project) => project.id === projectId)) {
@@ -9325,84 +10123,151 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       state.providerAccounts,
       userId,
       state.providerOAuth,
-    ).find((account) =>
-      account.providerId === "fal" &&
-      account.enabled !== false &&
-      typeof account.credentials?.apiKey === "string" &&
-      account.credentials.apiKey.trim().length > 0,
+    ).find(
+      (account) =>
+        account.providerId === "fal" &&
+        account.enabled !== false,
     );
-    if (!falAccount?.credentials?.apiKey) {
-      return c.json({
-        error: "3D generation requires an enabled fal.ai provider account with an API key",
-      }, 503);
-    }
-
-    let generated;
-    try {
-      generated = await generateFalDirectorModel({
-        input: {
-          prompt,
-          quality,
-          pbr: body.pbr !== false,
-          ...(typeof body.faceCount === "number" ? { faceCount: body.faceCount } : {}),
+    if (!falAccount?.id) {
+      return c.json(
+        {
+          error:
+            "3D generation requires an enabled fal.ai provider account",
         },
-        apiKey: falAccount.credentials.apiKey,
-        fetch: options.directorModelGenerationFetch ?? fetch,
-        queueBaseUrl: options.directorModelFalQueueBaseUrl ?? process.env.CLASH_FAL_QUEUE_URL,
-        pollIntervalMs: options.directorModelPollIntervalMs ?? 1000,
-      });
-    } catch (error) {
-      return c.json({ error: errorMessage(error) }, 502);
+        503,
+      );
     }
+    if (!options.resolvePluginBinding || !options.processProjectWork) {
+      return c.json(
+        { error: "The local durable Provider runtime is unavailable" },
+        503,
+      );
+    }
+    const clientActionRunId =
+      typeof body.actionRunId === "string" ? body.actionRunId.trim() : "";
+    if (clientActionRunId.length > 256) {
+      return c.json({ error: "actionRunId must be at most 256 characters" }, 400);
+    }
+    const actionRunId = clientActionRunId || `director:${randomUUID()}`;
+    const identity = { actionRunId, outputSlot: "media" };
+    try {
+      const existing = await durableRunJournal.load(identity);
+      if (existing) {
+        const facts = directorRunFacts(existing);
+        const executor = jsonRecord(existing.executorInput);
+        const input = jsonRecord(executor?.input);
+        const values = jsonRecord(input?.values);
+        const params = jsonRecord(values?.modelParams);
+        const sameFaceCount =
+          typeof body.faceCount === "number"
+            ? params?.faceCount === body.faceCount
+            : params?.faceCount === undefined;
+        if (
+          !facts ||
+          facts.projectId !== projectId ||
+          values?.prompt !== prompt ||
+          params?.quality !== quality ||
+          params?.pbr !== (body.pbr !== false) ||
+          !sameFaceCount
+        ) {
+          return c.json(
+            {
+              error: `Durable run ${actionRunId}/media already exists with different frozen input.`,
+            },
+            409,
+          );
+        }
+        void options.processProjectWork(projectId).catch((error) => {
+          console.error(
+            `[local-api] failed to resume Director generation ${actionRunId}:`,
+            errorMessage(error),
+          );
+        });
+        return directorRunResponse(c, existing);
+      }
+      const binding = await options.resolvePluginBinding(
+        "clash.fal",
+        "fal-execute",
+        "provider-executor",
+      );
+      const run = await createLocalDurableRun({
+        ownerId: "local-api",
+        journal: durableRunJournal,
+        command: {
+          type: "create",
+          actionRunId,
+          outputSlot: "media",
+          deadlineAt: Date.now() + providerGenerationDeadlineMs,
+          executor: {
+            binding,
+            accountId: falAccount.id,
+            kind: "model",
+            projectId,
+            provider: "fal",
+            modelEndpoint: "fal-ai/hunyuan3d-v3/text-to-3d",
+            delivery: {
+              kind: "project-asset",
+              actionId: "director:model-generation",
+              name: "generated-model.glb",
+              prompt,
+            },
+            input: {
+              values: {
+                kind: "model",
+                upstreamModel: "fal-ai/hunyuan3d-v3/text-to-3d",
+                prompt,
+                modelParams: {
+                  quality,
+                  pbr: body.pbr !== false,
+                  ...(typeof body.faceCount === "number"
+                    ? { faceCount: body.faceCount }
+                    : {}),
+                },
+              },
+              references: [],
+            },
+          },
+        },
+      });
+      void options.processProjectWork(projectId).catch((error) => {
+        console.error(
+          `[local-api] failed to wake Director generation ${actionRunId}:`,
+          errorMessage(error),
+        );
+      });
+      return directorRunResponse(c, run);
+    } catch (error) {
+      const message = errorMessage(error);
+      if (/already exists with different frozen input/i.test(message)) {
+        return c.json({ error: message }, 409);
+      }
+      return c.json({ error: message }, 502);
+    }
+  });
 
-    const assetId = crypto.randomUUID();
-    const fileName = generated.fileName.toLowerCase().endsWith(".glb")
-      ? generated.fileName
-      : `${generated.fileName}.glb`;
-    const storageKey = `projects/${sanitizeFileName(projectId)}/generated-models/${assetId}.glb`;
-    const outputPath = await assetPathForWrite(options.dataDir, storageKey);
-    await mkdir(dirname(outputPath), { recursive: true });
-    await writeFile(outputPath, generated.bytes);
-    const at = Math.floor(Date.now() / 1000);
-    const sourceUrl = localAssetUrl(c, storageKey);
-    const asset: Asset = {
-      id: assetId,
-      userId,
-      kind: "model",
-      srcR2Key: storageKey,
-      coverR2Key: null,
-      metadata: {
-        bytes: generated.bytes.byteLength,
-        contentType: generated.contentType,
-        contentHash: sha256Hex(generated.bytes),
-        originalName: fileName,
-        provider: generated.provider,
-        requestId: generated.requestId,
-        modelEndpoint: generated.modelEndpoint,
-        remoteUrl: generated.remoteUrl,
-      },
-      sourceModel: generated.modelEndpoint,
-      sourcePrompt: prompt,
-      sourceTaskId: generated.requestId,
-      sources: null,
-      signedUrl: sourceUrl,
-      signedUrlExp: signedUrlExp(),
-      createdAt: at,
-      updatedAt: at,
-    };
-    await db.update((current) => {
-      current.assets.unshift({ ...asset, projectId });
-      current.assetRefs.unshift({ assetId, projectId, importedAt: at });
+  app.get("/api/v1/director-model-generations/:actionRunId", async (c) => {
+    const actionRunId = c.req.param("actionRunId").trim();
+    const projectId = c.req.query("projectId")?.trim() ?? "";
+    if (!actionRunId || !projectId) {
+      return c.json({ error: "actionRunId and projectId are required" }, 400);
+    }
+    const run = await durableRunJournal.load({
+      actionRunId,
+      outputSlot: "media",
     });
-    return c.json({
-      assetId,
-      name: fileName,
-      sourceUrl,
-      provider: generated.provider,
-      modelEndpoint: generated.modelEndpoint,
-      requestId: generated.requestId,
-      ...(generated.thumbnailUrl ? { thumbnailUrl: generated.thumbnailUrl } : {}),
-    });
+    const facts = run ? directorRunFacts(run) : null;
+    if (!run || !facts || facts.projectId !== projectId) {
+      return c.json({ error: "Director generation not found" }, 404);
+    }
+    if (run.phase !== "succeeded" && run.phase !== "failed") {
+      void options.processProjectWork?.(projectId).catch((error) => {
+        console.error(
+          `[local-api] failed to resume Director generation ${actionRunId}:`,
+          errorMessage(error),
+        );
+      });
+    }
+    return directorRunResponse(c, run);
   });
 
   app.post("/api/v1/edits", async (c) => {
@@ -9424,7 +10289,11 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     if (editKind !== "image-editor" && editKind !== "video-clipper") {
       return c.json({ error: `Invalid editKind: ${editKind}` }, 400);
     }
-    if (outputKind !== "image" && outputKind !== "video" && outputKind !== "audio") {
+    if (
+      outputKind !== "image" &&
+      outputKind !== "video" &&
+      outputKind !== "audio"
+    ) {
       return c.json({ error: `Invalid outputKind: ${outputKind}` }, 400);
     }
     let editParams: unknown;
@@ -9444,62 +10313,73 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         origin,
       });
     } catch (error) {
-      return c.json({ error: `Invalid action invocation: ${errorMessage(error)}` }, 400);
+      return c.json(
+        { error: `Invalid action invocation: ${errorMessage(error)}` },
+        400,
+      );
     }
     if (
       invocation.projectId !== projectId ||
       invocation.source.assetId !== sourceAssetId ||
       invocation.actionId !== editKind
     ) {
-      return c.json({ error: "Action invocation does not match legacy edit fields" }, 400);
+      return c.json(
+        { error: "Action invocation does not match legacy edit fields" },
+        400,
+      );
     }
-    if (resolveAssetActionOutputKind(invocation.actionId, invocation.params) !== outputKind) {
-      return c.json({ error: "outputKind does not match the action operation" }, 400);
+    if (
+      resolveAssetActionOutputKind(invocation.actionId, invocation.params) !==
+      outputKind
+    ) {
+      return c.json(
+        { error: "outputKind does not match the action operation" },
+        400,
+      );
     }
-    const state = await db.load();
-    const source = state.assets.find((asset) => asset.id === sourceAssetId && asset.userId === userId);
+    const assetService = projectAssetServiceAt(requestOrigin(c));
+    const source = await assetService.read(projectId, sourceAssetId);
     if (!source) return c.json({ error: "Source asset not found" }, 404);
     if (source.kind !== invocation.source.kind) {
-      return c.json({ error: "Action invocation source kind does not match the asset" }, 400);
+      return c.json(
+        { error: "Action invocation source kind does not match the asset" },
+        400,
+      );
     }
 
-    const assetId = crypto.randomUUID();
-    const ext = outputKind === "image" ? "png" : outputKind === "video" ? "mp4" : "mp3";
-    const storageKey = `projects/${sanitizeFileName(projectId)}/edits/${assetId}.${ext}`;
-    const path = await assetPathForWrite(options.dataDir, storageKey);
     const bytes = new Uint8Array(await file.arrayBuffer());
-    await mkdir(join(path, ".."), { recursive: true });
-    await writeFile(path, bytes);
-
-    const at = Math.floor(Date.now() / 1000);
-    const asset: Asset = {
-      id: assetId,
-      userId,
-      kind: outputKind,
-      srcR2Key: storageKey,
-      coverR2Key: null,
-      metadata: {
-        bytes: bytes.byteLength,
-        contentType: file.type || contentTypeForPath(storageKey),
-        contentHash: sha256Hex(bytes),
-        editParams: invocation.params,
-        editOrigin: legacyEditOriginForSurface(invocation.surface),
-        actionInvocation: invocation,
-      },
-      sourceModel: actionSourceModel(invocation),
-      sourcePrompt: null,
-      sourceTaskId: null,
-      sources: [{ assetId: invocation.source.assetId, role: "edit-source" }],
-      signedUrl: localAssetUrl(c, storageKey),
-      signedUrlExp: signedUrlExp(),
-      createdAt: at,
-      updatedAt: at,
-    };
-    await db.update((next) => {
-      next.assets.unshift({ ...asset, projectId });
-      next.assetRefs.unshift({ assetId, projectId, importedAt: at });
-    });
-    return c.json({ assetId, srcR2Key: storageKey, coverR2Key: null });
+    const contentType =
+      file.type ||
+      (outputKind === "image"
+        ? "image/png"
+        : outputKind === "video"
+          ? "video/mp4"
+          : "audio/mpeg");
+    const actionRunId = `edit:${randomUUID()}`;
+    try {
+      const asset = await assetService.installOwned({
+        projectId,
+        kind: outputKind,
+        bytes,
+        contentType,
+        name: file.name || `edit-${actionRunId}`,
+        metadata: { bytes: bytes.byteLength, contentType },
+        provenance: {
+          kind: "edit",
+          actionRunId,
+          model: actionSourceModel(invocation),
+        },
+      });
+      await bindEditActionAssets({
+        service: assetService,
+        invocation,
+        actionRunId,
+        outputAssetId: asset.id,
+      });
+      return c.json(asset);
+    } catch (error) {
+      return localProjectAssetErrorResponse(error);
+    }
   });
 
   app.post("/api/v1/edits/video-crop", async (c) => {
@@ -9511,9 +10391,15 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       invocation?: unknown;
     };
     const { projectId, sourceAssetId, params } = body;
-    if (!projectId || !sourceAssetId || params?.mode !== "crop" ||
-        typeof params.startSec !== "number" || typeof params.endSec !== "number" ||
-        params.startSec < 0 || params.endSec <= params.startSec) {
+    if (
+      !projectId ||
+      !sourceAssetId ||
+      params?.mode !== "crop" ||
+      typeof params.startSec !== "number" ||
+      typeof params.endSec !== "number" ||
+      params.startSec < 0 ||
+      params.endSec <= params.startSec
+    ) {
       return c.json({ error: "Invalid video crop request" }, 400);
     }
     const origin: "canvas-node" | "asset-preview" =
@@ -9521,7 +10407,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     let invocation: AssetEditActionInvocation;
     try {
       invocation = parseAssetEditInvocation({
-        raw: body.invocation === undefined ? undefined : JSON.stringify(body.invocation),
+        raw:
+          body.invocation === undefined
+            ? undefined
+            : JSON.stringify(body.invocation),
         projectId,
         sourceAssetId,
         editKind: ASSET_ACTION_ID.VideoClipper,
@@ -9529,7 +10418,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         origin,
       });
     } catch (error) {
-      return c.json({ error: `Invalid action invocation: ${errorMessage(error)}` }, 400);
+      return c.json(
+        { error: `Invalid action invocation: ${errorMessage(error)}` },
+        400,
+      );
     }
     if (
       invocation.actionId !== ASSET_ACTION_ID.VideoClipper ||
@@ -9537,1183 +10429,87 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       invocation.source.assetId !== sourceAssetId ||
       invocation.params.mode !== "crop"
     ) {
-      return c.json({ error: "Action invocation does not match video crop fields" }, 400);
+      return c.json(
+        { error: "Action invocation does not match video crop fields" },
+        400,
+      );
     }
-    const state = await db.load();
-    const source = state.assets.find((asset) => asset.id === sourceAssetId && asset.userId === userId);
+    const assetService = projectAssetServiceAt(requestOrigin(c));
+    const source = await assetService.read(projectId, sourceAssetId);
     if (!source) return c.json({ error: "Source asset not found" }, 404);
-    if (source.kind !== "video") return c.json({ error: "Source asset is not a video" }, 400);
+    if (source.kind !== "video")
+      return c.json({ error: "Source asset is not a video" }, 400);
     const ffmpeg = localFfmpegPath();
-    if (!ffmpeg) return c.json({ error: "ffmpeg is required for video trimming" }, 503);
+    if (!ffmpeg)
+      return c.json({ error: "ffmpeg is required for video trimming" }, 503);
 
-    const assetId = crypto.randomUUID();
-    const storageKey = `projects/${sanitizeFileName(projectId)}/edits/${assetId}.mp4`;
-    const inputPath = await assetPathForRead(options.dataDir, source.srcR2Key, clashRoot);
-    const outputPath = await assetPathForWrite(options.dataDir, storageKey);
-    await mkdir(dirname(outputPath), { recursive: true });
+    let inputPath: string;
+    try {
+      inputPath = (await assetService.openProjection(projectId, sourceAssetId))
+        .path;
+    } catch (error) {
+      return localProjectAssetErrorResponse(error);
+    }
+    await mkdir(options.dataDir, { recursive: true });
+    const tempDir = await mkdtemp(join(options.dataDir, "video-crop-"));
+    const outputPath = join(tempDir, "output.mp4");
     try {
       await execFileAsync(ffmpeg, [
-        "-y", "-ss", String(params.startSec), "-i", inputPath,
-        "-t", String(params.endSec - params.startSec), "-map", "0",
-        "-c", "copy", "-movflags", "+faststart", outputPath,
+        "-y",
+        "-ss",
+        String(params.startSec),
+        "-i",
+        inputPath,
+        "-t",
+        String(params.endSec - params.startSec),
+        "-map",
+        "0",
+        "-c",
+        "copy",
+        "-movflags",
+        "+faststart",
+        outputPath,
       ]);
     } catch (error) {
-      await rm(outputPath, { force: true });
-      return c.json({ error: `Video trim failed: ${errorMessage(error)}` }, 500);
+      await rm(tempDir, { recursive: true, force: true });
+      return c.json(
+        { error: `Video trim failed: ${errorMessage(error)}` },
+        500,
+      );
     }
-    const bytes = await readFile(outputPath);
-    const at = Math.floor(Date.now() / 1000);
-    const asset: Asset = {
-      id: assetId,
-      userId,
-      kind: "video",
-      srcR2Key: storageKey,
-      coverR2Key: null,
-      metadata: {
-        bytes: bytes.byteLength,
+    const bytes = new Uint8Array(await readFile(outputPath));
+    await rm(tempDir, { recursive: true, force: true });
+    const actionRunId = `edit:${randomUUID()}`;
+    try {
+      const asset = await assetService.installOwned({
+        projectId,
+        kind: "video",
+        bytes,
         contentType: "video/mp4",
-        contentHash: sha256Hex(bytes),
-        durationMs: Math.round((invocation.params.endSec - invocation.params.startSec) * 1000),
-        editParams: invocation.params,
-        editOrigin: legacyEditOriginForSurface(invocation.surface),
-        actionInvocation: invocation,
-      },
-      sourceModel: actionSourceModel(invocation),
-      sourcePrompt: null,
-      sourceTaskId: null,
-      sources: [{ assetId: invocation.source.assetId, role: "edit-source" }],
-      signedUrl: localAssetUrl(c, storageKey),
-      signedUrlExp: signedUrlExp(),
-      createdAt: at,
-      updatedAt: at,
-    };
-    await db.update((next) => {
-      next.assets.unshift({ ...asset, projectId });
-      next.assetRefs.unshift({ assetId, projectId, importedAt: at });
-    });
-    return c.json({ assetId, srcR2Key: storageKey, coverR2Key: null });
-  });
-
-  app.post("/api/v1/assets", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as {
-      projectId?: string;
-      kind?: AssetKind;
-      srcR2Key?: string;
-      coverR2Key?: string | null;
-      addToLibrary?: boolean;
-      originalName?: string;
-    } & ProjectWriteBody;
-    const actorClientType =
-      optionalBodyString(body.actorClientType) ??
-      normalizeString(c.req.header("x-clash-client-type")) ??
-      normalizeString(c.req.header("x-clash-actor-client-type"));
-    if (
-      (!body.projectId && body.addToLibrary !== true) ||
-      !isAssetKind(body.kind) ||
-      typeof body.srcR2Key !== "string" ||
-      !body.srcR2Key
-    ) {
-      return c.json(
-        {
-          error: "Missing projectId/addToLibrary, kind, or srcR2Key",
-          mutation: hostMutationRejected(
-            {
-              operation: "asset_create",
-              entity: { kind: "asset", id: "" },
-            },
-            "Missing projectId/addToLibrary, kind, or srcR2Key",
+        name: `trimmed-${source.name ?? source.id}.mp4`,
+        metadata: {
+          bytes: bytes.byteLength,
+          contentType: "video/mp4",
+          durationMs: Math.round(
+            (invocation.params.endSec - invocation.params.startSec) * 1000,
           ),
         },
-        400,
-      );
-    }
-    let srcR2Key: string;
-    let coverR2Key: string | null;
-    try {
-      srcR2Key = normalizeAssetStorageKey(body.srcR2Key);
-      coverR2Key = body.coverR2Key
-        ? normalizeAssetStorageKey(body.coverR2Key)
-        : null;
+        provenance: {
+          kind: "edit",
+          actionRunId,
+          model: actionSourceModel(invocation),
+        },
+      });
+      await bindEditActionAssets({
+        service: assetService,
+        invocation,
+        actionRunId,
+        outputAssetId: asset.id,
+      });
+      return c.json(asset);
     } catch (error) {
-      const message = errorMessage(error);
-      return c.json(
-        {
-          error: message,
-          mutation: hostMutationRejected(
-            {
-              operation: "asset_create",
-              entity: { kind: "asset", id: "" },
-            },
-            message,
-          ),
-        },
-        400,
-      );
+      return localProjectAssetErrorResponse(error);
     }
-    const projectId = body.projectId;
-    const assetId = crypto.randomUUID();
-    let probe: LocalAssetProbeResult = { metadata: {} };
-    try {
-      probe = await (options.assetProbe ?? probeLocalAsset)({
-        dataDir: options.dataDir,
-        clashRoot,
-        assetId,
-        projectId,
-        kind: body.kind,
-        srcR2Key,
-        generateVideoCover: body.kind === "video" && !coverR2Key,
-      });
-    } catch (error) {
-      console.warn("[local-api] asset probe failed", {
-        srcR2Key,
-        error: errorMessage(error),
-      });
-    }
-    coverR2Key ??= probe.coverR2Key ?? null;
-    const at = Math.floor(Date.now() / 1000);
-    const exp = signedUrlExp();
-    const asset: Asset = {
-      id: assetId,
-      userId,
-      kind: body.kind,
-      srcR2Key,
-      coverR2Key,
-      metadata: {
-        ...probe.metadata,
-        ...(body.originalName ? { originalName: body.originalName } : {}),
-      },
-      sourceModel: null,
-      sourcePrompt: null,
-      sourceTaskId: null,
-      sources: null,
-      signedUrl: localAssetUrl(c, srcR2Key),
-      signedUrlExp: exp,
-      createdAt: at,
-      updatedAt: at,
-    };
-    await db.update((state) => {
-      state.assets.unshift(asset);
-      if (projectId) state.assetRefs.unshift({ assetId: asset.id, projectId, importedAt: at });
-      if (body.addToLibrary) {
-        state.libraryAssetRefs ??= [];
-        if (!state.libraryAssetRefs.some((ref) => ref.assetId === asset.id && ref.userId === userId)) {
-          state.libraryAssetRefs.unshift({ assetId: asset.id, userId, addedAt: at });
-        }
-      }
-    });
-    const mutation = hostMutationSucceeded(
-      {
-        operation: "asset_create",
-        entity: { kind: "asset", id: asset.id },
-      },
-      {
-        resultEntityId: asset.id,
-      },
-    );
-    await db.appendMutationAudit(
-      mutationAuditRecord({
-        mutation,
-        actorClientType,
-        reason: "asset create",
-      }),
-    );
-    return c.json({
-      id: asset.id,
-      srcR2Key: asset.srcR2Key,
-      coverR2Key: asset.coverR2Key,
-      signedUrl: asset.signedUrl,
-      signedUrlExp: asset.signedUrlExp,
-      mutation,
-    });
-  });
-
-  app.post("/api/v1/assets/:id/library", async (c) => {
-    const assetId = c.req.param("id");
-    const state = await db.load();
-    const asset = state.assets.find((candidate) => candidate.id === assetId);
-    if (!asset) return c.json({ error: "not found" }, 404);
-    if (asset.userId !== userId) return c.json({ error: "forbidden" }, 403);
-    await db.update((current) => {
-      current.libraryAssetRefs ??= [];
-      if (!current.libraryAssetRefs.some((ref) => ref.assetId === assetId && ref.userId === userId)) {
-        current.libraryAssetRefs.unshift({ assetId, userId, addedAt: Math.floor(Date.now() / 1000) });
-      }
-    });
-    return c.json({ ok: true });
-  });
-
-  app.post("/api/v1/assets/:id/ref", async (c) => {
-    const assetId = c.req.param("id");
-    const body = await c.req.json().catch(() => ({})) as { projectId?: string };
-    if (!body.projectId) return c.json({ error: "Missing projectId" }, 400);
-    const state = await db.load();
-    if (!state.projects.some((project) => project.id === body.projectId && project.ownerId === userId)) {
-      return c.json({ error: "project not found" }, 404);
-    }
-    const asset = state.assets.find((candidate) => candidate.id === assetId);
-    if (!asset) return c.json({ error: "not found" }, 404);
-    if (asset.userId !== userId) return c.json({ error: "forbidden" }, 403);
-    await db.update((current) => {
-      if (!current.assetRefs.some((ref) => ref.assetId === assetId && ref.projectId === body.projectId)) {
-        current.assetRefs.unshift({ assetId, projectId: body.projectId!, importedAt: Math.floor(Date.now() / 1000) });
-      }
-    });
-    return c.json({ ok: true });
-  });
-
-  app.post("/api/v1/assets/import", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as {
-      projectId?: unknown;
-      kind?: unknown;
-      assetId?: unknown;
-      contentHash?: unknown;
-      localBlobKey?: unknown;
-      bytes?: unknown;
-      contentType?: unknown;
-      originalName?: unknown;
-    } & ProjectWriteBody;
-    const actorClientType =
-      optionalBodyString(body.actorClientType) ??
-      normalizeString(c.req.header("x-clash-client-type")) ??
-      normalizeString(c.req.header("x-clash-actor-client-type"));
-    const projectId = optionalBodyString(body.projectId);
-    const contentHash = optionalBodyString(body.contentHash);
-    const localBlobKey = optionalBodyString(body.localBlobKey);
-    if (
-      !projectId ||
-      !isAssetKind(body.kind) ||
-      !contentHash ||
-      !localBlobKey
-    ) {
-      return c.json(
-        {
-          error: "Missing projectId, kind, contentHash, or localBlobKey",
-          mutation: hostMutationRejected(
-            {
-              operation: "asset_import",
-              entity: { kind: "asset", id: "" },
-            },
-            "Missing projectId, kind, contentHash, or localBlobKey",
-          ),
-        },
-        400,
-      );
-    }
-    if (!/^[a-f0-9]{64}$/.test(contentHash)) {
-      return c.json(
-        {
-          error: "Invalid contentHash",
-          mutation: hostMutationRejected(
-            {
-              operation: "asset_import",
-              entity: { kind: "asset", id: "" },
-            },
-            "Invalid contentHash",
-          ),
-        },
-        400,
-      );
-    }
-
-    let srcR2Key: string;
-    try {
-      srcR2Key = normalizeLocalBlobStorageKey(localBlobKey);
-    } catch (error) {
-      const message = errorMessage(error);
-      return c.json(
-        {
-          error: message,
-          mutation: hostMutationRejected(
-            {
-              operation: "asset_import",
-              entity: { kind: "asset", id: "" },
-            },
-            message,
-          ),
-        },
-        400,
-      );
-    }
-
-    const assetId =
-      optionalBodyString(body.assetId) ?? `local:sha256:${contentHash}`;
-    const envelope = {
-      operation: "asset_import",
-      entity: { kind: "asset", id: assetId },
-    };
-    let fileInfo: Awaited<ReturnType<typeof stat>>;
-    try {
-      fileInfo = await stat(
-        await assetPathForRead(options.dataDir, srcR2Key, clashRoot),
-      );
-      if (!fileInfo.isFile()) throw new Error("Local blob is not a file");
-    } catch {
-      return c.json(
-        {
-          error: "Local blob not found",
-          mutation: hostMutationRejected(envelope, "Local blob not found"),
-        },
-        404,
-      );
-    }
-
-    const at = Math.floor(Date.now() / 1000);
-    const exp = signedUrlExp();
-    const asset: Asset = {
-      id: assetId,
-      userId,
-      kind: body.kind,
-      srcR2Key,
-      coverR2Key: null,
-      metadata: {
-        bytes:
-          typeof body.bytes === "number" && Number.isFinite(body.bytes)
-            ? Math.floor(body.bytes)
-            : fileInfo.size,
-        contentType:
-          optionalBodyString(body.contentType) ?? contentTypeForPath(srcR2Key),
-        contentHash,
-        localBlobKey,
-        ...(optionalBodyString(body.originalName)
-          ? { originalName: optionalBodyString(body.originalName) }
-          : {}),
-      },
-      sourceModel: "local-import",
-      sourcePrompt: null,
-      sourceTaskId: null,
-      sources: null,
-      signedUrl: localAssetUrl(c, srcR2Key),
-      signedUrlExp: exp,
-      createdAt: at,
-      updatedAt: at,
-    };
-
-    const importResult = await db.update((state) => {
-      const existing = state.assets.find((item) => item.id === asset.id);
-      if (existing) {
-        const metadata =
-          existing.metadata &&
-          typeof existing.metadata === "object" &&
-          !Array.isArray(existing.metadata)
-            ? (existing.metadata as Record<string, unknown>)
-            : {};
-        const existingContentHash =
-          typeof metadata.contentHash === "string"
-            ? metadata.contentHash
-            : undefined;
-        const existingLocalBlobKey =
-          typeof metadata.localBlobKey === "string"
-            ? metadata.localBlobKey
-            : undefined;
-        const immutableConflict =
-          existing.kind !== asset.kind ||
-          existing.srcR2Key !== asset.srcR2Key ||
-          (existingContentHash !== undefined &&
-            existingContentHash !== contentHash) ||
-          (existingLocalBlobKey !== undefined &&
-            existingLocalBlobKey !== localBlobKey);
-        if (immutableConflict) {
-          return { status: "conflict" as const };
-        }
-      } else {
-        state.assets = [asset, ...state.assets];
-      }
-      state.assetRefs = [
-        { assetId: asset.id, projectId, importedAt: at },
-        ...state.assetRefs.filter(
-          (ref) => !(ref.assetId === asset.id && ref.projectId === projectId),
-        ),
-      ];
-      return { status: "ok" as const, asset: existing ?? asset };
-    });
-    if (importResult.status === "conflict") {
-      const message =
-        "Asset id already exists with different immutable content. Import the new blob as a new asset id and use copy-on-write replacement.";
-      return c.json(
-        {
-          error: message,
-          mutation: hostMutationRejected(envelope, message),
-        },
-        409,
-      );
-    }
-
-    const mutation = hostMutationSucceeded(envelope, {
-      resultEntityId: asset.id,
-    });
-    await db.appendMutationAudit(
-      mutationAuditRecord({
-        mutation,
-        actorClientType,
-        reason: "asset import",
-      }),
-    );
-    return c.json({
-      id: importResult.asset.id,
-      srcR2Key: importResult.asset.srcR2Key,
-      signedUrl: localAssetUrl(c, importResult.asset.srcR2Key),
-      signedUrlExp: asset.signedUrlExp,
-      mutation,
-    });
-  });
-
-  app.post("/api/v1/assets/replace", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as {
-      projectId?: unknown;
-      nodeId?: unknown;
-      assetId?: unknown;
-      ifMatch?: unknown;
-      actorClientType?: unknown;
-      newNodeId?: unknown;
-      label?: unknown;
-    };
-    const projectId = optionalBodyString(body.projectId);
-    const nodeId = optionalBodyString(body.nodeId);
-    const assetId = optionalBodyString(body.assetId);
-    const expectedReadToken =
-      optionalBodyString(body.ifMatch) ??
-      normalizeIfMatchHeader(c.req.header("x-clash-if-match")) ??
-      normalizeIfMatchHeader(c.req.header("if-match"));
-    const actorClientType =
-      optionalBodyString(body.actorClientType) ??
-      normalizeString(c.req.header("x-clash-client-type")) ??
-      normalizeString(c.req.header("x-clash-actor-client-type"));
-    const envelope = {
-      operation: "asset_cow_replace",
-      entity: { kind: "media-node", id: nodeId ?? "" },
-      expectedReadToken,
-    };
-
-    if (!projectId || !nodeId || !assetId) {
-      return c.json(
-        {
-          error: "Missing projectId, nodeId, or assetId",
-          mutation: hostMutationRejected(
-            envelope,
-            "Missing projectId, nodeId, or assetId",
-          ),
-        },
-        400,
-      );
-    }
-
-    const state = await db.load();
-    const asset = state.assets.find((item) => item.id === assetId);
-    if (!asset) {
-      return c.json(
-        {
-          error: "asset not found",
-          mutation: hostMutationRejected(envelope, "asset not found"),
-        },
-        404,
-      );
-    }
-
-    const result =
-      await replicaStore.updateSnapshotAtomic<SnapshotWriteRouteResult>(
-        projectId,
-        async (doc) => {
-          const canvas = new Canvas(doc, () => {});
-          const node = canvas.readNode(nodeId);
-          if (!node) {
-            return {
-              save: false,
-              value: {
-                status: 404 as const,
-                body: {
-                  error: `Node not found: ${nodeId}`,
-                  mutation: hostMutationRejected(
-                    envelope,
-                    `Node not found: ${nodeId}`,
-                  ),
-                },
-              },
-            };
-          }
-          if (!isMediaNodeType(node.type)) {
-            const message = `Node ${nodeId} has type "${node.type}", expected image, video, or audio`;
-            return {
-              save: false,
-              value: {
-                status: 400 as const,
-                body: {
-                  error: message,
-                  mutation: hostMutationRejected(envelope, message),
-                },
-              },
-            };
-          }
-          if (asset.kind !== node.type) {
-            const message = `Asset ${assetId} has kind "${asset.kind}", expected ${node.type}`;
-            return {
-              save: false,
-              value: {
-                status: 400 as const,
-                body: {
-                  error: message,
-                  mutation: hostMutationRejected(envelope, message),
-                },
-              },
-            };
-          }
-
-          const currentReadToken = canvasNodeReadToken(node);
-          const readProof = validateCanvasReadProof({
-            operation: "update",
-            actorClientType,
-            node,
-            expectedReadToken,
-            requireReceipt: true,
-            readReceiptVerifier: verifyLocalApiCanvasReadReceipt,
-          });
-          const hostMutation = validateHostMutationEnvelope({
-            operation: "asset_cow_replace",
-            entity: { kind: "media-node", id: nodeId },
-            expectedReadToken,
-            currentReadToken,
-            guard: readProof,
-          });
-          if (!hostMutation.ok) {
-            return {
-              save: false,
-              value: {
-                status: 409 as const,
-                body: {
-                  error: hostMutation.error,
-                  mutation: hostMutation.mutation,
-                },
-              },
-            };
-          }
-
-          const newNodeId =
-            optionalBodyString(body.newNodeId) ??
-            crypto.randomUUID().slice(0, 8);
-          const sourceAssetId =
-            typeof node.data?.assetId === "string"
-              ? node.data.assetId
-              : undefined;
-          const data = createMediaAssetCowNodeData({
-            sourceNodeId: nodeId,
-            sourceLabel:
-              typeof node.data?.label === "string"
-                ? node.data.label
-                : undefined,
-            sourceAssetId,
-            assetId,
-            label: optionalBodyString(body.label),
-          });
-
-          try {
-            canvas.createLinkedNode({
-              nodeId: newNodeId,
-              nodeType: node.type,
-              data,
-              parentId: node.parent_id ?? null,
-              sourceNodeId: nodeId,
-              edgeId: `${nodeId}-${newNodeId}`,
-              edgeType: "copy-on-write",
-            });
-          } catch (error) {
-            const message = errorMessage(error);
-            return {
-              save: false,
-              value: {
-                status: 409 as const,
-                body: {
-                  error: message,
-                  mutation: hostMutationRejected(
-                    hostMutation.envelope,
-                    message,
-                  ),
-                },
-              },
-            };
-          }
-
-          const newNode = canvas.readNode(newNodeId);
-          const afterReadToken = newNode
-            ? canvasNodeReceiptReadToken(newNode)
-            : undefined;
-          const importedAt = Math.floor(Date.now() / 1000);
-          return {
-            value: {
-              status: 200 as const,
-              assetRef: { assetId, projectId, importedAt },
-              body: {
-                replaced: true,
-                copyOnWrite: true,
-                sourceNodeId: nodeId,
-                newNodeId,
-                nodeId: newNodeId,
-                sourceAssetId,
-                assetId,
-                lineageEdge: {
-                  source: nodeId,
-                  target: newNodeId,
-                  type: "copy-on-write",
-                },
-                ...(afterReadToken ? { readToken: afterReadToken } : {}),
-                mutation: hostMutationSucceeded(hostMutation.envelope, {
-                  resultEntityId: newNodeId,
-                  afterReadToken,
-                }),
-              },
-            },
-          };
-        },
-      );
-    if (result.status === 200 && result.assetRef) {
-      const assetRef = result.assetRef;
-      await db.update((current) => {
-        current.assetRefs = [
-          assetRef,
-          ...current.assetRefs.filter(
-            (ref) => !(ref.assetId === assetId && ref.projectId === projectId),
-          ),
-        ];
-      });
-    }
-    const mutation = result.body.mutation as HostMutationRecord | undefined;
-    if (mutation?.accepted === true) {
-      await db.appendMutationAudit(
-        mutationAuditRecord({
-          mutation,
-          actorClientType,
-          reason: "asset copy-on-write replacement",
-        }),
-      );
-    } else if (
-      mutation?.accepted === false &&
-      actorClientType === "agent" &&
-      (mutation.expectedReadToken !== undefined ||
-        mutation.beforeReadToken !== undefined)
-    ) {
-      await db.appendMutationAudit(
-        mutationAuditRecord({
-          mutation,
-          actorClientType,
-          reason: "asset copy-on-write replacement rejected",
-        }),
-      );
-    }
-    return c.json(result.body, result.status);
-  });
-
-  app.post("/api/v1/assets/gc", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as {
-      dryRun?: unknown;
-      protectedAssetIds?: unknown;
-      projectIds?: unknown;
-    } & ProjectWriteBody;
-    const dryRun = body.dryRun !== false;
-    const scope = await resolveAssetGarbageCollectionScope(
-      options.dataDir,
-      body,
-    );
-
-    if (dryRun) {
-      const plan = buildAssetGarbageCollectionPlan(await db.load(), scope);
-      return c.json({
-        dryRun,
-        deletedAssets: plan.deletedAssets,
-        protectedAssets: plan.protectedAssets,
-        protectedProjectIds: plan.protectedProjectIds,
-        deletedBlobKeys: plan.deletedBlobKeys,
-        readToken: assetGarbageCollectionReceiptReadToken(plan),
-        mutation: hostMutationSucceeded(
-          {
-            operation: "asset_gc",
-            entity: { kind: "asset-store", id: "local" },
-          },
-          {
-            resultEntityId: "local",
-          },
-        ),
-      });
-    }
-
-    const preconditions = requestProjectWritePreconditions(c, body);
-    const result = await db.update((current) => {
-      const plan = buildAssetGarbageCollectionPlan(current, scope);
-      const hostMutation = validateAssetGarbageCollectionMutation({
-        plan,
-        preconditions,
-      });
-      if (!hostMutation.ok) {
-        return {
-          status: 409 as const,
-          blobKeys: [] as string[],
-          body: { error: hostMutation.error, mutation: hostMutation.mutation },
-        };
-      }
-      refreshAssetReferenceProjectionState(
-        current,
-        plan.protectedProjectIds,
-        plan.projectedCanvasAssetRefs,
-      );
-      current.assets = current.assets.filter(
-        (asset) => !plan.orphanedIds.has(asset.id),
-      );
-      return {
-        status: 200 as const,
-        blobKeys: plan.deletedBlobKeys,
-        body: {
-          dryRun,
-          deletedAssets: plan.deletedAssets,
-          protectedAssets: plan.protectedAssets,
-          protectedProjectIds: plan.protectedProjectIds,
-          deletedBlobKeys: plan.deletedBlobKeys,
-          mutation: hostMutationSucceeded(hostMutation.envelope, {
-            resultEntityId: "local",
-          }),
-        },
-      };
-    });
-    if (result.status === 200) {
-      for (const key of result.blobKeys) {
-        await rm(await assetPathForDelete(options.dataDir, key, clashRoot), {
-          force: true,
-        });
-      }
-      const mutation = result.body.mutation as HostMutationRecord | undefined;
-      if (mutation?.accepted === true) {
-        await db.appendMutationAudit(
-          mutationAuditRecord({
-            mutation,
-            actorClientType: preconditions.actorClientType,
-            reason: "asset garbage collection",
-          }),
-        );
-      }
-    }
-    return c.json(result.body, result.status);
-  });
-
-  app.get("/api/v1/assets/:id", async (c) => {
-    const state = await db.load();
-    const asset = state.assets.find((a) => a.id === c.req.param("id"));
-    return asset
-      ? c.json({
-          ...withSignedAssetUrls(c, asset),
-          readToken: assetReceiptReadToken(asset),
-        })
-      : c.json({ error: "not found" }, 404);
-  });
-
-  app.get("/api/v1/assets/:id/references", async (c) => {
-    const assetId = c.req.param("id");
-    const projectId = c.req.query("projectId");
-    const state = await db.load();
-    const references = state.assetNodeRefs
-      .filter(
-        (ref) =>
-          ref.assetId === assetId &&
-          (!projectId || ref.projectId === projectId),
-      )
-      .sort(
-        (left, right) =>
-          left.projectId.localeCompare(right.projectId) ||
-          left.nodeId.localeCompare(right.nodeId) ||
-          left.fieldPath.localeCompare(right.fieldPath),
-      )
-      .map((ref) => ({
-        assetId: ref.assetId,
-        projectId: ref.projectId,
-        nodeId: ref.nodeId,
-        nodeType: ref.nodeType,
-        fieldPath: ref.fieldPath,
-        referenceRole: ref.referenceRole,
-      }));
-    return c.json({ assetId, references });
-  });
-
-  app.post("/api/v1/assets/:id/references/refresh", async (c) => {
-    const assetId = c.req.param("id");
-    const body = (await c.req.json().catch(() => ({}))) as {
-      projectIds?: unknown;
-    } & ProjectWriteBody;
-    const preconditions = requestProjectWritePreconditions(c, body);
-    const requestedProjectIds = stringArray(body.projectIds);
-    const protectedProjectIds =
-      requestedProjectIds.length > 0
-        ? requestedProjectIds
-        : await discoverProjectReplicaIds(options.dataDir);
-    const canvasAssetRefs = await collectProjectCanvasAssetRefs(
-      options.dataDir,
-      protectedProjectIds,
-    );
-    const result = await db.update((current) => {
-      const asset = current.assets.find(
-        (candidate) => candidate.id === assetId,
-      );
-      const needsReadProof =
-        !!preconditions.actorClientType || !!preconditions.expectedReadToken;
-      let hostMutation:
-        | {
-            ok: true;
-            envelope: Parameters<typeof hostMutationSucceeded>[0];
-            afterReadToken?: string;
-          }
-        | { ok: false; status: 404 | 409; body: unknown };
-      if (needsReadProof) {
-        if (!asset) {
-          return {
-            status: 404 as const,
-            body: {
-              error: "asset not found",
-              mutation: hostMutationRejected(
-                {
-                  operation: "asset_references_refresh",
-                  entity: { kind: "asset", id: assetId },
-                  expectedReadToken: preconditions.expectedReadToken,
-                },
-                "asset not found",
-              ),
-            },
-          };
-        }
-        const currentReadToken = assetReadToken(asset);
-        const guard = validateAgentReadProof({
-          actorClientType: preconditions.actorClientType,
-          operation: "asset references refresh",
-          currentReadToken,
-          observedVersion: preconditions.observedVersion,
-          expectedReadToken: preconditions.expectedReadToken,
-          requireReceipt: true,
-          readReceiptVerifier: verifyLocalApiAssetReadReceipt,
-          readCommandHint: `Run \`clash asset get --asset ${assetId} --json\` first, then retry.`,
-        });
-        const validated = validateHostMutationEnvelope({
-          operation: "asset_references_refresh",
-          entity: { kind: "asset", id: assetId },
-          expectedReadToken: preconditions.expectedReadToken,
-          currentReadToken,
-          guard,
-        });
-        hostMutation = validated.ok
-          ? {
-              ok: true,
-              envelope: validated.envelope,
-              afterReadToken: assetReceiptReadToken(asset),
-            }
-          : {
-              ok: false,
-              status: 409 as const,
-              body: { error: validated.error, mutation: validated.mutation },
-            };
-      } else {
-        hostMutation = {
-          ok: true,
-          envelope: {
-            operation: "asset_references_refresh",
-            entity: { kind: "asset", id: assetId },
-          },
-        };
-      }
-      if (!hostMutation.ok) return hostMutation;
-      const knownAssetIds = new Set(current.assets.map((asset) => asset.id));
-      const projectedCanvasAssetRefs = canvasAssetRefs.filter((ref) =>
-        knownAssetIds.has(ref.assetId),
-      );
-      refreshAssetReferenceProjectionState(
-        current,
-        protectedProjectIds,
-        projectedCanvasAssetRefs,
-      );
-      const projectFilter = new Set(protectedProjectIds);
-      const references = current.assetNodeRefs
-        .filter(
-          (ref) => ref.assetId === assetId && projectFilter.has(ref.projectId),
-        )
-        .sort(
-          (left, right) =>
-            left.projectId.localeCompare(right.projectId) ||
-            left.nodeId.localeCompare(right.nodeId) ||
-            left.fieldPath.localeCompare(right.fieldPath),
-        )
-        .map((ref) => ({
-          assetId: ref.assetId,
-          projectId: ref.projectId,
-          nodeId: ref.nodeId,
-          nodeType: ref.nodeType,
-          fieldPath: ref.fieldPath,
-          referenceRole: ref.referenceRole,
-        }));
-      const mutation = hostMutationSucceeded(hostMutation.envelope, {
-        resultEntityId: assetId,
-        afterReadToken: hostMutation.afterReadToken,
-      });
-      return {
-        status: 200 as const,
-        body: {
-          assetId,
-          ...(hostMutation.afterReadToken
-            ? { readToken: hostMutation.afterReadToken }
-            : {}),
-          refreshed: true,
-          protectedProjectIds,
-          references,
-          mutation,
-        },
-      };
-    });
-    if (result.status !== 200) {
-      return c.json(result.body, result.status);
-    }
-    const mutation = result.body.mutation;
-    await db.appendMutationAudit(
-      mutationAuditRecord({
-        mutation,
-        actorClientType: preconditions.actorClientType,
-        reason: "asset reference refresh",
-      }),
-    );
-    return c.json(result.body);
-  });
-
-  app.post("/api/v1/assets/batch", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { ids?: unknown };
-    const ids = Array.isArray(body.ids)
-      ? new Set(body.ids.filter((id): id is string => typeof id === "string"))
-      : new Set<string>();
-    const state = await db.load();
-    return c.json({
-      assets: state.assets
-        .filter((asset) => ids.has(asset.id))
-        .map((asset) => withSignedAssetUrls(c, asset)),
-    });
-  });
-
-  app.get("/api/v1/assets/:id/ref", async (c) => {
-    const assetId = c.req.param("id");
-    const projectId = c.req.query("projectId");
-    if (!projectId) {
-      return c.json({ error: "Missing projectId" }, 400);
-    }
-    const state = await db.load();
-    const ref = state.assetRefs.find(
-      (candidate) =>
-        candidate.assetId === assetId && candidate.projectId === projectId,
-    );
-    if (!ref) {
-      return c.json({ error: "asset ref not found" }, 404);
-    }
-    return c.json({
-      assetId: ref.assetId,
-      projectId: ref.projectId,
-      importedAt: ref.importedAt,
-      readToken: assetRefReceiptReadToken(ref),
-    });
-  });
-
-  app.delete("/api/v1/assets/:id/ref", async (c) => {
-    const assetId = c.req.param("id");
-    const projectId = c.req.query("projectId");
-    const body = (await c.req.json().catch(() => ({}))) as ProjectWriteBody;
-    const preconditions = requestProjectWritePreconditions(c, body);
-    if (!projectId) {
-      return c.json(
-        {
-          error: "Missing projectId",
-          mutation: hostMutationRejected(
-            {
-              operation: "asset_ref_delete",
-              entity: { kind: "asset-ref", id: `${assetId}:` },
-              expectedReadToken: preconditions.expectedReadToken,
-            },
-            "Missing projectId",
-          ),
-        },
-        400,
-      );
-    }
-    const result = await db.update((state) => {
-      const ref = state.assetRefs.find(
-        (candidate) =>
-          candidate.assetId === assetId && candidate.projectId === projectId,
-      );
-      if (!ref) {
-        return {
-          status: 404 as const,
-          body: {
-            error: "asset ref not found",
-            mutation: hostMutationRejected(
-              {
-                operation: "asset_ref_delete",
-                entity: { kind: "asset-ref", id: `${assetId}:${projectId}` },
-                expectedReadToken: preconditions.expectedReadToken,
-              },
-              "asset ref not found",
-            ),
-          },
-        };
-      }
-      const currentReadToken = assetRefReadToken(ref);
-      const guard = validateAgentReadProof({
-        actorClientType: preconditions.actorClientType,
-        operation: "asset-ref delete",
-        currentReadToken,
-        observedVersion: preconditions.observedVersion,
-        expectedReadToken: preconditions.expectedReadToken,
-        requireReceipt: true,
-        readReceiptVerifier: verifyLocalApiAssetRefReadReceipt,
-        readCommandHint: `Run \`clash asset ref get --asset ${assetId} --project ${projectId} --json\` first, then retry.`,
-      });
-      const hostMutation = validateHostMutationEnvelope({
-        operation: "asset_ref_delete",
-        entity: { kind: "asset-ref", id: `${assetId}:${projectId}` },
-        expectedReadToken: preconditions.expectedReadToken,
-        currentReadToken,
-        guard,
-      });
-      if (!hostMutation.ok) {
-        return {
-          status: 409 as const,
-          body: { error: hostMutation.error, mutation: hostMutation.mutation },
-        };
-      }
-      state.assetRefs = state.assetRefs.filter((ref) => {
-        if (ref.assetId !== assetId) return true;
-        return ref.projectId !== projectId;
-      });
-      return {
-        status: 200 as const,
-        body: {
-          deleted: true,
-          mutation: hostMutationSucceeded(hostMutation.envelope, {
-            resultEntityId: `${assetId}:${projectId}`,
-          }),
-        },
-      };
-    });
-    if (result.status === 200) {
-      const mutation = result.body.mutation as HostMutationRecord | undefined;
-      if (mutation?.accepted === true) {
-        await db.appendMutationAudit(
-          mutationAuditRecord({
-            mutation,
-            actorClientType: preconditions.actorClientType,
-            reason: "asset ref delete",
-          }),
-        );
-      }
-    }
-    return c.json(result.body, result.status);
-  });
-
-  app.patch("/api/v1/assets/:id/cover", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as {
-      coverR2Key?: string;
-    } & ProjectWriteBody;
-    const assetId = c.req.param("id");
-    const preconditions = requestProjectWritePreconditions(c, body);
-    if (!body.coverR2Key) {
-      return c.json(
-        {
-          error: "Missing coverR2Key",
-          mutation: hostMutationRejected(
-            {
-              operation: "asset_cover_update",
-              entity: { kind: "asset", id: assetId },
-              expectedReadToken: preconditions.expectedReadToken,
-            },
-            "Missing coverR2Key",
-          ),
-        },
-        400,
-      );
-    }
-    let coverR2Key: string;
-    try {
-      coverR2Key = normalizeAssetStorageKey(body.coverR2Key);
-    } catch (error) {
-      const message = errorMessage(error);
-      return c.json(
-        {
-          error: message,
-          mutation: hostMutationRejected(
-            {
-              operation: "asset_cover_update",
-              entity: { kind: "asset", id: assetId },
-              expectedReadToken: preconditions.expectedReadToken,
-            },
-            message,
-          ),
-        },
-        400,
-      );
-    }
-    const result = await db.update((state) => {
-      const asset = state.assets.find((a) => a.id === assetId);
-      if (!asset) {
-        return {
-          status: 404 as const,
-          body: {
-            error: "not found",
-            mutation: hostMutationRejected(
-              {
-                operation: "asset_cover_update",
-                entity: { kind: "asset", id: assetId },
-                expectedReadToken: preconditions.expectedReadToken,
-              },
-              "not found",
-            ),
-          },
-        };
-      }
-      const currentReadToken = assetReadToken(asset);
-      const guard = validateAgentReadProof({
-        actorClientType: preconditions.actorClientType,
-        operation: "asset update",
-        currentReadToken,
-        observedVersion: preconditions.observedVersion,
-        expectedReadToken: preconditions.expectedReadToken,
-        requireReceipt: true,
-        readReceiptVerifier: verifyLocalApiAssetReadReceipt,
-        readCommandHint: `Run \`clash asset get --asset ${assetId} --json\` first, then retry.`,
-      });
-      const hostMutation = validateHostMutationEnvelope({
-        operation: "asset_cover_update",
-        entity: { kind: "asset", id: assetId },
-        expectedReadToken: preconditions.expectedReadToken,
-        currentReadToken,
-        guard,
-      });
-      if (!hostMutation.ok) {
-        return {
-          status: 409 as const,
-          body: { error: hostMutation.error, mutation: hostMutation.mutation },
-        };
-      }
-      asset.coverR2Key = coverR2Key;
-      asset.updatedAt = Math.floor(Date.now() / 1000);
-      const readToken = assetReceiptReadToken(asset);
-      return {
-        status: 200 as const,
-        body: {
-          ok: true,
-          readToken,
-          mutation: hostMutationSucceeded(hostMutation.envelope, {
-            resultEntityId: assetId,
-            afterReadToken: readToken,
-          }),
-        },
-      };
-    });
-    if (result.status === 200) {
-      const mutation = result.body.mutation as HostMutationRecord | undefined;
-      if (mutation?.accepted === true) {
-        await db.appendMutationAudit(
-          mutationAuditRecord({
-            mutation,
-            actorClientType: preconditions.actorClientType,
-            reason: "asset cover update",
-          }),
-        );
-      }
-    }
-    return c.json(result.body, result.status);
   });
 
   return app;

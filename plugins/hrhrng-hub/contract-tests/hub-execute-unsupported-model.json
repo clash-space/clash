@@ -18,9 +18,10 @@
   "expect": {
     "status": "failed",
     "error": {
-      "code": "execution_failed",
+      "code": "invalid_request",
       "message": "Unsupported Hilo Hub model: not-a-model",
-      "retryable": false
+      "retryable": false,
+      "requestState": "rejected"
     }
   }
 }

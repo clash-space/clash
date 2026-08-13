@@ -4,11 +4,7 @@
  * it actually needs.
  */
 
-import type {
-  ExecutablePluginBinding,
-  ExecutablePluginReference,
-  ModelUpstreamRoute,
-} from "@clash/shared-types";
+import type { ModelUpstreamRoute } from "@clash/shared-types";
 
 export interface GenerationParams {
   taskId: string;
@@ -22,7 +18,6 @@ export interface GenerationParams {
     | "video_render"
     | "image_desc"
     | "video_desc"
-    | "custom_action"
     | "understand";
 
   // ─── Actor attribution (Phase 0 multi-actor billing) ──────────
@@ -95,30 +90,6 @@ export interface GenerationParams {
 
   /** video_render */
   timelineDsl?: Record<string, unknown>;
-
-  /** custom_action */
-  customActionId?: string;
-  customActionParams?: Record<string, unknown>;
-  customActionModel?: {
-    id: string;
-    provider: string;
-    name?: string;
-    secretId?: string;
-    baseUrl?: string;
-    endpoint?: string;
-    [key: string]: unknown;
-  };
-  customActionSecrets?: Array<{
-    id: string;
-    label?: string;
-    description?: string;
-    required?: boolean;
-  }>;
-  workerUrl?: string;
-  /** Immutable executable-plugin target copied from the author-time Canvas node. */
-  pluginBinding?: ExecutablePluginBinding;
-  /** Opaque, project-scoped references for the executable-plugin invocation ABI. */
-  pluginReferences?: ExecutablePluginReference[];
 
   /**
    * Lineage — pre-built `assets.sources` rows describing which upstream

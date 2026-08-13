@@ -3,6 +3,23 @@ import type {
   ExecutorContext,
   ExecutorStep,
 } from "@clash/action-sdk";
+import {
+  ProviderExecutionError,
+  providerHttpError,
+} from "@clash/action-sdk";
+import {
+  resolveVolcengineTypedReferences,
+  type VolcengineTypedReferences,
+} from "./typed-references";
+
+function rejectedInvalidRequest(message: string): ProviderExecutionError {
+  return new ProviderExecutionError({
+    code: "invalid_request",
+    message,
+    retryable: false,
+    requestState: "rejected",
+  });
+}
 
 export const VOLCENGINE_DEFAULT_BASE_URL =
   "https://ark.cn-beijing.volces.com/api/v3";
@@ -14,26 +31,12 @@ export interface ModelArkRequestValues extends Record<string, unknown> {
   aspectRatio?: string;
   duration?: number | string;
   modelParams?: Record<string, unknown>;
-  startFrameUrl?: string;
-  endFrameUrl?: string;
-  referenceImageUrls?: string[];
-  referenceVideoUrls?: string[];
-  referenceAudioUrls?: string[];
 }
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
-}
-
-function strings(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter(
-        (entry): entry is string =>
-          typeof entry === "string" && entry.trim().length > 0,
-      )
-    : [];
 }
 
 function durationValue(value: unknown): number | undefined {
@@ -76,25 +79,22 @@ function parameter(
  */
 export function buildModelArkRequest(
   values: ModelArkRequestValues,
+  references: VolcengineTypedReferences = {
+    images: [],
+    videos: [],
+    audios: [],
+  },
 ): Record<string, unknown> {
   const modelId = typeof values.modelId === "string" ? values.modelId : "";
   const model =
     typeof values.upstreamModel === "string" ? values.upstreamModel : "";
-  if (!model) throw new Error("Volcengine executor needs an upstreamModel.");
+  if (!model) {
+    throw rejectedInvalidRequest("Volcengine executor needs an upstreamModel.");
+  }
 
   const params = record(values.modelParams);
   const prompt = typeof values.prompt === "string" ? values.prompt.trim() : "";
-  const images = strings(values.referenceImageUrls);
-  const videos = strings(values.referenceVideoUrls);
-  const audios = strings(values.referenceAudioUrls);
-  const startFrame =
-    typeof values.startFrameUrl === "string" && values.startFrameUrl.trim()
-      ? values.startFrameUrl.trim()
-      : undefined;
-  const endFrame =
-    typeof values.endFrameUrl === "string" && values.endFrameUrl.trim()
-      ? values.endFrameUrl.trim()
-      : undefined;
+  const { images, videos, audios, startFrame, endFrame } = references;
   const seedance25 =
     modelId.startsWith("seedance-2.5") || model.includes("seedance-2-5");
   const startEnd = modelId.endsWith("-startend") || !!startFrame || !!endFrame;
@@ -102,20 +102,22 @@ export function buildModelArkRequest(
   const edit = params.edit_mode === true;
 
   if (edit && videos.length === 0) {
-    throw new Error("Volcengine Seedance edit requires a reference video.");
+    throw rejectedInvalidRequest(
+      "Volcengine Seedance edit requires a reference video.",
+    );
   }
   if (extension && videos.length === 0) {
-    throw new Error(
+    throw rejectedInvalidRequest(
       "Volcengine Seedance extension requires a reference video.",
     );
   }
   if (extension && (images.length > 0 || audios.length > 0)) {
-    throw new Error(
+    throw rejectedInvalidRequest(
       "Volcengine Seedance extension accepts only reference video input.",
     );
   }
   if (startEnd && !startFrame) {
-    throw new Error(
+    throw rejectedInvalidRequest(
       "Volcengine Seedance first/last-frame generation requires a first frame.",
     );
   }
@@ -125,7 +127,7 @@ export function buildModelArkRequest(
     images.length === 0 &&
     videos.length === 0
   ) {
-    throw new Error(
+    throw rejectedInvalidRequest(
       "Volcengine Seedance 2.0 audio input requires an image or video reference.",
     );
   }
@@ -140,7 +142,7 @@ export function buildModelArkRequest(
   content.push(...mediaParts("video_url", "reference_video", videos));
   content.push(...mediaParts("audio_url", "reference_audio", audios));
   if (content.length === 0) {
-    throw new Error(
+    throw rejectedInvalidRequest(
       "Volcengine Seedance requires a prompt or reference media.",
     );
   }
@@ -215,7 +217,14 @@ function readPollState(value: unknown): { taskId: string } {
     typeof state.taskId === "string" && state.taskId.trim()
       ? state.taskId.trim()
       : taskIdFrom(state);
-  if (!taskId) throw new Error("Volcengine poll state is missing its taskId.");
+  if (!taskId) {
+    throw new ProviderExecutionError({
+      code: "contract_violation",
+      message: "Volcengine poll state is missing its taskId.",
+      retryable: false,
+      requestState: "accepted",
+    });
+  }
   return { taskId };
 }
 
@@ -226,7 +235,14 @@ export async function modelArkSubmit(options: {
   fetch: typeof globalThis.fetch;
 }): Promise<ExecutorStep> {
   const apiKey = options.apiKey.trim();
-  if (!apiKey) throw new Error("This Volcengine account has no apiKey stored.");
+  if (!apiKey) {
+    throw new ProviderExecutionError({
+      code: "authentication_failed",
+      message: "This Volcengine account has no apiKey stored.",
+      retryable: false,
+      requestState: "rejected",
+    });
+  }
   const response = await options.fetch(
     `${baseUrl(options.baseUrl)}/contents/generations/tasks`,
     {
@@ -240,13 +256,21 @@ export async function modelArkSubmit(options: {
   );
   const body = await responseBody(response);
   if (!response.ok) {
-    throw new Error(
-      `Volcengine video submission failed: ${messageFrom(body, response.statusText)}`,
-    );
+    throw providerHttpError({
+      status: response.status,
+      message: `Volcengine video submission failed: ${messageFrom(body, response.statusText)}`,
+      operation: "submit",
+    });
   }
   const taskId = taskIdFrom(body);
-  if (!taskId)
-    throw new Error("Volcengine video submission returned no task id.");
+  if (!taskId) {
+    throw new ProviderExecutionError({
+      code: "invalid_response",
+      message: "Volcengine video submission returned no task id.",
+      retryable: false,
+      requestState: "unknown",
+    });
+  }
   return { status: "accepted", pollState: { taskId } };
 }
 
@@ -257,7 +281,14 @@ export async function modelArkPoll(options: {
   fetch: typeof globalThis.fetch;
 }): Promise<ExecutorStep> {
   const apiKey = options.apiKey.trim();
-  if (!apiKey) throw new Error("This Volcengine account has no apiKey stored.");
+  if (!apiKey) {
+    throw new ProviderExecutionError({
+      code: "authentication_failed",
+      message: "This Volcengine account has no apiKey stored.",
+      retryable: false,
+      requestState: "accepted",
+    });
+  }
   const state = readPollState(options.state);
   const response = await options.fetch(
     `${baseUrl(options.baseUrl)}/contents/generations/tasks/${encodeURIComponent(state.taskId)}`,
@@ -265,9 +296,11 @@ export async function modelArkPoll(options: {
   );
   const body = await responseBody(response);
   if (!response.ok) {
-    throw new Error(
-      `Volcengine video status failed: ${messageFrom(body, response.statusText)}`,
-    );
+    throw providerHttpError({
+      status: response.status,
+      message: `Volcengine video status failed: ${messageFrom(body, response.statusText)}`,
+      operation: "poll",
+    });
   }
   const status =
     typeof body.status === "string"
@@ -283,9 +316,12 @@ export async function modelArkPoll(options: {
     const output = record(body.output);
     const videoUrl = content.video_url ?? output.video_url ?? output.url;
     if (typeof videoUrl !== "string" || !videoUrl) {
-      throw new Error(
-        "Volcengine succeeded task returned no content.video_url.",
-      );
+      throw new ProviderExecutionError({
+        code: "invalid_response",
+        message: "Volcengine succeeded task returned no content.video_url.",
+        retryable: false,
+        requestState: "accepted",
+      });
     }
     return {
       status: "completed",
@@ -293,92 +329,70 @@ export async function modelArkPoll(options: {
     };
   }
   if (["failed", "expired", "cancelled", "canceled"].includes(status)) {
-    throw new Error(
-      `Volcengine video generation ${status}: ${messageFrom(body, status)}`,
-    );
+    throw new ProviderExecutionError({
+      code: status === "expired"
+        ? "task_expired"
+        : status === "cancelled" || status === "canceled"
+          ? "cancelled"
+          : "provider_failed",
+      message: `Volcengine video generation ${status}: ${messageFrom(body, status)}`,
+      retryable: false,
+      requestState: "accepted",
+      providerCode: status,
+    });
   }
-  throw new Error(
-    `Volcengine video task returned unrecognised status ${JSON.stringify(body.status)}.`,
-  );
+  throw new ProviderExecutionError({
+    code: "invalid_response",
+    message: `Volcengine video task returned unrecognised status ${JSON.stringify(body.status)}.`,
+    retryable: false,
+    requestState: "accepted",
+    ...(status ? { providerCode: status } : {}),
+  });
 }
 
 async function accountState(
   context: ExecutorContext,
+  requestState: "rejected" | "accepted",
 ): Promise<{ apiKey: string; baseUrl?: string }> {
   const [apiKey, customBaseUrl] = await Promise.all([
     context.store.get("apiKey"),
     context.store.get("baseUrl"),
   ]);
-  if (!apiKey?.trim())
-    throw new Error("This Volcengine account has no apiKey stored.");
+  if (!apiKey?.trim()) {
+    throw new ProviderExecutionError({
+      code: "authentication_failed",
+      message: "This Volcengine account has no apiKey stored.",
+      retryable: false,
+      requestState,
+    });
+  }
   return {
     apiKey: apiKey.trim(),
     ...(customBaseUrl?.trim() ? { baseUrl: customBaseUrl.trim() } : {}),
   };
 }
 
-const RETRYABLE_TRANSPORT_CODES = new Set([
-  "ECONNRESET",
-  "ECONNREFUSED",
-  "EHOSTUNREACH",
-  "ENETDOWN",
-  "ENETUNREACH",
-  "EPIPE",
-  "ETIMEDOUT",
-  "EAI_AGAIN",
-  "UND_ERR_CONNECT_TIMEOUT",
-  "UND_ERR_HEADERS_TIMEOUT",
-  "UND_ERR_SOCKET",
-]);
-
-function retryablePollFailure(error: unknown): boolean {
-  let current: unknown = error;
-  for (let depth = 0; current && depth < 4; depth += 1) {
-    if (typeof current !== "object") break;
-    const candidate = current as {
-      code?: unknown;
-      name?: unknown;
-      message?: unknown;
-      cause?: unknown;
-    };
-    const code =
-      typeof candidate.code === "string" ? candidate.code.toUpperCase() : "";
-    if (RETRYABLE_TRANSPORT_CODES.has(code)) return true;
-    if (candidate.name === "AbortError" || candidate.name === "TimeoutError")
-      return true;
-    if (
-      typeof candidate.message === "string" &&
-      /fetch failed|socket hang up/i.test(candidate.message)
-    ) {
-      return true;
-    }
-    current = candidate.cause;
-  }
-  return false;
-}
-
 export const volcengineAdapter: Executor = {
   async submit(invocation, context): Promise<ExecutorStep> {
     const values = invocation.input.values as ModelArkRequestValues;
-    const account = await accountState(context);
+    const references = await resolveVolcengineTypedReferences(
+      invocation,
+      context,
+    );
+    const account = await accountState(context, "rejected");
     return modelArkSubmit({
       ...account,
-      body: buildModelArkRequest(values),
+      body: buildModelArkRequest(values, references),
       fetch: globalThis.fetch,
     });
   },
   async poll(invocation, context): Promise<ExecutorStep> {
     const state = readPollState(invocation.pollState);
-    const account = await accountState(context);
-    try {
-      return await modelArkPoll({
-        ...account,
-        state,
-        fetch: globalThis.fetch,
-      });
-    } catch (error) {
-      if (!retryablePollFailure(error)) throw error;
-      return { status: "accepted", pollState: state, retryAfterMs: 5_000 };
-    }
+    const account = await accountState(context, "accepted");
+    return modelArkPoll({
+      ...account,
+      state,
+      fetch: globalThis.fetch,
+    });
   },
 };

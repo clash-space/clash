@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { mediaListFromResult } from "./provider-plugin-executor";
+import {
+  mediaFromResult,
+  mediaListFromResult,
+} from "./provider-plugin-executor";
 
 /**
  * A generation can produce more than one file.
@@ -44,6 +47,17 @@ describe("multiple media outputs", () => {
       "https://example.test/b.png",
       "https://example.test/c.png",
     ]);
+  });
+
+  it("rejects multiple results at the one-slot Provider Run boundary instead of dropping them", () => {
+    expect(() =>
+      mediaFromResult(
+        completed([
+          asset("media", "https://example.test/a.png"),
+          asset("media", "https://example.test/b.png"),
+        ]),
+      ),
+    ).toThrow(/2 media outputs.*expected exactly one/i);
   });
 
   it("still returns one when there is one", () => {

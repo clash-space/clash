@@ -1,0 +1,18 @@
+{
+  "summary": "Host-neutral semantic Asset SDK built on the shared-types ProjectAsset and Resource contracts.",
+  "context_hints": [
+    "Do not duplicate Asset shapes here; import the canonical schemas and types from @clash/shared-types",
+    "Adapters own Project Loro, Global library state, registries, storage and URL projection; this package owns semantic orchestration and validation",
+    "The browser-safe Project and personal Global Asset HTTP clients own route construction, auth headers, multipart import and response validation; the Project client additionally owns read receipts. Consumers may add Host discovery or UI caching but must not reimplement the transport",
+    "Project trash must use the authority port's atomic trash-if-unreferenced operation; never split reference checking from lifecycle mutation in the SDK",
+    "Client mutations accept ProjectAsset product facts only and never storage keys, paths, URLs or credentials"
+  ],
+  "key_files": {
+    "src/index.ts": "Public ports, resolver and semantic client exports.",
+    "src/asset-client.ts": "Validated ProjectAsset resolution, Action binding, reference, and lifecycle behavior.",
+    "src/global-asset-client.ts": "Validated host-neutral Global library entry client and authority port.",
+    "src/project-asset-http-client.ts": "Shared browser/Node Project Asset HTTP transport returning only canonical ResolvedAsset values and opaque observations.",
+    "src/personal-global-asset-http-client.ts": "Shared browser/Node personal Global library HTTP transport returning only canonical ResolvedAsset values."
+  },
+  "architecture_notes": "Resource bytes and projections are Host-owned ports. ProjectAssetEntry remains Project Loro authority and ResolvedAsset is read-only."
+}

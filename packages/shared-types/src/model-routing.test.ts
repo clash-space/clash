@@ -189,17 +189,17 @@ describe("model upstream routing", () => {
 
     expect(options(fal, "duration")).toEqual(["auto", 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
     expect(fal?.model.parameters.some((parameter) => parameter.id === "seed")).toBe(true);
-    expect(options(volcengine, "duration")).toEqual([-1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+    expect(options(volcengine, "duration")).toEqual(["auto", 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
     expect(options(volcengine, "resolution")).toEqual(["480p", "720p", "1080p", "4k"]);
     expect(volcengine?.model.defaultParams).toMatchObject({
-      duration: -1,
-      aspect_ratio: "adaptive",
+      duration: "auto",
+      aspect_ratio: "auto",
       resolution: "720p",
     });
     expect(validateModelCardConfiguration(volcengine!.model, {
       prompt: "product reveal",
       modelParams: { duration: "auto", resolution: "720p" },
-    })).toMatch(/duration.*candidate/i);
+    })).toBeNull();
   });
 
   it("keeps the full Music 3 card and marks MiniMax-only controls unavailable for fal", () => {

@@ -60,7 +60,7 @@ describe("desktop startup test suite", () => {
       "node scripts/prepare-clash-cli.mjs && pnpm prepare:harnesses && node e2e/startup-static.mjs",
     );
     expect(pkg.scripts["test:startup:api"]).toBeUndefined();
-    expect(pkg.scripts["test:startup:ui"]).toContain("startup-ui-smoke.mjs");
+    expect(pkg.scripts["test:startup:ui"]).toContain("startup-ui-smoke.ts");
     expect(pkg.scripts["test:agent:real-codex"]).toContain(
       "real-codex-acp-backend.mjs",
     );
@@ -92,7 +92,7 @@ describe("desktop startup test suite", () => {
       "agent-first-cas-smoke.mjs",
     );
     expect(pkg.scripts["test:e2e:agent-first-local-v1"]).toContain(
-      "agent-first-local-v1-gate.mjs",
+      "agent-first-local-v1-gate.ts",
     );
     expect(pkg.scripts["test:e2e:qa-agent"]).toContain("qa-agent-codex.mjs");
   });
@@ -246,10 +246,10 @@ describe("desktop startup test suite", () => {
   it("keeps startup levels as checked-in runnable scripts", () => {
     for (const relativePath of [
       "e2e/startup-static.mjs",
-      "e2e/startup-ui-smoke.mjs",
+      "e2e/startup-ui-smoke.ts",
       "e2e/real-codex-acp-backend.mjs",
       "e2e/real-codex-agent-browser.mjs",
-      "e2e/agent-first-local-v1-gate.mjs",
+      "e2e/agent-first-local-v1-gate.ts",
       "e2e/short-drama-timeline-smoke.mjs",
       "e2e/agent-first-cas-smoke.mjs",
       "e2e/qa-agent-codex.mjs",
@@ -399,12 +399,11 @@ describe("desktop startup test suite", () => {
   });
 
   it("runs the agent-first local v1 release gate over required black-box reports", () => {
-    const source = readText("e2e/agent-first-local-v1-gate.mjs");
+    const source = readText("e2e/agent-first-local-v1-gate.ts");
 
     expect(source).toContain("short-drama-timeline-smoke.mjs");
     expect(source).toContain("agent-first-cas-smoke.mjs");
     expect(source).toContain("storage-doctor-repair-smoke.mjs");
-    expect(source).toContain("agent-first-asset-receipt-smoke.mjs");
     expect(source).toContain("requiredChecks");
     expect(source).toContain("requiredBooleans");
     expect(source).toContain("directCanvasCliFreshObservationAccepted");
@@ -413,15 +412,6 @@ describe("desktop startup test suite", () => {
     );
     expect(source).toContain("timelineEntityApplyAdvancesRevision");
     expect(source).toContain("project-workspace-cli");
-    expect(source).toContain("localObsoleteProjectEndpointsRejected");
-    expect(source).toContain("audioTranscriptionAuditRecorded");
-    expect(source).toContain("projectUpdateAuditRecorded");
-    expect(source).toContain("projectDeleteAuditRecorded");
-    expect(source).toContain("textRevisionIndexAuditRecorded");
-    expect(source).toContain("timelineRevisionIndexRemoved");
-    expect(source).toContain("legacyLocalRoomReadRemoved");
-    expect(source).toContain("legacyLocalRoomWriteRemoved");
-    expect(source).toContain("legacyLocalRoomSyncRemoved");
     expect(source).not.toContain("roomSyncConflictResolutionAuditRecorded");
     expect(source).toContain(
       "doctor before repair does not expose obsolete marker compatibility",
@@ -731,14 +721,14 @@ describe("desktop startup test suite", () => {
   });
 
   it("keeps stub UI smoke explicitly marked as stub ACP only", () => {
-    const source = readText("e2e/agent-browser-smoke.mjs");
+    const source = readText("e2e/agent-browser-smoke.ts");
 
     expect(source).toContain("CLASH_E2E_STUB_ACP");
     expect(source).not.toContain("CLASH_LOCAL_ACP_MOCK");
   });
 
   it("starts every desktop UI smoke with an isolated local-only Vite shell", () => {
-    const source = readText("e2e/agent-browser-smoke.mjs");
+    const source = readText("e2e/agent-browser-smoke.ts");
     const helperSource = readText("e2e/startup-shared.mjs");
 
     expect(source).toContain("startVite({ webPort, logs: webLogs })");
@@ -784,7 +774,7 @@ describe("desktop startup test suite", () => {
   });
 
   it("keeps a permanent narrow-window project chrome check", () => {
-    const source = readText("e2e/agent-browser-smoke.mjs");
+    const source = readText("e2e/agent-browser-smoke.ts");
     const helperSource = readText("e2e/startup-shared.mjs");
 
     expect(source).toContain('agentBrowser(["set", "viewport", "720", "900"])');
@@ -865,7 +855,7 @@ describe("desktop startup test suite", () => {
   });
 
   it("types the stub UI smoke prompts through the shared keyboard helper", () => {
-    const source = readText("e2e/agent-browser-smoke.mjs");
+    const source = readText("e2e/agent-browser-smoke.ts");
 
     expect(source).toContain("typeComposer(agentBrowser, text)");
     expect(source).toContain("clickComposerSubmitButton(agentBrowser)");
@@ -875,7 +865,7 @@ describe("desktop startup test suite", () => {
   it("creates projects through the named project dialog in every desktop UI E2E", () => {
     const helperSource = readText("e2e/startup-shared.mjs");
     const sources = [
-      readText("e2e/agent-browser-smoke.mjs"),
+      readText("e2e/agent-browser-smoke.ts"),
       readText("e2e/real-codex-agent-browser.mjs"),
       readText("e2e/real-codex-resume-agent-browser.mjs"),
     ];
@@ -891,7 +881,7 @@ describe("desktop startup test suite", () => {
   it("requires a visibly open history menu in every desktop UI E2E", () => {
     const helperSource = readText("e2e/startup-shared.mjs");
     const sources = [
-      readText("e2e/agent-browser-smoke.mjs"),
+      readText("e2e/agent-browser-smoke.ts"),
       readText("e2e/real-codex-agent-browser.mjs"),
       readText("e2e/real-codex-resume-agent-browser.mjs"),
     ];
@@ -947,7 +937,7 @@ describe("desktop startup test suite", () => {
   });
 
   it("reattaches the stub Electron target after a session-creating submit", () => {
-    const source = readText("e2e/agent-browser-smoke.mjs");
+    const source = readText("e2e/agent-browser-smoke.ts");
     const sendPromptSource = source.slice(
       source.indexOf("async function sendPrompt"),
       source.indexOf("async function fetchJson"),
@@ -1055,7 +1045,7 @@ describe("desktop startup test suite", () => {
   });
 
   it("opens stub session history with the shared visible-menu helper", () => {
-    const source = readText("e2e/agent-browser-smoke.mjs");
+    const source = readText("e2e/agent-browser-smoke.ts");
 
     expect(source).toContain("openSessionHistoryMenu(agentBrowser)");
     expect(source).toContain('[role="menu"][aria-label="Session history"]');

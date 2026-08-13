@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import viteConfig, { DEV_SOURCE_ALIASES, DEV_WATCH_IGNORES } from "./vite.config";
+import viteConfig, {
+  DEV_SOURCE_ALIASES,
+  DEV_WATCH_IGNORES,
+} from "./vite.config";
 
 const originalDisableCloudflare = process.env.CLASH_WEB_E2E_NO_CLOUDFLARE;
 
@@ -21,16 +24,26 @@ describe("Vite workspace source routing", () => {
     expect(DEV_SOURCE_ALIASES).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          find: /^@clash\/asset-sdk$/,
+          replacement: expect.stringMatching(
+            /\/packages\/asset-sdk\/src\/index\.ts$/,
+          ),
+        }),
+        expect.objectContaining({
           find: /^@clash\/gui\/(.+)$/,
           replacement: expect.stringMatching(/\/packages\/gui\/src\/\$1$/),
         }),
         expect.objectContaining({
           find: /^@clash\/shared-types$/,
-          replacement: expect.stringMatching(/\/packages\/shared-types\/src\/index\.ts$/),
+          replacement: expect.stringMatching(
+            /\/packages\/shared-types\/src\/index\.ts$/,
+          ),
         }),
         expect.objectContaining({
           find: /^@clash\/shared-runtime$/,
-          replacement: expect.stringMatching(/\/packages\/shared-runtime\/src\/browser\.ts$/),
+          replacement: expect.stringMatching(
+            /\/packages\/shared-runtime\/src\/browser\.ts$/,
+          ),
         }),
       ]),
     );

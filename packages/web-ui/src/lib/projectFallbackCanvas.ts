@@ -1,9 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
-import type { ProjectAsset } from "./types";
-
-type FallbackAsset = ProjectAsset & {
-  assetId?: string;
-};
+import type { ResolvedAsset } from "@clash/shared-types";
 
 const NODE_WIDTH = 480;
 const NODE_HEIGHT = 270;
@@ -12,18 +8,23 @@ const ROW_GAP = 80;
 const COLUMNS = 2;
 
 export function buildFallbackCanvasFromAssets(
-  assets: readonly FallbackAsset[] | undefined,
+  assets: readonly ResolvedAsset[] | undefined,
 ): { nodes: Node[]; edges: Edge[] } {
   const mediaAssets = (assets ?? []).filter(
-    (asset) => asset.type === "image" || asset.type === "video" || asset.type === "audio",
+    (asset) =>
+      asset.status === "ready" &&
+      Boolean(asset.url) &&
+      (asset.kind === "image" ||
+        asset.kind === "video" ||
+        asset.kind === "audio"),
   );
 
   return {
     nodes: mediaAssets.map((asset, index) => {
-      const assetId = asset.assetId ?? asset.id;
+      const assetId = asset.id;
       return {
         id: `asset-ref-${assetId}`,
-        type: asset.type,
+        type: asset.kind,
         position: {
           x: (index % COLUMNS) * (NODE_WIDTH + COLUMN_GAP),
           y: Math.floor(index / COLUMNS) * (NODE_HEIGHT + ROW_GAP),
@@ -35,15 +36,14 @@ export function buildFallbackCanvasFromAssets(
           height: NODE_HEIGHT,
         },
         data: {
-          label: asset.type === "video"
-            ? "Recovered Video"
-            : asset.type === "audio"
-              ? "Recovered Audio"
-              : "Recovered Image",
+          label:
+            asset.kind === "video"
+              ? "Recovered Video"
+              : asset.kind === "audio"
+                ? "Recovered Audio"
+                : "Recovered Image",
           assetId,
-          src: asset.storageKey,
           status: "completed",
-          createdAt: asset.createdAt,
           recoveredFromAssetRef: true,
         },
       };

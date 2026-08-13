@@ -1,5 +1,4 @@
-import type { Asset, ProjectCanvas, ProjectTimeline } from '@clash/shared-types';
-import type { ProjectAsset } from '../../lib/types';
+import type { ProjectCanvas, ProjectTimeline, ResolvedAsset } from '@clash/shared-types';
 
 export interface AssetRelationNode {
   id: string;
@@ -37,7 +36,7 @@ export interface UpstreamAssetRelation {
   assetId: string;
   role: 'edit-source' | 'reference' | 'primary';
   label: string;
-  asset?: ProjectAsset;
+  asset?: ResolvedAsset;
   availableInProject: boolean;
 }
 
@@ -57,8 +56,8 @@ export interface AssetRelationSummary {
 
 export interface BuildAssetRelationSummaryInput {
   assetId: string;
-  asset?: Partial<Pick<Asset, 'id' | 'sourceModel' | 'sourcePrompt' | 'sourceTaskId' | 'sources'>>;
-  projectAssets: ProjectAsset[];
+  asset?: ResolvedAsset;
+  projectAssets: ResolvedAsset[];
   canvases: ProjectCanvas[];
   timelines: ProjectTimeline[];
   nodes: AssetRelationNode[];
@@ -158,9 +157,8 @@ function timelineReferenceCount(
   );
 }
 
-function assetLabel(assetId: string, asset?: ProjectAsset): string {
-  const path = asset?.storageKey?.trim() || asset?.id || assetId;
-  return path.split(/[\\/]/).filter(Boolean).at(-1) || assetId;
+function assetLabel(assetId: string, asset?: ResolvedAsset): string {
+  return asset?.name?.trim() || asset?.metadata.originalName?.trim() || assetId;
 }
 
 function promptLabel(key: string): string {
@@ -303,13 +301,11 @@ export function buildAssetRelationSummary(
     }))
     .filter((timeline) => timeline.itemCount > 0);
 
-  const projectAssetById = new Map<string, ProjectAsset>();
+  const projectAssetById = new Map<string, ResolvedAsset>();
   for (const asset of input.projectAssets) {
     projectAssetById.set(asset.id, asset);
-    if (asset.assetId) projectAssetById.set(asset.assetId, asset);
   }
   const lineageSources: Array<{ assetId: string; role: UpstreamAssetRelation['role'] }> = [
-    ...(input.asset?.sources ?? []),
     ...collectLineageAssetIds(originNode?.data, input.assetId),
     ...collectLineageAssetIds(originActionNode?.data, input.assetId),
   ];
@@ -348,7 +344,7 @@ export function buildAssetRelationSummary(
     seenPrompts.add(normalized);
     prompts.push({ label, value: normalized });
   };
-  pushPrompt('Prompt', input.asset?.sourcePrompt);
+  pushPrompt('Prompt', input.asset?.provenance?.prompt);
   if (originNode) {
     for (const [key, value] of Object.entries(originNode.data ?? {})) {
       if (/prompt/i.test(key)) pushPrompt(promptLabel(key), value);
@@ -365,7 +361,7 @@ export function buildAssetRelationSummary(
     upstreamAssets,
     prompts,
     sourceModel: firstText(
-      input.asset?.sourceModel,
+      input.asset?.provenance?.model,
       originNode?.data?.modelId,
       originNode?.data?.model,
       originActionNode?.data?.modelId,

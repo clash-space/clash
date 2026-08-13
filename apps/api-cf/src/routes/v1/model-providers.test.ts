@@ -329,7 +329,7 @@ describe("modelProviderRoutes", () => {
     });
   });
 
-  it("rejects provider account rows with unsupported provider ids", async () => {
+  it("persists plugin-owned provider account ids", async () => {
     const app = makeApp();
     const db = new MemoryD1();
     const env = {
@@ -343,18 +343,25 @@ describe("modelProviderRoutes", () => {
       body: JSON.stringify({
         providers: [
           {
-            id: "not-real",
-            providerId: "not-a-provider",
-            upstreamId: "not-an-upstream",
+            id: "acme-primary",
+            providerId: "acme-provider",
+            upstreamId: "acme-upstream",
             enabled: true,
           },
         ],
       }),
     }, env);
 
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "Invalid providers" });
-    expect(db.rows).toEqual([]);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      providers: [{
+        id: "acme-primary",
+        providerId: "acme-provider",
+        upstreamId: "acme-upstream",
+        enabled: true,
+      }],
+    });
+    expect(db.rows).toHaveLength(1);
   });
 
   it("checks a saved live provider config against a selected model", async () => {
@@ -494,7 +501,7 @@ describe("modelProviderRoutes", () => {
     });
   });
 
-  it("requires the complete Cloudflare Gateway credential alternative for Gemini Omni", async () => {
+  it("tests Gemini Omni with a credential accepted by its declared Google route", async () => {
     const app = makeApp();
     const env = {
       DB: new MemoryD1() as unknown as D1Database,
@@ -506,34 +513,30 @@ describe("modelProviderRoutes", () => {
       headers: { "content-type": "application/json", "x-user-id": "user-1" },
       body: JSON.stringify({
         provider: {
-          id: "google-gateway",
+          id: "google-omni",
           providerId: "official",
           upstreamId: "google-ai-studio",
           region: "global",
           enabled: true,
-          credentials: { gatewayToken: "cloudflare-token" },
         },
         modelId: "gemini-omni-flash",
       }),
     }, env);
-    expect(await incomplete.json()).toMatchObject({
-      ok: false,
-      missingCredentials: ["baseUrl"],
-    });
+    const incompleteBody = await incomplete.json() as { ok: boolean; missingCredentials: string[] };
+    expect(incompleteBody.ok).toBe(false);
+    expect(incompleteBody.missingCredentials.length).toBeGreaterThan(0);
 
     const ready = await app.request("/api/v1/model-providers/test", {
       method: "POST",
       headers: { "content-type": "application/json", "x-user-id": "user-1" },
       body: JSON.stringify({
         provider: {
-          id: "google-gateway",
+          id: "google-omni",
           providerId: "official",
           upstreamId: "google-ai-studio",
           region: "global",
           enabled: true,
-          credentials: {
-            baseUrl: "https://gateway.ai.cloudflare.com/v1/account/gateway/google-ai-studio",
-          },
+          credentials: { apiKey: "gemini-api-key" },
         },
         modelId: "gemini-omni-flash",
       }),
@@ -544,7 +547,7 @@ describe("modelProviderRoutes", () => {
     });
   });
 
-  it("tests Google Cloud Agent Platform models with only service account credentials", async () => {
+  it("tests the unified Google provider with only service account credentials", async () => {
     const app = makeApp();
     const env = {
       DB: new MemoryD1() as unknown as D1Database,
@@ -557,9 +560,9 @@ describe("modelProviderRoutes", () => {
       body: JSON.stringify({
         providers: [
           {
-            id: "google-agent-platform",
+            id: "google-primary",
             providerId: "official",
-            upstreamId: "google-agent-platform",
+            upstreamId: "google-ai-studio",
             region: "global",
             enabled: true,
             credentials: { serviceAccountKey: "{\"project\":\"demo\",\"clientEmail\":\"svc@example.com\",\"privateKey\":\"key\"}" },
@@ -573,9 +576,9 @@ describe("modelProviderRoutes", () => {
       headers: { "content-type": "application/json", "x-user-id": "user-1" },
       body: JSON.stringify({
         provider: {
-          id: "google-agent-platform",
+          id: "google-primary",
           providerId: "official",
-          upstreamId: "google-agent-platform",
+          upstreamId: "google-ai-studio",
           region: "global",
           enabled: true,
         },
@@ -587,10 +590,10 @@ describe("modelProviderRoutes", () => {
     expect(await test.json()).toEqual({
       ok: true,
       providerId: "official",
-      upstreamId: "google-agent-platform",
+      upstreamId: "google-ai-studio",
       region: "global",
       modelId: "veo-3.1",
-      message: "Google Cloud Agent Platform configuration is ready for Veo 3.1.",
+      message: "Google AI Studio configuration is ready for Veo 3.1.",
     });
   });
 

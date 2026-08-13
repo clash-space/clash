@@ -47,10 +47,6 @@ describe.runIf(REAL)("hrhrng.hub", () => {
     const assets = mkdtempSync(join(tmpdir(), "real-gen-"));
     const host = new ActionsHost({
       actionsRoot,
-      serverUrl: "http://127.0.0.1:0",
-      apiKey: "",
-      runtimeId: "real-generation",
-      executablePluginsOnly: true,
       pluginBroker: createLocalExecutablePluginBroker({
         loadProviderAccounts: async () => [],
         // The store the plugin reads through `context.store`, holding what the import produced.

@@ -932,14 +932,15 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
           return;
         }
         const sourceNodeId: string | undefined = (asset as any).sourceNodeId ?? asset.id;
-        const backingAssetId: string | undefined = (asset as any).backingAssetId ?? (asset as any).assetId;
+        const projectAssetId: string | undefined = (asset as any).projectAssetId;
+        if (!projectAssetId) return;
 
         switch (asset.type) {
           case 'video':
             newItem = {
               id: `item-${Date.now()}`,
               type: 'video',
-              assetId: backingAssetId,
+              assetId: projectAssetId,
               sourceNodeId,
               from: dropFrame,
               durationInFrames: (asset && asset.duration) ? secondsToFrames(asset.duration, fps) : 90,
@@ -951,7 +952,7 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
             newItem = {
               id: `item-${Date.now()}`,
               type: 'audio',
-              assetId: backingAssetId,
+              assetId: projectAssetId,
               sourceNodeId,
               from: dropFrame,
               durationInFrames: asset.duration ? secondsToFrames(asset.duration, fps) : 90,
@@ -963,7 +964,7 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
             newItem = {
               id: `item-${Date.now()}`,
               type: 'image',
-              assetId: backingAssetId,
+              assetId: projectAssetId,
               sourceNodeId,
               from: dropFrame,
               durationInFrames: 90,

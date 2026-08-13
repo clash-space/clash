@@ -1,14 +1,19 @@
 import { Command } from "commander";
 import { chmodSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 import {
   DEFAULT_CANVAS_ID,
   type ProjectHostCommand,
+  type ResolvedAsset,
 } from "@clash/shared-types";
+import type { ProjectAssetHostClient } from "@clash/shared-runtime/project-asset-client";
 import { getServerUrl } from "../lib/config";
 import { isJsonMode, printJson } from "../lib/output";
-import { sendProjectCommand } from "../lib/project-host-client";
-import { apiFetch, apiJson } from "../lib/api";
+import {
+  createCliProjectAssetHostClient,
+  sendProjectCommand,
+} from "../lib/project-host-client";
+import { apiJson } from "../lib/api";
 import { resolveClashRoot } from "../lib/clash-home";
 import { resolveProjectContext, type ResolvedProjectContext } from "../lib/project-context";
 import { publicAgentCommandResult } from "../lib/agent-worktree-observation";
@@ -341,22 +346,42 @@ export function resolveAssetDownloadUrl(signedUrl: string, serverUrl = getServer
   return new URL(signedUrl, `${serverUrl.replace(/\/+$/, "")}/`).toString();
 }
 
-/**
- * Download media asset by D1 asset id. Returns file path, or null on failure.
- *
- * Caches by assetId (immutable identifier — same id always means the same
- * underlying R2 object), so repeat calls skip the metadata round-trip
- * entirely. Extension is sniffed from srcR2Key the first time so file viewers
- * pick the right type.
- */
-export async function downloadAssetById(assetId: string): Promise<string | null> {
+function resolvedAssetExtension(asset: ResolvedAsset): string {
+  const namedExtension = extname(
+    asset.metadata.originalName ?? asset.name ?? "",
+  );
+  if (/^\.[A-Za-z0-9_-]+$/.test(namedExtension)) return namedExtension;
+  const contentType = asset.metadata.contentType?.toLowerCase();
+  if (contentType === "image/png") return ".png";
+  if (contentType === "image/jpeg") return ".jpg";
+  if (contentType === "image/webp") return ".webp";
+  if (contentType === "image/gif") return ".gif";
+  if (contentType === "video/mp4") return ".mp4";
+  if (contentType === "video/webm") return ".webm";
+  if (contentType === "audio/mpeg") return ".mp3";
+  if (contentType === "audio/wav") return ".wav";
+  if (contentType === "audio/mp4") return ".m4a";
+  if (contentType === "model/gltf-binary") return ".glb";
+  if (contentType === "model/gltf+json") return ".gltf";
+  return "";
+}
+
+/** Download one immutable Project Asset through the Host's ResolvedAsset projection. */
+export async function downloadAssetById(
+  assetId: string,
+  projectId: string,
+  options: {
+    cacheDir?: string;
+    client?: Pick<ProjectAssetHostClient, "get">;
+    fetch?: typeof fetch;
+  } = {},
+): Promise<string | null> {
   try {
-    const cacheDir = assetCacheDir();
+    const cacheDir = options.cacheDir ?? assetCacheDir();
     mkdirSync(cacheDir, { recursive: true });
 
-    // Cache hit: any file starting with `${assetId}.` is the same asset.
-    // Glob would be cleaner but readdirSync is dependency-free and fast for a tiny dir.
-    const safeId = assetId.replace(/[/\\:]/g, "_");
+    // ProjectAsset ids are scoped to a Project, so the cache key must be too.
+    const safeId = `${projectId}--${assetId}`.replace(/[/\\:]/g, "_");
     for (const name of readdirSync(cacheDir)) {
       if (name === safeId || name.startsWith(`${safeId}.`)) {
         const cachedPath = join(cacheDir, name);
@@ -365,15 +390,19 @@ export async function downloadAssetById(assetId: string): Promise<string | null>
       }
     }
 
-    const metaRes = await apiFetch(`/api/v1/assets/${encodeURIComponent(assetId)}`);
-    if (!metaRes.ok) return null;
-    const asset = (await metaRes.json()) as { srcR2Key: string; signedUrl: string };
+    const observed = await (
+      options.client ?? createCliProjectAssetHostClient()
+    ).get({ projectId, assetId });
+    const asset = observed.value;
+    if (asset.id !== assetId || asset.status !== "ready" || !asset.url) {
+      return null;
+    }
 
-    const ext = asset.srcR2Key.match(/\.[a-zA-Z0-9]+$/)?.[0] ?? "";
+    const ext = resolvedAssetExtension(asset);
     const filePath = join(cacheDir, `${safeId}${ext}`);
 
-    const fullUrl = resolveAssetDownloadUrl(asset.signedUrl);
-    const res = await fetch(fullUrl);
+    const fullUrl = resolveAssetDownloadUrl(asset.url);
+    const res = await (options.fetch ?? fetch)(fullUrl);
     if (!res.ok) return null;
 
     writeFileSync(filePath, Buffer.from(await res.arrayBuffer()), { mode: 0o444 });
@@ -430,12 +459,12 @@ canvasCommand
       revision: observation,
     });
 
-    // For media nodes, download the asset via D1 assetId.
+    // For media nodes, download the Project-scoped immutable projection.
     const assetId = typeof node.data?.assetId === "string" ? node.data.assetId : undefined;
     const isMedia = ["image", "video", "audio"].includes(node.type);
     let assetPath: string | null = null;
     if (isMedia && assetId) {
-      assetPath = await downloadAssetById(assetId);
+      assetPath = await downloadAssetById(assetId, projectId);
     }
 
     if (isJsonMode(options)) {
@@ -487,7 +516,7 @@ canvasCommand
   )
   .option(
     "--action <id>",
-    "Use a custom marketplace action instead of a built-in model. The action must be registered in the project (via the Python SDK's register_custom_actions, or the marketplace install flow). When set, --model is ignored and --param values go into data.customActionParams instead of data.modelParams.",
+    "Use an installed executable-plugin action instead of a catalog model. The Host resolves the activated contribution and owns execution. When set, --model is ignored and --param values go into data.customActionParams instead of data.modelParams.",
   )
   .option("--json", "Output as JSON")
   .action(async (options) => {

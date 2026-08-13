@@ -49,9 +49,15 @@ describe("Timeline field descriptor consumers", () => {
     expect((TIMELINE_DSL_DEFINITION.features as any).itemTransform).toEqual(
       TIMELINE_ITEM_TRANSFORM_SEMANTICS,
     );
-    expect(TimelineItemPropertiesSchema.shape.width.description).toMatch(/unitless/i);
-    expect(TimelineItemPropertiesSchema.shape.width.description).toMatch(/not output pixels/i);
-    expect(TimelineItemPropertiesSchema.shape.height.description).toMatch(/contain-fit/i);
+    expect(TimelineItemPropertiesSchema.shape.width.description).toMatch(
+      /unitless/i,
+    );
+    expect(TimelineItemPropertiesSchema.shape.width.description).toMatch(
+      /not output pixels/i,
+    );
+    expect(TimelineItemPropertiesSchema.shape.height.description).toMatch(
+      /contain-fit/i,
+    );
   });
 
   it("publishes the complete serializable field catalog with the contract", () => {
@@ -59,9 +65,16 @@ describe("Timeline field descriptor consumers", () => {
       TIMELINE_DSL_FIELD_CATALOG,
     );
     expect((TIMELINE_DSL_DEFINITION as any).taxonomy).toMatchObject({
-      itemTypes: expect.arrayContaining(Object.keys(TIMELINE_DSL_FIELD_CATALOG.itemTypes)),
+      itemTypes: expect.arrayContaining(
+        Object.keys(TIMELINE_DSL_FIELD_CATALOG.itemTypes),
+      ),
       trackCategories: ["effect", "text", "visual", "primary", "audio"],
-      trackRoles: expect.arrayContaining(["primary-video", "subtitle", "music", "mixed"]),
+      trackRoles: expect.arrayContaining([
+        "primary-video",
+        "subtitle",
+        "music",
+        "mixed",
+      ]),
       categoryAllowedItemTypes: {
         primary: ["video", "image", "solid"],
         visual: expect.arrayContaining(["composition"]),
@@ -69,16 +82,28 @@ describe("Timeline field descriptor consumers", () => {
       roleAllowedItemTypes: {
         music: ["audio"],
       },
-      runtimeConsumers: expect.arrayContaining(["editor", "render", "persistence"]),
+      runtimeConsumers: expect.arrayContaining([
+        "editor",
+        "render",
+        "persistence",
+      ]),
       mediaFits: ["fill", "cover", "contain"],
-      clipAnimationTypes: expect.arrayContaining(["fade", "zoom-in", "slide-left"]),
+      clipAnimationTypes: expect.arrayContaining([
+        "fade",
+        "zoom-in",
+        "slide-left",
+      ]),
       textAlignments: ["left", "center", "right"],
       captionPositions: ["bottom", "top", "center"],
       compositionKinds: ["motion-graphics", "custom"],
       compositionRuntimes: ["html", "react", "remotion"],
       derivedMediaTypes: ["image", "video"],
       derivationKinds: expect.arrayContaining(["trim", "crop", "transcode"]),
-      transitionTypes: expect.arrayContaining(["crossfade", "circle-wipe", "zoom-in"]),
+      transitionTypes: expect.arrayContaining([
+        "crossfade",
+        "circle-wipe",
+        "zoom-in",
+      ]),
     });
   });
 
@@ -86,7 +111,9 @@ describe("Timeline field descriptor consumers", () => {
     expect((TIMELINE_DSL_DEFINITION as any).operationCatalog).toEqual(
       TIMELINE_OPERATION_CATALOG,
     );
-    expect(Object.keys((TIMELINE_DSL_DEFINITION as any).operationCatalog.agent)).toEqual([
+    expect(
+      Object.keys((TIMELINE_DSL_DEFINITION as any).operationCatalog.agent),
+    ).toEqual([
       "timeline.open",
       "timeline.schema",
       "timeline.validate",
@@ -126,24 +153,32 @@ describe("Timeline field descriptor consumers", () => {
       applicabilityRuleId: "timeline.properties.item-type",
       appliesToItemTypes: expect.arrayContaining(["video", "image", "text"]),
     });
-    expect(TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase.properties.appliesToItemTypes)
-      .not.toContain("audio");
+    expect(
+      TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase.properties.appliesToItemTypes,
+    ).not.toContain("audio");
 
     const result = TimelineDslSchema.safeParse({
-      tracks: [{
-        id: "audio",
-        items: [item("audio", {
-          src: "/audio.wav",
-          properties: { x: 0, y: 0, width: 1, height: 1 },
-        })],
-      }],
+      tracks: [
+        {
+          id: "audio",
+          items: [
+            item("audio", {
+              src: "/audio.wav",
+              properties: { x: 0, y: 0, width: 1, height: 1 },
+            }),
+          ],
+        },
+      ],
     });
     expect(result.success).toBe(false);
     if (result.success) return;
-    expect(result.error.issues.some((issue) => (
-      issue.code === "custom"
-      && issue.params?.ruleId === "timeline.properties.item-type"
-    ))).toBe(true);
+    expect(
+      result.error.issues.some(
+        (issue) =>
+          issue.code === "custom" &&
+          issue.params?.ruleId === "timeline.properties.item-type",
+      ),
+    ).toBe(true);
   });
 
   it("builds every item variant from its annotated executable schemas", () => {
@@ -196,44 +231,64 @@ describe("Timeline field descriptor consumers", () => {
   });
 
   it.each([
-    ["properties scalar type", item("image", {
-      src: "/image.png",
-      properties: { x: "bad", y: 0, width: 1, height: 1 },
-    })],
-    ["mediaFit enum", item("video", { src: "/video.mp4", mediaFit: "stretch" })],
-    ["effect descriptor", item("image", {
-      src: "/image.png",
-      effects: [{ effectId: "Blur", effectVersion: 0, params: { radius: {} } }],
-    })],
-    ["wrong variant field", item("audio", {
-      src: "/audio.wav",
-      imageFadeIn: 4,
-    })],
+    [
+      "properties scalar type",
+      item("image", {
+        src: "/image.png",
+        properties: { x: "bad", y: 0, width: 1, height: 1 },
+      }),
+    ],
+    [
+      "mediaFit enum",
+      item("video", { src: "/video.mp4", mediaFit: "stretch" }),
+    ],
+    [
+      "effect descriptor",
+      item("image", {
+        src: "/image.png",
+        effects: [
+          { effectId: "Blur", effectVersion: 0, params: { radius: {} } },
+        ],
+      }),
+    ],
+    [
+      "wrong variant field",
+      item("audio", {
+        src: "/audio.wav",
+        imageFadeIn: 4,
+      }),
+    ],
     ["required solid field", item("solid")],
-    ["required transition fields", item("transition", { transitionType: "crossfade" })],
+    [
+      "required transition fields",
+      item("transition", { transitionType: "crossfade" }),
+    ],
   ])("rejects invalid annotated %s", (_name, candidate) => {
     expect(TimelineDslItemSchema.safeParse(candidate).success).toBe(false);
   });
 
   it("uses annotated root and track schemas instead of passthrough typing", () => {
-    expect(TimelineDslSchema.safeParse({
-      assetTranscripts: {
-        speech: {
-          schemaVersion: 1,
-          kind: "clash.editor.asset-transcript",
-          assetId: "speech",
-          text: "hello",
-          durationMs: 1000,
-          words: [],
+    expect(
+      TimelineDslSchema.safeParse({
+        assetTranscripts: {
+          speech: {
+            schemaVersion: 1,
+            kind: "clash.editor.asset-transcript",
+            assetId: "speech",
+            text: "hello",
+            durationMs: 1000,
+            words: [],
+          },
         },
-      },
-      mediaAssetRefs: [{ assetId: "speech" }],
-      tracks: [{ id: "voice", name: "Voice", role: "narration", items: [] }],
-    }).success).toBe(true);
+        tracks: [{ id: "voice", name: "Voice", role: "narration", items: [] }],
+      }).success,
+    ).toBe(true);
 
-    expect(TimelineDslSchema.safeParse({
-      tracks: [{ id: "voice", role: "anything", items: [] }],
-    }).success).toBe(false);
+    expect(
+      TimelineDslSchema.safeParse({
+        tracks: [{ id: "voice", role: "anything", items: [] }],
+      }).success,
+    ).toBe(false);
   });
 
   it("generates JavaDoc-style documentation for every field group", () => {
@@ -251,7 +306,7 @@ describe("Timeline field descriptor consumers", () => {
         expect(markdown, `${itemType}.${field}`).toContain(`\`${field}\``);
       }
     }
-    for (const field of ["assetTranscripts", "mediaAssetRefs", "effects", "fromExpr"]) {
+    for (const field of ["assetTranscripts", "effects", "fromExpr"]) {
       expect(markdown).toContain(`\`${field}\``);
     }
     expect(markdown).toContain("## Complete operation catalog");

@@ -26,6 +26,7 @@
     "@clash/action-sdk": "workspace:*"
   },
   "devDependencies": {
+    "@clash/gui": "workspace:*",
     "@types/node": "^24.0.0",
     "tsup": "^8.5.0",
     "typescript": "^5.8.0",

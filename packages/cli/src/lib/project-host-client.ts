@@ -1,6 +1,31 @@
 import type { ProjectHostCommand } from "@clash/shared-types";
-import { sendProjectHostCommand } from "@clash/shared-runtime/project-host-client";
+import {
+  createProjectAssetHostClient,
+  type ProjectAssetHostClient,
+} from "@clash/shared-runtime/project-asset-client";
+import {
+  sendProjectHostCommand,
+  type ProjectHostConnection,
+} from "@clash/shared-runtime/project-host-client";
 import { getServerUrl, requireApiKey } from "./config";
+
+export function resolveCliProjectHostConnection(): ProjectHostConnection {
+  const endpoint = getServerUrl();
+  const token = requireApiKey(endpoint);
+  return {
+    endpoint,
+    ...(token ? { token } : {}),
+  };
+}
+
+export function createCliProjectAssetHostClient(options: {
+  fetch?: typeof globalThis.fetch;
+} = {}): ProjectAssetHostClient {
+  return createProjectAssetHostClient({
+    resolveConnection: async () => resolveCliProjectHostConnection(),
+    ...(options.fetch ? { fetch: options.fetch } : {}),
+  });
+}
 
 /**
  * Send a project operation to the local-api authority. The CLI never opens a
@@ -11,11 +36,11 @@ export function sendProjectCommand<T extends object = Record<string, unknown>>(
   projectId: string,
   command: ProjectHostCommand,
 ): Promise<T> {
-  const endpoint = getServerUrl();
+  const { endpoint, token } = resolveCliProjectHostConnection();
   return sendProjectHostCommand({
     endpoint,
     projectId,
     command,
-    token: requireApiKey(endpoint) || undefined,
+    token,
   }) as Promise<T>;
 }

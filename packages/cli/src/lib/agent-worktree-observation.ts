@@ -8,6 +8,7 @@ import {
 type AgentObservationOptions = {
   entityKind: string;
   entityId: string;
+  project?: string;
   cwd?: string;
   env?: Record<string, string | undefined>;
 };
@@ -47,19 +48,24 @@ function sanitizePublicValue(
   value: unknown,
   context: "nested" | "mutation" | "result",
 ): unknown {
-  if (Array.isArray(value)) return value.map((item) => sanitizePublicValue(item, "nested"));
+  if (Array.isArray(value))
+    return value.map((item) => sanitizePublicValue(item, "nested"));
   if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(Object.entries(value).flatMap(([key, child]) => {
-    if (INTERNAL_RECEIPT_FIELDS.has(key)) return [];
-    if (context === "result" && key === "version") return [];
-    if (context === "mutation" && INTERNAL_MUTATION_FIELDS.has(key)) return [];
-    const childContext = key === "mutation"
-      ? "mutation"
-      : key === "replaceResult"
-        ? "result"
-        : "nested";
-    return [[key, sanitizePublicValue(child, childContext)]];
-  }));
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, child]) => {
+      if (INTERNAL_RECEIPT_FIELDS.has(key)) return [];
+      if (context === "result" && key === "version") return [];
+      if (context === "mutation" && INTERNAL_MUTATION_FIELDS.has(key))
+        return [];
+      const childContext =
+        key === "mutation"
+          ? "mutation"
+          : key === "replaceResult"
+            ? "result"
+            : "nested";
+      return [[key, sanitizePublicValue(child, childContext)]];
+    }),
+  );
 }
 
 export async function recordAgentObservation(
@@ -67,13 +73,19 @@ export async function recordAgentObservation(
 ): Promise<void> {
   const env = options.env ?? process.env;
   if (!isAgentInvocation(env)) return;
-  const context = await resolveProjectContext({ cwd: options.cwd, env });
+  const context = await resolveProjectContext({
+    project: options.project,
+    cwd: options.cwd,
+    env,
+  });
   if (typeof options.revision !== "string" || !options.revision.trim()) {
     throw new Error("Host read did not return an entity version.");
   }
   const revision = options.revision.trim();
   if (!context.workspaceRoot) {
-    throw new Error("Agent reads require a cwd linked through .clash/project.toml.");
+    throw new Error(
+      "Agent reads require a cwd linked through .clash/project.toml.",
+    );
   }
   await recordWorktreeObservation({
     workspaceRoot: context.workspaceRoot,
@@ -89,9 +101,15 @@ export async function requireAgentObservation(
 ): Promise<string | undefined> {
   const env = options.env ?? process.env;
   if (!isAgentInvocation(env)) return undefined;
-  const context = await resolveProjectContext({ cwd: options.cwd, env });
+  const context = await resolveProjectContext({
+    project: options.project,
+    cwd: options.cwd,
+    env,
+  });
   if (!context.workspaceRoot) {
-    throw new Error("READ_REQUIRED: Run the command from a cwd linked through .clash/project.toml and read the target first.");
+    throw new Error(
+      "READ_REQUIRED: Run the command from a cwd linked through .clash/project.toml and read the target first.",
+    );
   }
   const observation = await requireWorktreeObservation({
     workspaceRoot: context.workspaceRoot,
@@ -99,7 +117,8 @@ export async function requireAgentObservation(
     entityKind: options.entityKind,
     entityId: options.entityId,
   });
-  if (!observation.ok) throw new Error(`${observation.code}: ${observation.error}`);
+  if (!observation.ok)
+    throw new Error(`${observation.code}: ${observation.error}`);
   return observation.revision;
 }
 
@@ -108,7 +127,11 @@ export async function forgetAgentObservation(
 ): Promise<void> {
   const env = options.env ?? process.env;
   if (!isAgentInvocation(env)) return;
-  const context = await resolveProjectContext({ cwd: options.cwd, env });
+  const context = await resolveProjectContext({
+    project: options.project,
+    cwd: options.cwd,
+    env,
+  });
   if (!context.workspaceRoot) return;
   await forgetWorktreeObservation({
     workspaceRoot: context.workspaceRoot,

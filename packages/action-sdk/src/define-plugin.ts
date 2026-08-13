@@ -1,6 +1,7 @@
 import type { Readable, Writable } from "node:stream";
 
 import type {
+  ExecutablePluginReference,
   ExecutablePluginAssetHandle,
   ExecutablePluginBrokerOperation,
   ExecutablePluginInvocation,
@@ -10,6 +11,7 @@ import type {
 } from "@clash/shared-types/executable-plugin";
 
 import { defineStdioExecutablePlugin, type StdioExecutablePluginOptions } from "./stdio-plugin.js";
+import { unsupportedAcceptedOperation } from "./executable-failure.js";
 
 /**
  * What a plugin is: a set of executors, declared.
@@ -50,7 +52,13 @@ export type AssetKindName = "image" | "video" | "audio" | "model";
  * than the reach.
  */
 export type ResolvedReference =
-  | { form: "url"; url: string; mediaType?: string; kind?: AssetKindName }
+  | {
+      form: "provider-url";
+      providerUrl: string;
+      expiresAt: string;
+      mediaType?: string;
+      kind?: AssetKindName;
+    }
   | { form: "bytes"; bytes: Uint8Array; mediaType?: string; kind?: AssetKindName }
   | { form: "text"; text: string };
 
@@ -68,7 +76,11 @@ export type ExecutorStep =
   | { status: "completed"; outputs: ExecutablePluginOutput[] }
   /** Files, named by the plugin. The SDK uploads them and builds the outputs. */
   | { status: "completed"; media: Record<string, MediaData> }
-  | { status: "accepted"; pollState: object; retryAfterMs?: number };
+  | { status: "accepted"; pollState: ExecutablePluginJsonValue; retryAfterMs?: number }
+  | {
+      status: "failed";
+      error: Extract<ExecutablePluginResult, { status: "failed" }>["error"];
+    };
 
 /**
  * What a plugin keeps, already bound to this plugin and this account.
@@ -146,8 +158,8 @@ export interface ExecutorContext {
   asset(request: AssetWriteRequest): Promise<ExecutablePluginOutput>;
   /** Credentials and settings this account stored. Bound; see PluginStoreHandle. */
   store: PluginStoreHandle;
-  /** Turn one of `invocation.input.references` into bytes, a fetchable url, or text. */
-  reference(reference: unknown): Promise<ResolvedReference>;
+  /** Resolve one invocation reference using the pinned Provider binding's delivery declaration. */
+  reference(reference: ExecutablePluginReference): Promise<ResolvedReference>;
   /** Host tools named by the plugin's contributions. */
   hostTools: PluginHostTools;
 }
@@ -156,12 +168,12 @@ export interface Executor {
   submit(invocation: ExecutablePluginInvocation, context: ExecutorContext): Promise<ExecutorStep>;
   /** Only for providers that answer later. Omitting it says this one answers at once. */
   poll?(invocation: ExecutablePluginInvocation, context: ExecutorContext): Promise<ExecutorStep>;
+  /** Translate a provider callback for work the Host already recorded as accepted. */
+  callback?(invocation: ExecutablePluginInvocation, context: ExecutorContext): Promise<ExecutorStep>;
 }
 
 export interface PluginDefinition {
   executors: Record<string, Executor>;
-  /** Built once per process; executors receive it on every call. */
-  context?: Partial<ExecutorContext> | (() => Partial<ExecutorContext>);
 }
 
 export interface DefinedPlugin {
@@ -229,17 +241,27 @@ async function resultFor(
 ): Promise<ExecutablePluginResult> {
   if (step.status === "accepted") {
     return {
+      protocol: "clash.plugin.result/v1",
       invocationId: invocation.invocationId,
       status: "accepted",
       pollState: step.pollState,
       ...(step.retryAfterMs === undefined ? {} : { retryAfterMs: step.retryAfterMs }),
-    } as ExecutablePluginResult;
+    } satisfies ExecutablePluginResult;
+  }
+  if (step.status === "failed") {
+    return {
+      protocol: "clash.plugin.result/v1",
+      invocationId: invocation.invocationId,
+      status: "failed",
+      error: step.error,
+    } satisfies ExecutablePluginResult;
   }
   return {
+    protocol: "clash.plugin.result/v1",
     invocationId: invocation.invocationId,
     status: "completed",
     outputs: "media" in step ? await outputsFor(step.media, context) : step.outputs,
-  } as ExecutablePluginResult;
+  } satisfies ExecutablePluginResult;
 }
 
 
@@ -266,40 +288,30 @@ export function executorContextFrom(
 
   return {
         ...merged,
-        reference: merged.reference ?? (async (input) => {
-          const entry = input as {
-            text?: { value: string };
-            asset?: { assetId: string; url?: string; reach?: string; mediaType?: string; kind?: AssetKindName };
-          };
-          if (entry.text) return { form: "text", text: entry.text.value };
-
-          const asset = entry.asset;
-          if (!asset) throw new Error("This reference carries neither text nor an asset.");
-
-          // Only a public address is worth handing on. Anything else the vendor cannot read, and
-          // passing it produces a 403 attributed to the vendor.
-          if (asset.url && asset.reach === "public") {
-            return {
-              form: "url",
-              url: asset.url,
-              ...(asset.mediaType ? { mediaType: asset.mediaType } : {}),
-              ...(asset.kind ? { kind: asset.kind } : {}),
-            };
-          }
-
-          const read = await host({ kind: "asset.read", asset } as never) as unknown as {
-            dataBase64?: string;
-            mediaType?: string;
-            kind?: AssetKindName;
-          };
-          if (!read?.dataBase64) {
-            throw new Error(`The host returned no bytes for asset ${asset.assetId}.`);
+        reference: merged.reference ?? (async (reference) => {
+          const resolved = await host({ kind: "asset.resolve", reference }) as unknown as
+            | {
+                form: "provider-url";
+                providerUrl: string;
+                expiresAt: string;
+                kind?: AssetKindName;
+                mediaType?: string;
+              }
+            | {
+                form: "bytes";
+                bytesBase64: string;
+                kind?: AssetKindName;
+                mediaType?: string;
+              }
+            | { form: "text"; text: string };
+          if (resolved.form === "provider-url" || resolved.form === "text") {
+            return resolved;
           }
           return {
             form: "bytes",
-            bytes: Uint8Array.from(Buffer.from(read.dataBase64, "base64")),
-            ...(read.mediaType ?? asset.mediaType ? { mediaType: read.mediaType ?? asset.mediaType } : {}),
-            ...(read.kind ?? asset.kind ? { kind: read.kind ?? asset.kind } : {}),
+            bytes: Uint8Array.from(Buffer.from(resolved.bytesBase64, "base64")),
+            ...(resolved.mediaType ? { mediaType: resolved.mediaType } : {}),
+            ...(resolved.kind ? { kind: resolved.kind } : {}),
           };
         }),
         // Two calls, keyed by nothing but a key. Which plugin and which account is decided by the
@@ -431,10 +443,9 @@ export function definePlugin(definition: PluginDefinition): DefinedPlugin {
 
   for (const [exportId, executor] of Object.entries(definition.executors)) {
     handlers[exportId] = async (invocation, hostContext) => {
-      const declared = typeof definition.context === "function"
-        ? definition.context()
-        : definition.context ?? {};
-      const context = executorContextFrom({ ...hostContext, ...declared });
+      // The Host supplies a fresh, account-scoped SDK implementation for every invocation. The
+      // plugin contributes only executor logic and cannot shadow those capabilities statically.
+      const context = executorContextFrom(hostContext);
 
       if (invocation.operation === "poll") {
         if (!executor.poll) {
@@ -446,6 +457,16 @@ export function definePlugin(definition: PluginDefinition): DefinedPlugin {
           );
         }
         return resultFor(invocation, await executor.poll(invocation, context), context);
+      }
+
+      if (invocation.operation === "callback") {
+        const step = executor.callback
+          ? await executor.callback(invocation, context)
+          : {
+              status: "failed" as const,
+              error: unsupportedAcceptedOperation(exportId, "callback"),
+            };
+        return resultFor(invocation, step, context);
       }
 
       return resultFor(invocation, await executor.submit(invocation, context), context);

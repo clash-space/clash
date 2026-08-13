@@ -17,6 +17,10 @@ export default defineConfig({
     // this runner and cannot reach the host at all.
     alias: [
       {
+        find: /^@clash\/asset-sdk$/,
+        replacement: resolve(__dirname, "../asset-sdk/src/index.ts"),
+      },
+      {
         find: /^@clash\/shared-types\/(.+)$/,
         replacement: resolve(__dirname, "../shared-types/src/$1.ts"),
       },

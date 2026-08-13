@@ -10,19 +10,14 @@ import {
 } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
-  CustomActionDefinitionSchema,
   ExecutablePluginManifestSchema,
   isSafePluginRelativePath,
   validateExecutablePluginPackage,
 } from "@clash/shared-types";
-import { requireApiKey, getServerUrl } from "../lib/config";
+import { getServerUrl } from "../lib/config";
 import { assertDraftOutsideManagedStorage } from "../lib/plugin-draft-location";
 import { buildPluginEntrypointIfDeclared } from "../lib/plugin-build";
 import { isJsonMode, printJson } from "../lib/output";
-import { sendProjectCommand } from "../lib/project-host-client";
-
-const REGISTRY_URL =
-  "https://raw.githubusercontent.com/clash-community/awesome-actions/main/registry.json";
 
 /**
  * Plugin package lifecycle is owned by local-api. The CLI prepares packages
@@ -53,13 +48,7 @@ async function requestLocalPluginHost<T>(
   return body;
 }
 
-export function customActionSecretHint(runtime: unknown): string {
-  return runtime === "local"
-    ? "  → Local actions read credentials from their local runtime environment."
-    : "  → Remote worker action secrets are managed in hosted/remote Settings.";
-}
-
-/** Shape of the GET /api/v1/actions/:id/package response. */
+/** Portable executable-plugin archive used by validation and activation. */
 interface ActionPackage {
   id: string;
   manifest: Record<string, unknown> & { id: string; version?: string };
@@ -68,7 +57,7 @@ interface ActionPackage {
 }
 
 export interface ValidatedDownloadedActionPackage extends ActionPackage {
-  format: "legacy-custom-action" | "executable-plugin";
+  format: "executable-plugin";
 }
 
 export interface LocalMarketplaceInstallResult {
@@ -81,7 +70,7 @@ export interface LocalMarketplaceInstallResult {
 export async function tryInstallLocalMarketplaceAction(options: {
   packageId: string;
   serverUrl: string;
-  apiKey: string;
+  apiKey?: string;
   request?: typeof fetch;
 }): Promise<LocalMarketplaceInstallResult | null> {
   const request = options.request ?? fetch;
@@ -89,7 +78,9 @@ export async function tryInstallLocalMarketplaceAction(options: {
     `${options.serverUrl}/api/marketplace/actions/${encodeURIComponent(options.packageId)}/install`,
     {
       method: "POST",
-      headers: { Authorization: `Bearer ${options.apiKey}` },
+      ...(options.apiKey
+        ? { headers: { Authorization: `Bearer ${options.apiKey}` } }
+        : {}),
     },
   );
   if (response.status === 404) return null;
@@ -127,133 +118,113 @@ export function validateDownloadedActionPackage(
     if (typeof contents === "string") files[path] = contents;
   }
 
-  if (manifestInput.apiVersion === "clash.plugin/v1") {
-    const parsedManifest = ExecutablePluginManifestSchema.parse(manifestInput);
-    const contributions = (
-      parsedManifest as unknown as {
-        contributes: {
-          cards: Array<{ path: string }>;
-          providers: Array<{ path: string }>;
-          modelBindings: Array<{ path: string }>;
-        };
-      }
-    ).contributes;
-    if (parsedManifest.id !== id) {
-      throw new Error(
-        `Package id ${id} does not match plugin manifest id ${parsedManifest.id}.`,
-      );
-    }
-    if (
-      parsedManifest.runtime.kind === "local" &&
-      typeof files[parsedManifest.runtime.entrypoint] !== "string"
-    ) {
-      throw new Error(
-        `Plugin entrypoint ${parsedManifest.runtime.entrypoint} is missing.`,
-      );
-    }
-    const cardDocuments: Record<string, unknown> = {};
-    for (const card of contributions.cards) {
-      const encoded = files[card.path];
-      if (typeof encoded !== "string") {
-        throw new Error(`Missing declared Card document: ${card.path}`);
-      }
-      try {
-        cardDocuments[card.path] = JSON.parse(
-          Buffer.from(encoded, "base64").toString("utf8"),
-        );
-      } catch (error) {
-        throw new Error(
-          `Invalid Card JSON at ${card.path}: ${(error as Error).message}`,
-        );
-      }
-    }
-    const providerDocuments: Record<string, unknown> = {};
-    for (const provider of contributions.providers) {
-      const encoded = files[provider.path];
-      if (typeof encoded !== "string") {
-        throw new Error(`Missing declared Provider document: ${provider.path}`);
-      }
-      try {
-        providerDocuments[provider.path] = JSON.parse(
-          Buffer.from(encoded, "base64").toString("utf8"),
-        );
-      } catch (error) {
-        throw new Error(
-          `Invalid Provider JSON at ${provider.path}: ${(error as Error).message}`,
-        );
-      }
-    }
-    const modelBindingDocuments: Record<string, unknown> = {};
-    for (const binding of contributions.modelBindings) {
-      const encoded = files[binding.path];
-      if (typeof encoded !== "string") {
-        throw new Error(
-          `Missing declared model Provider binding: ${binding.path}`,
-        );
-      }
-      try {
-        modelBindingDocuments[binding.path] = JSON.parse(
-          Buffer.from(encoded, "base64").toString("utf8"),
-        );
-      } catch (error) {
-        throw new Error(
-          `Invalid model Provider binding JSON at ${binding.path}: ${(error as Error).message}`,
-        );
-      }
-    }
-    const contractTestDocuments: Record<string, unknown> = {};
-    for (const path of parsedManifest.contractTests) {
-      const encoded = files[path];
-      if (typeof encoded !== "string") {
-        throw new Error(`Missing declared contract test: ${path}`);
-      }
-      try {
-        contractTestDocuments[path] = JSON.parse(
-          Buffer.from(encoded, "base64").toString("utf8"),
-        );
-      } catch (error) {
-        throw new Error(
-          `Invalid contract test JSON at ${path}: ${(error as Error).message}`,
-        );
-      }
-    }
-    const validated = validateExecutablePluginPackage(
-      parsedManifest,
-      cardDocuments,
-      contractTestDocuments,
-      {
-        providers: providerDocuments,
-        modelBindings: modelBindingDocuments,
-      },
-    );
-    return {
-      id,
-      format: "executable-plugin",
-      manifest: validated.manifest,
-      files,
-    };
-  }
-
-  const legacy = CustomActionDefinitionSchema.parse(manifestInput);
-  if (legacy.id !== id) {
+  if (manifestInput.apiVersion !== "clash.plugin/v1") {
     throw new Error(
-      `Package id ${id} does not match action manifest id ${legacy.id}.`,
+      "Unsupported package protocol; expected a clash.plugin/v1 executable plugin.",
     );
   }
-  const entrypoint =
-    typeof manifestInput.entrypoint === "string"
-      ? manifestInput.entrypoint
-      : "handler.py";
-  if (!isSafePluginRelativePath(entrypoint)) {
-    throw new Error(`Refusing suspicious action entrypoint: ${entrypoint}`);
+  const parsedManifest = ExecutablePluginManifestSchema.parse(manifestInput);
+  const contributions = (
+    parsedManifest as unknown as {
+      contributes: {
+        cards: Array<{ path: string }>;
+        providers: Array<{ path: string }>;
+        modelBindings: Array<{ path: string }>;
+      };
+    }
+  ).contributes;
+  if (parsedManifest.id !== id) {
+    throw new Error(
+      `Package id ${id} does not match plugin manifest id ${parsedManifest.id}.`,
+    );
   }
-  if (legacy.runtime === "local" && typeof files[entrypoint] !== "string") {
-    throw new Error(`Action entrypoint ${entrypoint} is missing.`);
+  if (
+    parsedManifest.runtime.kind === "local" &&
+    typeof files[parsedManifest.runtime.entrypoint] !== "string"
+  ) {
+    throw new Error(
+      `Plugin entrypoint ${parsedManifest.runtime.entrypoint} is missing.`,
+    );
   }
+  const cardDocuments: Record<string, unknown> = {};
+  for (const card of contributions.cards) {
+    const encoded = files[card.path];
+    if (typeof encoded !== "string") {
+      throw new Error(`Missing declared Card document: ${card.path}`);
+    }
+    try {
+      cardDocuments[card.path] = JSON.parse(
+        Buffer.from(encoded, "base64").toString("utf8"),
+      );
+    } catch (error) {
+      throw new Error(
+        `Invalid Card JSON at ${card.path}: ${(error as Error).message}`,
+      );
+    }
+  }
+  const providerDocuments: Record<string, unknown> = {};
+  for (const provider of contributions.providers) {
+    const encoded = files[provider.path];
+    if (typeof encoded !== "string") {
+      throw new Error(`Missing declared Provider document: ${provider.path}`);
+    }
+    try {
+      providerDocuments[provider.path] = JSON.parse(
+        Buffer.from(encoded, "base64").toString("utf8"),
+      );
+    } catch (error) {
+      throw new Error(
+        `Invalid Provider JSON at ${provider.path}: ${(error as Error).message}`,
+      );
+    }
+  }
+  const modelBindingDocuments: Record<string, unknown> = {};
+  for (const binding of contributions.modelBindings) {
+    const encoded = files[binding.path];
+    if (typeof encoded !== "string") {
+      throw new Error(
+        `Missing declared model Provider binding: ${binding.path}`,
+      );
+    }
+    try {
+      modelBindingDocuments[binding.path] = JSON.parse(
+        Buffer.from(encoded, "base64").toString("utf8"),
+      );
+    } catch (error) {
+      throw new Error(
+        `Invalid model Provider binding JSON at ${binding.path}: ${(error as Error).message}`,
+      );
+    }
+  }
+  const contractTestDocuments: Record<string, unknown> = {};
+  for (const path of parsedManifest.contractTests) {
+    const encoded = files[path];
+    if (typeof encoded !== "string") {
+      throw new Error(`Missing declared contract test: ${path}`);
+    }
+    try {
+      contractTestDocuments[path] = JSON.parse(
+        Buffer.from(encoded, "base64").toString("utf8"),
+      );
+    } catch (error) {
+      throw new Error(
+        `Invalid contract test JSON at ${path}: ${(error as Error).message}`,
+      );
+    }
+  }
+  const validated = validateExecutablePluginPackage(
+    parsedManifest,
+    cardDocuments,
+    contractTestDocuments,
+    {
+      providers: providerDocuments,
+      modelBindings: modelBindingDocuments,
+    },
+  );
   return {
     id,
-    format: "legacy-custom-action",
-    manifest: { ...manifestInput, ...legacy, entrypoint },
+    format: "executable-plugin",
+    manifest: validated.manifest,
     files,
   };
 }
@@ -551,7 +522,7 @@ export async function scaffoldExecutablePluginDraft(
           '            "protocol": "clash.plugin.result/v1",',
           '            "invocationId": invocation["invocationId"],',
           '            "status": "failed",',
-          '            "error": {"code": "UNKNOWN_EXPORT", "message": "Unknown export", "retryable": False},',
+          '            "error": {"code": "invalid_request", "message": "Unknown export", "retryable": False, "requestState": "rejected"},',
           "        }",
           '    sys.stdout.write(json.dumps(result) + "\\n")',
           "    sys.stdout.flush()",
@@ -587,7 +558,7 @@ export async function scaffoldExecutablePluginDraft(
           '        protocol: "clash.plugin.result/v1",',
           "        invocationId: invocation.invocationId,",
           '        status: "failed",',
-          '        error: { code: "UNKNOWN_EXPORT", message: "Unknown export", retryable: false },',
+          '        error: { code: "invalid_request", message: "Unknown export", retryable: false, requestState: "rejected" },',
           "      };",
           "  process.stdout.write(`${JSON.stringify(result)}\\n`);",
           "});",
@@ -959,229 +930,54 @@ pluginCommand
 
 pluginCommand
   .command("install")
-  .description(
-    "Install an action. Two modes:\n" +
-      "  clash plugin install <id>                                  activate through the local host\n" +
-      "  clash plugin install --project <id> --repo owner/repo      register a project-level worker action",
-  )
-  .argument("[id]", "Action id to fetch from the server registry")
-  .option(
-    "--project <id>",
-    "Project ID (for --repo / --url Loro register flow)",
-  )
-  .option(
-    "--repo <owner/repo>",
-    "GitHub repo (e.g. user/style-transfer-action)",
-  )
-  .option(
-    "--url <workerUrl>",
-    "Direct CF Worker URL for author-deployed actions",
-  )
+  .description("Install an executable plugin from the local host marketplace")
+  .argument("<id>", "Marketplace plugin package id")
   .option("--json", "Output as JSON")
-  .action(async (id: string | undefined, options) => {
-    // Fetch the package, validate it client-side, then hand it to local-api.
-    // Only local-api owns the live actions directory and plugin subprocesses.
-    if (id && !options.repo && !options.url) {
-      await installFromRegistry(id, options);
-      return;
-    }
-    // If a project-level register was explicitly requested, ensure
-    // --project is supplied (commander can't enforce a conditional
-    // requirement, hence the manual check).
-    if ((options.repo || options.url) && !options.project) {
-      console.error("--project <id> is required when using --repo or --url");
-      process.exit(1);
-    }
-    if (!id && !options.repo && !options.url) {
-      console.error(
-        "Provide an action id (e.g. `clash plugin install grid-split`)\n" +
-          "or --repo / --url for the project-level register flow.",
-      );
-      process.exit(1);
-    }
-
-    let manifest: any;
-
-    if (options.url) {
-      // Mode A: Direct worker URL — fetch manifest from the worker
-      try {
-        const resp = await fetch(options.url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "manifest" }),
-        });
-        if (resp.ok) {
-          manifest = await resp.json();
-        }
-      } catch {
-        // Worker doesn't support manifest endpoint — require manual info
-      }
-
-      if (!manifest) {
-        console.error(
-          "Could not fetch manifest from worker URL. Provide --repo to fetch action.json from GitHub.",
-        );
-        process.exit(1);
-      }
-
-      manifest.runtime = "worker";
-      manifest.workerUrl = options.url;
-    } else if (options.repo) {
-      // Fetch action.json from GitHub
-      const [owner, repo] = options.repo.includes("/")
-        ? options.repo.split("/")
-        : [null, null];
-      if (!owner || !repo) {
-        console.error("Invalid repo format. Use: owner/repo");
-        process.exit(1);
-      }
-
-      const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main/action.json`;
-      const resp = await fetch(rawUrl);
-      if (!resp.ok) {
-        console.error(
-          `Failed to fetch action.json from ${rawUrl} (${resp.status})`,
-        );
-        process.exit(1);
-      }
-      manifest = await resp.json();
-    } else {
-      console.error("Provide --repo or --url");
-      process.exit(1);
-    }
-
-    // Validate required fields
-    const parsedManifest = CustomActionDefinitionSchema.safeParse(manifest);
-    if (!parsedManifest.success) {
-      console.error(`Invalid action manifest: ${parsedManifest.error.message}`);
-      process.exit(1);
-    }
-    manifest = parsedManifest.data;
-
-    const definition = {
-      id: manifest.id,
-      name: manifest.name,
-      description: manifest.description || "",
-      parameters: manifest.parameters || [],
-      outputType: manifest.outputType || "image",
-      icon: manifest.icon || "",
-      color: manifest.color || "",
-      runtime: manifest.runtime || "worker",
-      version: manifest.version || "0.0.0",
-      author: manifest.author || "",
-      repository: manifest.repository || options.repo || "",
-      workerUrl: manifest.workerUrl || options.url || "",
-      secrets: manifest.secrets || [],
-      model: manifest.model,
-      pluginBinding: manifest.pluginBinding,
-      tags: manifest.tags || [],
-    };
-    const registered = await sendProjectCommand<{
-      error?: string;
-      registered?: boolean;
-    }>(options.project, {
-      action: "register_custom_action",
-      actionId: manifest.id,
-      definition,
-    });
-    if (registered.error) throw new Error(registered.error);
-
-    if (isJsonMode(options)) {
-      printJson({
-        installed: true,
-        actionId: manifest.id,
-        runtime: manifest.runtime,
-      });
-    } else {
-      console.log(`Installed action: ${manifest.name} (${manifest.id})`);
-      console.log(`  Runtime:  ${manifest.runtime || "worker"}`);
-      console.log(`  Output:   ${manifest.outputType}`);
-      if (manifest.workerUrl) console.log(`  Worker:   ${manifest.workerUrl}`);
-      if (manifest.secrets?.length) {
-        console.log(
-          `  Requires: ${manifest.secrets.map((s: any) => s.id).join(", ")}`,
-        );
-        console.log(customActionSecretHint(manifest.runtime));
-      }
-    }
+  .action(async (id: string, options) => {
+    await installFromMarketplace(id, options);
   });
 
 // ─── list ─────────────────────────────────────────────
 
 pluginCommand
   .command("list")
-  .description(
-    "List actions. Without --local, lists actions registered in a project " +
-      "(requires --project). With --local, lists packages installed under $CLASH_HOME/actions/.",
-  )
-  .option("--project <id>", "Project ID (omit when using --local)")
+  .description("List executable plugins active in the local host")
   .option(
     "--local",
-    "List packages installed locally under $CLASH_HOME/actions/",
+    "Compatibility flag; plugin state is always owned by the local host",
   )
   .option("--json", "Output as JSON")
   .action(async (options) => {
-    if (options.local) {
-      const installed = await requestLocalPluginHost<
-        Array<{
-          id: string;
-          name?: string;
-          version?: string;
-          targetDir: string;
-          drifted: boolean;
-        }>
-      >("/api/v1/local/plugins");
-      if (isJsonMode(options)) {
-        printJson(installed);
-      } else if (installed.length === 0) {
-        console.log("No local plugins are active in the local host.");
-        console.log("Install one with: clash plugin install <id>");
-      } else {
-        for (const a of installed) {
-          const version = a.version ? `@${a.version}` : "";
-          const drift = a.drifted
-            ? "  ⚠ differs from its activation receipt"
-            : "";
-          console.log(
-            `  🖥  ${(a.name ?? a.id).padEnd(25)} ${a.id}${version}${drift}`,
-          );
-        }
-        if (installed.some((a) => a.drifted)) {
-          console.log(
-            "\nReactivate a drifted plugin before editing it: clash plugin activate <dir>",
-          );
-        }
-        console.log(`\n${installed.length} local plugin(s)`);
-      }
-      return;
-    }
-
-    if (!options.project) {
-      console.error(
-        "--project <id> is required (or pass --local to list local installs)",
-      );
-      process.exit(1);
-    }
-    const listed = await sendProjectCommand<{
-      error?: string;
-      actions?: Record<string, unknown>;
-    }>(options.project, { action: "list_custom_actions" });
-    if (listed.error) throw new Error(listed.error);
-    const actions = Object.values(listed.actions ?? {});
-
+    const installed = await requestLocalPluginHost<
+      Array<{
+        id: string;
+        name?: string;
+        version?: string;
+        targetDir: string;
+        drifted: boolean;
+      }>
+    >("/api/v1/local/plugins");
     if (isJsonMode(options)) {
-      printJson(actions);
-    } else if (actions.length === 0) {
-      console.log(
-        "No actions installed. Use `clash plugin install` to add one.",
-      );
+      printJson(installed);
+    } else if (installed.length === 0) {
+      console.log("No executable plugins are active in the local host.");
+      console.log("Install one with: clash plugin install <id>");
     } else {
-      for (const a of actions) {
-        const action = a as { runtime?: string; name?: string; id?: string };
-        const runtime = action.runtime === "worker" ? "☁️" : "🖥";
-        console.log(`  ${runtime} ${action.name?.padEnd(25)} ${action.id}`);
+      for (const plugin of installed) {
+        const version = plugin.version ? `@${plugin.version}` : "";
+        const drift = plugin.drifted
+          ? "  ⚠ differs from its activation receipt"
+          : "";
+        console.log(
+          `  🖥  ${(plugin.name ?? plugin.id).padEnd(25)} ${plugin.id}${version}${drift}`,
+        );
       }
-      console.log(`\n${actions.length} action(s)`);
+      if (installed.some((plugin) => plugin.drifted)) {
+        console.log(
+          "\nReactivate a drifted plugin before editing it: clash plugin activate <dir>",
+        );
+      }
+      console.log(`\n${installed.length} local plugin(s)`);
     }
   });
 
@@ -1192,7 +988,7 @@ pluginCommand
 pluginCommand
   .command("uninstall")
   .description("Remove a locally-installed plugin package from the local host")
-  .argument("<id>", "Action id")
+  .argument("<id>", "Plugin id")
   .option("-y, --yes", "Skip confirmation prompt")
   .option("--json", "Output as JSON")
   .action(async (id: string, options) => {
@@ -1226,8 +1022,8 @@ pluginCommand
 
 pluginCommand
   .command("rollback")
-  .description("Restore the newest retained local action/plugin version")
-  .argument("<id>", "Action or plugin id")
+  .description("Restore the newest retained local plugin version")
+  .argument("<id>", "Plugin id")
   .option("-y, --yes", "Skip confirmation prompt")
   .option("--json", "Output as JSON")
   .action(async (id: string, options) => {
@@ -1250,217 +1046,40 @@ pluginCommand
     }
   });
 
-// ─── remove ───────────────────────────────────────────
-
-pluginCommand
-  .command("remove")
-  .description("Remove an action from a project")
-  .requiredOption("--project <id>", "Project ID")
-  .requiredOption("--action <id>", "Action ID to remove")
-  .option("--json", "Output as JSON")
-  .action(async (options) => {
-    const removed = await sendProjectCommand<{
-      error?: string;
-      removed?: boolean;
-    }>(options.project, {
-      action: "unregister_custom_action",
-      actionId: options.action,
-    });
-    if (removed.error) throw new Error(removed.error);
-
-    if (isJsonMode(options)) {
-      printJson({
-        removed: removed.removed === true,
-        actionId: options.action,
-      });
-    } else {
-      console.log(`Removed action: ${options.action}`);
-    }
-  });
-
-// ─── search ───────────────────────────────────────────
-
-pluginCommand
-  .command("search")
-  .description("Search community actions from the awesome-list registry")
-  .argument("<query>", "Search query")
-  .option("--tag <tag>", "Filter by tag")
-  .option("--json", "Output as JSON")
-  .action(async (query: string, options) => {
-    try {
-      const resp = await fetch(REGISTRY_URL);
-      if (!resp.ok) {
-        console.error(
-          `Failed to fetch registry (${resp.status}). Check your network.`,
-        );
-        process.exit(1);
-      }
-
-      const registry = (await resp.json()) as {
-        actions: Array<{
-          id: string;
-          name: string;
-          description?: string;
-          repository?: string;
-          runtime?: string;
-          outputType?: string;
-          tags?: string[];
-          author?: string;
-        }>;
-      };
-
-      let results = registry.actions;
-
-      // Filter by tag
-      if (options.tag) {
-        results = results.filter((a) =>
-          a.tags?.some((t) => t.toLowerCase() === options.tag.toLowerCase()),
-        );
-      }
-
-      // Search by query
-      const q = query.toLowerCase();
-      results = results.filter(
-        (a) =>
-          a.name.toLowerCase().includes(q) ||
-          a.id.toLowerCase().includes(q) ||
-          (a.description || "").toLowerCase().includes(q) ||
-          (a.tags || []).some((t) => t.toLowerCase().includes(q)),
-      );
-
-      if (isJsonMode(options)) {
-        printJson(results);
-      } else if (results.length === 0) {
-        console.log(`No actions found for "${query}".`);
-      } else {
-        for (const a of results) {
-          const runtime = a.runtime === "worker" ? "☁️" : "🖥";
-          console.log(`  ${runtime} ${a.name}`);
-          console.log(
-            `    ${a.id} · ${a.outputType || "image"} · ${a.author || "unknown"}`,
-          );
-          if (a.description) console.log(`    ${a.description}`);
-          if (a.repository) console.log(`    → ${a.repository}`);
-          console.log();
-        }
-        console.log(`${results.length} result(s)`);
-      }
-    } catch (e) {
-      console.error("Failed to search registry:", e);
-      process.exit(1);
-    }
-  });
-
-// ─── helpers (registry-install flow) ──────────────────
+// ─── helpers (local marketplace install flow) ─────────
 
 /**
- * Fetch a package from the server registry and ask local-api to activate it.
- *
- * If the same version is already active, report an idempotent no-op.
+ * Ask local-api to install and attest a marketplace executable plugin. The CLI
+ * never downloads legacy action source or writes the live plugin directory.
  */
-async function installFromRegistry(
+async function installFromMarketplace(
   id: string,
   options: { json?: boolean },
 ): Promise<void> {
-  const apiKey = requireApiKey();
   const serverUrl = getServerUrl();
-  const url = `${serverUrl}/api/v1/actions/${encodeURIComponent(id)}/package`;
-
-  let resp: Response;
-  try {
-    resp = await fetch(url, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
-  } catch (e) {
-    console.error(
-      `Failed to reach server ${serverUrl}: ${(e as Error).message}`,
-    );
-    process.exit(1);
-  }
-  if (resp.status === 404) {
-    const marketplaceInstall = await tryInstallLocalMarketplaceAction({
+  const marketplaceInstall = await tryInstallLocalMarketplaceAction({
       packageId: id,
       serverUrl,
-      apiKey,
     }).catch((error) => {
       console.error(
-        `Failed to install local marketplace action: ${(error as Error).message}`,
+        `Failed to install local marketplace plugin: ${(error as Error).message}`,
       );
       process.exit(1);
     });
-    if (marketplaceInstall) {
-      if (isJsonMode(options)) {
-        printJson(marketplaceInstall);
-      } else {
-        const verb = marketplaceInstall.installed
-          ? "Installed"
-          : "Already installed";
-        console.log(
-          `${verb} ${marketplaceInstall.actionId} from ${marketplaceInstall.packageId}.`,
-        );
-        console.log(`Path: ${marketplaceInstall.targetDir}`);
-      }
-      return;
-    }
-    console.error(`Unknown action: ${id}`);
+  if (!marketplaceInstall) {
+    console.error(`Unknown marketplace plugin: ${id}`);
     process.exit(1);
   }
-  if (!resp.ok) {
-    console.error(
-      `Server returned ${resp.status} ${resp.statusText} for ${url}`,
-    );
-    const body = await resp.text().catch(() => "");
-    if (body) console.error(body);
-    process.exit(1);
-  }
-
-  let pkg: ValidatedDownloadedActionPackage;
-  try {
-    pkg = validateDownloadedActionPackage(await resp.json());
-  } catch (error) {
-    console.error(`Invalid action package: ${(error as Error).message}`);
-    process.exit(1);
-  }
-  if (pkg.id !== id) {
-    console.error(
-      `Server returned a package with mismatched id (${pkg.id} != ${id})`,
-    );
-    process.exit(1);
-  }
-
-  const newVersion = pkg.manifest.version ?? "0.0.0";
-  let activated: ActivatedDownloadedActionPackage;
-  try {
-    activated = await activateDownloadedActionPackage(pkg);
-  } catch (error) {
-    if (/version .* is already active/i.test((error as Error).message)) {
-      if (isJsonMode(options)) {
-        printJson({
-          installed: false,
-          id,
-          version: newVersion,
-          reason: "already-installed",
-        });
-      } else {
-        console.log(`${id}@${newVersion} is already active.`);
-      }
-      return;
-    }
-    throw error;
-  }
-
   if (isJsonMode(options)) {
-    printJson({
-      installed: true,
-      id,
-      version: newVersion,
-      path: activated.targetDir,
-      files: Object.keys(pkg.files),
-      rollbackPath: activated.rollbackDir,
-    });
+    printJson(marketplaceInstall);
   } else {
-    console.log(`Installed ${id}@${newVersion} to ${activated.targetDir}.`);
-    console.log("The local host will hot-reload it.");
+    const verb = marketplaceInstall.installed
+      ? "Installed"
+      : "Already installed";
+    console.log(
+      `${verb} ${marketplaceInstall.actionId} from ${marketplaceInstall.packageId}.`,
+    );
+    console.log(`Path: ${marketplaceInstall.targetDir}`);
   }
 }
 

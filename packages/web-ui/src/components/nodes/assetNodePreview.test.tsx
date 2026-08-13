@@ -7,6 +7,7 @@ import ImageNode from "./ImageNode";
 import VideoNode from "./VideoNode";
 
 const openAssetPreview = vi.fn();
+const assetProjection = vi.hoisted(() => ({ enabled: true }));
 
 vi.mock("@xyflow/react", () => ({
   Handle: () => null,
@@ -30,9 +31,24 @@ vi.mock("../MediaViewerContext", () => ({
     openAssetPreview,
   }),
 }));
+vi.mock("../ProjectContext", () => ({
+  useProject: () => ({ projectId: "project-1" }),
+}));
 vi.mock("@clash/web-ui/lib/hooks/useAsset", () => ({
-  useAsset: (assetId?: string) =>
-    assetId ? { id: assetId, srcR2Key: `/assets/${assetId}` } : undefined,
+  useAsset: (_projectId: string, assetId?: string) =>
+    assetProjection.enabled && assetId
+      ? {
+          id: assetId,
+          kind: assetId.includes("audio")
+            ? "audio"
+            : assetId.includes("video")
+              ? "video"
+              : "image",
+          status: "ready",
+          metadata: {},
+          url: `https://media.clash.test/${assetId}`,
+        }
+      : undefined,
   invalidateAsset: vi.fn(),
 }));
 vi.mock("@clash/web-ui/lib/hooks/useSignedUrl", () => ({
@@ -61,6 +77,7 @@ const baseNodeProps = {
 afterEach(() => {
   cleanup();
   openAssetPreview.mockClear();
+  assetProjection.enabled = true;
 });
 
 describe("asset node preview navigation", () => {
@@ -111,6 +128,37 @@ describe("asset node preview navigation", () => {
       expect(openAssetPreview).toHaveBeenCalledWith(assetId);
       unmount();
       openAssetPreview.mockClear();
+    },
+  );
+
+  it.each([
+    ["image", ImageNode, "data:image/png;base64,stale"],
+    ["video", VideoNode, "blob:https://clash.test/stale-video"],
+  ] as const)(
+    "does not render a completed %s node from its persisted preview URL",
+    (kind, Component, stalePreviewUrl) => {
+      assetProjection.enabled = false;
+      const { container } = render(
+        <Component
+          {...baseNodeProps}
+          id={`${kind}-unresolved-node`}
+          type={kind}
+          width={320}
+          height={180}
+          data={{
+            assetId: `${kind}-unresolved-asset`,
+            label: `Unresolved ${kind}`,
+            status: "completed",
+            previewUrl: stalePreviewUrl,
+          }}
+        />,
+      );
+
+      const mediaSources = Array.from(
+        container.querySelectorAll("img, video"),
+        (element) => element.getAttribute("src"),
+      );
+      expect(mediaSources).not.toContain(stalePreviewUrl);
     },
   );
 });

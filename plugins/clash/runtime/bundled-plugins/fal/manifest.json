@@ -1,0 +1,30 @@
+{
+  "apiVersion": "clash.plugin/v1",
+  "id": "clash.fal",
+  "version": "0.1.0",
+  "name": "fal.ai",
+  "description": "fal.ai queued generation, including Hunyuan3D model generation.",
+  "runtime": {
+    "kind": "local",
+    "transport": "stdio",
+    "entrypoint": "dist/stdio.mjs"
+  },
+  "contributes": {
+    "cards": [],
+    "functions": [
+      {
+        "id": "fal-execute",
+        "kind": "provider-executor",
+        "operations": ["submit", "poll"]
+      }
+    ],
+    "providers": [
+      {
+        "id": "fal",
+        "kind": "provider",
+        "path": "providers/fal.json"
+      }
+    ]
+  },
+  "contractTests": ["contract-tests/fal-execute.json"]
+}

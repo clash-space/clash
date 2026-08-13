@@ -32,6 +32,19 @@ Activation validates the package, runs its contracts, and atomically replaces
 the active version. The previous version remains available to `clash plugin
 rollback`. Executable changes require a version bump.
 
+Curated packages use the same lifecycle through the Host-owned marketplace:
+
+```sh
+clash plugin install <package-id>
+clash plugin list
+clash plugin uninstall <plugin-id>
+```
+
+The CLI never installs a handler into a Project Loro document and never
+downloads the retired Python ClashAgent package format. A Project records only
+the stable plugin/action binding needed by product state; local-api owns the
+active executable package and process.
+
 ## Runtime and ownership
 
 Local plugins run as separate processes with newline-delimited JSON over

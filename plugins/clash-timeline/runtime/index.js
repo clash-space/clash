@@ -31508,6 +31508,7 @@ function describeClashTool(guidance) {
 
 // ../../packages/shared-mcp/dist/server.js
 var CLASH_ROOT_TOOL_NAME = "clash";
+var CLASH_ASSETS_TOOL_NAME = "clash_assets";
 var CLASH_CANVAS_TOOL_NAME = "clash_canvas";
 var CLASH_COMPOSITION_TOOL_NAME = "clash_composition";
 var LEGACY_CLASH_GROUP_TOOL_NAMES = {
@@ -31516,7 +31517,7 @@ var LEGACY_CLASH_GROUP_TOOL_NAMES = {
 };
 var CLASH_MCP_INSTRUCTIONS = [
   "Clash discloses product operations progressively.",
-  `Use the root ${CLASH_ROOT_TOOL_NAME} tool for command navigation, ${CLASH_CANVAS_TOOL_NAME} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME} for Timeline or Director Stage composition.`,
+  `Use the root ${CLASH_ROOT_TOOL_NAME} tool for command navigation, ${CLASH_ASSETS_TOOL_NAME} for Project Assets, ${CLASH_CANVAS_TOOL_NAME} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME} for Timeline or Director Stage composition.`,
   "Timeline is temporal composition; Director Stage is spatial composition.",
   "Call a dispatcher without operation for live contracts, then pass its command-local operation and arguments to execute exactly once.",
   "Composition disclosure and short operations require kind=timeline or kind=director-stage; a complete clash_* leaf name remains accepted for compatibility.",
@@ -31571,8 +31572,8 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       description: describeClashTool({
         useWhen: "you need the compact Clash command menu or the stable dispatcher for a product command",
         effect: "returns command counts and navigation without expanding leaf operations into the advertised tool list",
-        returns: "the command menu and selected Canvas or composition dispatcher",
-        next: "call clash_canvas for Canvas, or clash_composition with kind for Timeline or Director Stage; complete leaf execution remains compatibility-only"
+        returns: "the command menu and selected Assets, Canvas, or composition dispatcher",
+        next: "call clash_assets for Project Assets, clash_canvas for Canvas, or clash_composition with kind for Timeline or Director Stage; complete leaf execution remains compatibility-only"
       }),
       inputSchema: {
         command: external_exports.enum(CLASH_MCP_COMMAND_IDS).optional().describe("Root command to reveal; omit to show the root menu and fold leaf operations away"),
@@ -31598,21 +31599,50 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       const operationCount = selected?.availableOperations ?? 0;
       if (selectedCommand && operationCount === 0) {
         return {
-          content: [{
-            type: "text",
-            text: `The ${selectedCommand} command has no operations in this Clash host.`
-          }],
+          content: [
+            {
+              type: "text",
+              text: `The ${selectedCommand} command has no operations in this Clash host.`
+            }
+          ],
           structuredContent: view,
           isError: true
         };
       }
       return {
-        content: [{
-          type: "text",
-          text: selectedCommand ? `Use ${view.selectedDispatcher}${view.selectedKind ? ` with kind=${view.selectedKind}` : ""} for ${selectedCommand}.` : `Clash offers ${view.commands.filter(({ availableOperations }) => availableOperations > 0).length} available commands.`
-        }],
+        content: [
+          {
+            type: "text",
+            text: selectedCommand ? `Use ${view.selectedDispatcher}${view.selectedKind ? ` with kind=${view.selectedKind}` : ""} for ${selectedCommand}.` : `Clash offers ${view.commands.filter(({ availableOperations }) => availableOperations > 0).length} available commands.`
+          }
+        ],
         structuredContent: view
       };
+    });
+    const assetsDefinition = getClashMcpCommand("assets");
+    super.registerTool(CLASH_ASSETS_TOOL_NAME, {
+      title: assetsDefinition.title,
+      description: describeClashTool({
+        useWhen: "you need to inspect, import, trash, or restore Project Assets",
+        effect: "returns live Project Asset contracts when operation is omitted, or validates and executes one Asset leaf exactly once",
+        returns: "typed Project Asset operation contracts or the selected leaf operation's exact result",
+        next: "choose the smallest matching operation, then call clash_assets with operation and arguments"
+      }),
+      inputSchema: {
+        operation: external_exports.string().min(1).optional().describe("Omit this field entirely to reveal live contracts; otherwise pass a command-local Assets operation or complete clash_assets_* leaf name"),
+        arguments: external_exports.record(external_exports.string(), external_exports.unknown()).optional().describe("Arguments validated against the selected operation's live input schema")
+      },
+      _meta: { ui: { visibility: ["model"] } }
+    }, async ({ operation, arguments: operationArguments }, extra) => {
+      if (operation) {
+        return this.#dispatchOperation({
+          operation,
+          arguments: operationArguments ?? {},
+          selectedCommand: "assets",
+          extra
+        });
+      }
+      return this.#commandResult("assets");
     });
     const canvasDefinition = getClashMcpCommand("canvas");
     super.registerTool(CLASH_CANVAS_TOOL_NAME, {
@@ -31702,7 +31732,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
     }
   }
   registerTool(name, config2, callback) {
-    if (name === CLASH_ROOT_TOOL_NAME || name === CLASH_CANVAS_TOOL_NAME || name === CLASH_COMPOSITION_TOOL_NAME || Object.values(LEGACY_CLASH_GROUP_TOOL_NAMES).includes(name)) {
+    if (name === CLASH_ROOT_TOOL_NAME || name === CLASH_ASSETS_TOOL_NAME || name === CLASH_CANVAS_TOOL_NAME || name === CLASH_COMPOSITION_TOOL_NAME || Object.values(LEGACY_CLASH_GROUP_TOOL_NAMES).includes(name)) {
       throw new Error(`${name} is provided by ClashMcpServer`);
     }
     const handle = super.registerTool(name, config2, callback);
@@ -31753,19 +31783,23 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
     const operationCount = view.operations?.length ?? 0;
     if (operationCount === 0) {
       return {
-        content: [{
-          type: "text",
-          text: `The ${command} command has no operations in this Clash host.`
-        }],
+        content: [
+          {
+            type: "text",
+            text: `The ${command} command has no operations in this Clash host.`
+          }
+        ],
         structuredContent: view,
         isError: true
       };
     }
     return {
-      content: [{
-        type: "text",
-        text: `Revealed ${operationCount} ${command} operation${operationCount === 1 ? "" : "s"}.`
-      }],
+      content: [
+        {
+          type: "text",
+          text: `Revealed ${operationCount} ${command} operation${operationCount === 1 ? "" : "s"}.`
+        }
+      ],
       structuredContent: view
     };
   }
@@ -31777,6 +31811,9 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
           ...command,
           ...command.availableOperations > 0 ? { dispatcher: "clash_workspace_init" } : {}
         };
+      }
+      if (command.id === "assets") {
+        return { ...command, dispatcher: CLASH_ASSETS_TOOL_NAME };
       }
       if (command.id === "canvas") {
         return { ...command, dispatcher: CLASH_CANVAS_TOOL_NAME };
@@ -31866,7 +31903,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         return false;
       if (Object.values(LEGACY_CLASH_GROUP_TOOL_NAMES).includes(tool.name))
         return false;
-      if (tool.name === CLASH_ROOT_TOOL_NAME || tool.name === CLASH_CANVAS_TOOL_NAME || tool.name === CLASH_COMPOSITION_TOOL_NAME || tool.name === "clash_workspace_init")
+      if (tool.name === CLASH_ROOT_TOOL_NAME || tool.name === CLASH_ASSETS_TOOL_NAME || tool.name === CLASH_CANVAS_TOOL_NAME || tool.name === CLASH_COMPOSITION_TOOL_NAME || tool.name === "clash_workspace_init")
         return true;
       return classifyClashMcpTool(tool.name) === "other";
     });
@@ -37243,7 +37280,7 @@ var zodToJsonSchema2 = (schema, options) => {
   return combined;
 };
 
-// ../../packages/shared-types/dist/chunk-XAYWVA4T.js
+// ../../packages/shared-types/dist/chunk-RUA5QFGJ.js
 var TIMELINE_KEYFRAME_INTERPOLATIONS = ["hold", "linear"];
 var DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION = "linear";
 var TIMELINE_KEYFRAME_SAMPLING_POLICY = Object.freeze({
@@ -38759,7 +38796,7 @@ var agent = {
     inputSchema: z2.object({
       timelineId: IdentifierSchema,
       wait: z2.boolean().optional(),
-      timeoutMs: z2.number().int().min(1e3).max(9e5).optional()
+      timeoutMs: z2.number().int().min(1e3).optional()
     }).strict(),
     outputSchema: TimelineRenderReceiptSchema,
     access: "write",
@@ -40204,7 +40241,7 @@ function timelineDslContractFingerprint(value) {
   return `fnv1a32:${(hash2 >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition = {
-  schemaVersion: 6,
+  schemaVersion: 7,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,
@@ -40760,7 +40797,7 @@ function createTimelineAdapter(options = {}) {
         target: submitted.target
       };
       if (input.wait === false) return { ...base, completed: false, status: "pending" };
-      const deadline = Date.now() + (input.timeoutMs ?? 6e5);
+      const deadline = Date.now() + (input.timeoutMs ?? 18e5);
       while (true) {
         const polled = await request(input, {
           action: "get",

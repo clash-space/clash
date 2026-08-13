@@ -18,13 +18,15 @@ import { join } from "node:path";
  * So the two must agree, and the way they agree is an alias rather than a condition: an alias is
  * scoped to the test runner and cannot leak into how the host resolves anything.
  */
-const read = (path: string) => readFileSync(join(__dirname, "../../..", path), "utf8");
+const read = (path: string) =>
+  readFileSync(join(__dirname, "../../..", path), "utf8");
 
 describe("development resolution", () => {
   it("asks for source through an alias rather than an export condition", () => {
     for (const pkg of ["packages/cli", "packages/web-ui"]) {
       const config = read(`${pkg}/vitest.config.ts`);
-      const wantsCondition = /conditions\s*:\s*\[[^\]]*["']development["']/.test(config);
+      const wantsCondition =
+        /conditions\s*:\s*\[[^\]]*["']development["']/.test(config);
       const hasAlias = /alias\s*:/.test(config);
       expect(
         !wantsCondition || hasAlias,
@@ -33,13 +35,18 @@ describe("development resolution", () => {
     }
   });
 
-  it("keeps shared-types resolvable by plain Node", () => {
+  it("keeps production package exports resolvable by plain Node", () => {
     // The regression this guards: a `development` condition here sends `require.resolve` into
     // TypeScript, and the host's bundled-plugin seeding uses `require.resolve`.
-    const pkg = JSON.parse(read("packages/shared-types/package.json")) as {
-      exports: Record<string, Record<string, string>>;
-    };
-    expect(pkg.exports["."]).not.toHaveProperty("development");
-    expect(pkg.exports["."].import).toMatch(/^\.\/dist\//);
+    for (const packagePath of [
+      "packages/shared-types",
+      "packages/action-sdk",
+    ]) {
+      const pkg = JSON.parse(read(`${packagePath}/package.json`)) as {
+        exports: Record<string, Record<string, string>>;
+      };
+      expect(pkg.exports["."], packagePath).not.toHaveProperty("development");
+      expect(pkg.exports["."].import, packagePath).toMatch(/^\.\/dist\//);
+    }
   });
 });

@@ -18,9 +18,10 @@
   "expect": {
     "status": "failed",
     "error": {
-      "code": "execution_failed",
+      "code": "contract_violation",
       "message": "MiniMax poll state is missing its taskId.",
-      "retryable": false
+      "retryable": false,
+      "requestState": "accepted"
     }
   }
 }

@@ -1,7 +1,7 @@
 # Shared Clash MCP boundary
 
 `@clash/shared-mcp` is the single protocol boundary used by every Clash MCP
-server. Canvas, Timeline, and Director keep their own executable schemas and
+server. Project Assets, Canvas, Timeline, and Director keep their own executable schemas and
 handlers; the shared server owns progressive discovery and decorates the final
 `tools/list` response after the MCP SDK has generated JSON Schema.
 
@@ -27,8 +27,9 @@ McpSchemaCompatibilityTransport
 ```
 
 CLI and MCP are peer product interfaces. The CLI discloses commands through
-`clash --help` and `clash <command> --help`; MCP advertises the single `clash`
-root and, when present, the bootstrap `clash_workspace_init`. Calling `clash`
+`clash --help` and `clash <command> --help`; MCP advertises the `clash` root,
+stable `clash_assets`, `clash_canvas`, and `clash_composition` dispatchers,
+and, when present, the bootstrap `clash_workspace_init`. Calling `clash`
 without arguments returns command counts. Adding `command` returns every live
 operation's command-local short name, compatible full name, input/output
 schemas, annotations, product metadata, and recovery paths. Adding `operation`

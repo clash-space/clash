@@ -1,6 +1,23 @@
+import { resolve } from "node:path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  resolve: {
+    alias: [
+      {
+        find: /^@clash\/asset-sdk$/,
+        replacement: resolve(__dirname, "../asset-sdk/src/index.ts"),
+      },
+      {
+        find: /^@clash\/shared-types\/(.+)$/,
+        replacement: resolve(__dirname, "../shared-types/src/$1.ts"),
+      },
+      {
+        find: /^@clash\/shared-types$/,
+        replacement: resolve(__dirname, "../shared-types/src/index.ts"),
+      },
+    ],
+  },
   test: {
     // Google's hosts resolve to both families here, and Node tries IPv6 first and waits for the
     // connect to time out -- `EHOSTUNREACH 2607:f8b0:...` after tens of seconds, while curl on the

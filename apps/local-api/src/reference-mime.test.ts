@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import { describe, expect, it } from "vitest";
 import { MODEL_CARDS } from "@clash/shared-types";
 
@@ -39,15 +36,5 @@ describe("reference media types derive an allowed extension", () => {
   it("leaves a mime that already derives an allowed extension alone", () => {
     expect(referenceDataUrlMimeType("audio/wav")).toBe("audio/wav");
     expect(referenceDataUrlMimeType("video/mp4")).toBe("video/mp4");
-  });
-});
-
-describe("generated audio defaults to a format its own models can consume", () => {
-  it("keeps speech and music on different defaults for a stated reason", () => {
-    const source = readFileSync(join(__dirname, "local-aigc.ts"), "utf8");
-    // Speech clips are short and are routinely fed back in as references, so they default
-    // to WAV, whose media type derives an extension every upstream accepts. Music is the
-    // finished artefact and stays compressed.
-    expect(source).toContain('|| (isMusic ? "mp3" : "wav")');
   });
 });

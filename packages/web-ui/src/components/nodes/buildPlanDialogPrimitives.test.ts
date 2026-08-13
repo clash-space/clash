@@ -19,7 +19,7 @@ describe("BuildPlanDialog primitives", () => {
   });
 
   it("keeps shared Dialog customizable enough for canvas-layer modals", () => {
-    const source = readSource("packages/web-ui/src/components/ui/dialog.tsx");
+    const source = readSource("packages/gui/src/components/ui/dialog.tsx");
 
     expect(source).toContain("overlayClassName");
     expect(source).toContain("containerClassName");
@@ -33,7 +33,7 @@ describe("BuildPlanDialog primitives", () => {
     const draftSource = readSource(
       "packages/web-ui/src/components/nodes/DraftPlaceholder.tsx",
     );
-    const tooltipSource = readSource("packages/web-ui/src/components/ui/tooltip.tsx");
+    const tooltipSource = readSource("packages/gui/src/components/ui/tooltip.tsx");
 
     expect(tooltipSource).toContain("@ariakit/react");
     expect(dialogSource).toContain("../ui/tooltip");

@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 test("server keeps Studio and Canvas App surfaces quarantined", async () => {
   const { registerClashCanvasMcp } = await import("./server");
@@ -37,7 +39,9 @@ test("server keeps Studio and Canvas App surfaces quarantined", async () => {
 
   const register = registerClashCanvasMcp as unknown as (
     server: never,
-    gateway: { invoke(name: string, input: Record<string, unknown>): Promise<unknown> },
+    gateway: {
+      invoke(name: string, input: Record<string, unknown>): Promise<unknown>;
+    },
     canvasJavascript: string,
     studioJavascript: string,
   ) => void;
@@ -47,7 +51,9 @@ test("server keeps Studio and Canvas App surfaces quarantined", async () => {
     {
       async invoke(name, input) {
         calls.push({ name, input });
-        return name.endsWith("list") || name.endsWith("edges") ? [] : { ok: true };
+        return name.endsWith("list") || name.endsWith("edges")
+          ? []
+          : { ok: true };
       },
     },
     "window.__CLASH_CANVAS__ = true;",
@@ -137,4 +143,70 @@ test("server keeps Studio and Canvas App surfaces quarantined", async () => {
       `${name} must not publish the legacy App resource key`,
     );
   }
+});
+
+test("bundled MCP wires the Assets dispatcher to the direct Host peer gateway", async (t) => {
+  const { createClashMcpServer } = await import("./server");
+  const assetCalls: Array<{ name: string; input: Record<string, unknown> }> =
+    [];
+  const server = createClashMcpServer({
+    bundledAppJavascript: "window.__CLASH_CANVAS__ = true;",
+    bundledStudioAppJavascript: "window.__CLASH_STUDIO__ = true;",
+    gateway: {
+      async invoke(name) {
+        return name.endsWith("list") || name.endsWith("edges")
+          ? []
+          : { ok: true };
+      },
+    },
+    assetGateway: {
+      async invoke(name, input) {
+        assetCalls.push({ name, input });
+        return name === "clash_assets_list"
+          ? []
+          : { id: "asset:one", status: "ready" };
+      },
+    },
+  });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "asset-peer-test", version: "1.0.0" });
+  t.after(async () => {
+    await client.close().catch(() => undefined);
+    await server.close().catch(() => undefined);
+  });
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const names = (await client.listTools()).tools.map(({ name }) => name).sort();
+  assert.deepEqual(names, [
+    "clash",
+    "clash_assets",
+    "clash_canvas",
+    "clash_composition",
+    "clash_workspace_init",
+  ]);
+  const contracts = await client.callTool({
+    name: "clash_assets",
+    arguments: {},
+  });
+  assert.deepEqual(
+    (
+      contracts.structuredContent as {
+        operations: Array<{ operation: string }>;
+      }
+    ).operations.map(({ operation }) => operation),
+    ["get", "import_file", "list", "references", "restore", "trash"],
+  );
+  const listed = await client.callTool({
+    name: "clash_assets",
+    arguments: { operation: "list", arguments: { projectId: "project-a" } },
+  });
+  assert.deepEqual(listed.structuredContent, { items: [] });
+  assert.deepEqual(assetCalls, [
+    {
+      name: "clash_assets_list",
+      input: { projectId: "project-a" },
+    },
+  ]);
 });

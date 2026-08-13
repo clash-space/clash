@@ -91,7 +91,7 @@ ${deliverables}
 
 ${
   options.clashHost
-    ? "This workspace is already bound to an isolated Clash project, and its private project host is ready. Discover and use the advertised MCP capabilities from their descriptions, schemas, structured results, and recovery guidance. Workspace initialization and daemon startup are benchmark infrastructure, not creative work; do not wait for or repair them. Product work must be persisted and read back through Clash; ordinary files alone are not evidence of a completed product outcome."
+    ? "This workspace is already bound to an isolated Clash project, and its private Project Host is ready. Discover and use the advertised MCP capabilities from their descriptions, schemas, structured results, and recovery guidance. Workspace initialization and Project Host readiness are benchmark infrastructure, not creative work; do not wait for or repair them. Product work must be persisted and read back through Clash; ordinary files alone are not evidence of a completed product outcome."
     : "This is a portable artifact workspace. Do not claim a live Clash product mutation unless a Clash MCP host is actually available."
 }
 ${

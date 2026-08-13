@@ -1,22 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { mkdtemp, readFile, writeFile, lstat, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   assetsCommand,
-  deleteAssetProjectRef,
-  fetchAssetProjectRef,
-  fetchAssetRecord,
-  fetchAssetReferences,
+  fetchProjectAssetRecord,
+  fetchProjectAssetReferences,
   importAssetFile,
   linkAssetIntoProject,
+  listProjectAssetRecords,
   replaceAssetFile,
   resolveAssetLinkName,
-  runAssetGarbageCollection,
-  updateAssetCover,
+  restoreProjectAsset,
+  trashProjectAsset,
 } from "./assets";
+import type { ProjectAssetHostClient } from "@clash/shared-runtime/project-asset-client";
 import { initProject } from "./projects";
 
 async function tempDir(): Promise<string> {
@@ -25,50 +24,73 @@ async function tempDir(): Promise<string> {
 
 test("assets command registers link subcommand", () => {
   assert.equal(assetsCommand.name(), "assets");
-  assert.deepEqual(assetsCommand.commands.map((command) => command.name()), ["get", "link", "import", "replace", "cover", "ref", "refs", "gc", "metadata"]);
-  const get = assetsCommand.commands.find((command) => command.name() === "get");
+  assert.deepEqual(
+    assetsCommand.commands.map((command) => command.name()),
+    [
+      "list",
+      "get",
+      "link",
+      "import",
+      "replace",
+      "refs",
+      "delete",
+      "restore",
+      "metadata",
+    ],
+  );
+  const get = assetsCommand.commands.find(
+    (command) => command.name() === "get",
+  );
   assert.ok(get);
   assert.ok(get.options.some((option) => option.long === "--asset"));
-  const replace = assetsCommand.commands.find((command) => command.name() === "replace");
+  assert.ok(get.options.some((option) => option.long === "--project"));
+  const replace = assetsCommand.commands.find(
+    (command) => command.name() === "replace",
+  );
   assert.ok(replace);
   assert.ok(!replace.options.some((option) => option.long === "--if-match"));
   assert.ok(!replace.options.some((option) => option.long === "--force"));
-  const cover = assetsCommand.commands.find((command) => command.name() === "cover");
-  assert.ok(cover);
-  assert.deepEqual(cover.commands.map((command) => command.name()), ["set"]);
-  const coverSet = cover.commands.find((command) => command.name() === "set");
-  assert.ok(coverSet);
-  assert.ok(coverSet.options.some((option) => option.long === "--asset"));
-  assert.ok(coverSet.options.some((option) => option.long === "--cover-key"));
-  assert.ok(!coverSet.options.some((option) => option.long === "--if-match"));
-  assert.ok(!coverSet.options.some((option) => option.long === "--force"));
-  const ref = assetsCommand.commands.find((command) => command.name() === "ref");
-  assert.ok(ref);
-  assert.deepEqual(ref.commands.map((command) => command.name()), ["get", "delete"]);
-  const refDelete = ref.commands.find((command) => command.name() === "delete");
-  assert.ok(refDelete);
-  assert.ok(refDelete.options.some((option) => option.long === "--asset"));
-  assert.ok(refDelete.options.some((option) => option.long === "--project"));
-  assert.ok(!refDelete.options.some((option) => option.long === "--if-match"));
-  assert.ok(!refDelete.options.some((option) => option.long === "--force"));
-  assert.ok(refDelete.options.some((option) => option.long === "--yes"));
-  const refs = assetsCommand.commands.find((command) => command.name() === "refs");
+  const refs = assetsCommand.commands.find(
+    (command) => command.name() === "refs",
+  );
   assert.ok(refs);
   assert.ok(refs.options.some((option) => option.long === "--asset"));
   assert.ok(refs.options.some((option) => option.long === "--project"));
-  assert.ok(refs.options.some((option) => option.long === "--refresh"));
-  assert.ok(!refs.options.some((option) => option.long === "--if-match"));
-  const gc = assetsCommand.commands.find((command) => command.name() === "gc");
-  assert.ok(gc);
-  assert.ok(!gc.options.some((option) => option.long === "--if-match"));
-  assert.ok(!gc.options.some((option) => option.long === "--force"));
+  assert.ok(!refs.options.some((option) => option.long === "--refresh"));
+  const remove = assetsCommand.commands.find(
+    (command) => command.name() === "delete",
+  );
+  assert.ok(remove);
+  assert.ok(remove.options.some((option) => option.long === "--yes"));
+  assert.ok(!remove.options.some((option) => option.long === "--force"));
+  assert.ok(!remove.options.some((option) => option.long === "--if-match"));
+  assert.ok(!remove.options.some((option) => option.long === "--read-token"));
+  const restore = assetsCommand.commands.find(
+    (command) => command.name() === "restore",
+  );
+  assert.ok(restore);
+  assert.ok(!restore.options.some((option) => option.long === "--force"));
+  assert.ok(!restore.options.some((option) => option.long === "--if-match"));
+  assert.ok(!restore.options.some((option) => option.long === "--read-token"));
 });
 
 test("asset link names must stay inside the project asset links directory", () => {
-  assert.equal(resolveAssetLinkName("asset-1", "/tmp/source.png"), "source.png");
-  assert.equal(resolveAssetLinkName("asset-1", "/tmp/source.png", "hero:1.png"), "hero_1.png");
-  assert.throws(() => resolveAssetLinkName("asset-1", "/tmp/source.png", "../bad.png"), /single file name/);
-  assert.throws(() => resolveAssetLinkName("asset-1", "/tmp/source.png", "nested/bad.png"), /single file name/);
+  assert.equal(
+    resolveAssetLinkName("asset-1", "/tmp/source.png"),
+    "source.png",
+  );
+  assert.equal(
+    resolveAssetLinkName("asset-1", "/tmp/source.png", "hero:1.png"),
+    "hero_1.png",
+  );
+  assert.throws(
+    () => resolveAssetLinkName("asset-1", "/tmp/source.png", "../bad.png"),
+    /single file name/,
+  );
+  assert.throws(
+    () => resolveAssetLinkName("asset-1", "/tmp/source.png", "nested/bad.png"),
+    /single file name/,
+  );
 });
 
 test("links an immutable asset into the project asset links root", async () => {
@@ -83,7 +105,11 @@ test("links an immutable asset into the project asset links root", async () => {
     cwd,
     env: {},
     homeDir,
-    download: async () => source,
+    download: async (assetId, projectId) => {
+      assert.equal(assetId, "asset-1");
+      assert.equal(projectId, "asset_project");
+      return source;
+    },
   });
 
   assert.equal(result.projectId, "asset_project");
@@ -109,13 +135,14 @@ test("asset links refuse accidental overwrite", async () => {
   });
 
   await assert.rejects(
-    () => linkAssetIntoProject({
-      assetId: "asset-1",
-      cwd,
-      env: {},
-      homeDir,
-      download: async () => source,
-    }),
+    () =>
+      linkAssetIntoProject({
+        assetId: "asset-1",
+        cwd,
+        env: {},
+        homeDir,
+        download: async () => source,
+      }),
     /already exists/,
   );
 });
@@ -145,13 +172,15 @@ test("asset link copy fallback is read-only", async () => {
   assert.equal((await stat(result.linkPath)).mode & 0o777, 0o444);
 });
 
-test("imports a local file as a content-addressed immutable asset with a project link", async () => {
+test("asset import sends workspace bytes through the shared Host client and links its immutable projection", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
   const source = join(await tempDir(), "hero.png");
+  const projection = join(await tempDir(), "immutable-hero.png");
   await writeFile(source, "asset-bytes", "utf8");
+  await writeFile(projection, "asset-bytes", "utf8");
   await initProject({ cwd, projectId: "asset_project" });
-  const hash = createHash("sha256").update("asset-bytes").digest("hex");
+  const imports: unknown[] = [];
 
   const result = await importAssetFile({
     filePath: source,
@@ -159,111 +188,81 @@ test("imports a local file as a content-addressed immutable asset with a project
     env: {},
     homeDir,
     kind: "image",
-  });
-
-  assert.equal(result.assetId, `local:sha256:${hash}`);
-  assert.equal(result.contentHash, hash);
-  assert.equal(result.blobPath, join(homeDir, ".clash", "assets", "blobs", hash, "original.png"));
-  assert.equal(result.linkPath, join(cwd, "assets", "links", `local_sha256_${hash}.png`));
-  assert.equal(result.linkMethod, "symlink");
-  assert.equal(result.deduplicated, false);
-  assert.equal(await readFile(result.blobPath, "utf8"), "asset-bytes");
-  assert.equal((await stat(result.blobPath)).mode & 0o777, 0o444);
-  assert.equal((await lstat(result.linkPath!)).isSymbolicLink(), true);
-  assert.equal(await readFile(result.linkPath!, "utf8"), "asset-bytes");
-});
-
-test("asset import deduplicates identical content in the global blob store", async () => {
-  const homeDir = await tempDir();
-  const cwd = await tempDir();
-  await initProject({ cwd, projectId: "asset_project" });
-  const sourceA = join(await tempDir(), "a.txt");
-  const sourceB = join(await tempDir(), "b.txt");
-  await writeFile(sourceA, "same-bytes", "utf8");
-  await writeFile(sourceB, "same-bytes", "utf8");
-
-  const first = await importAssetFile({
-    filePath: sourceA,
-    cwd,
-    env: {},
-    homeDir,
-    link: false,
-  });
-  const second = await importAssetFile({
-    filePath: sourceB,
-    cwd,
-    env: {},
-    homeDir,
-    link: false,
-  });
-
-  assert.equal(second.assetId, first.assetId);
-  assert.equal(second.blobPath, first.blobPath);
-  assert.equal(second.deduplicated, true);
-});
-
-test("asset import can register the content-addressed blob with local metadata", async () => {
-  const homeDir = await tempDir();
-  const cwd = await tempDir();
-  await initProject({ cwd, projectId: "asset_project" });
-  const source = join(await tempDir(), "hero.png");
-  await writeFile(source, "asset-bytes", "utf8");
-  const hash = createHash("sha256").update("asset-bytes").digest("hex");
-  const registrations: unknown[] = [];
-
-  const result = await importAssetFile({
-    filePath: source,
-    cwd,
-    env: {},
-    homeDir,
-    kind: "image",
-    link: false,
-    registerImportedAsset: async (payload) => {
-      registrations.push(payload);
-      return { id: payload.assetId, srcR2Key: `local-blobs/${hash}/original.png` };
+    client: {
+      async importFile(input) {
+        imports.push({
+          ...input,
+          bytes: Array.from(input.bytes),
+        });
+        return {
+          projectId: "asset_project",
+          value: {
+            id: "asset:host-import",
+            kind: "image",
+            status: "ready",
+            metadata: { bytes: 11, contentType: "image/png" },
+          },
+        };
+      },
+    } as ProjectAssetHostClient,
+    download: async (assetId, projectId) => {
+      assert.equal(assetId, "asset:host-import");
+      assert.equal(projectId, "asset_project");
+      return projection;
     },
   });
 
-  assert.equal(result.registered, true);
-  assert.deepEqual(registrations, [{
-    projectId: "asset_project",
-    kind: "image",
-    assetId: `local:sha256:${hash}`,
-    contentHash: hash,
-    localBlobKey: `blobs/${hash}/original.png`,
-    bytes: 11,
-    contentType: "image/png",
-    originalName: "hero.png",
-  }]);
+  assert.equal(result.assetId, "asset:host-import");
+  assert.equal(
+    result.linkPath,
+    join(cwd, "assets", "links", "asset_host-import.png"),
+  );
+  assert.equal(result.linkMethod, "symlink");
+  assert.equal((await lstat(result.linkPath!)).isSymbolicLink(), true);
+  assert.equal(await readFile(result.linkPath!, "utf8"), "asset-bytes");
+  assert.deepEqual(imports, [
+    {
+      projectId: "asset_project",
+      bytes: Array.from(Buffer.from("asset-bytes")),
+      fileName: "hero.png",
+      contentType: "image/png",
+      kind: "image",
+    },
+  ]);
+  assert.equal(JSON.stringify(imports).includes("localBlobKey"), false);
 });
 
-test("asset import registers GLB files as Director model assets", async () => {
-  const homeDir = await tempDir();
+test("asset import infers Director GLB files and leaves Resource deduplication to the Host", async () => {
   const cwd = await tempDir();
   await initProject({ cwd, projectId: "asset_project" });
   const source = join(await tempDir(), "horse.glb");
   await writeFile(source, "glb-bytes", "utf8");
-  const registrations: unknown[] = [];
+  let importedKind = "";
 
   const result = await importAssetFile({
     filePath: source,
     cwd,
     env: {},
-    homeDir,
-    kind: "model",
     link: false,
-    registerImportedAsset: async (payload) => {
-      registrations.push(payload);
-      return { id: payload.assetId, srcR2Key: "local-models/horse.glb" };
-    },
+    client: {
+      async importFile(input) {
+        importedKind = input.kind;
+        return {
+          projectId: "asset_project",
+          value: {
+            id: "asset:model",
+            kind: "model",
+            status: "ready",
+            metadata: { bytes: 9, contentType: "model/gltf-binary" },
+          },
+        };
+      },
+    } as ProjectAssetHostClient,
   });
 
   assert.equal(result.registered, true);
-  assert.equal(registrations.length, 1);
-  assert.equal((registrations[0] as { projectId: string }).projectId, "asset_project");
-  assert.equal((registrations[0] as { kind: string }).kind, "model");
-  assert.equal((registrations[0] as { contentType: string }).contentType, "model/gltf-binary");
-  assert.equal((registrations[0] as { originalName: string }).originalName, "horse.glb");
+  assert.equal(result.assetId, "asset:model");
+  assert.equal(importedKind, "model");
 });
 
 test("asset replace imports a file then calls copy-on-write canvas replacement with read proof", async () => {
@@ -285,23 +284,35 @@ test("asset replace imports a file then calls copy-on-write canvas replacement w
         projectId: "project-replace",
         assetId: "local:sha256:replacement",
         kind: "image",
-        contentHash: "replacement",
         sourcePath: source,
-        blobPath: "/tmp/blob.png",
-        deduplicated: false,
         registered: true,
+        registration: {
+          id: "local:sha256:replacement",
+          kind: "image",
+          lifecycle: { state: "active" },
+          status: "ready",
+          metadata: { bytes: 17, contentType: "image/png" },
+        },
       };
     },
     replaceAsset: async (options) => {
       calls.push({ replaceAsset: options });
-      return { replaced: true, newNodeId: options.newNode, assetId: options.assetId };
+      return {
+        replaced: true,
+        newNodeId: options.newNode,
+        assetId: options.assetId,
+      };
     },
   });
 
   assert.deepEqual(result, {
     importedAssetId: "local:sha256:replacement",
     replaced: true,
-    replaceResult: { replaced: true, newNodeId: "node-copy", assetId: "local:sha256:replacement" },
+    replaceResult: {
+      replaced: true,
+      newNodeId: "node-copy",
+      assetId: "local:sha256:replacement",
+    },
   });
   assert.deepEqual(calls, [
     {
@@ -313,7 +324,6 @@ test("asset replace imports a file then calls copy-on-write canvas replacement w
         homeDir: undefined,
         kind: "image",
         link: true,
-        registerImportedAsset: undefined,
       },
     },
     {
@@ -329,304 +339,230 @@ test("asset replace imports a file then calls copy-on-write canvas replacement w
   ]);
 });
 
-test("asset gc calls the local metadata garbage collector explicitly", async () => {
-  const calls: Array<{ path: string; body: unknown }> = [];
-
-  const result = await runAssetGarbageCollection({
-    dryRun: false,
-    request: async (path, init) => {
-      calls.push({
-        path,
-        body: JSON.parse(String(init?.body ?? "{}")),
-      });
-      return new Response(JSON.stringify({
-        dryRun: false,
-        deletedAssets: [{ id: "asset-orphan", srcR2Key: "local-blobs/hash/original.png" }],
-        deletedBlobKeys: ["local-blobs/hash/original.png"],
-      }), { status: 200 });
-    },
-  });
-
-  assert.deepEqual(calls, [{ path: "/api/v1/assets/gc", body: { dryRun: false } }]);
-  assert.deepEqual(result.deletedBlobKeys, ["local-blobs/hash/original.png"]);
-});
-
-test("asset gc can pass protected canvas asset ids to the host", async () => {
-  const calls: Array<{ path: string; body: unknown }> = [];
-
-  await runAssetGarbageCollection({
-    dryRun: false,
-    protectedAssetIds: ["asset-live"],
-    request: async (path, init) => {
-      calls.push({
-        path,
-        body: JSON.parse(String(init?.body ?? "{}")),
-      });
-      return new Response(JSON.stringify({
-        dryRun: false,
-        protectedAssets: ["asset-live"],
-        deletedAssets: [],
-        deletedBlobKeys: [],
-      }), { status: 200 });
-    },
-  });
-
-  assert.deepEqual(calls, [{
-    path: "/api/v1/assets/gc",
-    body: { dryRun: false, protectedAssetIds: ["asset-live"] },
-  }]);
-});
-
-test("asset gc can ask the host to scan project canvas references", async () => {
-  const calls: Array<{ path: string; body: unknown }> = [];
-
-  await runAssetGarbageCollection({
-    dryRun: false,
-    projectIds: ["project-loro-ref"],
-    request: async (path, init) => {
-      calls.push({
-        path,
-        body: JSON.parse(String(init?.body ?? "{}")),
-      });
-      return new Response(JSON.stringify({
-        dryRun: false,
-        protectedProjectIds: ["project-loro-ref"],
-        protectedAssets: ["asset-live"],
-        deletedAssets: [],
-        deletedBlobKeys: [],
-      }), { status: 200 });
-    },
-  });
-
-  assert.deepEqual(calls, [{
-    path: "/api/v1/assets/gc",
-    body: { dryRun: false, projectIds: ["project-loro-ref"] },
-  }]);
-});
-
-test("asset gc delete can pass an agent dry-run receipt back to the host", async () => {
-  const calls: Array<{ path: string; headers: Record<string, string>; body: unknown }> = [];
-
-  await runAssetGarbageCollection({
-    dryRun: false,
-    ifMatch: "asset-gc-v1:read:receipt:signed",
-    env: { CLASH_AGENT_MEMBER_ID: "agent-member-1" },
-    request: async (path, init) => {
-      calls.push({
-        path,
-        headers: init?.headers as Record<string, string>,
-        body: JSON.parse(String(init?.body ?? "{}")),
-      });
-      return new Response(JSON.stringify({
-        dryRun: false,
-        deletedAssets: [],
-        deletedBlobKeys: [],
-      }), { status: 200 });
-    },
-  });
-
-  assert.deepEqual(calls, [{
-    path: "/api/v1/assets/gc",
-    headers: {
-      "x-clash-client-type": "agent",
-      "x-clash-if-match": "asset-gc-v1:read:receipt:signed",
-    },
-    body: { dryRun: false },
-  }]);
-});
-
-test("asset refs reads node references through the host API", async () => {
+test("asset get reads a ResolvedAsset from the cwd-selected Project", async () => {
   const calls: string[] = [];
+  const observations: string[] = [];
 
-  const result = await fetchAssetReferences({
-    assetId: "local:sha256:abc/needs encoding",
+  const result = await fetchProjectAssetRecord({
     projectId: "project 1",
-    request: async (path) => {
-      calls.push(path);
-      return new Response(JSON.stringify({
-        assetId: "local:sha256:abc/needs encoding",
-        references: [
-          {
-            assetId: "local:sha256:abc/needs encoding",
-            projectId: "project 1",
-            nodeId: "node-a",
-            nodeType: "image",
-            fieldPath: "data.assetId",
-            referenceRole: "primary",
-          },
-        ],
-      }), { status: 200 });
-    },
-  });
-
-  assert.deepEqual(calls, ["/api/v1/assets/local%3Asha256%3Aabc%2Fneeds%20encoding/references?projectId=project%201"]);
-  assert.equal(result.references[0]?.fieldPath, "data.assetId");
-  assert.equal(result.references[0]?.referenceRole, "primary");
-});
-
-test("asset refs can explicitly refresh indexed references through the host API", async () => {
-  const calls: Array<{ path: string; method?: string; headers?: Record<string, string>; body: unknown }> = [];
-
-  const result = await fetchAssetReferences({
-    assetId: "asset-live",
-    projectId: "project-refresh",
-    refresh: true,
-    ifMatch: "asset-v1:abc:receipt:host-proof",
-    env: { CLASH_AGENT_MEMBER_ID: "agent-1" },
-    request: async (path, init) => {
-      calls.push({
-        path,
-        method: init?.method,
-        headers: init?.headers as Record<string, string> | undefined,
-        body: JSON.parse(String(init?.body ?? "{}")),
-      });
-      return new Response(JSON.stringify({
-        assetId: "asset-live",
-        refreshed: true,
-        protectedProjectIds: ["project-refresh"],
-        references: [
-          {
-            assetId: "asset-live",
-            projectId: "project-refresh",
-            nodeId: "node-a",
-            nodeType: "image",
-            fieldPath: "data.assetId",
-            referenceRole: "primary",
-          },
-        ],
-      }), { status: 200 });
-    },
-  });
-
-  assert.deepEqual(calls, [{
-    path: "/api/v1/assets/asset-live/references/refresh",
-    method: "POST",
-    headers: {
-      "x-clash-client-type": "agent",
-      "x-clash-if-match": "asset-v1:abc:receipt:host-proof",
-    },
-    body: { projectIds: ["project-refresh"] },
-  }]);
-  assert.equal(result.references[0]?.referenceRole, "primary");
-});
-
-test("asset get reads an asset row and receipt token through the host API", async () => {
-  const calls: string[] = [];
-
-  const result = await fetchAssetRecord({
     assetId: "local:sha256:abc/needs encoding",
+    onObservation: async (receipt) => {
+      observations.push(receipt);
+    },
     request: async (path) => {
       calls.push(path);
-      return new Response(JSON.stringify({
-        id: "local:sha256:abc/needs encoding",
-        kind: "image",
-        srcR2Key: "uploads/source.png",
-        readToken: "asset-v1:read:receipt:signed",
-      }), { status: 200 });
-    },
-  });
-
-  assert.deepEqual(calls, ["/api/v1/assets/local%3Asha256%3Aabc%2Fneeds%20encoding"]);
-  assert.equal(result.readToken, "asset-v1:read:receipt:signed");
-});
-
-test("asset cover set passes agent read proof to the host API", async () => {
-  const calls: Array<{ path: string; method?: string; headers: Record<string, string> | undefined; body: unknown }> = [];
-
-  const result = await updateAssetCover({
-    assetId: "asset-live",
-    coverR2Key: "uploads/cover.png",
-    ifMatch: "asset-v1:read:receipt:signed",
-    env: { CLASH_AGENT_MEMBER_ID: "agent-1" },
-    request: async (path, init) => {
-      calls.push({
-        path,
-        method: init?.method,
-        headers: init?.headers as Record<string, string> | undefined,
-        body: JSON.parse(String(init?.body ?? "{}")),
-      });
-      return new Response(JSON.stringify({
-        ok: true,
-        readToken: "asset-v1:after:receipt:signed",
-        mutation: {
-          operation: "asset_cover_update",
-          entity: { kind: "asset", id: "asset-live" },
-          expectedReadToken: "asset-v1:read:receipt:signed",
-          beforeReadToken: "asset-v1:read",
-          afterReadToken: "asset-v1:after:receipt:signed",
-          accepted: true,
+      return new Response(
+        JSON.stringify({
+          id: "local:sha256:abc/needs encoding",
+          kind: "image",
+          lifecycle: { state: "active" },
+          status: "ready",
+          metadata: { bytes: 11, contentType: "image/png" },
+        }),
+        {
+          status: 200,
+          headers: { "x-clash-read-receipt": "project-asset:receipt:get" },
         },
-      }), { status: 200 });
+      );
     },
   });
 
-  assert.equal(result.readToken, "asset-v1:after:receipt:signed");
-  assert.deepEqual(calls, [{
-    path: "/api/v1/assets/asset-live/cover",
-    method: "PATCH",
-    headers: {
-      "x-clash-client-type": "agent",
-      "x-clash-if-match": "asset-v1:read:receipt:signed",
-    },
-    body: { coverR2Key: "uploads/cover.png" },
-  }]);
+  assert.deepEqual(calls, [
+    "/api/v1/projects/project%201/assets/local%3Asha256%3Aabc%2Fneeds%20encoding",
+  ]);
+  assert.equal(result.status, "ready");
+  assert.deepEqual(observations, ["project-asset:receipt:get"]);
+  assert.equal("readToken" in result, false);
 });
 
-test("asset ref get reads the project membership relation through the host API", async () => {
+test("asset list reads the same Project-scoped ResolvedAsset collection", async () => {
   const calls: string[] = [];
-
-  const result = await fetchAssetProjectRef({
-    assetId: "local:sha256:abc/needs encoding",
+  const result = await listProjectAssetRecords({
     projectId: "project 1",
     request: async (path) => {
       calls.push(path);
-      return new Response(JSON.stringify({
-        assetId: "local:sha256:abc/needs encoding",
-        projectId: "project 1",
-        importedAt: 123,
-        readToken: "asset-ref-v1:read:receipt:signed",
-      }), { status: 200 });
+      return new Response(
+        JSON.stringify({
+          assets: [
+            {
+              id: "asset:one",
+              kind: "image",
+              lifecycle: { state: "active" },
+              status: "ready",
+              metadata: { bytes: 11, contentType: "image/png" },
+            },
+          ],
+        }),
+      );
     },
   });
 
-  assert.deepEqual(calls, ["/api/v1/assets/local%3Asha256%3Aabc%2Fneeds%20encoding/ref?projectId=project%201"]);
-  assert.equal(result.readToken, "asset-ref-v1:read:receipt:signed");
+  assert.deepEqual(calls, ["/api/v1/projects/project%201/assets"]);
+  assert.deepEqual(
+    result.map(({ id }) => id),
+    ["asset:one"],
+  );
 });
 
-test("asset ref delete passes agent read proof to the host API", async () => {
-  const calls: Array<{ path: string; method?: string; headers: Record<string, string> | undefined }> = [];
+test("asset refs reads authoritative Action Asset bindings from one Project", async () => {
+  const calls: string[] = [];
+  const observations: string[] = [];
 
-  const result = await deleteAssetProjectRef({
-    assetId: "asset-live",
+  const result = await fetchProjectAssetReferences({
+    projectId: "project 1",
+    assetId: "asset/one",
+    onObservation: (receipt) => {
+      observations.push(receipt);
+    },
+    request: async (path) => {
+      calls.push(path);
+      return new Response(
+        JSON.stringify({
+          projectAssetId: "asset/one",
+          references: [
+            {
+              id: "binding-1",
+              owner: { kind: "draft", actionId: "action-1" },
+              direction: "input",
+              slot: "image:0",
+              projectAssetId: "asset/one",
+              role: "reference",
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { "x-clash-read-receipt": "project-asset:receipt:refs" },
+        },
+      );
+    },
+  });
+
+  assert.deepEqual(calls, [
+    "/api/v1/projects/project%201/assets/asset%2Fone/references",
+  ]);
+  assert.equal(result.references[0]?.owner.actionId, "action-1");
+  assert.deepEqual(observations, ["project-asset:receipt:refs"]);
+  assert.equal("readToken" in result, false);
+});
+
+test("asset delete returns the opaque receipt through client glue and sends agent CAS headers", async () => {
+  const calls: Array<{
+    path: string;
+    method?: string;
+    headers?: RequestInit["headers"];
+    body?: RequestInit["body"];
+  }> = [];
+  const observations: string[] = [];
+
+  const result = await trashProjectAsset({
     projectId: "project-a",
-    ifMatch: "asset-ref-v1:read:receipt:signed",
-    env: { CLASH_AGENT_MEMBER_ID: "agent-1" },
+    assetId: "asset-live",
+    actorClientType: "agent",
+    observedVersion: "project-asset:receipt:before-delete",
+    onObservation: (receipt) => {
+      observations.push(receipt);
+    },
     request: async (path, init) => {
       calls.push({
         path,
         method: init?.method,
-        headers: init?.headers as Record<string, string> | undefined,
+        headers: init?.headers,
+        body: init?.body,
       });
-      return new Response(JSON.stringify({
-        deleted: true,
-        mutation: {
-          operation: "asset_ref_delete",
-          entity: { kind: "asset-ref", id: "asset-live:project-a" },
-          expectedReadToken: "asset-ref-v1:read:receipt:signed",
-          beforeReadToken: "asset-ref-v1:read",
-          accepted: true,
+      return new Response(
+        JSON.stringify({
+          id: "asset-live",
+          kind: "image",
+          lifecycle: {
+            state: "trashed",
+            deleteOperationId: "delete:test",
+            deletedAt: "2026-08-13T00:00:00.000Z",
+            purgeAfter: "2026-09-12T00:00:00.000Z",
+          },
+          status: "unavailable",
+          metadata: { bytes: 11 },
+        }),
+        {
+          status: 200,
+          headers: {
+            "x-clash-read-receipt": "project-asset:receipt:after-delete",
+          },
         },
-      }), { status: 200 });
+      );
     },
   });
 
-  assert.equal(result.deleted, true);
-  assert.deepEqual(calls, [{
-    path: "/api/v1/assets/asset-live/ref?projectId=project-a",
-    method: "DELETE",
-    headers: {
-      "x-clash-client-type": "agent",
-      "x-clash-if-match": "asset-ref-v1:read:receipt:signed",
+  assert.equal(result.status, "unavailable");
+  assert.equal("readToken" in result, false);
+  assert.deepEqual(observations, ["project-asset:receipt:after-delete"]);
+  assert.deepEqual(calls, [
+    {
+      path: "/api/v1/projects/project-a/assets/asset-live",
+      method: "DELETE",
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": "project-asset:receipt:before-delete",
+      },
+      body: undefined,
     },
-  }]);
+  ]);
+});
+
+test("asset restore returns the opaque receipt through client glue and sends agent CAS headers", async () => {
+  const calls: Array<{
+    path: string;
+    method?: string;
+    headers?: RequestInit["headers"];
+    body?: RequestInit["body"];
+  }> = [];
+  const observations: string[] = [];
+
+  const result = await restoreProjectAsset({
+    projectId: "project-a",
+    assetId: "asset-live",
+    actorClientType: "agent",
+    observedVersion: "project-asset:receipt:before-restore",
+    onObservation: (receipt) => {
+      observations.push(receipt);
+    },
+    request: async (path, init) => {
+      calls.push({
+        path,
+        method: init?.method,
+        headers: init?.headers,
+        body: init?.body,
+      });
+      return new Response(
+        JSON.stringify({
+          id: "asset-live",
+          kind: "image",
+          lifecycle: { state: "active" },
+          status: "ready",
+          metadata: { bytes: 11 },
+        }),
+        {
+          status: 200,
+          headers: {
+            "x-clash-read-receipt": "project-asset:receipt:after-restore",
+          },
+        },
+      );
+    },
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal("readToken" in result, false);
+  assert.deepEqual(observations, ["project-asset:receipt:after-restore"]);
+  assert.deepEqual(calls, [
+    {
+      path: "/api/v1/projects/project-a/assets/asset-live/restore",
+      method: "POST",
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": "project-asset:receipt:before-restore",
+      },
+      body: undefined,
+    },
+  ]);
 });

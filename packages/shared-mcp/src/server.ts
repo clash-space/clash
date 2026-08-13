@@ -1,5 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RegisteredTool, ToolCallback } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type {
+  RegisteredTool,
+  ToolCallback,
+} from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   getParseErrorMessage,
   normalizeObjectSchema,
@@ -31,6 +34,7 @@ import { describeClashTool } from "./tool-guidance.js";
 import { projectClashMcpWireJsonSchema } from "./wire-schema.js";
 
 export const CLASH_ROOT_TOOL_NAME = "clash";
+export const CLASH_ASSETS_TOOL_NAME = "clash_assets";
 export const CLASH_CANVAS_TOOL_NAME = "clash_canvas";
 export const CLASH_COMPOSITION_TOOL_NAME = "clash_composition";
 
@@ -44,7 +48,7 @@ type ClashCompositionKind = "timeline" | "director-stage";
 
 export const CLASH_MCP_INSTRUCTIONS = [
   "Clash discloses product operations progressively.",
-  `Use the root ${CLASH_ROOT_TOOL_NAME} tool for command navigation, ${CLASH_CANVAS_TOOL_NAME} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME} for Timeline or Director Stage composition.`,
+  `Use the root ${CLASH_ROOT_TOOL_NAME} tool for command navigation, ${CLASH_ASSETS_TOOL_NAME} for Project Assets, ${CLASH_CANVAS_TOOL_NAME} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME} for Timeline or Director Stage composition.`,
   "Timeline is temporal composition; Director Stage is spatial composition.",
   "Call a dispatcher without operation for live contracts, then pass its command-local operation and arguments to execute exactly once.",
   "Composition disclosure and short operations require kind=timeline or kind=director-stage; a complete clash_* leaf name remains accepted for compatibility.",
@@ -98,23 +102,33 @@ function inputJsonSchemaOf(handle: RegisteredTool): Record<string, unknown> {
   return projectClashMcpWireJsonSchema(jsonSchema) as Record<string, unknown>;
 }
 
-function outputJsonSchemaOf(handle: RegisteredTool): Record<string, unknown> | undefined {
+function outputJsonSchemaOf(
+  handle: RegisteredTool,
+): Record<string, unknown> | undefined {
   const output = normalizeObjectSchema(handle.outputSchema);
   if (!output) return undefined;
-  return projectClashMcpWireJsonSchema(toJsonSchemaCompat(output, {
-    strictUnions: true,
-    pipeStrategy: "output",
-  })) as Record<string, unknown>;
+  return projectClashMcpWireJsonSchema(
+    toJsonSchemaCompat(output, {
+      strictUnions: true,
+      pipeStrategy: "output",
+    }),
+  ) as Record<string, unknown>;
 }
 
 function nextGuidance(description: string | undefined): string {
-  return description?.match(/(?:^|\s)Next:\s*(.+)$/u)?.[1]?.trim()
-    ?? "Inspect structuredContent.error and follow any retryTool or recovery fields before retrying.";
+  return (
+    description?.match(/(?:^|\s)Next:\s*(.+)$/u)?.[1]?.trim() ??
+    "Inspect structuredContent.error and follow any retryTool or recovery fields before retrying."
+  );
 }
 
-function clashMetadata(meta: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+function clashMetadata(
+  meta: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
   if (!meta) return undefined;
-  const entries = Object.entries(meta).filter(([key]) => key.startsWith("clash/"));
+  const entries = Object.entries(meta).filter(([key]) =>
+    key.startsWith("clash/"),
+  );
   return entries.length ? Object.fromEntries(entries) : undefined;
 }
 
@@ -134,170 +148,286 @@ export class ClashMcpServer extends McpServer {
         : CLASH_MCP_INSTRUCTIONS,
     });
 
-    super.registerTool(CLASH_ROOT_TOOL_NAME, {
-      title: "Clash",
-      description: describeClashTool({
-        useWhen: "you need the compact Clash command menu or the stable dispatcher for a product command",
-        effect: "returns command counts and navigation without expanding leaf operations into the advertised tool list",
-        returns: "the command menu and selected Canvas or composition dispatcher",
-        next: "call clash_canvas for Canvas, or clash_composition with kind for Timeline or Director Stage; complete leaf execution remains compatibility-only",
-      }),
-      inputSchema: {
-        command: z.enum(CLASH_MCP_COMMAND_IDS).optional().describe(
-          "Root command to reveal; omit to show the root menu and fold leaf operations away",
-        ),
-        operation: z.string().min(1).optional().describe(
-          "Complete registered clash_* leaf name for compatibility; use a dispatcher for command-local short names",
-        ),
-        arguments: z.record(z.string(), z.unknown()).optional().describe(
-          "Arguments validated against the selected operation's live input schema",
-        ),
-      },
-      _meta: { ui: { visibility: ["model"] } },
-    }, async ({ command, operation, arguments: operationArguments }, extra) => {
-      const selectedCommand = command as ClashMcpCommandId | undefined;
-      if (operation) {
-        if (!operation.startsWith("clash_")) {
-          throw new Error("Clash root compatibility execution requires a complete clash_* leaf name.");
-        }
-        return this.#dispatchOperation({
-          operation,
-          arguments: operationArguments ?? {},
-          selectedCommand,
-          extra,
-        });
-      }
-      const view = this.#rootView(selectedCommand);
-      const selected = selectedCommand
-        ? view.commands.find(({ id }) => id === selectedCommand)
-        : undefined;
-      const operationCount = selected?.availableOperations ?? 0;
-      if (selectedCommand && operationCount === 0) {
-        return {
-          content: [{
-            type: "text" as const,
-            text: `The ${selectedCommand} command has no operations in this Clash host.`,
-          }],
-          structuredContent: view,
-          isError: true,
-        };
-      }
-      return {
-        content: [{
-          type: "text" as const,
-          text: selectedCommand
-            ? `Use ${view.selectedDispatcher}${view.selectedKind ? ` with kind=${view.selectedKind}` : ""} for ${selectedCommand}.`
-            : `Clash offers ${view.commands.filter(({ availableOperations }) => availableOperations > 0).length} available commands.`,
-        }],
-        structuredContent: view,
-      };
-    });
-
-    const canvasDefinition = getClashMcpCommand("canvas");
-    super.registerTool(CLASH_CANVAS_TOOL_NAME, {
-      title: canvasDefinition.title,
-      description: describeClashTool({
-        useWhen: "you need to inspect or execute Canvas node operations",
-        effect: "returns live Canvas contracts when operation is omitted, or validates and executes one Canvas leaf exactly once",
-        returns: "typed Canvas operation contracts or the selected leaf operation's exact result",
-        next: "choose the smallest matching operation, then call clash_canvas with operation and arguments",
-      }),
-      inputSchema: {
-        operation: z.string().min(1).optional().describe(
-          "Omit this field entirely to reveal live contracts; never send an empty string, list_operations, or contracts. Otherwise pass a command-local Canvas operation or complete clash_canvas_* leaf name",
-        ),
-        arguments: z.record(z.string(), z.unknown()).optional().describe(
-          "Arguments validated against the selected operation's live input schema",
-        ),
-      },
-      _meta: { ui: { visibility: ["model"] } },
-    }, async ({ operation, arguments: operationArguments }, extra) => {
-      if (operation) {
-        return this.#dispatchOperation({
-          operation,
-          arguments: operationArguments ?? {},
-          selectedCommand: "canvas",
-          extra,
-        });
-      }
-      return this.#commandResult("canvas");
-    });
-
-    super.registerTool(CLASH_COMPOSITION_TOOL_NAME, {
-      title: "Composition",
-      description: describeClashTool({
-        useWhen: "you need Timeline temporal composition or Director Stage spatial composition operations",
-        effect: "returns live contracts for one composition kind, or validates and executes one matching composition leaf exactly once",
-        returns: "typed Timeline or Director Stage contracts, or the selected leaf operation's exact result",
-        next: "set kind to timeline or director-stage, choose the smallest matching operation, then pass operation and arguments",
-      }),
-      inputSchema: {
-        kind: z.enum(["timeline", "director-stage"]).optional().describe(
-          "Required for contract disclosure and command-local short operations; complete leaf names may infer it",
-        ),
-        operation: z.string().min(1).optional().describe(
-          "Omit this field entirely to reveal live contracts for the selected kind; never send an empty string, list_operations, or contracts. Otherwise pass a command-local operation or complete clash_timeline_* or clash_director_* leaf name",
-        ),
-        arguments: z.record(z.string(), z.unknown()).optional().describe(
-          "Arguments validated against the selected operation's live input schema",
-        ),
-      },
-      _meta: { ui: { visibility: ["model"] } },
-    }, async ({ kind, operation, arguments: operationArguments }, extra) => {
-      const selectedCommand = kind === "timeline"
-        ? "timeline"
-        : kind === "director-stage"
-          ? "director"
-          : undefined;
-      if (operation) {
-        if (!selectedCommand && !operation.startsWith("clash_")) {
-          throw new Error(`Clash composition short operation ${operation} requires kind.`);
-        }
-        return this.#dispatchOperation({
-          operation,
-          arguments: operationArguments ?? {},
-          selectedCommand,
-          allowedCommands: ["timeline", "director"],
-          extra,
-        });
-      }
-      if (!selectedCommand) {
-        throw new Error("Clash composition disclosure requires kind=timeline or kind=director-stage.");
-      }
-      return this.#commandResult(selectedCommand);
-    });
-
-    for (const command of Object.keys(LEGACY_CLASH_GROUP_TOOL_NAMES) as LegacyClashGroupCommandId[]) {
-      const commandDefinition = getClashMcpCommand(command);
-      const toolName = LEGACY_CLASH_GROUP_TOOL_NAMES[command];
-      super.registerTool(toolName, {
-        title: commandDefinition.title,
+    super.registerTool(
+      CLASH_ROOT_TOOL_NAME,
+      {
+        title: "Clash",
         description: describeClashTool({
-          useWhen: `you need to inspect or execute ${commandDefinition.title} operations`,
-          effect: `returns live ${command} contracts when operation is omitted, or validates arguments and executes the selected registered ${command} leaf exactly once`,
-          returns: "typed operation contracts or the selected leaf operation's exact result",
-          next: "choose the smallest matching operation, then call this command tool with operation and arguments",
+          useWhen:
+            "you need the compact Clash command menu or the stable dispatcher for a product command",
+          effect:
+            "returns command counts and navigation without expanding leaf operations into the advertised tool list",
+          returns:
+            "the command menu and selected Assets, Canvas, or composition dispatcher",
+          next: "call clash_assets for Project Assets, clash_canvas for Canvas, or clash_composition with kind for Timeline or Director Stage; complete leaf execution remains compatibility-only",
         }),
         inputSchema: {
-          operation: z.string().min(1).optional().describe(
-            `Exact ${command} operation name returned by this command tool`,
-          ),
-          arguments: z.record(z.string(), z.unknown()).optional().describe(
-            "Arguments validated against the selected operation's live input schema",
-          ),
+          command: z
+            .enum(CLASH_MCP_COMMAND_IDS)
+            .optional()
+            .describe(
+              "Root command to reveal; omit to show the root menu and fold leaf operations away",
+            ),
+          operation: z
+            .string()
+            .min(1)
+            .optional()
+            .describe(
+              "Complete registered clash_* leaf name for compatibility; use a dispatcher for command-local short names",
+            ),
+          arguments: z
+            .record(z.string(), z.unknown())
+            .optional()
+            .describe(
+              "Arguments validated against the selected operation's live input schema",
+            ),
         },
         _meta: { ui: { visibility: ["model"] } },
-      }, async ({ operation, arguments: operationArguments }, extra) => {
+      },
+      async ({ command, operation, arguments: operationArguments }, extra) => {
+        const selectedCommand = command as ClashMcpCommandId | undefined;
+        if (operation) {
+          if (!operation.startsWith("clash_")) {
+            throw new Error(
+              "Clash root compatibility execution requires a complete clash_* leaf name.",
+            );
+          }
+          return this.#dispatchOperation({
+            operation,
+            arguments: operationArguments ?? {},
+            selectedCommand,
+            extra,
+          });
+        }
+        const view = this.#rootView(selectedCommand);
+        const selected = selectedCommand
+          ? view.commands.find(({ id }) => id === selectedCommand)
+          : undefined;
+        const operationCount = selected?.availableOperations ?? 0;
+        if (selectedCommand && operationCount === 0) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `The ${selectedCommand} command has no operations in this Clash host.`,
+              },
+            ],
+            structuredContent: view,
+            isError: true,
+          };
+        }
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: selectedCommand
+                ? `Use ${view.selectedDispatcher}${view.selectedKind ? ` with kind=${view.selectedKind}` : ""} for ${selectedCommand}.`
+                : `Clash offers ${view.commands.filter(({ availableOperations }) => availableOperations > 0).length} available commands.`,
+            },
+          ],
+          structuredContent: view,
+        };
+      },
+    );
+
+    const assetsDefinition = getClashMcpCommand("assets");
+    super.registerTool(
+      CLASH_ASSETS_TOOL_NAME,
+      {
+        title: assetsDefinition.title,
+        description: describeClashTool({
+          useWhen:
+            "you need to inspect, import, trash, or restore Project Assets",
+          effect:
+            "returns live Project Asset contracts when operation is omitted, or validates and executes one Asset leaf exactly once",
+          returns:
+            "typed Project Asset operation contracts or the selected leaf operation's exact result",
+          next: "choose the smallest matching operation, then call clash_assets with operation and arguments",
+        }),
+        inputSchema: {
+          operation: z
+            .string()
+            .min(1)
+            .optional()
+            .describe(
+              "Omit this field entirely to reveal live contracts; otherwise pass a command-local Assets operation or complete clash_assets_* leaf name",
+            ),
+          arguments: z
+            .record(z.string(), z.unknown())
+            .optional()
+            .describe(
+              "Arguments validated against the selected operation's live input schema",
+            ),
+        },
+        _meta: { ui: { visibility: ["model"] } },
+      },
+      async ({ operation, arguments: operationArguments }, extra) => {
         if (operation) {
           return this.#dispatchOperation({
             operation,
             arguments: operationArguments ?? {},
-            selectedCommand: command,
+            selectedCommand: "assets",
             extra,
           });
         }
-        return this.#commandResult(command);
-      });
+        return this.#commandResult("assets");
+      },
+    );
+
+    const canvasDefinition = getClashMcpCommand("canvas");
+    super.registerTool(
+      CLASH_CANVAS_TOOL_NAME,
+      {
+        title: canvasDefinition.title,
+        description: describeClashTool({
+          useWhen: "you need to inspect or execute Canvas node operations",
+          effect:
+            "returns live Canvas contracts when operation is omitted, or validates and executes one Canvas leaf exactly once",
+          returns:
+            "typed Canvas operation contracts or the selected leaf operation's exact result",
+          next: "choose the smallest matching operation, then call clash_canvas with operation and arguments",
+        }),
+        inputSchema: {
+          operation: z
+            .string()
+            .min(1)
+            .optional()
+            .describe(
+              "Omit this field entirely to reveal live contracts; never send an empty string, list_operations, or contracts. Otherwise pass a command-local Canvas operation or complete clash_canvas_* leaf name",
+            ),
+          arguments: z
+            .record(z.string(), z.unknown())
+            .optional()
+            .describe(
+              "Arguments validated against the selected operation's live input schema",
+            ),
+        },
+        _meta: { ui: { visibility: ["model"] } },
+      },
+      async ({ operation, arguments: operationArguments }, extra) => {
+        if (operation) {
+          return this.#dispatchOperation({
+            operation,
+            arguments: operationArguments ?? {},
+            selectedCommand: "canvas",
+            extra,
+          });
+        }
+        return this.#commandResult("canvas");
+      },
+    );
+
+    super.registerTool(
+      CLASH_COMPOSITION_TOOL_NAME,
+      {
+        title: "Composition",
+        description: describeClashTool({
+          useWhen:
+            "you need Timeline temporal composition or Director Stage spatial composition operations",
+          effect:
+            "returns live contracts for one composition kind, or validates and executes one matching composition leaf exactly once",
+          returns:
+            "typed Timeline or Director Stage contracts, or the selected leaf operation's exact result",
+          next: "set kind to timeline or director-stage, choose the smallest matching operation, then pass operation and arguments",
+        }),
+        inputSchema: {
+          kind: z
+            .enum(["timeline", "director-stage"])
+            .optional()
+            .describe(
+              "Required for contract disclosure and command-local short operations; complete leaf names may infer it",
+            ),
+          operation: z
+            .string()
+            .min(1)
+            .optional()
+            .describe(
+              "Omit this field entirely to reveal live contracts for the selected kind; never send an empty string, list_operations, or contracts. Otherwise pass a command-local operation or complete clash_timeline_* or clash_director_* leaf name",
+            ),
+          arguments: z
+            .record(z.string(), z.unknown())
+            .optional()
+            .describe(
+              "Arguments validated against the selected operation's live input schema",
+            ),
+        },
+        _meta: { ui: { visibility: ["model"] } },
+      },
+      async ({ kind, operation, arguments: operationArguments }, extra) => {
+        const selectedCommand =
+          kind === "timeline"
+            ? "timeline"
+            : kind === "director-stage"
+              ? "director"
+              : undefined;
+        if (operation) {
+          if (!selectedCommand && !operation.startsWith("clash_")) {
+            throw new Error(
+              `Clash composition short operation ${operation} requires kind.`,
+            );
+          }
+          return this.#dispatchOperation({
+            operation,
+            arguments: operationArguments ?? {},
+            selectedCommand,
+            allowedCommands: ["timeline", "director"],
+            extra,
+          });
+        }
+        if (!selectedCommand) {
+          throw new Error(
+            "Clash composition disclosure requires kind=timeline or kind=director-stage.",
+          );
+        }
+        return this.#commandResult(selectedCommand);
+      },
+    );
+
+    for (const command of Object.keys(
+      LEGACY_CLASH_GROUP_TOOL_NAMES,
+    ) as LegacyClashGroupCommandId[]) {
+      const commandDefinition = getClashMcpCommand(command);
+      const toolName = LEGACY_CLASH_GROUP_TOOL_NAMES[command];
+      super.registerTool(
+        toolName,
+        {
+          title: commandDefinition.title,
+          description: describeClashTool({
+            useWhen: `you need to inspect or execute ${commandDefinition.title} operations`,
+            effect: `returns live ${command} contracts when operation is omitted, or validates arguments and executes the selected registered ${command} leaf exactly once`,
+            returns:
+              "typed operation contracts or the selected leaf operation's exact result",
+            next: "choose the smallest matching operation, then call this command tool with operation and arguments",
+          }),
+          inputSchema: {
+            operation: z
+              .string()
+              .min(1)
+              .optional()
+              .describe(
+                `Exact ${command} operation name returned by this command tool`,
+              ),
+            arguments: z
+              .record(z.string(), z.unknown())
+              .optional()
+              .describe(
+                "Arguments validated against the selected operation's live input schema",
+              ),
+          },
+          _meta: { ui: { visibility: ["model"] } },
+        },
+        async ({ operation, arguments: operationArguments }, extra) => {
+          if (operation) {
+            return this.#dispatchOperation({
+              operation,
+              arguments: operationArguments ?? {},
+              selectedCommand: command,
+              extra,
+            });
+          }
+          return this.#commandResult(command);
+        },
+      );
     }
   }
 
@@ -318,11 +448,12 @@ export class ClashMcpServer extends McpServer {
     callback: ToolCallback<InputArgs>,
   ): RegisteredTool {
     if (
-      name === CLASH_ROOT_TOOL_NAME
-      || name === CLASH_CANVAS_TOOL_NAME
-      || name === CLASH_COMPOSITION_TOOL_NAME
-      || Object.values(LEGACY_CLASH_GROUP_TOOL_NAMES).includes(
-        name as (typeof LEGACY_CLASH_GROUP_TOOL_NAMES)[LegacyClashGroupCommandId]
+      name === CLASH_ROOT_TOOL_NAME ||
+      name === CLASH_ASSETS_TOOL_NAME ||
+      name === CLASH_CANVAS_TOOL_NAME ||
+      name === CLASH_COMPOSITION_TOOL_NAME ||
+      Object.values(LEGACY_CLASH_GROUP_TOOL_NAMES).includes(
+        name as (typeof LEGACY_CLASH_GROUP_TOOL_NAMES)[LegacyClashGroupCommandId],
       )
     ) {
       throw new Error(`${name} is provided by ClashMcpServer`);
@@ -341,7 +472,10 @@ export class ClashMcpServer extends McpServer {
 
   #liveModelTools(): RegisteredClashTool[] {
     return [...this.#registeredClashTools]
-      .filter(({ removed, handle }) => !removed && handle.enabled && modelVisible(handle._meta))
+      .filter(
+        ({ removed, handle }) =>
+          !removed && handle.enabled && modelVisible(handle._meta),
+      )
       .sort((left, right) => left.name.localeCompare(right.name));
   }
 
@@ -356,30 +490,33 @@ export class ClashMcpServer extends McpServer {
     selectedCommand?: ClashMcpCommandId;
     operations?: ClashOperationView[];
   } {
-    const operations = this.#liveModelTools().map(({ name, handle }): ClashOperationView => {
-      const metadata = clashMetadata(handle._meta);
-      const outputSchema = outputJsonSchemaOf(handle);
-      return {
-        name,
-        operation: this.#commandLocalOperation(name),
-        title: handle.title ?? name,
-        description: handle.description ?? "",
-        readOnly: annotationsOf(handle).readOnlyHint === true,
-        destructive: annotationsOf(handle).destructiveHint === true,
-        inputSchema: inputJsonSchemaOf(handle),
-        ...(outputSchema ? { outputSchema } : {}),
-        recovery: {
-          guidance: nextGuidance(handle.description),
-          retryOperationPath: "structuredContent.error.retryTool",
-          staleMergePath: "structuredContent.error.recovery",
-        },
-        ...(metadata ? { metadata } : {}),
-      };
-    });
+    const operations = this.#liveModelTools().map(
+      ({ name, handle }): ClashOperationView => {
+        const metadata = clashMetadata(handle._meta);
+        const outputSchema = outputJsonSchemaOf(handle);
+        return {
+          name,
+          operation: this.#commandLocalOperation(name),
+          title: handle.title ?? name,
+          description: handle.description ?? "",
+          readOnly: annotationsOf(handle).readOnlyHint === true,
+          destructive: annotationsOf(handle).destructiveHint === true,
+          inputSchema: inputJsonSchemaOf(handle),
+          ...(outputSchema ? { outputSchema } : {}),
+          recovery: {
+            guidance: nextGuidance(handle.description),
+            retryOperationPath: "structuredContent.error.retryTool",
+            staleMergePath: "structuredContent.error.recovery",
+          },
+          ...(metadata ? { metadata } : {}),
+        };
+      },
+    );
     return buildClashMcpCommandMenu({
       operations,
       ...(selectedCommand ? { selectedCommand } : {}),
-      belongsToCommand: (operation, command) => classifyClashMcpTool(operation.name) === command.id,
+      belongsToCommand: (operation, command) =>
+        classifyClashMcpTool(operation.name) === command.id,
     });
   }
 
@@ -388,19 +525,23 @@ export class ClashMcpServer extends McpServer {
     const operationCount = view.operations?.length ?? 0;
     if (operationCount === 0) {
       return {
-        content: [{
-          type: "text" as const,
-          text: `The ${command} command has no operations in this Clash host.`,
-        }],
+        content: [
+          {
+            type: "text" as const,
+            text: `The ${command} command has no operations in this Clash host.`,
+          },
+        ],
         structuredContent: view,
         isError: true,
       };
     }
     return {
-      content: [{
-        type: "text" as const,
-        text: `Revealed ${operationCount} ${command} operation${operationCount === 1 ? "" : "s"}.`,
-      }],
+      content: [
+        {
+          type: "text" as const,
+          text: `Revealed ${operationCount} ${command} operation${operationCount === 1 ? "" : "s"}.`,
+        },
+      ],
       structuredContent: view,
     };
   }
@@ -431,13 +572,19 @@ export class ClashMcpServer extends McpServer {
       if (command.id === "workspace") {
         return {
           ...command,
-          ...(command.availableOperations > 0 ? { dispatcher: "clash_workspace_init" } : {}),
+          ...(command.availableOperations > 0
+            ? { dispatcher: "clash_workspace_init" }
+            : {}),
         };
+      }
+      if (command.id === "assets") {
+        return { ...command, dispatcher: CLASH_ASSETS_TOOL_NAME };
       }
       if (command.id === "canvas") {
         return { ...command, dispatcher: CLASH_CANVAS_TOOL_NAME };
       }
-      const kind: ClashCompositionKind = command.id === "timeline" ? "timeline" : "director-stage";
+      const kind: ClashCompositionKind =
+        command.id === "timeline" ? "timeline" : "director-stage";
       return { ...command, dispatcher: CLASH_COMPOSITION_TOOL_NAME, kind };
     });
     if (!selectedCommand) return { ...menu, commands };
@@ -446,36 +593,49 @@ export class ClashMcpServer extends McpServer {
       ...menu,
       commands,
       selectedCommand,
-      ...(selected?.dispatcher ? { selectedDispatcher: selected.dispatcher } : {}),
+      ...(selected?.dispatcher
+        ? { selectedDispatcher: selected.dispatcher }
+        : {}),
       ...(selected?.kind ? { selectedKind: selected.kind } : {}),
     };
   }
 
   #commandLocalOperation(name: string): string {
     const family = classifyClashMcpTool(name);
-    const prefixes = family === "workspace"
-      ? ["clash_workspace_", "clash_studio_"]
-      : family === "other"
-        ? []
-        : [`clash_${family}_`];
+    const prefixes =
+      family === "workspace"
+        ? ["clash_workspace_", "clash_studio_"]
+        : family === "other"
+          ? []
+          : [`clash_${family}_`];
     const prefix = prefixes.find((candidate) => name.startsWith(candidate));
     return prefix ? name.slice(prefix.length) : name;
   }
 
-  #resolveOperationName(operation: string, selectedCommand?: ClashMcpCommandId): string {
+  #resolveOperationName(
+    operation: string,
+    selectedCommand?: ClashMcpCommandId,
+  ): string {
     if (operation.startsWith("clash_")) return operation;
     if (!selectedCommand) {
-      throw new Error(`Clash short operation ${operation} requires an explicit command.`);
+      throw new Error(
+        `Clash short operation ${operation} requires an explicit command.`,
+      );
     }
-    const matches = this.#liveModelTools().filter(({ name }) => (
-      classifyClashMcpTool(name) === selectedCommand
-      && this.#commandLocalOperation(name) === operation
-    ));
+    const matches = this.#liveModelTools().filter(
+      ({ name }) =>
+        classifyClashMcpTool(name) === selectedCommand &&
+        this.#commandLocalOperation(name) === operation,
+    );
     if (matches.length === 0) {
-      throw new Error(`Clash ${selectedCommand} operation ${operation} is not registered, enabled, and model-visible in this host.`);
+      throw new Error(
+        `Clash ${selectedCommand} operation ${operation} is not registered, enabled, and model-visible in this host.`,
+      );
     }
     if (matches.length > 1) {
-      throw new Error(`Clash ${selectedCommand} operation ${operation} is ambiguous; use a complete clash_* leaf name.`);
+      throw new Error(
+        `Clash ${selectedCommand} operation ${operation} is ambiguous; use a complete clash_* leaf name.`,
+      );
     }
     return matches[0]!.name;
   }
@@ -487,17 +647,28 @@ export class ClashMcpServer extends McpServer {
     allowedCommands?: readonly ClashMcpCommandId[];
     extra: ClashToolExtra;
   }): Promise<CallToolResult> {
-    const operationName = this.#resolveOperationName(input.operation, input.selectedCommand);
-    const registered = this.#liveModelTools().find(({ name }) => name === operationName);
+    const operationName = this.#resolveOperationName(
+      input.operation,
+      input.selectedCommand,
+    );
+    const registered = this.#liveModelTools().find(
+      ({ name }) => name === operationName,
+    );
     if (!registered) {
-      throw new Error(`Clash operation ${operationName} is not registered, enabled, and model-visible in this host.`);
+      throw new Error(
+        `Clash operation ${operationName} is not registered, enabled, and model-visible in this host.`,
+      );
     }
     const family = classifyClashMcpTool(registered.name);
     if (family === "other") {
-      throw new Error(`Clash operation ${registered.name} is not part of a root command.`);
+      throw new Error(
+        `Clash operation ${registered.name} is not part of a root command.`,
+      );
     }
     if (input.allowedCommands && !input.allowedCommands.includes(family)) {
-      throw new Error(`Clash operation ${registered.name} is not available through this dispatcher.`);
+      throw new Error(
+        `Clash operation ${registered.name} is not available through this dispatcher.`,
+      );
     }
     if (input.selectedCommand && family !== input.selectedCommand) {
       throw new Error(
@@ -520,16 +691,22 @@ export class ClashMcpServer extends McpServer {
     }
 
     if (typeof handle.handler !== "function") {
-      throw new Error(`Task-based Clash operation ${registered.name} cannot use root dispatch.`);
+      throw new Error(
+        `Task-based Clash operation ${registered.name} cannot use root dispatch.`,
+      );
     }
     const result = handle.inputSchema
-      ? await (handle.handler as (
-          args: unknown,
-          extra: ClashToolExtra,
-        ) => CallToolResult | Promise<CallToolResult>)(parsedArguments, input.extra)
-      : await (handle.handler as (
-          extra: ClashToolExtra,
-        ) => CallToolResult | Promise<CallToolResult>)(input.extra);
+      ? await (
+          handle.handler as (
+            args: unknown,
+            extra: ClashToolExtra,
+          ) => CallToolResult | Promise<CallToolResult>
+        )(parsedArguments, input.extra)
+      : await (
+          handle.handler as (
+            extra: ClashToolExtra,
+          ) => CallToolResult | Promise<CallToolResult>
+        )(input.extra);
 
     if (handle.outputSchema && !result.isError) {
       if (!result.structuredContent) {
@@ -549,27 +726,34 @@ export class ClashMcpServer extends McpServer {
     return result;
   }
 
-  #visibleTools(tools: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  #visibleTools(
+    tools: Array<Record<string, unknown>>,
+  ): Array<Record<string, unknown>> {
     return tools.filter((tool): tool is ToolDefinition => {
       if (typeof tool.name !== "string") return false;
       if (
         Object.values(LEGACY_CLASH_GROUP_TOOL_NAMES).includes(
-          tool.name as (typeof LEGACY_CLASH_GROUP_TOOL_NAMES)[LegacyClashGroupCommandId]
+          tool.name as (typeof LEGACY_CLASH_GROUP_TOOL_NAMES)[LegacyClashGroupCommandId],
         )
-      ) return false;
+      )
+        return false;
       if (
-        tool.name === CLASH_ROOT_TOOL_NAME
-        || tool.name === CLASH_CANVAS_TOOL_NAME
-        || tool.name === CLASH_COMPOSITION_TOOL_NAME
-        || tool.name === "clash_workspace_init"
-      ) return true;
+        tool.name === CLASH_ROOT_TOOL_NAME ||
+        tool.name === CLASH_ASSETS_TOOL_NAME ||
+        tool.name === CLASH_CANVAS_TOOL_NAME ||
+        tool.name === CLASH_COMPOSITION_TOOL_NAME ||
+        tool.name === "clash_workspace_init"
+      )
+        return true;
       return classifyClashMcpTool(tool.name) === "other";
     });
   }
 
   override async connect(transport: Transport): Promise<void> {
-    await super.connect(new McpSchemaCompatibilityTransport(transport, {
-      filterTools: (tools) => this.#visibleTools(tools),
-    }));
+    await super.connect(
+      new McpSchemaCompatibilityTransport(transport, {
+        filterTools: (tools) => this.#visibleTools(tools),
+      }),
+    );
   }
 }

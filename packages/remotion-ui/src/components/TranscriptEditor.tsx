@@ -226,7 +226,7 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
   const missingAssets = React.useMemo(() => {
     const byId = new Map<string, Asset>();
     for (const asset of assets) {
-      if (asset.backingAssetId) byId.set(asset.backingAssetId, asset);
+      if (asset.projectAssetId) byId.set(asset.projectAssetId, asset);
       byId.set(asset.id, asset);
     }
     const seen = new Set<string>();

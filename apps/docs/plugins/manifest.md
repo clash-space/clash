@@ -116,8 +116,8 @@ const reference = await context.reference?.(invocation.input.references[0]);
 
 if (reference?.form === "bytes") {
   await sendBytesToVendor(reference.bytes, reference.mediaType);
-} else if (reference?.form === "url") {
-  await sendUrlToVendor(reference.url);
+} else if (reference?.form === "provider-url") {
+  await sendUrlToVendor(reference.providerUrl);
 }
 ```
 

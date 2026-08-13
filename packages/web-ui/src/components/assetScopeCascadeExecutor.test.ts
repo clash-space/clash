@@ -3,17 +3,15 @@ import { executeAssetScopeCascade } from "./assetScopeCascadeExecutor";
 
 function adapter() {
   return {
-    ensureProjectReference: vi.fn(async () => undefined),
+    ensureProjectReference: vi.fn(async (assetId: string) => assetId),
     ensureCanvasPlacement: vi.fn(async () => "canvas-node-2"),
-    ensureTimelineReference: vi.fn(async () => undefined),
-    ensureCanvasTimelineInput: vi.fn(async () => undefined),
   };
 }
 
 describe("executeAssetScopeCascade", () => {
-  it("passes the created Canvas placement forward into the Timeline input", async () => {
+  it("returns the created Canvas placement for the caller's insertion hint", async () => {
     const target = adapter();
-    await executeAssetScopeCascade({
+    const result = await executeAssetScopeCascade({
       steps: [
         { kind: "ensure-project-reference", assetId: "asset-1" },
         {
@@ -21,46 +19,51 @@ describe("executeAssetScopeCascade", () => {
           canvasId: "canvas-1",
           assetId: "asset-1",
         },
-        {
-          kind: "ensure-timeline-input",
-          via: "canvas-edge",
-          timelineId: "timeline-1",
-          canvasId: "canvas-1",
-          actionNodeId: "action-1",
-          assetId: "asset-1",
-        },
       ],
       initial: { assetId: "asset-1" },
       adapter: target,
     });
 
-    expect(target.ensureCanvasTimelineInput).toHaveBeenCalledWith(
-      expect.objectContaining({ sourceNodeId: "canvas-node-2" }),
-    );
+    expect(result).toEqual({
+      assetId: "asset-1",
+      sourceNodeId: "canvas-node-2",
+    });
   });
 
-  it("uses an existing current-Canvas node without creating another placement", async () => {
+  it("uses the new Project identity returned when a Global entry is admitted", async () => {
     const target = adapter();
-    await executeAssetScopeCascade({
+    target.ensureProjectReference.mockResolvedValue("project-asset-2");
+
+    const result = await executeAssetScopeCascade({
       steps: [
-        {
-          kind: "ensure-timeline-input",
-          via: "canvas-edge",
-          timelineId: "timeline-1",
-          canvasId: "canvas-1",
-          actionNodeId: "action-1",
-          assetId: "asset-1",
-          sourceNodeId: "existing-node",
-        },
+        { kind: "ensure-project-reference", assetId: "global-asset-1" },
+        { kind: "ensure-canvas-placement", canvasId: "canvas-1" },
       ],
+      initial: { assetId: "global-asset-1" },
+      adapter: target,
+    });
+
+    expect(target.ensureCanvasPlacement).toHaveBeenCalledWith({
+      canvasId: "canvas-1",
+      assetId: "project-asset-2",
+      sourceNodeId: undefined,
+    });
+    expect(result.assetId).toBe("project-asset-2");
+  });
+
+  it("preserves an existing current-Canvas node until item insertion", async () => {
+    const target = adapter();
+    const result = await executeAssetScopeCascade({
+      steps: [],
       initial: { assetId: "asset-1", sourceNodeId: "existing-node" },
       adapter: target,
     });
 
     expect(target.ensureCanvasPlacement).not.toHaveBeenCalled();
-    expect(target.ensureCanvasTimelineInput).toHaveBeenCalledWith(
-      expect.objectContaining({ sourceNodeId: "existing-node" }),
-    );
+    expect(result).toEqual({
+      assetId: "asset-1",
+      sourceNodeId: "existing-node",
+    });
   });
 
   it("materializes a local file only through the supplied project adapter", async () => {

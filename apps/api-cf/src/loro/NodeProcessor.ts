@@ -15,23 +15,16 @@ import { Status } from '../domain/canvas';
 import type { GenerationParams } from '../agents/generation';
 import { getAssetById, getAssetsByIds } from '../services/assets';
 import { signAssetPath } from '../services/asset-signing';
-import { loadSecrets } from '../services/user-variables';
 
 import {
-  CustomActionDefinitionSchema,
-  ExecutablePluginBindingSchema,
   MODEL_CARDS,
   normalizeModelId,
   parsePromptParts,
   extractPromptText,
   validateRefs,
   validateReferenceMedia,
-  type CustomActionDefinition,
-  type CustomActionSecret,
-  type ExecutablePluginReference,
   type ReferenceMediaMetadata,
 } from '@clash/shared-types';
-import { deriveRuntimeStatus } from '../lib/runtime-status';
 
 const defaultImageModel = MODEL_CARDS.find((card) => card.kind === 'image')?.id ?? 'nano-banana-2';
 const defaultVideoModel = MODEL_CARDS.find((card) => card.kind === 'video')?.id ?? 'sora-2';
@@ -42,69 +35,6 @@ const getModelCard = (modelId?: string) => {
   const canonicalId = normalizeModelId(modelId) ?? modelId;
   return MODEL_CARDS.find((card) => card.id === canonicalId);
 };
-
-async function loadInstalledCustomAction(
-  env: Env,
-  userId: string,
-  actionId: string,
-): Promise<CustomActionDefinition | undefined> {
-  const row = await env.DB
-    .prepare('SELECT manifest FROM installed_action WHERE user_id = ? AND action_id = ? LIMIT 1')
-    .bind(userId, actionId)
-    .first<{ manifest: string }>();
-  if (!row?.manifest) return undefined;
-  try {
-    const parsed = CustomActionDefinitionSchema.safeParse(JSON.parse(row.manifest));
-    if (!parsed.success) {
-      log.warn('custom.dispatch.invalid_installed_manifest', {
-        userId,
-        actionId,
-        error: parsed.error.message,
-      });
-      return undefined;
-    }
-    return parsed.data;
-  } catch (e) {
-    log.warn('custom.dispatch.unreadable_installed_manifest', {
-      userId,
-      actionId,
-      error: e instanceof Error ? e.message : String(e),
-    });
-    return undefined;
-  }
-}
-
-function parseRegisteredCustomAction(raw: unknown): CustomActionDefinition | undefined {
-  const parsed = CustomActionDefinitionSchema.safeParse(raw);
-  return parsed.success ? parsed.data : undefined;
-}
-
-async function loadActionSecretValues(
-  env: Env,
-  userId: string,
-  declaredSecrets: CustomActionSecret[] | undefined,
-): Promise<Record<string, string>> {
-  const secrets = Array.isArray(declaredSecrets)
-    ? declaredSecrets.filter((secret) => secret && typeof secret.id === 'string' && secret.id.length > 0)
-    : [];
-  const secretIds = [...new Set(secrets.map((secret) => secret.id))];
-  if (secretIds.length === 0) return {};
-
-  const requiredSecretIds = secrets
-    .filter((secret) => secret.required !== false)
-    .map((secret) => secret.id);
-  if (!env.ACTION_SECRET_KEY) {
-    if (requiredSecretIds.length === 0) return {};
-    throw new Error('Server not configured for action secret decryption');
-  }
-
-  const loaded = await loadSecrets(env.DB, userId, secretIds, env.ACTION_SECRET_KEY);
-  const missingRequired = requiredSecretIds.filter((id) => !loaded[id]);
-  if (missingRequired.length > 0) {
-    throw new Error(`Missing required action secret: ${missingRequired.join(', ')}`);
-  }
-  return loaded;
-}
 
 type NodeType = 'image' | 'video' | 'audio' | 'text' | 'video_render';
 
@@ -470,11 +400,6 @@ export async function processPendingNodes(
   projectId: string,
   broadcast: (data: Uint8Array) => void,
   triggerPolling: () => Promise<void>,
-  // Optional JSON sideband — used to notify local agents (Python SDK
-  // over `x-client-type: cli` WS) when a new custom-action task is
-  // assigned. The SDK doesn't speak Loro, so binary CRDT updates pass
-  // it by; this sideband is the only way it learns there's work to do.
-  broadcastJson?: (json: unknown, options?: { runtimeId?: string }) => void,
 ): Promise<void> {
   try {
     const nodesMap = doc.getMap('nodes');
@@ -582,289 +507,25 @@ export async function processPendingNodes(
         continue;
       }
 
-      // Case: custom action pending → route based on runtime (local agent or CF Worker)
+      // Executable plugins run through local-api's Host-scoped SDK and Durable Run Engine.
+      // The hosted Cloud adapter was a second execution model: it retried an opaque HTTP submit and
+      // could charge twice across the ambiguous-submit boundary. Cloud execution remains a designed
+      // port until it can use the same journal, step graph, staging, and publication contracts.
       if (status === Status.Pending && !assetId && innerData.actionType?.startsWith('custom:')) {
-        // Phase 0 attribution: every generation needs an actor. Legacy
-        // nodes (created before this rollout) won't have one — refuse
-        // to dispatch rather than silently fall back to the project
-        // owner (which was the bug). One log line + a failed-node
-        // status keeps the loop moving past the bad row.
-        const nodeActorUserId = typeof innerData.actorUserId === 'string' ? innerData.actorUserId : undefined;
-        const nodeActorType: 'user' | 'agent' = innerData.actorType === 'agent' ? 'agent' : 'user';
-        const nodeActorAgentId = typeof innerData.actorAgentId === 'string' ? innerData.actorAgentId : undefined;
-        if (!nodeActorUserId) {
-          const error = 'Missing actor attribution — node created before Phase 0 attribution rollout';
-          log.warn('attribution.missing.custom', { nodeId, actionType: innerData.actionType });
-          updateNodeData(doc, nodeId, {
-            pendingTask: undefined,
-            status: Status.Failed,
-            error,
-          }, broadcast);
-          continue;
-        }
-
-        const actionId = innerData.customActionId ?? innerData.actionType.replace('custom:', '');
-
-        // Check runtime from Loro customActions map
-        const actionsMap = doc.getMap('customActions');
-        const registeredActionDef = parseRegisteredCustomAction(actionsMap.get(actionId));
-        const actionDef = registeredActionDef ?? await loadInstalledCustomAction(env, nodeActorUserId, actionId);
-        const runtime = actionDef?.runtime || 'local';
-        const workerUrl = actionDef?.workerUrl;
-        const registeredByRuntime: string | undefined =
-          typeof actionDef?.registeredByRuntime === 'string' && actionDef.registeredByRuntime.length > 0
-            ? actionDef.registeredByRuntime
-            : undefined;
-
-        // Local-runtime gate: refuse to dispatch when the runtime that
-        // registered this action is offline. Without this check, the
-        // task would sit in the Loro tasks map indefinitely and the UI
-        // would happily show the action as "running" while nothing is
-        // actually listening to execute it.
-        //
-        // Worker-runtime actions skip this gate — they're CF-hosted, so
-        // there's no local liveness signal to consult.
-        if (runtime === 'local') {
-          if (!registeredByRuntime) {
-            const error = 'Local runtime offline — start your bridge to run this action';
-            log.warn('custom.dispatch.no_runtime', { nodeId, actionId });
-            appendNodeLog(doc, nodeId, `FAILED: ${error}`, broadcast);
-            updateNodeData(doc, nodeId, {
-              pendingTask: undefined,
-              status: Status.Failed,
-              error,
-            }, broadcast);
-            continue;
-          }
-          const runtimeRow = await env.DB
-            .prepare('SELECT status, last_heartbeat FROM runtime WHERE id = ? LIMIT 1')
-            .bind(registeredByRuntime)
-            .first<{ status: string; last_heartbeat: number | null }>();
-          const derivedStatus = runtimeRow
-            ? deriveRuntimeStatus(runtimeRow.status, runtimeRow.last_heartbeat)
-            : 'offline';
-          if (derivedStatus !== 'online') {
-            const error = 'Local runtime offline — start your bridge to run this action';
-            log.warn('custom.dispatch.runtime_offline', {
-              nodeId,
-              actionId,
-              registeredByRuntime,
-              derivedStatus,
-            });
-            appendNodeLog(doc, nodeId, `FAILED: ${error}`, broadcast);
-            updateNodeData(doc, nodeId, {
-              pendingTask: undefined,
-              status: Status.Failed,
-              error,
-            }, broadcast);
-            continue;
-          }
-        }
-        if (runtime === 'worker' && !workerUrl) {
-          const error = 'Worker action missing workerUrl';
-          log.warn('custom.dispatch.no_worker_url', { nodeId, actionId });
-          appendNodeLog(doc, nodeId, `FAILED: ${error}`, broadcast);
-          updateNodeData(doc, nodeId, {
-            pendingTask: undefined,
-            status: Status.Failed,
-            error,
-          }, broadcast);
-          continue;
-        }
-
-        // Past the gate: now allocate the taskId and lock the node.
-        const taskId = crypto.randomUUID();
-        updateNodeData(doc, nodeId, { status: Status.Generating, pendingTask: taskId, pendingTaskAt: Date.now() }, broadcast);
-        appendNodeLog(doc, nodeId, `task=${taskId.slice(0, 8)} type=custom action=${actionId}`, broadcast);
-
-        // Resolve attached refs into R2 keys + lineage rows. Before
-        // this, custom actions silently ignored every referenced
-        // canvas asset — the manifest's `promptModalities` declared
-        // "this action accepts image inputs" but the pending node's
-        // `referenceImageAssetIds` were dropped on the floor here.
-        // Mirroring the standard-model path's resolution closes the
-        // gap so worker / local actions see the same refs the user
-        // wired through the prompt @-mention picker.
-        const customRefImageAssetIds: string[] = (Array.isArray(innerData.referenceImageAssetIds) ? innerData.referenceImageAssetIds : [])
-          .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
-        const customRefVideoAssetIds: string[] = (Array.isArray(innerData.referenceVideoAssetIds) ? innerData.referenceVideoAssetIds : [])
-          .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
-        const customRefAudioAssetIds: string[] = (Array.isArray(innerData.referenceAudioAssetIds) ? innerData.referenceAudioAssetIds : [])
-          .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
-        const customAllAssetIds = [...customRefImageAssetIds, ...customRefVideoAssetIds, ...customRefAudioAssetIds];
-
-        const customRefImageR2Keys: string[] = [];
-        const customRefVideoR2Keys: string[] = [];
-        const customRefAudioR2Keys: string[] = [];
-        const customSources: Array<{ assetId: string; role: 'primary' | 'reference' | 'edit-source' }> = [];
-        if (customAllAssetIds.length > 0) {
-          // Use the actor as the asset owner for the lookup. Pre-Phase-0
-          // this consulted getProjectOwner; the actor is the right
-          // answer in single-user mode and the only correct answer
-          // once multiple humans share a project.
-          const ownerId = nodeActorUserId;
-          if (ownerId) {
-            const assets = await getAssetsByIds(env.DB, customAllAssetIds, ownerId);
-            const assetById = new Map(assets.map((a) => [a.id, a.srcR2Key]));
-            for (const id of customRefImageAssetIds) {
-              const k = assetById.get(id);
-              if (k) { customRefImageR2Keys.push(k); customSources.push({ assetId: id, role: 'reference' }); }
-            }
-            for (const id of customRefVideoAssetIds) {
-              const k = assetById.get(id);
-              if (k) { customRefVideoR2Keys.push(k); customSources.push({ assetId: id, role: 'reference' }); }
-            }
-            for (const id of customRefAudioAssetIds) {
-              const k = assetById.get(id);
-              if (k) { customRefAudioR2Keys.push(k); customSources.push({ assetId: id, role: 'reference' }); }
-            }
-          }
-        }
-
-        const parsedPluginBinding = ExecutablePluginBindingSchema.safeParse(innerData.pluginBinding);
-        const pluginBinding = parsedPluginBinding.success ? parsedPluginBinding.data : undefined;
-        if (pluginBinding) {
-          const installedBinding = actionDef?.pluginBinding;
-          if (!installedBinding
-            || installedBinding.pluginId !== pluginBinding.pluginId
-            || installedBinding.version !== pluginBinding.version
-            || installedBinding.exportId !== pluginBinding.exportId
-            || installedBinding.schemaHash !== pluginBinding.schemaHash) {
-            const error = `Pinned plugin ${pluginBinding.pluginId}@${pluginBinding.version} is not installed with the exact schema.`;
-            appendNodeLog(doc, nodeId, `FAILED: ${error}`, broadcast);
-            updateNodeData(doc, nodeId, {
-              pendingTask: undefined,
-              status: Status.Failed,
-              error,
-            }, broadcast);
-            continue;
-          }
-        }
-        const pluginReferences: ExecutablePluginReference[] = [
-          ...customRefImageAssetIds.map((id, index) => ({
-            slot: 'image',
-            index,
-            asset: { assetId: id, uri: `clash-asset://${id}`, kind: 'image' as const },
-          })),
-          ...customRefVideoAssetIds.map((id, index) => ({
-            slot: 'video',
-            index,
-            asset: { assetId: id, uri: `clash-asset://${id}`, kind: 'video' as const },
-          })),
-          ...customRefAudioAssetIds.map((id, index) => ({
-            slot: 'audio',
-            index,
-            asset: { assetId: id, uri: `clash-asset://${id}`, kind: 'audio' as const },
-          })),
-        ];
-
-        if (runtime === 'worker' && workerUrl) {
-          // Route to CF Worker via GenerationWorkflow (retries + durability)
-          const genParams: GenerationParams = {
-            taskId,
-            nodeId,
-            type: 'custom_action',
-            projectId,
-            prompt: innerData.prompt || innerData.content || '',
-            customActionId: actionId,
-            customActionParams: innerData.customActionParams || {},
-            customActionModel: actionDef?.model,
-            customActionSecrets: actionDef?.secrets,
-            workerUrl,
-            pluginBinding,
-            pluginReferences: pluginReferences.length > 0 ? pluginReferences : undefined,
-            referenceImageR2Keys: customRefImageR2Keys.length > 0 ? customRefImageR2Keys : undefined,
-            referenceVideoR2Keys: customRefVideoR2Keys.length > 0 ? customRefVideoR2Keys : undefined,
-            referenceAudioR2Keys: customRefAudioR2Keys.length > 0 ? customRefAudioR2Keys : undefined,
-            sources: customSources.length > 0 ? customSources : undefined,
-            actorType: nodeActorType,
-            actorUserId: nodeActorUserId,
-            actorAgentId: nodeActorAgentId,
-          };
-
-          try {
-            await startGeneration(env, taskId, genParams);
-            appendNodeLog(doc, nodeId, `submitted to worker: ${workerUrl}`, broadcast);
-            submitted = true;
-          } catch (e: any) {
-            appendNodeLog(doc, nodeId, `FAILED: ${String(e)}`, broadcast);
-            updateNodeData(doc, nodeId, { pendingTask: undefined, status: Status.Failed, error: String(e) }, broadcast);
-          }
-        } else {
-          // Route to local agent via Loro tasks map
-          const versionBefore = doc.version();
-          const tasksMap = doc.getMap('tasks');
-          // Wire shape note: refs are nested under `refs.{image,video,audio}`
-          // so the SDK has one place to look. The legacy flat
-          // `referenceXR2Keys` fields are kept alongside for any callers
-          // (worker code path notifications, debug dumps) that still
-          // peek at them.
-          const refs: Record<string, string[]> = {};
-          if (customRefImageR2Keys.length > 0) refs.image = customRefImageR2Keys;
-          if (customRefVideoR2Keys.length > 0) refs.video = customRefVideoR2Keys;
-          if (customRefAudioR2Keys.length > 0) refs.audio = customRefAudioR2Keys;
-          let localSecrets: Record<string, string>;
-          try {
-            localSecrets = await loadActionSecretValues(env, nodeActorUserId, actionDef?.secrets);
-          } catch (e) {
-            const error = e instanceof Error ? e.message : String(e);
-            appendNodeLog(doc, nodeId, `FAILED: ${error}`, broadcast);
-            updateNodeData(doc, nodeId, { pendingTask: undefined, status: Status.Failed, error }, broadcast);
-            continue;
-          }
-          const taskRecord: Record<string, any> = {
-            taskId,
-            nodeId,
-            projectId,
-            actionType: innerData.actionType,
-            customActionId: actionId,
-            params: innerData.customActionParams || {},
-            model: actionDef?.model,
-            secretIds: actionDef?.secrets?.map((secret) => secret.id) ?? [],
-            prompt: innerData.prompt || innerData.content || '',
-            outputType: actionDef?.outputType || innerData.outputType || 'image',
-            refs,
-            referenceImageR2Keys: customRefImageR2Keys.length > 0 ? customRefImageR2Keys : undefined,
-            referenceVideoR2Keys: customRefVideoR2Keys.length > 0 ? customRefVideoR2Keys : undefined,
-            referenceAudioR2Keys: customRefAudioR2Keys.length > 0 ? customRefAudioR2Keys : undefined,
-            // Phase 0 attribution: SDK echoes these back as form fields
-            // on the upload POST + the complete_custom_task message so
-            // the asset row's user_id and any plugin-side budget
-            // accounting use the actor, not the project owner.
-            actorType: nodeActorType,
-            actorUserId: nodeActorUserId,
-            actorAgentId: nodeActorAgentId,
-            sources: customSources.length > 0 ? customSources : undefined,
-            status: 'waiting_for_agent',
-            createdAt: Date.now(),
-            // Lets ProjectRoom's replay scan re-dispatch only to the
-            // runtime that originally owned the registration.
-            registeredByRuntime,
-          };
-          tasksMap.set(taskId, taskRecord);
-          const update = doc.export({ mode: 'update', from: versionBefore });
-          broadcast(update);
-
-          // Notify connected local agents over JSON sideband. Python
-          // SDK clients can't parse the Loro binary update, so this
-          // is the only signal they get that a task is waiting.
-          if (broadcastJson) {
-            broadcastJson({
-              type: 'custom_task_assigned',
-              task: { ...taskRecord, secrets: localSecrets },
-            }, { runtimeId: registeredByRuntime });
-          }
-        }
-
-        log.info('Custom action task dispatched', { nodeId, taskId, runtime, actionType: innerData.actionType });
+        const error =
+          'Cloud executable-plugin execution is unavailable; run this Action through local-api.';
+        appendNodeLog(doc, nodeId, `FAILED: ${error}`, broadcast);
+        updateNodeData(doc, nodeId, {
+          pendingTask: undefined,
+          status: Status.Failed,
+          error,
+        }, broadcast);
         continue;
       }
-
       // Case 1: pending + no asset yet -> submit generation task
       if (status === Status.Pending && !assetId) {
-        // Phase 0 attribution gate — same shape as the custom-action
-        // branch above. Legacy nodes get a single warning + a failed
-        // status; we don't crash the whole loop on one bad row.
+        // Phase 0 attribution gate. Legacy nodes get a single warning + a failed status; we don't
+        // crash the whole loop on one bad row.
         const nodeActorUserId = typeof innerData.actorUserId === 'string' ? innerData.actorUserId : undefined;
         const nodeActorType: 'user' | 'agent' = innerData.actorType === 'agent' ? 'agent' : 'user';
         const nodeActorAgentId = typeof innerData.actorAgentId === 'string' ? innerData.actorAgentId : undefined;

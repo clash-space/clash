@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { Readable } from "node:stream";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ExecutablePluginResultSchema } from "@clash/shared-types/executable-plugin";
 
 import { assemblePlugin, defineExecutor, defineProjector } from "./assemble.js";
 
@@ -15,8 +16,8 @@ import { assemblePlugin, defineExecutor, defineProjector } from "./assemble.js";
  * never declared it, so the host answered "does not export provider-executor google-execute" and
  * the path stayed unreachable until a generation happened to hit it.
  *
- * The manifest keeps what the host must know without running anything -- the export ids, their
- * kind, the permissions. The implementation is keyed by the same id. No `handler` indirection: a
+ * The manifest keeps what the host must know without running anything -- the contribution ids and
+ * their kinds. The implementation is keyed by the same id. No `handler` indirection: a
  * name that exists only to point at another name is a name that can point at nothing.
  */
 function manifestDir(functions: unknown[]): string {
@@ -41,6 +42,7 @@ describe("assembling a plugin from its manifest", () => {
       target: { exportId: "x-project", kind: "provider-projector" },
       input: { values: {}, references: [] },
     } as never);
+    ExecutablePluginResultSchema.parse(result);
     expect(result.status).toBe("completed");
     expect((result as { outputs: { value: unknown }[] }).outputs[0]!.value)
       .toEqual({ endpoint: "vendor/model" });
@@ -94,7 +96,88 @@ describe("assembling a plugin from its manifest", () => {
       target: { exportId: "x-execute", kind: "provider-executor" },
       input: { values: {}, references: [] },
     } as never);
+    ExecutablePluginResultSchema.parse(accepted);
     expect(accepted.status).toBe("accepted");
+  });
+
+  it("routes callback to the declared callback handler without submitting again", async () => {
+    const dir = manifestDir([{
+      id: "x-execute",
+      kind: "provider-executor",
+      operations: ["submit", "poll", "callback"],
+    }]);
+    let submissions = 0;
+    let callbacks = 0;
+    const plugin = assemblePlugin({
+      manifestDir: dir,
+      contributes: {
+        "x-execute": defineExecutor({
+          submit: async () => {
+            submissions += 1;
+            return { status: "accepted" as const, pollState: { id: "job-1" } };
+          },
+          callback: async () => {
+            callbacks += 1;
+            return { status: "completed" as const, outputs: [] };
+          },
+        }),
+      },
+    });
+
+    const result = await plugin.invoke({
+      protocol: "clash.plugin.invoke/v1",
+      invocationId: "i-callback",
+      taskId: "task-1",
+      projectId: "project-1",
+      operation: "callback",
+      callbackPayload: { taskId: "job-1", status: "done" },
+      target: {
+        pluginId: "test.plugin",
+        version: "0.1.0",
+        exportId: "x-execute",
+        schemaHash: `sha256:${"a".repeat(64)}`,
+        kind: "provider-executor",
+      },
+      input: { values: {}, references: [] },
+      actor: { kind: "system", id: "host" },
+    });
+
+    expect(result.status).toBe("completed");
+    expect(callbacks).toBe(1);
+    expect(submissions).toBe(0);
+  });
+
+  it("preserves a structured executor failure", async () => {
+    const dir = manifestDir([{ id: "x-execute", kind: "provider-executor" }]);
+    const error = {
+      code: "execution_failed" as const,
+      message: "provider rejected the request",
+      retryable: true,
+      requestState: "rejected" as const,
+      providerCode: "quota_exceeded",
+      details: { limit: 10 },
+    };
+    const plugin = assemblePlugin({
+      manifestDir: dir,
+      contributes: {
+        "x-execute": defineExecutor({
+          submit: async () => ({ status: "failed" as const, error }),
+        }),
+      },
+    });
+
+    await expect(plugin.invoke({
+      invocationId: "i-failed",
+      operation: "submit",
+      target: { exportId: "x-execute", kind: "provider-executor" },
+      input: { values: {}, references: [] },
+    } as never)).resolves.toMatchObject({ status: "failed", error });
+    ExecutablePluginResultSchema.parse(await plugin.invoke({
+      invocationId: "i-failed-envelope",
+      operation: "submit",
+      target: { exportId: "x-execute", kind: "provider-executor" },
+      input: { values: {}, references: [] },
+    } as never));
   });
 });
 
@@ -193,22 +276,21 @@ describe("a completed step that names media", () => {
           }),
         }),
       },
-      context: {
-        upload: async (request: { slot: string; kind: string }) => {
-          uploaded.push(request as never);
-          return {
-            slot: request.slot,
-            kind: "asset",
-            asset: { assetId: "a1", uri: "clash-asset://a1", kind: "image" },
-          };
-        },
-      } as never,
     });
 
     const result = await plugin.invoke({
       invocationId: "i1",
       target: { exportId: "x-execute", kind: "provider-executor" },
       input: { values: {}, references: [] },
+    } as never, {
+      upload: async (request: { slot: string; kind: string }) => {
+        uploaded.push(request as never);
+        return {
+          slot: request.slot,
+          kind: "asset",
+          asset: { assetId: "a1", uri: "clash-asset://a1", kind: "image" },
+        };
+      },
     } as never);
 
     expect(uploaded).toHaveLength(1);

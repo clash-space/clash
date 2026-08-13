@@ -43,7 +43,6 @@ export {
   TimelineEffectInstanceRefSchema,
   TimelineEffectParamValueSchema,
   TimelineItemPropertiesSchema,
-  TimelineMediaAssetRefSchema,
   TimelineMediaFitSchema,
   TimelineSourceToOutputFrameMapSchema,
   TimelineSequenceSchema,
@@ -55,7 +54,7 @@ export {
   type TimelineDslRuntimeConsumer,
   type TimelineDslTrackCategory,
   type TimelineDslTrackRole,
-} from './timeline-field-annotations.js';
+} from "./timeline-field-annotations.js";
 
 export {
   TIMELINE_OPERATION_CATALOG,
@@ -70,7 +69,7 @@ export {
   type TimelineOperationId,
   type TimelineOperationKind,
   type TimelineOperationReadProof,
-} from './timeline-operation-annotations.js';
+} from "./timeline-operation-annotations.js";
 
 export {
   AgentAnnotationDraftSchema,
@@ -87,7 +86,7 @@ export {
   type AgentAnnotationSurface,
   type AgentAnnotationTarget,
   type AgentAnnotationVisualRect,
-} from './agent-annotation.js';
+} from "./agent-annotation.js";
 
 export {
   TIMELINE_LIBRARY_CATEGORIES,
@@ -105,7 +104,7 @@ export {
   type TimelineLibraryGroup,
   type TimelineLibraryItem,
   type TimelineLibraryItemViewState,
-} from './timeline-library.js';
+} from "./timeline-library.js";
 
 export {
   BuildTimelineTranscriptProjectionInputSchema,
@@ -119,7 +118,7 @@ export {
   type TimelineTranscriptProjection,
   type TimelineTranscriptSource,
   type TimelineTranscriptWord,
-} from './timeline-transcript.js';
+} from "./timeline-transcript.js";
 
 export {
   DirectorStageActionClipSchema,
@@ -192,7 +191,7 @@ export {
   type ProjectDirectorStage,
   type ProjectDirectorStageMutationResult,
   type DirectorStageOwnershipReconciliation,
-} from './director-stage.js';
+} from "./director-stage.js";
 
 export {
   DirectorReferencePacketSchema,
@@ -205,7 +204,7 @@ export {
   type DirectorReferenceShot,
   type DirectorReferenceStill,
   type DirectorReferenceVideo,
-} from './director-reference.js';
+} from "./director-reference.js";
 
 export {
   // Schemas
@@ -281,7 +280,7 @@ export {
   type CustomActionModel,
   type ActionProviderId,
   type ActionProviderPreset,
-} from './canvas.js';
+} from "./canvas.js";
 
 export {
   ExecutablePluginCardExportSchema,
@@ -301,7 +300,7 @@ export {
   ExecutablePluginContractTestDocumentSchema,
   ExecutablePluginBindingSchema,
   ExecutablePluginAssetHandleSchema,
-  ExecutablePluginAssetReadResultSchema,
+  ExecutablePluginResolvedReferenceSchema,
   assetReachForRuntime,
   pluginRuntimeProfile,
   uploadTargetForRuntime,
@@ -310,6 +309,8 @@ export {
   ExecutablePluginBrokerResponseSchema,
   ExecutablePluginInvocationSchema,
   ExecutablePluginJsonValueSchema,
+  ExecutablePluginFailureCodeSchema,
+  ExecutablePluginFailureErrorSchema,
   ExecutablePluginOutputSchema,
   ExecutablePluginReferenceSchema,
   ExecutablePluginResultSchema,
@@ -342,12 +343,14 @@ export {
   type ExecutablePluginContractTestDocument,
   type ExecutablePluginBinding,
   type ExecutablePluginAssetHandle,
-  type ExecutablePluginAssetReadResult,
+  type ExecutablePluginResolvedReference,
   type ExecutablePluginBrokerOperation,
   type ExecutablePluginBrokerRequest,
   type ExecutablePluginBrokerResponse,
   type ExecutablePluginInvocation,
   type ExecutablePluginJsonValue,
+  type ExecutablePluginFailureCode,
+  type ExecutablePluginFailureError,
   type ExecutablePluginOutput,
   type ExecutablePluginReference,
   type ExecutablePluginResult,
@@ -356,7 +359,7 @@ export {
   type ExecutablePluginManifest,
   type ExecutablePluginRuntime,
   type ValidatedExecutablePluginPackage,
-} from './executable-plugin.js';
+} from "./executable-plugin.js";
 
 export {
   agentReadToken,
@@ -376,7 +379,7 @@ export {
   type ProviderAccountReadProofLike,
   type ProviderOAuthReadProofLike,
   type SessionReadProofLike,
-} from './agent-read-proof.js';
+} from "./agent-read-proof.js";
 
 export {
   validateAgentObservation,
@@ -391,12 +394,12 @@ export {
   type HostMutationEntity,
   type HostMutationGuardResult,
   type HostMutationRecord,
-} from './host-mutation-envelope.js';
+} from "./host-mutation-envelope.js";
 
 export {
   ProjectHostCommandSchema,
   type ProjectHostCommand,
-} from './project-host-command.js';
+} from "./project-host-command.js";
 
 export {
   canvasBatchDeleteReadToken,
@@ -431,7 +434,7 @@ export {
   type CanvasUpdateGuardrailResult,
   type CanvasUpdateNodeLike,
   type CanvasUpdateNodeWithIdLike,
-} from './canvas-update-guardrails.js';
+} from "./canvas-update-guardrails.js";
 
 // Task types (atomic tasks + DO state)
 export {
@@ -453,7 +456,7 @@ export {
   type AtomicTaskResult,
   type DOStepStatus,
   type DOState,
-} from './tasks.js';
+} from "./tasks.js";
 
 // Model capability — single derivation, all consumers read fields off the
 // returned profile. See model-capabilities.ts for the rationale.
@@ -476,7 +479,7 @@ export {
   type Capability,
   type RefNodeLike,
   type RefPartition,
-} from './model-capabilities.js';
+} from "./model-capabilities.js";
 
 // Model metadata
 export {
@@ -486,6 +489,8 @@ export {
   ModelProviderImplementationSchema,
   ProviderCredentialRequirementsSchema,
   ProviderInputAdaptationSchema,
+  ProviderAssetRepresentationSchema,
+  ProviderAssetInputSchema,
   ModelInputModeSchema,
   ModelInputPresentationSchema,
   ModelInputRuleSchema,
@@ -506,10 +511,12 @@ export {
   type ModelProviderImplementation,
   type ProviderCredentialRequirements,
   type ProviderInputAdaptation,
+  type ProviderAssetRepresentation,
+  type ProviderAssetInput,
   type ModelCard,
   ModelConstraintRuleSchema,
   type ModelConstraintRule,
-} from './models.js';
+} from "./models.js";
 
 export {
   GPT_IMAGE_ASPECT_RATIOS,
@@ -528,7 +535,7 @@ export {
   resolveGptImageSize,
   type GptImageResolutionTier,
   type GptImageSize,
-} from './gpt-image-size.js';
+} from "./gpt-image-size.js";
 
 export {
   hasUnattendedCredentialSource,
@@ -538,21 +545,20 @@ export {
   type CredentialSource,
   type CredentialSourceControl,
   type CredentialSourceKind,
-} from './credential-sources.js';
+} from "./credential-sources.js";
 
 export {
   MINIMAX_ENDPOINTS,
   minimaxBaseUrl,
   type MinimaxRegion,
-} from './minimax-region.js';
+} from "./minimax-region.js";
 
 export {
   GOOGLE_PLATFORMS,
   GooglePlatformSchema,
   googleApiBaseUrl,
   type GooglePlatform,
-} from './google-platform.js';
-
+} from "./google-platform.js";
 
 export {
   AspectRatioSchema,
@@ -562,7 +568,7 @@ export {
   reduceAspectRatio,
   supportsAspectRatio,
   type AspectRatio,
-} from './aspect-ratio.js';
+} from "./aspect-ratio.js";
 
 export {
   ACCOUNT_SETTINGS,
@@ -570,14 +576,13 @@ export {
   resolveAccountSetting,
   resolveRequiredSetting,
   type AccountSetting,
-} from './account-settings.js';
-
+} from "./account-settings.js";
 
 export {
   CANONICAL_RESOLUTION_TIERS,
   resolutionTierPixels,
   type CanonicalResolutionTier,
-} from './resolution-tiers.js';
+} from "./resolution-tiers.js";
 
 export {
   applyModelParameterChange,
@@ -588,7 +593,7 @@ export {
   type ModelConfigurationInput,
   type ModelConfigurationValidationOptions,
   type ParameterConfigurationContract,
-} from './model-constraints.js';
+} from "./model-constraints.js";
 
 // Model routing: model-code-first upstream adapter selection.
 export {
@@ -643,7 +648,7 @@ export {
   type ProviderModelSupport,
   type InvalidProviderModelFilter,
   type ModelProviderRouteQuery,
-} from './model-routing.js';
+} from "./model-routing.js";
 
 // Production action -> metadata fill -> asset -> timeline/view contracts.
 export {
@@ -796,12 +801,13 @@ export {
   type StoryboardPromptPack,
   type TalkingHeadMetadata,
   type VideoVisualMomentMetadata,
-} from './production-metadata.js';
+} from "./production-metadata.js";
 
 // Declared asset metadata kinds: the open registry behind the published
 // asset-metadata-fill-action contract.
 export {
-  MediaTranscriptMetadataSchema,  getDeclaredAssetMetadataKind,
+  MediaTranscriptMetadataSchema,
+  getDeclaredAssetMetadataKind,
   listDeclaredAssetMetadataKinds,
   parseAssetMetadataFillAction,
   parseDeclaredAssetMetadata,
@@ -812,7 +818,7 @@ export {
   type MediaDescriptionMetadata,
   type MediaTranscriptMetadata,
   type ParsedAssetMetadataFillAction,
-} from './asset-metadata-registry.js';
+} from "./asset-metadata-registry.js";
 
 // Local speech catalog selectors: one source for GUI and CLI alike.
 export {
@@ -830,13 +836,11 @@ export {
   type LocalSpeechCapability,
   type LocalSpeechCatalogEntry,
   type LocalSpeechModelCard,
-} from './local-speech-catalog.js';
+} from "./local-speech-catalog.js";
 
 // Canvas operations class
-export { Canvas } from './canvas-ops.js';
-export type {
-  ExecuteGenerationResult,
-} from './canvas-ops.js';
+export { Canvas, projectVisibleNodeData } from "./canvas-ops.js";
+export type { ExecuteGenerationResult } from "./canvas-ops.js";
 
 // Re-export types from Canvas for convenience
 export type {
@@ -845,7 +849,7 @@ export type {
   CreateNodeResult,
   CreateLinkedNodeResult,
   TaskStatusResult,
-} from './canvas-ops.js';
+} from "./canvas-ops.js";
 
 // Loro sync client
 export {
@@ -876,6 +880,7 @@ export {
   listProjectTimelines,
   listStandaloneTimelines,
   projectCanvasReadToken,
+  projectTimelineActionId,
   projectTimelineReadToken,
   projectTimelineRevisionId,
   readProjectTimeline,
@@ -917,8 +922,8 @@ export {
 } from "./node-upstreams.js";
 
 // Loro sync client
-export { LoroSyncClient, loroSyncUpdateId } from './loro-client.js';
-export type { LoroSyncClientOptions } from './loro-client.js';
+export { LoroSyncClient, loroSyncUpdateId } from "./loro-client.js";
+export type { LoroSyncClientOptions } from "./loro-client.js";
 
 // Prompt parsing (mixed-modality @-mentions)
 export {
@@ -936,10 +941,10 @@ export {
   type OrderedPromptContentPart,
   type PositionalReferencePromptInput,
   type AssetRef,
-} from './prompt.js';
+} from "./prompt.js";
 
 // Collaboration visibility (presence + activity)
-export * from './presence.js';
+export * from "./presence.js";
 
 // Timeline YAML projection (agent-facing surface)
 export {
@@ -948,17 +953,17 @@ export {
   timelineDslCanonicalJson,
   timelineDslHash,
   resolveFromExpression,
-} from './timeline-yaml.js';
+} from "./timeline-yaml.js";
 export type {
   ResolvedTimelineDsl,
   ResolvedItem,
   ResolvedTrack,
   FromYamlResult,
-} from './timeline-yaml.js';
+} from "./timeline-yaml.js";
 export {
   parseFromExpression,
   type FromExpression,
-} from './timeline-from-expression.js';
+} from "./timeline-from-expression.js";
 export {
   DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
   sampleTimelineKeyframeChannel,
@@ -977,7 +982,7 @@ export {
   type TimelineKeyframeSampleEntry,
   type TimelineScalarKeyframe,
   type TimelineVectorKeyframe,
-} from './timeline-keyframes.js';
+} from "./timeline-keyframes.js";
 export {
   canMergeTimelineItemsAcrossMaskBoundary,
   createDefaultTimelineItemMask,
@@ -1013,7 +1018,7 @@ export {
   type TimelineMaskStaticControlBinding,
   type TimelineMaskVectorAnimatedField,
   type TimelineMaskVectorAnimationBinding,
-} from './timeline-mask.js';
+} from "./timeline-mask.js";
 export {
   TIMELINE_DSL_DEFINITION,
   TIMELINE_DSL_ITEM_TYPES,
@@ -1029,16 +1034,20 @@ export {
   type TimelineDslValidationIssue,
   type TimelineDslValidationResult,
   type TimelineMaskKeyframeSemanticIssue,
-} from './timeline-dsl-schema.js';
+} from "./timeline-dsl-schema.js";
+export {
+  normalizeProjectTimelinePersistenceState,
+  type ProjectTimelinePersistenceResult,
+} from "./timeline-persistence.js";
 export {
   renderTimelineAgentWorkflowReference,
   renderTimelineDslMarkdown,
   renderTimelineMaskSkillReference,
   renderTimelineMaskKeyframesExampleYaml,
-} from './timeline-dsl-docs.js';
+} from "./timeline-dsl-docs.js";
 
 // Asset metadata (D1 assets + asset_refs tables)
-export * from './asset-scope-cascade.js';
+export * from "./asset-scope-cascade.js";
 
 export {
   AssetKindSchema,
@@ -1046,6 +1055,17 @@ export {
   AssetSourceSchema,
   AssetSchema,
   AssetRefRowSchema,
+  ResourceIdSchema,
+  ResourceSchema,
+  ProjectAssetMetadataSchema,
+  ProjectAssetProvenanceSchema,
+  ProjectAssetSourceSchema,
+  ProjectAssetLifecycleSchema,
+  ProjectAssetEntrySchema,
+  GlobalAssetEntrySchema,
+  ActionBindingOwnerSchema,
+  ActionAssetBindingSchema,
+  ResolvedAssetSchema,
   assetReadToken,
   assetRefReadToken,
   type AssetKind,
@@ -1055,12 +1075,89 @@ export {
   type AssetRefRow,
   type AssetReadProofLike,
   type AssetRefReadProofLike,
-} from './assets.js';
+  type ResourceId,
+  type Resource,
+  type ProjectAssetMetadata,
+  type ProjectAssetProvenance,
+  type ProjectAssetSource,
+  type ProjectAssetLifecycle,
+  type ProjectAssetEntry,
+  type GlobalAssetEntry,
+  type ActionBindingOwner,
+  type ActionAssetBinding,
+  type ResolvedAsset,
+} from "./assets.js";
+
+export {
+  PROJECT_ASSETS_CONTAINER,
+  PROJECT_ASSET_SCHEMA_CONTAINER,
+  PROJECT_ASSET_AUTHORITY_VERSION,
+  projectAssetAuthorityVersion,
+  markProjectAssetAuthority,
+  readProjectAsset,
+  listProjectAssets,
+  createProjectAsset,
+  trashProjectAsset,
+  restoreProjectAsset,
+  purgeProjectAsset,
+  type ProjectAssetMutationErrorCode,
+  type ProjectAssetMutationError,
+  type ProjectAssetMutationResult,
+  type ProjectAssetAuthorityResult,
+} from "./project-assets.js";
+
+export {
+  ACTION_ASSET_BINDINGS_CONTAINER,
+  ACTION_ASSET_BINDING_SCHEMA_CONTAINER,
+  ACTION_ASSET_BINDING_AUTHORITY_VERSION,
+  actionAssetBindingAuthorityVersion,
+  markActionAssetBindingAuthority,
+  readActionAssetBinding,
+  listActionAssetBindings,
+  listActionAssetReferences,
+  projectAssetMutationReadToken,
+  projectAssetMutationReadTokenFromDoc,
+  reconcileActionAssetBindingTargets,
+  createActionAssetBinding,
+  ensureActionAssetBinding,
+  updateActionAssetBinding,
+  unbindActionAssetBinding,
+  replaceDraftActionAssetInputBindings,
+  trashProjectAssetIfUnreferenced,
+  type ActionAssetBindingMutationErrorCode,
+  type ActionAssetBindingMutationError,
+  type ActionAssetBindingMutationResult,
+  type ActionAssetBindingEnsureResult,
+  type ActionAssetBindingAuthorityResult,
+  type DraftActionAssetInput,
+  type ReplaceDraftActionAssetInputBindingsResult,
+  type AssetInUseError,
+  type ActionAssetBindingAuthorityRequiredError,
+  type ActionAssetBindingTargetReconciliation,
+  type ProjectAssetTrashIfUnreferencedResult,
+} from "./action-asset-bindings.js";
+
+export {
+  PROJECT_PRESENTATION_CONTAINER,
+  PROJECT_COVER_ACTION_ID,
+  readProjectCoverAssetId,
+  setProjectCoverAsset,
+  reconcileProjectCoverBindings,
+  type ProjectCoverMutationResult,
+} from "./project-cover.js";
+
+export {
+  planLegacyActionAssetBindingMaterialization,
+  type LegacyActionAssetBindingConflictCode,
+  type LegacyActionAssetBindingConflict,
+  type LegacyActionAssetBindingMaterializationInput,
+  type LegacyActionAssetBindingMaterializationPlan,
+} from "./legacy-action-asset-bindings.js";
 
 export {
   createMediaAssetCowNodeData,
   isMediaNodeType,
-} from './media-asset-replacement.js';
+} from "./media-asset-replacement.js";
 
 // Serializable Action Specs and asset-edit invocations.
 export {
@@ -1077,7 +1174,7 @@ export {
   type ActionSpec,
   type ActionInvocationMode,
   type ActionSurface,
-} from './actions/spec.js';
+} from "./actions/spec.js";
 export {
   ASSET_ACTION_ID,
   BUILT_IN_ASSET_ACTION_SPECS,
@@ -1089,7 +1186,7 @@ export {
   type AssetActionId,
   type AssetEditActionInvocation,
   type CreateAssetActionInvocationInput,
-} from './actions/asset-edit.js';
+} from "./actions/asset-edit.js";
 
 export {
   TextAppliedRevisionSchema,
@@ -1100,7 +1197,7 @@ export {
   type TextRevisionActor,
   type TextRevisionContentDescriptor,
   type TextRevisionHistoryEntry,
-} from './text-revisions.js';
+} from "./text-revisions.js";
 
 // Pipeline types
 export {
@@ -1118,7 +1215,7 @@ export {
   type PipelineDef,
   type TaskRuntimeState,
   type PipelineRuntimeState,
-} from './pipeline.js';
+} from "./pipeline.js";
 
 export {
   ProviderUsageAuditEventSchema,
@@ -1127,9 +1224,13 @@ export {
   type ProviderUsageAuditEvent,
   type ProviderUsagePricingSource,
   type ProviderUsageStatus,
-} from './provider-usage.js';
+} from "./provider-usage.js";
 
-export { parsePluginId, pluginIdSchema, type PluginIdParts } from "./plugin-namespace.js";
+export {
+  parsePluginId,
+  pluginIdSchema,
+  type PluginIdParts,
+} from "./plugin-namespace.js";
 
 export {
   PluginAuthDeclarationSchema,
@@ -1141,7 +1242,7 @@ export {
   type PluginAuthFormItem,
 } from "./plugin-auth.js";
 
-export * from './actions.js';
-export * from './auth-form.js';
+export * from "./actions.js";
+export * from "./auth-form.js";
 
-export * from './plugin-capabilities.js';
+export * from "./plugin-capabilities.js";

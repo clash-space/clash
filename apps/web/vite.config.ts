@@ -16,6 +16,10 @@ const persistStatePath = process.env.CLASH_WEB_E2E_PERSIST_STATE?.trim()
 // ignore dist writes produced by tests/builds without serving stale modules.
 export const DEV_SOURCE_ALIASES = [
   {
+    find: /^@clash\/asset-sdk$/,
+    replacement: resolve(repoRoot, "packages/asset-sdk/src/index.ts"),
+  },
+  {
     find: /^@clash\/gui\/(.+)$/,
     replacement: resolve(repoRoot, "packages/gui/src/$1"),
   },
@@ -37,7 +41,10 @@ export const DEV_SOURCE_ALIASES = [
   },
   {
     find: /^@clash\/shared-types\/timeline-library$/,
-    replacement: resolve(repoRoot, "packages/shared-types/src/timeline-library.ts"),
+    replacement: resolve(
+      repoRoot,
+      "packages/shared-types/src/timeline-library.ts",
+    ),
   },
   {
     find: /^@clash\/shared-runtime$/,
@@ -45,7 +52,10 @@ export const DEV_SOURCE_ALIASES = [
   },
   {
     find: /^@clash\/shared-runtime\/local-paths$/,
-    replacement: resolve(repoRoot, "packages/shared-runtime/src/local-paths.ts"),
+    replacement: resolve(
+      repoRoot,
+      "packages/shared-runtime/src/local-paths.ts",
+    ),
   },
 ];
 
@@ -64,7 +74,9 @@ export const DEV_WATCH_IGNORES = ["**/dist/**", "**/release/**", "**/.tmp/**"];
 // clash-hosted/apps/web-hosted) bundles workers/app.ts itself.
 export default defineConfig(async ({ command, isPreview }) => {
   const cloudflarePlugins =
-    command === "serve" && !isPreview && process.env.CLASH_WEB_E2E_NO_CLOUDFLARE !== "1"
+    command === "serve" &&
+    !isPreview &&
+    process.env.CLASH_WEB_E2E_NO_CLOUDFLARE !== "1"
       ? [
           (await import("@cloudflare/vite-plugin")).cloudflare({
             remoteBindings: false,

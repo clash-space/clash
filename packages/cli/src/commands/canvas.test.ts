@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
+  downloadAssetById,
   resolveAssetDownloadUrl,
   resolveCanvasActor,
   resolveCanvasPresenceOptions,
@@ -181,6 +182,46 @@ test("asset downloader accepts absolute and relative signed URLs", () => {
     resolveAssetDownloadUrl("/assets/projects/p1/file.png", "http://localhost:8788/"),
     "http://localhost:8788/assets/projects/p1/file.png",
   );
+});
+
+test("asset downloader reads the project-scoped ResolvedAsset projection", async () => {
+  const cacheDir = await mkdtemp(join(tmpdir(), "clash-asset-cache-"));
+  const requests: Array<{ projectId?: string; assetId: string }> = [];
+  const downloads: string[] = [];
+
+  const path = await downloadAssetById("asset/one", "project one", {
+    cacheDir,
+    client: {
+      get: async (input) => {
+        requests.push(input);
+        return {
+          projectId: "project one",
+          value: {
+            id: "asset/one",
+            kind: "image",
+            name: "hero.png",
+            metadata: { bytes: 11, contentType: "image/png" },
+            lifecycle: { state: "active" },
+            status: "ready",
+            url: "http://127.0.0.1:49152/api/v1/projects/project%20one/assets/asset%2Fone/media",
+          },
+          receipt: "asset:receipt",
+        };
+      },
+    },
+    fetch: async (input) => {
+      downloads.push(String(input));
+      return new Response("asset-bytes", { status: 200 });
+    },
+  });
+
+  assert.deepEqual(requests, [{ projectId: "project one", assetId: "asset/one" }]);
+  assert.deepEqual(downloads, [
+    "http://127.0.0.1:49152/api/v1/projects/project%20one/assets/asset%2Fone/media",
+  ]);
+  assert.equal(path, join(cacheDir, "project one--asset_one.png"));
+  assert.equal(readFileSync(path!, "utf8"), "asset-bytes");
+  assert.equal(statSync(path!).mode & 0o777, 0o444);
 });
 
 test("asset downloader marks cached files read-only", () => {

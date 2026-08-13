@@ -311,14 +311,14 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
   const hasWaveform: boolean = Array.isArray(itemWaveform) && itemWaveform.length > 0;
   const sourceStartInFrames = (item as any).sourceStartInFrames || 0;
   const sourceNodeId = getItemSourceNodeId(item);
-  const itemBackingAssetId = item.sourceNodeId ? item.assetId : undefined;
+  const itemProjectAssetId = item.sourceNodeId ? item.assetId : undefined;
   const persistentVideoCacheId = React.useMemo(
     () => getPersistentVideoCacheId(
-      asset?.backingAssetId ?? itemBackingAssetId,
+      asset?.projectAssetId ?? itemProjectAssetId,
       sourceNodeId,
       resolvedItemSrc
     ),
-    [asset?.backingAssetId, itemBackingAssetId, sourceNodeId, resolvedItemSrc]
+    [asset?.projectAssetId, itemProjectAssetId, sourceNodeId, resolvedItemSrc]
   );
   const fallbackThumbnailCacheKey = persistentVideoCacheId
     ? `thumb:${persistentVideoCacheId}:${sourceStartInFrames}`

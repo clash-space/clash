@@ -1,15 +1,9 @@
-import { runtimeApiUrl, runtimeAssetFallbackUrl } from '../../lib/runtimeConfig';
-import type { Asset } from '@clash/shared-types';
-
-const ABSOLUTE_MEDIA_SOURCE = /^(?:[a-z][a-z\d+.-]*:|\/\/)/i;
+import type { ResolvedAsset } from '@clash/shared-types';
 
 /** Canonical resolver for every asset preview, thumbnail, and media player. */
 export function resolveAssetMediaUrl(value?: string | null): string | null {
   const source = value?.trim();
-  if (!source) return null;
-  if (ABSOLUTE_MEDIA_SOURCE.test(source)) return source;
-  if (source.startsWith('/')) return runtimeApiUrl(source);
-  return runtimeAssetFallbackUrl(source);
+  return source || null;
 }
 
 export function firstAssetMediaUrl(...values: Array<string | null | undefined>): string | null {
@@ -21,19 +15,11 @@ export function firstAssetMediaUrl(...values: Array<string | null | undefined>):
 }
 
 /**
- * Resolves the media bytes used for playback/editing. ProjectAsset.url may be
- * a video cover, so moving media must prefer the immutable storage source.
+ * The Host owns URL projection. UI consumers never reconstruct object-store
+ * paths or sign storage keys.
  */
-export function projectAssetPlaybackUrl(asset: {
-  type: 'image' | 'video' | 'audio';
-  url?: string | null;
-  storageKey?: string | null;
-}): string | null {
-  const source =
-    asset.type === 'video' || asset.type === 'audio'
-      ? asset.storageKey || asset.url
-      : asset.url || asset.storageKey;
-  return resolveAssetMediaUrl(source);
+export function projectAssetPlaybackUrl(asset: ResolvedAsset): string | null {
+  return resolveAssetMediaUrl(asset.url);
 }
 
 export type AssetPreviewMedia = {
@@ -42,18 +28,16 @@ export type AssetPreviewMedia = {
 };
 
 /**
- * Adapts the persisted Asset DTO to the storage-agnostic media contract used
- * by UI previews. Storage-specific wire fields stay behind this boundary.
+ * Adapts the canonical Host-resolved view to the small preview contract.
  */
-export function assetPreviewMedia(asset: Asset): AssetPreviewMedia | null {
-  const source = asset.srcR2Key || asset.signedUrl;
-  if (!source) return null;
-
-  if (asset.kind === 'image') return { kind: 'image', source };
+export function assetPreviewMedia(asset: ResolvedAsset): AssetPreviewMedia | null {
+  const source = resolveAssetMediaUrl(asset.url);
+  const thumbnail = resolveAssetMediaUrl(asset.thumbnailUrl);
+  if (asset.kind === 'image') {
+    const preview = thumbnail ?? source;
+    return preview ? { kind: 'image', source: preview } : null;
+  }
   if (asset.kind !== 'video') return null;
-
-  const cover = asset.coverR2Key || asset.signedCoverUrl;
-  return cover
-    ? { kind: 'image', source: cover }
-    : { kind: 'video', source };
+  if (thumbnail) return { kind: 'image', source: thumbnail };
+  return source ? { kind: 'video', source } : null;
 }

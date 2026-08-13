@@ -63,14 +63,10 @@ export const DirectorReferenceStillSchema = z.object({
   stageRevisionId: z.string().min(1),
   timeSeconds: z.number().nonnegative().optional(),
   sequenceTimeSeconds: z.number().nonnegative().optional(),
-  src: z.string().url().optional(),
-  previewUrl: z.string().url().optional(),
 });
 
 export const DirectorReferenceVideoSchema = z.object({
   assetId: z.string().min(1),
-  src: z.string().url().optional(),
-  previewUrl: z.string().url().optional(),
   mimeType: z.string().min(1),
 });
 

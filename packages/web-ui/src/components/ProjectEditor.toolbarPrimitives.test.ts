@@ -40,7 +40,7 @@ describe("ProjectEditor toolbar primitives", () => {
   it("uses the shared tooltip primitive for canvas toolbar icon buttons instead of browser title attributes", () => {
     const editorSource = readSource("packages/web-ui/src/components/ProjectEditor.tsx");
     const toolbarSource = readCanvasToolbarSource();
-    const tooltipSource = readSource("packages/web-ui/src/components/ui/tooltip.tsx");
+    const tooltipSource = readSource("packages/gui/src/components/ui/tooltip.tsx");
 
     expect(sourceContains(tooltipSource, "@ariakit/react")).toBe(true);
     expect(sourceContains(tooltipSource, "TooltipProvider")).toBe(true);
@@ -82,13 +82,12 @@ describe("ProjectEditor toolbar primitives", () => {
     expect(sourceContains(buttonSource, "onMouseDown={(e) => e.stopPropagation()}")).toBe(false);
   });
 
-  it("only removes asset refs when the atomic Loro delete batch was accepted", () => {
+  it("delegates node and ActionAssetBinding deletion to the atomic Loro authority", () => {
     const editorSource = readSource("packages/web-ui/src/components/ProjectEditor.tsx");
 
-    expect(sourceContains(editorSource, "const persistedDeletedNodes = loroSync.removeNodes(deletedNodes.map((node) => node.id))")).toBe(true);
-    expect(sourceContains(editorSource, "? deletedNodes")).toBe(true);
-    expect(sourceContains(editorSource, "const deletedIds = new Set(persistedDeletedNodes.map((n) => n.id))")).toBe(true);
-    expect(sourceContains(editorSource, "persistedDeletedNodes\n                .map")).toBe(true);
+    expect(sourceContains(editorSource, "loroSync.removeNodes(deletedNodes.map((node) => node.id))")).toBe(true);
+    expect(sourceContains(editorSource, "persistedDeletedNodes")).toBe(false);
+    expect(sourceContains(editorSource, "removeAssetRefs")).toBe(false);
   });
 
   it("uses shared button primitives for project editor chrome and canvas toolbar actions", () => {

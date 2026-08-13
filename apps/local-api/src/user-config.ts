@@ -51,6 +51,16 @@ function validateStringField(record: Record<string, unknown>, key: string, path:
   }
 }
 
+function validateNullableStringField(record: Record<string, unknown>, key: string, path: string): void {
+  if (
+    record[key] !== undefined &&
+    record[key] !== null &&
+    typeof record[key] !== "string"
+  ) {
+    throw new Error(`${path}.${key} must be a string or null`);
+  }
+}
+
 export function validateClashUserConfig(value: unknown): asserts value is Record<string, unknown> {
   if (!isRecord(value)) throw new Error("config.yaml root must be a mapping");
   if (value.version !== undefined && value.version !== 1) {
@@ -97,6 +107,45 @@ export function validateClashUserConfig(value: unknown): asserts value is Record
           throw new Error(`sync.capabilities.${key} must be a boolean`);
         }
       }
+    }
+  }
+
+  const publicStorage = optionalRecord(value, "public_storage");
+  if (publicStorage) {
+    if (
+      publicStorage.mode !== undefined &&
+      publicStorage.mode !== "disabled" &&
+      publicStorage.mode !== "byos" &&
+      publicStorage.mode !== "managed"
+    ) {
+      throw new Error("public_storage.mode must be disabled, byos or managed");
+    }
+    if (
+      publicStorage.provider !== undefined &&
+      publicStorage.provider !== null &&
+      publicStorage.provider !== "r2" &&
+      publicStorage.provider !== "aws-s3" &&
+      publicStorage.provider !== "tos" &&
+      publicStorage.provider !== "custom-s3"
+    ) {
+      throw new Error(
+        "public_storage.provider must be r2, aws-s3, tos, custom-s3 or null",
+      );
+    }
+    for (const key of [
+      "account_id",
+      "endpoint",
+      "bucket",
+      "region",
+      "key_prefix",
+    ]) {
+      validateNullableStringField(publicStorage, key, "public_storage");
+    }
+    if (
+      publicStorage.force_path_style !== undefined &&
+      typeof publicStorage.force_path_style !== "boolean"
+    ) {
+      throw new Error("public_storage.force_path_style must be a boolean");
     }
   }
 }

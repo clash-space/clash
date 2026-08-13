@@ -33,3284 +33,6 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// ../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/error.js
-var require_error = __commonJS({
-  "../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/error.js"(exports2) {
-    var CommanderError2 = class extends Error {
-      /**
-       * Constructs the CommanderError class
-       * @param {number} exitCode suggested exit code which could be used with process.exit
-       * @param {string} code an id string representing the error
-       * @param {string} message human-readable description of the error
-       */
-      constructor(exitCode, code, message2) {
-        super(message2);
-        Error.captureStackTrace(this, this.constructor);
-        this.name = this.constructor.name;
-        this.code = code;
-        this.exitCode = exitCode;
-        this.nestedError = void 0;
-      }
-    };
-    var InvalidArgumentError2 = class extends CommanderError2 {
-      /**
-       * Constructs the InvalidArgumentError class
-       * @param {string} [message] explanation of why argument is invalid
-       */
-      constructor(message2) {
-        super(1, "commander.invalidArgument", message2);
-        Error.captureStackTrace(this, this.constructor);
-        this.name = this.constructor.name;
-      }
-    };
-    exports2.CommanderError = CommanderError2;
-    exports2.InvalidArgumentError = InvalidArgumentError2;
-  }
-});
-
-// ../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/argument.js
-var require_argument = __commonJS({
-  "../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/argument.js"(exports2) {
-    var { InvalidArgumentError: InvalidArgumentError2 } = require_error();
-    var Argument2 = class {
-      /**
-       * Initialize a new command argument with the given name and description.
-       * The default is that the argument is required, and you can explicitly
-       * indicate this with <> around the name. Put [] around the name for an optional argument.
-       *
-       * @param {string} name
-       * @param {string} [description]
-       */
-      constructor(name, description) {
-        this.description = description || "";
-        this.variadic = false;
-        this.parseArg = void 0;
-        this.defaultValue = void 0;
-        this.defaultValueDescription = void 0;
-        this.argChoices = void 0;
-        switch (name[0]) {
-          case "<":
-            this.required = true;
-            this._name = name.slice(1, -1);
-            break;
-          case "[":
-            this.required = false;
-            this._name = name.slice(1, -1);
-            break;
-          default:
-            this.required = true;
-            this._name = name;
-            break;
-        }
-        if (this._name.length > 3 && this._name.slice(-3) === "...") {
-          this.variadic = true;
-          this._name = this._name.slice(0, -3);
-        }
-      }
-      /**
-       * Return argument name.
-       *
-       * @return {string}
-       */
-      name() {
-        return this._name;
-      }
-      /**
-       * @package
-       */
-      _concatValue(value, previous) {
-        if (previous === this.defaultValue || !Array.isArray(previous)) {
-          return [value];
-        }
-        return previous.concat(value);
-      }
-      /**
-       * Set the default value, and optionally supply the description to be displayed in the help.
-       *
-       * @param {*} value
-       * @param {string} [description]
-       * @return {Argument}
-       */
-      default(value, description) {
-        this.defaultValue = value;
-        this.defaultValueDescription = description;
-        return this;
-      }
-      /**
-       * Set the custom handler for processing CLI command arguments into argument values.
-       *
-       * @param {Function} [fn]
-       * @return {Argument}
-       */
-      argParser(fn) {
-        this.parseArg = fn;
-        return this;
-      }
-      /**
-       * Only allow argument value to be one of choices.
-       *
-       * @param {string[]} values
-       * @return {Argument}
-       */
-      choices(values) {
-        this.argChoices = values.slice();
-        this.parseArg = (arg, previous) => {
-          if (!this.argChoices.includes(arg)) {
-            throw new InvalidArgumentError2(
-              `Allowed choices are ${this.argChoices.join(", ")}.`
-            );
-          }
-          if (this.variadic) {
-            return this._concatValue(arg, previous);
-          }
-          return arg;
-        };
-        return this;
-      }
-      /**
-       * Make argument required.
-       *
-       * @returns {Argument}
-       */
-      argRequired() {
-        this.required = true;
-        return this;
-      }
-      /**
-       * Make argument optional.
-       *
-       * @returns {Argument}
-       */
-      argOptional() {
-        this.required = false;
-        return this;
-      }
-    };
-    function humanReadableArgName(arg) {
-      const nameOutput = arg.name() + (arg.variadic === true ? "..." : "");
-      return arg.required ? "<" + nameOutput + ">" : "[" + nameOutput + "]";
-    }
-    exports2.Argument = Argument2;
-    exports2.humanReadableArgName = humanReadableArgName;
-  }
-});
-
-// ../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/help.js
-var require_help = __commonJS({
-  "../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/help.js"(exports2) {
-    var { humanReadableArgName } = require_argument();
-    var Help2 = class {
-      constructor() {
-        this.helpWidth = void 0;
-        this.minWidthToWrap = 40;
-        this.sortSubcommands = false;
-        this.sortOptions = false;
-        this.showGlobalOptions = false;
-      }
-      /**
-       * prepareContext is called by Commander after applying overrides from `Command.configureHelp()`
-       * and just before calling `formatHelp()`.
-       *
-       * Commander just uses the helpWidth and the rest is provided for optional use by more complex subclasses.
-       *
-       * @param {{ error?: boolean, helpWidth?: number, outputHasColors?: boolean }} contextOptions
-       */
-      prepareContext(contextOptions) {
-        this.helpWidth = this.helpWidth ?? contextOptions.helpWidth ?? 80;
-      }
-      /**
-       * Get an array of the visible subcommands. Includes a placeholder for the implicit help command, if there is one.
-       *
-       * @param {Command} cmd
-       * @returns {Command[]}
-       */
-      visibleCommands(cmd) {
-        const visibleCommands = cmd.commands.filter((cmd2) => !cmd2._hidden);
-        const helpCommand = cmd._getHelpCommand();
-        if (helpCommand && !helpCommand._hidden) {
-          visibleCommands.push(helpCommand);
-        }
-        if (this.sortSubcommands) {
-          visibleCommands.sort((a, b) => {
-            return a.name().localeCompare(b.name());
-          });
-        }
-        return visibleCommands;
-      }
-      /**
-       * Compare options for sort.
-       *
-       * @param {Option} a
-       * @param {Option} b
-       * @returns {number}
-       */
-      compareOptions(a, b) {
-        const getSortKey = (option) => {
-          return option.short ? option.short.replace(/^-/, "") : option.long.replace(/^--/, "");
-        };
-        return getSortKey(a).localeCompare(getSortKey(b));
-      }
-      /**
-       * Get an array of the visible options. Includes a placeholder for the implicit help option, if there is one.
-       *
-       * @param {Command} cmd
-       * @returns {Option[]}
-       */
-      visibleOptions(cmd) {
-        const visibleOptions = cmd.options.filter((option) => !option.hidden);
-        const helpOption = cmd._getHelpOption();
-        if (helpOption && !helpOption.hidden) {
-          const removeShort = helpOption.short && cmd._findOption(helpOption.short);
-          const removeLong = helpOption.long && cmd._findOption(helpOption.long);
-          if (!removeShort && !removeLong) {
-            visibleOptions.push(helpOption);
-          } else if (helpOption.long && !removeLong) {
-            visibleOptions.push(
-              cmd.createOption(helpOption.long, helpOption.description)
-            );
-          } else if (helpOption.short && !removeShort) {
-            visibleOptions.push(
-              cmd.createOption(helpOption.short, helpOption.description)
-            );
-          }
-        }
-        if (this.sortOptions) {
-          visibleOptions.sort(this.compareOptions);
-        }
-        return visibleOptions;
-      }
-      /**
-       * Get an array of the visible global options. (Not including help.)
-       *
-       * @param {Command} cmd
-       * @returns {Option[]}
-       */
-      visibleGlobalOptions(cmd) {
-        if (!this.showGlobalOptions) return [];
-        const globalOptions = [];
-        for (let ancestorCmd = cmd.parent; ancestorCmd; ancestorCmd = ancestorCmd.parent) {
-          const visibleOptions = ancestorCmd.options.filter(
-            (option) => !option.hidden
-          );
-          globalOptions.push(...visibleOptions);
-        }
-        if (this.sortOptions) {
-          globalOptions.sort(this.compareOptions);
-        }
-        return globalOptions;
-      }
-      /**
-       * Get an array of the arguments if any have a description.
-       *
-       * @param {Command} cmd
-       * @returns {Argument[]}
-       */
-      visibleArguments(cmd) {
-        if (cmd._argsDescription) {
-          cmd.registeredArguments.forEach((argument) => {
-            argument.description = argument.description || cmd._argsDescription[argument.name()] || "";
-          });
-        }
-        if (cmd.registeredArguments.find((argument) => argument.description)) {
-          return cmd.registeredArguments;
-        }
-        return [];
-      }
-      /**
-       * Get the command term to show in the list of subcommands.
-       *
-       * @param {Command} cmd
-       * @returns {string}
-       */
-      subcommandTerm(cmd) {
-        const args = cmd.registeredArguments.map((arg) => humanReadableArgName(arg)).join(" ");
-        return cmd._name + (cmd._aliases[0] ? "|" + cmd._aliases[0] : "") + (cmd.options.length ? " [options]" : "") + // simplistic check for non-help option
-        (args ? " " + args : "");
-      }
-      /**
-       * Get the option term to show in the list of options.
-       *
-       * @param {Option} option
-       * @returns {string}
-       */
-      optionTerm(option) {
-        return option.flags;
-      }
-      /**
-       * Get the argument term to show in the list of arguments.
-       *
-       * @param {Argument} argument
-       * @returns {string}
-       */
-      argumentTerm(argument) {
-        return argument.name();
-      }
-      /**
-       * Get the longest command term length.
-       *
-       * @param {Command} cmd
-       * @param {Help} helper
-       * @returns {number}
-       */
-      longestSubcommandTermLength(cmd, helper) {
-        return helper.visibleCommands(cmd).reduce((max, command2) => {
-          return Math.max(
-            max,
-            this.displayWidth(
-              helper.styleSubcommandTerm(helper.subcommandTerm(command2))
-            )
-          );
-        }, 0);
-      }
-      /**
-       * Get the longest option term length.
-       *
-       * @param {Command} cmd
-       * @param {Help} helper
-       * @returns {number}
-       */
-      longestOptionTermLength(cmd, helper) {
-        return helper.visibleOptions(cmd).reduce((max, option) => {
-          return Math.max(
-            max,
-            this.displayWidth(helper.styleOptionTerm(helper.optionTerm(option)))
-          );
-        }, 0);
-      }
-      /**
-       * Get the longest global option term length.
-       *
-       * @param {Command} cmd
-       * @param {Help} helper
-       * @returns {number}
-       */
-      longestGlobalOptionTermLength(cmd, helper) {
-        return helper.visibleGlobalOptions(cmd).reduce((max, option) => {
-          return Math.max(
-            max,
-            this.displayWidth(helper.styleOptionTerm(helper.optionTerm(option)))
-          );
-        }, 0);
-      }
-      /**
-       * Get the longest argument term length.
-       *
-       * @param {Command} cmd
-       * @param {Help} helper
-       * @returns {number}
-       */
-      longestArgumentTermLength(cmd, helper) {
-        return helper.visibleArguments(cmd).reduce((max, argument) => {
-          return Math.max(
-            max,
-            this.displayWidth(
-              helper.styleArgumentTerm(helper.argumentTerm(argument))
-            )
-          );
-        }, 0);
-      }
-      /**
-       * Get the command usage to be displayed at the top of the built-in help.
-       *
-       * @param {Command} cmd
-       * @returns {string}
-       */
-      commandUsage(cmd) {
-        let cmdName = cmd._name;
-        if (cmd._aliases[0]) {
-          cmdName = cmdName + "|" + cmd._aliases[0];
-        }
-        let ancestorCmdNames = "";
-        for (let ancestorCmd = cmd.parent; ancestorCmd; ancestorCmd = ancestorCmd.parent) {
-          ancestorCmdNames = ancestorCmd.name() + " " + ancestorCmdNames;
-        }
-        return ancestorCmdNames + cmdName + " " + cmd.usage();
-      }
-      /**
-       * Get the description for the command.
-       *
-       * @param {Command} cmd
-       * @returns {string}
-       */
-      commandDescription(cmd) {
-        return cmd.description();
-      }
-      /**
-       * Get the subcommand summary to show in the list of subcommands.
-       * (Fallback to description for backwards compatibility.)
-       *
-       * @param {Command} cmd
-       * @returns {string}
-       */
-      subcommandDescription(cmd) {
-        return cmd.summary() || cmd.description();
-      }
-      /**
-       * Get the option description to show in the list of options.
-       *
-       * @param {Option} option
-       * @return {string}
-       */
-      optionDescription(option) {
-        const extraInfo = [];
-        if (option.argChoices) {
-          extraInfo.push(
-            // use stringify to match the display of the default value
-            `choices: ${option.argChoices.map((choice) => JSON.stringify(choice)).join(", ")}`
-          );
-        }
-        if (option.defaultValue !== void 0) {
-          const showDefault = option.required || option.optional || option.isBoolean() && typeof option.defaultValue === "boolean";
-          if (showDefault) {
-            extraInfo.push(
-              `default: ${option.defaultValueDescription || JSON.stringify(option.defaultValue)}`
-            );
-          }
-        }
-        if (option.presetArg !== void 0 && option.optional) {
-          extraInfo.push(`preset: ${JSON.stringify(option.presetArg)}`);
-        }
-        if (option.envVar !== void 0) {
-          extraInfo.push(`env: ${option.envVar}`);
-        }
-        if (extraInfo.length > 0) {
-          return `${option.description} (${extraInfo.join(", ")})`;
-        }
-        return option.description;
-      }
-      /**
-       * Get the argument description to show in the list of arguments.
-       *
-       * @param {Argument} argument
-       * @return {string}
-       */
-      argumentDescription(argument) {
-        const extraInfo = [];
-        if (argument.argChoices) {
-          extraInfo.push(
-            // use stringify to match the display of the default value
-            `choices: ${argument.argChoices.map((choice) => JSON.stringify(choice)).join(", ")}`
-          );
-        }
-        if (argument.defaultValue !== void 0) {
-          extraInfo.push(
-            `default: ${argument.defaultValueDescription || JSON.stringify(argument.defaultValue)}`
-          );
-        }
-        if (extraInfo.length > 0) {
-          const extraDescription = `(${extraInfo.join(", ")})`;
-          if (argument.description) {
-            return `${argument.description} ${extraDescription}`;
-          }
-          return extraDescription;
-        }
-        return argument.description;
-      }
-      /**
-       * Generate the built-in help text.
-       *
-       * @param {Command} cmd
-       * @param {Help} helper
-       * @returns {string}
-       */
-      formatHelp(cmd, helper) {
-        const termWidth = helper.padWidth(cmd, helper);
-        const helpWidth = helper.helpWidth ?? 80;
-        function callFormatItem(term, description) {
-          return helper.formatItem(term, termWidth, description, helper);
-        }
-        let output = [
-          `${helper.styleTitle("Usage:")} ${helper.styleUsage(helper.commandUsage(cmd))}`,
-          ""
-        ];
-        const commandDescription = helper.commandDescription(cmd);
-        if (commandDescription.length > 0) {
-          output = output.concat([
-            helper.boxWrap(
-              helper.styleCommandDescription(commandDescription),
-              helpWidth
-            ),
-            ""
-          ]);
-        }
-        const argumentList = helper.visibleArguments(cmd).map((argument) => {
-          return callFormatItem(
-            helper.styleArgumentTerm(helper.argumentTerm(argument)),
-            helper.styleArgumentDescription(helper.argumentDescription(argument))
-          );
-        });
-        if (argumentList.length > 0) {
-          output = output.concat([
-            helper.styleTitle("Arguments:"),
-            ...argumentList,
-            ""
-          ]);
-        }
-        const optionList = helper.visibleOptions(cmd).map((option) => {
-          return callFormatItem(
-            helper.styleOptionTerm(helper.optionTerm(option)),
-            helper.styleOptionDescription(helper.optionDescription(option))
-          );
-        });
-        if (optionList.length > 0) {
-          output = output.concat([
-            helper.styleTitle("Options:"),
-            ...optionList,
-            ""
-          ]);
-        }
-        if (helper.showGlobalOptions) {
-          const globalOptionList = helper.visibleGlobalOptions(cmd).map((option) => {
-            return callFormatItem(
-              helper.styleOptionTerm(helper.optionTerm(option)),
-              helper.styleOptionDescription(helper.optionDescription(option))
-            );
-          });
-          if (globalOptionList.length > 0) {
-            output = output.concat([
-              helper.styleTitle("Global Options:"),
-              ...globalOptionList,
-              ""
-            ]);
-          }
-        }
-        const commandList = helper.visibleCommands(cmd).map((cmd2) => {
-          return callFormatItem(
-            helper.styleSubcommandTerm(helper.subcommandTerm(cmd2)),
-            helper.styleSubcommandDescription(helper.subcommandDescription(cmd2))
-          );
-        });
-        if (commandList.length > 0) {
-          output = output.concat([
-            helper.styleTitle("Commands:"),
-            ...commandList,
-            ""
-          ]);
-        }
-        return output.join("\n");
-      }
-      /**
-       * Return display width of string, ignoring ANSI escape sequences. Used in padding and wrapping calculations.
-       *
-       * @param {string} str
-       * @returns {number}
-       */
-      displayWidth(str) {
-        return stripColor(str).length;
-      }
-      /**
-       * Style the title for displaying in the help. Called with 'Usage:', 'Options:', etc.
-       *
-       * @param {string} str
-       * @returns {string}
-       */
-      styleTitle(str) {
-        return str;
-      }
-      styleUsage(str) {
-        return str.split(" ").map((word) => {
-          if (word === "[options]") return this.styleOptionText(word);
-          if (word === "[command]") return this.styleSubcommandText(word);
-          if (word[0] === "[" || word[0] === "<")
-            return this.styleArgumentText(word);
-          return this.styleCommandText(word);
-        }).join(" ");
-      }
-      styleCommandDescription(str) {
-        return this.styleDescriptionText(str);
-      }
-      styleOptionDescription(str) {
-        return this.styleDescriptionText(str);
-      }
-      styleSubcommandDescription(str) {
-        return this.styleDescriptionText(str);
-      }
-      styleArgumentDescription(str) {
-        return this.styleDescriptionText(str);
-      }
-      styleDescriptionText(str) {
-        return str;
-      }
-      styleOptionTerm(str) {
-        return this.styleOptionText(str);
-      }
-      styleSubcommandTerm(str) {
-        return str.split(" ").map((word) => {
-          if (word === "[options]") return this.styleOptionText(word);
-          if (word[0] === "[" || word[0] === "<")
-            return this.styleArgumentText(word);
-          return this.styleSubcommandText(word);
-        }).join(" ");
-      }
-      styleArgumentTerm(str) {
-        return this.styleArgumentText(str);
-      }
-      styleOptionText(str) {
-        return str;
-      }
-      styleArgumentText(str) {
-        return str;
-      }
-      styleSubcommandText(str) {
-        return str;
-      }
-      styleCommandText(str) {
-        return str;
-      }
-      /**
-       * Calculate the pad width from the maximum term length.
-       *
-       * @param {Command} cmd
-       * @param {Help} helper
-       * @returns {number}
-       */
-      padWidth(cmd, helper) {
-        return Math.max(
-          helper.longestOptionTermLength(cmd, helper),
-          helper.longestGlobalOptionTermLength(cmd, helper),
-          helper.longestSubcommandTermLength(cmd, helper),
-          helper.longestArgumentTermLength(cmd, helper)
-        );
-      }
-      /**
-       * Detect manually wrapped and indented strings by checking for line break followed by whitespace.
-       *
-       * @param {string} str
-       * @returns {boolean}
-       */
-      preformatted(str) {
-        return /\n[^\S\r\n]/.test(str);
-      }
-      /**
-       * Format the "item", which consists of a term and description. Pad the term and wrap the description, indenting the following lines.
-       *
-       * So "TTT", 5, "DDD DDDD DD DDD" might be formatted for this.helpWidth=17 like so:
-       *   TTT  DDD DDDD
-       *        DD DDD
-       *
-       * @param {string} term
-       * @param {number} termWidth
-       * @param {string} description
-       * @param {Help} helper
-       * @returns {string}
-       */
-      formatItem(term, termWidth, description, helper) {
-        const itemIndent = 2;
-        const itemIndentStr = " ".repeat(itemIndent);
-        if (!description) return itemIndentStr + term;
-        const paddedTerm = term.padEnd(
-          termWidth + term.length - helper.displayWidth(term)
-        );
-        const spacerWidth = 2;
-        const helpWidth = this.helpWidth ?? 80;
-        const remainingWidth = helpWidth - termWidth - spacerWidth - itemIndent;
-        let formattedDescription;
-        if (remainingWidth < this.minWidthToWrap || helper.preformatted(description)) {
-          formattedDescription = description;
-        } else {
-          const wrappedDescription = helper.boxWrap(description, remainingWidth);
-          formattedDescription = wrappedDescription.replace(
-            /\n/g,
-            "\n" + " ".repeat(termWidth + spacerWidth)
-          );
-        }
-        return itemIndentStr + paddedTerm + " ".repeat(spacerWidth) + formattedDescription.replace(/\n/g, `
-${itemIndentStr}`);
-      }
-      /**
-       * Wrap a string at whitespace, preserving existing line breaks.
-       * Wrapping is skipped if the width is less than `minWidthToWrap`.
-       *
-       * @param {string} str
-       * @param {number} width
-       * @returns {string}
-       */
-      boxWrap(str, width) {
-        if (width < this.minWidthToWrap) return str;
-        const rawLines = str.split(/\r\n|\n/);
-        const chunkPattern = /[\s]*[^\s]+/g;
-        const wrappedLines = [];
-        rawLines.forEach((line) => {
-          const chunks = line.match(chunkPattern);
-          if (chunks === null) {
-            wrappedLines.push("");
-            return;
-          }
-          let sumChunks = [chunks.shift()];
-          let sumWidth = this.displayWidth(sumChunks[0]);
-          chunks.forEach((chunk) => {
-            const visibleWidth = this.displayWidth(chunk);
-            if (sumWidth + visibleWidth <= width) {
-              sumChunks.push(chunk);
-              sumWidth += visibleWidth;
-              return;
-            }
-            wrappedLines.push(sumChunks.join(""));
-            const nextChunk = chunk.trimStart();
-            sumChunks = [nextChunk];
-            sumWidth = this.displayWidth(nextChunk);
-          });
-          wrappedLines.push(sumChunks.join(""));
-        });
-        return wrappedLines.join("\n");
-      }
-    };
-    function stripColor(str) {
-      const sgrPattern = /\x1b\[\d*(;\d*)*m/g;
-      return str.replace(sgrPattern, "");
-    }
-    exports2.Help = Help2;
-    exports2.stripColor = stripColor;
-  }
-});
-
-// ../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/option.js
-var require_option = __commonJS({
-  "../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/option.js"(exports2) {
-    var { InvalidArgumentError: InvalidArgumentError2 } = require_error();
-    var Option2 = class {
-      /**
-       * Initialize a new `Option` with the given `flags` and `description`.
-       *
-       * @param {string} flags
-       * @param {string} [description]
-       */
-      constructor(flags, description) {
-        this.flags = flags;
-        this.description = description || "";
-        this.required = flags.includes("<");
-        this.optional = flags.includes("[");
-        this.variadic = /\w\.\.\.[>\]]$/.test(flags);
-        this.mandatory = false;
-        const optionFlags = splitOptionFlags(flags);
-        this.short = optionFlags.shortFlag;
-        this.long = optionFlags.longFlag;
-        this.negate = false;
-        if (this.long) {
-          this.negate = this.long.startsWith("--no-");
-        }
-        this.defaultValue = void 0;
-        this.defaultValueDescription = void 0;
-        this.presetArg = void 0;
-        this.envVar = void 0;
-        this.parseArg = void 0;
-        this.hidden = false;
-        this.argChoices = void 0;
-        this.conflictsWith = [];
-        this.implied = void 0;
-      }
-      /**
-       * Set the default value, and optionally supply the description to be displayed in the help.
-       *
-       * @param {*} value
-       * @param {string} [description]
-       * @return {Option}
-       */
-      default(value, description) {
-        this.defaultValue = value;
-        this.defaultValueDescription = description;
-        return this;
-      }
-      /**
-       * Preset to use when option used without option-argument, especially optional but also boolean and negated.
-       * The custom processing (parseArg) is called.
-       *
-       * @example
-       * new Option('--color').default('GREYSCALE').preset('RGB');
-       * new Option('--donate [amount]').preset('20').argParser(parseFloat);
-       *
-       * @param {*} arg
-       * @return {Option}
-       */
-      preset(arg) {
-        this.presetArg = arg;
-        return this;
-      }
-      /**
-       * Add option name(s) that conflict with this option.
-       * An error will be displayed if conflicting options are found during parsing.
-       *
-       * @example
-       * new Option('--rgb').conflicts('cmyk');
-       * new Option('--js').conflicts(['ts', 'jsx']);
-       *
-       * @param {(string | string[])} names
-       * @return {Option}
-       */
-      conflicts(names) {
-        this.conflictsWith = this.conflictsWith.concat(names);
-        return this;
-      }
-      /**
-       * Specify implied option values for when this option is set and the implied options are not.
-       *
-       * The custom processing (parseArg) is not called on the implied values.
-       *
-       * @example
-       * program
-       *   .addOption(new Option('--log', 'write logging information to file'))
-       *   .addOption(new Option('--trace', 'log extra details').implies({ log: 'trace.txt' }));
-       *
-       * @param {object} impliedOptionValues
-       * @return {Option}
-       */
-      implies(impliedOptionValues) {
-        let newImplied = impliedOptionValues;
-        if (typeof impliedOptionValues === "string") {
-          newImplied = { [impliedOptionValues]: true };
-        }
-        this.implied = Object.assign(this.implied || {}, newImplied);
-        return this;
-      }
-      /**
-       * Set environment variable to check for option value.
-       *
-       * An environment variable is only used if when processed the current option value is
-       * undefined, or the source of the current value is 'default' or 'config' or 'env'.
-       *
-       * @param {string} name
-       * @return {Option}
-       */
-      env(name) {
-        this.envVar = name;
-        return this;
-      }
-      /**
-       * Set the custom handler for processing CLI option arguments into option values.
-       *
-       * @param {Function} [fn]
-       * @return {Option}
-       */
-      argParser(fn) {
-        this.parseArg = fn;
-        return this;
-      }
-      /**
-       * Whether the option is mandatory and must have a value after parsing.
-       *
-       * @param {boolean} [mandatory=true]
-       * @return {Option}
-       */
-      makeOptionMandatory(mandatory = true) {
-        this.mandatory = !!mandatory;
-        return this;
-      }
-      /**
-       * Hide option in help.
-       *
-       * @param {boolean} [hide=true]
-       * @return {Option}
-       */
-      hideHelp(hide = true) {
-        this.hidden = !!hide;
-        return this;
-      }
-      /**
-       * @package
-       */
-      _concatValue(value, previous) {
-        if (previous === this.defaultValue || !Array.isArray(previous)) {
-          return [value];
-        }
-        return previous.concat(value);
-      }
-      /**
-       * Only allow option value to be one of choices.
-       *
-       * @param {string[]} values
-       * @return {Option}
-       */
-      choices(values) {
-        this.argChoices = values.slice();
-        this.parseArg = (arg, previous) => {
-          if (!this.argChoices.includes(arg)) {
-            throw new InvalidArgumentError2(
-              `Allowed choices are ${this.argChoices.join(", ")}.`
-            );
-          }
-          if (this.variadic) {
-            return this._concatValue(arg, previous);
-          }
-          return arg;
-        };
-        return this;
-      }
-      /**
-       * Return option name.
-       *
-       * @return {string}
-       */
-      name() {
-        if (this.long) {
-          return this.long.replace(/^--/, "");
-        }
-        return this.short.replace(/^-/, "");
-      }
-      /**
-       * Return option name, in a camelcase format that can be used
-       * as an object attribute key.
-       *
-       * @return {string}
-       */
-      attributeName() {
-        if (this.negate) {
-          return camelcase(this.name().replace(/^no-/, ""));
-        }
-        return camelcase(this.name());
-      }
-      /**
-       * Check if `arg` matches the short or long flag.
-       *
-       * @param {string} arg
-       * @return {boolean}
-       * @package
-       */
-      is(arg) {
-        return this.short === arg || this.long === arg;
-      }
-      /**
-       * Return whether a boolean option.
-       *
-       * Options are one of boolean, negated, required argument, or optional argument.
-       *
-       * @return {boolean}
-       * @package
-       */
-      isBoolean() {
-        return !this.required && !this.optional && !this.negate;
-      }
-    };
-    var DualOptions = class {
-      /**
-       * @param {Option[]} options
-       */
-      constructor(options) {
-        this.positiveOptions = /* @__PURE__ */ new Map();
-        this.negativeOptions = /* @__PURE__ */ new Map();
-        this.dualOptions = /* @__PURE__ */ new Set();
-        options.forEach((option) => {
-          if (option.negate) {
-            this.negativeOptions.set(option.attributeName(), option);
-          } else {
-            this.positiveOptions.set(option.attributeName(), option);
-          }
-        });
-        this.negativeOptions.forEach((value, key) => {
-          if (this.positiveOptions.has(key)) {
-            this.dualOptions.add(key);
-          }
-        });
-      }
-      /**
-       * Did the value come from the option, and not from possible matching dual option?
-       *
-       * @param {*} value
-       * @param {Option} option
-       * @returns {boolean}
-       */
-      valueFromOption(value, option) {
-        const optionKey = option.attributeName();
-        if (!this.dualOptions.has(optionKey)) return true;
-        const preset = this.negativeOptions.get(optionKey).presetArg;
-        const negativeValue = preset !== void 0 ? preset : false;
-        return option.negate === (negativeValue === value);
-      }
-    };
-    function camelcase(str) {
-      return str.split("-").reduce((str2, word) => {
-        return str2 + word[0].toUpperCase() + word.slice(1);
-      });
-    }
-    function splitOptionFlags(flags) {
-      let shortFlag;
-      let longFlag;
-      const shortFlagExp = /^-[^-]$/;
-      const longFlagExp = /^--[^-]/;
-      const flagParts = flags.split(/[ |,]+/).concat("guard");
-      if (shortFlagExp.test(flagParts[0])) shortFlag = flagParts.shift();
-      if (longFlagExp.test(flagParts[0])) longFlag = flagParts.shift();
-      if (/^-[^-][^-]/.test(flagParts[0]))
-        throw new Error(
-          `invalid Option flags, short option is dash and single character: '${flags}'`
-        );
-      if (shortFlag && shortFlagExp.test(flagParts[0]))
-        throw new Error(
-          `invalid Option flags, more than one short flag: '${flags}'`
-        );
-      if (longFlag && longFlagExp.test(flagParts[0]))
-        throw new Error(
-          `invalid Option flags, more than one long flag: '${flags}'`
-        );
-      if (!(shortFlag || longFlag) || flagParts[0].startsWith("-"))
-        throw new Error(`invalid Option flags: '${flags}'`);
-      return { shortFlag, longFlag };
-    }
-    exports2.Option = Option2;
-    exports2.DualOptions = DualOptions;
-  }
-});
-
-// ../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/suggestSimilar.js
-var require_suggestSimilar = __commonJS({
-  "../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/suggestSimilar.js"(exports2) {
-    var maxDistance = 3;
-    function editDistance(a, b) {
-      if (Math.abs(a.length - b.length) > maxDistance)
-        return Math.max(a.length, b.length);
-      const d = [];
-      for (let i = 0; i <= a.length; i++) {
-        d[i] = [i];
-      }
-      for (let j = 0; j <= b.length; j++) {
-        d[0][j] = j;
-      }
-      for (let j = 1; j <= b.length; j++) {
-        for (let i = 1; i <= a.length; i++) {
-          let cost = 1;
-          if (a[i - 1] === b[j - 1]) {
-            cost = 0;
-          } else {
-            cost = 1;
-          }
-          d[i][j] = Math.min(
-            d[i - 1][j] + 1,
-            // deletion
-            d[i][j - 1] + 1,
-            // insertion
-            d[i - 1][j - 1] + cost
-            // substitution
-          );
-          if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
-            d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
-          }
-        }
-      }
-      return d[a.length][b.length];
-    }
-    function suggestSimilar(word, candidates) {
-      if (!candidates || candidates.length === 0) return "";
-      candidates = Array.from(new Set(candidates));
-      const searchingOptions = word.startsWith("--");
-      if (searchingOptions) {
-        word = word.slice(2);
-        candidates = candidates.map((candidate) => candidate.slice(2));
-      }
-      let similar = [];
-      let bestDistance = maxDistance;
-      const minSimilarity = 0.4;
-      candidates.forEach((candidate) => {
-        if (candidate.length <= 1) return;
-        const distance = editDistance(word, candidate);
-        const length = Math.max(word.length, candidate.length);
-        const similarity = (length - distance) / length;
-        if (similarity > minSimilarity) {
-          if (distance < bestDistance) {
-            bestDistance = distance;
-            similar = [candidate];
-          } else if (distance === bestDistance) {
-            similar.push(candidate);
-          }
-        }
-      });
-      similar.sort((a, b) => a.localeCompare(b));
-      if (searchingOptions) {
-        similar = similar.map((candidate) => `--${candidate}`);
-      }
-      if (similar.length > 1) {
-        return `
-(Did you mean one of ${similar.join(", ")}?)`;
-      }
-      if (similar.length === 1) {
-        return `
-(Did you mean ${similar[0]}?)`;
-      }
-      return "";
-    }
-    exports2.suggestSimilar = suggestSimilar;
-  }
-});
-
-// ../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/command.js
-var require_command = __commonJS({
-  "../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/command.js"(exports2) {
-    var EventEmitter = require("node:events").EventEmitter;
-    var childProcess = require("node:child_process");
-    var path = require("node:path");
-    var fs = require("node:fs");
-    var process3 = require("node:process");
-    var { Argument: Argument2, humanReadableArgName } = require_argument();
-    var { CommanderError: CommanderError2 } = require_error();
-    var { Help: Help2, stripColor } = require_help();
-    var { Option: Option2, DualOptions } = require_option();
-    var { suggestSimilar } = require_suggestSimilar();
-    var Command2 = class _Command extends EventEmitter {
-      /**
-       * Initialize a new `Command`.
-       *
-       * @param {string} [name]
-       */
-      constructor(name) {
-        super();
-        this.commands = [];
-        this.options = [];
-        this.parent = null;
-        this._allowUnknownOption = false;
-        this._allowExcessArguments = false;
-        this.registeredArguments = [];
-        this._args = this.registeredArguments;
-        this.args = [];
-        this.rawArgs = [];
-        this.processedArgs = [];
-        this._scriptPath = null;
-        this._name = name || "";
-        this._optionValues = {};
-        this._optionValueSources = {};
-        this._storeOptionsAsProperties = false;
-        this._actionHandler = null;
-        this._executableHandler = false;
-        this._executableFile = null;
-        this._executableDir = null;
-        this._defaultCommandName = null;
-        this._exitCallback = null;
-        this._aliases = [];
-        this._combineFlagAndOptionalValue = true;
-        this._description = "";
-        this._summary = "";
-        this._argsDescription = void 0;
-        this._enablePositionalOptions = false;
-        this._passThroughOptions = false;
-        this._lifeCycleHooks = {};
-        this._showHelpAfterError = false;
-        this._showSuggestionAfterError = true;
-        this._savedState = null;
-        this._outputConfiguration = {
-          writeOut: (str) => process3.stdout.write(str),
-          writeErr: (str) => process3.stderr.write(str),
-          outputError: (str, write) => write(str),
-          getOutHelpWidth: () => process3.stdout.isTTY ? process3.stdout.columns : void 0,
-          getErrHelpWidth: () => process3.stderr.isTTY ? process3.stderr.columns : void 0,
-          getOutHasColors: () => useColor() ?? (process3.stdout.isTTY && process3.stdout.hasColors?.()),
-          getErrHasColors: () => useColor() ?? (process3.stderr.isTTY && process3.stderr.hasColors?.()),
-          stripColor: (str) => stripColor(str)
-        };
-        this._hidden = false;
-        this._helpOption = void 0;
-        this._addImplicitHelpCommand = void 0;
-        this._helpCommand = void 0;
-        this._helpConfiguration = {};
-      }
-      /**
-       * Copy settings that are useful to have in common across root command and subcommands.
-       *
-       * (Used internally when adding a command using `.command()` so subcommands inherit parent settings.)
-       *
-       * @param {Command} sourceCommand
-       * @return {Command} `this` command for chaining
-       */
-      copyInheritedSettings(sourceCommand) {
-        this._outputConfiguration = sourceCommand._outputConfiguration;
-        this._helpOption = sourceCommand._helpOption;
-        this._helpCommand = sourceCommand._helpCommand;
-        this._helpConfiguration = sourceCommand._helpConfiguration;
-        this._exitCallback = sourceCommand._exitCallback;
-        this._storeOptionsAsProperties = sourceCommand._storeOptionsAsProperties;
-        this._combineFlagAndOptionalValue = sourceCommand._combineFlagAndOptionalValue;
-        this._allowExcessArguments = sourceCommand._allowExcessArguments;
-        this._enablePositionalOptions = sourceCommand._enablePositionalOptions;
-        this._showHelpAfterError = sourceCommand._showHelpAfterError;
-        this._showSuggestionAfterError = sourceCommand._showSuggestionAfterError;
-        return this;
-      }
-      /**
-       * @returns {Command[]}
-       * @private
-       */
-      _getCommandAndAncestors() {
-        const result = [];
-        for (let command2 = this; command2; command2 = command2.parent) {
-          result.push(command2);
-        }
-        return result;
-      }
-      /**
-       * Define a command.
-       *
-       * There are two styles of command: pay attention to where to put the description.
-       *
-       * @example
-       * // Command implemented using action handler (description is supplied separately to `.command`)
-       * program
-       *   .command('clone <source> [destination]')
-       *   .description('clone a repository into a newly created directory')
-       *   .action((source, destination) => {
-       *     console.log('clone command called');
-       *   });
-       *
-       * // Command implemented using separate executable file (description is second parameter to `.command`)
-       * program
-       *   .command('start <service>', 'start named service')
-       *   .command('stop [service]', 'stop named service, or all if no name supplied');
-       *
-       * @param {string} nameAndArgs - command name and arguments, args are `<required>` or `[optional]` and last may also be `variadic...`
-       * @param {(object | string)} [actionOptsOrExecDesc] - configuration options (for action), or description (for executable)
-       * @param {object} [execOpts] - configuration options (for executable)
-       * @return {Command} returns new command for action handler, or `this` for executable command
-       */
-      command(nameAndArgs, actionOptsOrExecDesc, execOpts) {
-        let desc = actionOptsOrExecDesc;
-        let opts = execOpts;
-        if (typeof desc === "object" && desc !== null) {
-          opts = desc;
-          desc = null;
-        }
-        opts = opts || {};
-        const [, name, args] = nameAndArgs.match(/([^ ]+) *(.*)/);
-        const cmd = this.createCommand(name);
-        if (desc) {
-          cmd.description(desc);
-          cmd._executableHandler = true;
-        }
-        if (opts.isDefault) this._defaultCommandName = cmd._name;
-        cmd._hidden = !!(opts.noHelp || opts.hidden);
-        cmd._executableFile = opts.executableFile || null;
-        if (args) cmd.arguments(args);
-        this._registerCommand(cmd);
-        cmd.parent = this;
-        cmd.copyInheritedSettings(this);
-        if (desc) return this;
-        return cmd;
-      }
-      /**
-       * Factory routine to create a new unattached command.
-       *
-       * See .command() for creating an attached subcommand, which uses this routine to
-       * create the command. You can override createCommand to customise subcommands.
-       *
-       * @param {string} [name]
-       * @return {Command} new command
-       */
-      createCommand(name) {
-        return new _Command(name);
-      }
-      /**
-       * You can customise the help with a subclass of Help by overriding createHelp,
-       * or by overriding Help properties using configureHelp().
-       *
-       * @return {Help}
-       */
-      createHelp() {
-        return Object.assign(new Help2(), this.configureHelp());
-      }
-      /**
-       * You can customise the help by overriding Help properties using configureHelp(),
-       * or with a subclass of Help by overriding createHelp().
-       *
-       * @param {object} [configuration] - configuration options
-       * @return {(Command | object)} `this` command for chaining, or stored configuration
-       */
-      configureHelp(configuration) {
-        if (configuration === void 0) return this._helpConfiguration;
-        this._helpConfiguration = configuration;
-        return this;
-      }
-      /**
-       * The default output goes to stdout and stderr. You can customise this for special
-       * applications. You can also customise the display of errors by overriding outputError.
-       *
-       * The configuration properties are all functions:
-       *
-       *     // change how output being written, defaults to stdout and stderr
-       *     writeOut(str)
-       *     writeErr(str)
-       *     // change how output being written for errors, defaults to writeErr
-       *     outputError(str, write) // used for displaying errors and not used for displaying help
-       *     // specify width for wrapping help
-       *     getOutHelpWidth()
-       *     getErrHelpWidth()
-       *     // color support, currently only used with Help
-       *     getOutHasColors()
-       *     getErrHasColors()
-       *     stripColor() // used to remove ANSI escape codes if output does not have colors
-       *
-       * @param {object} [configuration] - configuration options
-       * @return {(Command | object)} `this` command for chaining, or stored configuration
-       */
-      configureOutput(configuration) {
-        if (configuration === void 0) return this._outputConfiguration;
-        Object.assign(this._outputConfiguration, configuration);
-        return this;
-      }
-      /**
-       * Display the help or a custom message after an error occurs.
-       *
-       * @param {(boolean|string)} [displayHelp]
-       * @return {Command} `this` command for chaining
-       */
-      showHelpAfterError(displayHelp = true) {
-        if (typeof displayHelp !== "string") displayHelp = !!displayHelp;
-        this._showHelpAfterError = displayHelp;
-        return this;
-      }
-      /**
-       * Display suggestion of similar commands for unknown commands, or options for unknown options.
-       *
-       * @param {boolean} [displaySuggestion]
-       * @return {Command} `this` command for chaining
-       */
-      showSuggestionAfterError(displaySuggestion = true) {
-        this._showSuggestionAfterError = !!displaySuggestion;
-        return this;
-      }
-      /**
-       * Add a prepared subcommand.
-       *
-       * See .command() for creating an attached subcommand which inherits settings from its parent.
-       *
-       * @param {Command} cmd - new subcommand
-       * @param {object} [opts] - configuration options
-       * @return {Command} `this` command for chaining
-       */
-      addCommand(cmd, opts) {
-        if (!cmd._name) {
-          throw new Error(`Command passed to .addCommand() must have a name
-- specify the name in Command constructor or using .name()`);
-        }
-        opts = opts || {};
-        if (opts.isDefault) this._defaultCommandName = cmd._name;
-        if (opts.noHelp || opts.hidden) cmd._hidden = true;
-        this._registerCommand(cmd);
-        cmd.parent = this;
-        cmd._checkForBrokenPassThrough();
-        return this;
-      }
-      /**
-       * Factory routine to create a new unattached argument.
-       *
-       * See .argument() for creating an attached argument, which uses this routine to
-       * create the argument. You can override createArgument to return a custom argument.
-       *
-       * @param {string} name
-       * @param {string} [description]
-       * @return {Argument} new argument
-       */
-      createArgument(name, description) {
-        return new Argument2(name, description);
-      }
-      /**
-       * Define argument syntax for command.
-       *
-       * The default is that the argument is required, and you can explicitly
-       * indicate this with <> around the name. Put [] around the name for an optional argument.
-       *
-       * @example
-       * program.argument('<input-file>');
-       * program.argument('[output-file]');
-       *
-       * @param {string} name
-       * @param {string} [description]
-       * @param {(Function|*)} [fn] - custom argument processing function
-       * @param {*} [defaultValue]
-       * @return {Command} `this` command for chaining
-       */
-      argument(name, description, fn, defaultValue) {
-        const argument = this.createArgument(name, description);
-        if (typeof fn === "function") {
-          argument.default(defaultValue).argParser(fn);
-        } else {
-          argument.default(fn);
-        }
-        this.addArgument(argument);
-        return this;
-      }
-      /**
-       * Define argument syntax for command, adding multiple at once (without descriptions).
-       *
-       * See also .argument().
-       *
-       * @example
-       * program.arguments('<cmd> [env]');
-       *
-       * @param {string} names
-       * @return {Command} `this` command for chaining
-       */
-      arguments(names) {
-        names.trim().split(/ +/).forEach((detail) => {
-          this.argument(detail);
-        });
-        return this;
-      }
-      /**
-       * Define argument syntax for command, adding a prepared argument.
-       *
-       * @param {Argument} argument
-       * @return {Command} `this` command for chaining
-       */
-      addArgument(argument) {
-        const previousArgument = this.registeredArguments.slice(-1)[0];
-        if (previousArgument && previousArgument.variadic) {
-          throw new Error(
-            `only the last argument can be variadic '${previousArgument.name()}'`
-          );
-        }
-        if (argument.required && argument.defaultValue !== void 0 && argument.parseArg === void 0) {
-          throw new Error(
-            `a default value for a required argument is never used: '${argument.name()}'`
-          );
-        }
-        this.registeredArguments.push(argument);
-        return this;
-      }
-      /**
-       * Customise or override default help command. By default a help command is automatically added if your command has subcommands.
-       *
-       * @example
-       *    program.helpCommand('help [cmd]');
-       *    program.helpCommand('help [cmd]', 'show help');
-       *    program.helpCommand(false); // suppress default help command
-       *    program.helpCommand(true); // add help command even if no subcommands
-       *
-       * @param {string|boolean} enableOrNameAndArgs - enable with custom name and/or arguments, or boolean to override whether added
-       * @param {string} [description] - custom description
-       * @return {Command} `this` command for chaining
-       */
-      helpCommand(enableOrNameAndArgs, description) {
-        if (typeof enableOrNameAndArgs === "boolean") {
-          this._addImplicitHelpCommand = enableOrNameAndArgs;
-          return this;
-        }
-        enableOrNameAndArgs = enableOrNameAndArgs ?? "help [command]";
-        const [, helpName, helpArgs] = enableOrNameAndArgs.match(/([^ ]+) *(.*)/);
-        const helpDescription = description ?? "display help for command";
-        const helpCommand = this.createCommand(helpName);
-        helpCommand.helpOption(false);
-        if (helpArgs) helpCommand.arguments(helpArgs);
-        if (helpDescription) helpCommand.description(helpDescription);
-        this._addImplicitHelpCommand = true;
-        this._helpCommand = helpCommand;
-        return this;
-      }
-      /**
-       * Add prepared custom help command.
-       *
-       * @param {(Command|string|boolean)} helpCommand - custom help command, or deprecated enableOrNameAndArgs as for `.helpCommand()`
-       * @param {string} [deprecatedDescription] - deprecated custom description used with custom name only
-       * @return {Command} `this` command for chaining
-       */
-      addHelpCommand(helpCommand, deprecatedDescription) {
-        if (typeof helpCommand !== "object") {
-          this.helpCommand(helpCommand, deprecatedDescription);
-          return this;
-        }
-        this._addImplicitHelpCommand = true;
-        this._helpCommand = helpCommand;
-        return this;
-      }
-      /**
-       * Lazy create help command.
-       *
-       * @return {(Command|null)}
-       * @package
-       */
-      _getHelpCommand() {
-        const hasImplicitHelpCommand = this._addImplicitHelpCommand ?? (this.commands.length && !this._actionHandler && !this._findCommand("help"));
-        if (hasImplicitHelpCommand) {
-          if (this._helpCommand === void 0) {
-            this.helpCommand(void 0, void 0);
-          }
-          return this._helpCommand;
-        }
-        return null;
-      }
-      /**
-       * Add hook for life cycle event.
-       *
-       * @param {string} event
-       * @param {Function} listener
-       * @return {Command} `this` command for chaining
-       */
-      hook(event, listener) {
-        const allowedValues = ["preSubcommand", "preAction", "postAction"];
-        if (!allowedValues.includes(event)) {
-          throw new Error(`Unexpected value for event passed to hook : '${event}'.
-Expecting one of '${allowedValues.join("', '")}'`);
-        }
-        if (this._lifeCycleHooks[event]) {
-          this._lifeCycleHooks[event].push(listener);
-        } else {
-          this._lifeCycleHooks[event] = [listener];
-        }
-        return this;
-      }
-      /**
-       * Register callback to use as replacement for calling process.exit.
-       *
-       * @param {Function} [fn] optional callback which will be passed a CommanderError, defaults to throwing
-       * @return {Command} `this` command for chaining
-       */
-      exitOverride(fn) {
-        if (fn) {
-          this._exitCallback = fn;
-        } else {
-          this._exitCallback = (err) => {
-            if (err.code !== "commander.executeSubCommandAsync") {
-              throw err;
-            } else {
-            }
-          };
-        }
-        return this;
-      }
-      /**
-       * Call process.exit, and _exitCallback if defined.
-       *
-       * @param {number} exitCode exit code for using with process.exit
-       * @param {string} code an id string representing the error
-       * @param {string} message human-readable description of the error
-       * @return never
-       * @private
-       */
-      _exit(exitCode, code, message2) {
-        if (this._exitCallback) {
-          this._exitCallback(new CommanderError2(exitCode, code, message2));
-        }
-        process3.exit(exitCode);
-      }
-      /**
-       * Register callback `fn` for the command.
-       *
-       * @example
-       * program
-       *   .command('serve')
-       *   .description('start service')
-       *   .action(function() {
-       *      // do work here
-       *   });
-       *
-       * @param {Function} fn
-       * @return {Command} `this` command for chaining
-       */
-      action(fn) {
-        const listener = (args) => {
-          const expectedArgsCount = this.registeredArguments.length;
-          const actionArgs = args.slice(0, expectedArgsCount);
-          if (this._storeOptionsAsProperties) {
-            actionArgs[expectedArgsCount] = this;
-          } else {
-            actionArgs[expectedArgsCount] = this.opts();
-          }
-          actionArgs.push(this);
-          return fn.apply(this, actionArgs);
-        };
-        this._actionHandler = listener;
-        return this;
-      }
-      /**
-       * Factory routine to create a new unattached option.
-       *
-       * See .option() for creating an attached option, which uses this routine to
-       * create the option. You can override createOption to return a custom option.
-       *
-       * @param {string} flags
-       * @param {string} [description]
-       * @return {Option} new option
-       */
-      createOption(flags, description) {
-        return new Option2(flags, description);
-      }
-      /**
-       * Wrap parseArgs to catch 'commander.invalidArgument'.
-       *
-       * @param {(Option | Argument)} target
-       * @param {string} value
-       * @param {*} previous
-       * @param {string} invalidArgumentMessage
-       * @private
-       */
-      _callParseArg(target, value, previous, invalidArgumentMessage) {
-        try {
-          return target.parseArg(value, previous);
-        } catch (err) {
-          if (err.code === "commander.invalidArgument") {
-            const message2 = `${invalidArgumentMessage} ${err.message}`;
-            this.error(message2, { exitCode: err.exitCode, code: err.code });
-          }
-          throw err;
-        }
-      }
-      /**
-       * Check for option flag conflicts.
-       * Register option if no conflicts found, or throw on conflict.
-       *
-       * @param {Option} option
-       * @private
-       */
-      _registerOption(option) {
-        const matchingOption = option.short && this._findOption(option.short) || option.long && this._findOption(option.long);
-        if (matchingOption) {
-          const matchingFlag = option.long && this._findOption(option.long) ? option.long : option.short;
-          throw new Error(`Cannot add option '${option.flags}'${this._name && ` to command '${this._name}'`} due to conflicting flag '${matchingFlag}'
--  already used by option '${matchingOption.flags}'`);
-        }
-        this.options.push(option);
-      }
-      /**
-       * Check for command name and alias conflicts with existing commands.
-       * Register command if no conflicts found, or throw on conflict.
-       *
-       * @param {Command} command
-       * @private
-       */
-      _registerCommand(command2) {
-        const knownBy = (cmd) => {
-          return [cmd.name()].concat(cmd.aliases());
-        };
-        const alreadyUsed = knownBy(command2).find(
-          (name) => this._findCommand(name)
-        );
-        if (alreadyUsed) {
-          const existingCmd = knownBy(this._findCommand(alreadyUsed)).join("|");
-          const newCmd = knownBy(command2).join("|");
-          throw new Error(
-            `cannot add command '${newCmd}' as already have command '${existingCmd}'`
-          );
-        }
-        this.commands.push(command2);
-      }
-      /**
-       * Add an option.
-       *
-       * @param {Option} option
-       * @return {Command} `this` command for chaining
-       */
-      addOption(option) {
-        this._registerOption(option);
-        const oname = option.name();
-        const name = option.attributeName();
-        if (option.negate) {
-          const positiveLongFlag = option.long.replace(/^--no-/, "--");
-          if (!this._findOption(positiveLongFlag)) {
-            this.setOptionValueWithSource(
-              name,
-              option.defaultValue === void 0 ? true : option.defaultValue,
-              "default"
-            );
-          }
-        } else if (option.defaultValue !== void 0) {
-          this.setOptionValueWithSource(name, option.defaultValue, "default");
-        }
-        const handleOptionValue = (val, invalidValueMessage, valueSource) => {
-          if (val == null && option.presetArg !== void 0) {
-            val = option.presetArg;
-          }
-          const oldValue = this.getOptionValue(name);
-          if (val !== null && option.parseArg) {
-            val = this._callParseArg(option, val, oldValue, invalidValueMessage);
-          } else if (val !== null && option.variadic) {
-            val = option._concatValue(val, oldValue);
-          }
-          if (val == null) {
-            if (option.negate) {
-              val = false;
-            } else if (option.isBoolean() || option.optional) {
-              val = true;
-            } else {
-              val = "";
-            }
-          }
-          this.setOptionValueWithSource(name, val, valueSource);
-        };
-        this.on("option:" + oname, (val) => {
-          const invalidValueMessage = `error: option '${option.flags}' argument '${val}' is invalid.`;
-          handleOptionValue(val, invalidValueMessage, "cli");
-        });
-        if (option.envVar) {
-          this.on("optionEnv:" + oname, (val) => {
-            const invalidValueMessage = `error: option '${option.flags}' value '${val}' from env '${option.envVar}' is invalid.`;
-            handleOptionValue(val, invalidValueMessage, "env");
-          });
-        }
-        return this;
-      }
-      /**
-       * Internal implementation shared by .option() and .requiredOption()
-       *
-       * @return {Command} `this` command for chaining
-       * @private
-       */
-      _optionEx(config2, flags, description, fn, defaultValue) {
-        if (typeof flags === "object" && flags instanceof Option2) {
-          throw new Error(
-            "To add an Option object use addOption() instead of option() or requiredOption()"
-          );
-        }
-        const option = this.createOption(flags, description);
-        option.makeOptionMandatory(!!config2.mandatory);
-        if (typeof fn === "function") {
-          option.default(defaultValue).argParser(fn);
-        } else if (fn instanceof RegExp) {
-          const regex = fn;
-          fn = (val, def) => {
-            const m = regex.exec(val);
-            return m ? m[0] : def;
-          };
-          option.default(defaultValue).argParser(fn);
-        } else {
-          option.default(fn);
-        }
-        return this.addOption(option);
-      }
-      /**
-       * Define option with `flags`, `description`, and optional argument parsing function or `defaultValue` or both.
-       *
-       * The `flags` string contains the short and/or long flags, separated by comma, a pipe or space. A required
-       * option-argument is indicated by `<>` and an optional option-argument by `[]`.
-       *
-       * See the README for more details, and see also addOption() and requiredOption().
-       *
-       * @example
-       * program
-       *     .option('-p, --pepper', 'add pepper')
-       *     .option('-p, --pizza-type <TYPE>', 'type of pizza') // required option-argument
-       *     .option('-c, --cheese [CHEESE]', 'add extra cheese', 'mozzarella') // optional option-argument with default
-       *     .option('-t, --tip <VALUE>', 'add tip to purchase cost', parseFloat) // custom parse function
-       *
-       * @param {string} flags
-       * @param {string} [description]
-       * @param {(Function|*)} [parseArg] - custom option processing function or default value
-       * @param {*} [defaultValue]
-       * @return {Command} `this` command for chaining
-       */
-      option(flags, description, parseArg, defaultValue) {
-        return this._optionEx({}, flags, description, parseArg, defaultValue);
-      }
-      /**
-       * Add a required option which must have a value after parsing. This usually means
-       * the option must be specified on the command line. (Otherwise the same as .option().)
-       *
-       * The `flags` string contains the short and/or long flags, separated by comma, a pipe or space.
-       *
-       * @param {string} flags
-       * @param {string} [description]
-       * @param {(Function|*)} [parseArg] - custom option processing function or default value
-       * @param {*} [defaultValue]
-       * @return {Command} `this` command for chaining
-       */
-      requiredOption(flags, description, parseArg, defaultValue) {
-        return this._optionEx(
-          { mandatory: true },
-          flags,
-          description,
-          parseArg,
-          defaultValue
-        );
-      }
-      /**
-       * Alter parsing of short flags with optional values.
-       *
-       * @example
-       * // for `.option('-f,--flag [value]'):
-       * program.combineFlagAndOptionalValue(true);  // `-f80` is treated like `--flag=80`, this is the default behaviour
-       * program.combineFlagAndOptionalValue(false) // `-fb` is treated like `-f -b`
-       *
-       * @param {boolean} [combine] - if `true` or omitted, an optional value can be specified directly after the flag.
-       * @return {Command} `this` command for chaining
-       */
-      combineFlagAndOptionalValue(combine = true) {
-        this._combineFlagAndOptionalValue = !!combine;
-        return this;
-      }
-      /**
-       * Allow unknown options on the command line.
-       *
-       * @param {boolean} [allowUnknown] - if `true` or omitted, no error will be thrown for unknown options.
-       * @return {Command} `this` command for chaining
-       */
-      allowUnknownOption(allowUnknown = true) {
-        this._allowUnknownOption = !!allowUnknown;
-        return this;
-      }
-      /**
-       * Allow excess command-arguments on the command line. Pass false to make excess arguments an error.
-       *
-       * @param {boolean} [allowExcess] - if `true` or omitted, no error will be thrown for excess arguments.
-       * @return {Command} `this` command for chaining
-       */
-      allowExcessArguments(allowExcess = true) {
-        this._allowExcessArguments = !!allowExcess;
-        return this;
-      }
-      /**
-       * Enable positional options. Positional means global options are specified before subcommands which lets
-       * subcommands reuse the same option names, and also enables subcommands to turn on passThroughOptions.
-       * The default behaviour is non-positional and global options may appear anywhere on the command line.
-       *
-       * @param {boolean} [positional]
-       * @return {Command} `this` command for chaining
-       */
-      enablePositionalOptions(positional = true) {
-        this._enablePositionalOptions = !!positional;
-        return this;
-      }
-      /**
-       * Pass through options that come after command-arguments rather than treat them as command-options,
-       * so actual command-options come before command-arguments. Turning this on for a subcommand requires
-       * positional options to have been enabled on the program (parent commands).
-       * The default behaviour is non-positional and options may appear before or after command-arguments.
-       *
-       * @param {boolean} [passThrough] for unknown options.
-       * @return {Command} `this` command for chaining
-       */
-      passThroughOptions(passThrough = true) {
-        this._passThroughOptions = !!passThrough;
-        this._checkForBrokenPassThrough();
-        return this;
-      }
-      /**
-       * @private
-       */
-      _checkForBrokenPassThrough() {
-        if (this.parent && this._passThroughOptions && !this.parent._enablePositionalOptions) {
-          throw new Error(
-            `passThroughOptions cannot be used for '${this._name}' without turning on enablePositionalOptions for parent command(s)`
-          );
-        }
-      }
-      /**
-       * Whether to store option values as properties on command object,
-       * or store separately (specify false). In both cases the option values can be accessed using .opts().
-       *
-       * @param {boolean} [storeAsProperties=true]
-       * @return {Command} `this` command for chaining
-       */
-      storeOptionsAsProperties(storeAsProperties = true) {
-        if (this.options.length) {
-          throw new Error("call .storeOptionsAsProperties() before adding options");
-        }
-        if (Object.keys(this._optionValues).length) {
-          throw new Error(
-            "call .storeOptionsAsProperties() before setting option values"
-          );
-        }
-        this._storeOptionsAsProperties = !!storeAsProperties;
-        return this;
-      }
-      /**
-       * Retrieve option value.
-       *
-       * @param {string} key
-       * @return {object} value
-       */
-      getOptionValue(key) {
-        if (this._storeOptionsAsProperties) {
-          return this[key];
-        }
-        return this._optionValues[key];
-      }
-      /**
-       * Store option value.
-       *
-       * @param {string} key
-       * @param {object} value
-       * @return {Command} `this` command for chaining
-       */
-      setOptionValue(key, value) {
-        return this.setOptionValueWithSource(key, value, void 0);
-      }
-      /**
-       * Store option value and where the value came from.
-       *
-       * @param {string} key
-       * @param {object} value
-       * @param {string} source - expected values are default/config/env/cli/implied
-       * @return {Command} `this` command for chaining
-       */
-      setOptionValueWithSource(key, value, source) {
-        if (this._storeOptionsAsProperties) {
-          this[key] = value;
-        } else {
-          this._optionValues[key] = value;
-        }
-        this._optionValueSources[key] = source;
-        return this;
-      }
-      /**
-       * Get source of option value.
-       * Expected values are default | config | env | cli | implied
-       *
-       * @param {string} key
-       * @return {string}
-       */
-      getOptionValueSource(key) {
-        return this._optionValueSources[key];
-      }
-      /**
-       * Get source of option value. See also .optsWithGlobals().
-       * Expected values are default | config | env | cli | implied
-       *
-       * @param {string} key
-       * @return {string}
-       */
-      getOptionValueSourceWithGlobals(key) {
-        let source;
-        this._getCommandAndAncestors().forEach((cmd) => {
-          if (cmd.getOptionValueSource(key) !== void 0) {
-            source = cmd.getOptionValueSource(key);
-          }
-        });
-        return source;
-      }
-      /**
-       * Get user arguments from implied or explicit arguments.
-       * Side-effects: set _scriptPath if args included script. Used for default program name, and subcommand searches.
-       *
-       * @private
-       */
-      _prepareUserArgs(argv, parseOptions) {
-        if (argv !== void 0 && !Array.isArray(argv)) {
-          throw new Error("first parameter to parse must be array or undefined");
-        }
-        parseOptions = parseOptions || {};
-        if (argv === void 0 && parseOptions.from === void 0) {
-          if (process3.versions?.electron) {
-            parseOptions.from = "electron";
-          }
-          const execArgv = process3.execArgv ?? [];
-          if (execArgv.includes("-e") || execArgv.includes("--eval") || execArgv.includes("-p") || execArgv.includes("--print")) {
-            parseOptions.from = "eval";
-          }
-        }
-        if (argv === void 0) {
-          argv = process3.argv;
-        }
-        this.rawArgs = argv.slice();
-        let userArgs;
-        switch (parseOptions.from) {
-          case void 0:
-          case "node":
-            this._scriptPath = argv[1];
-            userArgs = argv.slice(2);
-            break;
-          case "electron":
-            if (process3.defaultApp) {
-              this._scriptPath = argv[1];
-              userArgs = argv.slice(2);
-            } else {
-              userArgs = argv.slice(1);
-            }
-            break;
-          case "user":
-            userArgs = argv.slice(0);
-            break;
-          case "eval":
-            userArgs = argv.slice(1);
-            break;
-          default:
-            throw new Error(
-              `unexpected parse option { from: '${parseOptions.from}' }`
-            );
-        }
-        if (!this._name && this._scriptPath)
-          this.nameFromFilename(this._scriptPath);
-        this._name = this._name || "program";
-        return userArgs;
-      }
-      /**
-       * Parse `argv`, setting options and invoking commands when defined.
-       *
-       * Use parseAsync instead of parse if any of your action handlers are async.
-       *
-       * Call with no parameters to parse `process.argv`. Detects Electron and special node options like `node --eval`. Easy mode!
-       *
-       * Or call with an array of strings to parse, and optionally where the user arguments start by specifying where the arguments are `from`:
-       * - `'node'`: default, `argv[0]` is the application and `argv[1]` is the script being run, with user arguments after that
-       * - `'electron'`: `argv[0]` is the application and `argv[1]` varies depending on whether the electron application is packaged
-       * - `'user'`: just user arguments
-       *
-       * @example
-       * program.parse(); // parse process.argv and auto-detect electron and special node flags
-       * program.parse(process.argv); // assume argv[0] is app and argv[1] is script
-       * program.parse(my-args, { from: 'user' }); // just user supplied arguments, nothing special about argv[0]
-       *
-       * @param {string[]} [argv] - optional, defaults to process.argv
-       * @param {object} [parseOptions] - optionally specify style of options with from: node/user/electron
-       * @param {string} [parseOptions.from] - where the args are from: 'node', 'user', 'electron'
-       * @return {Command} `this` command for chaining
-       */
-      parse(argv, parseOptions) {
-        this._prepareForParse();
-        const userArgs = this._prepareUserArgs(argv, parseOptions);
-        this._parseCommand([], userArgs);
-        return this;
-      }
-      /**
-       * Parse `argv`, setting options and invoking commands when defined.
-       *
-       * Call with no parameters to parse `process.argv`. Detects Electron and special node options like `node --eval`. Easy mode!
-       *
-       * Or call with an array of strings to parse, and optionally where the user arguments start by specifying where the arguments are `from`:
-       * - `'node'`: default, `argv[0]` is the application and `argv[1]` is the script being run, with user arguments after that
-       * - `'electron'`: `argv[0]` is the application and `argv[1]` varies depending on whether the electron application is packaged
-       * - `'user'`: just user arguments
-       *
-       * @example
-       * await program.parseAsync(); // parse process.argv and auto-detect electron and special node flags
-       * await program.parseAsync(process.argv); // assume argv[0] is app and argv[1] is script
-       * await program.parseAsync(my-args, { from: 'user' }); // just user supplied arguments, nothing special about argv[0]
-       *
-       * @param {string[]} [argv]
-       * @param {object} [parseOptions]
-       * @param {string} parseOptions.from - where the args are from: 'node', 'user', 'electron'
-       * @return {Promise}
-       */
-      async parseAsync(argv, parseOptions) {
-        this._prepareForParse();
-        const userArgs = this._prepareUserArgs(argv, parseOptions);
-        await this._parseCommand([], userArgs);
-        return this;
-      }
-      _prepareForParse() {
-        if (this._savedState === null) {
-          this.saveStateBeforeParse();
-        } else {
-          this.restoreStateBeforeParse();
-        }
-      }
-      /**
-       * Called the first time parse is called to save state and allow a restore before subsequent calls to parse.
-       * Not usually called directly, but available for subclasses to save their custom state.
-       *
-       * This is called in a lazy way. Only commands used in parsing chain will have state saved.
-       */
-      saveStateBeforeParse() {
-        this._savedState = {
-          // name is stable if supplied by author, but may be unspecified for root command and deduced during parsing
-          _name: this._name,
-          // option values before parse have default values (including false for negated options)
-          // shallow clones
-          _optionValues: { ...this._optionValues },
-          _optionValueSources: { ...this._optionValueSources }
-        };
-      }
-      /**
-       * Restore state before parse for calls after the first.
-       * Not usually called directly, but available for subclasses to save their custom state.
-       *
-       * This is called in a lazy way. Only commands used in parsing chain will have state restored.
-       */
-      restoreStateBeforeParse() {
-        if (this._storeOptionsAsProperties)
-          throw new Error(`Can not call parse again when storeOptionsAsProperties is true.
-- either make a new Command for each call to parse, or stop storing options as properties`);
-        this._name = this._savedState._name;
-        this._scriptPath = null;
-        this.rawArgs = [];
-        this._optionValues = { ...this._savedState._optionValues };
-        this._optionValueSources = { ...this._savedState._optionValueSources };
-        this.args = [];
-        this.processedArgs = [];
-      }
-      /**
-       * Throw if expected executable is missing. Add lots of help for author.
-       *
-       * @param {string} executableFile
-       * @param {string} executableDir
-       * @param {string} subcommandName
-       */
-      _checkForMissingExecutable(executableFile, executableDir, subcommandName) {
-        if (fs.existsSync(executableFile)) return;
-        const executableDirMessage = executableDir ? `searched for local subcommand relative to directory '${executableDir}'` : "no directory for search for local subcommand, use .executableDir() to supply a custom directory";
-        const executableMissing = `'${executableFile}' does not exist
- - if '${subcommandName}' is not meant to be an executable command, remove description parameter from '.command()' and use '.description()' instead
- - if the default executable name is not suitable, use the executableFile option to supply a custom name or path
- - ${executableDirMessage}`;
-        throw new Error(executableMissing);
-      }
-      /**
-       * Execute a sub-command executable.
-       *
-       * @private
-       */
-      _executeSubCommand(subcommand, args) {
-        args = args.slice();
-        let launchWithNode = false;
-        const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
-        function findFile(baseDir, baseName) {
-          const localBin = path.resolve(baseDir, baseName);
-          if (fs.existsSync(localBin)) return localBin;
-          if (sourceExt.includes(path.extname(baseName))) return void 0;
-          const foundExt = sourceExt.find(
-            (ext) => fs.existsSync(`${localBin}${ext}`)
-          );
-          if (foundExt) return `${localBin}${foundExt}`;
-          return void 0;
-        }
-        this._checkForMissingMandatoryOptions();
-        this._checkForConflictingOptions();
-        let executableFile = subcommand._executableFile || `${this._name}-${subcommand._name}`;
-        let executableDir = this._executableDir || "";
-        if (this._scriptPath) {
-          let resolvedScriptPath;
-          try {
-            resolvedScriptPath = fs.realpathSync(this._scriptPath);
-          } catch {
-            resolvedScriptPath = this._scriptPath;
-          }
-          executableDir = path.resolve(
-            path.dirname(resolvedScriptPath),
-            executableDir
-          );
-        }
-        if (executableDir) {
-          let localFile = findFile(executableDir, executableFile);
-          if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path.basename(
-              this._scriptPath,
-              path.extname(this._scriptPath)
-            );
-            if (legacyName !== this._name) {
-              localFile = findFile(
-                executableDir,
-                `${legacyName}-${subcommand._name}`
-              );
-            }
-          }
-          executableFile = localFile || executableFile;
-        }
-        launchWithNode = sourceExt.includes(path.extname(executableFile));
-        let proc;
-        if (process3.platform !== "win32") {
-          if (launchWithNode) {
-            args.unshift(executableFile);
-            args = incrementNodeInspectorPort(process3.execArgv).concat(args);
-            proc = childProcess.spawn(process3.argv[0], args, { stdio: "inherit" });
-          } else {
-            proc = childProcess.spawn(executableFile, args, { stdio: "inherit" });
-          }
-        } else {
-          this._checkForMissingExecutable(
-            executableFile,
-            executableDir,
-            subcommand._name
-          );
-          args.unshift(executableFile);
-          args = incrementNodeInspectorPort(process3.execArgv).concat(args);
-          proc = childProcess.spawn(process3.execPath, args, { stdio: "inherit" });
-        }
-        if (!proc.killed) {
-          const signals = ["SIGUSR1", "SIGUSR2", "SIGTERM", "SIGINT", "SIGHUP"];
-          signals.forEach((signal) => {
-            process3.on(signal, () => {
-              if (proc.killed === false && proc.exitCode === null) {
-                proc.kill(signal);
-              }
-            });
-          });
-        }
-        const exitCallback = this._exitCallback;
-        proc.on("close", (code) => {
-          code = code ?? 1;
-          if (!exitCallback) {
-            process3.exit(code);
-          } else {
-            exitCallback(
-              new CommanderError2(
-                code,
-                "commander.executeSubCommandAsync",
-                "(close)"
-              )
-            );
-          }
-        });
-        proc.on("error", (err) => {
-          if (err.code === "ENOENT") {
-            this._checkForMissingExecutable(
-              executableFile,
-              executableDir,
-              subcommand._name
-            );
-          } else if (err.code === "EACCES") {
-            throw new Error(`'${executableFile}' not executable`);
-          }
-          if (!exitCallback) {
-            process3.exit(1);
-          } else {
-            const wrappedError = new CommanderError2(
-              1,
-              "commander.executeSubCommandAsync",
-              "(error)"
-            );
-            wrappedError.nestedError = err;
-            exitCallback(wrappedError);
-          }
-        });
-        this.runningCommand = proc;
-      }
-      /**
-       * @private
-       */
-      _dispatchSubcommand(commandName, operands, unknown2) {
-        const subCommand = this._findCommand(commandName);
-        if (!subCommand) this.help({ error: true });
-        subCommand._prepareForParse();
-        let promiseChain;
-        promiseChain = this._chainOrCallSubCommandHook(
-          promiseChain,
-          subCommand,
-          "preSubcommand"
-        );
-        promiseChain = this._chainOrCall(promiseChain, () => {
-          if (subCommand._executableHandler) {
-            this._executeSubCommand(subCommand, operands.concat(unknown2));
-          } else {
-            return subCommand._parseCommand(operands, unknown2);
-          }
-        });
-        return promiseChain;
-      }
-      /**
-       * Invoke help directly if possible, or dispatch if necessary.
-       * e.g. help foo
-       *
-       * @private
-       */
-      _dispatchHelpCommand(subcommandName) {
-        if (!subcommandName) {
-          this.help();
-        }
-        const subCommand = this._findCommand(subcommandName);
-        if (subCommand && !subCommand._executableHandler) {
-          subCommand.help();
-        }
-        return this._dispatchSubcommand(
-          subcommandName,
-          [],
-          [this._getHelpOption()?.long ?? this._getHelpOption()?.short ?? "--help"]
-        );
-      }
-      /**
-       * Check this.args against expected this.registeredArguments.
-       *
-       * @private
-       */
-      _checkNumberOfArguments() {
-        this.registeredArguments.forEach((arg, i) => {
-          if (arg.required && this.args[i] == null) {
-            this.missingArgument(arg.name());
-          }
-        });
-        if (this.registeredArguments.length > 0 && this.registeredArguments[this.registeredArguments.length - 1].variadic) {
-          return;
-        }
-        if (this.args.length > this.registeredArguments.length) {
-          this._excessArguments(this.args);
-        }
-      }
-      /**
-       * Process this.args using this.registeredArguments and save as this.processedArgs!
-       *
-       * @private
-       */
-      _processArguments() {
-        const myParseArg = (argument, value, previous) => {
-          let parsedValue = value;
-          if (value !== null && argument.parseArg) {
-            const invalidValueMessage = `error: command-argument value '${value}' is invalid for argument '${argument.name()}'.`;
-            parsedValue = this._callParseArg(
-              argument,
-              value,
-              previous,
-              invalidValueMessage
-            );
-          }
-          return parsedValue;
-        };
-        this._checkNumberOfArguments();
-        const processedArgs = [];
-        this.registeredArguments.forEach((declaredArg, index) => {
-          let value = declaredArg.defaultValue;
-          if (declaredArg.variadic) {
-            if (index < this.args.length) {
-              value = this.args.slice(index);
-              if (declaredArg.parseArg) {
-                value = value.reduce((processed, v) => {
-                  return myParseArg(declaredArg, v, processed);
-                }, declaredArg.defaultValue);
-              }
-            } else if (value === void 0) {
-              value = [];
-            }
-          } else if (index < this.args.length) {
-            value = this.args[index];
-            if (declaredArg.parseArg) {
-              value = myParseArg(declaredArg, value, declaredArg.defaultValue);
-            }
-          }
-          processedArgs[index] = value;
-        });
-        this.processedArgs = processedArgs;
-      }
-      /**
-       * Once we have a promise we chain, but call synchronously until then.
-       *
-       * @param {(Promise|undefined)} promise
-       * @param {Function} fn
-       * @return {(Promise|undefined)}
-       * @private
-       */
-      _chainOrCall(promise2, fn) {
-        if (promise2 && promise2.then && typeof promise2.then === "function") {
-          return promise2.then(() => fn());
-        }
-        return fn();
-      }
-      /**
-       *
-       * @param {(Promise|undefined)} promise
-       * @param {string} event
-       * @return {(Promise|undefined)}
-       * @private
-       */
-      _chainOrCallHooks(promise2, event) {
-        let result = promise2;
-        const hooks = [];
-        this._getCommandAndAncestors().reverse().filter((cmd) => cmd._lifeCycleHooks[event] !== void 0).forEach((hookedCommand) => {
-          hookedCommand._lifeCycleHooks[event].forEach((callback) => {
-            hooks.push({ hookedCommand, callback });
-          });
-        });
-        if (event === "postAction") {
-          hooks.reverse();
-        }
-        hooks.forEach((hookDetail) => {
-          result = this._chainOrCall(result, () => {
-            return hookDetail.callback(hookDetail.hookedCommand, this);
-          });
-        });
-        return result;
-      }
-      /**
-       *
-       * @param {(Promise|undefined)} promise
-       * @param {Command} subCommand
-       * @param {string} event
-       * @return {(Promise|undefined)}
-       * @private
-       */
-      _chainOrCallSubCommandHook(promise2, subCommand, event) {
-        let result = promise2;
-        if (this._lifeCycleHooks[event] !== void 0) {
-          this._lifeCycleHooks[event].forEach((hook) => {
-            result = this._chainOrCall(result, () => {
-              return hook(this, subCommand);
-            });
-          });
-        }
-        return result;
-      }
-      /**
-       * Process arguments in context of this command.
-       * Returns action result, in case it is a promise.
-       *
-       * @private
-       */
-      _parseCommand(operands, unknown2) {
-        const parsed = this.parseOptions(unknown2);
-        this._parseOptionsEnv();
-        this._parseOptionsImplied();
-        operands = operands.concat(parsed.operands);
-        unknown2 = parsed.unknown;
-        this.args = operands.concat(unknown2);
-        if (operands && this._findCommand(operands[0])) {
-          return this._dispatchSubcommand(operands[0], operands.slice(1), unknown2);
-        }
-        if (this._getHelpCommand() && operands[0] === this._getHelpCommand().name()) {
-          return this._dispatchHelpCommand(operands[1]);
-        }
-        if (this._defaultCommandName) {
-          this._outputHelpIfRequested(unknown2);
-          return this._dispatchSubcommand(
-            this._defaultCommandName,
-            operands,
-            unknown2
-          );
-        }
-        if (this.commands.length && this.args.length === 0 && !this._actionHandler && !this._defaultCommandName) {
-          this.help({ error: true });
-        }
-        this._outputHelpIfRequested(parsed.unknown);
-        this._checkForMissingMandatoryOptions();
-        this._checkForConflictingOptions();
-        const checkForUnknownOptions = () => {
-          if (parsed.unknown.length > 0) {
-            this.unknownOption(parsed.unknown[0]);
-          }
-        };
-        const commandEvent = `command:${this.name()}`;
-        if (this._actionHandler) {
-          checkForUnknownOptions();
-          this._processArguments();
-          let promiseChain;
-          promiseChain = this._chainOrCallHooks(promiseChain, "preAction");
-          promiseChain = this._chainOrCall(
-            promiseChain,
-            () => this._actionHandler(this.processedArgs)
-          );
-          if (this.parent) {
-            promiseChain = this._chainOrCall(promiseChain, () => {
-              this.parent.emit(commandEvent, operands, unknown2);
-            });
-          }
-          promiseChain = this._chainOrCallHooks(promiseChain, "postAction");
-          return promiseChain;
-        }
-        if (this.parent && this.parent.listenerCount(commandEvent)) {
-          checkForUnknownOptions();
-          this._processArguments();
-          this.parent.emit(commandEvent, operands, unknown2);
-        } else if (operands.length) {
-          if (this._findCommand("*")) {
-            return this._dispatchSubcommand("*", operands, unknown2);
-          }
-          if (this.listenerCount("command:*")) {
-            this.emit("command:*", operands, unknown2);
-          } else if (this.commands.length) {
-            this.unknownCommand();
-          } else {
-            checkForUnknownOptions();
-            this._processArguments();
-          }
-        } else if (this.commands.length) {
-          checkForUnknownOptions();
-          this.help({ error: true });
-        } else {
-          checkForUnknownOptions();
-          this._processArguments();
-        }
-      }
-      /**
-       * Find matching command.
-       *
-       * @private
-       * @return {Command | undefined}
-       */
-      _findCommand(name) {
-        if (!name) return void 0;
-        return this.commands.find(
-          (cmd) => cmd._name === name || cmd._aliases.includes(name)
-        );
-      }
-      /**
-       * Return an option matching `arg` if any.
-       *
-       * @param {string} arg
-       * @return {Option}
-       * @package
-       */
-      _findOption(arg) {
-        return this.options.find((option) => option.is(arg));
-      }
-      /**
-       * Display an error message if a mandatory option does not have a value.
-       * Called after checking for help flags in leaf subcommand.
-       *
-       * @private
-       */
-      _checkForMissingMandatoryOptions() {
-        this._getCommandAndAncestors().forEach((cmd) => {
-          cmd.options.forEach((anOption) => {
-            if (anOption.mandatory && cmd.getOptionValue(anOption.attributeName()) === void 0) {
-              cmd.missingMandatoryOptionValue(anOption);
-            }
-          });
-        });
-      }
-      /**
-       * Display an error message if conflicting options are used together in this.
-       *
-       * @private
-       */
-      _checkForConflictingLocalOptions() {
-        const definedNonDefaultOptions = this.options.filter((option) => {
-          const optionKey = option.attributeName();
-          if (this.getOptionValue(optionKey) === void 0) {
-            return false;
-          }
-          return this.getOptionValueSource(optionKey) !== "default";
-        });
-        const optionsWithConflicting = definedNonDefaultOptions.filter(
-          (option) => option.conflictsWith.length > 0
-        );
-        optionsWithConflicting.forEach((option) => {
-          const conflictingAndDefined = definedNonDefaultOptions.find(
-            (defined) => option.conflictsWith.includes(defined.attributeName())
-          );
-          if (conflictingAndDefined) {
-            this._conflictingOption(option, conflictingAndDefined);
-          }
-        });
-      }
-      /**
-       * Display an error message if conflicting options are used together.
-       * Called after checking for help flags in leaf subcommand.
-       *
-       * @private
-       */
-      _checkForConflictingOptions() {
-        this._getCommandAndAncestors().forEach((cmd) => {
-          cmd._checkForConflictingLocalOptions();
-        });
-      }
-      /**
-       * Parse options from `argv` removing known options,
-       * and return argv split into operands and unknown arguments.
-       *
-       * Side effects: modifies command by storing options. Does not reset state if called again.
-       *
-       * Examples:
-       *
-       *     argv => operands, unknown
-       *     --known kkk op => [op], []
-       *     op --known kkk => [op], []
-       *     sub --unknown uuu op => [sub], [--unknown uuu op]
-       *     sub -- --unknown uuu op => [sub --unknown uuu op], []
-       *
-       * @param {string[]} argv
-       * @return {{operands: string[], unknown: string[]}}
-       */
-      parseOptions(argv) {
-        const operands = [];
-        const unknown2 = [];
-        let dest = operands;
-        const args = argv.slice();
-        function maybeOption(arg) {
-          return arg.length > 1 && arg[0] === "-";
-        }
-        let activeVariadicOption = null;
-        while (args.length) {
-          const arg = args.shift();
-          if (arg === "--") {
-            if (dest === unknown2) dest.push(arg);
-            dest.push(...args);
-            break;
-          }
-          if (activeVariadicOption && !maybeOption(arg)) {
-            this.emit(`option:${activeVariadicOption.name()}`, arg);
-            continue;
-          }
-          activeVariadicOption = null;
-          if (maybeOption(arg)) {
-            const option = this._findOption(arg);
-            if (option) {
-              if (option.required) {
-                const value = args.shift();
-                if (value === void 0) this.optionMissingArgument(option);
-                this.emit(`option:${option.name()}`, value);
-              } else if (option.optional) {
-                let value = null;
-                if (args.length > 0 && !maybeOption(args[0])) {
-                  value = args.shift();
-                }
-                this.emit(`option:${option.name()}`, value);
-              } else {
-                this.emit(`option:${option.name()}`);
-              }
-              activeVariadicOption = option.variadic ? option : null;
-              continue;
-            }
-          }
-          if (arg.length > 2 && arg[0] === "-" && arg[1] !== "-") {
-            const option = this._findOption(`-${arg[1]}`);
-            if (option) {
-              if (option.required || option.optional && this._combineFlagAndOptionalValue) {
-                this.emit(`option:${option.name()}`, arg.slice(2));
-              } else {
-                this.emit(`option:${option.name()}`);
-                args.unshift(`-${arg.slice(2)}`);
-              }
-              continue;
-            }
-          }
-          if (/^--[^=]+=/.test(arg)) {
-            const index = arg.indexOf("=");
-            const option = this._findOption(arg.slice(0, index));
-            if (option && (option.required || option.optional)) {
-              this.emit(`option:${option.name()}`, arg.slice(index + 1));
-              continue;
-            }
-          }
-          if (maybeOption(arg)) {
-            dest = unknown2;
-          }
-          if ((this._enablePositionalOptions || this._passThroughOptions) && operands.length === 0 && unknown2.length === 0) {
-            if (this._findCommand(arg)) {
-              operands.push(arg);
-              if (args.length > 0) unknown2.push(...args);
-              break;
-            } else if (this._getHelpCommand() && arg === this._getHelpCommand().name()) {
-              operands.push(arg);
-              if (args.length > 0) operands.push(...args);
-              break;
-            } else if (this._defaultCommandName) {
-              unknown2.push(arg);
-              if (args.length > 0) unknown2.push(...args);
-              break;
-            }
-          }
-          if (this._passThroughOptions) {
-            dest.push(arg);
-            if (args.length > 0) dest.push(...args);
-            break;
-          }
-          dest.push(arg);
-        }
-        return { operands, unknown: unknown2 };
-      }
-      /**
-       * Return an object containing local option values as key-value pairs.
-       *
-       * @return {object}
-       */
-      opts() {
-        if (this._storeOptionsAsProperties) {
-          const result = {};
-          const len = this.options.length;
-          for (let i = 0; i < len; i++) {
-            const key = this.options[i].attributeName();
-            result[key] = key === this._versionOptionName ? this._version : this[key];
-          }
-          return result;
-        }
-        return this._optionValues;
-      }
-      /**
-       * Return an object containing merged local and global option values as key-value pairs.
-       *
-       * @return {object}
-       */
-      optsWithGlobals() {
-        return this._getCommandAndAncestors().reduce(
-          (combinedOptions, cmd) => Object.assign(combinedOptions, cmd.opts()),
-          {}
-        );
-      }
-      /**
-       * Display error message and exit (or call exitOverride).
-       *
-       * @param {string} message
-       * @param {object} [errorOptions]
-       * @param {string} [errorOptions.code] - an id string representing the error
-       * @param {number} [errorOptions.exitCode] - used with process.exit
-       */
-      error(message2, errorOptions) {
-        this._outputConfiguration.outputError(
-          `${message2}
-`,
-          this._outputConfiguration.writeErr
-        );
-        if (typeof this._showHelpAfterError === "string") {
-          this._outputConfiguration.writeErr(`${this._showHelpAfterError}
-`);
-        } else if (this._showHelpAfterError) {
-          this._outputConfiguration.writeErr("\n");
-          this.outputHelp({ error: true });
-        }
-        const config2 = errorOptions || {};
-        const exitCode = config2.exitCode || 1;
-        const code = config2.code || "commander.error";
-        this._exit(exitCode, code, message2);
-      }
-      /**
-       * Apply any option related environment variables, if option does
-       * not have a value from cli or client code.
-       *
-       * @private
-       */
-      _parseOptionsEnv() {
-        this.options.forEach((option) => {
-          if (option.envVar && option.envVar in process3.env) {
-            const optionKey = option.attributeName();
-            if (this.getOptionValue(optionKey) === void 0 || ["default", "config", "env"].includes(
-              this.getOptionValueSource(optionKey)
-            )) {
-              if (option.required || option.optional) {
-                this.emit(`optionEnv:${option.name()}`, process3.env[option.envVar]);
-              } else {
-                this.emit(`optionEnv:${option.name()}`);
-              }
-            }
-          }
-        });
-      }
-      /**
-       * Apply any implied option values, if option is undefined or default value.
-       *
-       * @private
-       */
-      _parseOptionsImplied() {
-        const dualHelper = new DualOptions(this.options);
-        const hasCustomOptionValue = (optionKey) => {
-          return this.getOptionValue(optionKey) !== void 0 && !["default", "implied"].includes(this.getOptionValueSource(optionKey));
-        };
-        this.options.filter(
-          (option) => option.implied !== void 0 && hasCustomOptionValue(option.attributeName()) && dualHelper.valueFromOption(
-            this.getOptionValue(option.attributeName()),
-            option
-          )
-        ).forEach((option) => {
-          Object.keys(option.implied).filter((impliedKey) => !hasCustomOptionValue(impliedKey)).forEach((impliedKey) => {
-            this.setOptionValueWithSource(
-              impliedKey,
-              option.implied[impliedKey],
-              "implied"
-            );
-          });
-        });
-      }
-      /**
-       * Argument `name` is missing.
-       *
-       * @param {string} name
-       * @private
-       */
-      missingArgument(name) {
-        const message2 = `error: missing required argument '${name}'`;
-        this.error(message2, { code: "commander.missingArgument" });
-      }
-      /**
-       * `Option` is missing an argument.
-       *
-       * @param {Option} option
-       * @private
-       */
-      optionMissingArgument(option) {
-        const message2 = `error: option '${option.flags}' argument missing`;
-        this.error(message2, { code: "commander.optionMissingArgument" });
-      }
-      /**
-       * `Option` does not have a value, and is a mandatory option.
-       *
-       * @param {Option} option
-       * @private
-       */
-      missingMandatoryOptionValue(option) {
-        const message2 = `error: required option '${option.flags}' not specified`;
-        this.error(message2, { code: "commander.missingMandatoryOptionValue" });
-      }
-      /**
-       * `Option` conflicts with another option.
-       *
-       * @param {Option} option
-       * @param {Option} conflictingOption
-       * @private
-       */
-      _conflictingOption(option, conflictingOption) {
-        const findBestOptionFromValue = (option2) => {
-          const optionKey = option2.attributeName();
-          const optionValue = this.getOptionValue(optionKey);
-          const negativeOption = this.options.find(
-            (target) => target.negate && optionKey === target.attributeName()
-          );
-          const positiveOption = this.options.find(
-            (target) => !target.negate && optionKey === target.attributeName()
-          );
-          if (negativeOption && (negativeOption.presetArg === void 0 && optionValue === false || negativeOption.presetArg !== void 0 && optionValue === negativeOption.presetArg)) {
-            return negativeOption;
-          }
-          return positiveOption || option2;
-        };
-        const getErrorMessage = (option2) => {
-          const bestOption = findBestOptionFromValue(option2);
-          const optionKey = bestOption.attributeName();
-          const source = this.getOptionValueSource(optionKey);
-          if (source === "env") {
-            return `environment variable '${bestOption.envVar}'`;
-          }
-          return `option '${bestOption.flags}'`;
-        };
-        const message2 = `error: ${getErrorMessage(option)} cannot be used with ${getErrorMessage(conflictingOption)}`;
-        this.error(message2, { code: "commander.conflictingOption" });
-      }
-      /**
-       * Unknown option `flag`.
-       *
-       * @param {string} flag
-       * @private
-       */
-      unknownOption(flag) {
-        if (this._allowUnknownOption) return;
-        let suggestion = "";
-        if (flag.startsWith("--") && this._showSuggestionAfterError) {
-          let candidateFlags = [];
-          let command2 = this;
-          do {
-            const moreFlags = command2.createHelp().visibleOptions(command2).filter((option) => option.long).map((option) => option.long);
-            candidateFlags = candidateFlags.concat(moreFlags);
-            command2 = command2.parent;
-          } while (command2 && !command2._enablePositionalOptions);
-          suggestion = suggestSimilar(flag, candidateFlags);
-        }
-        const message2 = `error: unknown option '${flag}'${suggestion}`;
-        this.error(message2, { code: "commander.unknownOption" });
-      }
-      /**
-       * Excess arguments, more than expected.
-       *
-       * @param {string[]} receivedArgs
-       * @private
-       */
-      _excessArguments(receivedArgs) {
-        if (this._allowExcessArguments) return;
-        const expected = this.registeredArguments.length;
-        const s = expected === 1 ? "" : "s";
-        const forSubcommand = this.parent ? ` for '${this.name()}'` : "";
-        const message2 = `error: too many arguments${forSubcommand}. Expected ${expected} argument${s} but got ${receivedArgs.length}.`;
-        this.error(message2, { code: "commander.excessArguments" });
-      }
-      /**
-       * Unknown command.
-       *
-       * @private
-       */
-      unknownCommand() {
-        const unknownName = this.args[0];
-        let suggestion = "";
-        if (this._showSuggestionAfterError) {
-          const candidateNames = [];
-          this.createHelp().visibleCommands(this).forEach((command2) => {
-            candidateNames.push(command2.name());
-            if (command2.alias()) candidateNames.push(command2.alias());
-          });
-          suggestion = suggestSimilar(unknownName, candidateNames);
-        }
-        const message2 = `error: unknown command '${unknownName}'${suggestion}`;
-        this.error(message2, { code: "commander.unknownCommand" });
-      }
-      /**
-       * Get or set the program version.
-       *
-       * This method auto-registers the "-V, --version" option which will print the version number.
-       *
-       * You can optionally supply the flags and description to override the defaults.
-       *
-       * @param {string} [str]
-       * @param {string} [flags]
-       * @param {string} [description]
-       * @return {(this | string | undefined)} `this` command for chaining, or version string if no arguments
-       */
-      version(str, flags, description) {
-        if (str === void 0) return this._version;
-        this._version = str;
-        flags = flags || "-V, --version";
-        description = description || "output the version number";
-        const versionOption = this.createOption(flags, description);
-        this._versionOptionName = versionOption.attributeName();
-        this._registerOption(versionOption);
-        this.on("option:" + versionOption.name(), () => {
-          this._outputConfiguration.writeOut(`${str}
-`);
-          this._exit(0, "commander.version", str);
-        });
-        return this;
-      }
-      /**
-       * Set the description.
-       *
-       * @param {string} [str]
-       * @param {object} [argsDescription]
-       * @return {(string|Command)}
-       */
-      description(str, argsDescription) {
-        if (str === void 0 && argsDescription === void 0)
-          return this._description;
-        this._description = str;
-        if (argsDescription) {
-          this._argsDescription = argsDescription;
-        }
-        return this;
-      }
-      /**
-       * Set the summary. Used when listed as subcommand of parent.
-       *
-       * @param {string} [str]
-       * @return {(string|Command)}
-       */
-      summary(str) {
-        if (str === void 0) return this._summary;
-        this._summary = str;
-        return this;
-      }
-      /**
-       * Set an alias for the command.
-       *
-       * You may call more than once to add multiple aliases. Only the first alias is shown in the auto-generated help.
-       *
-       * @param {string} [alias]
-       * @return {(string|Command)}
-       */
-      alias(alias) {
-        if (alias === void 0) return this._aliases[0];
-        let command2 = this;
-        if (this.commands.length !== 0 && this.commands[this.commands.length - 1]._executableHandler) {
-          command2 = this.commands[this.commands.length - 1];
-        }
-        if (alias === command2._name)
-          throw new Error("Command alias can't be the same as its name");
-        const matchingCommand = this.parent?._findCommand(alias);
-        if (matchingCommand) {
-          const existingCmd = [matchingCommand.name()].concat(matchingCommand.aliases()).join("|");
-          throw new Error(
-            `cannot add alias '${alias}' to command '${this.name()}' as already have command '${existingCmd}'`
-          );
-        }
-        command2._aliases.push(alias);
-        return this;
-      }
-      /**
-       * Set aliases for the command.
-       *
-       * Only the first alias is shown in the auto-generated help.
-       *
-       * @param {string[]} [aliases]
-       * @return {(string[]|Command)}
-       */
-      aliases(aliases) {
-        if (aliases === void 0) return this._aliases;
-        aliases.forEach((alias) => this.alias(alias));
-        return this;
-      }
-      /**
-       * Set / get the command usage `str`.
-       *
-       * @param {string} [str]
-       * @return {(string|Command)}
-       */
-      usage(str) {
-        if (str === void 0) {
-          if (this._usage) return this._usage;
-          const args = this.registeredArguments.map((arg) => {
-            return humanReadableArgName(arg);
-          });
-          return [].concat(
-            this.options.length || this._helpOption !== null ? "[options]" : [],
-            this.commands.length ? "[command]" : [],
-            this.registeredArguments.length ? args : []
-          ).join(" ");
-        }
-        this._usage = str;
-        return this;
-      }
-      /**
-       * Get or set the name of the command.
-       *
-       * @param {string} [str]
-       * @return {(string|Command)}
-       */
-      name(str) {
-        if (str === void 0) return this._name;
-        this._name = str;
-        return this;
-      }
-      /**
-       * Set the name of the command from script filename, such as process.argv[1],
-       * or require.main.filename, or __filename.
-       *
-       * (Used internally and public although not documented in README.)
-       *
-       * @example
-       * program.nameFromFilename(require.main.filename);
-       *
-       * @param {string} filename
-       * @return {Command}
-       */
-      nameFromFilename(filename) {
-        this._name = path.basename(filename, path.extname(filename));
-        return this;
-      }
-      /**
-       * Get or set the directory for searching for executable subcommands of this command.
-       *
-       * @example
-       * program.executableDir(__dirname);
-       * // or
-       * program.executableDir('subcommands');
-       *
-       * @param {string} [path]
-       * @return {(string|null|Command)}
-       */
-      executableDir(path2) {
-        if (path2 === void 0) return this._executableDir;
-        this._executableDir = path2;
-        return this;
-      }
-      /**
-       * Return program help documentation.
-       *
-       * @param {{ error: boolean }} [contextOptions] - pass {error:true} to wrap for stderr instead of stdout
-       * @return {string}
-       */
-      helpInformation(contextOptions) {
-        const helper = this.createHelp();
-        const context = this._getOutputContext(contextOptions);
-        helper.prepareContext({
-          error: context.error,
-          helpWidth: context.helpWidth,
-          outputHasColors: context.hasColors
-        });
-        const text = helper.formatHelp(this, helper);
-        if (context.hasColors) return text;
-        return this._outputConfiguration.stripColor(text);
-      }
-      /**
-       * @typedef HelpContext
-       * @type {object}
-       * @property {boolean} error
-       * @property {number} helpWidth
-       * @property {boolean} hasColors
-       * @property {function} write - includes stripColor if needed
-       *
-       * @returns {HelpContext}
-       * @private
-       */
-      _getOutputContext(contextOptions) {
-        contextOptions = contextOptions || {};
-        const error51 = !!contextOptions.error;
-        let baseWrite;
-        let hasColors;
-        let helpWidth;
-        if (error51) {
-          baseWrite = (str) => this._outputConfiguration.writeErr(str);
-          hasColors = this._outputConfiguration.getErrHasColors();
-          helpWidth = this._outputConfiguration.getErrHelpWidth();
-        } else {
-          baseWrite = (str) => this._outputConfiguration.writeOut(str);
-          hasColors = this._outputConfiguration.getOutHasColors();
-          helpWidth = this._outputConfiguration.getOutHelpWidth();
-        }
-        const write = (str) => {
-          if (!hasColors) str = this._outputConfiguration.stripColor(str);
-          return baseWrite(str);
-        };
-        return { error: error51, write, hasColors, helpWidth };
-      }
-      /**
-       * Output help information for this command.
-       *
-       * Outputs built-in help, and custom text added using `.addHelpText()`.
-       *
-       * @param {{ error: boolean } | Function} [contextOptions] - pass {error:true} to write to stderr instead of stdout
-       */
-      outputHelp(contextOptions) {
-        let deprecatedCallback;
-        if (typeof contextOptions === "function") {
-          deprecatedCallback = contextOptions;
-          contextOptions = void 0;
-        }
-        const outputContext = this._getOutputContext(contextOptions);
-        const eventContext = {
-          error: outputContext.error,
-          write: outputContext.write,
-          command: this
-        };
-        this._getCommandAndAncestors().reverse().forEach((command2) => command2.emit("beforeAllHelp", eventContext));
-        this.emit("beforeHelp", eventContext);
-        let helpInformation = this.helpInformation({ error: outputContext.error });
-        if (deprecatedCallback) {
-          helpInformation = deprecatedCallback(helpInformation);
-          if (typeof helpInformation !== "string" && !Buffer.isBuffer(helpInformation)) {
-            throw new Error("outputHelp callback must return a string or a Buffer");
-          }
-        }
-        outputContext.write(helpInformation);
-        if (this._getHelpOption()?.long) {
-          this.emit(this._getHelpOption().long);
-        }
-        this.emit("afterHelp", eventContext);
-        this._getCommandAndAncestors().forEach(
-          (command2) => command2.emit("afterAllHelp", eventContext)
-        );
-      }
-      /**
-       * You can pass in flags and a description to customise the built-in help option.
-       * Pass in false to disable the built-in help option.
-       *
-       * @example
-       * program.helpOption('-?, --help' 'show help'); // customise
-       * program.helpOption(false); // disable
-       *
-       * @param {(string | boolean)} flags
-       * @param {string} [description]
-       * @return {Command} `this` command for chaining
-       */
-      helpOption(flags, description) {
-        if (typeof flags === "boolean") {
-          if (flags) {
-            this._helpOption = this._helpOption ?? void 0;
-          } else {
-            this._helpOption = null;
-          }
-          return this;
-        }
-        flags = flags ?? "-h, --help";
-        description = description ?? "display help for command";
-        this._helpOption = this.createOption(flags, description);
-        return this;
-      }
-      /**
-       * Lazy create help option.
-       * Returns null if has been disabled with .helpOption(false).
-       *
-       * @returns {(Option | null)} the help option
-       * @package
-       */
-      _getHelpOption() {
-        if (this._helpOption === void 0) {
-          this.helpOption(void 0, void 0);
-        }
-        return this._helpOption;
-      }
-      /**
-       * Supply your own option to use for the built-in help option.
-       * This is an alternative to using helpOption() to customise the flags and description etc.
-       *
-       * @param {Option} option
-       * @return {Command} `this` command for chaining
-       */
-      addHelpOption(option) {
-        this._helpOption = option;
-        return this;
-      }
-      /**
-       * Output help information and exit.
-       *
-       * Outputs built-in help, and custom text added using `.addHelpText()`.
-       *
-       * @param {{ error: boolean }} [contextOptions] - pass {error:true} to write to stderr instead of stdout
-       */
-      help(contextOptions) {
-        this.outputHelp(contextOptions);
-        let exitCode = Number(process3.exitCode ?? 0);
-        if (exitCode === 0 && contextOptions && typeof contextOptions !== "function" && contextOptions.error) {
-          exitCode = 1;
-        }
-        this._exit(exitCode, "commander.help", "(outputHelp)");
-      }
-      /**
-       * // Do a little typing to coordinate emit and listener for the help text events.
-       * @typedef HelpTextEventContext
-       * @type {object}
-       * @property {boolean} error
-       * @property {Command} command
-       * @property {function} write
-       */
-      /**
-       * Add additional text to be displayed with the built-in help.
-       *
-       * Position is 'before' or 'after' to affect just this command,
-       * and 'beforeAll' or 'afterAll' to affect this command and all its subcommands.
-       *
-       * @param {string} position - before or after built-in help
-       * @param {(string | Function)} text - string to add, or a function returning a string
-       * @return {Command} `this` command for chaining
-       */
-      addHelpText(position2, text) {
-        const allowedValues = ["beforeAll", "before", "after", "afterAll"];
-        if (!allowedValues.includes(position2)) {
-          throw new Error(`Unexpected value for position to addHelpText.
-Expecting one of '${allowedValues.join("', '")}'`);
-        }
-        const helpEvent = `${position2}Help`;
-        this.on(helpEvent, (context) => {
-          let helpStr;
-          if (typeof text === "function") {
-            helpStr = text({ error: context.error, command: context.command });
-          } else {
-            helpStr = text;
-          }
-          if (helpStr) {
-            context.write(`${helpStr}
-`);
-          }
-        });
-        return this;
-      }
-      /**
-       * Output help information if help flags specified
-       *
-       * @param {Array} args - array of options to search for help flags
-       * @private
-       */
-      _outputHelpIfRequested(args) {
-        const helpOption = this._getHelpOption();
-        const helpRequested = helpOption && args.find((arg) => helpOption.is(arg));
-        if (helpRequested) {
-          this.outputHelp();
-          this._exit(0, "commander.helpDisplayed", "(outputHelp)");
-        }
-      }
-    };
-    function incrementNodeInspectorPort(args) {
-      return args.map((arg) => {
-        if (!arg.startsWith("--inspect")) {
-          return arg;
-        }
-        let debugOption;
-        let debugHost = "127.0.0.1";
-        let debugPort = "9229";
-        let match;
-        if ((match = arg.match(/^(--inspect(-brk)?)$/)) !== null) {
-          debugOption = match[1];
-        } else if ((match = arg.match(/^(--inspect(-brk|-port)?)=([^:]+)$/)) !== null) {
-          debugOption = match[1];
-          if (/^\d+$/.test(match[3])) {
-            debugPort = match[3];
-          } else {
-            debugHost = match[3];
-          }
-        } else if ((match = arg.match(/^(--inspect(-brk|-port)?)=([^:]+):(\d+)$/)) !== null) {
-          debugOption = match[1];
-          debugHost = match[3];
-          debugPort = match[4];
-        }
-        if (debugOption && debugPort !== "0") {
-          return `${debugOption}=${debugHost}:${parseInt(debugPort) + 1}`;
-        }
-        return arg;
-      });
-    }
-    function useColor() {
-      if (process3.env.NO_COLOR || process3.env.FORCE_COLOR === "0" || process3.env.FORCE_COLOR === "false")
-        return false;
-      if (process3.env.FORCE_COLOR || process3.env.CLICOLOR_FORCE !== void 0)
-        return true;
-      return void 0;
-    }
-    exports2.Command = Command2;
-    exports2.useColor = useColor;
-  }
-});
-
-// ../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/index.js
-var require_commander = __commonJS({
-  "../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/index.js"(exports2) {
-    var { Argument: Argument2 } = require_argument();
-    var { Command: Command2 } = require_command();
-    var { CommanderError: CommanderError2, InvalidArgumentError: InvalidArgumentError2 } = require_error();
-    var { Help: Help2 } = require_help();
-    var { Option: Option2 } = require_option();
-    exports2.program = new Command2();
-    exports2.createCommand = (name) => new Command2(name);
-    exports2.createOption = (flags, description) => new Option2(flags, description);
-    exports2.createArgument = (name, description) => new Argument2(name, description);
-    exports2.Command = Command2;
-    exports2.Option = Option2;
-    exports2.Argument = Argument2;
-    exports2.Help = Help2;
-    exports2.CommanderError = CommanderError2;
-    exports2.InvalidArgumentError = InvalidArgumentError2;
-    exports2.InvalidOptionArgumentError = InvalidArgumentError2;
-  }
-});
-
 // ../../node_modules/.pnpm/loro-crdt@1.13.6/node_modules/loro-crdt/nodejs/loro_wasm.js
 var require_loro_wasm = __commonJS({
   "../../node_modules/.pnpm/loro-crdt@1.13.6/node_modules/loro-crdt/nodejs/loro_wasm.js"(exports2, module2) {
@@ -6042,7 +2764,7 @@ ${val.stack}`;
           if (r2) {
             throw takeObject(r1);
           }
-          return LoroMap4.__wrap(r0);
+          return LoroMap6.__wrap(r0);
         } finally {
           wasm.__wbindgen_add_to_stack_pointer(16);
           heap[stack_pointer++] = void 0;
@@ -6812,7 +3534,7 @@ ${val.stack}`;
     var LoroMapFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
     }, unregister: () => {
     } } : new FinalizationRegistry((ptr) => wasm.__wbg_loromap_free(ptr >>> 0, 1));
-    var LoroMap4 = class _LoroMap {
+    var LoroMap6 = class _LoroMap {
       static __wrap(ptr) {
         ptr = ptr >>> 0;
         const obj = Object.create(_LoroMap.prototype);
@@ -7457,7 +4179,7 @@ ${val.stack}`;
         }
       }
     };
-    module2.exports.LoroMap = LoroMap4;
+    module2.exports.LoroMap = LoroMap6;
     var LoroMovableListFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
     }, unregister: () => {
     } } : new FinalizationRegistry((ptr) => wasm.__wbg_loromovablelist_free(ptr >>> 0, 1));
@@ -9460,7 +6182,7 @@ ${val.stack}`;
           if (r2) {
             throw takeObject(r1);
           }
-          return LoroMap4.__wrap(r0);
+          return LoroMap6.__wrap(r0);
         } finally {
           wasm.__wbindgen_add_to_stack_pointer(16);
         }
@@ -10174,7 +6896,7 @@ ${val.stack}`;
       return addHeapObject(ret);
     };
     module2.exports.__wbg_loromap_new = function(arg0) {
-      const ret = LoroMap4.__wrap(arg0);
+      const ret = LoroMap6.__wrap(arg0);
       return addHeapObject(ret);
     };
     module2.exports.__wbg_loromovablelist_new = function(arg0) {
@@ -18165,6 +14887,3284 @@ var require_dist = __commonJS({
   }
 });
 
+// ../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/error.js
+var require_error = __commonJS({
+  "../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/error.js"(exports2) {
+    var CommanderError2 = class extends Error {
+      /**
+       * Constructs the CommanderError class
+       * @param {number} exitCode suggested exit code which could be used with process.exit
+       * @param {string} code an id string representing the error
+       * @param {string} message human-readable description of the error
+       */
+      constructor(exitCode, code, message2) {
+        super(message2);
+        Error.captureStackTrace(this, this.constructor);
+        this.name = this.constructor.name;
+        this.code = code;
+        this.exitCode = exitCode;
+        this.nestedError = void 0;
+      }
+    };
+    var InvalidArgumentError2 = class extends CommanderError2 {
+      /**
+       * Constructs the InvalidArgumentError class
+       * @param {string} [message] explanation of why argument is invalid
+       */
+      constructor(message2) {
+        super(1, "commander.invalidArgument", message2);
+        Error.captureStackTrace(this, this.constructor);
+        this.name = this.constructor.name;
+      }
+    };
+    exports2.CommanderError = CommanderError2;
+    exports2.InvalidArgumentError = InvalidArgumentError2;
+  }
+});
+
+// ../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/argument.js
+var require_argument = __commonJS({
+  "../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/argument.js"(exports2) {
+    var { InvalidArgumentError: InvalidArgumentError2 } = require_error();
+    var Argument2 = class {
+      /**
+       * Initialize a new command argument with the given name and description.
+       * The default is that the argument is required, and you can explicitly
+       * indicate this with <> around the name. Put [] around the name for an optional argument.
+       *
+       * @param {string} name
+       * @param {string} [description]
+       */
+      constructor(name, description) {
+        this.description = description || "";
+        this.variadic = false;
+        this.parseArg = void 0;
+        this.defaultValue = void 0;
+        this.defaultValueDescription = void 0;
+        this.argChoices = void 0;
+        switch (name[0]) {
+          case "<":
+            this.required = true;
+            this._name = name.slice(1, -1);
+            break;
+          case "[":
+            this.required = false;
+            this._name = name.slice(1, -1);
+            break;
+          default:
+            this.required = true;
+            this._name = name;
+            break;
+        }
+        if (this._name.length > 3 && this._name.slice(-3) === "...") {
+          this.variadic = true;
+          this._name = this._name.slice(0, -3);
+        }
+      }
+      /**
+       * Return argument name.
+       *
+       * @return {string}
+       */
+      name() {
+        return this._name;
+      }
+      /**
+       * @package
+       */
+      _concatValue(value, previous) {
+        if (previous === this.defaultValue || !Array.isArray(previous)) {
+          return [value];
+        }
+        return previous.concat(value);
+      }
+      /**
+       * Set the default value, and optionally supply the description to be displayed in the help.
+       *
+       * @param {*} value
+       * @param {string} [description]
+       * @return {Argument}
+       */
+      default(value, description) {
+        this.defaultValue = value;
+        this.defaultValueDescription = description;
+        return this;
+      }
+      /**
+       * Set the custom handler for processing CLI command arguments into argument values.
+       *
+       * @param {Function} [fn]
+       * @return {Argument}
+       */
+      argParser(fn) {
+        this.parseArg = fn;
+        return this;
+      }
+      /**
+       * Only allow argument value to be one of choices.
+       *
+       * @param {string[]} values
+       * @return {Argument}
+       */
+      choices(values) {
+        this.argChoices = values.slice();
+        this.parseArg = (arg, previous) => {
+          if (!this.argChoices.includes(arg)) {
+            throw new InvalidArgumentError2(
+              `Allowed choices are ${this.argChoices.join(", ")}.`
+            );
+          }
+          if (this.variadic) {
+            return this._concatValue(arg, previous);
+          }
+          return arg;
+        };
+        return this;
+      }
+      /**
+       * Make argument required.
+       *
+       * @returns {Argument}
+       */
+      argRequired() {
+        this.required = true;
+        return this;
+      }
+      /**
+       * Make argument optional.
+       *
+       * @returns {Argument}
+       */
+      argOptional() {
+        this.required = false;
+        return this;
+      }
+    };
+    function humanReadableArgName(arg) {
+      const nameOutput = arg.name() + (arg.variadic === true ? "..." : "");
+      return arg.required ? "<" + nameOutput + ">" : "[" + nameOutput + "]";
+    }
+    exports2.Argument = Argument2;
+    exports2.humanReadableArgName = humanReadableArgName;
+  }
+});
+
+// ../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/help.js
+var require_help = __commonJS({
+  "../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/help.js"(exports2) {
+    var { humanReadableArgName } = require_argument();
+    var Help2 = class {
+      constructor() {
+        this.helpWidth = void 0;
+        this.minWidthToWrap = 40;
+        this.sortSubcommands = false;
+        this.sortOptions = false;
+        this.showGlobalOptions = false;
+      }
+      /**
+       * prepareContext is called by Commander after applying overrides from `Command.configureHelp()`
+       * and just before calling `formatHelp()`.
+       *
+       * Commander just uses the helpWidth and the rest is provided for optional use by more complex subclasses.
+       *
+       * @param {{ error?: boolean, helpWidth?: number, outputHasColors?: boolean }} contextOptions
+       */
+      prepareContext(contextOptions) {
+        this.helpWidth = this.helpWidth ?? contextOptions.helpWidth ?? 80;
+      }
+      /**
+       * Get an array of the visible subcommands. Includes a placeholder for the implicit help command, if there is one.
+       *
+       * @param {Command} cmd
+       * @returns {Command[]}
+       */
+      visibleCommands(cmd) {
+        const visibleCommands = cmd.commands.filter((cmd2) => !cmd2._hidden);
+        const helpCommand = cmd._getHelpCommand();
+        if (helpCommand && !helpCommand._hidden) {
+          visibleCommands.push(helpCommand);
+        }
+        if (this.sortSubcommands) {
+          visibleCommands.sort((a, b) => {
+            return a.name().localeCompare(b.name());
+          });
+        }
+        return visibleCommands;
+      }
+      /**
+       * Compare options for sort.
+       *
+       * @param {Option} a
+       * @param {Option} b
+       * @returns {number}
+       */
+      compareOptions(a, b) {
+        const getSortKey = (option) => {
+          return option.short ? option.short.replace(/^-/, "") : option.long.replace(/^--/, "");
+        };
+        return getSortKey(a).localeCompare(getSortKey(b));
+      }
+      /**
+       * Get an array of the visible options. Includes a placeholder for the implicit help option, if there is one.
+       *
+       * @param {Command} cmd
+       * @returns {Option[]}
+       */
+      visibleOptions(cmd) {
+        const visibleOptions = cmd.options.filter((option) => !option.hidden);
+        const helpOption = cmd._getHelpOption();
+        if (helpOption && !helpOption.hidden) {
+          const removeShort = helpOption.short && cmd._findOption(helpOption.short);
+          const removeLong = helpOption.long && cmd._findOption(helpOption.long);
+          if (!removeShort && !removeLong) {
+            visibleOptions.push(helpOption);
+          } else if (helpOption.long && !removeLong) {
+            visibleOptions.push(
+              cmd.createOption(helpOption.long, helpOption.description)
+            );
+          } else if (helpOption.short && !removeShort) {
+            visibleOptions.push(
+              cmd.createOption(helpOption.short, helpOption.description)
+            );
+          }
+        }
+        if (this.sortOptions) {
+          visibleOptions.sort(this.compareOptions);
+        }
+        return visibleOptions;
+      }
+      /**
+       * Get an array of the visible global options. (Not including help.)
+       *
+       * @param {Command} cmd
+       * @returns {Option[]}
+       */
+      visibleGlobalOptions(cmd) {
+        if (!this.showGlobalOptions) return [];
+        const globalOptions = [];
+        for (let ancestorCmd = cmd.parent; ancestorCmd; ancestorCmd = ancestorCmd.parent) {
+          const visibleOptions = ancestorCmd.options.filter(
+            (option) => !option.hidden
+          );
+          globalOptions.push(...visibleOptions);
+        }
+        if (this.sortOptions) {
+          globalOptions.sort(this.compareOptions);
+        }
+        return globalOptions;
+      }
+      /**
+       * Get an array of the arguments if any have a description.
+       *
+       * @param {Command} cmd
+       * @returns {Argument[]}
+       */
+      visibleArguments(cmd) {
+        if (cmd._argsDescription) {
+          cmd.registeredArguments.forEach((argument) => {
+            argument.description = argument.description || cmd._argsDescription[argument.name()] || "";
+          });
+        }
+        if (cmd.registeredArguments.find((argument) => argument.description)) {
+          return cmd.registeredArguments;
+        }
+        return [];
+      }
+      /**
+       * Get the command term to show in the list of subcommands.
+       *
+       * @param {Command} cmd
+       * @returns {string}
+       */
+      subcommandTerm(cmd) {
+        const args = cmd.registeredArguments.map((arg) => humanReadableArgName(arg)).join(" ");
+        return cmd._name + (cmd._aliases[0] ? "|" + cmd._aliases[0] : "") + (cmd.options.length ? " [options]" : "") + // simplistic check for non-help option
+        (args ? " " + args : "");
+      }
+      /**
+       * Get the option term to show in the list of options.
+       *
+       * @param {Option} option
+       * @returns {string}
+       */
+      optionTerm(option) {
+        return option.flags;
+      }
+      /**
+       * Get the argument term to show in the list of arguments.
+       *
+       * @param {Argument} argument
+       * @returns {string}
+       */
+      argumentTerm(argument) {
+        return argument.name();
+      }
+      /**
+       * Get the longest command term length.
+       *
+       * @param {Command} cmd
+       * @param {Help} helper
+       * @returns {number}
+       */
+      longestSubcommandTermLength(cmd, helper) {
+        return helper.visibleCommands(cmd).reduce((max, command2) => {
+          return Math.max(
+            max,
+            this.displayWidth(
+              helper.styleSubcommandTerm(helper.subcommandTerm(command2))
+            )
+          );
+        }, 0);
+      }
+      /**
+       * Get the longest option term length.
+       *
+       * @param {Command} cmd
+       * @param {Help} helper
+       * @returns {number}
+       */
+      longestOptionTermLength(cmd, helper) {
+        return helper.visibleOptions(cmd).reduce((max, option) => {
+          return Math.max(
+            max,
+            this.displayWidth(helper.styleOptionTerm(helper.optionTerm(option)))
+          );
+        }, 0);
+      }
+      /**
+       * Get the longest global option term length.
+       *
+       * @param {Command} cmd
+       * @param {Help} helper
+       * @returns {number}
+       */
+      longestGlobalOptionTermLength(cmd, helper) {
+        return helper.visibleGlobalOptions(cmd).reduce((max, option) => {
+          return Math.max(
+            max,
+            this.displayWidth(helper.styleOptionTerm(helper.optionTerm(option)))
+          );
+        }, 0);
+      }
+      /**
+       * Get the longest argument term length.
+       *
+       * @param {Command} cmd
+       * @param {Help} helper
+       * @returns {number}
+       */
+      longestArgumentTermLength(cmd, helper) {
+        return helper.visibleArguments(cmd).reduce((max, argument) => {
+          return Math.max(
+            max,
+            this.displayWidth(
+              helper.styleArgumentTerm(helper.argumentTerm(argument))
+            )
+          );
+        }, 0);
+      }
+      /**
+       * Get the command usage to be displayed at the top of the built-in help.
+       *
+       * @param {Command} cmd
+       * @returns {string}
+       */
+      commandUsage(cmd) {
+        let cmdName = cmd._name;
+        if (cmd._aliases[0]) {
+          cmdName = cmdName + "|" + cmd._aliases[0];
+        }
+        let ancestorCmdNames = "";
+        for (let ancestorCmd = cmd.parent; ancestorCmd; ancestorCmd = ancestorCmd.parent) {
+          ancestorCmdNames = ancestorCmd.name() + " " + ancestorCmdNames;
+        }
+        return ancestorCmdNames + cmdName + " " + cmd.usage();
+      }
+      /**
+       * Get the description for the command.
+       *
+       * @param {Command} cmd
+       * @returns {string}
+       */
+      commandDescription(cmd) {
+        return cmd.description();
+      }
+      /**
+       * Get the subcommand summary to show in the list of subcommands.
+       * (Fallback to description for backwards compatibility.)
+       *
+       * @param {Command} cmd
+       * @returns {string}
+       */
+      subcommandDescription(cmd) {
+        return cmd.summary() || cmd.description();
+      }
+      /**
+       * Get the option description to show in the list of options.
+       *
+       * @param {Option} option
+       * @return {string}
+       */
+      optionDescription(option) {
+        const extraInfo = [];
+        if (option.argChoices) {
+          extraInfo.push(
+            // use stringify to match the display of the default value
+            `choices: ${option.argChoices.map((choice) => JSON.stringify(choice)).join(", ")}`
+          );
+        }
+        if (option.defaultValue !== void 0) {
+          const showDefault = option.required || option.optional || option.isBoolean() && typeof option.defaultValue === "boolean";
+          if (showDefault) {
+            extraInfo.push(
+              `default: ${option.defaultValueDescription || JSON.stringify(option.defaultValue)}`
+            );
+          }
+        }
+        if (option.presetArg !== void 0 && option.optional) {
+          extraInfo.push(`preset: ${JSON.stringify(option.presetArg)}`);
+        }
+        if (option.envVar !== void 0) {
+          extraInfo.push(`env: ${option.envVar}`);
+        }
+        if (extraInfo.length > 0) {
+          return `${option.description} (${extraInfo.join(", ")})`;
+        }
+        return option.description;
+      }
+      /**
+       * Get the argument description to show in the list of arguments.
+       *
+       * @param {Argument} argument
+       * @return {string}
+       */
+      argumentDescription(argument) {
+        const extraInfo = [];
+        if (argument.argChoices) {
+          extraInfo.push(
+            // use stringify to match the display of the default value
+            `choices: ${argument.argChoices.map((choice) => JSON.stringify(choice)).join(", ")}`
+          );
+        }
+        if (argument.defaultValue !== void 0) {
+          extraInfo.push(
+            `default: ${argument.defaultValueDescription || JSON.stringify(argument.defaultValue)}`
+          );
+        }
+        if (extraInfo.length > 0) {
+          const extraDescription = `(${extraInfo.join(", ")})`;
+          if (argument.description) {
+            return `${argument.description} ${extraDescription}`;
+          }
+          return extraDescription;
+        }
+        return argument.description;
+      }
+      /**
+       * Generate the built-in help text.
+       *
+       * @param {Command} cmd
+       * @param {Help} helper
+       * @returns {string}
+       */
+      formatHelp(cmd, helper) {
+        const termWidth = helper.padWidth(cmd, helper);
+        const helpWidth = helper.helpWidth ?? 80;
+        function callFormatItem(term, description) {
+          return helper.formatItem(term, termWidth, description, helper);
+        }
+        let output = [
+          `${helper.styleTitle("Usage:")} ${helper.styleUsage(helper.commandUsage(cmd))}`,
+          ""
+        ];
+        const commandDescription = helper.commandDescription(cmd);
+        if (commandDescription.length > 0) {
+          output = output.concat([
+            helper.boxWrap(
+              helper.styleCommandDescription(commandDescription),
+              helpWidth
+            ),
+            ""
+          ]);
+        }
+        const argumentList = helper.visibleArguments(cmd).map((argument) => {
+          return callFormatItem(
+            helper.styleArgumentTerm(helper.argumentTerm(argument)),
+            helper.styleArgumentDescription(helper.argumentDescription(argument))
+          );
+        });
+        if (argumentList.length > 0) {
+          output = output.concat([
+            helper.styleTitle("Arguments:"),
+            ...argumentList,
+            ""
+          ]);
+        }
+        const optionList = helper.visibleOptions(cmd).map((option) => {
+          return callFormatItem(
+            helper.styleOptionTerm(helper.optionTerm(option)),
+            helper.styleOptionDescription(helper.optionDescription(option))
+          );
+        });
+        if (optionList.length > 0) {
+          output = output.concat([
+            helper.styleTitle("Options:"),
+            ...optionList,
+            ""
+          ]);
+        }
+        if (helper.showGlobalOptions) {
+          const globalOptionList = helper.visibleGlobalOptions(cmd).map((option) => {
+            return callFormatItem(
+              helper.styleOptionTerm(helper.optionTerm(option)),
+              helper.styleOptionDescription(helper.optionDescription(option))
+            );
+          });
+          if (globalOptionList.length > 0) {
+            output = output.concat([
+              helper.styleTitle("Global Options:"),
+              ...globalOptionList,
+              ""
+            ]);
+          }
+        }
+        const commandList = helper.visibleCommands(cmd).map((cmd2) => {
+          return callFormatItem(
+            helper.styleSubcommandTerm(helper.subcommandTerm(cmd2)),
+            helper.styleSubcommandDescription(helper.subcommandDescription(cmd2))
+          );
+        });
+        if (commandList.length > 0) {
+          output = output.concat([
+            helper.styleTitle("Commands:"),
+            ...commandList,
+            ""
+          ]);
+        }
+        return output.join("\n");
+      }
+      /**
+       * Return display width of string, ignoring ANSI escape sequences. Used in padding and wrapping calculations.
+       *
+       * @param {string} str
+       * @returns {number}
+       */
+      displayWidth(str) {
+        return stripColor(str).length;
+      }
+      /**
+       * Style the title for displaying in the help. Called with 'Usage:', 'Options:', etc.
+       *
+       * @param {string} str
+       * @returns {string}
+       */
+      styleTitle(str) {
+        return str;
+      }
+      styleUsage(str) {
+        return str.split(" ").map((word) => {
+          if (word === "[options]") return this.styleOptionText(word);
+          if (word === "[command]") return this.styleSubcommandText(word);
+          if (word[0] === "[" || word[0] === "<")
+            return this.styleArgumentText(word);
+          return this.styleCommandText(word);
+        }).join(" ");
+      }
+      styleCommandDescription(str) {
+        return this.styleDescriptionText(str);
+      }
+      styleOptionDescription(str) {
+        return this.styleDescriptionText(str);
+      }
+      styleSubcommandDescription(str) {
+        return this.styleDescriptionText(str);
+      }
+      styleArgumentDescription(str) {
+        return this.styleDescriptionText(str);
+      }
+      styleDescriptionText(str) {
+        return str;
+      }
+      styleOptionTerm(str) {
+        return this.styleOptionText(str);
+      }
+      styleSubcommandTerm(str) {
+        return str.split(" ").map((word) => {
+          if (word === "[options]") return this.styleOptionText(word);
+          if (word[0] === "[" || word[0] === "<")
+            return this.styleArgumentText(word);
+          return this.styleSubcommandText(word);
+        }).join(" ");
+      }
+      styleArgumentTerm(str) {
+        return this.styleArgumentText(str);
+      }
+      styleOptionText(str) {
+        return str;
+      }
+      styleArgumentText(str) {
+        return str;
+      }
+      styleSubcommandText(str) {
+        return str;
+      }
+      styleCommandText(str) {
+        return str;
+      }
+      /**
+       * Calculate the pad width from the maximum term length.
+       *
+       * @param {Command} cmd
+       * @param {Help} helper
+       * @returns {number}
+       */
+      padWidth(cmd, helper) {
+        return Math.max(
+          helper.longestOptionTermLength(cmd, helper),
+          helper.longestGlobalOptionTermLength(cmd, helper),
+          helper.longestSubcommandTermLength(cmd, helper),
+          helper.longestArgumentTermLength(cmd, helper)
+        );
+      }
+      /**
+       * Detect manually wrapped and indented strings by checking for line break followed by whitespace.
+       *
+       * @param {string} str
+       * @returns {boolean}
+       */
+      preformatted(str) {
+        return /\n[^\S\r\n]/.test(str);
+      }
+      /**
+       * Format the "item", which consists of a term and description. Pad the term and wrap the description, indenting the following lines.
+       *
+       * So "TTT", 5, "DDD DDDD DD DDD" might be formatted for this.helpWidth=17 like so:
+       *   TTT  DDD DDDD
+       *        DD DDD
+       *
+       * @param {string} term
+       * @param {number} termWidth
+       * @param {string} description
+       * @param {Help} helper
+       * @returns {string}
+       */
+      formatItem(term, termWidth, description, helper) {
+        const itemIndent = 2;
+        const itemIndentStr = " ".repeat(itemIndent);
+        if (!description) return itemIndentStr + term;
+        const paddedTerm = term.padEnd(
+          termWidth + term.length - helper.displayWidth(term)
+        );
+        const spacerWidth = 2;
+        const helpWidth = this.helpWidth ?? 80;
+        const remainingWidth = helpWidth - termWidth - spacerWidth - itemIndent;
+        let formattedDescription;
+        if (remainingWidth < this.minWidthToWrap || helper.preformatted(description)) {
+          formattedDescription = description;
+        } else {
+          const wrappedDescription = helper.boxWrap(description, remainingWidth);
+          formattedDescription = wrappedDescription.replace(
+            /\n/g,
+            "\n" + " ".repeat(termWidth + spacerWidth)
+          );
+        }
+        return itemIndentStr + paddedTerm + " ".repeat(spacerWidth) + formattedDescription.replace(/\n/g, `
+${itemIndentStr}`);
+      }
+      /**
+       * Wrap a string at whitespace, preserving existing line breaks.
+       * Wrapping is skipped if the width is less than `minWidthToWrap`.
+       *
+       * @param {string} str
+       * @param {number} width
+       * @returns {string}
+       */
+      boxWrap(str, width) {
+        if (width < this.minWidthToWrap) return str;
+        const rawLines = str.split(/\r\n|\n/);
+        const chunkPattern = /[\s]*[^\s]+/g;
+        const wrappedLines = [];
+        rawLines.forEach((line) => {
+          const chunks = line.match(chunkPattern);
+          if (chunks === null) {
+            wrappedLines.push("");
+            return;
+          }
+          let sumChunks = [chunks.shift()];
+          let sumWidth = this.displayWidth(sumChunks[0]);
+          chunks.forEach((chunk) => {
+            const visibleWidth = this.displayWidth(chunk);
+            if (sumWidth + visibleWidth <= width) {
+              sumChunks.push(chunk);
+              sumWidth += visibleWidth;
+              return;
+            }
+            wrappedLines.push(sumChunks.join(""));
+            const nextChunk = chunk.trimStart();
+            sumChunks = [nextChunk];
+            sumWidth = this.displayWidth(nextChunk);
+          });
+          wrappedLines.push(sumChunks.join(""));
+        });
+        return wrappedLines.join("\n");
+      }
+    };
+    function stripColor(str) {
+      const sgrPattern = /\x1b\[\d*(;\d*)*m/g;
+      return str.replace(sgrPattern, "");
+    }
+    exports2.Help = Help2;
+    exports2.stripColor = stripColor;
+  }
+});
+
+// ../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/option.js
+var require_option = __commonJS({
+  "../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/option.js"(exports2) {
+    var { InvalidArgumentError: InvalidArgumentError2 } = require_error();
+    var Option2 = class {
+      /**
+       * Initialize a new `Option` with the given `flags` and `description`.
+       *
+       * @param {string} flags
+       * @param {string} [description]
+       */
+      constructor(flags, description) {
+        this.flags = flags;
+        this.description = description || "";
+        this.required = flags.includes("<");
+        this.optional = flags.includes("[");
+        this.variadic = /\w\.\.\.[>\]]$/.test(flags);
+        this.mandatory = false;
+        const optionFlags = splitOptionFlags(flags);
+        this.short = optionFlags.shortFlag;
+        this.long = optionFlags.longFlag;
+        this.negate = false;
+        if (this.long) {
+          this.negate = this.long.startsWith("--no-");
+        }
+        this.defaultValue = void 0;
+        this.defaultValueDescription = void 0;
+        this.presetArg = void 0;
+        this.envVar = void 0;
+        this.parseArg = void 0;
+        this.hidden = false;
+        this.argChoices = void 0;
+        this.conflictsWith = [];
+        this.implied = void 0;
+      }
+      /**
+       * Set the default value, and optionally supply the description to be displayed in the help.
+       *
+       * @param {*} value
+       * @param {string} [description]
+       * @return {Option}
+       */
+      default(value, description) {
+        this.defaultValue = value;
+        this.defaultValueDescription = description;
+        return this;
+      }
+      /**
+       * Preset to use when option used without option-argument, especially optional but also boolean and negated.
+       * The custom processing (parseArg) is called.
+       *
+       * @example
+       * new Option('--color').default('GREYSCALE').preset('RGB');
+       * new Option('--donate [amount]').preset('20').argParser(parseFloat);
+       *
+       * @param {*} arg
+       * @return {Option}
+       */
+      preset(arg) {
+        this.presetArg = arg;
+        return this;
+      }
+      /**
+       * Add option name(s) that conflict with this option.
+       * An error will be displayed if conflicting options are found during parsing.
+       *
+       * @example
+       * new Option('--rgb').conflicts('cmyk');
+       * new Option('--js').conflicts(['ts', 'jsx']);
+       *
+       * @param {(string | string[])} names
+       * @return {Option}
+       */
+      conflicts(names) {
+        this.conflictsWith = this.conflictsWith.concat(names);
+        return this;
+      }
+      /**
+       * Specify implied option values for when this option is set and the implied options are not.
+       *
+       * The custom processing (parseArg) is not called on the implied values.
+       *
+       * @example
+       * program
+       *   .addOption(new Option('--log', 'write logging information to file'))
+       *   .addOption(new Option('--trace', 'log extra details').implies({ log: 'trace.txt' }));
+       *
+       * @param {object} impliedOptionValues
+       * @return {Option}
+       */
+      implies(impliedOptionValues) {
+        let newImplied = impliedOptionValues;
+        if (typeof impliedOptionValues === "string") {
+          newImplied = { [impliedOptionValues]: true };
+        }
+        this.implied = Object.assign(this.implied || {}, newImplied);
+        return this;
+      }
+      /**
+       * Set environment variable to check for option value.
+       *
+       * An environment variable is only used if when processed the current option value is
+       * undefined, or the source of the current value is 'default' or 'config' or 'env'.
+       *
+       * @param {string} name
+       * @return {Option}
+       */
+      env(name) {
+        this.envVar = name;
+        return this;
+      }
+      /**
+       * Set the custom handler for processing CLI option arguments into option values.
+       *
+       * @param {Function} [fn]
+       * @return {Option}
+       */
+      argParser(fn) {
+        this.parseArg = fn;
+        return this;
+      }
+      /**
+       * Whether the option is mandatory and must have a value after parsing.
+       *
+       * @param {boolean} [mandatory=true]
+       * @return {Option}
+       */
+      makeOptionMandatory(mandatory = true) {
+        this.mandatory = !!mandatory;
+        return this;
+      }
+      /**
+       * Hide option in help.
+       *
+       * @param {boolean} [hide=true]
+       * @return {Option}
+       */
+      hideHelp(hide = true) {
+        this.hidden = !!hide;
+        return this;
+      }
+      /**
+       * @package
+       */
+      _concatValue(value, previous) {
+        if (previous === this.defaultValue || !Array.isArray(previous)) {
+          return [value];
+        }
+        return previous.concat(value);
+      }
+      /**
+       * Only allow option value to be one of choices.
+       *
+       * @param {string[]} values
+       * @return {Option}
+       */
+      choices(values) {
+        this.argChoices = values.slice();
+        this.parseArg = (arg, previous) => {
+          if (!this.argChoices.includes(arg)) {
+            throw new InvalidArgumentError2(
+              `Allowed choices are ${this.argChoices.join(", ")}.`
+            );
+          }
+          if (this.variadic) {
+            return this._concatValue(arg, previous);
+          }
+          return arg;
+        };
+        return this;
+      }
+      /**
+       * Return option name.
+       *
+       * @return {string}
+       */
+      name() {
+        if (this.long) {
+          return this.long.replace(/^--/, "");
+        }
+        return this.short.replace(/^-/, "");
+      }
+      /**
+       * Return option name, in a camelcase format that can be used
+       * as an object attribute key.
+       *
+       * @return {string}
+       */
+      attributeName() {
+        if (this.negate) {
+          return camelcase(this.name().replace(/^no-/, ""));
+        }
+        return camelcase(this.name());
+      }
+      /**
+       * Check if `arg` matches the short or long flag.
+       *
+       * @param {string} arg
+       * @return {boolean}
+       * @package
+       */
+      is(arg) {
+        return this.short === arg || this.long === arg;
+      }
+      /**
+       * Return whether a boolean option.
+       *
+       * Options are one of boolean, negated, required argument, or optional argument.
+       *
+       * @return {boolean}
+       * @package
+       */
+      isBoolean() {
+        return !this.required && !this.optional && !this.negate;
+      }
+    };
+    var DualOptions = class {
+      /**
+       * @param {Option[]} options
+       */
+      constructor(options) {
+        this.positiveOptions = /* @__PURE__ */ new Map();
+        this.negativeOptions = /* @__PURE__ */ new Map();
+        this.dualOptions = /* @__PURE__ */ new Set();
+        options.forEach((option) => {
+          if (option.negate) {
+            this.negativeOptions.set(option.attributeName(), option);
+          } else {
+            this.positiveOptions.set(option.attributeName(), option);
+          }
+        });
+        this.negativeOptions.forEach((value, key) => {
+          if (this.positiveOptions.has(key)) {
+            this.dualOptions.add(key);
+          }
+        });
+      }
+      /**
+       * Did the value come from the option, and not from possible matching dual option?
+       *
+       * @param {*} value
+       * @param {Option} option
+       * @returns {boolean}
+       */
+      valueFromOption(value, option) {
+        const optionKey = option.attributeName();
+        if (!this.dualOptions.has(optionKey)) return true;
+        const preset = this.negativeOptions.get(optionKey).presetArg;
+        const negativeValue = preset !== void 0 ? preset : false;
+        return option.negate === (negativeValue === value);
+      }
+    };
+    function camelcase(str) {
+      return str.split("-").reduce((str2, word) => {
+        return str2 + word[0].toUpperCase() + word.slice(1);
+      });
+    }
+    function splitOptionFlags(flags) {
+      let shortFlag;
+      let longFlag;
+      const shortFlagExp = /^-[^-]$/;
+      const longFlagExp = /^--[^-]/;
+      const flagParts = flags.split(/[ |,]+/).concat("guard");
+      if (shortFlagExp.test(flagParts[0])) shortFlag = flagParts.shift();
+      if (longFlagExp.test(flagParts[0])) longFlag = flagParts.shift();
+      if (/^-[^-][^-]/.test(flagParts[0]))
+        throw new Error(
+          `invalid Option flags, short option is dash and single character: '${flags}'`
+        );
+      if (shortFlag && shortFlagExp.test(flagParts[0]))
+        throw new Error(
+          `invalid Option flags, more than one short flag: '${flags}'`
+        );
+      if (longFlag && longFlagExp.test(flagParts[0]))
+        throw new Error(
+          `invalid Option flags, more than one long flag: '${flags}'`
+        );
+      if (!(shortFlag || longFlag) || flagParts[0].startsWith("-"))
+        throw new Error(`invalid Option flags: '${flags}'`);
+      return { shortFlag, longFlag };
+    }
+    exports2.Option = Option2;
+    exports2.DualOptions = DualOptions;
+  }
+});
+
+// ../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/suggestSimilar.js
+var require_suggestSimilar = __commonJS({
+  "../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/suggestSimilar.js"(exports2) {
+    var maxDistance = 3;
+    function editDistance(a, b) {
+      if (Math.abs(a.length - b.length) > maxDistance)
+        return Math.max(a.length, b.length);
+      const d = [];
+      for (let i = 0; i <= a.length; i++) {
+        d[i] = [i];
+      }
+      for (let j = 0; j <= b.length; j++) {
+        d[0][j] = j;
+      }
+      for (let j = 1; j <= b.length; j++) {
+        for (let i = 1; i <= a.length; i++) {
+          let cost = 1;
+          if (a[i - 1] === b[j - 1]) {
+            cost = 0;
+          } else {
+            cost = 1;
+          }
+          d[i][j] = Math.min(
+            d[i - 1][j] + 1,
+            // deletion
+            d[i][j - 1] + 1,
+            // insertion
+            d[i - 1][j - 1] + cost
+            // substitution
+          );
+          if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+            d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+          }
+        }
+      }
+      return d[a.length][b.length];
+    }
+    function suggestSimilar(word, candidates) {
+      if (!candidates || candidates.length === 0) return "";
+      candidates = Array.from(new Set(candidates));
+      const searchingOptions = word.startsWith("--");
+      if (searchingOptions) {
+        word = word.slice(2);
+        candidates = candidates.map((candidate) => candidate.slice(2));
+      }
+      let similar = [];
+      let bestDistance = maxDistance;
+      const minSimilarity = 0.4;
+      candidates.forEach((candidate) => {
+        if (candidate.length <= 1) return;
+        const distance = editDistance(word, candidate);
+        const length = Math.max(word.length, candidate.length);
+        const similarity = (length - distance) / length;
+        if (similarity > minSimilarity) {
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            similar = [candidate];
+          } else if (distance === bestDistance) {
+            similar.push(candidate);
+          }
+        }
+      });
+      similar.sort((a, b) => a.localeCompare(b));
+      if (searchingOptions) {
+        similar = similar.map((candidate) => `--${candidate}`);
+      }
+      if (similar.length > 1) {
+        return `
+(Did you mean one of ${similar.join(", ")}?)`;
+      }
+      if (similar.length === 1) {
+        return `
+(Did you mean ${similar[0]}?)`;
+      }
+      return "";
+    }
+    exports2.suggestSimilar = suggestSimilar;
+  }
+});
+
+// ../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/command.js
+var require_command = __commonJS({
+  "../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/command.js"(exports2) {
+    var EventEmitter = require("node:events").EventEmitter;
+    var childProcess = require("node:child_process");
+    var path = require("node:path");
+    var fs = require("node:fs");
+    var process3 = require("node:process");
+    var { Argument: Argument2, humanReadableArgName } = require_argument();
+    var { CommanderError: CommanderError2 } = require_error();
+    var { Help: Help2, stripColor } = require_help();
+    var { Option: Option2, DualOptions } = require_option();
+    var { suggestSimilar } = require_suggestSimilar();
+    var Command2 = class _Command extends EventEmitter {
+      /**
+       * Initialize a new `Command`.
+       *
+       * @param {string} [name]
+       */
+      constructor(name) {
+        super();
+        this.commands = [];
+        this.options = [];
+        this.parent = null;
+        this._allowUnknownOption = false;
+        this._allowExcessArguments = false;
+        this.registeredArguments = [];
+        this._args = this.registeredArguments;
+        this.args = [];
+        this.rawArgs = [];
+        this.processedArgs = [];
+        this._scriptPath = null;
+        this._name = name || "";
+        this._optionValues = {};
+        this._optionValueSources = {};
+        this._storeOptionsAsProperties = false;
+        this._actionHandler = null;
+        this._executableHandler = false;
+        this._executableFile = null;
+        this._executableDir = null;
+        this._defaultCommandName = null;
+        this._exitCallback = null;
+        this._aliases = [];
+        this._combineFlagAndOptionalValue = true;
+        this._description = "";
+        this._summary = "";
+        this._argsDescription = void 0;
+        this._enablePositionalOptions = false;
+        this._passThroughOptions = false;
+        this._lifeCycleHooks = {};
+        this._showHelpAfterError = false;
+        this._showSuggestionAfterError = true;
+        this._savedState = null;
+        this._outputConfiguration = {
+          writeOut: (str) => process3.stdout.write(str),
+          writeErr: (str) => process3.stderr.write(str),
+          outputError: (str, write) => write(str),
+          getOutHelpWidth: () => process3.stdout.isTTY ? process3.stdout.columns : void 0,
+          getErrHelpWidth: () => process3.stderr.isTTY ? process3.stderr.columns : void 0,
+          getOutHasColors: () => useColor() ?? (process3.stdout.isTTY && process3.stdout.hasColors?.()),
+          getErrHasColors: () => useColor() ?? (process3.stderr.isTTY && process3.stderr.hasColors?.()),
+          stripColor: (str) => stripColor(str)
+        };
+        this._hidden = false;
+        this._helpOption = void 0;
+        this._addImplicitHelpCommand = void 0;
+        this._helpCommand = void 0;
+        this._helpConfiguration = {};
+      }
+      /**
+       * Copy settings that are useful to have in common across root command and subcommands.
+       *
+       * (Used internally when adding a command using `.command()` so subcommands inherit parent settings.)
+       *
+       * @param {Command} sourceCommand
+       * @return {Command} `this` command for chaining
+       */
+      copyInheritedSettings(sourceCommand) {
+        this._outputConfiguration = sourceCommand._outputConfiguration;
+        this._helpOption = sourceCommand._helpOption;
+        this._helpCommand = sourceCommand._helpCommand;
+        this._helpConfiguration = sourceCommand._helpConfiguration;
+        this._exitCallback = sourceCommand._exitCallback;
+        this._storeOptionsAsProperties = sourceCommand._storeOptionsAsProperties;
+        this._combineFlagAndOptionalValue = sourceCommand._combineFlagAndOptionalValue;
+        this._allowExcessArguments = sourceCommand._allowExcessArguments;
+        this._enablePositionalOptions = sourceCommand._enablePositionalOptions;
+        this._showHelpAfterError = sourceCommand._showHelpAfterError;
+        this._showSuggestionAfterError = sourceCommand._showSuggestionAfterError;
+        return this;
+      }
+      /**
+       * @returns {Command[]}
+       * @private
+       */
+      _getCommandAndAncestors() {
+        const result = [];
+        for (let command2 = this; command2; command2 = command2.parent) {
+          result.push(command2);
+        }
+        return result;
+      }
+      /**
+       * Define a command.
+       *
+       * There are two styles of command: pay attention to where to put the description.
+       *
+       * @example
+       * // Command implemented using action handler (description is supplied separately to `.command`)
+       * program
+       *   .command('clone <source> [destination]')
+       *   .description('clone a repository into a newly created directory')
+       *   .action((source, destination) => {
+       *     console.log('clone command called');
+       *   });
+       *
+       * // Command implemented using separate executable file (description is second parameter to `.command`)
+       * program
+       *   .command('start <service>', 'start named service')
+       *   .command('stop [service]', 'stop named service, or all if no name supplied');
+       *
+       * @param {string} nameAndArgs - command name and arguments, args are `<required>` or `[optional]` and last may also be `variadic...`
+       * @param {(object | string)} [actionOptsOrExecDesc] - configuration options (for action), or description (for executable)
+       * @param {object} [execOpts] - configuration options (for executable)
+       * @return {Command} returns new command for action handler, or `this` for executable command
+       */
+      command(nameAndArgs, actionOptsOrExecDesc, execOpts) {
+        let desc = actionOptsOrExecDesc;
+        let opts = execOpts;
+        if (typeof desc === "object" && desc !== null) {
+          opts = desc;
+          desc = null;
+        }
+        opts = opts || {};
+        const [, name, args] = nameAndArgs.match(/([^ ]+) *(.*)/);
+        const cmd = this.createCommand(name);
+        if (desc) {
+          cmd.description(desc);
+          cmd._executableHandler = true;
+        }
+        if (opts.isDefault) this._defaultCommandName = cmd._name;
+        cmd._hidden = !!(opts.noHelp || opts.hidden);
+        cmd._executableFile = opts.executableFile || null;
+        if (args) cmd.arguments(args);
+        this._registerCommand(cmd);
+        cmd.parent = this;
+        cmd.copyInheritedSettings(this);
+        if (desc) return this;
+        return cmd;
+      }
+      /**
+       * Factory routine to create a new unattached command.
+       *
+       * See .command() for creating an attached subcommand, which uses this routine to
+       * create the command. You can override createCommand to customise subcommands.
+       *
+       * @param {string} [name]
+       * @return {Command} new command
+       */
+      createCommand(name) {
+        return new _Command(name);
+      }
+      /**
+       * You can customise the help with a subclass of Help by overriding createHelp,
+       * or by overriding Help properties using configureHelp().
+       *
+       * @return {Help}
+       */
+      createHelp() {
+        return Object.assign(new Help2(), this.configureHelp());
+      }
+      /**
+       * You can customise the help by overriding Help properties using configureHelp(),
+       * or with a subclass of Help by overriding createHelp().
+       *
+       * @param {object} [configuration] - configuration options
+       * @return {(Command | object)} `this` command for chaining, or stored configuration
+       */
+      configureHelp(configuration) {
+        if (configuration === void 0) return this._helpConfiguration;
+        this._helpConfiguration = configuration;
+        return this;
+      }
+      /**
+       * The default output goes to stdout and stderr. You can customise this for special
+       * applications. You can also customise the display of errors by overriding outputError.
+       *
+       * The configuration properties are all functions:
+       *
+       *     // change how output being written, defaults to stdout and stderr
+       *     writeOut(str)
+       *     writeErr(str)
+       *     // change how output being written for errors, defaults to writeErr
+       *     outputError(str, write) // used for displaying errors and not used for displaying help
+       *     // specify width for wrapping help
+       *     getOutHelpWidth()
+       *     getErrHelpWidth()
+       *     // color support, currently only used with Help
+       *     getOutHasColors()
+       *     getErrHasColors()
+       *     stripColor() // used to remove ANSI escape codes if output does not have colors
+       *
+       * @param {object} [configuration] - configuration options
+       * @return {(Command | object)} `this` command for chaining, or stored configuration
+       */
+      configureOutput(configuration) {
+        if (configuration === void 0) return this._outputConfiguration;
+        Object.assign(this._outputConfiguration, configuration);
+        return this;
+      }
+      /**
+       * Display the help or a custom message after an error occurs.
+       *
+       * @param {(boolean|string)} [displayHelp]
+       * @return {Command} `this` command for chaining
+       */
+      showHelpAfterError(displayHelp = true) {
+        if (typeof displayHelp !== "string") displayHelp = !!displayHelp;
+        this._showHelpAfterError = displayHelp;
+        return this;
+      }
+      /**
+       * Display suggestion of similar commands for unknown commands, or options for unknown options.
+       *
+       * @param {boolean} [displaySuggestion]
+       * @return {Command} `this` command for chaining
+       */
+      showSuggestionAfterError(displaySuggestion = true) {
+        this._showSuggestionAfterError = !!displaySuggestion;
+        return this;
+      }
+      /**
+       * Add a prepared subcommand.
+       *
+       * See .command() for creating an attached subcommand which inherits settings from its parent.
+       *
+       * @param {Command} cmd - new subcommand
+       * @param {object} [opts] - configuration options
+       * @return {Command} `this` command for chaining
+       */
+      addCommand(cmd, opts) {
+        if (!cmd._name) {
+          throw new Error(`Command passed to .addCommand() must have a name
+- specify the name in Command constructor or using .name()`);
+        }
+        opts = opts || {};
+        if (opts.isDefault) this._defaultCommandName = cmd._name;
+        if (opts.noHelp || opts.hidden) cmd._hidden = true;
+        this._registerCommand(cmd);
+        cmd.parent = this;
+        cmd._checkForBrokenPassThrough();
+        return this;
+      }
+      /**
+       * Factory routine to create a new unattached argument.
+       *
+       * See .argument() for creating an attached argument, which uses this routine to
+       * create the argument. You can override createArgument to return a custom argument.
+       *
+       * @param {string} name
+       * @param {string} [description]
+       * @return {Argument} new argument
+       */
+      createArgument(name, description) {
+        return new Argument2(name, description);
+      }
+      /**
+       * Define argument syntax for command.
+       *
+       * The default is that the argument is required, and you can explicitly
+       * indicate this with <> around the name. Put [] around the name for an optional argument.
+       *
+       * @example
+       * program.argument('<input-file>');
+       * program.argument('[output-file]');
+       *
+       * @param {string} name
+       * @param {string} [description]
+       * @param {(Function|*)} [fn] - custom argument processing function
+       * @param {*} [defaultValue]
+       * @return {Command} `this` command for chaining
+       */
+      argument(name, description, fn, defaultValue) {
+        const argument = this.createArgument(name, description);
+        if (typeof fn === "function") {
+          argument.default(defaultValue).argParser(fn);
+        } else {
+          argument.default(fn);
+        }
+        this.addArgument(argument);
+        return this;
+      }
+      /**
+       * Define argument syntax for command, adding multiple at once (without descriptions).
+       *
+       * See also .argument().
+       *
+       * @example
+       * program.arguments('<cmd> [env]');
+       *
+       * @param {string} names
+       * @return {Command} `this` command for chaining
+       */
+      arguments(names) {
+        names.trim().split(/ +/).forEach((detail) => {
+          this.argument(detail);
+        });
+        return this;
+      }
+      /**
+       * Define argument syntax for command, adding a prepared argument.
+       *
+       * @param {Argument} argument
+       * @return {Command} `this` command for chaining
+       */
+      addArgument(argument) {
+        const previousArgument = this.registeredArguments.slice(-1)[0];
+        if (previousArgument && previousArgument.variadic) {
+          throw new Error(
+            `only the last argument can be variadic '${previousArgument.name()}'`
+          );
+        }
+        if (argument.required && argument.defaultValue !== void 0 && argument.parseArg === void 0) {
+          throw new Error(
+            `a default value for a required argument is never used: '${argument.name()}'`
+          );
+        }
+        this.registeredArguments.push(argument);
+        return this;
+      }
+      /**
+       * Customise or override default help command. By default a help command is automatically added if your command has subcommands.
+       *
+       * @example
+       *    program.helpCommand('help [cmd]');
+       *    program.helpCommand('help [cmd]', 'show help');
+       *    program.helpCommand(false); // suppress default help command
+       *    program.helpCommand(true); // add help command even if no subcommands
+       *
+       * @param {string|boolean} enableOrNameAndArgs - enable with custom name and/or arguments, or boolean to override whether added
+       * @param {string} [description] - custom description
+       * @return {Command} `this` command for chaining
+       */
+      helpCommand(enableOrNameAndArgs, description) {
+        if (typeof enableOrNameAndArgs === "boolean") {
+          this._addImplicitHelpCommand = enableOrNameAndArgs;
+          return this;
+        }
+        enableOrNameAndArgs = enableOrNameAndArgs ?? "help [command]";
+        const [, helpName, helpArgs] = enableOrNameAndArgs.match(/([^ ]+) *(.*)/);
+        const helpDescription = description ?? "display help for command";
+        const helpCommand = this.createCommand(helpName);
+        helpCommand.helpOption(false);
+        if (helpArgs) helpCommand.arguments(helpArgs);
+        if (helpDescription) helpCommand.description(helpDescription);
+        this._addImplicitHelpCommand = true;
+        this._helpCommand = helpCommand;
+        return this;
+      }
+      /**
+       * Add prepared custom help command.
+       *
+       * @param {(Command|string|boolean)} helpCommand - custom help command, or deprecated enableOrNameAndArgs as for `.helpCommand()`
+       * @param {string} [deprecatedDescription] - deprecated custom description used with custom name only
+       * @return {Command} `this` command for chaining
+       */
+      addHelpCommand(helpCommand, deprecatedDescription) {
+        if (typeof helpCommand !== "object") {
+          this.helpCommand(helpCommand, deprecatedDescription);
+          return this;
+        }
+        this._addImplicitHelpCommand = true;
+        this._helpCommand = helpCommand;
+        return this;
+      }
+      /**
+       * Lazy create help command.
+       *
+       * @return {(Command|null)}
+       * @package
+       */
+      _getHelpCommand() {
+        const hasImplicitHelpCommand = this._addImplicitHelpCommand ?? (this.commands.length && !this._actionHandler && !this._findCommand("help"));
+        if (hasImplicitHelpCommand) {
+          if (this._helpCommand === void 0) {
+            this.helpCommand(void 0, void 0);
+          }
+          return this._helpCommand;
+        }
+        return null;
+      }
+      /**
+       * Add hook for life cycle event.
+       *
+       * @param {string} event
+       * @param {Function} listener
+       * @return {Command} `this` command for chaining
+       */
+      hook(event, listener) {
+        const allowedValues = ["preSubcommand", "preAction", "postAction"];
+        if (!allowedValues.includes(event)) {
+          throw new Error(`Unexpected value for event passed to hook : '${event}'.
+Expecting one of '${allowedValues.join("', '")}'`);
+        }
+        if (this._lifeCycleHooks[event]) {
+          this._lifeCycleHooks[event].push(listener);
+        } else {
+          this._lifeCycleHooks[event] = [listener];
+        }
+        return this;
+      }
+      /**
+       * Register callback to use as replacement for calling process.exit.
+       *
+       * @param {Function} [fn] optional callback which will be passed a CommanderError, defaults to throwing
+       * @return {Command} `this` command for chaining
+       */
+      exitOverride(fn) {
+        if (fn) {
+          this._exitCallback = fn;
+        } else {
+          this._exitCallback = (err) => {
+            if (err.code !== "commander.executeSubCommandAsync") {
+              throw err;
+            } else {
+            }
+          };
+        }
+        return this;
+      }
+      /**
+       * Call process.exit, and _exitCallback if defined.
+       *
+       * @param {number} exitCode exit code for using with process.exit
+       * @param {string} code an id string representing the error
+       * @param {string} message human-readable description of the error
+       * @return never
+       * @private
+       */
+      _exit(exitCode, code, message2) {
+        if (this._exitCallback) {
+          this._exitCallback(new CommanderError2(exitCode, code, message2));
+        }
+        process3.exit(exitCode);
+      }
+      /**
+       * Register callback `fn` for the command.
+       *
+       * @example
+       * program
+       *   .command('serve')
+       *   .description('start service')
+       *   .action(function() {
+       *      // do work here
+       *   });
+       *
+       * @param {Function} fn
+       * @return {Command} `this` command for chaining
+       */
+      action(fn) {
+        const listener = (args) => {
+          const expectedArgsCount = this.registeredArguments.length;
+          const actionArgs = args.slice(0, expectedArgsCount);
+          if (this._storeOptionsAsProperties) {
+            actionArgs[expectedArgsCount] = this;
+          } else {
+            actionArgs[expectedArgsCount] = this.opts();
+          }
+          actionArgs.push(this);
+          return fn.apply(this, actionArgs);
+        };
+        this._actionHandler = listener;
+        return this;
+      }
+      /**
+       * Factory routine to create a new unattached option.
+       *
+       * See .option() for creating an attached option, which uses this routine to
+       * create the option. You can override createOption to return a custom option.
+       *
+       * @param {string} flags
+       * @param {string} [description]
+       * @return {Option} new option
+       */
+      createOption(flags, description) {
+        return new Option2(flags, description);
+      }
+      /**
+       * Wrap parseArgs to catch 'commander.invalidArgument'.
+       *
+       * @param {(Option | Argument)} target
+       * @param {string} value
+       * @param {*} previous
+       * @param {string} invalidArgumentMessage
+       * @private
+       */
+      _callParseArg(target, value, previous, invalidArgumentMessage) {
+        try {
+          return target.parseArg(value, previous);
+        } catch (err) {
+          if (err.code === "commander.invalidArgument") {
+            const message2 = `${invalidArgumentMessage} ${err.message}`;
+            this.error(message2, { exitCode: err.exitCode, code: err.code });
+          }
+          throw err;
+        }
+      }
+      /**
+       * Check for option flag conflicts.
+       * Register option if no conflicts found, or throw on conflict.
+       *
+       * @param {Option} option
+       * @private
+       */
+      _registerOption(option) {
+        const matchingOption = option.short && this._findOption(option.short) || option.long && this._findOption(option.long);
+        if (matchingOption) {
+          const matchingFlag = option.long && this._findOption(option.long) ? option.long : option.short;
+          throw new Error(`Cannot add option '${option.flags}'${this._name && ` to command '${this._name}'`} due to conflicting flag '${matchingFlag}'
+-  already used by option '${matchingOption.flags}'`);
+        }
+        this.options.push(option);
+      }
+      /**
+       * Check for command name and alias conflicts with existing commands.
+       * Register command if no conflicts found, or throw on conflict.
+       *
+       * @param {Command} command
+       * @private
+       */
+      _registerCommand(command2) {
+        const knownBy = (cmd) => {
+          return [cmd.name()].concat(cmd.aliases());
+        };
+        const alreadyUsed = knownBy(command2).find(
+          (name) => this._findCommand(name)
+        );
+        if (alreadyUsed) {
+          const existingCmd = knownBy(this._findCommand(alreadyUsed)).join("|");
+          const newCmd = knownBy(command2).join("|");
+          throw new Error(
+            `cannot add command '${newCmd}' as already have command '${existingCmd}'`
+          );
+        }
+        this.commands.push(command2);
+      }
+      /**
+       * Add an option.
+       *
+       * @param {Option} option
+       * @return {Command} `this` command for chaining
+       */
+      addOption(option) {
+        this._registerOption(option);
+        const oname = option.name();
+        const name = option.attributeName();
+        if (option.negate) {
+          const positiveLongFlag = option.long.replace(/^--no-/, "--");
+          if (!this._findOption(positiveLongFlag)) {
+            this.setOptionValueWithSource(
+              name,
+              option.defaultValue === void 0 ? true : option.defaultValue,
+              "default"
+            );
+          }
+        } else if (option.defaultValue !== void 0) {
+          this.setOptionValueWithSource(name, option.defaultValue, "default");
+        }
+        const handleOptionValue = (val, invalidValueMessage, valueSource) => {
+          if (val == null && option.presetArg !== void 0) {
+            val = option.presetArg;
+          }
+          const oldValue = this.getOptionValue(name);
+          if (val !== null && option.parseArg) {
+            val = this._callParseArg(option, val, oldValue, invalidValueMessage);
+          } else if (val !== null && option.variadic) {
+            val = option._concatValue(val, oldValue);
+          }
+          if (val == null) {
+            if (option.negate) {
+              val = false;
+            } else if (option.isBoolean() || option.optional) {
+              val = true;
+            } else {
+              val = "";
+            }
+          }
+          this.setOptionValueWithSource(name, val, valueSource);
+        };
+        this.on("option:" + oname, (val) => {
+          const invalidValueMessage = `error: option '${option.flags}' argument '${val}' is invalid.`;
+          handleOptionValue(val, invalidValueMessage, "cli");
+        });
+        if (option.envVar) {
+          this.on("optionEnv:" + oname, (val) => {
+            const invalidValueMessage = `error: option '${option.flags}' value '${val}' from env '${option.envVar}' is invalid.`;
+            handleOptionValue(val, invalidValueMessage, "env");
+          });
+        }
+        return this;
+      }
+      /**
+       * Internal implementation shared by .option() and .requiredOption()
+       *
+       * @return {Command} `this` command for chaining
+       * @private
+       */
+      _optionEx(config2, flags, description, fn, defaultValue) {
+        if (typeof flags === "object" && flags instanceof Option2) {
+          throw new Error(
+            "To add an Option object use addOption() instead of option() or requiredOption()"
+          );
+        }
+        const option = this.createOption(flags, description);
+        option.makeOptionMandatory(!!config2.mandatory);
+        if (typeof fn === "function") {
+          option.default(defaultValue).argParser(fn);
+        } else if (fn instanceof RegExp) {
+          const regex = fn;
+          fn = (val, def) => {
+            const m = regex.exec(val);
+            return m ? m[0] : def;
+          };
+          option.default(defaultValue).argParser(fn);
+        } else {
+          option.default(fn);
+        }
+        return this.addOption(option);
+      }
+      /**
+       * Define option with `flags`, `description`, and optional argument parsing function or `defaultValue` or both.
+       *
+       * The `flags` string contains the short and/or long flags, separated by comma, a pipe or space. A required
+       * option-argument is indicated by `<>` and an optional option-argument by `[]`.
+       *
+       * See the README for more details, and see also addOption() and requiredOption().
+       *
+       * @example
+       * program
+       *     .option('-p, --pepper', 'add pepper')
+       *     .option('-p, --pizza-type <TYPE>', 'type of pizza') // required option-argument
+       *     .option('-c, --cheese [CHEESE]', 'add extra cheese', 'mozzarella') // optional option-argument with default
+       *     .option('-t, --tip <VALUE>', 'add tip to purchase cost', parseFloat) // custom parse function
+       *
+       * @param {string} flags
+       * @param {string} [description]
+       * @param {(Function|*)} [parseArg] - custom option processing function or default value
+       * @param {*} [defaultValue]
+       * @return {Command} `this` command for chaining
+       */
+      option(flags, description, parseArg, defaultValue) {
+        return this._optionEx({}, flags, description, parseArg, defaultValue);
+      }
+      /**
+       * Add a required option which must have a value after parsing. This usually means
+       * the option must be specified on the command line. (Otherwise the same as .option().)
+       *
+       * The `flags` string contains the short and/or long flags, separated by comma, a pipe or space.
+       *
+       * @param {string} flags
+       * @param {string} [description]
+       * @param {(Function|*)} [parseArg] - custom option processing function or default value
+       * @param {*} [defaultValue]
+       * @return {Command} `this` command for chaining
+       */
+      requiredOption(flags, description, parseArg, defaultValue) {
+        return this._optionEx(
+          { mandatory: true },
+          flags,
+          description,
+          parseArg,
+          defaultValue
+        );
+      }
+      /**
+       * Alter parsing of short flags with optional values.
+       *
+       * @example
+       * // for `.option('-f,--flag [value]'):
+       * program.combineFlagAndOptionalValue(true);  // `-f80` is treated like `--flag=80`, this is the default behaviour
+       * program.combineFlagAndOptionalValue(false) // `-fb` is treated like `-f -b`
+       *
+       * @param {boolean} [combine] - if `true` or omitted, an optional value can be specified directly after the flag.
+       * @return {Command} `this` command for chaining
+       */
+      combineFlagAndOptionalValue(combine = true) {
+        this._combineFlagAndOptionalValue = !!combine;
+        return this;
+      }
+      /**
+       * Allow unknown options on the command line.
+       *
+       * @param {boolean} [allowUnknown] - if `true` or omitted, no error will be thrown for unknown options.
+       * @return {Command} `this` command for chaining
+       */
+      allowUnknownOption(allowUnknown = true) {
+        this._allowUnknownOption = !!allowUnknown;
+        return this;
+      }
+      /**
+       * Allow excess command-arguments on the command line. Pass false to make excess arguments an error.
+       *
+       * @param {boolean} [allowExcess] - if `true` or omitted, no error will be thrown for excess arguments.
+       * @return {Command} `this` command for chaining
+       */
+      allowExcessArguments(allowExcess = true) {
+        this._allowExcessArguments = !!allowExcess;
+        return this;
+      }
+      /**
+       * Enable positional options. Positional means global options are specified before subcommands which lets
+       * subcommands reuse the same option names, and also enables subcommands to turn on passThroughOptions.
+       * The default behaviour is non-positional and global options may appear anywhere on the command line.
+       *
+       * @param {boolean} [positional]
+       * @return {Command} `this` command for chaining
+       */
+      enablePositionalOptions(positional = true) {
+        this._enablePositionalOptions = !!positional;
+        return this;
+      }
+      /**
+       * Pass through options that come after command-arguments rather than treat them as command-options,
+       * so actual command-options come before command-arguments. Turning this on for a subcommand requires
+       * positional options to have been enabled on the program (parent commands).
+       * The default behaviour is non-positional and options may appear before or after command-arguments.
+       *
+       * @param {boolean} [passThrough] for unknown options.
+       * @return {Command} `this` command for chaining
+       */
+      passThroughOptions(passThrough = true) {
+        this._passThroughOptions = !!passThrough;
+        this._checkForBrokenPassThrough();
+        return this;
+      }
+      /**
+       * @private
+       */
+      _checkForBrokenPassThrough() {
+        if (this.parent && this._passThroughOptions && !this.parent._enablePositionalOptions) {
+          throw new Error(
+            `passThroughOptions cannot be used for '${this._name}' without turning on enablePositionalOptions for parent command(s)`
+          );
+        }
+      }
+      /**
+       * Whether to store option values as properties on command object,
+       * or store separately (specify false). In both cases the option values can be accessed using .opts().
+       *
+       * @param {boolean} [storeAsProperties=true]
+       * @return {Command} `this` command for chaining
+       */
+      storeOptionsAsProperties(storeAsProperties = true) {
+        if (this.options.length) {
+          throw new Error("call .storeOptionsAsProperties() before adding options");
+        }
+        if (Object.keys(this._optionValues).length) {
+          throw new Error(
+            "call .storeOptionsAsProperties() before setting option values"
+          );
+        }
+        this._storeOptionsAsProperties = !!storeAsProperties;
+        return this;
+      }
+      /**
+       * Retrieve option value.
+       *
+       * @param {string} key
+       * @return {object} value
+       */
+      getOptionValue(key) {
+        if (this._storeOptionsAsProperties) {
+          return this[key];
+        }
+        return this._optionValues[key];
+      }
+      /**
+       * Store option value.
+       *
+       * @param {string} key
+       * @param {object} value
+       * @return {Command} `this` command for chaining
+       */
+      setOptionValue(key, value) {
+        return this.setOptionValueWithSource(key, value, void 0);
+      }
+      /**
+       * Store option value and where the value came from.
+       *
+       * @param {string} key
+       * @param {object} value
+       * @param {string} source - expected values are default/config/env/cli/implied
+       * @return {Command} `this` command for chaining
+       */
+      setOptionValueWithSource(key, value, source) {
+        if (this._storeOptionsAsProperties) {
+          this[key] = value;
+        } else {
+          this._optionValues[key] = value;
+        }
+        this._optionValueSources[key] = source;
+        return this;
+      }
+      /**
+       * Get source of option value.
+       * Expected values are default | config | env | cli | implied
+       *
+       * @param {string} key
+       * @return {string}
+       */
+      getOptionValueSource(key) {
+        return this._optionValueSources[key];
+      }
+      /**
+       * Get source of option value. See also .optsWithGlobals().
+       * Expected values are default | config | env | cli | implied
+       *
+       * @param {string} key
+       * @return {string}
+       */
+      getOptionValueSourceWithGlobals(key) {
+        let source;
+        this._getCommandAndAncestors().forEach((cmd) => {
+          if (cmd.getOptionValueSource(key) !== void 0) {
+            source = cmd.getOptionValueSource(key);
+          }
+        });
+        return source;
+      }
+      /**
+       * Get user arguments from implied or explicit arguments.
+       * Side-effects: set _scriptPath if args included script. Used for default program name, and subcommand searches.
+       *
+       * @private
+       */
+      _prepareUserArgs(argv, parseOptions) {
+        if (argv !== void 0 && !Array.isArray(argv)) {
+          throw new Error("first parameter to parse must be array or undefined");
+        }
+        parseOptions = parseOptions || {};
+        if (argv === void 0 && parseOptions.from === void 0) {
+          if (process3.versions?.electron) {
+            parseOptions.from = "electron";
+          }
+          const execArgv = process3.execArgv ?? [];
+          if (execArgv.includes("-e") || execArgv.includes("--eval") || execArgv.includes("-p") || execArgv.includes("--print")) {
+            parseOptions.from = "eval";
+          }
+        }
+        if (argv === void 0) {
+          argv = process3.argv;
+        }
+        this.rawArgs = argv.slice();
+        let userArgs;
+        switch (parseOptions.from) {
+          case void 0:
+          case "node":
+            this._scriptPath = argv[1];
+            userArgs = argv.slice(2);
+            break;
+          case "electron":
+            if (process3.defaultApp) {
+              this._scriptPath = argv[1];
+              userArgs = argv.slice(2);
+            } else {
+              userArgs = argv.slice(1);
+            }
+            break;
+          case "user":
+            userArgs = argv.slice(0);
+            break;
+          case "eval":
+            userArgs = argv.slice(1);
+            break;
+          default:
+            throw new Error(
+              `unexpected parse option { from: '${parseOptions.from}' }`
+            );
+        }
+        if (!this._name && this._scriptPath)
+          this.nameFromFilename(this._scriptPath);
+        this._name = this._name || "program";
+        return userArgs;
+      }
+      /**
+       * Parse `argv`, setting options and invoking commands when defined.
+       *
+       * Use parseAsync instead of parse if any of your action handlers are async.
+       *
+       * Call with no parameters to parse `process.argv`. Detects Electron and special node options like `node --eval`. Easy mode!
+       *
+       * Or call with an array of strings to parse, and optionally where the user arguments start by specifying where the arguments are `from`:
+       * - `'node'`: default, `argv[0]` is the application and `argv[1]` is the script being run, with user arguments after that
+       * - `'electron'`: `argv[0]` is the application and `argv[1]` varies depending on whether the electron application is packaged
+       * - `'user'`: just user arguments
+       *
+       * @example
+       * program.parse(); // parse process.argv and auto-detect electron and special node flags
+       * program.parse(process.argv); // assume argv[0] is app and argv[1] is script
+       * program.parse(my-args, { from: 'user' }); // just user supplied arguments, nothing special about argv[0]
+       *
+       * @param {string[]} [argv] - optional, defaults to process.argv
+       * @param {object} [parseOptions] - optionally specify style of options with from: node/user/electron
+       * @param {string} [parseOptions.from] - where the args are from: 'node', 'user', 'electron'
+       * @return {Command} `this` command for chaining
+       */
+      parse(argv, parseOptions) {
+        this._prepareForParse();
+        const userArgs = this._prepareUserArgs(argv, parseOptions);
+        this._parseCommand([], userArgs);
+        return this;
+      }
+      /**
+       * Parse `argv`, setting options and invoking commands when defined.
+       *
+       * Call with no parameters to parse `process.argv`. Detects Electron and special node options like `node --eval`. Easy mode!
+       *
+       * Or call with an array of strings to parse, and optionally where the user arguments start by specifying where the arguments are `from`:
+       * - `'node'`: default, `argv[0]` is the application and `argv[1]` is the script being run, with user arguments after that
+       * - `'electron'`: `argv[0]` is the application and `argv[1]` varies depending on whether the electron application is packaged
+       * - `'user'`: just user arguments
+       *
+       * @example
+       * await program.parseAsync(); // parse process.argv and auto-detect electron and special node flags
+       * await program.parseAsync(process.argv); // assume argv[0] is app and argv[1] is script
+       * await program.parseAsync(my-args, { from: 'user' }); // just user supplied arguments, nothing special about argv[0]
+       *
+       * @param {string[]} [argv]
+       * @param {object} [parseOptions]
+       * @param {string} parseOptions.from - where the args are from: 'node', 'user', 'electron'
+       * @return {Promise}
+       */
+      async parseAsync(argv, parseOptions) {
+        this._prepareForParse();
+        const userArgs = this._prepareUserArgs(argv, parseOptions);
+        await this._parseCommand([], userArgs);
+        return this;
+      }
+      _prepareForParse() {
+        if (this._savedState === null) {
+          this.saveStateBeforeParse();
+        } else {
+          this.restoreStateBeforeParse();
+        }
+      }
+      /**
+       * Called the first time parse is called to save state and allow a restore before subsequent calls to parse.
+       * Not usually called directly, but available for subclasses to save their custom state.
+       *
+       * This is called in a lazy way. Only commands used in parsing chain will have state saved.
+       */
+      saveStateBeforeParse() {
+        this._savedState = {
+          // name is stable if supplied by author, but may be unspecified for root command and deduced during parsing
+          _name: this._name,
+          // option values before parse have default values (including false for negated options)
+          // shallow clones
+          _optionValues: { ...this._optionValues },
+          _optionValueSources: { ...this._optionValueSources }
+        };
+      }
+      /**
+       * Restore state before parse for calls after the first.
+       * Not usually called directly, but available for subclasses to save their custom state.
+       *
+       * This is called in a lazy way. Only commands used in parsing chain will have state restored.
+       */
+      restoreStateBeforeParse() {
+        if (this._storeOptionsAsProperties)
+          throw new Error(`Can not call parse again when storeOptionsAsProperties is true.
+- either make a new Command for each call to parse, or stop storing options as properties`);
+        this._name = this._savedState._name;
+        this._scriptPath = null;
+        this.rawArgs = [];
+        this._optionValues = { ...this._savedState._optionValues };
+        this._optionValueSources = { ...this._savedState._optionValueSources };
+        this.args = [];
+        this.processedArgs = [];
+      }
+      /**
+       * Throw if expected executable is missing. Add lots of help for author.
+       *
+       * @param {string} executableFile
+       * @param {string} executableDir
+       * @param {string} subcommandName
+       */
+      _checkForMissingExecutable(executableFile, executableDir, subcommandName) {
+        if (fs.existsSync(executableFile)) return;
+        const executableDirMessage = executableDir ? `searched for local subcommand relative to directory '${executableDir}'` : "no directory for search for local subcommand, use .executableDir() to supply a custom directory";
+        const executableMissing = `'${executableFile}' does not exist
+ - if '${subcommandName}' is not meant to be an executable command, remove description parameter from '.command()' and use '.description()' instead
+ - if the default executable name is not suitable, use the executableFile option to supply a custom name or path
+ - ${executableDirMessage}`;
+        throw new Error(executableMissing);
+      }
+      /**
+       * Execute a sub-command executable.
+       *
+       * @private
+       */
+      _executeSubCommand(subcommand, args) {
+        args = args.slice();
+        let launchWithNode = false;
+        const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
+        function findFile(baseDir, baseName) {
+          const localBin = path.resolve(baseDir, baseName);
+          if (fs.existsSync(localBin)) return localBin;
+          if (sourceExt.includes(path.extname(baseName))) return void 0;
+          const foundExt = sourceExt.find(
+            (ext) => fs.existsSync(`${localBin}${ext}`)
+          );
+          if (foundExt) return `${localBin}${foundExt}`;
+          return void 0;
+        }
+        this._checkForMissingMandatoryOptions();
+        this._checkForConflictingOptions();
+        let executableFile = subcommand._executableFile || `${this._name}-${subcommand._name}`;
+        let executableDir = this._executableDir || "";
+        if (this._scriptPath) {
+          let resolvedScriptPath;
+          try {
+            resolvedScriptPath = fs.realpathSync(this._scriptPath);
+          } catch {
+            resolvedScriptPath = this._scriptPath;
+          }
+          executableDir = path.resolve(
+            path.dirname(resolvedScriptPath),
+            executableDir
+          );
+        }
+        if (executableDir) {
+          let localFile = findFile(executableDir, executableFile);
+          if (!localFile && !subcommand._executableFile && this._scriptPath) {
+            const legacyName = path.basename(
+              this._scriptPath,
+              path.extname(this._scriptPath)
+            );
+            if (legacyName !== this._name) {
+              localFile = findFile(
+                executableDir,
+                `${legacyName}-${subcommand._name}`
+              );
+            }
+          }
+          executableFile = localFile || executableFile;
+        }
+        launchWithNode = sourceExt.includes(path.extname(executableFile));
+        let proc;
+        if (process3.platform !== "win32") {
+          if (launchWithNode) {
+            args.unshift(executableFile);
+            args = incrementNodeInspectorPort(process3.execArgv).concat(args);
+            proc = childProcess.spawn(process3.argv[0], args, { stdio: "inherit" });
+          } else {
+            proc = childProcess.spawn(executableFile, args, { stdio: "inherit" });
+          }
+        } else {
+          this._checkForMissingExecutable(
+            executableFile,
+            executableDir,
+            subcommand._name
+          );
+          args.unshift(executableFile);
+          args = incrementNodeInspectorPort(process3.execArgv).concat(args);
+          proc = childProcess.spawn(process3.execPath, args, { stdio: "inherit" });
+        }
+        if (!proc.killed) {
+          const signals = ["SIGUSR1", "SIGUSR2", "SIGTERM", "SIGINT", "SIGHUP"];
+          signals.forEach((signal) => {
+            process3.on(signal, () => {
+              if (proc.killed === false && proc.exitCode === null) {
+                proc.kill(signal);
+              }
+            });
+          });
+        }
+        const exitCallback = this._exitCallback;
+        proc.on("close", (code) => {
+          code = code ?? 1;
+          if (!exitCallback) {
+            process3.exit(code);
+          } else {
+            exitCallback(
+              new CommanderError2(
+                code,
+                "commander.executeSubCommandAsync",
+                "(close)"
+              )
+            );
+          }
+        });
+        proc.on("error", (err) => {
+          if (err.code === "ENOENT") {
+            this._checkForMissingExecutable(
+              executableFile,
+              executableDir,
+              subcommand._name
+            );
+          } else if (err.code === "EACCES") {
+            throw new Error(`'${executableFile}' not executable`);
+          }
+          if (!exitCallback) {
+            process3.exit(1);
+          } else {
+            const wrappedError = new CommanderError2(
+              1,
+              "commander.executeSubCommandAsync",
+              "(error)"
+            );
+            wrappedError.nestedError = err;
+            exitCallback(wrappedError);
+          }
+        });
+        this.runningCommand = proc;
+      }
+      /**
+       * @private
+       */
+      _dispatchSubcommand(commandName, operands, unknown2) {
+        const subCommand = this._findCommand(commandName);
+        if (!subCommand) this.help({ error: true });
+        subCommand._prepareForParse();
+        let promiseChain;
+        promiseChain = this._chainOrCallSubCommandHook(
+          promiseChain,
+          subCommand,
+          "preSubcommand"
+        );
+        promiseChain = this._chainOrCall(promiseChain, () => {
+          if (subCommand._executableHandler) {
+            this._executeSubCommand(subCommand, operands.concat(unknown2));
+          } else {
+            return subCommand._parseCommand(operands, unknown2);
+          }
+        });
+        return promiseChain;
+      }
+      /**
+       * Invoke help directly if possible, or dispatch if necessary.
+       * e.g. help foo
+       *
+       * @private
+       */
+      _dispatchHelpCommand(subcommandName) {
+        if (!subcommandName) {
+          this.help();
+        }
+        const subCommand = this._findCommand(subcommandName);
+        if (subCommand && !subCommand._executableHandler) {
+          subCommand.help();
+        }
+        return this._dispatchSubcommand(
+          subcommandName,
+          [],
+          [this._getHelpOption()?.long ?? this._getHelpOption()?.short ?? "--help"]
+        );
+      }
+      /**
+       * Check this.args against expected this.registeredArguments.
+       *
+       * @private
+       */
+      _checkNumberOfArguments() {
+        this.registeredArguments.forEach((arg, i) => {
+          if (arg.required && this.args[i] == null) {
+            this.missingArgument(arg.name());
+          }
+        });
+        if (this.registeredArguments.length > 0 && this.registeredArguments[this.registeredArguments.length - 1].variadic) {
+          return;
+        }
+        if (this.args.length > this.registeredArguments.length) {
+          this._excessArguments(this.args);
+        }
+      }
+      /**
+       * Process this.args using this.registeredArguments and save as this.processedArgs!
+       *
+       * @private
+       */
+      _processArguments() {
+        const myParseArg = (argument, value, previous) => {
+          let parsedValue = value;
+          if (value !== null && argument.parseArg) {
+            const invalidValueMessage = `error: command-argument value '${value}' is invalid for argument '${argument.name()}'.`;
+            parsedValue = this._callParseArg(
+              argument,
+              value,
+              previous,
+              invalidValueMessage
+            );
+          }
+          return parsedValue;
+        };
+        this._checkNumberOfArguments();
+        const processedArgs = [];
+        this.registeredArguments.forEach((declaredArg, index) => {
+          let value = declaredArg.defaultValue;
+          if (declaredArg.variadic) {
+            if (index < this.args.length) {
+              value = this.args.slice(index);
+              if (declaredArg.parseArg) {
+                value = value.reduce((processed, v) => {
+                  return myParseArg(declaredArg, v, processed);
+                }, declaredArg.defaultValue);
+              }
+            } else if (value === void 0) {
+              value = [];
+            }
+          } else if (index < this.args.length) {
+            value = this.args[index];
+            if (declaredArg.parseArg) {
+              value = myParseArg(declaredArg, value, declaredArg.defaultValue);
+            }
+          }
+          processedArgs[index] = value;
+        });
+        this.processedArgs = processedArgs;
+      }
+      /**
+       * Once we have a promise we chain, but call synchronously until then.
+       *
+       * @param {(Promise|undefined)} promise
+       * @param {Function} fn
+       * @return {(Promise|undefined)}
+       * @private
+       */
+      _chainOrCall(promise2, fn) {
+        if (promise2 && promise2.then && typeof promise2.then === "function") {
+          return promise2.then(() => fn());
+        }
+        return fn();
+      }
+      /**
+       *
+       * @param {(Promise|undefined)} promise
+       * @param {string} event
+       * @return {(Promise|undefined)}
+       * @private
+       */
+      _chainOrCallHooks(promise2, event) {
+        let result = promise2;
+        const hooks = [];
+        this._getCommandAndAncestors().reverse().filter((cmd) => cmd._lifeCycleHooks[event] !== void 0).forEach((hookedCommand) => {
+          hookedCommand._lifeCycleHooks[event].forEach((callback) => {
+            hooks.push({ hookedCommand, callback });
+          });
+        });
+        if (event === "postAction") {
+          hooks.reverse();
+        }
+        hooks.forEach((hookDetail) => {
+          result = this._chainOrCall(result, () => {
+            return hookDetail.callback(hookDetail.hookedCommand, this);
+          });
+        });
+        return result;
+      }
+      /**
+       *
+       * @param {(Promise|undefined)} promise
+       * @param {Command} subCommand
+       * @param {string} event
+       * @return {(Promise|undefined)}
+       * @private
+       */
+      _chainOrCallSubCommandHook(promise2, subCommand, event) {
+        let result = promise2;
+        if (this._lifeCycleHooks[event] !== void 0) {
+          this._lifeCycleHooks[event].forEach((hook) => {
+            result = this._chainOrCall(result, () => {
+              return hook(this, subCommand);
+            });
+          });
+        }
+        return result;
+      }
+      /**
+       * Process arguments in context of this command.
+       * Returns action result, in case it is a promise.
+       *
+       * @private
+       */
+      _parseCommand(operands, unknown2) {
+        const parsed = this.parseOptions(unknown2);
+        this._parseOptionsEnv();
+        this._parseOptionsImplied();
+        operands = operands.concat(parsed.operands);
+        unknown2 = parsed.unknown;
+        this.args = operands.concat(unknown2);
+        if (operands && this._findCommand(operands[0])) {
+          return this._dispatchSubcommand(operands[0], operands.slice(1), unknown2);
+        }
+        if (this._getHelpCommand() && operands[0] === this._getHelpCommand().name()) {
+          return this._dispatchHelpCommand(operands[1]);
+        }
+        if (this._defaultCommandName) {
+          this._outputHelpIfRequested(unknown2);
+          return this._dispatchSubcommand(
+            this._defaultCommandName,
+            operands,
+            unknown2
+          );
+        }
+        if (this.commands.length && this.args.length === 0 && !this._actionHandler && !this._defaultCommandName) {
+          this.help({ error: true });
+        }
+        this._outputHelpIfRequested(parsed.unknown);
+        this._checkForMissingMandatoryOptions();
+        this._checkForConflictingOptions();
+        const checkForUnknownOptions = () => {
+          if (parsed.unknown.length > 0) {
+            this.unknownOption(parsed.unknown[0]);
+          }
+        };
+        const commandEvent = `command:${this.name()}`;
+        if (this._actionHandler) {
+          checkForUnknownOptions();
+          this._processArguments();
+          let promiseChain;
+          promiseChain = this._chainOrCallHooks(promiseChain, "preAction");
+          promiseChain = this._chainOrCall(
+            promiseChain,
+            () => this._actionHandler(this.processedArgs)
+          );
+          if (this.parent) {
+            promiseChain = this._chainOrCall(promiseChain, () => {
+              this.parent.emit(commandEvent, operands, unknown2);
+            });
+          }
+          promiseChain = this._chainOrCallHooks(promiseChain, "postAction");
+          return promiseChain;
+        }
+        if (this.parent && this.parent.listenerCount(commandEvent)) {
+          checkForUnknownOptions();
+          this._processArguments();
+          this.parent.emit(commandEvent, operands, unknown2);
+        } else if (operands.length) {
+          if (this._findCommand("*")) {
+            return this._dispatchSubcommand("*", operands, unknown2);
+          }
+          if (this.listenerCount("command:*")) {
+            this.emit("command:*", operands, unknown2);
+          } else if (this.commands.length) {
+            this.unknownCommand();
+          } else {
+            checkForUnknownOptions();
+            this._processArguments();
+          }
+        } else if (this.commands.length) {
+          checkForUnknownOptions();
+          this.help({ error: true });
+        } else {
+          checkForUnknownOptions();
+          this._processArguments();
+        }
+      }
+      /**
+       * Find matching command.
+       *
+       * @private
+       * @return {Command | undefined}
+       */
+      _findCommand(name) {
+        if (!name) return void 0;
+        return this.commands.find(
+          (cmd) => cmd._name === name || cmd._aliases.includes(name)
+        );
+      }
+      /**
+       * Return an option matching `arg` if any.
+       *
+       * @param {string} arg
+       * @return {Option}
+       * @package
+       */
+      _findOption(arg) {
+        return this.options.find((option) => option.is(arg));
+      }
+      /**
+       * Display an error message if a mandatory option does not have a value.
+       * Called after checking for help flags in leaf subcommand.
+       *
+       * @private
+       */
+      _checkForMissingMandatoryOptions() {
+        this._getCommandAndAncestors().forEach((cmd) => {
+          cmd.options.forEach((anOption) => {
+            if (anOption.mandatory && cmd.getOptionValue(anOption.attributeName()) === void 0) {
+              cmd.missingMandatoryOptionValue(anOption);
+            }
+          });
+        });
+      }
+      /**
+       * Display an error message if conflicting options are used together in this.
+       *
+       * @private
+       */
+      _checkForConflictingLocalOptions() {
+        const definedNonDefaultOptions = this.options.filter((option) => {
+          const optionKey = option.attributeName();
+          if (this.getOptionValue(optionKey) === void 0) {
+            return false;
+          }
+          return this.getOptionValueSource(optionKey) !== "default";
+        });
+        const optionsWithConflicting = definedNonDefaultOptions.filter(
+          (option) => option.conflictsWith.length > 0
+        );
+        optionsWithConflicting.forEach((option) => {
+          const conflictingAndDefined = definedNonDefaultOptions.find(
+            (defined) => option.conflictsWith.includes(defined.attributeName())
+          );
+          if (conflictingAndDefined) {
+            this._conflictingOption(option, conflictingAndDefined);
+          }
+        });
+      }
+      /**
+       * Display an error message if conflicting options are used together.
+       * Called after checking for help flags in leaf subcommand.
+       *
+       * @private
+       */
+      _checkForConflictingOptions() {
+        this._getCommandAndAncestors().forEach((cmd) => {
+          cmd._checkForConflictingLocalOptions();
+        });
+      }
+      /**
+       * Parse options from `argv` removing known options,
+       * and return argv split into operands and unknown arguments.
+       *
+       * Side effects: modifies command by storing options. Does not reset state if called again.
+       *
+       * Examples:
+       *
+       *     argv => operands, unknown
+       *     --known kkk op => [op], []
+       *     op --known kkk => [op], []
+       *     sub --unknown uuu op => [sub], [--unknown uuu op]
+       *     sub -- --unknown uuu op => [sub --unknown uuu op], []
+       *
+       * @param {string[]} argv
+       * @return {{operands: string[], unknown: string[]}}
+       */
+      parseOptions(argv) {
+        const operands = [];
+        const unknown2 = [];
+        let dest = operands;
+        const args = argv.slice();
+        function maybeOption(arg) {
+          return arg.length > 1 && arg[0] === "-";
+        }
+        let activeVariadicOption = null;
+        while (args.length) {
+          const arg = args.shift();
+          if (arg === "--") {
+            if (dest === unknown2) dest.push(arg);
+            dest.push(...args);
+            break;
+          }
+          if (activeVariadicOption && !maybeOption(arg)) {
+            this.emit(`option:${activeVariadicOption.name()}`, arg);
+            continue;
+          }
+          activeVariadicOption = null;
+          if (maybeOption(arg)) {
+            const option = this._findOption(arg);
+            if (option) {
+              if (option.required) {
+                const value = args.shift();
+                if (value === void 0) this.optionMissingArgument(option);
+                this.emit(`option:${option.name()}`, value);
+              } else if (option.optional) {
+                let value = null;
+                if (args.length > 0 && !maybeOption(args[0])) {
+                  value = args.shift();
+                }
+                this.emit(`option:${option.name()}`, value);
+              } else {
+                this.emit(`option:${option.name()}`);
+              }
+              activeVariadicOption = option.variadic ? option : null;
+              continue;
+            }
+          }
+          if (arg.length > 2 && arg[0] === "-" && arg[1] !== "-") {
+            const option = this._findOption(`-${arg[1]}`);
+            if (option) {
+              if (option.required || option.optional && this._combineFlagAndOptionalValue) {
+                this.emit(`option:${option.name()}`, arg.slice(2));
+              } else {
+                this.emit(`option:${option.name()}`);
+                args.unshift(`-${arg.slice(2)}`);
+              }
+              continue;
+            }
+          }
+          if (/^--[^=]+=/.test(arg)) {
+            const index = arg.indexOf("=");
+            const option = this._findOption(arg.slice(0, index));
+            if (option && (option.required || option.optional)) {
+              this.emit(`option:${option.name()}`, arg.slice(index + 1));
+              continue;
+            }
+          }
+          if (maybeOption(arg)) {
+            dest = unknown2;
+          }
+          if ((this._enablePositionalOptions || this._passThroughOptions) && operands.length === 0 && unknown2.length === 0) {
+            if (this._findCommand(arg)) {
+              operands.push(arg);
+              if (args.length > 0) unknown2.push(...args);
+              break;
+            } else if (this._getHelpCommand() && arg === this._getHelpCommand().name()) {
+              operands.push(arg);
+              if (args.length > 0) operands.push(...args);
+              break;
+            } else if (this._defaultCommandName) {
+              unknown2.push(arg);
+              if (args.length > 0) unknown2.push(...args);
+              break;
+            }
+          }
+          if (this._passThroughOptions) {
+            dest.push(arg);
+            if (args.length > 0) dest.push(...args);
+            break;
+          }
+          dest.push(arg);
+        }
+        return { operands, unknown: unknown2 };
+      }
+      /**
+       * Return an object containing local option values as key-value pairs.
+       *
+       * @return {object}
+       */
+      opts() {
+        if (this._storeOptionsAsProperties) {
+          const result = {};
+          const len = this.options.length;
+          for (let i = 0; i < len; i++) {
+            const key = this.options[i].attributeName();
+            result[key] = key === this._versionOptionName ? this._version : this[key];
+          }
+          return result;
+        }
+        return this._optionValues;
+      }
+      /**
+       * Return an object containing merged local and global option values as key-value pairs.
+       *
+       * @return {object}
+       */
+      optsWithGlobals() {
+        return this._getCommandAndAncestors().reduce(
+          (combinedOptions, cmd) => Object.assign(combinedOptions, cmd.opts()),
+          {}
+        );
+      }
+      /**
+       * Display error message and exit (or call exitOverride).
+       *
+       * @param {string} message
+       * @param {object} [errorOptions]
+       * @param {string} [errorOptions.code] - an id string representing the error
+       * @param {number} [errorOptions.exitCode] - used with process.exit
+       */
+      error(message2, errorOptions) {
+        this._outputConfiguration.outputError(
+          `${message2}
+`,
+          this._outputConfiguration.writeErr
+        );
+        if (typeof this._showHelpAfterError === "string") {
+          this._outputConfiguration.writeErr(`${this._showHelpAfterError}
+`);
+        } else if (this._showHelpAfterError) {
+          this._outputConfiguration.writeErr("\n");
+          this.outputHelp({ error: true });
+        }
+        const config2 = errorOptions || {};
+        const exitCode = config2.exitCode || 1;
+        const code = config2.code || "commander.error";
+        this._exit(exitCode, code, message2);
+      }
+      /**
+       * Apply any option related environment variables, if option does
+       * not have a value from cli or client code.
+       *
+       * @private
+       */
+      _parseOptionsEnv() {
+        this.options.forEach((option) => {
+          if (option.envVar && option.envVar in process3.env) {
+            const optionKey = option.attributeName();
+            if (this.getOptionValue(optionKey) === void 0 || ["default", "config", "env"].includes(
+              this.getOptionValueSource(optionKey)
+            )) {
+              if (option.required || option.optional) {
+                this.emit(`optionEnv:${option.name()}`, process3.env[option.envVar]);
+              } else {
+                this.emit(`optionEnv:${option.name()}`);
+              }
+            }
+          }
+        });
+      }
+      /**
+       * Apply any implied option values, if option is undefined or default value.
+       *
+       * @private
+       */
+      _parseOptionsImplied() {
+        const dualHelper = new DualOptions(this.options);
+        const hasCustomOptionValue = (optionKey) => {
+          return this.getOptionValue(optionKey) !== void 0 && !["default", "implied"].includes(this.getOptionValueSource(optionKey));
+        };
+        this.options.filter(
+          (option) => option.implied !== void 0 && hasCustomOptionValue(option.attributeName()) && dualHelper.valueFromOption(
+            this.getOptionValue(option.attributeName()),
+            option
+          )
+        ).forEach((option) => {
+          Object.keys(option.implied).filter((impliedKey) => !hasCustomOptionValue(impliedKey)).forEach((impliedKey) => {
+            this.setOptionValueWithSource(
+              impliedKey,
+              option.implied[impliedKey],
+              "implied"
+            );
+          });
+        });
+      }
+      /**
+       * Argument `name` is missing.
+       *
+       * @param {string} name
+       * @private
+       */
+      missingArgument(name) {
+        const message2 = `error: missing required argument '${name}'`;
+        this.error(message2, { code: "commander.missingArgument" });
+      }
+      /**
+       * `Option` is missing an argument.
+       *
+       * @param {Option} option
+       * @private
+       */
+      optionMissingArgument(option) {
+        const message2 = `error: option '${option.flags}' argument missing`;
+        this.error(message2, { code: "commander.optionMissingArgument" });
+      }
+      /**
+       * `Option` does not have a value, and is a mandatory option.
+       *
+       * @param {Option} option
+       * @private
+       */
+      missingMandatoryOptionValue(option) {
+        const message2 = `error: required option '${option.flags}' not specified`;
+        this.error(message2, { code: "commander.missingMandatoryOptionValue" });
+      }
+      /**
+       * `Option` conflicts with another option.
+       *
+       * @param {Option} option
+       * @param {Option} conflictingOption
+       * @private
+       */
+      _conflictingOption(option, conflictingOption) {
+        const findBestOptionFromValue = (option2) => {
+          const optionKey = option2.attributeName();
+          const optionValue = this.getOptionValue(optionKey);
+          const negativeOption = this.options.find(
+            (target) => target.negate && optionKey === target.attributeName()
+          );
+          const positiveOption = this.options.find(
+            (target) => !target.negate && optionKey === target.attributeName()
+          );
+          if (negativeOption && (negativeOption.presetArg === void 0 && optionValue === false || negativeOption.presetArg !== void 0 && optionValue === negativeOption.presetArg)) {
+            return negativeOption;
+          }
+          return positiveOption || option2;
+        };
+        const getErrorMessage = (option2) => {
+          const bestOption = findBestOptionFromValue(option2);
+          const optionKey = bestOption.attributeName();
+          const source = this.getOptionValueSource(optionKey);
+          if (source === "env") {
+            return `environment variable '${bestOption.envVar}'`;
+          }
+          return `option '${bestOption.flags}'`;
+        };
+        const message2 = `error: ${getErrorMessage(option)} cannot be used with ${getErrorMessage(conflictingOption)}`;
+        this.error(message2, { code: "commander.conflictingOption" });
+      }
+      /**
+       * Unknown option `flag`.
+       *
+       * @param {string} flag
+       * @private
+       */
+      unknownOption(flag) {
+        if (this._allowUnknownOption) return;
+        let suggestion = "";
+        if (flag.startsWith("--") && this._showSuggestionAfterError) {
+          let candidateFlags = [];
+          let command2 = this;
+          do {
+            const moreFlags = command2.createHelp().visibleOptions(command2).filter((option) => option.long).map((option) => option.long);
+            candidateFlags = candidateFlags.concat(moreFlags);
+            command2 = command2.parent;
+          } while (command2 && !command2._enablePositionalOptions);
+          suggestion = suggestSimilar(flag, candidateFlags);
+        }
+        const message2 = `error: unknown option '${flag}'${suggestion}`;
+        this.error(message2, { code: "commander.unknownOption" });
+      }
+      /**
+       * Excess arguments, more than expected.
+       *
+       * @param {string[]} receivedArgs
+       * @private
+       */
+      _excessArguments(receivedArgs) {
+        if (this._allowExcessArguments) return;
+        const expected = this.registeredArguments.length;
+        const s = expected === 1 ? "" : "s";
+        const forSubcommand = this.parent ? ` for '${this.name()}'` : "";
+        const message2 = `error: too many arguments${forSubcommand}. Expected ${expected} argument${s} but got ${receivedArgs.length}.`;
+        this.error(message2, { code: "commander.excessArguments" });
+      }
+      /**
+       * Unknown command.
+       *
+       * @private
+       */
+      unknownCommand() {
+        const unknownName = this.args[0];
+        let suggestion = "";
+        if (this._showSuggestionAfterError) {
+          const candidateNames = [];
+          this.createHelp().visibleCommands(this).forEach((command2) => {
+            candidateNames.push(command2.name());
+            if (command2.alias()) candidateNames.push(command2.alias());
+          });
+          suggestion = suggestSimilar(unknownName, candidateNames);
+        }
+        const message2 = `error: unknown command '${unknownName}'${suggestion}`;
+        this.error(message2, { code: "commander.unknownCommand" });
+      }
+      /**
+       * Get or set the program version.
+       *
+       * This method auto-registers the "-V, --version" option which will print the version number.
+       *
+       * You can optionally supply the flags and description to override the defaults.
+       *
+       * @param {string} [str]
+       * @param {string} [flags]
+       * @param {string} [description]
+       * @return {(this | string | undefined)} `this` command for chaining, or version string if no arguments
+       */
+      version(str, flags, description) {
+        if (str === void 0) return this._version;
+        this._version = str;
+        flags = flags || "-V, --version";
+        description = description || "output the version number";
+        const versionOption = this.createOption(flags, description);
+        this._versionOptionName = versionOption.attributeName();
+        this._registerOption(versionOption);
+        this.on("option:" + versionOption.name(), () => {
+          this._outputConfiguration.writeOut(`${str}
+`);
+          this._exit(0, "commander.version", str);
+        });
+        return this;
+      }
+      /**
+       * Set the description.
+       *
+       * @param {string} [str]
+       * @param {object} [argsDescription]
+       * @return {(string|Command)}
+       */
+      description(str, argsDescription) {
+        if (str === void 0 && argsDescription === void 0)
+          return this._description;
+        this._description = str;
+        if (argsDescription) {
+          this._argsDescription = argsDescription;
+        }
+        return this;
+      }
+      /**
+       * Set the summary. Used when listed as subcommand of parent.
+       *
+       * @param {string} [str]
+       * @return {(string|Command)}
+       */
+      summary(str) {
+        if (str === void 0) return this._summary;
+        this._summary = str;
+        return this;
+      }
+      /**
+       * Set an alias for the command.
+       *
+       * You may call more than once to add multiple aliases. Only the first alias is shown in the auto-generated help.
+       *
+       * @param {string} [alias]
+       * @return {(string|Command)}
+       */
+      alias(alias) {
+        if (alias === void 0) return this._aliases[0];
+        let command2 = this;
+        if (this.commands.length !== 0 && this.commands[this.commands.length - 1]._executableHandler) {
+          command2 = this.commands[this.commands.length - 1];
+        }
+        if (alias === command2._name)
+          throw new Error("Command alias can't be the same as its name");
+        const matchingCommand = this.parent?._findCommand(alias);
+        if (matchingCommand) {
+          const existingCmd = [matchingCommand.name()].concat(matchingCommand.aliases()).join("|");
+          throw new Error(
+            `cannot add alias '${alias}' to command '${this.name()}' as already have command '${existingCmd}'`
+          );
+        }
+        command2._aliases.push(alias);
+        return this;
+      }
+      /**
+       * Set aliases for the command.
+       *
+       * Only the first alias is shown in the auto-generated help.
+       *
+       * @param {string[]} [aliases]
+       * @return {(string[]|Command)}
+       */
+      aliases(aliases) {
+        if (aliases === void 0) return this._aliases;
+        aliases.forEach((alias) => this.alias(alias));
+        return this;
+      }
+      /**
+       * Set / get the command usage `str`.
+       *
+       * @param {string} [str]
+       * @return {(string|Command)}
+       */
+      usage(str) {
+        if (str === void 0) {
+          if (this._usage) return this._usage;
+          const args = this.registeredArguments.map((arg) => {
+            return humanReadableArgName(arg);
+          });
+          return [].concat(
+            this.options.length || this._helpOption !== null ? "[options]" : [],
+            this.commands.length ? "[command]" : [],
+            this.registeredArguments.length ? args : []
+          ).join(" ");
+        }
+        this._usage = str;
+        return this;
+      }
+      /**
+       * Get or set the name of the command.
+       *
+       * @param {string} [str]
+       * @return {(string|Command)}
+       */
+      name(str) {
+        if (str === void 0) return this._name;
+        this._name = str;
+        return this;
+      }
+      /**
+       * Set the name of the command from script filename, such as process.argv[1],
+       * or require.main.filename, or __filename.
+       *
+       * (Used internally and public although not documented in README.)
+       *
+       * @example
+       * program.nameFromFilename(require.main.filename);
+       *
+       * @param {string} filename
+       * @return {Command}
+       */
+      nameFromFilename(filename) {
+        this._name = path.basename(filename, path.extname(filename));
+        return this;
+      }
+      /**
+       * Get or set the directory for searching for executable subcommands of this command.
+       *
+       * @example
+       * program.executableDir(__dirname);
+       * // or
+       * program.executableDir('subcommands');
+       *
+       * @param {string} [path]
+       * @return {(string|null|Command)}
+       */
+      executableDir(path2) {
+        if (path2 === void 0) return this._executableDir;
+        this._executableDir = path2;
+        return this;
+      }
+      /**
+       * Return program help documentation.
+       *
+       * @param {{ error: boolean }} [contextOptions] - pass {error:true} to wrap for stderr instead of stdout
+       * @return {string}
+       */
+      helpInformation(contextOptions) {
+        const helper = this.createHelp();
+        const context = this._getOutputContext(contextOptions);
+        helper.prepareContext({
+          error: context.error,
+          helpWidth: context.helpWidth,
+          outputHasColors: context.hasColors
+        });
+        const text = helper.formatHelp(this, helper);
+        if (context.hasColors) return text;
+        return this._outputConfiguration.stripColor(text);
+      }
+      /**
+       * @typedef HelpContext
+       * @type {object}
+       * @property {boolean} error
+       * @property {number} helpWidth
+       * @property {boolean} hasColors
+       * @property {function} write - includes stripColor if needed
+       *
+       * @returns {HelpContext}
+       * @private
+       */
+      _getOutputContext(contextOptions) {
+        contextOptions = contextOptions || {};
+        const error51 = !!contextOptions.error;
+        let baseWrite;
+        let hasColors;
+        let helpWidth;
+        if (error51) {
+          baseWrite = (str) => this._outputConfiguration.writeErr(str);
+          hasColors = this._outputConfiguration.getErrHasColors();
+          helpWidth = this._outputConfiguration.getErrHelpWidth();
+        } else {
+          baseWrite = (str) => this._outputConfiguration.writeOut(str);
+          hasColors = this._outputConfiguration.getOutHasColors();
+          helpWidth = this._outputConfiguration.getOutHelpWidth();
+        }
+        const write = (str) => {
+          if (!hasColors) str = this._outputConfiguration.stripColor(str);
+          return baseWrite(str);
+        };
+        return { error: error51, write, hasColors, helpWidth };
+      }
+      /**
+       * Output help information for this command.
+       *
+       * Outputs built-in help, and custom text added using `.addHelpText()`.
+       *
+       * @param {{ error: boolean } | Function} [contextOptions] - pass {error:true} to write to stderr instead of stdout
+       */
+      outputHelp(contextOptions) {
+        let deprecatedCallback;
+        if (typeof contextOptions === "function") {
+          deprecatedCallback = contextOptions;
+          contextOptions = void 0;
+        }
+        const outputContext = this._getOutputContext(contextOptions);
+        const eventContext = {
+          error: outputContext.error,
+          write: outputContext.write,
+          command: this
+        };
+        this._getCommandAndAncestors().reverse().forEach((command2) => command2.emit("beforeAllHelp", eventContext));
+        this.emit("beforeHelp", eventContext);
+        let helpInformation = this.helpInformation({ error: outputContext.error });
+        if (deprecatedCallback) {
+          helpInformation = deprecatedCallback(helpInformation);
+          if (typeof helpInformation !== "string" && !Buffer.isBuffer(helpInformation)) {
+            throw new Error("outputHelp callback must return a string or a Buffer");
+          }
+        }
+        outputContext.write(helpInformation);
+        if (this._getHelpOption()?.long) {
+          this.emit(this._getHelpOption().long);
+        }
+        this.emit("afterHelp", eventContext);
+        this._getCommandAndAncestors().forEach(
+          (command2) => command2.emit("afterAllHelp", eventContext)
+        );
+      }
+      /**
+       * You can pass in flags and a description to customise the built-in help option.
+       * Pass in false to disable the built-in help option.
+       *
+       * @example
+       * program.helpOption('-?, --help' 'show help'); // customise
+       * program.helpOption(false); // disable
+       *
+       * @param {(string | boolean)} flags
+       * @param {string} [description]
+       * @return {Command} `this` command for chaining
+       */
+      helpOption(flags, description) {
+        if (typeof flags === "boolean") {
+          if (flags) {
+            this._helpOption = this._helpOption ?? void 0;
+          } else {
+            this._helpOption = null;
+          }
+          return this;
+        }
+        flags = flags ?? "-h, --help";
+        description = description ?? "display help for command";
+        this._helpOption = this.createOption(flags, description);
+        return this;
+      }
+      /**
+       * Lazy create help option.
+       * Returns null if has been disabled with .helpOption(false).
+       *
+       * @returns {(Option | null)} the help option
+       * @package
+       */
+      _getHelpOption() {
+        if (this._helpOption === void 0) {
+          this.helpOption(void 0, void 0);
+        }
+        return this._helpOption;
+      }
+      /**
+       * Supply your own option to use for the built-in help option.
+       * This is an alternative to using helpOption() to customise the flags and description etc.
+       *
+       * @param {Option} option
+       * @return {Command} `this` command for chaining
+       */
+      addHelpOption(option) {
+        this._helpOption = option;
+        return this;
+      }
+      /**
+       * Output help information and exit.
+       *
+       * Outputs built-in help, and custom text added using `.addHelpText()`.
+       *
+       * @param {{ error: boolean }} [contextOptions] - pass {error:true} to write to stderr instead of stdout
+       */
+      help(contextOptions) {
+        this.outputHelp(contextOptions);
+        let exitCode = Number(process3.exitCode ?? 0);
+        if (exitCode === 0 && contextOptions && typeof contextOptions !== "function" && contextOptions.error) {
+          exitCode = 1;
+        }
+        this._exit(exitCode, "commander.help", "(outputHelp)");
+      }
+      /**
+       * // Do a little typing to coordinate emit and listener for the help text events.
+       * @typedef HelpTextEventContext
+       * @type {object}
+       * @property {boolean} error
+       * @property {Command} command
+       * @property {function} write
+       */
+      /**
+       * Add additional text to be displayed with the built-in help.
+       *
+       * Position is 'before' or 'after' to affect just this command,
+       * and 'beforeAll' or 'afterAll' to affect this command and all its subcommands.
+       *
+       * @param {string} position - before or after built-in help
+       * @param {(string | Function)} text - string to add, or a function returning a string
+       * @return {Command} `this` command for chaining
+       */
+      addHelpText(position2, text) {
+        const allowedValues = ["beforeAll", "before", "after", "afterAll"];
+        if (!allowedValues.includes(position2)) {
+          throw new Error(`Unexpected value for position to addHelpText.
+Expecting one of '${allowedValues.join("', '")}'`);
+        }
+        const helpEvent = `${position2}Help`;
+        this.on(helpEvent, (context) => {
+          let helpStr;
+          if (typeof text === "function") {
+            helpStr = text({ error: context.error, command: context.command });
+          } else {
+            helpStr = text;
+          }
+          if (helpStr) {
+            context.write(`${helpStr}
+`);
+          }
+        });
+        return this;
+      }
+      /**
+       * Output help information if help flags specified
+       *
+       * @param {Array} args - array of options to search for help flags
+       * @private
+       */
+      _outputHelpIfRequested(args) {
+        const helpOption = this._getHelpOption();
+        const helpRequested = helpOption && args.find((arg) => helpOption.is(arg));
+        if (helpRequested) {
+          this.outputHelp();
+          this._exit(0, "commander.helpDisplayed", "(outputHelp)");
+        }
+      }
+    };
+    function incrementNodeInspectorPort(args) {
+      return args.map((arg) => {
+        if (!arg.startsWith("--inspect")) {
+          return arg;
+        }
+        let debugOption;
+        let debugHost = "127.0.0.1";
+        let debugPort = "9229";
+        let match;
+        if ((match = arg.match(/^(--inspect(-brk)?)$/)) !== null) {
+          debugOption = match[1];
+        } else if ((match = arg.match(/^(--inspect(-brk|-port)?)=([^:]+)$/)) !== null) {
+          debugOption = match[1];
+          if (/^\d+$/.test(match[3])) {
+            debugPort = match[3];
+          } else {
+            debugHost = match[3];
+          }
+        } else if ((match = arg.match(/^(--inspect(-brk|-port)?)=([^:]+):(\d+)$/)) !== null) {
+          debugOption = match[1];
+          debugHost = match[3];
+          debugPort = match[4];
+        }
+        if (debugOption && debugPort !== "0") {
+          return `${debugOption}=${debugHost}:${parseInt(debugPort) + 1}`;
+        }
+        return arg;
+      });
+    }
+    function useColor() {
+      if (process3.env.NO_COLOR || process3.env.FORCE_COLOR === "0" || process3.env.FORCE_COLOR === "false")
+        return false;
+      if (process3.env.FORCE_COLOR || process3.env.CLICOLOR_FORCE !== void 0)
+        return true;
+      return void 0;
+    }
+    exports2.Command = Command2;
+    exports2.useColor = useColor;
+  }
+});
+
+// ../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/index.js
+var require_commander = __commonJS({
+  "../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/index.js"(exports2) {
+    var { Argument: Argument2 } = require_argument();
+    var { Command: Command2 } = require_command();
+    var { CommanderError: CommanderError2, InvalidArgumentError: InvalidArgumentError2 } = require_error();
+    var { Help: Help2 } = require_help();
+    var { Option: Option2 } = require_option();
+    exports2.program = new Command2();
+    exports2.createCommand = (name) => new Command2(name);
+    exports2.createOption = (flags, description) => new Option2(flags, description);
+    exports2.createArgument = (name, description) => new Argument2(name, description);
+    exports2.Command = Command2;
+    exports2.Option = Option2;
+    exports2.Argument = Argument2;
+    exports2.Help = Help2;
+    exports2.CommanderError = CommanderError2;
+    exports2.InvalidArgumentError = InvalidArgumentError2;
+    exports2.InvalidOptionArgumentError = InvalidArgumentError2;
+  }
+});
+
 // ../../node_modules/.pnpm/esbuild@0.25.0/node_modules/esbuild/lib/main.js
 var require_main = __commonJS({
   "../../node_modules/.pnpm/esbuild@0.25.0/node_modules/esbuild/lib/main.js"(exports2, module2) {
@@ -20389,8 +20389,8 @@ var import_node_url = require("node:url");
 // ../../packages/shared-runtime/dist/local-daemon.js
 var import_node_child_process2 = require("node:child_process");
 var import_node_crypto3 = require("node:crypto");
-var import_promises3 = require("node:fs/promises");
-var import_node_path4 = require("node:path");
+var import_promises4 = require("node:fs/promises");
+var import_node_path5 = require("node:path");
 
 // ../../packages/shared-runtime/dist/runtime-config.js
 var desktopChromeMetrics = {
@@ -20469,6 +20469,16 @@ async function readMetadataBody(options) {
   }
   return JSON.parse(serialized);
 }
+
+// ../../packages/shared-runtime/dist/durable-run-engine.js
+var DEFAULT_ATTEMPT_TIMEOUT_MS = {
+  submit: 30 * 6e4,
+  poll: 30 * 6e4,
+  stage: 30 * 6e4,
+  publish: 30 * 6e4
+};
+var DEFAULT_DEADLINE_RECONCILIATION_TIMEOUT_MS = 2 * 6e4;
+var DEFAULT_RECOVERY_FINALIZATION_TIMEOUT_MS = 30 * 6e4;
 
 // ../../packages/shared-runtime/dist/project-status.js
 var PROJECT_TIMELINE_FILE_PATTERN = "<timeline-id>.timeline.yaml";
@@ -21095,479 +21105,6 @@ async function initializeClashWorkspace(options = {}) {
   }
   return { projectId, markerPath, workspaceId, reused: false };
 }
-
-// ../../packages/shared-runtime/dist/local-daemon-runtime.js
-var import_node_child_process = require("node:child_process");
-var import_node_fs = require("node:fs");
-var import_node_path3 = require("node:path");
-function parseMinimum(range) {
-  const match = /^>=\s*(\d+)\.(\d+)\.(\d+)/u.exec(range.trim());
-  if (!match)
-    throw new Error(`Unsupported Node range: ${range}`);
-  return [Number(match[1]), Number(match[2]), Number(match[3])];
-}
-function parseExclusiveMaximum(range) {
-  const match = /<\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?/u.exec(range);
-  if (!match)
-    return void 0;
-  return [Number(match[1]), Number(match[2] ?? 0), Number(match[3] ?? 0)];
-}
-function compare(a, b) {
-  for (let index = 0; index < 3; index += 1) {
-    if (a[index] !== b[index])
-      return a[index] - b[index];
-  }
-  return 0;
-}
-function parseVersion(version2) {
-  const match = /^v?(\d+)\.(\d+)\.(\d+)/u.exec(version2.trim());
-  if (!match)
-    return void 0;
-  return [Number(match[1]), Number(match[2]), Number(match[3])];
-}
-function satisfies(version2, range) {
-  if (!version2)
-    return false;
-  const actual = parseVersion(version2);
-  if (!actual)
-    return false;
-  if (compare(actual, parseMinimum(range)) < 0)
-    return false;
-  const maximum = parseExclusiveMaximum(range);
-  if (maximum && compare(actual, maximum) >= 0)
-    return false;
-  return true;
-}
-function isDaemonNodeVersionSupported(version2, supportedRange) {
-  return satisfies(version2, supportedRange);
-}
-function isElectronRuntime(execPath, env) {
-  if (env.ELECTRON_RUN_AS_NODE)
-    return true;
-  if (!execPath)
-    return false;
-  const name = (0, import_node_path3.basename)(execPath).toLowerCase();
-  if (name === "electron" || name.startsWith("electron"))
-    return true;
-  return /\.app\/contents\/(macos|frameworks)\//iu.test(execPath) || /[\\/]electron[\\/]dist[\\/]/iu.test(execPath);
-}
-function defaultProbeVersion(nodePath) {
-  try {
-    return (0, import_node_child_process.execFileSync)(nodePath, ["--version"], {
-      encoding: "utf8",
-      timeout: 5e3,
-      stdio: ["ignore", "pipe", "ignore"]
-    }).trim();
-  } catch {
-    return void 0;
-  }
-}
-function resolveDaemonNodeRuntime(options) {
-  const env = options.env ?? {};
-  const probeVersion = options.probeVersion ?? defaultProbeVersion;
-  const fileExists = options.fileExists ?? import_node_fs.existsSync;
-  const explicit = env.CLASH_DAEMON_NODE_PATH?.trim();
-  if (explicit) {
-    const version2 = probeVersion(explicit);
-    if (!satisfies(version2, options.supportedRange)) {
-      throw new Error(`Pinned daemon Node ${version2 ?? "unknown"} at ${explicit} does not satisfy ${options.supportedRange}.`);
-    }
-    return {
-      nodePath: explicit,
-      version: version2,
-      source: "explicit",
-      inheritedFromLauncher: false
-    };
-  }
-  const execPath = options.execPath;
-  let reason;
-  if (isElectronRuntime(execPath, env)) {
-    reason = "launcher is an Electron runtime, which belongs to the GUI shell";
-  } else if (execPath) {
-    const version2 = probeVersion(execPath);
-    if (satisfies(version2, options.supportedRange)) {
-      return { nodePath: execPath, version: version2, source: "launcher", inheritedFromLauncher: true };
-    }
-    reason = `launcher Node ${version2 ?? "unknown"} does not satisfy ${options.supportedRange}`;
-  } else {
-    reason = "no launcher runtime was provided";
-  }
-  for (const candidate of options.candidates ?? []) {
-    if (options.fileExists && !fileExists(candidate))
-      continue;
-    const version2 = probeVersion(candidate);
-    if (satisfies(version2, options.supportedRange)) {
-      return { nodePath: candidate, version: version2, source: "discovered", inheritedFromLauncher: false, reason };
-    }
-  }
-  throw new Error(`No Node runtime satisfying ${options.supportedRange} was found for the Clash daemon (${reason ?? "no candidates"}). Set CLASH_DAEMON_NODE_PATH to pin one.`);
-}
-function defaultDaemonNodeCandidates(env = {}, deps = {}) {
-  const candidates = [];
-  const home = env.HOME?.trim();
-  if (home) {
-    candidates.push(`${home}/.local/share/clash/runtime/bin/node`);
-    const nvmRoot = env.NVM_DIR?.trim() || `${home}/.nvm`;
-    const listVersions = deps.listNvmVersions ?? defaultListNvmVersions;
-    const versions = [...listVersions(nvmRoot)].filter((entry) => /^v\d+\.\d+\.\d+$/u.test(entry)).sort(compareVersionDesc);
-    for (const version2 of versions) {
-      candidates.push(`${nvmRoot}/versions/node/${version2}/bin/node`);
-    }
-  }
-  candidates.push("/usr/local/bin/node", "/opt/homebrew/bin/node", "/usr/bin/node");
-  return candidates;
-}
-function compareVersionDesc(a, b) {
-  const left = parseVersion(a);
-  const right = parseVersion(b);
-  if (!left || !right)
-    return 0;
-  return -compare(left, right);
-}
-function defaultListNvmVersions(nvmRoot) {
-  try {
-    return (0, import_node_fs.readdirSync)(`${nvmRoot}/versions/node`);
-  } catch {
-    return [];
-  }
-}
-
-// ../../packages/shared-runtime/dist/index.js
-var LOCAL_HOST_RECORD_SCHEMA_VERSION = 1;
-var LOCAL_HOST_PROTOCOL_VERSION = 1;
-function isLocalHostDiscoveryRecord(value) {
-  if (!value || typeof value !== "object")
-    return false;
-  const record2 = value;
-  return record2.schemaVersion === LOCAL_HOST_RECORD_SCHEMA_VERSION && typeof record2.protocolVersion === "number" && Number.isInteger(record2.protocolVersion) && typeof record2.dataSchemaVersion === "number" && Number.isInteger(record2.dataSchemaVersion) && typeof record2.hostId === "string" && record2.hostId.length > 0 && typeof record2.endpoint === "string" && record2.endpoint.length > 0 && typeof record2.pid === "number" && Number.isInteger(record2.pid) && record2.pid > 0 && isHostLaunchMode(record2.launchMode) && isHostStartedBy(record2.startedBy) && (record2.profile === void 0 || record2.profile === "dev" || record2.profile === "prod") && (record2.agentCliPath === void 0 || typeof record2.agentCliPath === "string" && record2.agentCliPath.length > 0) && (record2.ownerClientId === void 0 || typeof record2.ownerClientId === "string") && typeof record2.startedAt === "string" && typeof record2.updatedAt === "string";
-}
-function isCompatibleHost(record2, clientProtocolVersion) {
-  return record2.schemaVersion === LOCAL_HOST_RECORD_SCHEMA_VERSION && record2.protocolVersion <= clientProtocolVersion;
-}
-function isHostLaunchMode(value) {
-  return value === "desktop" || value === "plugin" || value === "cli-once" || value === "user-service" || value === "launchd";
-}
-function isHostStartedBy(value) {
-  return value === "desktop" || value === "plugin" || value === "cli" || value === "user-service" || value === "launchd";
-}
-
-// ../../packages/shared-runtime/dist/local-daemon.js
-var DAEMON_SUPPORTED_NODE_RANGE = ">=24.18.0 <25";
-function isMissingFile(error51) {
-  return Boolean(error51 && typeof error51 === "object" && "code" in error51 && error51.code === "ENOENT");
-}
-function processExists(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error51) {
-    return Boolean(error51 && typeof error51 === "object" && "code" in error51 && error51.code === "EPERM");
-  }
-}
-function launchDetachedLocalDaemon(options) {
-  const spawnProcess = options.spawnProcess ?? import_node_child_process2.spawn;
-  const env = options.env ?? process.env;
-  if (options.nodePath && !isDaemonNodeVersionSupported(options.nodeVersion, DAEMON_SUPPORTED_NODE_RANGE)) {
-    throw new Error(`Explicit daemon Node ${options.nodeVersion ?? "unknown"} does not satisfy ${DAEMON_SUPPORTED_NODE_RANGE}.`);
-  }
-  const runtime = options.nodePath ? {
-    nodePath: options.nodePath,
-    version: options.nodeVersion,
-    source: "explicit",
-    inheritedFromLauncher: false
-  } : resolveDaemonNodeRuntime({
-    execPath: process.execPath,
-    env,
-    supportedRange: DAEMON_SUPPORTED_NODE_RANGE,
-    candidates: defaultDaemonNodeCandidates(env)
-  });
-  const child = spawnProcess(runtime.nodePath, [...options.nodeArgs ?? [], options.entryPath], {
-    detached: true,
-    env: {
-      ...env,
-      ...options.daemonEnv ?? {},
-      CLASH_LOCAL_DATA_DIR: options.dataDir,
-      CLASH_HOST_RUN_DIR: options.runDir,
-      CLASH_CLI_ENTRY_PATH: options.cliEntryPath,
-      CLASH_LOCAL_API_WRAPPER_ENTRY: "1",
-      // Electron Node mode is still a detached Node process; without this
-      // explicit opt-in an Electron executable would recursively open the GUI.
-      ELECTRON_RUN_AS_NODE: options.electronRunAsNode ? "1" : void 0,
-      CLASH_DAEMON_NODE_PATH: runtime.nodePath,
-      PORT: "0"
-    },
-    stdio: "ignore"
-  });
-  if (!child.pid)
-    throw new Error("Failed to start Clash daemon process");
-  const pid = child.pid;
-  child.unref();
-  return {
-    pid,
-    runtime,
-    stop: async () => {
-      if (!processExists(pid))
-        return;
-      try {
-        process.kill(pid, "SIGTERM");
-      } catch (error51) {
-        if (!(error51 && typeof error51 === "object" && "code" in error51 && error51.code === "ESRCH")) {
-          throw error51;
-        }
-      }
-    }
-  };
-}
-function delay(ms) {
-  return new Promise((resolve20) => setTimeout(resolve20, ms));
-}
-async function defaultHealthProbe(record2) {
-  try {
-    const response = await fetch(new URL("/health", record2.endpoint), {
-      signal: AbortSignal.timeout(1e3)
-    });
-    if (!response.ok)
-      return false;
-    const body = await response.json();
-    return body.ok === true && body.mode === "local" && body.host?.hostId === record2.hostId && body.host.pid === record2.pid && body.host.profile === (record2.profile ?? "prod") && body.host.protocolVersion === record2.protocolVersion;
-  } catch {
-    return false;
-  }
-}
-function isLoopbackEndpoint(endpoint) {
-  try {
-    const url3 = new URL(endpoint);
-    const hostname3 = url3.hostname.toLowerCase();
-    return (url3.protocol === "http:" || url3.protocol === "https:") && (hostname3 === "127.0.0.1" || hostname3 === "localhost" || hostname3 === "::1");
-  } catch {
-    return false;
-  }
-}
-async function inspectLocalDaemon(options) {
-  let value;
-  try {
-    value = JSON.parse(await (0, import_promises3.readFile)((0, import_node_path4.join)(options.runDir, "host.json"), "utf8"));
-  } catch (error51) {
-    if (isMissingFile(error51) || error51 instanceof SyntaxError)
-      return { status: "absent" };
-    throw error51;
-  }
-  if (!isLocalHostDiscoveryRecord(value))
-    return { status: "absent" };
-  if (!options.pidExists(value.pid))
-    return { status: "absent" };
-  if ((value.profile ?? "prod") !== options.profile || !isCompatibleHost(value, LOCAL_HOST_PROTOCOL_VERSION) || !isLoopbackEndpoint(value.endpoint)) {
-    return { status: "unhealthy", record: value };
-  }
-  return await options.probe(value) ? { status: "healthy", record: value } : { status: "unhealthy", record: value };
-}
-async function acquireStartupLock(options) {
-  await (0, import_promises3.mkdir)(options.runDir, { recursive: true });
-  const lockPath = (0, import_node_path4.join)(options.runDir, "daemon-start.lock");
-  const token = (0, import_node_crypto3.randomUUID)();
-  const deadline = Date.now() + options.lockTimeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const handle = await (0, import_promises3.open)(lockPath, "wx", 384);
-      await handle.writeFile(JSON.stringify({ token, pid: process.pid, createdAt: Date.now() }), "utf8");
-      return async () => {
-        await handle.close().catch(() => void 0);
-        try {
-          const current = JSON.parse(await (0, import_promises3.readFile)(lockPath, "utf8"));
-          if (current.token === token)
-            await (0, import_promises3.rm)(lockPath, { force: true });
-        } catch (error51) {
-          if (!isMissingFile(error51))
-            throw error51;
-        }
-      };
-    } catch (error51) {
-      if (!(error51 && typeof error51 === "object" && "code" in error51 && error51.code === "EEXIST")) {
-        throw error51;
-      }
-    }
-    try {
-      const lock = JSON.parse(await (0, import_promises3.readFile)(lockPath, "utf8"));
-      const stale = typeof lock.pid !== "number" || !options.pidExists(lock.pid) || typeof lock.createdAt !== "number" || Date.now() - lock.createdAt > options.lockTimeoutMs * 2;
-      if (stale) {
-        await (0, import_promises3.rm)(lockPath, { force: true });
-        continue;
-      }
-    } catch (error51) {
-      if (isMissingFile(error51))
-        continue;
-      if (error51 instanceof SyntaxError) {
-        await (0, import_promises3.rm)(lockPath, { force: true });
-        continue;
-      }
-    }
-    await delay(options.pollIntervalMs);
-  }
-  throw new Error("Timed out coordinating Clash daemon startup");
-}
-function createLocalDaemonBootstrap(options) {
-  const pidExists = options.pidExists ?? processExists;
-  const probe = options.probe ?? defaultHealthProbe;
-  const startupTimeoutMs = options.startupTimeoutMs ?? 1e4;
-  const lockTimeoutMs = options.lockTimeoutMs ?? 15e3;
-  const pollIntervalMs = options.pollIntervalMs ?? 50;
-  const inspectDaemon = () => inspectLocalDaemon({
-    runDir: options.runDir,
-    profile: options.profile,
-    pidExists,
-    probe
-  });
-  let ensuring;
-  let closed = false;
-  const establish = async () => {
-    if (closed)
-      throw new Error("Clash daemon bootstrap is closed");
-    const active = await inspectDaemon();
-    if (active.status === "healthy")
-      return active.record;
-    if (active.status === "unhealthy") {
-      throw new Error(`Clash daemon process ${active.record.pid} is alive but unhealthy at ${active.record.endpoint}; refusing to start a second project-state writer`);
-    }
-    const release = await acquireStartupLock({
-      runDir: options.runDir,
-      pidExists,
-      lockTimeoutMs,
-      pollIntervalMs
-    });
-    let launched;
-    try {
-      const activeAfterLock = await inspectDaemon();
-      if (activeAfterLock.status === "healthy")
-        return activeAfterLock.record;
-      if (activeAfterLock.status === "unhealthy") {
-        throw new Error(`Clash daemon process ${activeAfterLock.record.pid} is alive but unhealthy at ${activeAfterLock.record.endpoint}; refusing to start a second project-state writer`);
-      }
-      launched = await options.launch();
-      const deadline = Date.now() + startupTimeoutMs;
-      while (Date.now() < deadline) {
-        const ready = await inspectDaemon();
-        if (ready.status === "healthy")
-          return ready.record;
-        if (ready.status === "unhealthy" && ready.record.pid !== launched.pid) {
-          throw new Error(`A different Clash daemon process ${ready.record.pid} became unhealthy during startup`);
-        }
-        if (!pidExists(launched.pid)) {
-          throw new Error("Clash daemon exited before becoming ready");
-        }
-        await delay(pollIntervalMs);
-      }
-      throw new Error("Timed out waiting for Clash daemon readiness");
-    } catch (error51) {
-      await launched?.stop?.().catch(() => void 0);
-      throw error51;
-    } finally {
-      await release();
-    }
-  };
-  return {
-    ensureDaemon: () => {
-      if (ensuring)
-        return ensuring;
-      const attempt = establish();
-      ensuring = attempt;
-      void attempt.then(() => {
-        if (ensuring === attempt)
-          ensuring = void 0;
-      }, () => {
-        if (ensuring === attempt)
-          ensuring = void 0;
-      });
-      return ensuring;
-    },
-    close: async () => {
-      closed = true;
-      await ensuring?.catch(() => void 0);
-    }
-  };
-}
-
-// ../../packages/shared-runtime/dist/local-paths.js
-var import_node_os = require("node:os");
-var import_node_path5 = require("node:path");
-function resolveClashProfile(env = process.env) {
-  const profile = env.CLASH_PROFILE?.trim() || "prod";
-  if (profile === "dev" || profile === "prod")
-    return profile;
-  throw new Error("CLASH_PROFILE must be dev or prod");
-}
-function defaultClashHome(env = process.env) {
-  const explicit = env.CLASH_HOME?.trim();
-  if (explicit)
-    return (0, import_node_path5.resolve)(explicit);
-  const root = (0, import_node_path5.join)((0, import_node_os.homedir)(), ".clash");
-  return resolveClashProfile(env) === "dev" ? (0, import_node_path5.join)(root, "profiles", "dev") : root;
-}
-function defaultLocalApiDataDir(env = process.env) {
-  const explicit = env.CLASH_LOCAL_DATA_DIR?.trim();
-  return explicit ? (0, import_node_path5.resolve)(explicit) : (0, import_node_path5.join)(defaultClashHome(env), "local-api");
-}
-function clashHomeForLocalDataDir(localDataDir, explicitClashHome) {
-  if (explicitClashHome?.trim())
-    return (0, import_node_path5.resolve)(explicitClashHome);
-  const resolved = (0, import_node_path5.resolve)(localDataDir);
-  return (0, import_node_path5.basename)(resolved) === "local-api" ? (0, import_node_path5.dirname)(resolved) : resolved;
-}
-
-// ../../packages/cli/src/lib/local-daemon-bootstrap.ts
-var import_node_path6 = require("node:path");
-async function ensureCliLocalDaemon(options) {
-  const env = options.env ?? process.env;
-  if (env.CLASH_API_URL?.trim()) return void 0;
-  const dataDir = defaultLocalApiDataDir(env);
-  const runDir = (0, import_node_path6.join)(clashHomeForLocalDataDir(dataDir), "run");
-  const bootstrap = createLocalDaemonBootstrap({
-    runDir,
-    profile: resolveClashProfile(env),
-    probe: options.probeHost,
-    launch: options.launch ?? (async () => launchDetachedLocalDaemon({
-      entryPath: options.daemonEntryPath,
-      cliEntryPath: options.cliEntryPath,
-      dataDir,
-      runDir,
-      env,
-      daemonEnv: {
-        CLASH_DAEMON_STARTED_BY: "cli",
-        CLASH_NODE_EXEC_PATH: process.execPath,
-        ...options.agentBundleRoot ? { CLASH_AGENT_BUNDLE_ROOT: options.agentBundleRoot } : {},
-        ...options.builtinPluginRoot ? { CLASH_BUILTIN_PLUGIN_ROOT: options.builtinPluginRoot } : {}
-      }
-    }))
-  });
-  const record2 = await bootstrap.ensureDaemon();
-  env.CLASH_API_URL = record2.endpoint;
-  return record2;
-}
-
-// ../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/esm.mjs
-var import_index2 = __toESM(require_commander(), 1);
-var {
-  program,
-  createCommand,
-  createArgument,
-  createOption,
-  CommanderError,
-  InvalidArgumentError,
-  InvalidOptionArgumentError,
-  // deprecated old name
-  Command,
-  Argument,
-  Option,
-  Help
-} = import_index2.default;
-
-// ../../packages/cli/src/commands/assets.ts
-var import_node_crypto8 = require("node:crypto");
-var import_node_fs7 = require("node:fs");
-var import_node_path20 = require("node:path");
-
-// ../../packages/cli/src/commands/canvas.ts
-var import_node_fs4 = require("node:fs");
-var import_node_path13 = require("node:path");
 
 // ../../node_modules/.pnpm/zod@3.24.4/node_modules/zod/lib/index.mjs
 var util;
@@ -25630,7 +25167,7 @@ var z = /* @__PURE__ */ Object.freeze({
   ZodError
 });
 
-// ../../packages/shared-types/dist/chunk-M2EI3OAT.js
+// ../../packages/shared-types/dist/chunk-JZFWVH64.js
 function agentReadToken(options) {
   const namespace = normalizeTokenPart(options.namespace, "namespace");
   const version2 = normalizeTokenPart(options.version ?? "v1", "version");
@@ -25668,6 +25205,119 @@ function fnv1a64(input) {
   return hash2.toString(16).padStart(16, "0");
 }
 var AssetKindSchema = z.enum(["image", "video", "audio", "model"]);
+var ResourceIdSchema = z.string().trim().min(1);
+var ResourceSchema = z.object({
+  id: ResourceIdSchema,
+  kind: AssetKindSchema,
+  digest: z.object({
+    algorithm: z.literal("sha256"),
+    value: z.string().regex(/^[a-f0-9]{64}$/)
+  }).strict(),
+  byteLength: z.number().int().nonnegative(),
+  contentType: z.string().trim().min(1).optional()
+}).strict();
+var ProjectAssetMetadataSchema = z.object({
+  width: z.number().int().nonnegative().optional(),
+  height: z.number().int().nonnegative().optional(),
+  durationMs: z.number().int().nonnegative().optional(),
+  bytes: z.number().int().nonnegative().optional(),
+  waveform: z.array(z.number()).optional(),
+  contentType: z.string().trim().min(1).optional(),
+  frameRate: z.number().positive().optional(),
+  videoCodec: z.string().trim().min(1).optional(),
+  audioCodec: z.string().trim().min(1).optional(),
+  originalName: z.string().trim().min(1).optional()
+}).strict();
+var ProjectAssetProvenanceSchema = z.object({
+  kind: z.enum(["import", "generation", "edit", "render", "admission"]),
+  actionRunId: z.string().trim().min(1).optional(),
+  model: z.string().trim().min(1).optional(),
+  prompt: z.string().optional()
+}).strict();
+var ProjectAssetSourceSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("owned"),
+    resourceId: ResourceIdSchema
+  }).strict(),
+  z.object({
+    kind: z.literal("linked"),
+    resourceId: ResourceIdSchema,
+    origin: z.object({
+      scope: z.enum(["global", "catalog", "project"]),
+      entryId: z.string().trim().min(1)
+    }).strict()
+  }).strict()
+]);
+var ProjectAssetLifecycleSchema = z.discriminatedUnion("state", [
+  z.object({ state: z.literal("active") }).strict(),
+  z.object({
+    state: z.literal("trashed"),
+    deleteOperationId: z.string().trim().min(1),
+    deletedAt: z.string().trim().min(1),
+    purgeAfter: z.string().trim().min(1)
+  }).strict(),
+  z.object({
+    state: z.literal("purged"),
+    deleteOperationId: z.string().trim().min(1),
+    deletedAt: z.string().trim().min(1),
+    purgedAt: z.string().trim().min(1)
+  }).strict()
+]);
+var ProjectAssetEntrySchema = z.object({
+  id: z.string().trim().min(1),
+  kind: AssetKindSchema,
+  source: ProjectAssetSourceSchema,
+  lifecycle: ProjectAssetLifecycleSchema,
+  name: z.string().trim().min(1).optional(),
+  metadata: ProjectAssetMetadataSchema,
+  provenance: ProjectAssetProvenanceSchema.optional()
+}).strict();
+var GlobalAssetEntrySchema = z.object({
+  id: z.string().trim().min(1),
+  kind: AssetKindSchema,
+  resourceId: ResourceIdSchema,
+  lifecycle: ProjectAssetLifecycleSchema,
+  name: z.string().trim().min(1).optional(),
+  metadata: ProjectAssetMetadataSchema,
+  provenance: ProjectAssetProvenanceSchema.optional()
+}).strict();
+var ActionBindingOwnerSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("draft"),
+    actionId: z.string().trim().min(1)
+  }).strict(),
+  z.object({
+    kind: z.literal("revision"),
+    actionId: z.string().trim().min(1),
+    actionRevisionId: z.string().trim().min(1)
+  }).strict(),
+  z.object({
+    kind: z.literal("run"),
+    actionId: z.string().trim().min(1),
+    actionRevisionId: z.string().trim().min(1),
+    actionRunId: z.string().trim().min(1)
+  }).strict()
+]);
+var ActionAssetBindingSchema = z.object({
+  id: z.string().trim().min(1),
+  owner: ActionBindingOwnerSchema,
+  direction: z.enum(["input", "output"]),
+  slot: z.string().trim().min(1),
+  projectAssetId: z.string().trim().min(1),
+  role: z.enum(["primary", "reference", "source"]).optional()
+}).strict();
+var ResolvedAssetSchema = z.object({
+  id: z.string().trim().min(1),
+  kind: AssetKindSchema,
+  name: z.string().trim().min(1).optional(),
+  metadata: ProjectAssetMetadataSchema,
+  provenance: ProjectAssetProvenanceSchema.optional(),
+  status: z.enum(["uploading", "ready", "downloading", "unavailable", "failed"]),
+  url: z.string().url().optional(),
+  thumbnailUrl: z.string().url().optional(),
+  progress: z.number().min(0).max(1).optional(),
+  error: z.string().trim().min(1).optional()
+}).strict();
 var AssetMetadataSchema = z.object({
   width: z.number().int().optional(),
   height: z.number().int().optional(),
@@ -25722,7 +25372,7 @@ var AssetRefRowSchema = z.object({
   importedAt: z.number()
 });
 
-// ../../packages/shared-types/dist/chunk-ZDCOV6OE.js
+// ../../packages/shared-types/dist/chunk-GNYSXLHQ.js
 var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
 var pluginIdSchema = z.string().trim().superRefine((value, ctx) => {
   const segments = value.split(".");
@@ -26162,20 +25812,7 @@ var GEMINI_TTS_VOICES = [
   { label: "Sulafat - Warm", value: "Sulafat" }
 ];
 var ModelParameterTypeSchema = z.enum(["select", "slider", "number", "text", "boolean"]);
-var BuiltinProviderSchema = z.enum([
-  "local",
-  "official",
-  "fal",
-  "pika",
-  "replicate",
-  "kling",
-  "minimax",
-  "volcengine",
-  "elevenlabs",
-  "suno",
-  "mock",
-  "custom"
-]);
+var BuiltinProviderSchema = z.enum(["local", "official", "fal", "pika", "replicate", "kling", "minimax", "volcengine", "elevenlabs", "suno", "mock", "custom"]);
 var ProviderSchema = z.string().trim().regex(
   /^[a-z0-9][a-z0-9._-]*$/,
   "Provider ids must be lowercase plugin-safe identifiers."
@@ -26419,7 +26056,11 @@ var ModelCardSchema = z.object({
    * This is OUR representation — provider-specific values live in parameters/defaultParams.
    */
   defaultAspectRatio: z.string().default("16:9"),
-  input: ModelInputRuleSchema.default({ requiresPrompt: true, inputMode: {}, promptModalities: ["text"] }),
+  input: ModelInputRuleSchema.default({
+    requiresPrompt: true,
+    inputMode: {},
+    promptModalities: ["text"]
+  }),
   musicInput: MusicInputMappingSchema.optional(),
   /** Shared UI/runtime constraints. Providers may still translate the final
    * valid configuration into different wire shapes. */
@@ -26436,7 +26077,52 @@ var ModelCardSchema = z.object({
   maxRuntimeMs: z.number().int().positive().optional()
 }).superRefine((model, ctx) => {
   const parameterIds = /* @__PURE__ */ new Set();
+  const parametersById = /* @__PURE__ */ new Map();
   const sameCandidate = (left, right) => left === right;
+  const validateProviderParameterValue = (parameter, value, path, source) => {
+    if (value === void 0) return;
+    if (parameter.type === "select") {
+      const optionValues = parameter.options?.map((option) => option.value) ?? [];
+      if (!optionValues.some((candidate) => sameCandidate(candidate, value))) {
+        ctx.addIssue({
+          code: "custom",
+          path,
+          message: `${parameter.label} ${source} must be one of its provider candidates.`
+        });
+      }
+      return;
+    }
+    if (parameter.type === "number" || parameter.type === "slider") {
+      if (typeof value !== "number" || !Number.isFinite(value)) {
+        ctx.addIssue({
+          code: "custom",
+          path,
+          message: `${parameter.label} ${source} must be a finite number.`
+        });
+      } else if (parameter.min !== void 0 && value < parameter.min || parameter.max !== void 0 && value > parameter.max) {
+        ctx.addIssue({
+          code: "custom",
+          path,
+          message: `${parameter.label} ${source} must stay within its provider range.`
+        });
+      }
+      return;
+    }
+    if (parameter.type === "boolean" && typeof value !== "boolean") {
+      ctx.addIssue({
+        code: "custom",
+        path,
+        message: `${parameter.label} ${source} must be a boolean.`
+      });
+    }
+    if (parameter.type === "text" && typeof value !== "string") {
+      ctx.addIssue({
+        code: "custom",
+        path,
+        message: `${parameter.label} ${source} must be text.`
+      });
+    }
+  };
   for (const [index, parameter] of model.parameters.entries()) {
     if (parameterIds.has(parameter.id)) {
       ctx.addIssue({
@@ -26446,6 +26132,7 @@ var ModelCardSchema = z.object({
       });
     }
     parameterIds.add(parameter.id);
+    parametersById.set(parameter.id, parameter);
     if (parameter.type === "select") {
       if (!parameter.options?.length) {
         ctx.addIssue({
@@ -26525,6 +26212,88 @@ var ModelCardSchema = z.object({
       rule.when.forEach((condition, conditionIndex) => validateConstraintField(condition.field, ["constraints", index, "when", conditionIndex, "field"]));
     }
   }
+  for (const [implementationIndex, implementation] of (model.providerImplementations ?? []).entries()) {
+    const overrideIds = /* @__PURE__ */ new Set();
+    const overridesById = /* @__PURE__ */ new Map();
+    for (const [overrideIndex, parameter] of (implementation.parameterOverrides ?? []).entries()) {
+      if (overrideIds.has(parameter.id)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["providerImplementations", implementationIndex, "parameterOverrides", overrideIndex, "id"],
+          message: "Provider parameter override ids must be unique."
+        });
+      }
+      overrideIds.add(parameter.id);
+      overridesById.set(parameter.id, parameter);
+      if (!parameterIds.has(parameter.id)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["providerImplementations", implementationIndex, "parameterOverrides", overrideIndex, "id"],
+          message: `Provider parameter override ${parameter.id} must reference a declared parameter on the canonical Model Card.`
+        });
+      }
+      if (parameter.type === "select" && !parameter.options?.length) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["providerImplementations", implementationIndex, "parameterOverrides", overrideIndex, "options"],
+          message: "Provider select parameter overrides require at least one candidate."
+        });
+      }
+      validateProviderParameterValue(
+        parameter,
+        parameter.defaultValue,
+        ["providerImplementations", implementationIndex, "parameterOverrides", overrideIndex, "defaultValue"],
+        "defaultValue"
+      );
+    }
+    const excludedIds = /* @__PURE__ */ new Set();
+    for (const [excludedIndex, parameterId] of (implementation.excludedParameterIds ?? []).entries()) {
+      const path = ["providerImplementations", implementationIndex, "excludedParameterIds", excludedIndex];
+      if (excludedIds.has(parameterId)) {
+        ctx.addIssue({
+          code: "custom",
+          path,
+          message: "Provider excluded parameter ids must be unique."
+        });
+      }
+      excludedIds.add(parameterId);
+      if (!parameterIds.has(parameterId)) {
+        ctx.addIssue({
+          code: "custom",
+          path,
+          message: `Provider exclusion ${parameterId} must reference a declared parameter on the canonical Model Card.`
+        });
+      }
+      if (overrideIds.has(parameterId)) {
+        ctx.addIssue({
+          code: "custom",
+          path,
+          message: `Provider cannot both override and exclude parameter ${parameterId}.`
+        });
+      }
+    }
+    for (const [parameterId, value] of Object.entries(implementation.defaultParamOverrides ?? {})) {
+      const path = ["providerImplementations", implementationIndex, "defaultParamOverrides", parameterId];
+      if (!parameterIds.has(parameterId)) {
+        ctx.addIssue({
+          code: "custom",
+          path,
+          message: `Provider default override ${parameterId} must reference a declared parameter on the canonical Model Card.`
+        });
+      }
+      if (excludedIds.has(parameterId)) {
+        ctx.addIssue({
+          code: "custom",
+          path,
+          message: `Provider cannot set a default for excluded parameter ${parameterId}.`
+        });
+      }
+      const effectiveParameter = overridesById.get(parameterId) ?? parametersById.get(parameterId);
+      if (effectiveParameter) {
+        validateProviderParameterValue(effectiveParameter, value, path, "default override");
+      }
+    }
+  }
   const providers = model.availableProviders ?? [];
   if (providers.length === 0) return;
   if (!model.defaultProvider) {
@@ -26594,6 +26363,43 @@ var MINIMAX_H3_AUDIO_CONSTRAINTS = {
   maxDurationMs: 15e3
 };
 var MINIMAX_H3_MAX_EMBEDDED_REQUEST_BYTES = 64 * 1024 * 1024;
+var SEEDANCE_IMAGE_CONSTRAINTS = {
+  mimeTypes: ["image/jpeg", "image/png", "image/webp", "image/bmp", "image/tiff", "image/gif", "image/heic", "image/heif"],
+  fileExtensions: ["jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff", "gif", "heic", "heif"],
+  maxBytes: 30 * 1024 * 1024,
+  minWidth: 300,
+  maxWidth: 6e3,
+  minHeight: 300,
+  maxHeight: 6e3,
+  minAspectRatio: 0.4,
+  maxAspectRatio: 2.5
+};
+var SEEDANCE_VIDEO_CONSTRAINTS = {
+  mimeTypes: ["video/mp4", "video/quicktime"],
+  fileExtensions: ["mp4", "mov"],
+  maxBytes: 200 * 1024 * 1024,
+  minDurationMs: 2e3,
+  minFrameRate: 24,
+  maxFrameRate: 60
+};
+var SEEDANCE_AUDIO_CONSTRAINTS = {
+  mimeTypes: ["audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp3"],
+  fileExtensions: ["wav", "mp3"],
+  maxBytes: 15 * 1024 * 1024,
+  minDurationMs: 2e3
+};
+var SEEDANCE_MAX_EMBEDDED_REQUEST_BYTES = 64 * 1024 * 1024;
+var SEED_AUDIO_IMAGE_CONSTRAINTS = {
+  mimeTypes: ["image/jpeg", "image/png", "image/webp"],
+  fileExtensions: ["jpg", "jpeg", "png", "webp"],
+  maxBytes: 10 * 1024 * 1024
+};
+var SEED_AUDIO_AUDIO_CONSTRAINTS = {
+  mimeTypes: ["audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp3", "audio/pcm", "audio/ogg", "audio/opus"],
+  fileExtensions: ["wav", "mp3", "pcm", "ogg", "opus"],
+  maxBytes: 10 * 1024 * 1024,
+  maxDurationMs: 3e4
+};
 var GROUPED_REFERENCE_BINDING = {
   type: "grouped-references"
 };
@@ -26685,7 +26491,17 @@ var MODEL_CARD_DEFINITIONS = [
     kind: "audio",
     defaultAspectRatio: "1:1",
     description: "Google Lyria 3 Pro music generation from the current Pika catalog.",
-    parameters: [{ id: "duration", label: "Duration", type: "number", min: 10, max: 180, step: 1, defaultValue: 30 }],
+    parameters: [
+      {
+        id: "duration",
+        label: "Duration",
+        type: "number",
+        min: 10,
+        max: 180,
+        step: 1,
+        defaultValue: 30
+      }
+    ],
     defaultParams: { duration: 30 },
     input: { requiresPrompt: true, inputMode: {} }
   },
@@ -26698,7 +26514,14 @@ var MODEL_CARD_DEFINITIONS = [
     kind: "audio",
     defaultAspectRatio: "1:1",
     description: "MiniMax Speech 2.8 HD text-to-speech from the current Pika catalog.",
-    parameters: [{ id: "voice_id", label: "Voice ID", type: "text", defaultValue: "English_Graceful_Lady" }],
+    parameters: [
+      {
+        id: "voice_id",
+        label: "Voice ID",
+        type: "text",
+        defaultValue: "English_Graceful_Lady"
+      }
+    ],
     defaultParams: { voice_id: "English_Graceful_Lady" },
     input: { requiresPrompt: true, inputMode: {} }
   },
@@ -26718,14 +26541,20 @@ var MODEL_CARD_DEFINITIONS = [
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: NANO_BANANA_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: NANO_BANANA_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "16:9"
       },
       {
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: NANO_BANANA_RESOLUTIONS.map((s) => ({ label: s.label, value: s.value })),
+        options: NANO_BANANA_RESOLUTIONS.map((s) => ({
+          label: s.label,
+          value: s.value
+        })),
         defaultValue: "1K"
       },
       {
@@ -26744,7 +26573,12 @@ var MODEL_CARD_DEFINITIONS = [
       resolution: "1K",
       count: 1
     },
-    input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ["text", "image"], referenceBinding: GROUPED_REFERENCE_BINDING }
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 8 } },
+      promptModalities: ["text", "image"],
+      referenceBinding: GROUPED_REFERENCE_BINDING
+    }
   },
   // ─── Image: Nano Banana 2 Lite (Google) ────────────────────
   {
@@ -26786,14 +26620,20 @@ var MODEL_CARD_DEFINITIONS = [
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: GPT_IMAGE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: GPT_IMAGE_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "1:1"
       },
       {
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: GPT_IMAGE_RESOLUTION_TIERS.map((t) => ({ label: t.label, value: t.value })),
+        options: GPT_IMAGE_RESOLUTION_TIERS.map((t) => ({
+          label: t.label,
+          value: t.value
+        })),
         defaultValue: "2K"
       },
       {
@@ -26858,7 +26698,12 @@ var MODEL_CARD_DEFINITIONS = [
       moderation: "auto",
       count: 1
     },
-    input: { requiresPrompt: true, inputMode: { images: { max: 16 } }, promptModalities: ["text", "image"], referenceBinding: GROUPED_REFERENCE_BINDING },
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 16 } },
+      promptModalities: ["text", "image"],
+      referenceBinding: GROUPED_REFERENCE_BINDING
+    },
     maxRuntimeMs: 3 * 60 * 1e3
   },
   // ─── Image: Seedream 4.5 (fal.ai) ───────────────────────────
@@ -27135,7 +26980,10 @@ var MODEL_CARD_DEFINITIONS = [
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+        options: [
+          { label: "480p", value: "480p" },
+          { label: "720p", value: "720p" }
+        ],
         defaultValue: "720p"
       },
       {
@@ -27143,6 +26991,13 @@ var MODEL_CARD_DEFINITIONS = [
         label: "Native audio",
         type: "boolean",
         defaultValue: true
+      },
+      {
+        id: "seed",
+        label: "Seed",
+        type: "number",
+        required: false,
+        description: "Optional deterministic seed. The same seed may still produce minor variations."
       }
     ],
     defaultParams: {
@@ -27150,7 +27005,13 @@ var MODEL_CARD_DEFINITIONS = [
       resolution: "720p",
       generate_audio: true
     },
-    input: { requiresPrompt: true, inputMode: { startEnd: {} } }
+    input: {
+      requiresPrompt: true,
+      inputMode: {
+        startEnd: { constraints: SEEDANCE_IMAGE_CONSTRAINTS },
+        maxEmbeddedRequestBytes: SEEDANCE_MAX_EMBEDDED_REQUEST_BYTES
+      }
+    }
   },
   // ─── Video: Seedance 2.0 reference-to-video ────────────────
   // Separate endpoint with multi-modal refs. Up to 15 total files across
@@ -27185,14 +27046,20 @@ var MODEL_CARD_DEFINITIONS = [
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "auto"
       },
       {
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+        options: [
+          { label: "480p", value: "480p" },
+          { label: "720p", value: "720p" }
+        ],
         defaultValue: "720p"
       },
       {
@@ -27200,22 +27067,48 @@ var MODEL_CARD_DEFINITIONS = [
         label: "Native audio",
         type: "boolean",
         defaultValue: true
+      },
+      {
+        id: "seed",
+        label: "Seed",
+        type: "number",
+        required: false,
+        description: "Optional deterministic seed. The same seed may still produce minor variations."
+      },
+      {
+        id: "edit_mode",
+        label: "Edit referenced video",
+        type: "boolean",
+        required: false,
+        description: "Edit the attached video instead of generating a new clip from references.",
+        defaultValue: false
       }
     ],
     defaultParams: {
       duration: "auto",
       aspect_ratio: "auto",
       resolution: "720p",
-      generate_audio: true
+      generate_audio: true,
+      edit_mode: false
     },
     input: {
       requiresPrompt: true,
       referenceBinding: POSITIONAL_REFERENCE_BINDING,
       inputMode: {
-        images: { max: 9 },
-        videos: { max: 3 },
-        audios: { max: 3, requiresAnyOf: ["image", "video"] },
-        maxTotalReferences: 15
+        images: { max: 9, constraints: SEEDANCE_IMAGE_CONSTRAINTS },
+        videos: {
+          max: 3,
+          constraints: { ...SEEDANCE_VIDEO_CONSTRAINTS, maxDurationMs: 15e3 },
+          maxTotalDurationMs: 15e3
+        },
+        audios: {
+          max: 3,
+          requiresAnyOf: ["image", "video"],
+          constraints: { ...SEEDANCE_AUDIO_CONSTRAINTS, maxDurationMs: 15e3 },
+          maxTotalDurationMs: 15e3
+        },
+        maxTotalReferences: 15,
+        maxEmbeddedRequestBytes: SEEDANCE_MAX_EMBEDDED_REQUEST_BYTES
       },
       promptModalities: ["text", "image", "video", "audio"]
     }
@@ -27236,16 +27129,22 @@ var MODEL_CARD_DEFINITIONS = [
         label: "Duration",
         type: "select",
         options: [
-          { label: "Auto", value: -1 },
-          ...Array.from({ length: 12 }, (_, index) => ({ label: `${index + 4}s`, value: index + 4 }))
+          { label: "Auto", value: "auto" },
+          ...Array.from({ length: 12 }, (_, index) => ({
+            label: `${index + 4}s`,
+            value: index + 4
+          }))
         ],
-        defaultValue: -1
+        defaultValue: "auto"
       },
       {
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: ["480p", "720p", "1080p", "4k"].map((value) => ({ label: value, value })),
+        options: ["480p", "720p", "1080p", "4k"].map((value) => ({
+          label: value,
+          value
+        })),
         defaultValue: "720p"
       },
       {
@@ -27255,12 +27154,18 @@ var MODEL_CARD_DEFINITIONS = [
         defaultValue: true
       }
     ],
-    defaultParams: { duration: -1, resolution: "720p", generate_audio: true },
+    defaultParams: { duration: "auto", resolution: "720p", generate_audio: true },
     input: {
       requiresPrompt: true,
       inputMode: {
-        videos: { min: 1, max: 3, maxTotalDurationMs: 15e3 },
-        maxTotalReferences: 3
+        videos: {
+          min: 1,
+          max: 3,
+          constraints: { ...SEEDANCE_VIDEO_CONSTRAINTS, maxDurationMs: 15e3 },
+          maxTotalDurationMs: 15e3
+        },
+        maxTotalReferences: 3,
+        maxEmbeddedRequestBytes: SEEDANCE_MAX_EMBEDDED_REQUEST_BYTES
       },
       promptModalities: ["text", "video"],
       referenceBinding: POSITIONAL_REFERENCE_BINDING,
@@ -27284,48 +27189,74 @@ var MODEL_CARD_DEFINITIONS = [
         id: "duration",
         label: "Duration",
         type: "select",
-        options: Array.from({ length: 27 }, (_, index) => ({
-          label: `${index + 4}s`,
-          value: index + 4
-        })),
+        options: [
+          { label: "Auto", value: "auto" },
+          ...Array.from({ length: 27 }, (_, index) => ({
+            label: `${index + 4}s`,
+            value: index + 4
+          }))
+        ],
         defaultValue: 5
       },
       {
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: ["1:1", "3:4", "16:9", "4:3", "9:16", "21:9"].map((value) => ({ label: value, value })),
+        options: ["auto", "1:1", "3:4", "16:9", "4:3", "9:16", "21:9"].map((value) => ({
+          label: value === "auto" ? "Auto" : value,
+          value
+        })),
         defaultValue: "16:9"
       },
       {
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+        options: [
+          { label: "480p", value: "480p" },
+          { label: "720p", value: "720p" }
+        ],
         defaultValue: "720p"
+      },
+      {
+        id: "generate_audio",
+        label: "Native audio",
+        type: "boolean",
+        defaultValue: true
+      },
+      {
+        id: "edit_mode",
+        label: "Edit referenced video",
+        type: "boolean",
+        required: false,
+        description: "Edit the attached video instead of generating a new clip from references.",
+        defaultValue: false
       }
     ],
     defaultParams: {
       duration: 5,
       aspect_ratio: "16:9",
-      resolution: "720p"
+      resolution: "720p",
+      generate_audio: true,
+      edit_mode: false
     },
     input: {
       requiresPrompt: true,
       referenceBinding: POSITIONAL_REFERENCE_BINDING,
       inputMode: {
-        images: { max: 30 },
+        images: { max: 30, constraints: SEEDANCE_IMAGE_CONSTRAINTS },
         videos: {
           max: 10,
-          constraints: { minDurationMs: 2e3, maxDurationMs: 3e4 },
+          constraints: { ...SEEDANCE_VIDEO_CONSTRAINTS, maxDurationMs: 3e4 },
           maxTotalDurationMs: 3e4
         },
         audios: {
           max: 10,
-          constraints: { minDurationMs: 2e3, maxDurationMs: 3e4 },
+          constraints: { ...SEEDANCE_AUDIO_CONSTRAINTS, maxDurationMs: 3e4 },
           maxTotalDurationMs: 3e4
         },
-        maxTotalReferences: 50
+        maxTotalReferences: 50,
+        maxEmbeddedRequestBytes: SEEDANCE_MAX_EMBEDDED_REQUEST_BYTES
       },
       promptModalities: ["text", "image", "video", "audio"]
     },
@@ -27346,24 +27277,39 @@ var MODEL_CARD_DEFINITIONS = [
         id: "duration",
         label: "Duration",
         type: "select",
-        options: Array.from({ length: 27 }, (_, index) => ({
-          label: `${index + 4}s`,
-          value: index + 4
-        })),
+        options: [
+          { label: "Auto", value: "auto" },
+          ...Array.from({ length: 27 }, (_, index) => ({
+            label: `${index + 4}s`,
+            value: index + 4
+          }))
+        ],
         defaultValue: 5
       },
       {
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+        options: [
+          { label: "480p", value: "480p" },
+          { label: "720p", value: "720p" }
+        ],
         defaultValue: "720p"
+      },
+      {
+        id: "generate_audio",
+        label: "Native audio",
+        type: "boolean",
+        defaultValue: true
       }
     ],
-    defaultParams: { duration: 5, resolution: "720p" },
+    defaultParams: { duration: 5, resolution: "720p", generate_audio: true },
     input: {
       requiresPrompt: true,
-      inputMode: { startEnd: {} },
+      inputMode: {
+        startEnd: { constraints: SEEDANCE_IMAGE_CONSTRAINTS },
+        maxEmbeddedRequestBytes: SEEDANCE_MAX_EMBEDDED_REQUEST_BYTES
+      },
       promptModalities: ["text"]
     },
     maxRuntimeMs: 30 * 60 * 1e3
@@ -27384,10 +27330,13 @@ var MODEL_CARD_DEFINITIONS = [
         label: "Duration",
         type: "select",
         options: [
-          { label: "Auto", value: -1 },
-          ...Array.from({ length: 27 }, (_, index) => ({ label: `${index + 4}s`, value: index + 4 }))
+          { label: "Auto", value: "auto" },
+          ...Array.from({ length: 27 }, (_, index) => ({
+            label: `${index + 4}s`,
+            value: index + 4
+          }))
         ],
-        defaultValue: -1
+        defaultValue: "auto"
       },
       {
         id: "resolution",
@@ -27401,26 +27350,24 @@ var MODEL_CARD_DEFINITIONS = [
         label: "Native audio",
         type: "boolean",
         defaultValue: true
-      },
-      {
-        id: "output_format",
-        label: "Output format",
-        type: "select",
-        options: ["mp4", "mov"].map((value) => ({ label: value.toUpperCase(), value })),
-        defaultValue: "mp4"
       }
     ],
     defaultParams: {
-      duration: -1,
+      duration: "auto",
       resolution: "720p",
-      generate_audio: true,
-      output_format: "mp4"
+      generate_audio: true
     },
     input: {
       requiresPrompt: true,
       inputMode: {
-        videos: { min: 1, max: 10, maxTotalDurationMs: 3e4 },
-        maxTotalReferences: 10
+        videos: {
+          min: 1,
+          max: 10,
+          constraints: { ...SEEDANCE_VIDEO_CONSTRAINTS, maxDurationMs: 3e4 },
+          maxTotalDurationMs: 3e4
+        },
+        maxTotalReferences: 10,
+        maxEmbeddedRequestBytes: SEEDANCE_MAX_EMBEDDED_REQUEST_BYTES
       },
       promptModalities: ["text", "video"],
       referenceBinding: POSITIONAL_REFERENCE_BINDING,
@@ -27688,7 +27635,12 @@ var MODEL_CARD_DEFINITIONS = [
       image_size: "landscape_4_3",
       safety_tolerance: "2"
     },
-    input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ["text", "image"], referenceBinding: GROUPED_REFERENCE_BINDING }
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 8 } },
+      promptModalities: ["text", "image"],
+      referenceBinding: GROUPED_REFERENCE_BINDING
+    }
   },
   // ─── Image: Nano Banana Pro (Google) ────────────────────────
   {
@@ -27870,8 +27822,8 @@ var MODEL_CARD_DEFINITIONS = [
     defaultProvider: "official",
     kind: "video",
     defaultAspectRatio: "16:9",
-    description: "Google Gemini Omni Flash preview \u2014 video generation with optional ordered image references and native audio output.",
-    promptGuidance: "Describe scene, motion, camera, lighting, timing, and desired audio. Image references remain in authored prompt order.",
+    description: "Google Gemini Omni Flash preview \u2014 text-to-video generation with native audio output.",
+    promptGuidance: "Describe scene, motion, camera, lighting, timing, and desired audio.",
     parameters: [
       {
         id: "duration",
@@ -27925,23 +27877,9 @@ var MODEL_CARD_DEFINITIONS = [
       frame_rate: 24,
       native_audio: true
     },
-    input: {
-      requiresPrompt: true,
-      inputMode: {
-        // Google's guide demonstrates six independently addressed image refs.
-        // Video/audio refs are deliberately not exposed while the current API
-        // documents them as unsupported or incorrectly processed.
-        images: {
-          max: 6,
-          constraints: {
-            mimeTypes: ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"],
-            fileExtensions: ["jpg", "jpeg", "png", "webp", "heic", "heif"]
-          }
-        }
-      },
-      promptModalities: ["text", "image"],
-      referenceBinding: ORDERED_REFERENCE_BINDING
-    },
+    // The captured Interactions request is text-only. Do not advertise reference media until a
+    // real accepted request establishes the wire shape; the Provider adapter fails closed too.
+    input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
     maxRuntimeMs: 15 * 60 * 1e3
   },
   // ─── Text ────────────────────────────────────────────────────
@@ -27972,6 +27910,7 @@ var MODEL_CARD_DEFINITIONS = [
     },
     maxRuntimeMs: 5 * 60 * 1e3
   },
+  // ─── Text ────────────────────────────────────────────────────
   {
     id: "gpt-5.4",
     name: "GPT-5.4 Text",
@@ -28794,9 +28733,33 @@ var MODEL_CARD_DEFINITIONS = [
         ratios: ["21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"],
         defaultValue: "1:1"
       }),
-      { id: "stylize", label: "Stylize", type: "number", min: 0, max: 1e3, step: 1, defaultValue: 100 },
-      { id: "chaos", label: "Chaos", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 },
-      { id: "weird", label: "Weird", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 }
+      {
+        id: "stylize",
+        label: "Stylize",
+        type: "number",
+        min: 0,
+        max: 1e3,
+        step: 1,
+        defaultValue: 100
+      },
+      {
+        id: "chaos",
+        label: "Chaos",
+        type: "number",
+        min: 0,
+        max: 100,
+        step: 1,
+        defaultValue: 0
+      },
+      {
+        id: "weird",
+        label: "Weird",
+        type: "number",
+        min: 0,
+        max: 100,
+        step: 1,
+        defaultValue: 0
+      }
     ],
     defaultParams: { aspect_ratio: "1:1", stylize: 100, chaos: 0, weird: 0 },
     input: {
@@ -28818,9 +28781,33 @@ var MODEL_CARD_DEFINITIONS = [
         ratios: ["21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"],
         defaultValue: "1:1"
       }),
-      { id: "stylize", label: "Stylize", type: "number", min: 0, max: 1e3, step: 1, defaultValue: 100 },
-      { id: "chaos", label: "Chaos", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 },
-      { id: "weird", label: "Weird", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 }
+      {
+        id: "stylize",
+        label: "Stylize",
+        type: "number",
+        min: 0,
+        max: 1e3,
+        step: 1,
+        defaultValue: 100
+      },
+      {
+        id: "chaos",
+        label: "Chaos",
+        type: "number",
+        min: 0,
+        max: 100,
+        step: 1,
+        defaultValue: 0
+      },
+      {
+        id: "weird",
+        label: "Weird",
+        type: "number",
+        min: 0,
+        max: 100,
+        step: 1,
+        defaultValue: 0
+      }
     ],
     defaultParams: { aspect_ratio: "1:1", stylize: 100, chaos: 0, weird: 0 },
     input: {
@@ -28842,9 +28829,33 @@ var MODEL_CARD_DEFINITIONS = [
         ratios: ["21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"],
         defaultValue: "1:1"
       }),
-      { id: "stylize", label: "Stylize", type: "number", min: 0, max: 1e3, step: 1, defaultValue: 100 },
-      { id: "chaos", label: "Chaos", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 },
-      { id: "weird", label: "Weird", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 }
+      {
+        id: "stylize",
+        label: "Stylize",
+        type: "number",
+        min: 0,
+        max: 1e3,
+        step: 1,
+        defaultValue: 100
+      },
+      {
+        id: "chaos",
+        label: "Chaos",
+        type: "number",
+        min: 0,
+        max: 100,
+        step: 1,
+        defaultValue: 0
+      },
+      {
+        id: "weird",
+        label: "Weird",
+        type: "number",
+        min: 0,
+        max: 100,
+        step: 1,
+        defaultValue: 0
+      }
     ],
     defaultParams: { aspect_ratio: "1:1", stylize: 100, chaos: 0, weird: 0 },
     input: {
@@ -28867,21 +28878,41 @@ var MODEL_CARD_DEFINITIONS = [
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 Fast all-purpose generation with optional image, video, and audio references.",
     parameters: [
-      durationParameter({ seconds: [4, 6, 8, 10, 15], defaultValue: "auto", auto: { label: "Auto" } }),
+      durationParameter({
+        seconds: [4, 6, 8, 10, 15],
+        defaultValue: "auto",
+        auto: { label: "Auto" }
+      }),
       {
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "auto"
       },
       resolutionParameter({
-        tiers: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+        tiers: [
+          { label: "480p", value: "480p" },
+          { label: "720p", value: "720p" }
+        ],
         defaultValue: "720p"
       }),
-      { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false }
+      {
+        id: "generate_audio",
+        label: "Native audio",
+        type: "boolean",
+        defaultValue: false
+      }
     ],
-    defaultParams: { duration: "auto", aspect_ratio: "auto", resolution: "720p", generate_audio: false },
+    defaultParams: {
+      duration: "auto",
+      aspect_ratio: "auto",
+      resolution: "720p",
+      generate_audio: false
+    },
     input: {
       requiresPrompt: true,
       referenceBinding: POSITIONAL_REFERENCE_BINDING,
@@ -28904,21 +28935,41 @@ var MODEL_CARD_DEFINITIONS = [
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 Fast animation between a first and an optional last frame.",
     parameters: [
-      durationParameter({ seconds: [4, 6, 8, 10, 15], defaultValue: "auto", auto: { label: "Auto" } }),
+      durationParameter({
+        seconds: [4, 6, 8, 10, 15],
+        defaultValue: "auto",
+        auto: { label: "Auto" }
+      }),
       {
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "auto"
       },
       resolutionParameter({
-        tiers: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+        tiers: [
+          { label: "480p", value: "480p" },
+          { label: "720p", value: "720p" }
+        ],
         defaultValue: "720p"
       }),
-      { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false }
+      {
+        id: "generate_audio",
+        label: "Native audio",
+        type: "boolean",
+        defaultValue: false
+      }
     ],
-    defaultParams: { duration: "auto", aspect_ratio: "auto", resolution: "720p", generate_audio: false },
+    defaultParams: {
+      duration: "auto",
+      aspect_ratio: "auto",
+      resolution: "720p",
+      generate_audio: false
+    },
     input: { requiresPrompt: true, inputMode: { startEnd: {} } }
   },
   {
@@ -28931,21 +28982,41 @@ var MODEL_CARD_DEFINITIONS = [
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 Mini all-purpose generation with optional image, video, and audio references.",
     parameters: [
-      durationParameter({ seconds: [4, 6, 8, 10, 15], defaultValue: "auto", auto: { label: "Auto" } }),
+      durationParameter({
+        seconds: [4, 6, 8, 10, 15],
+        defaultValue: "auto",
+        auto: { label: "Auto" }
+      }),
       {
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "auto"
       },
       resolutionParameter({
-        tiers: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+        tiers: [
+          { label: "480p", value: "480p" },
+          { label: "720p", value: "720p" }
+        ],
         defaultValue: "720p"
       }),
-      { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false }
+      {
+        id: "generate_audio",
+        label: "Native audio",
+        type: "boolean",
+        defaultValue: false
+      }
     ],
-    defaultParams: { duration: "auto", aspect_ratio: "auto", resolution: "720p", generate_audio: false },
+    defaultParams: {
+      duration: "auto",
+      aspect_ratio: "auto",
+      resolution: "720p",
+      generate_audio: false
+    },
     input: {
       requiresPrompt: true,
       referenceBinding: POSITIONAL_REFERENCE_BINDING,
@@ -28968,21 +29039,41 @@ var MODEL_CARD_DEFINITIONS = [
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 Mini animation between a first and an optional last frame.",
     parameters: [
-      durationParameter({ seconds: [4, 6, 8, 10, 15], defaultValue: "auto", auto: { label: "Auto" } }),
+      durationParameter({
+        seconds: [4, 6, 8, 10, 15],
+        defaultValue: "auto",
+        auto: { label: "Auto" }
+      }),
       {
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "auto"
       },
       resolutionParameter({
-        tiers: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+        tiers: [
+          { label: "480p", value: "480p" },
+          { label: "720p", value: "720p" }
+        ],
         defaultValue: "720p"
       }),
-      { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false }
+      {
+        id: "generate_audio",
+        label: "Native audio",
+        type: "boolean",
+        defaultValue: false
+      }
     ],
-    defaultParams: { duration: "auto", aspect_ratio: "auto", resolution: "720p", generate_audio: false },
+    defaultParams: {
+      duration: "auto",
+      aspect_ratio: "auto",
+      resolution: "720p",
+      generate_audio: false
+    },
     input: { requiresPrompt: true, inputMode: { startEnd: {} } }
   },
   // ─── Video: Kling Omni ─────────────────────────────────────
@@ -29149,27 +29240,74 @@ var MODEL_CARD_DEFINITIONS = [
     }
   },
   // ─── Audio: Seed Audio ─────────────────────────────────────
-  // Seed Audio clones a voice from a reference rather than selecting a preset one, so
-  // it takes an audio or image reference instead of a voice id.
+  // Seed Audio accepts pure text, one image, or up to three audio references. Image and
+  // audio references are mutually exclusive; the executable Provider enforces that rule.
   {
     id: "seed-audio-1",
     name: "Seed Audio 1.0",
     provider: "ByteDance",
-    availableProviders: ["volcengine"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-speech"],
+    defaultProvider: "volcengine-speech",
     kind: "audio",
     defaultAspectRatio: "1:1",
-    description: "Speech synthesis that reproduces the voice in a reference clip.",
+    description: "Generate expressive speech, sound effects, and complete audio scenes from text and optional references.",
+    promptGuidance: "Refer to audio inputs as @\u97F3\u98911, @\u97F3\u98912, and @\u97F3\u98913. A Voice ID counts as an audio reference. A request may use audio references or one image, but not both.",
     parameters: [
-      { id: "speed", label: "Speed", type: "number", min: 0.5, max: 2, step: 0.1, defaultValue: 1 }
+      {
+        id: "voice_id",
+        label: "Voice ID",
+        type: "text",
+        defaultValue: "",
+        description: "Optional Doubao TTS or voice-clone speaker ID."
+      },
+      { id: "speed", label: "Speed", type: "slider", min: 0.5, max: 2, step: 0.05, defaultValue: 1 },
+      { id: "volume", label: "Volume", type: "slider", min: 0.5, max: 2, step: 0.05, defaultValue: 1 },
+      { id: "pitch", label: "Pitch", type: "slider", min: -12, max: 12, step: 1, defaultValue: 0 },
+      {
+        id: "sample_rate",
+        label: "Sample Rate",
+        type: "select",
+        options: [8e3, 16e3, 24e3, 32e3, 44100, 48e3].map((value) => ({
+          label: value === 44100 ? "44.1 kHz" : `${value / 1e3} kHz`,
+          value
+        }))
+      },
+      {
+        id: "format",
+        label: "Audio Format",
+        type: "select",
+        options: [
+          { label: "WAV", value: "wav" },
+          { label: "MP3", value: "mp3" },
+          { label: "PCM", value: "pcm" },
+          { label: "Ogg Opus", value: "ogg_opus" }
+        ],
+        defaultValue: "wav"
+      }
     ],
-    defaultParams: { speed: 1 },
+    defaultParams: { voice_id: "", speed: 1, volume: 1, pitch: 0, format: "wav" },
     input: {
       requiresPrompt: true,
-      referenceBinding: { type: "grouped-references" },
-      inputMode: { audios: { max: 1 }, images: { max: 1 } },
+      referenceBinding: {
+        type: "positional-tokens",
+        modalityScopedIndexes: true,
+        tokens: { audio: "@\u97F3\u9891{n}" }
+      },
+      inputMode: {
+        audios: { max: 3, constraints: SEED_AUDIO_AUDIO_CONSTRAINTS },
+        images: { max: 1, constraints: SEED_AUDIO_IMAGE_CONSTRAINTS },
+        maxTotalReferences: 3
+      },
       promptModalities: ["text", "audio", "image"]
-    }
+    },
+    constraints: [
+      {
+        type: "max-length",
+        field: "prompt",
+        max: 3e3,
+        message: "Seed Audio prompts support at most 3000 characters."
+      }
+    ]
   },
   // ─── Audio: music ──────────────────────────────────────────
   // Music generation is length-driven rather than duration-per-shot: the request names
@@ -29222,13 +29360,6 @@ var SEEDANCE_2_FAL_PARAMETER_OVERRIDES = [
       ...Array.from({ length: 12 }, (_, index) => ({ label: `${index + 4}s`, value: index + 4 }))
     ],
     defaultValue: "auto"
-  },
-  {
-    id: "seed",
-    label: "Seed",
-    type: "number",
-    required: false,
-    description: "Optional deterministic seed. The same seed may still produce minor variations."
   }
 ];
 var MINIMAX_H3_FAL_PARAMETER_OVERRIDES = [{
@@ -29264,17 +29395,23 @@ var SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES = [
     type: "select",
     required: false,
     options: [
-      { label: "Auto", value: -1 },
-      ...Array.from({ length: 12 }, (_, index) => ({ label: `${index + 4}s`, value: index + 4 }))
+      { label: "Auto", value: "auto" },
+      ...Array.from({ length: 12 }, (_, index) => ({
+        label: `${index + 4}s`,
+        value: index + 4
+      }))
     ],
-    defaultValue: -1
+    defaultValue: "auto"
   },
   {
     id: "resolution",
     label: "Resolution",
     type: "select",
     required: false,
-    options: ["480p", "720p", "1080p", "4k"].map((value) => ({ label: value, value })),
+    options: ["480p", "720p", "1080p", "4k"].map((value) => ({
+      label: value,
+      value
+    })),
     defaultValue: "720p"
   }
 ];
@@ -29284,18 +29421,13 @@ var SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER = {
   type: "select",
   required: false,
   options: [
-    ...["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].map((value) => ({ label: value, value })),
-    { label: "Adaptive", value: "adaptive" }
+    ...["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].map((value) => ({
+      label: value,
+      value
+    })),
+    { label: "Auto", value: "auto" }
   ],
-  defaultValue: "adaptive"
-};
-var SEEDANCE_VOLCENGINE_EDIT_PARAMETER = {
-  id: "edit_mode",
-  label: "Edit referenced video",
-  type: "boolean",
-  required: false,
-  description: "Edit the attached video instead of generating a new clip from references.",
-  defaultValue: false
+  defaultValue: "auto"
 };
 var SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES = [
   {
@@ -29304,10 +29436,13 @@ var SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES = [
     type: "select",
     required: false,
     options: [
-      { label: "Auto", value: -1 },
-      ...Array.from({ length: 27 }, (_, index) => ({ label: `${index + 4}s`, value: index + 4 }))
+      { label: "Auto", value: "auto" },
+      ...Array.from({ length: 27 }, (_, index) => ({
+        label: `${index + 4}s`,
+        value: index + 4
+      }))
     ],
-    defaultValue: -1
+    defaultValue: "auto"
   },
   {
     id: "resolution",
@@ -29316,21 +29451,6 @@ var SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES = [
     required: false,
     options: ["480p", "720p"].map((value) => ({ label: value, value })),
     defaultValue: "720p"
-  },
-  {
-    id: "generate_audio",
-    label: "Native audio",
-    type: "boolean",
-    required: false,
-    defaultValue: true
-  },
-  {
-    id: "output_format",
-    label: "Output format",
-    type: "select",
-    required: false,
-    options: ["mp4", "mov"].map((value) => ({ label: value.toUpperCase(), value })),
-    defaultValue: "mp4"
   }
 ];
 var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
@@ -29354,28 +29474,49 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ["flux-3-video", "fal", "fal", "fal", "blackforestlabs/flux-3/text-to-video", 20, { credentials: ["apiKey"] }],
   ["flux-3-video-keyframes", "fal", "fal", "fal", "blackforestlabs/flux-3/keyframes-to-video", 20, { credentials: ["apiKey"] }],
   ["flux-3-video-continue", "fal", "fal", "fal", "blackforestlabs/flux-3/extend-video", 20, { credentials: ["apiKey"] }],
-  ["seedance-2-startend", "fal", "fal", "fal", "bytedance/seedance-2.0/image-to-video", 20, {
-    credentials: ["apiKey"],
-    parameterOverrides: SEEDANCE_2_FAL_PARAMETER_OVERRIDES,
-    defaultParamOverrides: { duration: "auto" }
-  }],
-  ["seedance-2-ref", "fal", "fal", "fal", "bytedance/seedance-2.0/reference-to-video", 20, {
-    credentials: ["apiKey"],
-    parameterOverrides: SEEDANCE_2_FAL_PARAMETER_OVERRIDES,
-    defaultParamOverrides: { duration: "auto" },
-    referenceBinding: {
-      type: "positional-tokens",
-      modalityScopedIndexes: true,
-      tokens: { image: "@Image{n}", video: "@Video{n}", audio: "@Audio{n}" }
+  [
+    "seedance-2-startend",
+    "fal",
+    "fal",
+    "fal",
+    "bytedance/seedance-2.0/image-to-video",
+    20,
+    {
+      credentials: ["apiKey"],
+      parameterOverrides: SEEDANCE_2_FAL_PARAMETER_OVERRIDES,
+      defaultParamOverrides: { duration: "auto" }
     }
-  }],
+  ],
+  [
+    "seedance-2-ref",
+    "fal",
+    "fal",
+    "fal",
+    "bytedance/seedance-2.0/reference-to-video",
+    20,
+    {
+      credentials: ["apiKey"],
+      parameterOverrides: SEEDANCE_2_FAL_PARAMETER_OVERRIDES,
+      defaultParamOverrides: { duration: "auto" },
+      excludedParameterIds: ["edit_mode"],
+      referenceBinding: {
+        type: "positional-tokens",
+        modalityScopedIndexes: true,
+        tokens: { image: "@Image{n}", video: "@Video{n}", audio: "@Audio{n}" }
+      }
+    }
+  ],
   ["minimax-tts", "fal", "fal", "fal", "fal-ai/minimax/speech-02-hd", 20, { credentials: ["apiKey"] }],
   ["pika-2.5", "pika", "pika", "pika", "pika/pika-2.5/image-to-video", 18, { credentials: ["apiKey"] }],
   ["nano-banana-2", "pika", "pika", "pika", "google/gemini-3.1-flash-image/text-to-image", 18, { credentials: ["apiKey"] }],
   ["gpt-image-2", "pika", "pika", "pika", "openai/gpt-image-2/text-to-image", 18, { credentials: ["apiKey"] }],
-  ["seedance-2-startend", "pika", "pika", "pika", "bytedance/seedance-2.0/image-to-video", 18, { credentials: ["apiKey"] }],
+  ["seedance-2-startend", "pika", "pika", "pika", "bytedance/seedance-2.0/image-to-video", 18, {
+    credentials: ["apiKey"],
+    excludedParameterIds: ["seed"]
+  }],
   ["seedance-2-ref", "pika", "pika", "pika", "bytedance/seedance-2.0/reference-to-video", 18, {
     credentials: ["apiKey"],
+    excludedParameterIds: ["seed", "edit_mode"],
     referenceBinding: {
       type: "positional-tokens",
       modalityScopedIndexes: true,
@@ -29412,9 +29553,13 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ["nano-banana-2", "replicate", "replicate", "replicate", "google/nano-banana-2", 25, { credentials: ["apiKey"] }],
   ["gpt-image-2", "replicate", "replicate", "replicate", "openai/gpt-image-2", 25, { credentials: ["apiKey"] }],
   ["flux-schnell", "replicate", "replicate", "replicate", "black-forest-labs/flux-schnell", 25, { credentials: ["apiKey"] }],
-  ["seedance-2-startend", "replicate", "replicate", "replicate", "bytedance/seedance-2.0", 25, { credentials: ["apiKey"] }],
+  ["seedance-2-startend", "replicate", "replicate", "replicate", "bytedance/seedance-2.0", 25, {
+    credentials: ["apiKey"],
+    excludedParameterIds: ["seed"]
+  }],
   ["seedance-2-ref", "replicate", "replicate", "replicate", "bytedance/seedance-2.0", 25, {
     credentials: ["apiKey"],
+    excludedParameterIds: ["seed", "edit_mode"],
     referenceBinding: {
       type: "positional-tokens",
       modalityScopedIndexes: true,
@@ -29429,147 +29574,465 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   // second upstream, and carried no executor: a request that matched one found nothing to run, our
   // own gate demanded a service account, found none, and hilo-hub answered instead. The asset looked
   // exactly like a successful Google generation.
-  ["nano-banana-2", "official", "google-ai-studio", "google-ai-studio", "gemini-3.1-flash-image", 12, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
+  [
+    "nano-banana-2",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "gemini-3.1-flash-image",
+    12,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
   ["flux-3-video", "official", "bfl", "bfl", "flux-3-video", 10, { region: "global", credentials: ["apiKey"] }],
   ["flux-3-video-keyframes", "official", "bfl", "bfl", "flux-3-video", 10, { region: "global", credentials: ["apiKey"] }],
   ["flux-3-video-continue", "official", "bfl", "bfl", "flux-3-video", 10, { region: "global", credentials: ["apiKey"] }],
-  ["nano-banana-pro", "official", "google-ai-studio", "google-ai-studio", "gemini-3-pro-image", 12, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
-  ["gemini-3.1-flash-tts", "official", "google-ai-studio", "google-ai-studio", "gemini-3.1-flash-tts-preview", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
-  ["gemini-2.5-pro-tts", "official", "google-ai-studio", "google-ai-studio", "gemini-2.5-pro-tts", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
-  ["nano-banana-2-lite", "official", "google-ai-studio", "google-ai-studio", "gemini-3.1-flash-lite-image", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
-  ["veo-3.1", "official", "google-ai-studio", "google-ai-studio", "veo-3.1-generate-001", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
-  ["veo-3.1-startend", "official", "google-ai-studio", "google-ai-studio", "veo-3.1-generate-001", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
-  ["veo-3.1-fast", "official", "google-ai-studio", "google-ai-studio", "veo-3.1-fast-generate-001", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
-  ["veo-3.1-fast-startend", "official", "google-ai-studio", "google-ai-studio", "veo-3.1-fast-generate-001", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
+  [
+    "nano-banana-pro",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "gemini-3-pro-image",
+    12,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
+  [
+    "gemini-3.1-flash-tts",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "gemini-3.1-flash-tts-preview",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
+  [
+    "gemini-2.5-pro-tts",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "gemini-2.5-pro-tts",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
+  [
+    "nano-banana-2-lite",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "gemini-3.1-flash-lite-image",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
+  [
+    "veo-3.1",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "veo-3.1-generate-001",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
+  [
+    "veo-3.1-startend",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "veo-3.1-generate-001",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
+  [
+    "veo-3.1-fast",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "veo-3.1-fast-generate-001",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
+  [
+    "veo-3.1-fast-startend",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "veo-3.1-fast-generate-001",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
   // Two surfaces serve this model and they take different credentials, both measured:
   //   aiplatform  /v1beta1/projects/{p}/locations/global/interactions -> 401, wants a Bearer token
   //   generativelanguage /v1beta/interactions                         -> 403, routed, wants the
   //                                                                      project's Gemini API on
   // A service account is the unattended way to hold a token; the Developer API takes a key directly.
   // generateContent refuses the model on either host: 400 "only supported in the Interactions API".
-  ["gemini-omni-flash", "official", "google-ai-studio", "google-ai-studio-interactions", "gemini-omni-flash-preview", 10, {
-    region: "global",
-    executorPluginId: "clash.google",
-    executorExportId: "google-execute",
-    credentialRequirements: {
-      anyOf: [["serviceAccountKey"], ["apiKey"], ["baseUrl"]],
-      exclusive: true
+  [
+    "gemini-omni-flash",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio-interactions",
+    "gemini-omni-flash-preview",
+    10,
+    {
+      region: "global",
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      credentialRequirements: {
+        anyOf: [["serviceAccountKey"], ["apiKey"], ["baseUrl"]],
+        exclusive: true
+      }
     }
-  }],
-  ["gemini-3.5-flash", "official", "google-ai-studio", "google-ai-studio", "gemini-3.5-flash", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
-  ["gemini-3.1-pro", "official", "google-ai-studio", "google-ai-studio", "gemini-3.1-pro-preview", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
-  ["gemini-3-flash", "official", "google-ai-studio", "google-ai-studio", "gemini-3-flash-preview", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
+  ],
+  [
+    "gemini-3.5-flash",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "gemini-3.5-flash",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
+  [
+    "gemini-3.1-pro",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "gemini-3.1-pro-preview",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
+  [
+    "gemini-3-flash",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "gemini-3-flash-preview",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
   // The eleven `google-agent-platform` routes that followed are gone. Google is one Provider:
   // the same key, the same SDK, and a surface the account picks with its `service` field. They
   // also carried no executor binding, so the split was not merely redundant -- a request that
   // matched one found no executor, our own gate demanded a service account, and hilo-hub answered
   // instead. The asset looked exactly like a successful Google generation.
-  ["gemini-3.1-flash-lite", "official", "google-ai-studio", "google-ai-studio", "gemini-3.1-flash-lite", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
+  [
+    "gemini-3.1-flash-lite",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "gemini-3.1-flash-lite",
+    10,
+    {
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
+    }
+  ],
   ["gpt-image-2", "official", "openai", "openai-images", "gpt-image-2", 10, { region: "global", credentials: ["apiKey"] }],
   ["gpt-5.4", "official", "openai", "openai-compatible", "gpt-5.4", 10, { region: "global", credentials: ["apiKey"] }],
   ["openai-compatible-text", "official", "openai", "openai-compatible", "gpt-5.4", 15, { region: "global", credentials: ["apiKey"] }],
   ["claude-sonnet-4", "official", "anthropic", "anthropic-compatible", "claude-sonnet-4-20250514", 10, { region: "global", credentials: ["apiKey"] }],
   ["anthropic-compatible-text", "official", "anthropic", "anthropic-compatible", "claude-sonnet-4-20250514", 15, { region: "global", credentials: ["apiKey"] }],
   ["kling-3", "kling", "kling", "kling", "kling-v3", 8, { credentials: ["accessKey", "secretKey"] }],
-  ["seedance-2-startend", "volcengine", "volcengine", "modelark", "doubao-seedance-2-0-260128", 9, {
-    credentials: ["apiKey"],
-    parameterOverrides: SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES,
-    defaultParamOverrides: { duration: -1, resolution: "720p" }
-  }],
-  ["seedance-2-ref", "volcengine", "volcengine", "modelark", "doubao-seedance-2-0-260128", 9, {
-    credentials: ["apiKey"],
-    parameterOverrides: [
-      ...SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES,
-      SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER,
-      SEEDANCE_VOLCENGINE_EDIT_PARAMETER
-    ],
-    defaultParamOverrides: {
-      duration: -1,
-      aspect_ratio: "adaptive",
-      resolution: "720p",
-      edit_mode: false
-    },
-    referenceBinding: {
-      type: "positional-tokens",
-      modalityScopedIndexes: true,
-      tokens: { image: "@\u56FE\u50CF{n}", video: "@\u89C6\u9891{n}", audio: "@\u97F3\u9891{n}" }
+  [
+    "seed-audio-1",
+    "volcengine-speech",
+    "volcengine-speech",
+    "volcengine-speech",
+    "seed-audio-1.0",
+    9,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-speech-execute"
     }
-  }],
-  ["seedance-2-extend", "volcengine", "volcengine", "modelark", "doubao-seedance-2-0-260128", 9, {
-    credentials: ["apiKey"],
-    referenceBinding: {
-      type: "positional-tokens",
-      modalityScopedIndexes: true,
-      tokens: { image: "@\u56FE\u50CF{n}", video: "@\u89C6\u9891{n}", audio: "@\u97F3\u9891{n}" }
+  ],
+  [
+    "seedance-2-startend",
+    "volcengine",
+    "volcengine",
+    "modelark",
+    "doubao-seedance-2-0-260128",
+    9,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-execute",
+      parameterOverrides: SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES,
+      defaultParamOverrides: { duration: "auto", resolution: "720p" },
+      excludedParameterIds: ["seed"]
     }
-  }],
-  ["seedance-2.5-ref", "volcengine", "volcengine", "modelark", "doubao-seedance-2-5-260628", 9, {
-    credentials: ["apiKey"],
-    parameterOverrides: [
-      ...SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES,
-      SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER,
-      SEEDANCE_VOLCENGINE_EDIT_PARAMETER
-    ],
-    defaultParamOverrides: {
-      duration: -1,
-      aspect_ratio: "adaptive",
-      resolution: "720p",
-      generate_audio: true,
-      output_format: "mp4",
-      edit_mode: false
-    },
-    referenceBinding: {
-      type: "positional-tokens",
-      modalityScopedIndexes: true,
-      tokens: { image: "@\u56FE\u50CF{n}", video: "@\u89C6\u9891{n}", audio: "@\u97F3\u9891{n}" }
+  ],
+  [
+    "seedance-2-ref",
+    "volcengine",
+    "volcengine",
+    "modelark",
+    "doubao-seedance-2-0-260128",
+    9,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-execute",
+      parameterOverrides: [...SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES, SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER],
+      defaultParamOverrides: {
+        duration: "auto",
+        aspect_ratio: "auto",
+        resolution: "720p"
+      },
+      excludedParameterIds: ["seed"],
+      referenceBinding: {
+        type: "positional-tokens",
+        modalityScopedIndexes: true,
+        tokens: { image: "@\u56FE\u50CF{n}", video: "@\u89C6\u9891{n}", audio: "@\u97F3\u9891{n}" }
+      }
     }
-  }],
-  ["seedance-2.5-startend", "volcengine", "volcengine", "modelark", "doubao-seedance-2-5-260628", 9, {
-    credentials: ["apiKey"],
-    parameterOverrides: SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES,
-    defaultParamOverrides: {
-      duration: -1,
-      resolution: "720p",
-      generate_audio: true,
-      output_format: "mp4"
+  ],
+  [
+    "seedance-2-extend",
+    "volcengine",
+    "volcengine",
+    "modelark",
+    "doubao-seedance-2-0-260128",
+    9,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-execute",
+      referenceBinding: {
+        type: "positional-tokens",
+        modalityScopedIndexes: true,
+        tokens: { image: "@\u56FE\u50CF{n}", video: "@\u89C6\u9891{n}", audio: "@\u97F3\u9891{n}" }
+      }
     }
-  }],
-  ["seedance-2.5-extend", "volcengine", "volcengine", "modelark", "doubao-seedance-2-5-260628", 9, {
-    credentials: ["apiKey"],
-    referenceBinding: {
-      type: "positional-tokens",
-      modalityScopedIndexes: true,
-      tokens: { image: "@\u56FE\u50CF{n}", video: "@\u89C6\u9891{n}", audio: "@\u97F3\u9891{n}" }
+  ],
+  [
+    "seedance-2.5-ref",
+    "volcengine",
+    "volcengine",
+    "modelark",
+    "doubao-seedance-2-5-260628",
+    9,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-execute",
+      parameterOverrides: [...SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES, SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER],
+      defaultParamOverrides: {
+        duration: "auto",
+        aspect_ratio: "auto",
+        resolution: "720p"
+      },
+      referenceBinding: {
+        type: "positional-tokens",
+        modalityScopedIndexes: true,
+        tokens: { image: "@\u56FE\u50CF{n}", video: "@\u89C6\u9891{n}", audio: "@\u97F3\u9891{n}" }
+      }
     }
-  }],
-  ["minimax-m3", "minimax", "minimax", "minimax", "MiniMax-M3", 8, { credentials: ["apiKey"], executorPluginId: "clash.minimax", executorExportId: "minimax-execute" }],
-  ["minimax-tts", "minimax", "minimax", "minimax", "speech-02-hd", 8, { credentials: ["apiKey"], executorPluginId: "clash.minimax", executorExportId: "minimax-execute" }],
-  ["minimax-music-3", "minimax", "minimax", "minimax", "music-3.0", 8, { credentials: ["apiKey"], executorPluginId: "clash.minimax", executorExportId: "minimax-execute" }],
-  ["minimax-h3", "minimax", "minimax", "minimax", "MiniMax-H3", 8, {
-    credentials: ["apiKey"],
-    executorPluginId: "clash.minimax",
-    executorExportId: "minimax-execute"
-  }],
-  ["minimax-h3-startend", "minimax", "minimax", "minimax", "MiniMax-H3", 8, { credentials: ["apiKey"], executorPluginId: "clash.minimax", executorExportId: "minimax-execute" }],
-  ["minimax-music-3", "fal", "fal", "fal", "fal-ai/minimax-music/v3", 9, {
-    credentials: ["apiKey"],
-    excludedParameterIds: ["aigc_watermark"]
-  }],
-  ["minimax-h3", "fal", "fal", "fal", "minimax/h3/reference-to-video", 9, {
-    credentials: ["apiKey"],
-    referenceBinding: {
-      type: "positional-tokens",
-      modalityScopedIndexes: true,
-      tokens: { image: "Image {n}", video: "Video {n}", audio: "Audio {n}" }
-    },
-    parameterOverrides: MINIMAX_H3_FAL_OMNI_PARAMETER_OVERRIDES,
-    defaultParamOverrides: { duration: 5, aspect_ratio: "16:9" }
-  }],
-  ["minimax-h3-startend", "fal", "fal", "fal", "minimax/h3/image-to-video", 9, {
-    credentials: ["apiKey"],
-    parameterOverrides: MINIMAX_H3_FAL_PARAMETER_OVERRIDES,
-    defaultParamOverrides: { duration: 5 }
-  }],
+  ],
+  [
+    "seedance-2.5-startend",
+    "volcengine",
+    "volcengine",
+    "modelark",
+    "doubao-seedance-2-5-260628",
+    9,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-execute",
+      parameterOverrides: SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES,
+      defaultParamOverrides: {
+        duration: "auto",
+        resolution: "720p"
+      }
+    }
+  ],
+  [
+    "seedance-2.5-extend",
+    "volcengine",
+    "volcengine",
+    "modelark",
+    "doubao-seedance-2-5-260628",
+    9,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-execute",
+      referenceBinding: {
+        type: "positional-tokens",
+        modalityScopedIndexes: true,
+        tokens: { image: "@\u56FE\u50CF{n}", video: "@\u89C6\u9891{n}", audio: "@\u97F3\u9891{n}" }
+      }
+    }
+  ],
+  [
+    "minimax-m3",
+    "minimax",
+    "minimax",
+    "minimax",
+    "MiniMax-M3",
+    8,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.minimax",
+      executorExportId: "minimax-execute"
+    }
+  ],
+  [
+    "minimax-tts",
+    "minimax",
+    "minimax",
+    "minimax",
+    "speech-02-hd",
+    8,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.minimax",
+      executorExportId: "minimax-execute"
+    }
+  ],
+  [
+    "minimax-music-3",
+    "minimax",
+    "minimax",
+    "minimax",
+    "music-3.0",
+    8,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.minimax",
+      executorExportId: "minimax-execute"
+    }
+  ],
+  [
+    "minimax-h3",
+    "minimax",
+    "minimax",
+    "minimax",
+    "MiniMax-H3",
+    8,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.minimax",
+      executorExportId: "minimax-execute"
+    }
+  ],
+  [
+    "minimax-h3-startend",
+    "minimax",
+    "minimax",
+    "minimax",
+    "MiniMax-H3",
+    8,
+    {
+      credentials: ["apiKey"],
+      executorPluginId: "clash.minimax",
+      executorExportId: "minimax-execute"
+    }
+  ],
+  [
+    "minimax-music-3",
+    "fal",
+    "fal",
+    "fal",
+    "fal-ai/minimax-music/v3",
+    9,
+    {
+      credentials: ["apiKey"],
+      excludedParameterIds: ["aigc_watermark"]
+    }
+  ],
+  [
+    "minimax-h3",
+    "fal",
+    "fal",
+    "fal",
+    "minimax/h3/reference-to-video",
+    9,
+    {
+      credentials: ["apiKey"],
+      referenceBinding: {
+        type: "positional-tokens",
+        modalityScopedIndexes: true,
+        tokens: { image: "Image {n}", video: "Video {n}", audio: "Audio {n}" }
+      },
+      parameterOverrides: MINIMAX_H3_FAL_OMNI_PARAMETER_OVERRIDES,
+      defaultParamOverrides: { duration: 5, aspect_ratio: "16:9" }
+    }
+  ],
+  [
+    "minimax-h3-startend",
+    "fal",
+    "fal",
+    "fal",
+    "minimax/h3/image-to-video",
+    9,
+    {
+      credentials: ["apiKey"],
+      parameterOverrides: MINIMAX_H3_FAL_PARAMETER_OVERRIDES,
+      defaultParamOverrides: { duration: 5 }
+    }
+  ],
   ["suno-v5.5", "suno", "suno", "suno", "V5_5", 8, { credentials: ["apiKey", "callbackUrl"] }],
   ["elevenlabs-tts", "elevenlabs", "elevenlabs", "elevenlabs", "eleven_v3", 8, { credentials: ["apiKey"] }]
 ];
@@ -29595,7 +30058,9 @@ function implementationFromRow(row) {
       inputAdaptation: {
         ...options.inputAdaptation.audio ? {
           audio: {
-            mimeAliases: { ...options.inputAdaptation.audio.mimeAliases }
+            mimeAliases: {
+              ...options.inputAdaptation.audio.mimeAliases
+            }
           }
         } : {}
       }
@@ -29874,7 +30339,17 @@ var ExecutablePluginCardDocumentSchema = z.discriminatedUnion("kind", [
     kind: z.literal("action-card"),
     spec: ExecutableActionCardSchema
   }).strict()
-]);
+]).superRefine((document, ctx) => {
+  if (document.kind !== "model-card") return;
+  document.spec.providerImplementations?.forEach((implementation, index) => {
+    if (implementation.accountId === void 0) return;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["spec", "providerImplementations", index, "accountId"],
+      message: "Plugin model Cards cannot select a Provider account; the Host selects it at runtime."
+    });
+  });
+});
 var ExecutablePluginProviderDefinitionSchema = z.object({
   /**
    * What this provider needs to authenticate, and how to draw it.
@@ -29902,8 +30377,7 @@ var ExecutablePluginProviderDefinitionSchema = z.object({
   bindingDefaults: z.object({
     priority: z.number().nonnegative().optional(),
     weight: z.number().nonnegative().optional(),
-    region: z.string().trim().min(1).optional(),
-    accountId: z.string().trim().min(1).optional()
+    region: z.string().trim().min(1).optional()
   }).strict().optional()
 }).strict();
 var ExecutablePluginProviderDocumentSchema = z.object({
@@ -29917,7 +30391,14 @@ var ExecutablePluginModelBindingSpecSchema = z.intersection(
     modelId: z.string().trim().min(1)
   }),
   ModelProviderImplementationSchema
-);
+).superRefine((binding, ctx) => {
+  if (binding.accountId === void 0) return;
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    path: ["accountId"],
+    message: "Plugin model bindings cannot select a Provider account; the Host selects it at runtime."
+  });
+});
 var ExecutablePluginModelBindingInputSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN).optional(),
   modelId: z.string().trim().min(1, "A binding must name the model it routes (modelId)."),
@@ -29929,9 +30410,15 @@ var ExecutablePluginModelBindingInputSchema = z.object({
   requiredOAuth: z.array(z.string()).optional(),
   priority: z.number().optional(),
   weight: z.number().optional(),
-  region: z.string().trim().min(1).optional(),
-  accountId: z.string().trim().min(1).optional()
-}).passthrough();
+  region: z.string().trim().min(1).optional()
+}).passthrough().superRefine((binding, ctx) => {
+  if (binding.accountId === void 0) return;
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    path: ["accountId"],
+    message: "Plugin model bindings cannot select a Provider account; the Host selects it at runtime."
+  });
+});
 function resolveModelBindingFromProvider(binding, provider) {
   const parsed = ExecutablePluginModelBindingInputSchema.parse(binding);
   const defaults = provider.bindingDefaults ?? {};
@@ -29945,7 +30432,7 @@ function resolveModelBindingFromProvider(binding, provider) {
   };
   if (parsed.requiredOAuth) resolved.requiredOAuth = parsed.requiredOAuth;
   else delete resolved.requiredOAuth;
-  for (const key of ["priority", "weight", "region", "accountId"]) {
+  for (const key of ["priority", "weight", "region"]) {
     const value = parsed[key] ?? defaults[key];
     if (value === void 0) delete resolved[key];
     else resolved[key] = value;
@@ -29959,11 +30446,16 @@ var ExecutablePluginModelBindingDocumentSchema = z.object({
 }).strict();
 var PLUGIN_ENTRY_OPERATIONS = ["submit", "poll", "callback"];
 var PluginEntryOperationSchema = z.enum(PLUGIN_ENTRY_OPERATIONS);
+var ExecutablePluginHostDependencySchema = z.enum([
+  "public-asset-storage"
+]);
 var ExecutablePluginFunctionExportSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
   kind: z.enum(["action", "provider-projector", "provider-executor"]),
   /** Defaults to submit-only: the simplest plugin declares nothing and gets the simplest contract. */
-  operations: z.array(PluginEntryOperationSchema).nonempty().default(["submit"])
+  operations: z.array(PluginEntryOperationSchema).nonempty().default(["submit"]),
+  /** Optional machine capabilities this one entry point requires before it may run. */
+  requires: z.array(ExecutablePluginHostDependencySchema).default([])
 }).strict().superRefine((entry, ctx) => {
   if (!entry.operations.includes("submit")) {
     ctx.addIssue({
@@ -30222,6 +30714,38 @@ var ExecutablePluginOutputSchema = z.union([
     value: ExecutablePluginJsonValueSchema
   }).strict()
 ]);
+var ExecutablePluginFailureCodeSchema = z.enum([
+  "invalid_request",
+  "authentication_failed",
+  "permission_denied",
+  "content_rejected",
+  "rate_limited",
+  "quota_exhausted",
+  "provider_unavailable",
+  "provider_failed",
+  "task_not_found",
+  "task_expired",
+  "transport_timeout",
+  "transport_error",
+  "invalid_response",
+  "execution_failed",
+  "contract_violation",
+  "cancelled",
+  "plugin_unavailable",
+  "deadline_exceeded",
+  "output_persistence_failed",
+  "publication_failed"
+]);
+var ExecutablePluginFailureErrorSchema = z.object({
+  /** Stable Clash category. Provider-specific spellings belong in `providerCode`. */
+  code: ExecutablePluginFailureCodeSchema,
+  message: z.string().trim().min(1),
+  retryable: z.boolean(),
+  /** Whether the provider definitely rejected, may have accepted, or later failed the work. */
+  requestState: z.enum(["rejected", "unknown", "accepted"]),
+  providerCode: z.string().trim().min(1).optional(),
+  details: ExecutablePluginJsonValueSchema.optional()
+}).strict();
 var ExecutablePluginResultSchema = z.discriminatedUnion("status", [
   z.object({
     protocol: z.literal("clash.plugin.result/v1"),
@@ -30260,12 +30784,7 @@ var ExecutablePluginResultSchema = z.discriminatedUnion("status", [
     protocol: z.literal("clash.plugin.result/v1"),
     invocationId: z.string().trim().min(1),
     status: z.literal("failed"),
-    error: z.object({
-      code: z.string().trim().min(1),
-      message: z.string().trim().min(1),
-      retryable: z.boolean().default(false),
-      details: ExecutablePluginJsonValueSchema.optional()
-    }).strict()
+    error: ExecutablePluginFailureErrorSchema
   }).strict()
 ]);
 var ExecutablePluginBrokerOperationSchema = z.union([
@@ -30471,12 +30990,7 @@ var ExecutablePluginContractTestDocumentSchema = z.object({
     }).strict(),
     z.object({
       status: z.literal("failed"),
-      error: z.object({
-        code: z.string().trim().min(1),
-        message: z.string().trim().min(1),
-        retryable: z.boolean().default(false),
-        details: ExecutablePluginJsonValueSchema.optional()
-      }).strict()
+      error: ExecutablePluginFailureErrorSchema
     }).strict()
   ]),
   timeoutMs: z.number().int().positive().max(12e4).default(1e4)
@@ -31602,7 +32116,7 @@ function parseObjectDef(def, refs) {
     type: "object",
     properties: {}
   };
-  const required2 = [];
+  const required3 = [];
   const shape = def.shape();
   for (const propName in shape) {
     let propDef = shape[propName];
@@ -31629,11 +32143,11 @@ function parseObjectDef(def, refs) {
     }
     result.properties[propName] = parsedDef;
     if (!propOptional) {
-      required2.push(propName);
+      required3.push(propName);
     }
   }
-  if (required2.length) {
-    result.required = required2;
+  if (required3.length) {
+    result.required = required3;
   }
   const additionalProperties = decideAdditionalProperties(def, refs);
   if (additionalProperties !== void 0) {
@@ -31968,7 +32482,7 @@ var zodToJsonSchema = (schema, options) => {
   return combined;
 };
 
-// ../../packages/shared-types/dist/chunk-XAYWVA4T.js
+// ../../packages/shared-types/dist/chunk-RUA5QFGJ.js
 var TIMELINE_KEYFRAME_INTERPOLATIONS = ["hold", "linear"];
 var DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION = "linear";
 var TIMELINE_KEYFRAME_SAMPLING_POLICY = Object.freeze({
@@ -32397,8 +32911,8 @@ function timelineDslAnnotatedObjectShape(fields, options = {}) {
   return Object.fromEntries(
     Object.entries(fields).map(([name, annotation2]) => {
       const executable = options.overrides?.[name] ?? annotation2.schema.describe(annotation2.description);
-      const required2 = requiredness === "runtime" ? annotation2.required : requiredness === "authored" ? annotation2.authoredRequired : false;
-      return [name, required2 ? executable : executable.optional()];
+      const required3 = requiredness === "runtime" ? annotation2.required : requiredness === "authored" ? annotation2.authoredRequired : false;
+      return [name, required3 ? executable : executable.optional()];
     })
   );
 }
@@ -33563,7 +34077,7 @@ var agent = {
     inputSchema: z.object({
       timelineId: IdentifierSchema,
       wait: z.boolean().optional(),
-      timeoutMs: z.number().int().min(1e3).max(9e5).optional()
+      timeoutMs: z.number().int().min(1e3).optional()
     }).strict(),
     outputSchema: TimelineRenderReceiptSchema,
     access: "write",
@@ -35008,7 +35522,7 @@ function timelineDslContractFingerprint(value) {
   return `fnv1a32:${(hash2 >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition = {
-  schemaVersion: 6,
+  schemaVersion: 7,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,
@@ -35306,6 +35820,8 @@ var ACTION_BADGE_NODE_SIZE = Object.freeze({
 var import_loro_crdt2 = __toESM(require_nodejs(), 1);
 var import_loro_crdt3 = __toESM(require_nodejs(), 1);
 var import_loro_crdt4 = __toESM(require_nodejs(), 1);
+var import_loro_crdt5 = __toESM(require_nodejs(), 1);
+var import_loro_crdt6 = __toESM(require_nodejs(), 1);
 var import_yaml = __toESM(require_dist(), 1);
 var AgentAnnotationSurfaceSchema = z.enum([
   "canvas",
@@ -36454,14 +36970,10 @@ var DirectorReferenceStillSchema = z.object({
   aspectRatio: DirectorReferenceAspectRatioSchema,
   stageRevisionId: z.string().min(1),
   timeSeconds: z.number().nonnegative().optional(),
-  sequenceTimeSeconds: z.number().nonnegative().optional(),
-  src: z.string().url().optional(),
-  previewUrl: z.string().url().optional()
+  sequenceTimeSeconds: z.number().nonnegative().optional()
 });
 var DirectorReferenceVideoSchema = z.object({
   assetId: z.string().min(1),
-  src: z.string().url().optional(),
-  previewUrl: z.string().url().optional(),
   mimeType: z.string().min(1)
 });
 var DirectorReferencePacketSchema = z.object({
@@ -36663,8 +37175,6 @@ var NodeDataSchema = z.object({
   stageId: z.string().optional(),
   /** Latest registered reference-video output from a Director Stage node. */
   outputVideoAssetId: z.string().optional(),
-  outputVideoSrc: z.string().optional(),
-  outputVideoPreviewUrl: z.string().optional(),
   outputVideoDurationSeconds: z.number().optional(),
   outputVideoFps: z.number().optional(),
   outputVideoStageRevisionId: z.string().optional(),
@@ -37041,6 +37551,84 @@ var ProjectContextSchema = z.object({
     type: z.string().nullish()
   }))
 });
+function isRecord3(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function nonEmptyString2(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : void 0;
+}
+function storageFreeMediaRecord(input, label) {
+  const source = nonEmptyString2(input.src);
+  if (!source) return { ok: true, value: { ...input } };
+  const projectAssetId = nonEmptyString2(input.assetId) ?? nonEmptyString2(input.backingAssetId);
+  if (!projectAssetId && !source.startsWith("data:")) {
+    return {
+      ok: false,
+      error: `${label} must reference a Project Asset before it can be persisted`
+    };
+  }
+  if (!projectAssetId) return { ok: true, value: { ...input } };
+  const {
+    src: _src,
+    previewUrl: _previewUrl,
+    thumbnailUrl: _thumbnailUrl,
+    url: _url2,
+    localPath: _localPath,
+    storageKey: _storageKey,
+    srcR2Key: _srcR2Key,
+    ...persisted
+  } = input;
+  return { ok: true, value: { ...persisted, assetId: projectAssetId } };
+}
+function normalizeProjectTimelinePersistenceState(input) {
+  if (!isRecord3(input)) return { ok: true, state: input };
+  const tracks = Array.isArray(input.tracks) ? input.tracks : void 0;
+  if (!tracks) return { ok: true, state: structuredClone(input) };
+  const nextTracks = [];
+  for (const track of tracks) {
+    if (!isRecord3(track) || !Array.isArray(track.items)) {
+      nextTracks.push(structuredClone(track));
+      continue;
+    }
+    const items = [];
+    for (const candidate of track.items) {
+      if (!isRecord3(candidate)) {
+        items.push(structuredClone(candidate));
+        continue;
+      }
+      const itemId = nonEmptyString2(candidate.id) ?? "<unknown>";
+      const normalized = storageFreeMediaRecord(
+        candidate,
+        `Timeline item ${itemId}`
+      );
+      if (!normalized.ok) return normalized;
+      items.push(normalized.value);
+    }
+    nextTracks.push({ ...structuredClone(track), items });
+  }
+  const next = {
+    ...structuredClone(input),
+    tracks: nextTracks
+  };
+  if (Array.isArray(input.assets)) {
+    const assets = [];
+    for (const candidate of input.assets) {
+      if (!isRecord3(candidate)) {
+        assets.push(structuredClone(candidate));
+        continue;
+      }
+      const assetId = nonEmptyString2(candidate.backingAssetId) ?? nonEmptyString2(candidate.assetId) ?? nonEmptyString2(candidate.id) ?? "<unknown>";
+      const normalized = storageFreeMediaRecord(
+        candidate,
+        `Timeline Asset ${assetId}`
+      );
+      if (!normalized.ok) return normalized;
+      assets.push(normalized.value);
+    }
+    next.assets = assets;
+  }
+  return { ok: true, state: next };
+}
 var DEFAULT_CANVAS_ID = "main";
 function projectTimelineReadToken(timeline) {
   return agentReadToken({
@@ -37183,7 +37771,6 @@ var DirectorStageObjectSchema = z.discriminatedUnion("kind", [
     kind: z.literal("model"),
     model: z.object({
       assetId: z.string().min(1),
-      sourceUrl: z.string().url().optional(),
       animation: z.object({
         jointCount: z.number().int().positive(),
         clipNames: z.array(z.string().min(1)).min(1),
@@ -37572,12 +38159,6 @@ var addCommand = z.object({
   actorAgentId: id.optional()
 }).strict();
 var ProjectHostCommandSchema = z.discriminatedUnion("action", [
-  command("list_custom_actions"),
-  command("register_custom_action", {
-    actionId: id,
-    definition: z.record(z.string(), z.unknown())
-  }),
-  command("unregister_custom_action", { actionId: id }),
   command("list_canvases"),
   command("create_canvas", { canvasId: id, name: id }),
   command("rename_canvas", { canvasId: id, name: id, ...observed }),
@@ -37738,9 +38319,9 @@ var RUNTIME_OWNED_DATA_FIELDS = /* @__PURE__ */ new Set([
 function validateCanvasUpdateDataFields(fields) {
   const projectionOwned = [];
   const runtimeOwned = [];
-  for (const field2 of fields) {
-    if (PROJECTION_OWNED_DATA_FIELDS.has(field2)) projectionOwned.push(field2);
-    if (RUNTIME_OWNED_DATA_FIELDS.has(field2)) runtimeOwned.push(field2);
+  for (const field3 of fields) {
+    if (PROJECTION_OWNED_DATA_FIELDS.has(field3)) projectionOwned.push(field3);
+    if (RUNTIME_OWNED_DATA_FIELDS.has(field3)) runtimeOwned.push(field3);
   }
   if (projectionOwned.length > 0) {
     return {
@@ -38198,8 +38779,13 @@ function candidateRoutes(query) {
     ...query.allowMock ? MOCK_ROUTES : []
   ] : MODEL_UPSTREAM_ROUTES;
   return direct ? [direct] : routes.filter(
-    (route) => route.modelCode === modelCode && (!query.kind || route.kind === query.kind)
+    (route) => route.modelCode === modelCode && (!query.kind || route.kind === query.kind) && modelRouteSupportsParameters(route, query.requestedParameterIds ?? [])
   );
+}
+function modelRouteSupportsParameters(route, requestedParameterIds) {
+  if (!route.excludedParameterIds?.length || requestedParameterIds.length === 0) return true;
+  const excluded = new Set(route.excludedParameterIds);
+  return requestedParameterIds.every((parameterId) => !excluded.has(parameterId));
 }
 function listModelUpstreamRoutes(query) {
   const candidates = candidateRoutes(query);
@@ -38231,22 +38817,13 @@ function listModelUpstreamRoutes(query) {
     return account?.id && !route.accountId ? { ...route, accountId: account.id } : route;
   });
 }
-function applyModelProviderImplementation(model, route) {
+function applyModelProviderPresentation(model, route) {
   if (!route) return model;
-  const excludedParameterIds = new Set(route.excludedParameterIds ?? []);
   const overrides = new Map((route.parameterOverrides ?? []).map((parameter) => [parameter.id, parameter]));
-  const parameterIds = new Set(model.parameters.map((parameter) => parameter.id));
-  const parameters = model.parameters.filter((parameter) => !excludedParameterIds.has(parameter.id)).map((parameter) => overrides.get(parameter.id) ?? parameter);
-  for (const parameter of route.parameterOverrides ?? []) {
-    if (!parameterIds.has(parameter.id) && !excludedParameterIds.has(parameter.id)) parameters.push(parameter);
-  }
-  const defaultParams = Object.fromEntries(
-    Object.entries(model.defaultParams).filter(([parameterId]) => !excludedParameterIds.has(parameterId))
-  );
   return ModelCardSchema.parse({
     ...model,
-    parameters,
-    defaultParams: { ...defaultParams, ...route.defaultParamOverrides ?? {} },
+    parameters: model.parameters.map((parameter) => overrides.get(parameter.id) ?? parameter),
+    defaultParams: { ...model.defaultParams, ...route.defaultParamOverrides ?? {} },
     input: route.referenceBinding ? { ...model.input, referenceBinding: route.referenceBinding } : model.input
   });
 }
@@ -38283,13 +38860,15 @@ function listModelCatalogEntries(options = {}) {
     const missingOAuth = [
       ...new Set(configuredCandidates.flatMap((route) => missingRequiredOAuth(route, configForRoute(query, route))))
     ];
+    const unavailableParameterIds = configuredCandidates.length === 0 ? [] : model.parameters.filter((parameter) => configuredCandidates.every((route) => route.excludedParameterIds?.includes(parameter.id) === true)).map((parameter) => parameter.id);
     const tier = selectedRoute ? "available" : configuredCandidates.length > 0 ? "configured-provider" : "all";
     return {
-      model: applyModelProviderImplementation(model, selectedRoute),
+      model: applyModelProviderPresentation(model, selectedRoute),
       tier,
       routes,
       selectedRoute,
       candidateProviders: uniqueProviderIds(configuredCandidates.length ? configuredCandidates : allRoutes),
+      unavailableParameterIds,
       missingCredentials,
       missingOAuth
     };
@@ -38356,7 +38935,7 @@ function registerAssetMetadataKind(declaration) {
     const result = declaration.schema.safeParse(probe);
     return result.success ? [] : result.error.issues;
   };
-  const complainsAbout = (issues, field2) => issues.some((issue3) => issue3.path.length === 1 && issue3.path[0] === field2);
+  const complainsAbout = (issues, field3) => issues.some((issue3) => issue3.path.length === 1 && issue3.path[0] === field3);
   if (complainsAbout(issuesFor({ schemaVersion: 1, kind: declaration.kind }), "kind")) {
     throw new Error(
       `Asset metadata kind ${declaration.kind} must declare a schema that pins its own kind`
@@ -38682,10 +39261,10 @@ function timelineDslFromYaml(yamlText) {
       };
       if (track.role === "subtitle" && out2.type === "text" && Array.isArray(out2.cues)) {
         if (typeof out2.text !== "string") {
-          out2.text = out2.cues.map((cue) => isRecord5(cue) && typeof cue.text === "string" ? cue.text : "").filter(Boolean).join("\n");
+          out2.text = out2.cues.map((cue) => isRecord9(cue) && typeof cue.text === "string" ? cue.text : "").filter(Boolean).join("\n");
         }
         if (typeof out2.color !== "string") {
-          const style = isRecord5(out2.style) ? out2.style : null;
+          const style = isRecord9(out2.style) ? out2.style : null;
           out2.color = style && typeof style.color === "string" ? style.color : "#ffffff";
         }
       }
@@ -38770,20 +39349,20 @@ function validateSemanticTimelineItem(item, track) {
   return null;
 }
 function validateClipAnimationFields(item) {
-  for (const field2 of ["entranceAnimation", "exitAnimation"]) {
-    const animation = item[field2];
+  for (const field3 of ["entranceAnimation", "exitAnimation"]) {
+    const animation = item[field3];
     if (animation === void 0) continue;
     if (item.type !== "video") {
-      return `Timeline item ${item.id} ${field2} is only valid on video items`;
+      return `Timeline item ${item.id} ${field3} is only valid on video items`;
     }
-    if (!isRecord5(animation)) {
-      return `Timeline item ${item.id} ${field2} must be an object`;
+    if (!isRecord9(animation)) {
+      return `Timeline item ${item.id} ${field3} must be an object`;
     }
     if (typeof animation.type !== "string" || !CLIP_ANIMATION_TYPES.has(animation.type)) {
-      return `Timeline item ${item.id} ${field2}.type is unsupported`;
+      return `Timeline item ${item.id} ${field3}.type is unsupported`;
     }
     if (typeof animation.durationInFrames !== "number" || !Number.isInteger(animation.durationInFrames) || animation.durationInFrames < 1 || animation.durationInFrames > Math.max(1, item.durationInFrames)) {
-      return `Timeline item ${item.id} ${field2}.durationInFrames must be between 1 and the clip duration`;
+      return `Timeline item ${item.id} ${field3}.durationInFrames must be between 1 and the clip duration`;
     }
   }
   return null;
@@ -38798,14 +39377,14 @@ function validateAudioTimelineFields(item, track) {
       return `Timeline item ${item.id} audioGainDb must be between -60 and 12`;
     }
   }
-  for (const field2 of ["audioFadeInFrames", "audioFadeOutFrames"]) {
-    const value = item[field2];
+  for (const field3 of ["audioFadeInFrames", "audioFadeOutFrames"]) {
+    const value = item[field3];
     if (value === void 0) continue;
     if (!supportsAudio) {
-      return `Timeline item ${item.id} ${field2} is only valid on audio or video items`;
+      return `Timeline item ${item.id} ${field3} is only valid on audio or video items`;
     }
     if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-      return `Timeline item ${item.id} ${field2} must be a non-negative integer`;
+      return `Timeline item ${item.id} ${field3} must be a non-negative integer`;
     }
   }
   if (item.audioDucking !== void 0) {
@@ -38815,17 +39394,17 @@ function validateAudioTimelineFields(item, track) {
     if (track.role !== "music") {
       return `Timeline item ${item.id} audioDucking requires a music track`;
     }
-    if (!isRecord5(item.audioDucking)) {
+    if (!isRecord9(item.audioDucking)) {
       return `Timeline item ${item.id} audioDucking must be an object`;
     }
     const amountDb = item.audioDucking.amountDb;
     if (typeof amountDb !== "number" || !Number.isFinite(amountDb) || amountDb < -60 || amountDb > 0) {
       return `Timeline item ${item.id} audioDucking.amountDb must be between -60 and 0`;
     }
-    for (const field2 of ["attackFrames", "releaseFrames"]) {
-      const value = item.audioDucking[field2];
+    for (const field3 of ["attackFrames", "releaseFrames"]) {
+      const value = item.audioDucking[field3];
       if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-        return `Timeline item ${item.id} audioDucking.${field2} must be a non-negative integer`;
+        return `Timeline item ${item.id} audioDucking.${field3} must be a non-negative integer`;
       }
     }
   }
@@ -38840,7 +39419,7 @@ function validateSubtitleTextTimelineItem(item) {
   }
   const wordIds = /* @__PURE__ */ new Set();
   for (const wordRef of wordRefs) {
-    if (!isRecord5(wordRef)) return `Subtitle text item ${item.id} has invalid wordRefs`;
+    if (!isRecord9(wordRef)) return `Subtitle text item ${item.id} has invalid wordRefs`;
     if (typeof wordRef.id !== "string" || wordRef.id.length === 0) return `Subtitle text item ${item.id} has invalid wordRefs`;
     if (typeof wordRef.text !== "string") return `Subtitle text item ${item.id} has invalid wordRefs`;
     if (!isValidFrameRange(wordRef.sourceStartFrame, wordRef.sourceEndFrame)) {
@@ -38849,13 +39428,13 @@ function validateSubtitleTextTimelineItem(item) {
     wordIds.add(wordRef.id);
   }
   for (const map2 of sourceToOutputMap) {
-    if (!isRecord5(map2)) return `Subtitle text item ${item.id} has invalid sourceToOutputMap`;
+    if (!isRecord9(map2)) return `Subtitle text item ${item.id} has invalid sourceToOutputMap`;
     if (!isValidFrameRange(map2.sourceStartFrame, map2.sourceEndFrame) || !isValidFrameRange(map2.outputStartFrame, map2.outputEndFrame)) {
       return `Subtitle text item ${item.id} has invalid sourceToOutputMap frame range`;
     }
   }
   for (const cue of cues) {
-    if (!isRecord5(cue)) return `Subtitle text item ${item.id} has invalid cues`;
+    if (!isRecord9(cue)) return `Subtitle text item ${item.id} has invalid cues`;
     if (typeof cue.id !== "string" || cue.id.length === 0) return `Subtitle text item ${item.id} has invalid cues`;
     if (typeof cue.text !== "string" || cue.text.trim().length === 0) return `Subtitle text item ${item.id} has invalid cues`;
     if (typeof cue.startFrame !== "number" || !Number.isInteger(cue.startFrame) || cue.startFrame < 0) {
@@ -38886,7 +39465,7 @@ function validateSubtitleTextTimelineItem(item) {
     }
     const cueEndFrame = cueStartFrame + cueDurationInFrames;
     const coveredByMap = sourceToOutputMap.some((map2) => {
-      if (!isRecord5(map2)) return false;
+      if (!isRecord9(map2)) return false;
       if (!isValidFrameRange(map2.sourceStartFrame, map2.sourceEndFrame)) return false;
       if (!isValidFrameRange(map2.outputStartFrame, map2.outputEndFrame)) return false;
       const frameMap = map2;
@@ -38912,7 +39491,7 @@ function validateDerivedOverlayTimelineItem(item) {
   if (item.sourceAssetId === item.derivedAssetId) {
     return `Derived overlay item ${item.id} must be copy-on-write`;
   }
-  if (!isRecord5(item.derivation) || typeof item.derivation.kind !== "string" || item.derivation.kind.length === 0) {
+  if (!isRecord9(item.derivation) || typeof item.derivation.kind !== "string" || item.derivation.kind.length === 0) {
     return `Derived overlay item ${item.id} must include sourceAssetId, derivedAssetId, and derivation.kind`;
   }
   return null;
@@ -38941,7 +39520,7 @@ function validateCompositionTimelineItem(item) {
   }
   return null;
 }
-function isRecord5(value) {
+function isRecord9(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 function isValidFrameRange(startFrame, endFrame) {
@@ -39092,10 +39671,863 @@ var ProviderUsageAuditEventSchema = z.object({
   occurredAt: z.string().datetime()
 });
 
+// ../../packages/asset-sdk/dist/project-asset-http-client.js
+var PROJECT_ASSET_READ_RECEIPT_HEADER = "x-clash-read-receipt";
+function cleanErrorField(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : void 0;
+}
+var ProjectAssetHttpError = class extends Error {
+  status;
+  body;
+  constructor(status, body) {
+    const record2 = body !== null && typeof body === "object" ? body : void 0;
+    const reason = [
+      cleanErrorField(record2?.code),
+      cleanErrorField(record2?.error)
+    ].filter(Boolean).join(": ");
+    super(reason ? `${reason} (Project Asset HTTP ${status})` : `Project Asset request failed with HTTP ${status}`);
+    this.status = status;
+    this.body = body;
+    this.name = "ProjectAssetHttpError";
+  }
+};
+function required(value, label) {
+  const normalized = value?.trim();
+  if (!normalized)
+    throw new Error(`${label} is required`);
+  return normalized;
+}
+function projectAssetsUrl(endpoint, projectId) {
+  return `${endpoint.trim().replace(/\/+$/, "")}/api/v1/projects/${encodeURIComponent(projectId)}/assets`;
+}
+function fileNameOf(file2) {
+  return "name" in file2 && typeof file2.name === "string" ? file2.name : void 0;
+}
+function createProjectAssetHttpClient(options = {}) {
+  const fetch2 = options.fetch ?? globalThis.fetch;
+  const connection = async () => {
+    if (options.resolveConnection)
+      return options.resolveConnection();
+    return {
+      endpoint: options.endpoint?.trim() ?? "",
+      ...options.token?.trim() ? { token: options.token.trim() } : {}
+    };
+  };
+  const target = async (projectIdInput, suffix = "") => {
+    const projectId = required(projectIdInput, "project id");
+    const connected = await connection();
+    return {
+      connected,
+      url: `${projectAssetsUrl(connected.endpoint, projectId)}${suffix}`
+    };
+  };
+  const headers = (connected, additions = {}) => ({
+    ...connected.token ? { authorization: `Bearer ${connected.token}` } : {},
+    ...additions
+  });
+  const requestInit = (input) => ({
+    ...input,
+    ...options.credentials === void 0 ? {} : { credentials: options.credentials }
+  });
+  const responseBody = async (response) => {
+    const body = await response.json().catch(() => void 0);
+    if (!response.ok) {
+      throw options.createHttpError?.(response.status, body) ?? new ProjectAssetHttpError(response.status, body);
+    }
+    return body;
+  };
+  const receiptFrom = (response) => {
+    const receipt = response.headers.get(PROJECT_ASSET_READ_RECEIPT_HEADER)?.trim();
+    if (!receipt)
+      throw new Error("Project Asset Host read did not return a receipt");
+    return receipt;
+  };
+  return {
+    async list(input) {
+      const { connected, url: url3 } = await target(input.projectId);
+      const response = await fetch2(url3, requestInit({ method: "GET", headers: headers(connected) }));
+      const body = await responseBody(response);
+      return ResolvedAssetSchema.array().parse(body.assets);
+    },
+    async batch(input) {
+      const assetIds = input.assetIds.map((assetId) => required(assetId, "asset id"));
+      const { connected, url: url3 } = await target(input.projectId, "/batch");
+      const response = await fetch2(url3, requestInit({
+        method: "POST",
+        headers: headers(connected, { "content-type": "application/json" }),
+        body: JSON.stringify({ ids: assetIds })
+      }));
+      const body = await responseBody(response);
+      return ResolvedAssetSchema.array().parse(body.assets);
+    },
+    async get(input) {
+      const assetId = required(input.assetId, "asset id");
+      const { connected, url: url3 } = await target(input.projectId, `/${encodeURIComponent(assetId)}`);
+      const response = await fetch2(url3, requestInit({ method: "GET", headers: headers(connected) }));
+      const value = ResolvedAssetSchema.parse(await responseBody(response));
+      return { value, receipt: receiptFrom(response) };
+    },
+    async references(input) {
+      const assetId = required(input.assetId, "asset id");
+      const { connected, url: url3 } = await target(input.projectId, `/${encodeURIComponent(assetId)}/references`);
+      const response = await fetch2(url3, requestInit({ method: "GET", headers: headers(connected) }));
+      const body = await responseBody(response);
+      if (body.projectAssetId !== assetId) {
+        throw new Error("Project Asset Host returned references for a different Asset");
+      }
+      return {
+        value: ActionAssetBindingSchema.array().parse(body.references),
+        receipt: receiptFrom(response)
+      };
+    },
+    async importFile(input) {
+      const projectAssetId = input.projectAssetId?.trim();
+      const fileName = required(input.fileName ?? fileNameOf(input.file), "file name");
+      const { connected, url: url3 } = await target(input.projectId, "/import-file");
+      const form = new FormData();
+      if (input.fileName === void 0 && fileNameOf(input.file) === fileName) {
+        form.append("file", input.file);
+      } else {
+        form.append("file", input.file, fileName);
+      }
+      form.append("kind", input.kind);
+      if (projectAssetId)
+        form.append("projectAssetId", projectAssetId);
+      const response = await fetch2(url3, requestInit({
+        method: "POST",
+        headers: headers(connected),
+        body: form
+      }));
+      return ResolvedAssetSchema.parse(await responseBody(response));
+    },
+    async admit(input) {
+      const globalAssetId = required(input.globalAssetId, "global asset id");
+      const { connected, url: url3 } = await target(input.projectId, "/admit");
+      const response = await fetch2(url3, requestInit({
+        method: "POST",
+        headers: headers(connected, { "content-type": "application/json" }),
+        body: JSON.stringify({ globalAssetId })
+      }));
+      return ResolvedAssetSchema.parse(await responseBody(response));
+    },
+    async trash(input) {
+      const assetId = required(input.assetId, "asset id");
+      const actorClientType2 = input.actorClientType?.trim();
+      const receipt = input.receipt?.trim();
+      const { connected, url: url3 } = await target(input.projectId, `/${encodeURIComponent(assetId)}`);
+      const response = await fetch2(url3, requestInit({
+        method: "DELETE",
+        headers: headers(connected, {
+          ...actorClientType2 ? { "x-clash-client-type": actorClientType2 } : {},
+          ...receipt ? { "x-clash-if-match": receipt } : {}
+        })
+      }));
+      const value = ResolvedAssetSchema.parse(await responseBody(response));
+      return { value, receipt: receiptFrom(response) };
+    },
+    async restore(input) {
+      const assetId = required(input.assetId, "asset id");
+      const actorClientType2 = input.actorClientType?.trim();
+      const receipt = input.receipt?.trim();
+      const { connected, url: url3 } = await target(input.projectId, `/${encodeURIComponent(assetId)}/restore`);
+      const response = await fetch2(url3, requestInit({
+        method: "POST",
+        headers: headers(connected, {
+          ...actorClientType2 ? { "x-clash-client-type": actorClientType2 } : {},
+          ...receipt ? { "x-clash-if-match": receipt } : {}
+        })
+      }));
+      const value = ResolvedAssetSchema.parse(await responseBody(response));
+      return { value, receipt: receiptFrom(response) };
+    }
+  };
+}
+
+// ../../packages/shared-runtime/dist/project-host-client.js
+var import_promises3 = require("node:fs/promises");
+var import_node_path3 = require("node:path");
+var ProjectHostHttpError = class extends Error {
+  status;
+  body;
+  constructor(status, body) {
+    const record2 = body !== null && typeof body === "object" ? body : void 0;
+    const code = cleanErrorField2(record2?.code);
+    const detail = cleanErrorField2(record2?.error);
+    const reason = [code, detail].filter(Boolean).join(": ");
+    super(reason ? `${reason} (Project host HTTP ${status})` : `Project host request failed with HTTP ${status}`);
+    this.status = status;
+    this.body = body;
+    this.name = "ProjectHostHttpError";
+  }
+};
+function cleanErrorField2(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : void 0;
+}
+function projectHostCommandUrl(endpoint, projectId) {
+  return `${endpoint.replace(/\/+$/, "")}/api/v1/projects/${encodeURIComponent(projectId)}/host-command`;
+}
+var PROJECT_MARKER = (0, import_node_path3.join)(".clash", "project.toml");
+function cleanProjectId(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : void 0;
+}
+function markerProjectId(markerPath, source) {
+  if (!/^schema_version\s*=\s*1\s*$/m.test(source)) {
+    throw new Error(`Invalid project marker at ${markerPath}: schema_version must be 1`);
+  }
+  const match = /^project_id\s*=\s*(.+)$/m.exec(source);
+  if (!match) {
+    throw new Error(`Invalid project marker at ${markerPath}: project_id is required`);
+  }
+  try {
+    const value = JSON.parse(match[1].trim());
+    const projectId = cleanProjectId(value);
+    if (projectId)
+      return projectId;
+  } catch {
+  }
+  throw new Error(`Invalid project marker at ${markerPath}: project_id must be a string`);
+}
+async function findProjectMarker(startCwd) {
+  let current = (0, import_node_path3.resolve)(startCwd);
+  while (true) {
+    const markerPath = (0, import_node_path3.join)(current, PROJECT_MARKER);
+    try {
+      if ((await (0, import_promises3.stat)(markerPath)).isFile())
+        return markerPath;
+    } catch (error51) {
+      if (error51.code !== "ENOENT")
+        throw error51;
+    }
+    const parent = (0, import_node_path3.dirname)(current);
+    if (parent === current)
+      return void 0;
+    current = parent;
+  }
+}
+async function resolveProjectHostContext(options = {}) {
+  const env = options.env ?? process.env;
+  const cwd = (0, import_node_path3.resolve)(options.cwd?.trim() || env.CLASH_WORKSPACE_ROOT?.trim() || env.CODEX_WORKSPACE_ROOT?.trim() || process.cwd());
+  const explicitProjectId = cleanProjectId(options.projectId);
+  const markerPath = await findProjectMarker(cwd);
+  const marker = markerPath ? markerProjectId(markerPath, await (0, import_promises3.readFile)(markerPath, "utf8")) : void 0;
+  const workspaceRoot = markerPath ? (0, import_node_path3.dirname)((0, import_node_path3.dirname)(markerPath)) : void 0;
+  if (explicitProjectId) {
+    return {
+      projectId: explicitProjectId,
+      source: "explicit",
+      ...markerPath ? { markerPath, workspaceRoot } : {}
+    };
+  }
+  const envProjectId = cleanProjectId(env.CLASH_PROJECT_ID);
+  if (marker && envProjectId && marker !== envProjectId) {
+    throw new Error(`Project context conflict: ${markerPath} points to ${marker}, but CLASH_PROJECT_ID is ${envProjectId}. Pass projectId explicitly to choose.`);
+  }
+  if (marker) {
+    return {
+      projectId: marker,
+      source: "marker",
+      markerPath,
+      workspaceRoot
+    };
+  }
+  if (envProjectId)
+    return { projectId: envProjectId, source: "env" };
+  throw new Error("No Clash project context found. Run clash init, pass projectId, or set CLASH_PROJECT_ID.");
+}
+async function sendProjectHostCommand(options) {
+  const response = await (options.fetch ?? globalThis.fetch)(projectHostCommandUrl(options.endpoint, options.projectId), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...options.token ? { authorization: `Bearer ${options.token}` } : {}
+    },
+    body: JSON.stringify(options.command)
+  });
+  const body = await response.json().catch(() => void 0);
+  if (!response.ok)
+    throw new ProjectHostHttpError(response.status, body);
+  return body;
+}
+
+// ../../packages/shared-runtime/dist/project-asset-client.js
+function createProjectAssetHostClient(options = {}) {
+  const env = options.env ?? process.env;
+  const connection = async () => {
+    if (options.hostClient?.resolveConnection) {
+      return options.hostClient.resolveConnection();
+    }
+    if (options.resolveConnection)
+      return options.resolveConnection();
+    return {
+      endpoint: options.endpoint?.trim() || env.CLASH_API_URL?.trim() || "http://127.0.0.1:8789",
+      ...options.token?.trim() || env.CLASH_API_KEY?.trim() ? { token: options.token?.trim() || env.CLASH_API_KEY?.trim() } : {}
+    };
+  };
+  const context = (input = {}) => options.hostClient ? options.hostClient.resolveContext(input) : resolveProjectHostContext({
+    cwd: input.cwd,
+    projectId: input.projectId,
+    env
+  });
+  const http = createProjectAssetHttpClient({
+    fetch: options.fetch,
+    resolveConnection: connection,
+    createHttpError: (status, body) => new ProjectHostHttpError(status, body)
+  });
+  const result = (resolved, value) => ({
+    projectId: resolved.projectId,
+    ...resolved.workspaceRoot ? { workspaceRoot: resolved.workspaceRoot } : {},
+    value
+  });
+  return {
+    resolveContext: context,
+    async list(input = {}) {
+      const resolved = await context(input);
+      return result(resolved, await http.list({ projectId: resolved.projectId }));
+    },
+    async batch(input) {
+      const resolved = await context(input);
+      return result(resolved, await http.batch({
+        projectId: resolved.projectId,
+        assetIds: input.assetIds
+      }));
+    },
+    async get(input) {
+      const resolved = await context(input);
+      const observed2 = await http.get({
+        projectId: resolved.projectId,
+        assetId: input.assetId
+      });
+      return {
+        ...result(resolved, observed2.value),
+        receipt: observed2.receipt
+      };
+    },
+    async references(input) {
+      const resolved = await context(input);
+      const observed2 = await http.references({
+        projectId: resolved.projectId,
+        assetId: input.assetId
+      });
+      return {
+        ...result(resolved, observed2.value),
+        receipt: observed2.receipt
+      };
+    },
+    async importFile(input) {
+      const resolved = await context(input);
+      const bytes = input.bytes.slice().buffer;
+      return result(resolved, await http.importFile({
+        projectId: resolved.projectId,
+        file: new Blob([bytes], { type: input.contentType }),
+        fileName: input.fileName,
+        kind: input.kind
+      }));
+    },
+    async trash(input) {
+      const resolved = await context(input);
+      const observed2 = await http.trash({
+        projectId: resolved.projectId,
+        assetId: input.assetId,
+        actorClientType: input.actorClientType,
+        receipt: input.receipt
+      });
+      return {
+        ...result(resolved, observed2.value),
+        receipt: observed2.receipt
+      };
+    },
+    async restore(input) {
+      const resolved = await context(input);
+      const observed2 = await http.restore({
+        projectId: resolved.projectId,
+        assetId: input.assetId,
+        actorClientType: input.actorClientType,
+        receipt: input.receipt
+      });
+      return {
+        ...result(resolved, observed2.value),
+        receipt: observed2.receipt
+      };
+    }
+  };
+}
+
+// ../../packages/shared-runtime/dist/local-daemon-runtime.js
+var import_node_child_process = require("node:child_process");
+var import_node_fs = require("node:fs");
+var import_node_path4 = require("node:path");
+function parseMinimum(range) {
+  const match = /^>=\s*(\d+)\.(\d+)\.(\d+)/u.exec(range.trim());
+  if (!match)
+    throw new Error(`Unsupported Node range: ${range}`);
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+function parseExclusiveMaximum(range) {
+  const match = /<\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?/u.exec(range);
+  if (!match)
+    return void 0;
+  return [Number(match[1]), Number(match[2] ?? 0), Number(match[3] ?? 0)];
+}
+function compare(a, b) {
+  for (let index = 0; index < 3; index += 1) {
+    if (a[index] !== b[index])
+      return a[index] - b[index];
+  }
+  return 0;
+}
+function parseVersion(version2) {
+  const match = /^v?(\d+)\.(\d+)\.(\d+)/u.exec(version2.trim());
+  if (!match)
+    return void 0;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+function satisfies(version2, range) {
+  if (!version2)
+    return false;
+  const actual = parseVersion(version2);
+  if (!actual)
+    return false;
+  if (compare(actual, parseMinimum(range)) < 0)
+    return false;
+  const maximum = parseExclusiveMaximum(range);
+  if (maximum && compare(actual, maximum) >= 0)
+    return false;
+  return true;
+}
+function isDaemonNodeVersionSupported(version2, supportedRange) {
+  return satisfies(version2, supportedRange);
+}
+function isElectronRuntime(execPath, env) {
+  if (env.ELECTRON_RUN_AS_NODE)
+    return true;
+  if (!execPath)
+    return false;
+  const name = (0, import_node_path4.basename)(execPath).toLowerCase();
+  if (name === "electron" || name.startsWith("electron"))
+    return true;
+  return /\.app\/contents\/(macos|frameworks)\//iu.test(execPath) || /[\\/]electron[\\/]dist[\\/]/iu.test(execPath);
+}
+function defaultProbeVersion(nodePath) {
+  try {
+    return (0, import_node_child_process.execFileSync)(nodePath, ["--version"], {
+      encoding: "utf8",
+      timeout: 5e3,
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+  } catch {
+    return void 0;
+  }
+}
+function resolveDaemonNodeRuntime(options) {
+  const env = options.env ?? {};
+  const probeVersion = options.probeVersion ?? defaultProbeVersion;
+  const fileExists = options.fileExists ?? import_node_fs.existsSync;
+  const explicit = env.CLASH_DAEMON_NODE_PATH?.trim();
+  if (explicit) {
+    const version2 = probeVersion(explicit);
+    if (!satisfies(version2, options.supportedRange)) {
+      throw new Error(`Pinned daemon Node ${version2 ?? "unknown"} at ${explicit} does not satisfy ${options.supportedRange}.`);
+    }
+    return {
+      nodePath: explicit,
+      version: version2,
+      source: "explicit",
+      inheritedFromLauncher: false
+    };
+  }
+  const execPath = options.execPath;
+  let reason;
+  if (isElectronRuntime(execPath, env)) {
+    reason = "launcher is an Electron runtime, which belongs to the GUI shell";
+  } else if (execPath) {
+    const version2 = probeVersion(execPath);
+    if (satisfies(version2, options.supportedRange)) {
+      return { nodePath: execPath, version: version2, source: "launcher", inheritedFromLauncher: true };
+    }
+    reason = `launcher Node ${version2 ?? "unknown"} does not satisfy ${options.supportedRange}`;
+  } else {
+    reason = "no launcher runtime was provided";
+  }
+  for (const candidate of options.candidates ?? []) {
+    if (options.fileExists && !fileExists(candidate))
+      continue;
+    const version2 = probeVersion(candidate);
+    if (satisfies(version2, options.supportedRange)) {
+      return { nodePath: candidate, version: version2, source: "discovered", inheritedFromLauncher: false, reason };
+    }
+  }
+  throw new Error(`No Node runtime satisfying ${options.supportedRange} was found for the Clash daemon (${reason ?? "no candidates"}). Set CLASH_DAEMON_NODE_PATH to pin one.`);
+}
+function defaultDaemonNodeCandidates(env = {}, deps = {}) {
+  const candidates = [];
+  const home = env.HOME?.trim();
+  if (home) {
+    candidates.push(`${home}/.local/share/clash/runtime/bin/node`);
+    const nvmRoot = env.NVM_DIR?.trim() || `${home}/.nvm`;
+    const listVersions = deps.listNvmVersions ?? defaultListNvmVersions;
+    const versions = [...listVersions(nvmRoot)].filter((entry) => /^v\d+\.\d+\.\d+$/u.test(entry)).sort(compareVersionDesc);
+    for (const version2 of versions) {
+      candidates.push(`${nvmRoot}/versions/node/${version2}/bin/node`);
+    }
+  }
+  candidates.push("/usr/local/bin/node", "/opt/homebrew/bin/node", "/usr/bin/node");
+  return candidates;
+}
+function compareVersionDesc(a, b) {
+  const left = parseVersion(a);
+  const right = parseVersion(b);
+  if (!left || !right)
+    return 0;
+  return -compare(left, right);
+}
+function defaultListNvmVersions(nvmRoot) {
+  try {
+    return (0, import_node_fs.readdirSync)(`${nvmRoot}/versions/node`);
+  } catch {
+    return [];
+  }
+}
+
+// ../../packages/shared-runtime/dist/index.js
+var LOCAL_HOST_RECORD_SCHEMA_VERSION = 1;
+var LOCAL_HOST_PROTOCOL_VERSION = 1;
+function isLocalHostDiscoveryRecord(value) {
+  if (!value || typeof value !== "object")
+    return false;
+  const record2 = value;
+  return record2.schemaVersion === LOCAL_HOST_RECORD_SCHEMA_VERSION && typeof record2.protocolVersion === "number" && Number.isInteger(record2.protocolVersion) && typeof record2.dataSchemaVersion === "number" && Number.isInteger(record2.dataSchemaVersion) && typeof record2.hostId === "string" && record2.hostId.length > 0 && typeof record2.endpoint === "string" && record2.endpoint.length > 0 && typeof record2.pid === "number" && Number.isInteger(record2.pid) && record2.pid > 0 && isHostLaunchMode(record2.launchMode) && isHostStartedBy(record2.startedBy) && (record2.profile === void 0 || record2.profile === "dev" || record2.profile === "prod") && (record2.agentCliPath === void 0 || typeof record2.agentCliPath === "string" && record2.agentCliPath.length > 0) && (record2.ownerClientId === void 0 || typeof record2.ownerClientId === "string") && typeof record2.startedAt === "string" && typeof record2.updatedAt === "string";
+}
+function isCompatibleHost(record2, clientProtocolVersion) {
+  return record2.schemaVersion === LOCAL_HOST_RECORD_SCHEMA_VERSION && record2.protocolVersion <= clientProtocolVersion;
+}
+function isHostLaunchMode(value) {
+  return value === "desktop" || value === "plugin" || value === "cli-once" || value === "user-service" || value === "launchd";
+}
+function isHostStartedBy(value) {
+  return value === "desktop" || value === "plugin" || value === "cli" || value === "user-service" || value === "launchd";
+}
+
+// ../../packages/shared-runtime/dist/local-daemon.js
+var DAEMON_SUPPORTED_NODE_RANGE = ">=24.18.0 <25";
+function isMissingFile(error51) {
+  return Boolean(error51 && typeof error51 === "object" && "code" in error51 && error51.code === "ENOENT");
+}
+function processExists(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error51) {
+    return Boolean(error51 && typeof error51 === "object" && "code" in error51 && error51.code === "EPERM");
+  }
+}
+function launchDetachedLocalDaemon(options) {
+  const spawnProcess = options.spawnProcess ?? import_node_child_process2.spawn;
+  const env = options.env ?? process.env;
+  if (options.nodePath && !isDaemonNodeVersionSupported(options.nodeVersion, DAEMON_SUPPORTED_NODE_RANGE)) {
+    throw new Error(`Explicit daemon Node ${options.nodeVersion ?? "unknown"} does not satisfy ${DAEMON_SUPPORTED_NODE_RANGE}.`);
+  }
+  const runtime = options.nodePath ? {
+    nodePath: options.nodePath,
+    version: options.nodeVersion,
+    source: "explicit",
+    inheritedFromLauncher: false
+  } : resolveDaemonNodeRuntime({
+    execPath: process.execPath,
+    env,
+    supportedRange: DAEMON_SUPPORTED_NODE_RANGE,
+    candidates: defaultDaemonNodeCandidates(env)
+  });
+  const child = spawnProcess(runtime.nodePath, [...options.nodeArgs ?? [], options.entryPath], {
+    detached: true,
+    env: {
+      ...env,
+      ...options.daemonEnv ?? {},
+      CLASH_LOCAL_DATA_DIR: options.dataDir,
+      CLASH_HOST_RUN_DIR: options.runDir,
+      CLASH_CLI_ENTRY_PATH: options.cliEntryPath,
+      CLASH_LOCAL_API_WRAPPER_ENTRY: "1",
+      // Electron Node mode is still a detached Node process; without this
+      // explicit opt-in an Electron executable would recursively open the GUI.
+      ELECTRON_RUN_AS_NODE: options.electronRunAsNode ? "1" : void 0,
+      CLASH_DAEMON_NODE_PATH: runtime.nodePath,
+      PORT: "0"
+    },
+    stdio: "ignore"
+  });
+  if (!child.pid)
+    throw new Error("Failed to start Clash daemon process");
+  const pid = child.pid;
+  child.unref();
+  return {
+    pid,
+    runtime,
+    stop: async () => {
+      if (!processExists(pid))
+        return;
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch (error51) {
+        if (!(error51 && typeof error51 === "object" && "code" in error51 && error51.code === "ESRCH")) {
+          throw error51;
+        }
+      }
+    }
+  };
+}
+function delay(ms) {
+  return new Promise((resolve20) => setTimeout(resolve20, ms));
+}
+async function defaultHealthProbe(record2) {
+  try {
+    const response = await fetch(new URL("/health", record2.endpoint), {
+      signal: AbortSignal.timeout(1e3)
+    });
+    if (!response.ok)
+      return false;
+    const body = await response.json();
+    return body.ok === true && body.mode === "local" && body.host?.hostId === record2.hostId && body.host.pid === record2.pid && body.host.profile === (record2.profile ?? "prod") && body.host.protocolVersion === record2.protocolVersion;
+  } catch {
+    return false;
+  }
+}
+function isLoopbackEndpoint(endpoint) {
+  try {
+    const url3 = new URL(endpoint);
+    const hostname3 = url3.hostname.toLowerCase();
+    return (url3.protocol === "http:" || url3.protocol === "https:") && (hostname3 === "127.0.0.1" || hostname3 === "localhost" || hostname3 === "::1");
+  } catch {
+    return false;
+  }
+}
+async function inspectLocalDaemon(options) {
+  let value;
+  try {
+    value = JSON.parse(await (0, import_promises4.readFile)((0, import_node_path5.join)(options.runDir, "host.json"), "utf8"));
+  } catch (error51) {
+    if (isMissingFile(error51) || error51 instanceof SyntaxError)
+      return { status: "absent" };
+    throw error51;
+  }
+  if (!isLocalHostDiscoveryRecord(value))
+    return { status: "absent" };
+  if (!options.pidExists(value.pid))
+    return { status: "absent" };
+  if ((value.profile ?? "prod") !== options.profile || !isCompatibleHost(value, LOCAL_HOST_PROTOCOL_VERSION) || !isLoopbackEndpoint(value.endpoint)) {
+    return { status: "unhealthy", record: value };
+  }
+  return await options.probe(value) ? { status: "healthy", record: value } : { status: "unhealthy", record: value };
+}
+async function acquireStartupLock(options) {
+  await (0, import_promises4.mkdir)(options.runDir, { recursive: true });
+  const lockPath = (0, import_node_path5.join)(options.runDir, "daemon-start.lock");
+  const token = (0, import_node_crypto3.randomUUID)();
+  const deadline = Date.now() + options.lockTimeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const handle = await (0, import_promises4.open)(lockPath, "wx", 384);
+      await handle.writeFile(JSON.stringify({ token, pid: process.pid, createdAt: Date.now() }), "utf8");
+      return async () => {
+        await handle.close().catch(() => void 0);
+        try {
+          const current = JSON.parse(await (0, import_promises4.readFile)(lockPath, "utf8"));
+          if (current.token === token)
+            await (0, import_promises4.rm)(lockPath, { force: true });
+        } catch (error51) {
+          if (!isMissingFile(error51))
+            throw error51;
+        }
+      };
+    } catch (error51) {
+      if (!(error51 && typeof error51 === "object" && "code" in error51 && error51.code === "EEXIST")) {
+        throw error51;
+      }
+    }
+    try {
+      const lock = JSON.parse(await (0, import_promises4.readFile)(lockPath, "utf8"));
+      const stale = typeof lock.pid !== "number" || !options.pidExists(lock.pid) || typeof lock.createdAt !== "number" || Date.now() - lock.createdAt > options.lockTimeoutMs * 2;
+      if (stale) {
+        await (0, import_promises4.rm)(lockPath, { force: true });
+        continue;
+      }
+    } catch (error51) {
+      if (isMissingFile(error51))
+        continue;
+      if (error51 instanceof SyntaxError) {
+        await (0, import_promises4.rm)(lockPath, { force: true });
+        continue;
+      }
+    }
+    await delay(options.pollIntervalMs);
+  }
+  throw new Error("Timed out coordinating Clash daemon startup");
+}
+function createLocalDaemonBootstrap(options) {
+  const pidExists = options.pidExists ?? processExists;
+  const probe = options.probe ?? defaultHealthProbe;
+  const startupTimeoutMs = options.startupTimeoutMs ?? 1e4;
+  const lockTimeoutMs = options.lockTimeoutMs ?? 15e3;
+  const pollIntervalMs = options.pollIntervalMs ?? 50;
+  const inspectDaemon = () => inspectLocalDaemon({
+    runDir: options.runDir,
+    profile: options.profile,
+    pidExists,
+    probe
+  });
+  let ensuring;
+  let closed = false;
+  const establish = async () => {
+    if (closed)
+      throw new Error("Clash daemon bootstrap is closed");
+    const active = await inspectDaemon();
+    if (active.status === "healthy")
+      return active.record;
+    if (active.status === "unhealthy") {
+      throw new Error(`Clash daemon process ${active.record.pid} is alive but unhealthy at ${active.record.endpoint}; refusing to start a second project-state writer`);
+    }
+    const release = await acquireStartupLock({
+      runDir: options.runDir,
+      pidExists,
+      lockTimeoutMs,
+      pollIntervalMs
+    });
+    let launched;
+    try {
+      const activeAfterLock = await inspectDaemon();
+      if (activeAfterLock.status === "healthy")
+        return activeAfterLock.record;
+      if (activeAfterLock.status === "unhealthy") {
+        throw new Error(`Clash daemon process ${activeAfterLock.record.pid} is alive but unhealthy at ${activeAfterLock.record.endpoint}; refusing to start a second project-state writer`);
+      }
+      launched = await options.launch();
+      const deadline = Date.now() + startupTimeoutMs;
+      while (Date.now() < deadline) {
+        const ready = await inspectDaemon();
+        if (ready.status === "healthy")
+          return ready.record;
+        if (ready.status === "unhealthy" && ready.record.pid !== launched.pid) {
+          throw new Error(`A different Clash daemon process ${ready.record.pid} became unhealthy during startup`);
+        }
+        if (!pidExists(launched.pid)) {
+          throw new Error("Clash daemon exited before becoming ready");
+        }
+        await delay(pollIntervalMs);
+      }
+      throw new Error("Timed out waiting for Clash daemon readiness");
+    } catch (error51) {
+      await launched?.stop?.().catch(() => void 0);
+      throw error51;
+    } finally {
+      await release();
+    }
+  };
+  return {
+    ensureDaemon: () => {
+      if (ensuring)
+        return ensuring;
+      const attempt = establish();
+      ensuring = attempt;
+      void attempt.then(() => {
+        if (ensuring === attempt)
+          ensuring = void 0;
+      }, () => {
+        if (ensuring === attempt)
+          ensuring = void 0;
+      });
+      return ensuring;
+    },
+    close: async () => {
+      closed = true;
+      await ensuring?.catch(() => void 0);
+    }
+  };
+}
+
+// ../../packages/shared-runtime/dist/local-paths.js
+var import_node_os = require("node:os");
+var import_node_path6 = require("node:path");
+function resolveClashProfile(env = process.env) {
+  const profile = env.CLASH_PROFILE?.trim() || "prod";
+  if (profile === "dev" || profile === "prod")
+    return profile;
+  throw new Error("CLASH_PROFILE must be dev or prod");
+}
+function defaultClashHome(env = process.env) {
+  const explicit = env.CLASH_HOME?.trim();
+  if (explicit)
+    return (0, import_node_path6.resolve)(explicit);
+  const root = (0, import_node_path6.join)((0, import_node_os.homedir)(), ".clash");
+  return resolveClashProfile(env) === "dev" ? (0, import_node_path6.join)(root, "profiles", "dev") : root;
+}
+function defaultLocalApiDataDir(env = process.env) {
+  const explicit = env.CLASH_LOCAL_DATA_DIR?.trim();
+  return explicit ? (0, import_node_path6.resolve)(explicit) : (0, import_node_path6.join)(defaultClashHome(env), "local-api");
+}
+function clashHomeForLocalDataDir(localDataDir, explicitClashHome) {
+  if (explicitClashHome?.trim())
+    return (0, import_node_path6.resolve)(explicitClashHome);
+  const resolved = (0, import_node_path6.resolve)(localDataDir);
+  return (0, import_node_path6.basename)(resolved) === "local-api" ? (0, import_node_path6.dirname)(resolved) : resolved;
+}
+
+// ../../packages/cli/src/lib/local-daemon-bootstrap.ts
+var import_node_path7 = require("node:path");
+async function ensureCliLocalDaemon(options) {
+  const env = options.env ?? process.env;
+  if (env.CLASH_API_URL?.trim()) return void 0;
+  const dataDir = defaultLocalApiDataDir(env);
+  const runDir = (0, import_node_path7.join)(clashHomeForLocalDataDir(dataDir), "run");
+  const bootstrap = createLocalDaemonBootstrap({
+    runDir,
+    profile: resolveClashProfile(env),
+    probe: options.probeHost,
+    launch: options.launch ?? (async () => launchDetachedLocalDaemon({
+      entryPath: options.daemonEntryPath,
+      cliEntryPath: options.cliEntryPath,
+      dataDir,
+      runDir,
+      env,
+      daemonEnv: {
+        CLASH_DAEMON_STARTED_BY: "cli",
+        CLASH_NODE_EXEC_PATH: process.execPath,
+        ...options.agentBundleRoot ? { CLASH_AGENT_BUNDLE_ROOT: options.agentBundleRoot } : {},
+        ...options.builtinPluginRoot ? { CLASH_BUILTIN_PLUGIN_ROOT: options.builtinPluginRoot } : {}
+      }
+    }))
+  });
+  const record2 = await bootstrap.ensureDaemon();
+  env.CLASH_API_URL = record2.endpoint;
+  return record2;
+}
+
+// ../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/esm.mjs
+var import_index2 = __toESM(require_commander(), 1);
+var {
+  program,
+  createCommand,
+  createArgument,
+  createOption,
+  CommanderError,
+  InvalidArgumentError,
+  InvalidOptionArgumentError,
+  // deprecated old name
+  Command,
+  Argument,
+  Option,
+  Help
+} = import_index2.default;
+
+// ../../packages/cli/src/commands/assets.ts
+var import_node_fs7 = require("node:fs");
+var import_node_path20 = require("node:path");
+
+// ../../packages/cli/src/commands/canvas.ts
+var import_node_fs4 = require("node:fs");
+var import_node_path13 = require("node:path");
+
 // ../../packages/cli/src/lib/config.ts
 var import_node_crypto4 = require("node:crypto");
 var import_node_fs2 = require("node:fs");
-var import_node_path8 = require("node:path");
+var import_node_path9 = require("node:path");
 var import_yaml2 = __toESM(require_dist());
 
 // ../../packages/cli/src/lib/clash-home.ts
@@ -39104,19 +40536,19 @@ function resolveClashRoot(env = process.env) {
 }
 
 // ../../packages/cli/src/lib/host-discovery.ts
-var import_promises4 = require("node:fs/promises");
-var import_node_path7 = require("node:path");
+var import_promises5 = require("node:fs/promises");
+var import_node_path8 = require("node:path");
 function getDefaultHostDiscoveryRunDir() {
-  return (0, import_node_path7.join)(resolveClashRoot(), "run");
+  return (0, import_node_path8.join)(resolveClashRoot(), "run");
 }
 function getHostDiscoveryPath(runDir = getDefaultHostDiscoveryRunDir()) {
-  return (0, import_node_path7.join)(runDir, "host.json");
+  return (0, import_node_path8.join)(runDir, "host.json");
 }
 async function getHostDiscoveryStatus(options = {}) {
   const filePath = getHostDiscoveryPath(options.runDir);
   let parsed;
   try {
-    parsed = JSON.parse(await (0, import_promises4.readFile)(filePath, "utf8"));
+    parsed = JSON.parse(await (0, import_promises5.readFile)(filePath, "utf8"));
   } catch (error51) {
     if (isNotFound(error51)) return { status: "inactive" };
     throw error51;
@@ -39137,13 +40569,13 @@ async function removeHostDiscovery(hostId, options = {}) {
   const filePath = getHostDiscoveryPath(options.runDir);
   let parsed;
   try {
-    parsed = JSON.parse(await (0, import_promises4.readFile)(filePath, "utf8"));
+    parsed = JSON.parse(await (0, import_promises5.readFile)(filePath, "utf8"));
   } catch (error51) {
     if (isNotFound(error51)) return;
     throw error51;
   }
   if (!isLocalHostDiscoveryRecord(parsed) || parsed.hostId !== hostId) return;
-  await (0, import_promises4.rm)(filePath, { force: true });
+  await (0, import_promises5.rm)(filePath, { force: true });
 }
 function defaultPidExists(pid) {
   try {
@@ -39162,19 +40594,19 @@ function configDir(env = process.env) {
   return resolveClashRoot(env);
 }
 function configFilePath(env = process.env) {
-  return (0, import_node_path8.join)(configDir(env), "config.yaml");
+  return (0, import_node_path9.join)(configDir(env), "config.yaml");
 }
 function credentialsFilePath(env = process.env) {
-  return (0, import_node_path8.join)(configDir(env), "credentials.json");
+  return (0, import_node_path9.join)(configDir(env), "credentials.json");
 }
-function isRecord3(value) {
+function isRecord4(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 function readObject(path) {
   if (!(0, import_node_fs2.existsSync)(path)) return {};
   try {
     const value = JSON.parse((0, import_node_fs2.readFileSync)(path, "utf8"));
-    return isRecord3(value) ? value : {};
+    return isRecord4(value) ? value : {};
   } catch {
     return {};
   }
@@ -39192,13 +40624,13 @@ function wait(milliseconds) {
 function withConfigLock(dir, task) {
   (0, import_node_fs2.mkdirSync)(dir, { recursive: true, mode: 448 });
   (0, import_node_fs2.chmodSync)(dir, 448);
-  const lockPath = (0, import_node_path8.join)(dir, ".config.lock");
+  const lockPath = (0, import_node_path9.join)(dir, ".config.lock");
   const deadline = Date.now() + 5e3;
   while (true) {
     try {
       (0, import_node_fs2.mkdirSync)(lockPath, { mode: 448 });
       (0, import_node_fs2.writeFileSync)(
-        (0, import_node_path8.join)(lockPath, "owner"),
+        (0, import_node_path9.join)(lockPath, "owner"),
         `pid=${process.pid}
 created_at=${(/* @__PURE__ */ new Date()).toISOString()}
 `,
@@ -39251,7 +40683,7 @@ function updateCliCredential(path, apiKey) {
 }
 function migrateLegacyConfig(env = process.env) {
   const dir = configDir(env);
-  const legacyPath = (0, import_node_path8.join)(dir, "config.json");
+  const legacyPath = (0, import_node_path9.join)(dir, "config.json");
   if (!(0, import_node_fs2.existsSync)(legacyPath)) return;
   const legacy = readObject(legacyPath);
   const configPath = configFilePath(env);
@@ -39277,7 +40709,7 @@ function loadConfigFiles(env = process.env) {
     try {
       const document = (0, import_yaml2.parseDocument)((0, import_node_fs2.readFileSync)(configPath, "utf8"));
       const root = document.toJS();
-      if (isRecord3(root) && isRecord3(root.server) && typeof root.server.url === "string") {
+      if (isRecord4(root) && isRecord4(root.server) && typeof root.server.url === "string") {
         serverUrl = root.server.url;
       }
     } catch {
@@ -39368,45 +40800,28 @@ function printTable(rows, columns) {
   }
 }
 
-// ../../packages/shared-runtime/dist/project-host-client.js
-var import_node_path9 = require("node:path");
-var ProjectHostHttpError = class extends Error {
-  status;
-  body;
-  constructor(status, body) {
-    super(`Project host request failed with HTTP ${status}`);
-    this.status = status;
-    this.body = body;
-    this.name = "ProjectHostHttpError";
-  }
-};
-function projectHostCommandUrl(endpoint, projectId) {
-  return `${endpoint.replace(/\/+$/, "")}/api/v1/projects/${encodeURIComponent(projectId)}/host-command`;
-}
-var PROJECT_MARKER = (0, import_node_path9.join)(".clash", "project.toml");
-async function sendProjectHostCommand(options) {
-  const response = await (options.fetch ?? globalThis.fetch)(projectHostCommandUrl(options.endpoint, options.projectId), {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...options.token ? { authorization: `Bearer ${options.token}` } : {}
-    },
-    body: JSON.stringify(options.command)
-  });
-  const body = await response.json().catch(() => void 0);
-  if (!response.ok)
-    throw new ProjectHostHttpError(response.status, body);
-  return body;
-}
-
 // ../../packages/cli/src/lib/project-host-client.ts
-function sendProjectCommand(projectId, command2) {
+function resolveCliProjectHostConnection() {
   const endpoint = getServerUrl();
+  const token = requireApiKey(endpoint);
+  return {
+    endpoint,
+    ...token ? { token } : {}
+  };
+}
+function createCliProjectAssetHostClient(options = {}) {
+  return createProjectAssetHostClient({
+    resolveConnection: async () => resolveCliProjectHostConnection(),
+    ...options.fetch ? { fetch: options.fetch } : {}
+  });
+}
+function sendProjectCommand(projectId, command2) {
+  const { endpoint, token } = resolveCliProjectHostConnection();
   return sendProjectHostCommand({
     endpoint,
     projectId,
     command: command2,
-    token: requireApiKey(endpoint) || void 0
+    token
   });
 }
 
@@ -39453,14 +40868,14 @@ async function apiJson(path, options = {}) {
 }
 
 // ../../packages/cli/src/lib/project-context.ts
-var import_promises5 = require("node:fs/promises");
+var import_promises6 = require("node:fs/promises");
 var import_node_path10 = require("node:path");
 var MARKER_PATH = (0, import_node_path10.join)(".clash", "project.toml");
 function projectMarkerPath(cwd) {
   return (0, import_node_path10.join)(cwd, MARKER_PATH);
 }
 async function writeProjectMarker(cwd, marker) {
-  const projectId = cleanProjectId(marker.projectId);
+  const projectId = cleanProjectId2(marker.projectId);
   if (!projectId) {
     throw new Error("Project id is required to write .clash/project.toml.");
   }
@@ -39470,14 +40885,14 @@ async function writeProjectMarker(cwd, marker) {
     schemaVersion: 1,
     projectId
   };
-  await (0, import_promises5.mkdir)((0, import_node_path10.dirname)(markerPath), { recursive: true });
-  await (0, import_promises5.writeFile)(markerPath, serializeProjectMarkerToml(normalized), "utf-8");
+  await (0, import_promises6.mkdir)((0, import_node_path10.dirname)(markerPath), { recursive: true });
+  await (0, import_promises6.writeFile)(markerPath, serializeProjectMarkerToml(normalized), "utf-8");
   return markerPath;
 }
 async function readProjectMarker(markerPath) {
-  const text = await (0, import_promises5.readFile)(markerPath, "utf-8");
+  const text = await (0, import_promises6.readFile)(markerPath, "utf-8");
   const marker = parseProjectMarkerToml(markerPath, text);
-  const projectId = cleanProjectId(marker.projectId);
+  const projectId = cleanProjectId2(marker.projectId);
   if (!projectId) {
     throw new Error(`Invalid project marker at ${markerPath}: projectId is required.`);
   }
@@ -39547,12 +40962,12 @@ function tomlString(value) {
 function stringValue(value) {
   return typeof value === "string" && value.trim() ? value.trim() : void 0;
 }
-async function findProjectMarker(startCwd) {
+async function findProjectMarker2(startCwd) {
   let current = (0, import_node_path10.resolve)(startCwd);
   while (true) {
     const candidate = projectMarkerPath(current);
     try {
-      const info = await (0, import_promises5.stat)(candidate);
+      const info = await (0, import_promises6.stat)(candidate);
       if (info.isFile()) return candidate;
     } catch (error51) {
       if (error51.code !== "ENOENT") throw error51;
@@ -39565,8 +40980,8 @@ async function findProjectMarker(startCwd) {
 async function resolveProjectContext(options = {}) {
   const cwd = options.cwd ?? process.cwd();
   const env = options.env ?? process.env;
-  const explicitProjectId = cleanProjectId(options.project);
-  const markerPath = await findProjectMarker(cwd);
+  const explicitProjectId = cleanProjectId2(options.project);
+  const markerPath = await findProjectMarker2(cwd);
   if (explicitProjectId) {
     return {
       projectId: explicitProjectId,
@@ -39575,7 +40990,7 @@ async function resolveProjectContext(options = {}) {
     };
   }
   const marker = markerPath ? await readProjectMarker(markerPath) : void 0;
-  const envProjectId = cleanProjectId(env.CLASH_PROJECT_ID);
+  const envProjectId = cleanProjectId2(env.CLASH_PROJECT_ID);
   if (marker && envProjectId && marker.projectId !== envProjectId) {
     throw new Error(
       `Project context conflict: ${markerPath} points to ${marker.projectId}, but CLASH_PROJECT_ID is ${envProjectId}. Pass --project <id> to choose explicitly.`
@@ -39596,7 +41011,7 @@ async function resolveProjectContext(options = {}) {
     "No Clash project context found. Run clash init, run clash project link <projectId>, pass --project <id>, or set CLASH_PROJECT_ID."
   );
 }
-function cleanProjectId(projectId) {
+function cleanProjectId2(projectId) {
   if (typeof projectId !== "string") return void 0;
   const trimmed = projectId.trim();
   return trimmed.length > 0 ? trimmed : void 0;
@@ -39607,7 +41022,7 @@ function message(error51) {
 
 // ../../packages/cli/src/lib/worktree-observations.ts
 var import_node_crypto6 = require("node:crypto");
-var import_promises6 = require("node:fs/promises");
+var import_promises7 = require("node:fs/promises");
 var import_node_path12 = require("node:path");
 
 // ../../packages/cli/src/lib/projection-cas.ts
@@ -39760,7 +41175,7 @@ async function readState(workspaceRoot) {
   const filePath = resolveWorktreeObservationPath(workspaceRoot);
   let raw;
   try {
-    raw = await (0, import_promises6.readFile)(filePath, "utf8");
+    raw = await (0, import_promises7.readFile)(filePath, "utf8");
   } catch (error51) {
     if (error51.code === "ENOENT") return void 0;
     throw error51;
@@ -39778,14 +41193,14 @@ async function readState(workspaceRoot) {
 }
 async function writeState(workspaceRoot, state) {
   const filePath = resolveWorktreeObservationPath(workspaceRoot);
-  await (0, import_promises6.mkdir)((0, import_node_path12.dirname)(filePath), { recursive: true });
+  await (0, import_promises7.mkdir)((0, import_node_path12.dirname)(filePath), { recursive: true });
   const tempPath = `${filePath}.${process.pid}.${(0, import_node_crypto6.randomUUID)()}.tmp`;
-  await (0, import_promises6.writeFile)(tempPath, `${JSON.stringify(state, null, 2)}
+  await (0, import_promises7.writeFile)(tempPath, `${JSON.stringify(state, null, 2)}
 `, {
     encoding: "utf8",
     mode: 384
   });
-  await (0, import_promises6.rename)(tempPath, filePath);
+  await (0, import_promises7.rename)(tempPath, filePath);
 }
 async function withWriteLock(workspaceRoot, operation) {
   const filePath = resolveWorktreeObservationPath(workspaceRoot);
@@ -39810,15 +41225,15 @@ async function withFilesystemWriteLock(filePath, operation) {
   const lockPath = `${filePath}.lock`;
   const ownerPath = (0, import_node_path12.join)(lockPath, "owner.json");
   const startedAt = Date.now();
-  await (0, import_promises6.mkdir)((0, import_node_path12.dirname)(filePath), { recursive: true });
+  await (0, import_promises7.mkdir)((0, import_node_path12.dirname)(filePath), { recursive: true });
   while (true) {
     try {
-      await (0, import_promises6.mkdir)(lockPath);
+      await (0, import_promises7.mkdir)(lockPath);
       const ownerTempPath = (0, import_node_path12.join)(lockPath, `.owner.${process.pid}.${(0, import_node_crypto6.randomUUID)()}.tmp`);
       try {
-        await (0, import_promises6.writeFile)(ownerTempPath, `${JSON.stringify({ pid: process.pid })}
+        await (0, import_promises7.writeFile)(ownerTempPath, `${JSON.stringify({ pid: process.pid })}
 `, "utf8");
-        await (0, import_promises6.rename)(ownerTempPath, ownerPath);
+        await (0, import_promises7.rename)(ownerTempPath, ownerPath);
       } catch (error51) {
         await retireWriteLock(lockPath);
         throw error51;
@@ -39845,12 +41260,12 @@ async function withFilesystemWriteLock(filePath, operation) {
 async function retireWriteLock(lockPath) {
   const retiredPath = `${lockPath}.retired.${process.pid}.${(0, import_node_crypto6.randomUUID)()}`;
   try {
-    await (0, import_promises6.rename)(lockPath, retiredPath);
+    await (0, import_promises7.rename)(lockPath, retiredPath);
   } catch (error51) {
     if (error51.code === "ENOENT") return;
     throw error51;
   }
-  await (0, import_promises6.rm)(retiredPath, { recursive: true, force: true });
+  await (0, import_promises7.rm)(retiredPath, { recursive: true, force: true });
 }
 function resolveWorktreeObservationPath(workspaceRoot) {
   return resolveAgentFilePathInsideCwd({
@@ -39861,7 +41276,7 @@ function resolveWorktreeObservationPath(workspaceRoot) {
 }
 async function canReclaimWriteLock(lockPath, ownerPath) {
   try {
-    const parsed = JSON.parse(await (0, import_promises6.readFile)(ownerPath, "utf8"));
+    const parsed = JSON.parse(await (0, import_promises7.readFile)(ownerPath, "utf8"));
     if (!Number.isInteger(parsed.pid) || parsed.pid <= 0) {
       return isOwnerlessLockStale(lockPath);
     }
@@ -39877,7 +41292,7 @@ async function canReclaimWriteLock(lockPath, ownerPath) {
 }
 async function isOwnerlessLockStale(lockPath) {
   try {
-    const lockStat = await (0, import_promises6.stat)(lockPath);
+    const lockStat = await (0, import_promises7.stat)(lockPath);
     return Date.now() - lockStat.mtimeMs >= OWNERLESS_LOCK_GRACE_MS;
   } catch (error51) {
     if (error51.code === "ENOENT") return false;
@@ -39921,26 +41336,36 @@ function publicAgentCommandResult(result) {
   return sanitizePublicValue(result, "result");
 }
 function sanitizePublicValue(value, context) {
-  if (Array.isArray(value)) return value.map((item) => sanitizePublicValue(item, "nested"));
+  if (Array.isArray(value))
+    return value.map((item) => sanitizePublicValue(item, "nested"));
   if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(Object.entries(value).flatMap(([key, child]) => {
-    if (INTERNAL_RECEIPT_FIELDS.has(key)) return [];
-    if (context === "result" && key === "version") return [];
-    if (context === "mutation" && INTERNAL_MUTATION_FIELDS.has(key)) return [];
-    const childContext = key === "mutation" ? "mutation" : key === "replaceResult" ? "result" : "nested";
-    return [[key, sanitizePublicValue(child, childContext)]];
-  }));
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, child]) => {
+      if (INTERNAL_RECEIPT_FIELDS.has(key)) return [];
+      if (context === "result" && key === "version") return [];
+      if (context === "mutation" && INTERNAL_MUTATION_FIELDS.has(key))
+        return [];
+      const childContext = key === "mutation" ? "mutation" : key === "replaceResult" ? "result" : "nested";
+      return [[key, sanitizePublicValue(child, childContext)]];
+    })
+  );
 }
 async function recordAgentObservation(options) {
   const env = options.env ?? process.env;
   if (!isAgentInvocation(env)) return;
-  const context = await resolveProjectContext({ cwd: options.cwd, env });
+  const context = await resolveProjectContext({
+    project: options.project,
+    cwd: options.cwd,
+    env
+  });
   if (typeof options.revision !== "string" || !options.revision.trim()) {
     throw new Error("Host read did not return an entity version.");
   }
   const revision = options.revision.trim();
   if (!context.workspaceRoot) {
-    throw new Error("Agent reads require a cwd linked through .clash/project.toml.");
+    throw new Error(
+      "Agent reads require a cwd linked through .clash/project.toml."
+    );
   }
   await recordWorktreeObservation({
     workspaceRoot: context.workspaceRoot,
@@ -39953,9 +41378,15 @@ async function recordAgentObservation(options) {
 async function requireAgentObservation(options) {
   const env = options.env ?? process.env;
   if (!isAgentInvocation(env)) return void 0;
-  const context = await resolveProjectContext({ cwd: options.cwd, env });
+  const context = await resolveProjectContext({
+    project: options.project,
+    cwd: options.cwd,
+    env
+  });
   if (!context.workspaceRoot) {
-    throw new Error("READ_REQUIRED: Run the command from a cwd linked through .clash/project.toml and read the target first.");
+    throw new Error(
+      "READ_REQUIRED: Run the command from a cwd linked through .clash/project.toml and read the target first."
+    );
   }
   const observation = await requireWorktreeObservation({
     workspaceRoot: context.workspaceRoot,
@@ -39963,13 +41394,18 @@ async function requireAgentObservation(options) {
     entityKind: options.entityKind,
     entityId: options.entityId
   });
-  if (!observation.ok) throw new Error(`${observation.code}: ${observation.error}`);
+  if (!observation.ok)
+    throw new Error(`${observation.code}: ${observation.error}`);
   return observation.revision;
 }
 async function forgetAgentObservation(options) {
   const env = options.env ?? process.env;
   if (!isAgentInvocation(env)) return;
-  const context = await resolveProjectContext({ cwd: options.cwd, env });
+  const context = await resolveProjectContext({
+    project: options.project,
+    cwd: options.cwd,
+    env
+  });
   if (!context.workspaceRoot) return;
   await forgetWorktreeObservation({
     workspaceRoot: context.workspaceRoot,
@@ -40203,11 +41639,30 @@ function assetCacheDir(env = process.env) {
 function resolveAssetDownloadUrl(signedUrl, serverUrl = getServerUrl()) {
   return new URL(signedUrl, `${serverUrl.replace(/\/+$/, "")}/`).toString();
 }
-async function downloadAssetById(assetId) {
+function resolvedAssetExtension(asset) {
+  const namedExtension = (0, import_node_path13.extname)(
+    asset.metadata.originalName ?? asset.name ?? ""
+  );
+  if (/^\.[A-Za-z0-9_-]+$/.test(namedExtension)) return namedExtension;
+  const contentType = asset.metadata.contentType?.toLowerCase();
+  if (contentType === "image/png") return ".png";
+  if (contentType === "image/jpeg") return ".jpg";
+  if (contentType === "image/webp") return ".webp";
+  if (contentType === "image/gif") return ".gif";
+  if (contentType === "video/mp4") return ".mp4";
+  if (contentType === "video/webm") return ".webm";
+  if (contentType === "audio/mpeg") return ".mp3";
+  if (contentType === "audio/wav") return ".wav";
+  if (contentType === "audio/mp4") return ".m4a";
+  if (contentType === "model/gltf-binary") return ".glb";
+  if (contentType === "model/gltf+json") return ".gltf";
+  return "";
+}
+async function downloadAssetById(assetId, projectId, options = {}) {
   try {
-    const cacheDir = assetCacheDir();
+    const cacheDir = options.cacheDir ?? assetCacheDir();
     (0, import_node_fs4.mkdirSync)(cacheDir, { recursive: true });
-    const safeId = assetId.replace(/[/\\:]/g, "_");
+    const safeId = `${projectId}--${assetId}`.replace(/[/\\:]/g, "_");
     for (const name of (0, import_node_fs4.readdirSync)(cacheDir)) {
       if (name === safeId || name.startsWith(`${safeId}.`)) {
         const cachedPath = (0, import_node_path13.join)(cacheDir, name);
@@ -40218,13 +41673,15 @@ async function downloadAssetById(assetId) {
         return cachedPath;
       }
     }
-    const metaRes = await apiFetch(`/api/v1/assets/${encodeURIComponent(assetId)}`);
-    if (!metaRes.ok) return null;
-    const asset = await metaRes.json();
-    const ext = asset.srcR2Key.match(/\.[a-zA-Z0-9]+$/)?.[0] ?? "";
+    const observed2 = await (options.client ?? createCliProjectAssetHostClient()).get({ projectId, assetId });
+    const asset = observed2.value;
+    if (asset.id !== assetId || asset.status !== "ready" || !asset.url) {
+      return null;
+    }
+    const ext = resolvedAssetExtension(asset);
     const filePath = (0, import_node_path13.join)(cacheDir, `${safeId}${ext}`);
-    const fullUrl = resolveAssetDownloadUrl(asset.signedUrl);
-    const res = await fetch(fullUrl);
+    const fullUrl = resolveAssetDownloadUrl(asset.url);
+    const res = await (options.fetch ?? fetch)(fullUrl);
     if (!res.ok) return null;
     (0, import_node_fs4.writeFileSync)(filePath, Buffer.from(await res.arrayBuffer()), { mode: 292 });
     try {
@@ -40276,7 +41733,7 @@ canvasCommand.command("get").description("Get a specific node. For media nodes, 
   const isMedia = ["image", "video", "audio"].includes(node.type);
   let assetPath = null;
   if (isMedia && assetId) {
-    assetPath = await downloadAssetById(assetId);
+    assetPath = await downloadAssetById(assetId, projectId);
   }
   if (isJsonMode(options)) {
     printJson({ ...node, immutable: immutable === true, ...assetPath ? { assetPath } : {} });
@@ -40308,7 +41765,7 @@ canvasCommand.command("add").description("Add a text, group, Remotion component,
   []
 ).option(
   "--action <id>",
-  "Use a custom marketplace action instead of a built-in model. The action must be registered in the project (via the Python SDK's register_custom_actions, or the marketplace install flow). When set, --model is ignored and --param values go into data.customActionParams instead of data.modelParams."
+  "Use an installed executable-plugin action instead of a catalog model. The Host resolves the activated contribution and owns execution. When set, --model is ignored and --param values go into data.customActionParams instead of data.modelParams."
 ).option("--json", "Output as JSON").action(async (options) => {
   const projectId = await resolveCanvasProjectId(options);
   const presence = resolveCanvasPresenceOptions();
@@ -40623,7 +42080,7 @@ canvasCommand.hook("preAction", (_command, actionCommand) => {
 
 // ../../packages/cli/src/commands/asset-metadata.ts
 var import_node_fs5 = require("node:fs");
-var import_promises9 = require("node:fs/promises");
+var import_promises10 = require("node:fs/promises");
 var import_node_path17 = require("node:path");
 
 // ../../packages/cli/src/lib/attach-asset-metadata.ts
@@ -40631,7 +42088,7 @@ var import_node_crypto7 = require("node:crypto");
 var import_node_path16 = require("node:path");
 
 // ../../packages/cli/src/lib/production-actions.ts
-var import_promises8 = require("node:fs/promises");
+var import_promises9 = require("node:fs/promises");
 var import_node_path15 = require("node:path");
 
 // ../../packages/cli/src/lib/node-require.ts
@@ -40644,7 +42101,7 @@ function nodeRequire() {
 }
 
 // ../../packages/cli/src/lib/workspace-metadata-kinds.ts
-var import_promises7 = require("node:fs/promises");
+var import_promises8 = require("node:fs/promises");
 var import_node_path14 = require("node:path");
 
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
@@ -41303,7 +42760,7 @@ __export(util_exports, {
   promiseAllObject: () => promiseAllObject,
   propertyKeyTypes: () => propertyKeyTypes,
   randomString: () => randomString,
-  required: () => required,
+  required: () => required2,
   safeExtend: () => safeExtend,
   shallowClone: () => shallowClone,
   slugify: () => slugify,
@@ -41774,7 +43231,7 @@ function partial(Class2, schema, mask) {
   });
   return clone(schema, def);
 }
-function required(Class2, schema, mask) {
+function required2(Class2, schema, mask) {
   const def = mergeDefs(schema._zod.def, {
     get shape() {
       const oldShape = schema._zod.def.shape;
@@ -55202,7 +56659,7 @@ async function loadWorkspaceMetadataKinds(cwd) {
   const directory = (0, import_node_path14.join)(cwd, WORKSPACE_METADATA_KIND_DIR);
   let entries;
   try {
-    entries = (await (0, import_promises7.readdir)(directory)).filter((name) => name.endsWith(".json")).sort();
+    entries = (await (0, import_promises8.readdir)(directory)).filter((name) => name.endsWith(".json")).sort();
   } catch (error51) {
     if (error51 && typeof error51 === "object" && error51.code === "ENOENT") {
       loadedWorkspaces.set(cwd, []);
@@ -55216,7 +56673,7 @@ async function loadWorkspaceMetadataKinds(cwd) {
     let declaration;
     try {
       declaration = DeclarationSchema.parse(
-        JSON.parse(await (0, import_promises7.readFile)(declarationPath, "utf8"))
+        JSON.parse(await (0, import_promises8.readFile)(declarationPath, "utf8"))
       );
     } catch (error51) {
       throw new Error(
@@ -55263,7 +56720,7 @@ async function applyProductionMetadataAction(options) {
     filePath: resolveLocalPath(cwd, options.actionPath, "action")
   });
   const assetsPath = resolveLocalPath(cwd, options.assetsPath ?? (0, import_node_path15.join)("assets", "manifest.json"), "asset manifest");
-  const rawAction = actionPath === void 0 ? options.action : JSON.parse(await (0, import_promises8.readFile)(actionPath, "utf8"));
+  const rawAction = actionPath === void 0 ? options.action : JSON.parse(await (0, import_promises9.readFile)(actionPath, "utf8"));
   const fill = parseAssetMetadataFillAction(rawAction);
   const targetAssetFileStem = safeProjectionFileSegment(fill.targetAssetId, "targetAssetId");
   const metadataKindFileStem = safeProjectionFileSegment(fill.metadataKind, "metadataKind");
@@ -55277,7 +56734,7 @@ async function applyProductionMetadataAction(options) {
     )
   });
   const metadataManifestPath = assetMetadataManifestPath(cwd, metadataPath);
-  const manifest = parseAssetManifest(await (0, import_promises8.readFile)(assetsPath, "utf8"), assetsPath);
+  const manifest = parseAssetManifest(await (0, import_promises9.readFile)(assetsPath, "utf8"), assetsPath);
   const assetIndex = manifest.assets.findIndex((asset) => asset.id === fill.targetAssetId);
   if (assetIndex < 0) {
     throw new Error(`Asset ${fill.targetAssetId} not found in ${assetsPath}`);
@@ -55324,12 +56781,12 @@ async function applyProductionMetadataProjection(options) {
   }
   const metadata = parseDeclaredAssetMetadata(
     metadataManifest.metadataKind,
-    JSON.parse(await (0, import_promises8.readFile)(metadataPath, "utf8"))
+    JSON.parse(await (0, import_promises9.readFile)(metadataPath, "utf8"))
   );
   if (metadata.kind !== metadataManifest.metadataKind) {
     throw new Error(`metadata kind mismatch: ${metadata.kind} does not match manifest ${metadataManifest.metadataKind}`);
   }
-  const manifest = parseAssetManifest(await (0, import_promises8.readFile)(assetsPath, "utf8"), assetsPath);
+  const manifest = parseAssetManifest(await (0, import_promises9.readFile)(assetsPath, "utf8"), assetsPath);
   const assetIndex = manifest.assets.findIndex((asset) => asset.id === metadataManifest.targetAssetId);
   if (assetIndex < 0) {
     throw new Error(`Asset ${metadataManifest.targetAssetId} not found in ${assetsPath}`);
@@ -55339,7 +56796,7 @@ async function applyProductionMetadataProjection(options) {
   const currentSourceActionHash = metadataManifest.sourceActionPath === void 0 ? metadataManifest.sourceActionHash : productionMetadataHash(
     parseAssetMetadataFillAction(
       JSON.parse(
-        await (0, import_promises8.readFile)(
+        await (0, import_promises9.readFile)(
           resolveLocalPath(cwd, metadataManifest.sourceActionPath, "source action"),
           "utf8"
         )
@@ -55408,7 +56865,7 @@ function assetMetadataManifestPath(cwd, metadataPath) {
 async function readAssetMetadataManifest(manifestPath) {
   let value;
   try {
-    value = JSON.parse(await (0, import_promises8.readFile)(manifestPath, "utf8"));
+    value = JSON.parse(await (0, import_promises9.readFile)(manifestPath, "utf8"));
   } catch (error51) {
     throw new Error(
       `READ_REQUIRED: Attach this metadata before writing. ${error51 instanceof Error ? error51.message : String(error51)}`
@@ -55484,8 +56941,8 @@ async function writeJson(path, value) {
 `);
 }
 async function writeText(path, value) {
-  await (0, import_promises8.mkdir)((0, import_node_path15.dirname)(path), { recursive: true });
-  await (0, import_promises8.writeFile)(path, value, "utf8");
+  await (0, import_promises9.mkdir)((0, import_node_path15.dirname)(path), { recursive: true });
+  await (0, import_promises9.writeFile)(path, value, "utf8");
 }
 
 // ../../packages/cli/src/lib/attach-asset-metadata.ts
@@ -55584,12 +57041,12 @@ async function readAssetMetadataProjection(options) {
 }
 var assetMetadataCommand = new Command("metadata").description("Read and attach declared metadata on an asset");
 async function readJsonArgument(value) {
-  const contents = value === "-" ? (0, import_node_fs5.readFileSync)(0, "utf8") : await (0, import_promises9.readFile)(value, "utf8");
+  const contents = value === "-" ? (0, import_node_fs5.readFileSync)(0, "utf8") : await (0, import_promises10.readFile)(value, "utf8");
   return JSON.parse(contents);
 }
 async function readAssetManifest(cwd, assetsPath) {
   const path = assetsPath ?? (0, import_node_path17.join)(cwd, "assets", "manifest.json");
-  const manifest = JSON.parse(await (0, import_promises9.readFile)(path, "utf8"));
+  const manifest = JSON.parse(await (0, import_promises10.readFile)(path, "utf8"));
   return { path, manifest };
 }
 assetMetadataCommand.command("kinds").description("List every metadata kind this build declares").option("--json", "Output as JSON").action(async (options) => {
@@ -55742,7 +57199,7 @@ function readProductReplicationState(options) {
   if ((0, import_node_fs6.existsSync)(configPath)) {
     try {
       const root = (0, import_yaml3.parse)((0, import_node_fs6.readFileSync)(configPath, "utf8"));
-      if (!isRecord4(root)) return { mode: "unknown" };
+      if (!isRecord5(root)) return { mode: "unknown" };
       return syncStateFromStoredConfig(root.sync);
     } catch {
       return { mode: "unknown" };
@@ -55771,16 +57228,16 @@ function syncStateFromEnv(env) {
   return remoteUrl ? { mode: "cloud-sync", capabilities: emptyCapabilities() } : { mode: "local-only", capabilities: emptyCapabilities() };
 }
 function syncStateFromStoredConfig(value) {
-  if (!isRecord4(value)) return { mode: "unknown" };
+  if (!isRecord5(value)) return { mode: "unknown" };
   if (value.mode === "local-only") {
     return { mode: "local-only", capabilities: emptyCapabilities() };
   }
-  const remote = isRecord4(value.remote_loro) ? value.remote_loro : {};
-  const remoteUrl = nonEmptyString2(remote.url) ? remote.url : nonEmptyString2(value.remoteLoroUrl) ? value.remoteLoroUrl : null;
+  const remote = isRecord5(value.remote_loro) ? value.remote_loro : {};
+  const remoteUrl = nonEmptyString3(remote.url) ? remote.url : nonEmptyString3(value.remoteLoroUrl) ? value.remoteLoroUrl : null;
   if (value.mode !== "cloud-sync" || !remoteUrl) {
     return { mode: "unknown" };
   }
-  const capabilities = isRecord4(value.capabilities) ? value.capabilities : {};
+  const capabilities = isRecord5(value.capabilities) ? value.capabilities : {};
   return {
     mode: "cloud-sync",
     capabilities: {
@@ -55797,10 +57254,10 @@ function emptyCapabilities() {
     revision_content: false
   };
 }
-function isRecord4(value) {
+function isRecord5(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
-function nonEmptyString2(value) {
+function nonEmptyString3(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
 function isMissingLocalConfigTable(error51) {
@@ -56077,14 +57534,12 @@ function resolveAssetLinkName(assetId, sourcePath, requestedName) {
   }
   return raw.replace(/:/g, "_");
 }
-function assetIdForContentHash(hash2) {
-  if (!/^[a-f0-9]{64}$/.test(hash2)) {
-    throw new Error(`invalid sha256 content hash: ${hash2}`);
-  }
-  return `local:sha256:${hash2}`;
-}
 function createAssetLink(options) {
-  const linkName = resolveAssetLinkName(options.assetId, options.sourcePath, options.name);
+  const linkName = resolveAssetLinkName(
+    options.assetId,
+    options.sourcePath,
+    options.name
+  );
   const linkPath = (0, import_node_path20.join)(options.assetLinksRoot, linkName);
   (0, import_node_fs7.mkdirSync)(options.assetLinksRoot, { recursive: true });
   if ((0, import_node_fs7.existsSync)(linkPath)) {
@@ -56092,14 +57547,17 @@ function createAssetLink(options) {
     if (existing.isDirectory() && !existing.isSymbolicLink()) {
       throw new Error(`asset link path is a directory: ${linkPath}`);
     }
-    throw new Error(`asset link already exists: ${linkPath}. Choose a different --name or remove the old link explicitly.`);
+    throw new Error(
+      `asset link already exists: ${linkPath}. Choose a different --name or remove the old link explicitly.`
+    );
   }
   let method = "symlink";
   try {
     (options.createSymlink ?? import_node_fs7.symlinkSync)(options.sourcePath, linkPath);
   } catch (error51) {
     const code = error51 && typeof error51 === "object" && "code" in error51 ? String(error51.code) : "";
-    if (!["EPERM", "EACCES", "ENOTSUP", "EOPNOTSUPP"].includes(code)) throw error51;
+    if (!["EPERM", "EACCES", "ENOTSUP", "EOPNOTSUPP"].includes(code))
+      throw error51;
     (0, import_node_fs7.copyFileSync)(options.sourcePath, linkPath);
     (0, import_node_fs7.chmodSync)(linkPath, 292);
     method = "copy";
@@ -56109,14 +57567,17 @@ function createAssetLink(options) {
 async function linkAssetIntoProject(options) {
   const assetId = options.assetId.trim();
   if (!assetId) throw new Error("asset id is required");
-  const sourcePath = await (options.download ?? downloadAssetById)(assetId);
-  if (!sourcePath) throw new Error(`Unable to resolve asset ${assetId}`);
   const status = await resolveProjectStatus({
     project: options.project,
     cwd: options.cwd,
     env: options.env,
     homeDir: options.homeDir
   });
+  const sourcePath = await (options.download ?? downloadAssetById)(
+    assetId,
+    status.projectId
+  );
+  if (!sourcePath) throw new Error(`Unable to resolve asset ${assetId}`);
   const { linkPath, method } = createAssetLink({
     assetId,
     sourcePath,
@@ -56135,59 +57596,51 @@ async function linkAssetIntoProject(options) {
 async function importAssetFile(options) {
   const sourcePath = (0, import_node_path20.resolve)(options.filePath);
   const info = (0, import_node_fs7.statSync)(sourcePath);
-  if (!info.isFile()) throw new Error(`asset import source is not a file: ${sourcePath}`);
+  if (!info.isFile())
+    throw new Error(`asset import source is not a file: ${sourcePath}`);
   const status = await resolveProjectStatus({
     project: options.project,
     cwd: options.cwd,
     env: options.env,
     homeDir: options.homeDir
   });
-  const contentHash = await hashFileSha256(sourcePath);
-  const assetId = assetIdForContentHash(contentHash);
-  const blobDir = (0, import_node_path20.join)(status.clashHome, "assets", "blobs", contentHash);
-  const existingBlobPath = findExistingOriginalBlob(blobDir);
-  let blobPath = existingBlobPath;
-  let deduplicated = true;
-  if (!blobPath) {
-    const extension = safeExtension(sourcePath);
-    blobPath = (0, import_node_path20.join)(blobDir, `original${extension}`);
-    (0, import_node_fs7.mkdirSync)(blobDir, { recursive: true });
-    (0, import_node_fs7.copyFileSync)(sourcePath, blobPath);
-    deduplicated = false;
+  const kind = normalizeAssetKind(
+    options.kind ?? inferAssetKind(sourcePath) ?? void 0
+  );
+  if (!kind) {
+    throw new Error(
+      "asset kind must be image, video, audio, or model to import through the Host"
+    );
   }
-  (0, import_node_fs7.chmodSync)(blobPath, 292);
+  const imported = await (options.client ?? createCliProjectAssetHostClient()).importFile({
+    projectId: status.projectId,
+    bytes: new Uint8Array((0, import_node_fs7.readFileSync)(sourcePath)),
+    fileName: (0, import_node_path20.basename)(sourcePath),
+    contentType: contentTypeForPath(sourcePath),
+    kind
+  });
+  const assetId = imported.value.id;
   const result = {
     projectId: status.projectId,
     assetId,
-    ...options.kind?.trim() ? { kind: options.kind.trim() } : {},
-    contentHash,
+    kind,
     sourcePath,
-    blobPath,
-    deduplicated
+    registered: true,
+    registration: imported.value
   };
-  if (options.registerImportedAsset) {
-    const kind = normalizeAssetKind(options.kind ?? inferAssetKind(blobPath) ?? void 0);
-    if (!kind) {
-      throw new Error("asset kind must be image, video, audio, or model to register local metadata");
-    }
-    result.registration = await options.registerImportedAsset({
-      projectId: status.projectId,
-      kind,
-      assetId,
-      contentHash,
-      localBlobKey: localBlobKeyForBlobPath(status.clashHome, blobPath),
-      bytes: info.size,
-      contentType: contentTypeForPath(blobPath),
-      originalName: (0, import_node_path20.basename)(sourcePath)
-    });
-    result.registered = true;
-  }
   if (options.link !== false) {
-    const extension = (0, import_node_path20.extname)(blobPath);
+    const projectionPath = await (options.download ?? downloadAssetById)(
+      assetId,
+      status.projectId
+    );
+    if (!projectionPath) {
+      throw new Error(`Unable to resolve imported Project Asset ${assetId}`);
+    }
+    const extension = (0, import_node_path20.extname)(sourcePath);
     const defaultName = `${assetId}${extension}`;
     const link = createAssetLink({
       assetId,
-      sourcePath: blobPath,
+      sourcePath: projectionPath,
       assetLinksRoot: status.assetLinksRoot,
       name: options.name ?? defaultName,
       createSymlink: options.createSymlink
@@ -56197,126 +57650,67 @@ async function importAssetFile(options) {
   }
   return result;
 }
-async function registerImportedAssetWithLocalApi(payload) {
-  const response = await apiFetch("/api/v1/assets/import", {
-    method: "POST",
-    body: JSON.stringify(payload)
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to register imported asset: ${response.status} ${await response.text()}`);
-  }
-  return response.json();
-}
-async function runAssetGarbageCollection(options = {}) {
-  const response = await (options.request ?? apiFetch)("/api/v1/assets/gc", {
-    method: "POST",
-    headers: agentWriteHeaders({
-      observedVersion: options.observedVersion,
-      ifMatch: options.ifMatch,
-      env: options.env
-    }),
-    body: JSON.stringify({
-      dryRun: options.dryRun !== false,
-      ...options.protectedAssetIds?.length ? { protectedAssetIds: options.protectedAssetIds } : {},
-      ...options.projectIds?.length ? { projectIds: options.projectIds } : {}
-    })
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to run asset garbage collection: ${response.status} ${await response.text()}`);
-  }
-  return response.json();
-}
-async function fetchAssetReferences(options) {
-  const assetId = options.assetId.trim();
-  if (!assetId) throw new Error("asset id is required");
-  if (options.refresh) {
-    const response2 = await (options.request ?? apiFetch)(`/api/v1/assets/${encodeURIComponent(assetId)}/references/refresh`, {
-      method: "POST",
-      headers: agentWriteHeaders({
-        observedVersion: options.observedVersion,
-        ifMatch: options.ifMatch,
-        env: options.env
-      }),
-      body: JSON.stringify({
-        ...options.projectId?.trim() ? { projectIds: [options.projectId.trim()] } : {}
-      })
-    });
-    if (!response2.ok) {
-      throw new Error(`Failed to refresh asset references: ${response2.status} ${await response2.text()}`);
+function projectAssetClient(options) {
+  if (options.client) return options.client;
+  if (!options.request) return createCliProjectAssetHostClient();
+  return createProjectAssetHostClient({
+    endpoint: "http://clash-cli.test",
+    env: {},
+    fetch: (input, init) => {
+      const url3 = new URL(String(input));
+      return options.request(`${url3.pathname}${url3.search}`, init);
     }
-    return response2.json();
-  }
-  const query = options.projectId?.trim() ? `?projectId=${encodeURIComponent(options.projectId.trim())}` : "";
-  const response = await (options.request ?? apiFetch)(`/api/v1/assets/${encodeURIComponent(assetId)}/references${query}`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch asset references: ${response.status} ${await response.text()}`);
-  }
-  return response.json();
+  });
+}
+async function listProjectAssetRecords(options) {
+  return (await projectAssetClient(options).list({ projectId: options.projectId })).value;
+}
+async function fetchProjectAssetReferences(options) {
+  const observed2 = await projectAssetClient(options).references({
+    projectId: options.projectId,
+    assetId: options.assetId
+  });
+  await options.onObservation?.(observed2.receipt);
+  return {
+    projectAssetId: options.assetId,
+    references: observed2.value
+  };
+}
+async function fetchProjectAssetRecord(options) {
+  const observed2 = await projectAssetClient(options).get({
+    projectId: options.projectId,
+    assetId: options.assetId
+  });
+  await options.onObservation?.(observed2.receipt);
+  return observed2.value;
 }
 async function fetchAssetRecord(options) {
-  const assetId = options.assetId.trim();
-  if (!assetId) throw new Error("asset id is required");
-  const response = await (options.request ?? apiFetch)(`/api/v1/assets/${encodeURIComponent(assetId)}`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch asset: ${response.status} ${await response.text()}`);
-  }
-  return response.json();
+  return fetchProjectAssetRecord({
+    assetId: options.assetId,
+    projectId: options.projectId ?? await resolveAssetProjectId(),
+    ...options.request ? { request: options.request } : {},
+    ...options.client ? { client: options.client } : {}
+  });
 }
-async function updateAssetCover(options) {
-  const assetId = options.assetId.trim();
-  const coverR2Key = options.coverR2Key.trim();
-  if (!assetId) throw new Error("asset id is required");
-  if (!coverR2Key) throw new Error("cover key is required");
-  const response = await (options.request ?? apiFetch)(
-    `/api/v1/assets/${encodeURIComponent(assetId)}/cover`,
-    {
-      method: "PATCH",
-      headers: agentWriteHeaders({
-        observedVersion: options.observedVersion,
-        ifMatch: options.ifMatch,
-        env: options.env
-      }),
-      body: JSON.stringify({ coverR2Key })
-    }
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to update asset cover: ${response.status} ${await response.text()}`);
-  }
-  return response.json();
+async function trashProjectAsset(options) {
+  const observed2 = await projectAssetClient(options).trash({
+    projectId: options.projectId,
+    assetId: options.assetId,
+    ...options.actorClientType ? { actorClientType: options.actorClientType } : {},
+    ...options.observedVersion ? { receipt: options.observedVersion } : {}
+  });
+  await options.onObservation?.(observed2.receipt);
+  return observed2.value;
 }
-async function fetchAssetProjectRef(options) {
-  const assetId = options.assetId.trim();
-  const projectId = options.projectId.trim();
-  if (!assetId) throw new Error("asset id is required");
-  if (!projectId) throw new Error("project id is required");
-  const response = await (options.request ?? apiFetch)(
-    `/api/v1/assets/${encodeURIComponent(assetId)}/ref?projectId=${encodeURIComponent(projectId)}`
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to fetch asset project reference: ${response.status} ${await response.text()}`);
-  }
-  return response.json();
-}
-async function deleteAssetProjectRef(options) {
-  const assetId = options.assetId.trim();
-  const projectId = options.projectId.trim();
-  if (!assetId) throw new Error("asset id is required");
-  if (!projectId) throw new Error("project id is required");
-  const response = await (options.request ?? apiFetch)(
-    `/api/v1/assets/${encodeURIComponent(assetId)}/ref?projectId=${encodeURIComponent(projectId)}`,
-    {
-      method: "DELETE",
-      headers: agentWriteHeaders({
-        observedVersion: options.observedVersion,
-        ifMatch: options.ifMatch,
-        env: options.env
-      })
-    }
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to delete asset project reference: ${response.status} ${await response.text()}`);
-  }
-  return response.json();
+async function restoreProjectAsset(options) {
+  const observed2 = await projectAssetClient(options).restore({
+    projectId: options.projectId,
+    assetId: options.assetId,
+    ...options.actorClientType ? { actorClientType: options.actorClientType } : {},
+    ...options.observedVersion ? { receipt: options.observedVersion } : {}
+  });
+  await options.onObservation?.(observed2.receipt);
+  return observed2.value;
 }
 async function replaceAssetFile(options) {
   const imported = await (options.importFile ?? importAssetFile)({
@@ -56326,8 +57720,7 @@ async function replaceAssetFile(options) {
     env: options.env,
     homeDir: options.homeDir,
     kind: options.kind,
-    link: options.link ?? true,
-    registerImportedAsset: options.importFile ? void 0 : registerImportedAssetWithLocalApi
+    link: options.link ?? true
   });
   const replaceResult = await (options.replaceAsset ?? replaceCanvasAssetNode)({
     project: options.project,
@@ -56343,54 +57736,17 @@ async function replaceAssetFile(options) {
     replaceResult
   };
 }
-function agentWriteHeaders(options) {
-  const headers = {};
-  const env = options.env ?? process.env;
-  if (env.CLASH_AGENT_MEMBER_ID?.trim()) {
-    headers["x-clash-client-type"] = "agent";
-  }
-  if (options.observedVersion?.trim()) {
-    const observed2 = options.observedVersion.trim();
-    headers[observed2.includes(":receipt:") ? "x-clash-if-match" : "x-clash-observed-version"] = observed2;
-  } else if (options.ifMatch?.trim()) {
-    headers["x-clash-if-match"] = options.ifMatch.trim();
-  }
-  return headers;
-}
-async function hashFileSha256(path) {
-  const hash2 = (0, import_node_crypto8.createHash)("sha256");
-  for await (const chunk of (0, import_node_fs7.createReadStream)(path)) {
-    hash2.update(chunk);
-  }
-  return hash2.digest("hex");
-}
-function findExistingOriginalBlob(blobDir) {
-  if (!(0, import_node_fs7.existsSync)(blobDir)) return null;
-  const existing = (0, import_node_fs7.readdirSync)(blobDir).filter((name) => name === "original" || name.startsWith("original.")).sort()[0];
-  return existing ? (0, import_node_path20.join)(blobDir, existing) : null;
-}
-function safeExtension(path) {
-  const extension = (0, import_node_path20.extname)(path);
-  return /^[.][A-Za-z0-9_-]+$/.test(extension) ? extension : "";
-}
-function localBlobKeyForBlobPath(clashHome, blobPath) {
-  const prefix = (0, import_node_path20.join)(clashHome, "assets") + "/";
-  const normalized = blobPath.replace(/\\/g, "/");
-  const normalizedPrefix = prefix.replace(/\\/g, "/");
-  if (!normalized.startsWith(normalizedPrefix)) {
-    throw new Error(`asset blob path is outside Clash asset storage: ${blobPath}`);
-  }
-  return normalized.slice(normalizedPrefix.length);
-}
 function normalizeAssetKind(kind) {
   const normalized = kind?.trim().toLowerCase();
   return normalized === "image" || normalized === "video" || normalized === "audio" || normalized === "model" ? normalized : null;
 }
 function inferAssetKind(path) {
   const extension = (0, import_node_path20.extname)(path).toLowerCase();
-  if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].includes(extension)) return "image";
+  if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].includes(extension))
+    return "image";
   if ([".mp4", ".mov", ".webm", ".m4v"].includes(extension)) return "video";
-  if ([".mp3", ".wav", ".m4a", ".aac", ".flac"].includes(extension)) return "audio";
+  if ([".mp3", ".wav", ".m4a", ".aac", ".flac"].includes(extension))
+    return "audio";
   if ([".glb", ".gltf"].includes(extension)) return "model";
   return null;
 }
@@ -56414,185 +57770,40 @@ function contentTypeForPath(path) {
 }
 var assetsCommand = new Command("assets").alias("asset").description("Inspect and link project assets");
 function publicAssetResult(result) {
-  return publicAgentCommandResult(result);
+  return publicAgentCommandResult(
+    result
+  );
 }
-function assetRefObservationId(assetId, projectId) {
-  return `${assetId}:${projectId}`;
+async function resolveAssetProjectId(project) {
+  return (await resolveProjectContext({ project })).projectId;
 }
-function assetGcObservationId(options) {
-  const scope = JSON.stringify({
-    protectedAssetIds: [...options.protectedAssetIds ?? []].sort(),
-    projectIds: [...options.projectIds ?? []].sort()
+function projectAssetObservation(projectId, assetId) {
+  return {
+    entityKind: "project-asset",
+    entityId: assetId,
+    project: projectId
+  };
+}
+async function recordProjectAssetObservation(projectId, assetId, receipt) {
+  await recordAgentObservation({
+    ...projectAssetObservation(projectId, assetId),
+    revision: receipt
   });
-  return (0, import_node_crypto8.createHash)("sha256").update(scope).digest("hex").slice(0, 16);
 }
-assetsCommand.command("get").description("Read an asset row").requiredOption("--asset <id>", "Asset ID").option("--json", "Output result as JSON").action(async (options) => {
+assetsCommand.command("list").description("List Project Assets resolved by the current Host").option(
+  "--project <id>",
+  "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)"
+).option("--json", "Output result as JSON").action(async (options) => {
   try {
-    const result = await fetchAssetRecord({ assetId: options.asset });
-    await recordAgentObservation({
-      entityKind: "asset",
-      entityId: options.asset,
-      revision: result.readToken
-    });
+    const projectId = await resolveAssetProjectId(options.project);
+    const assets = await listProjectAssetRecords({ projectId });
     if (isJsonMode(options)) {
-      printJson(publicAssetResult(result));
+      printJson({ assets });
+    } else if (assets.length === 0) {
+      console.log("No Project Assets");
     } else {
-      console.log(`${result.id}`);
-    }
-  } catch (error51) {
-    console.error(error51 instanceof Error ? error51.message : String(error51));
-    process.exit(1);
-  }
-});
-assetsCommand.command("link").description("Create an agent-readable project link for an immutable asset").requiredOption("--asset <id>", "Asset ID").option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)").option("--name <file>", "Link file name under assets/links").option("--json", "Output as JSON").action(async (options) => {
-  try {
-    const result = await linkAssetIntoProject({
-      assetId: options.asset,
-      project: options.project,
-      name: options.name
-    });
-    if (isJsonMode(options)) {
-      printJson(publicAssetResult(result));
-    } else {
-      console.log(`linked ${result.assetId} -> ${result.linkPath} (${result.method})`);
-    }
-  } catch (error51) {
-    console.error(error51 instanceof Error ? error51.message : String(error51));
-    process.exit(1);
-  }
-});
-assetsCommand.command("import").description("Import a local file into the immutable content-addressed asset store").requiredOption("--file <path>", "Local file to import").option("--kind <kind>", "Asset kind: image, video, audio, or model").option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)").option("--name <file>", "Link file name under assets/links").option("--no-link", "Do not create a project assets/links entry").option("--no-register", "Do not register the imported blob with local-api metadata").option("--json", "Output result as JSON").action(async (options) => {
-  try {
-    const result = await importAssetFile({
-      filePath: options.file,
-      kind: options.kind,
-      project: options.project,
-      name: options.name,
-      link: options.link,
-      registerImportedAsset: options.register === false ? void 0 : registerImportedAssetWithLocalApi
-    });
-    if (isJsonMode(options)) {
-      printJson(publicAssetResult(result));
-    } else {
-      const link = result.linkPath ? `, link ${result.linkPath}` : "";
-      console.log(`imported ${result.assetId} -> ${result.blobPath}${link}`);
-    }
-  } catch (error51) {
-    console.error(error51 instanceof Error ? error51.message : String(error51));
-    process.exit(1);
-  }
-});
-assetsCommand.command("replace").description("Import a local file and create a copy-on-write replacement media node").requiredOption("--file <path>", "Local file to import as the replacement asset").requiredOption("--node <id>", "Source image/video/audio node ID").option("--kind <kind>", "Asset kind, such as image, video, or audio").option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)").option("--new-node <id>", "Optional node ID for the copied media node").option("--label <label>", "Optional label for the copied media node").option("--no-link", "Do not create a project assets/links entry for the imported asset").option("--json", "Output result as JSON").action(async (options) => {
-  try {
-    const result = await replaceAssetFile({
-      filePath: options.file,
-      nodeId: options.node,
-      project: options.project,
-      kind: options.kind,
-      newNode: options.newNode,
-      label: options.label,
-      link: options.link
-    });
-    if (isJsonMode(options)) {
-      printJson(publicAssetResult(result));
-    } else {
-      const newNodeId = typeof result.replaceResult.newNodeId === "string" ? result.replaceResult.newNodeId : "(unknown)";
-      console.log(`Imported ${result.importedAssetId} and created copy-on-write media node: ${newNodeId}`);
-    }
-  } catch (error51) {
-    console.error(error51 instanceof Error ? error51.message : String(error51));
-    process.exit(1);
-  }
-});
-var assetCoverCommand = assetsCommand.command("cover").description("Read or update asset cover metadata");
-assetCoverCommand.command("set").description("Set an asset cover storage key").requiredOption("--asset <id>", "Asset ID").requiredOption("--cover-key <key>", "Cover asset storage key").option("--json", "Output result as JSON").action(async (options) => {
-  try {
-    const observedVersion = await requireAgentObservation({
-      entityKind: "asset",
-      entityId: options.asset
-    });
-    const result = await updateAssetCover({
-      assetId: options.asset,
-      coverR2Key: options.coverKey,
-      observedVersion
-    });
-    await recordAgentObservation({
-      entityKind: "asset",
-      entityId: options.asset,
-      revision: result.readToken
-    });
-    if (isJsonMode(options)) {
-      printJson(publicAssetResult(result));
-    } else {
-      console.log(`updated asset cover ${options.asset} -> ${options.coverKey}`);
-    }
-  } catch (error51) {
-    console.error(error51 instanceof Error ? error51.message : String(error51));
-    process.exit(1);
-  }
-});
-var assetRefCommand = assetsCommand.command("ref").description("Read or delete a project asset membership reference");
-assetRefCommand.command("get").description("Read a project asset membership reference").requiredOption("--asset <id>", "Asset ID").requiredOption("--project <id>", "Project ID").option("--json", "Output result as JSON").action(async (options) => {
-  try {
-    const result = await fetchAssetProjectRef({
-      assetId: options.asset,
-      projectId: options.project
-    });
-    await recordAgentObservation({
-      entityKind: "asset-ref",
-      entityId: assetRefObservationId(options.asset, options.project),
-      revision: result.readToken
-    });
-    if (isJsonMode(options)) {
-      printJson(publicAssetResult(result));
-    } else {
-      console.log(`${result.projectId} ${result.assetId} importedAt=${result.importedAt}`);
-    }
-  } catch (error51) {
-    console.error(error51 instanceof Error ? error51.message : String(error51));
-    process.exit(1);
-  }
-});
-assetRefCommand.command("delete").description("Delete a project asset membership reference").requiredOption("--asset <id>", "Asset ID").requiredOption("--project <id>", "Project ID").option("--yes", "Confirm deletion").option("--json", "Output result as JSON").action(async (options) => {
-  try {
-    const confirmation = requireDestructiveConfirmation(options, `${options.asset}:${options.project}`);
-    if (!confirmation.ok) {
-      throw new Error(confirmation.error);
-    }
-    const entityId = assetRefObservationId(options.asset, options.project);
-    const observedVersion = await requireAgentObservation({ entityKind: "asset-ref", entityId });
-    const result = await deleteAssetProjectRef({
-      assetId: options.asset,
-      projectId: options.project,
-      observedVersion
-    });
-    await forgetAgentObservation({ entityKind: "asset-ref", entityId });
-    if (isJsonMode(options)) {
-      printJson(publicAssetResult(result));
-    } else {
-      console.log(`deleted project asset ref ${options.asset}:${options.project}`);
-    }
-  } catch (error51) {
-    console.error(error51 instanceof Error ? error51.message : String(error51));
-    process.exit(1);
-  }
-});
-assetsCommand.command("refs").description("Show node and field references for an asset").requiredOption("--asset <id>", "Asset ID").option("--project <id>", "Only show references in one project").option("--refresh", "Refresh indexed references from the local project replica before reading").option("--json", "Output result as JSON").action(async (options) => {
-  try {
-    const observedVersion = options.refresh === true ? await requireAgentObservation({ entityKind: "asset", entityId: options.asset }) : void 0;
-    const result = await fetchAssetReferences({
-      assetId: options.asset,
-      projectId: options.project,
-      refresh: options.refresh === true,
-      observedVersion
-    });
-    if (isJsonMode(options)) {
-      printJson(publicAssetResult(result));
-    } else if (result.references.length === 0) {
-      console.log(`No indexed references for ${result.assetId}`);
-    } else {
-      for (const ref of result.references) {
-        console.log(`${ref.projectId} ${ref.nodeId} (${ref.nodeType}) ${ref.referenceRole} ${ref.fieldPath}`);
+      for (const asset of assets) {
+        console.log(`${asset.id} ${asset.kind} ${asset.status}`);
       }
     }
   } catch (error51) {
@@ -56600,40 +57811,207 @@ assetsCommand.command("refs").description("Show node and field references for an
     process.exit(1);
   }
 });
-assetsCommand.command("gc").description("Garbage collect unreferenced local asset metadata and local blobs").option("--dry-run", "Preview unreferenced assets without deleting blobs", true).option("--delete", "Delete unreferenced local asset rows and local blobs").option("--protect-asset <id...>", "Asset ids currently referenced by live canvas/project state").option("--project <id...>", "Project ids whose canvas state should be scanned for asset references").option("--json", "Output result as JSON").action(async (options) => {
-  try {
-    const scopeId = assetGcObservationId({
-      protectedAssetIds: options.protectAsset,
-      projectIds: options.project
-    });
-    const deleting = options.delete === true;
-    const observedVersion = deleting ? await requireAgentObservation({ entityKind: "asset-gc", entityId: scopeId }) : void 0;
-    const result = await runAssetGarbageCollection({
-      dryRun: deleting ? false : options.dryRun !== false,
-      protectedAssetIds: options.protectAsset,
-      projectIds: options.project,
-      observedVersion
-    });
-    if (result.dryRun) {
-      await recordAgentObservation({
-        entityKind: "asset-gc",
-        entityId: scopeId,
-        revision: result.readToken
+assetsCommand.command("get").description("Read a Project Asset resolved by the current Host").requiredOption("--asset <id>", "Asset ID").option(
+  "--project <id>",
+  "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)"
+).option("--json", "Output result as JSON").action(
+  async (options) => {
+    try {
+      const projectId = await resolveAssetProjectId(options.project);
+      const result = await fetchProjectAssetRecord({
+        projectId,
+        assetId: options.asset,
+        onObservation: (receipt) => recordProjectAssetObservation(projectId, options.asset, receipt)
       });
-    } else {
-      await forgetAgentObservation({ entityKind: "asset-gc", entityId: scopeId });
+      if (isJsonMode(options)) {
+        printJson(publicAssetResult(result));
+      } else {
+        console.log(`${result.id} ${result.kind} ${result.status}`);
+      }
+    } catch (error51) {
+      console.error(error51 instanceof Error ? error51.message : String(error51));
+      process.exit(1);
     }
-    if (isJsonMode(options)) {
-      printJson(publicAssetResult(result));
-    } else {
-      const mode = result.dryRun ? "would delete" : "deleted";
-      console.log(`${mode} ${result.deletedAssets.length} assets and ${result.deletedBlobKeys.length} local blobs`);
-    }
-  } catch (error51) {
-    console.error(error51 instanceof Error ? error51.message : String(error51));
-    process.exit(1);
   }
-});
+);
+assetsCommand.command("link").description("Create an agent-readable project link for an immutable asset").requiredOption("--asset <id>", "Asset ID").option(
+  "--project <id>",
+  "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)"
+).option("--name <file>", "Link file name under assets/links").option("--json", "Output as JSON").action(
+  async (options) => {
+    try {
+      const result = await linkAssetIntoProject({
+        assetId: options.asset,
+        project: options.project,
+        name: options.name
+      });
+      if (isJsonMode(options)) {
+        printJson(publicAssetResult(result));
+      } else {
+        console.log(
+          `linked ${result.assetId} -> ${result.linkPath} (${result.method})`
+        );
+      }
+    } catch (error51) {
+      console.error(error51 instanceof Error ? error51.message : String(error51));
+      process.exit(1);
+    }
+  }
+);
+assetsCommand.command("import").description(
+  "Import a local file into the immutable content-addressed asset store"
+).requiredOption("--file <path>", "Local file to import").option("--kind <kind>", "Asset kind: image, video, audio, or model").option(
+  "--project <id>",
+  "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)"
+).option("--name <file>", "Link file name under assets/links").option("--no-link", "Do not create a project assets/links entry").option("--json", "Output result as JSON").action(
+  async (options) => {
+    try {
+      const result = await importAssetFile({
+        filePath: options.file,
+        kind: options.kind,
+        project: options.project,
+        name: options.name,
+        link: options.link
+      });
+      if (isJsonMode(options)) {
+        printJson(publicAssetResult(result));
+      } else {
+        const link = result.linkPath ? `, link ${result.linkPath}` : "";
+        console.log(`imported Project Asset ${result.assetId}${link}`);
+      }
+    } catch (error51) {
+      console.error(error51 instanceof Error ? error51.message : String(error51));
+      process.exit(1);
+    }
+  }
+);
+assetsCommand.command("replace").description(
+  "Import a local file and create a copy-on-write replacement media node"
+).requiredOption(
+  "--file <path>",
+  "Local file to import as the replacement asset"
+).requiredOption("--node <id>", "Source image/video/audio node ID").option("--kind <kind>", "Asset kind, such as image, video, or audio").option(
+  "--project <id>",
+  "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)"
+).option("--new-node <id>", "Optional node ID for the copied media node").option("--label <label>", "Optional label for the copied media node").option(
+  "--no-link",
+  "Do not create a project assets/links entry for the imported asset"
+).option("--json", "Output result as JSON").action(
+  async (options) => {
+    try {
+      const result = await replaceAssetFile({
+        filePath: options.file,
+        nodeId: options.node,
+        project: options.project,
+        kind: options.kind,
+        newNode: options.newNode,
+        label: options.label,
+        link: options.link
+      });
+      if (isJsonMode(options)) {
+        printJson(publicAssetResult(result));
+      } else {
+        const newNodeId = typeof result.replaceResult.newNodeId === "string" ? result.replaceResult.newNodeId : "(unknown)";
+        console.log(
+          `Imported ${result.importedAssetId} and created copy-on-write media node: ${newNodeId}`
+        );
+      }
+    } catch (error51) {
+      console.error(error51 instanceof Error ? error51.message : String(error51));
+      process.exit(1);
+    }
+  }
+);
+assetsCommand.command("refs").description("Show authoritative Action Asset bindings for a Project Asset").requiredOption("--asset <id>", "Asset ID").option(
+  "--project <id>",
+  "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)"
+).option("--json", "Output result as JSON").action(
+  async (options) => {
+    try {
+      const projectId = await resolveAssetProjectId(options.project);
+      const result = await fetchProjectAssetReferences({
+        assetId: options.asset,
+        projectId,
+        onObservation: (receipt) => recordProjectAssetObservation(projectId, options.asset, receipt)
+      });
+      if (isJsonMode(options)) {
+        printJson(publicAssetResult(result));
+      } else if (result.references.length === 0) {
+        console.log(`No Action Asset bindings for ${result.projectAssetId}`);
+      } else {
+        for (const ref of result.references) {
+          console.log(
+            `${ref.direction} ${ref.slot} ${ref.owner.kind}:${ref.owner.actionId}${ref.role ? ` ${ref.role}` : ""}`
+          );
+        }
+      }
+    } catch (error51) {
+      console.error(error51 instanceof Error ? error51.message : String(error51));
+      process.exit(1);
+    }
+  }
+);
+assetsCommand.command("delete").description("Move an unreferenced Project Asset to the recovery window").requiredOption("--asset <id>", "Asset ID").option(
+  "--project <id>",
+  "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)"
+).option("--yes", "Confirm deletion").option("--json", "Output result as JSON").action(
+  async (options) => {
+    try {
+      const projectId = await resolveAssetProjectId(options.project);
+      const confirmation = requireDestructiveConfirmation(
+        options,
+        `${projectId}:${options.asset}`
+      );
+      if (!confirmation.ok) throw new Error(confirmation.error);
+      const observedVersion = await requireAgentObservation(
+        projectAssetObservation(projectId, options.asset)
+      );
+      const result = await trashProjectAsset({
+        assetId: options.asset,
+        projectId,
+        actorClientType: isAgentInvocation() ? "agent" : void 0,
+        observedVersion,
+        onObservation: (receipt) => recordProjectAssetObservation(projectId, options.asset, receipt)
+      });
+      if (isJsonMode(options)) {
+        printJson(publicAssetResult(result));
+      } else {
+        console.log(`trashed Project Asset ${result.id}`);
+      }
+    } catch (error51) {
+      console.error(error51 instanceof Error ? error51.message : String(error51));
+      process.exit(1);
+    }
+  }
+);
+assetsCommand.command("restore").description("Restore a trashed Project Asset during its recovery window").requiredOption("--asset <id>", "Asset ID").option(
+  "--project <id>",
+  "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)"
+).option("--json", "Output result as JSON").action(
+  async (options) => {
+    try {
+      const projectId = await resolveAssetProjectId(options.project);
+      const observedVersion = await requireAgentObservation(
+        projectAssetObservation(projectId, options.asset)
+      );
+      const result = await restoreProjectAsset({
+        assetId: options.asset,
+        projectId,
+        actorClientType: isAgentInvocation() ? "agent" : void 0,
+        observedVersion,
+        onObservation: (receipt) => recordProjectAssetObservation(projectId, options.asset, receipt)
+      });
+      if (isJsonMode(options)) {
+        printJson(publicAssetResult(result));
+      } else {
+        console.log(`restored Project Asset ${result.id}`);
+      }
+    } catch (error51) {
+      console.error(error51 instanceof Error ? error51.message : String(error51));
+      process.exit(1);
+    }
+  }
+);
 assetsCommand.addCommand(assetMetadataCommand);
 
 // ../../packages/cli/src/commands/audit.ts
@@ -56675,7 +58053,7 @@ auditCommand.command("mutations").description("List sanitized local host mutatio
 });
 
 // ../../packages/cli/src/commands/auth.ts
-var import_node_crypto9 = require("node:crypto");
+var import_node_crypto8 = require("node:crypto");
 var import_node_child_process3 = require("node:child_process");
 var import_node_http = require("node:http");
 var CLI_CLIENT_ID = "clash-cli";
@@ -56688,7 +58066,7 @@ function redactApiKeyForDisplay(apiKey) {
   return suffix ? `${prefix}...${suffix}` : `${prefix}...`;
 }
 function createPkceChallenge(verifier) {
-  return (0, import_node_crypto9.createHash)("sha256").update(verifier, "ascii").digest("base64url");
+  return (0, import_node_crypto8.createHash)("sha256").update(verifier, "ascii").digest("base64url");
 }
 function normalizeHttpOrigin(value, label) {
   const url3 = new URL(value);
@@ -56871,8 +58249,8 @@ async function runCliLogin(options = {}) {
   const readConfig = options.loadConfig ?? loadConfig;
   const writeConfig = options.saveConfig ?? saveConfig;
   const log = options.log ?? console.log;
-  const state = (0, import_node_crypto9.randomBytes)(32).toString("base64url");
-  const verifier = (0, import_node_crypto9.randomBytes)(32).toString("base64url");
+  const state = (0, import_node_crypto8.randomBytes)(32).toString("base64url");
+  const verifier = (0, import_node_crypto8.randomBytes)(32).toString("base64url");
   const challenge = createPkceChallenge(verifier);
   const callback = await startLoopbackCallback(state, timeoutMs);
   const authorizationUrl = buildAuthorizationUrl(
@@ -57085,7 +58463,7 @@ canvasesCommand.command("delete").requiredOption("--canvas <id>", "Canvas ID").o
 });
 
 // ../../packages/cli/src/commands/director.ts
-var import_node_crypto10 = require("node:crypto");
+var import_node_crypto9 = require("node:crypto");
 var import_node_fs8 = require("node:fs");
 var import_node_path23 = require("node:path");
 
@@ -57131,7 +58509,7 @@ function directorStageHash(state) {
 }
 
 // ../../packages/cli/src/lib/stale-projection-recovery.ts
-var import_promises10 = require("node:fs/promises");
+var import_promises11 = require("node:fs/promises");
 var import_node_path22 = require("node:path");
 var StaleProjectionRecoveryError = class extends Error {
   constructor(label, recovery) {
@@ -57180,9 +58558,9 @@ async function recoverStaleProjection(options) {
     next: "Merge the edited projection into the latest projection, then retry the apply command.",
     resubmitted: false
   };
-  await (0, import_promises10.mkdir)((0, import_node_path22.dirname)(latestAbsolutePath), { recursive: true });
-  await (0, import_promises10.writeFile)(latestAbsolutePath, options.latestContent, { encoding: "utf8", mode: 384 });
-  await (0, import_promises10.writeFile)(receiptAbsolutePath, `${JSON.stringify(recovery, null, 2)}
+  await (0, import_promises11.mkdir)((0, import_node_path22.dirname)(latestAbsolutePath), { recursive: true });
+  await (0, import_promises11.writeFile)(latestAbsolutePath, options.latestContent, { encoding: "utf8", mode: 384 });
+  await (0, import_promises11.writeFile)(receiptAbsolutePath, `${JSON.stringify(recovery, null, 2)}
 `, {
     encoding: "utf8",
     mode: 384
@@ -57296,7 +58674,7 @@ async function recoverStaleDirectorStageApply(options) {
   throw staleProjectionRecoveryError("Director Stage", recovery);
 }
 function captureSha256(value) {
-  return (0, import_node_crypto10.createHash)("sha256").update(value).digest("hex");
+  return (0, import_node_crypto9.createHash)("sha256").update(value).digest("hex");
 }
 function captureArtifactId(label) {
   const value = label.trim();
@@ -57535,7 +58913,7 @@ directorCommand.command("create").description("Create a standalone Project Direc
 directorCommand.command("attach").description("Attach a standalone Director Stage to one Canvas action node").requiredOption("--stage <id>", "Director Stage ID").requiredOption("--canvas <id>", "Owning Canvas ID").option("--node <id>", "Canvas action node ID").option("--x <number>", "Canvas X position", "0").option("--y <number>", "Canvas Y position", "0").option("--project <id>", "Project ID").option("--json", "Output result as JSON").action(async (options) => {
   const context = await resolveCanvasProjectContext(options);
   const observedVersion = await requireDirectorStageObservation(context, options.stage);
-  const actionNodeId = options.node?.trim() || `director-stage-${(0, import_node_crypto10.randomUUID)().slice(0, 8)}`;
+  const actionNodeId = options.node?.trim() || `director-stage-${(0, import_node_crypto9.randomUUID)().slice(0, 8)}`;
   const result = await sendProjectCommand(context.projectId, {
     action: "attach_director_stage",
     stageId: options.stage,
@@ -57689,9 +59067,9 @@ directorCommand.command("apply").description("Validate a Director Stage JSON pro
 });
 
 // ../../packages/cli/src/commands/doctor.ts
-var import_node_crypto11 = require("node:crypto");
+var import_node_crypto10 = require("node:crypto");
 var import_node_module3 = require("node:module");
-var import_promises11 = require("node:fs/promises");
+var import_promises12 = require("node:fs/promises");
 var import_node_path24 = require("node:path");
 var require3 = (0, import_node_module3.createRequire)(process.execPath);
 async function runStorageDoctor(options = {}) {
@@ -58417,7 +59795,7 @@ function textRevisionBlobIntegrityOptions(status) {
       return match?.[1] ?? null;
     },
     async contentHash(content) {
-      return (0, import_node_crypto11.createHash)("sha256").update(content).digest("hex").slice(0, 16);
+      return (0, import_node_crypto10.createHash)("sha256").update(content).digest("hex").slice(0, 16);
     }
   };
 }
@@ -58439,17 +59817,17 @@ async function repairRevisionBlobPermissionsFor(options) {
     const fileName = (0, import_node_path24.basename)(filePath);
     const expectedHash = options.expectedHashFromName(fileName);
     if (!expectedHash) continue;
-    const info = await (0, import_promises11.lstat)(filePath);
+    const info = await (0, import_promises12.lstat)(filePath);
     if (info.isSymbolicLink() || !info.isFile() || (info.mode & 146) === 0) continue;
     let actualHash;
     try {
-      actualHash = await options.contentHash(await (0, import_promises11.readFile)(filePath, "utf8"));
+      actualHash = await options.contentHash(await (0, import_promises12.readFile)(filePath, "utf8"));
     } catch {
       continue;
     }
     if (actualHash !== expectedHash) continue;
     const readOnlyMode = info.mode & 511 & ~146;
-    await (0, import_promises11.chmod)(filePath, readOnlyMode);
+    await (0, import_promises12.chmod)(filePath, readOnlyMode);
     repairs.push({
       id: "revision-blob-permissions",
       message: `Made ${options.label.toLowerCase()} file read-only after validating its content hash.`,
@@ -58474,7 +59852,7 @@ async function inspectRevisionBlobIntegrity(options) {
     const fileName = (0, import_node_path24.basename)(filePath);
     const expectedHash = options.expectedHashFromName(fileName);
     const fileProblems = [];
-    const info = await (0, import_promises11.lstat)(filePath);
+    const info = await (0, import_promises12.lstat)(filePath);
     if (info.isSymbolicLink()) {
       fileProblems.push("symlink is not allowed");
     } else if (!info.isFile()) {
@@ -58487,7 +59865,7 @@ async function inspectRevisionBlobIntegrity(options) {
         fileProblems.push("invalid content hash filename");
       } else {
         try {
-          const actualHash = await options.contentHash(await (0, import_promises11.readFile)(filePath, "utf8"));
+          const actualHash = await options.contentHash(await (0, import_promises12.readFile)(filePath, "utf8"));
           if (actualHash !== expectedHash) {
             fileProblems.push(`hash mismatch expected ${expectedHash} actual ${actualHash}`);
           }
@@ -58523,7 +59901,7 @@ async function collectRevisionBlobFiles(root, extension) {
   async function visit(directory, depth) {
     let entries;
     try {
-      entries = await (0, import_promises11.readdir)(directory, { withFileTypes: true });
+      entries = await (0, import_promises12.readdir)(directory, { withFileTypes: true });
     } catch (error51) {
       if (error51.code === "ENOENT" && depth === 0) return;
       throw error51;
@@ -58550,7 +59928,7 @@ async function collectCanvasReplicaFiles(root, status, found, maxDepth, depth = 
   if (isSameOrInside(root, status.roots.runtime)) return;
   let entries;
   try {
-    entries = await (0, import_promises11.readdir)(root, { withFileTypes: true });
+    entries = await (0, import_promises12.readdir)(root, { withFileTypes: true });
   } catch (error51) {
     if (error51.code === "ENOENT") return;
     throw error51;
@@ -58586,7 +59964,7 @@ async function compareSecondaryCanvasRecovery(options) {
     throw new Error(`Secondary canvas recovery manifest is outside current project recovery root: ${manifestPath}`);
   }
   const manifest = parseSecondaryCanvasReplicaManifest(
-    JSON.parse(await (0, import_promises11.readFile)(manifestPath, "utf8")),
+    JSON.parse(await (0, import_promises12.readFile)(manifestPath, "utf8")),
     manifestPath
   );
   if (manifest.projectId !== status.projectId) {
@@ -58673,12 +60051,12 @@ async function restoreSecondaryCanvasRecovery(options) {
     }
     const canonicalPath = file2.kind === "snapshot" ? before.canonicalReplica.snapshotPath : before.canonicalReplica.updatesLogPath;
     const backupPath = file2.canonical.exists ? (0, import_node_path24.join)(backupsRoot, file2.kind === "snapshot" ? "snapshot.bin" : "updates.log") : void 0;
-    await (0, import_promises11.mkdir)((0, import_node_path24.dirname)(canonicalPath), { recursive: true });
+    await (0, import_promises12.mkdir)((0, import_node_path24.dirname)(canonicalPath), { recursive: true });
     if (backupPath) {
-      await (0, import_promises11.mkdir)((0, import_node_path24.dirname)(backupPath), { recursive: true });
-      await (0, import_promises11.copyFile)(canonicalPath, backupPath);
+      await (0, import_promises12.mkdir)((0, import_node_path24.dirname)(backupPath), { recursive: true });
+      await (0, import_promises12.copyFile)(canonicalPath, backupPath);
     }
-    await (0, import_promises11.copyFile)(file2.destinationPath, canonicalPath);
+    await (0, import_promises12.copyFile)(file2.destinationPath, canonicalPath);
     files.push({
       kind: file2.kind,
       sourcePath: file2.sourcePath,
@@ -58709,8 +60087,8 @@ async function restoreSecondaryCanvasRecovery(options) {
     receiptPath,
     files
   };
-  await (0, import_promises11.mkdir)((0, import_node_path24.dirname)(receiptPath), { recursive: true });
-  await (0, import_promises11.writeFile)(receiptPath, `${JSON.stringify(report, null, 2)}
+  await (0, import_promises12.mkdir)((0, import_node_path24.dirname)(receiptPath), { recursive: true });
+  await (0, import_promises12.writeFile)(receiptPath, `${JSON.stringify(report, null, 2)}
 `, "utf8");
   return report;
 }
@@ -58737,7 +60115,7 @@ async function collectSecondaryCanvasRecoveryInventory(status) {
   const invalidEntries = [];
   let entries;
   try {
-    entries = await (0, import_promises11.readdir)(recoveryRoot, { withFileTypes: true });
+    entries = await (0, import_promises12.readdir)(recoveryRoot, { withFileTypes: true });
   } catch (error51) {
     if (error51.code === "ENOENT") {
       return { recoveryRoot, sets, invalidEntries };
@@ -58756,7 +60134,7 @@ async function collectSecondaryCanvasRecoveryInventory(status) {
         throw new Error(`Secondary canvas recovery manifest is outside current project recovery root: ${manifestPath}`);
       }
       const manifest = parseSecondaryCanvasReplicaManifest(
-        JSON.parse(await (0, import_promises11.readFile)(manifestPath, "utf8")),
+        JSON.parse(await (0, import_promises12.readFile)(manifestPath, "utf8")),
         manifestPath
       );
       if (manifest.projectId !== status.projectId) {
@@ -58814,7 +60192,7 @@ async function collectSecondaryCanvasRecoveryRestoreReceipts(options) {
   const restoreReceipts = [];
   const invalidEntries = [];
   try {
-    const receiptsRootInfo = await (0, import_promises11.lstat)(receiptsRoot);
+    const receiptsRootInfo = await (0, import_promises12.lstat)(receiptsRoot);
     if (receiptsRootInfo.isSymbolicLink() && !await realPathIsSameOrInside(receiptsRoot, options.recoverySetRoot)) {
       invalidEntries.push({
         path: receiptsRoot,
@@ -58844,7 +60222,7 @@ async function collectSecondaryCanvasRecoveryRestoreReceipts(options) {
   }
   let entries;
   try {
-    entries = await (0, import_promises11.readdir)(receiptsRoot, { withFileTypes: true });
+    entries = await (0, import_promises12.readdir)(receiptsRoot, { withFileTypes: true });
   } catch (error51) {
     if (error51.code === "ENOENT") {
       return { restoreReceipts, invalidEntries };
@@ -58863,7 +60241,7 @@ async function collectSecondaryCanvasRecoveryRestoreReceipts(options) {
         throw new Error(`Secondary canvas recovery restore receipt is outside recovery set root: ${receiptPath}`);
       }
       restoreReceipts.push(parseSecondaryCanvasRecoveryRestoreReceiptSummary({
-        input: JSON.parse(await (0, import_promises11.readFile)(receiptPath, "utf8")),
+        input: JSON.parse(await (0, import_promises12.readFile)(receiptPath, "utf8")),
         receiptPath,
         createdAt: entry.name,
         manifestPath: options.manifestPath,
@@ -58947,14 +60325,14 @@ function parseSecondaryCanvasReplicaManifest(input, manifestPath) {
   };
 }
 async function assertRegularFile(filePath, message2) {
-  const info = await (0, import_promises11.lstat)(filePath);
+  const info = await (0, import_promises12.lstat)(filePath);
   if (!info.isFile()) {
     throw new Error(message2);
   }
 }
 async function assertRegularFileIfPresent(filePath, message2) {
   try {
-    const info = await (0, import_promises11.lstat)(filePath);
+    const info = await (0, import_promises12.lstat)(filePath);
     if (!info.isFile()) {
       throw new Error(message2);
     }
@@ -58964,7 +60342,7 @@ async function assertRegularFileIfPresent(filePath, message2) {
   }
 }
 async function realPathIsSameOrInside(childPath, parentPath) {
-  const [childRealPath, parentRealPath] = await Promise.all([(0, import_promises11.realpath)(childPath), (0, import_promises11.realpath)(parentPath)]);
+  const [childRealPath, parentRealPath] = await Promise.all([(0, import_promises12.realpath)(childPath), (0, import_promises12.realpath)(parentPath)]);
   return isSameOrInside(childRealPath, parentRealPath);
 }
 async function realPathIsSameOrInsideIfPresent(childPath, parentPath) {
@@ -58974,7 +60352,7 @@ async function realPathIsSameOrInsideIfPresent(childPath, parentPath) {
     if (error51.code !== "ENOENT") throw error51;
   }
   try {
-    const [childParentRealPath, parentRealPath] = await Promise.all([(0, import_promises11.realpath)((0, import_node_path24.dirname)(childPath)), (0, import_promises11.realpath)(parentPath)]);
+    const [childParentRealPath, parentRealPath] = await Promise.all([(0, import_promises12.realpath)((0, import_node_path24.dirname)(childPath)), (0, import_promises12.realpath)(parentPath)]);
     return isSameOrInside(childParentRealPath, parentRealPath);
   } catch (error51) {
     if (error51.code === "ENOENT") return true;
@@ -58983,7 +60361,7 @@ async function realPathIsSameOrInsideIfPresent(childPath, parentPath) {
 }
 async function readFileCompareEvidence(filePath) {
   try {
-    const [info, bytes] = await Promise.all([(0, import_promises11.stat)(filePath), (0, import_promises11.readFile)(filePath)]);
+    const [info, bytes] = await Promise.all([(0, import_promises12.stat)(filePath), (0, import_promises12.readFile)(filePath)]);
     if (!info.isFile()) {
       return { path: filePath, exists: false };
     }
@@ -58991,7 +60369,7 @@ async function readFileCompareEvidence(filePath) {
       path: filePath,
       exists: true,
       size: info.size,
-      sha256: (0, import_node_crypto11.createHash)("sha256").update(bytes).digest("hex")
+      sha256: (0, import_node_crypto10.createHash)("sha256").update(bytes).digest("hex")
     };
   } catch (error51) {
     if (error51.code === "ENOENT") {
@@ -59028,7 +60406,7 @@ function secondaryCanvasRecoveryReadToken(report) {
       }
     }))
   };
-  const hash2 = (0, import_node_crypto11.createHash)("sha256").update(JSON.stringify(payload)).digest("hex");
+  const hash2 = (0, import_node_crypto10.createHash)("sha256").update(JSON.stringify(payload)).digest("hex");
   return `secondary-canvas-recovery:${hash2}`;
 }
 async function repairSecondaryCanvasReplicas(status, cwd) {
@@ -59060,8 +60438,8 @@ async function repairSecondaryCanvasReplicas(status, cwd) {
       String(index + 1).padStart(3, "0"),
       kind === "updates-log" ? "updates.log" : "snapshot.bin"
     );
-    await (0, import_promises11.mkdir)((0, import_node_path24.dirname)(destination), { recursive: true });
-    await (0, import_promises11.rename)(sourcePath, destination);
+    await (0, import_promises12.mkdir)((0, import_node_path24.dirname)(destination), { recursive: true });
+    await (0, import_promises12.rename)(sourcePath, destination);
     manifest.files.push({
       kind,
       sourcePath,
@@ -59074,7 +60452,7 @@ async function repairSecondaryCanvasReplicas(status, cwd) {
       path: destination
     });
   }
-  await (0, import_promises11.writeFile)((0, import_node_path24.join)(quarantineRoot, "manifest.json"), `${JSON.stringify(manifest, null, 2)}
+  await (0, import_promises12.writeFile)((0, import_node_path24.join)(quarantineRoot, "manifest.json"), `${JSON.stringify(manifest, null, 2)}
 `, "utf8");
   return repairs;
 }
@@ -59114,7 +60492,7 @@ async function pushPathCheck(checks, options) {
 }
 async function pathExists(path, kind) {
   try {
-    const info = await (0, import_promises11.stat)(path);
+    const info = await (0, import_promises12.stat)(path);
     return kind === "file" ? info.isFile() : info.isDirectory();
   } catch (error51) {
     if (error51.code === "ENOENT") return false;
@@ -59124,7 +60502,7 @@ async function pathExists(path, kind) {
 async function inspectAssetLinksRoot(assetLinksRoot) {
   let entries;
   try {
-    entries = await (0, import_promises11.readdir)(assetLinksRoot, { withFileTypes: true });
+    entries = await (0, import_promises12.readdir)(assetLinksRoot, { withFileTypes: true });
   } catch (error51) {
     if (error51.code === "ENOENT") {
       return {
@@ -59140,10 +60518,10 @@ async function inspectAssetLinksRoot(assetLinksRoot) {
   const invalid = [];
   for (const entry of entries) {
     const entryPath = (0, import_node_path24.join)(assetLinksRoot, entry.name);
-    const info = await (0, import_promises11.lstat)(entryPath);
+    const info = await (0, import_promises12.lstat)(entryPath);
     if (info.isSymbolicLink()) {
       try {
-        const target = await (0, import_promises11.stat)(entryPath);
+        const target = await (0, import_promises12.stat)(entryPath);
         if (!target.isFile()) invalid.push(`${entry.name} (symlink target is not a file)`);
       } catch (error51) {
         if (error51.code === "ENOENT") {
@@ -59193,7 +60571,7 @@ async function repairProjectWorkspace(status) {
   const repairs = [];
   for (const item of paths) {
     const existed = await pathExists(item.path, "directory");
-    await (0, import_promises11.mkdir)(item.path, { recursive: true });
+    await (0, import_promises12.mkdir)(item.path, { recursive: true });
     if (!existed) {
       repairs.push({ id: item.id, message: item.message, path: item.path });
     }
@@ -59201,7 +60579,7 @@ async function repairProjectWorkspace(status) {
   return repairs;
 }
 async function repairLocalSqliteSchema(sqlitePath) {
-  await (0, import_promises11.mkdir)((0, import_node_path24.dirname)(sqlitePath), { recursive: true });
+  await (0, import_promises12.mkdir)((0, import_node_path24.dirname)(sqlitePath), { recursive: true });
   let db;
   try {
     const { DatabaseSync } = nodeRequire()("node:sqlite");
@@ -60088,15 +61466,15 @@ storageRecoveryCommand.command("restore").description("Explicitly restore a quar
 var import_node_path26 = require("node:path");
 
 // ../../packages/remotion-effects/src/authoring.ts
-var import_node_crypto12 = require("node:crypto");
-var import_promises12 = require("node:fs/promises");
+var import_node_crypto11 = require("node:crypto");
+var import_promises13 = require("node:fs/promises");
 var import_node_path25 = require("node:path");
 async function validateEffectPackage(root) {
   const issues = [];
   const files = ["effect.json"];
   let rawManifest;
   try {
-    rawManifest = await (0, import_promises12.readFile)((0, import_node_path25.join)(root, "effect.json"), "utf8");
+    rawManifest = await (0, import_promises13.readFile)((0, import_node_path25.join)(root, "effect.json"), "utf8");
   } catch {
     return {
       ok: false,
@@ -60137,7 +61515,7 @@ async function validateEffectPackage(root) {
       continue;
     }
     try {
-      const source = await (0, import_promises12.readFile)(absolutePath, "utf8");
+      const source = await (0, import_promises13.readFile)(absolutePath, "utf8");
       files.push((0, import_node_path25.normalize)(fragment).split(import_node_path25.sep).join("/"));
       if (!source.trim()) {
         issues.push({ code: "package.shader_empty", message: "Shader source cannot be empty.", path: fragment });
@@ -60282,8 +61660,8 @@ async function scaffoldEffectPackage(options) {
   if (!/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/.test(options.id)) {
     throw new Error("Effect id must be a namespaced lower-case identifier such as agent/liquid-wipe.");
   }
-  await (0, import_promises12.mkdir)(options.target, { recursive: false });
-  await (0, import_promises12.mkdir)((0, import_node_path25.join)(options.target, "shaders"));
+  await (0, import_promises13.mkdir)(options.target, { recursive: false });
+  await (0, import_promises13.mkdir)((0, import_node_path25.join)(options.target, "shaders"));
   const inputs = scaffoldInputs(options.kind);
   const manifest = {
     schemaVersion: 1,
@@ -60313,10 +61691,10 @@ async function scaffoldEffectPackage(options) {
     ]
   };
   const files = ["README.md", "effect.json", "shaders/main.glsl"];
-  await (0, import_promises12.writeFile)((0, import_node_path25.join)(options.target, "effect.json"), `${JSON.stringify(manifest, null, 2)}
+  await (0, import_promises13.writeFile)((0, import_node_path25.join)(options.target, "effect.json"), `${JSON.stringify(manifest, null, 2)}
 `, "utf8");
-  await (0, import_promises12.writeFile)((0, import_node_path25.join)(options.target, "shaders/main.glsl"), scaffoldShader(options.kind), "utf8");
-  await (0, import_promises12.writeFile)((0, import_node_path25.join)(options.target, "README.md"), scaffoldReadme(options.id, options.kind), "utf8");
+  await (0, import_promises13.writeFile)((0, import_node_path25.join)(options.target, "shaders/main.glsl"), scaffoldShader(options.kind), "utf8");
+  await (0, import_promises13.writeFile)((0, import_node_path25.join)(options.target, "README.md"), scaffoldReadme(options.id, options.kind), "utf8");
   return { target: options.target, files };
 }
 function scaffoldInputs(kind) {
@@ -60388,7 +61766,7 @@ ${summary}`);
   }
   const files = await Promise.all(
     validation.files.map(async (path) => {
-      const content = await (0, import_promises12.readFile)((0, import_node_path25.join)(options.root, path));
+      const content = await (0, import_promises13.readFile)((0, import_node_path25.join)(options.root, path));
       return {
         path,
         sha256: sha256(content),
@@ -60405,19 +61783,19 @@ ${summary}`);
     options.root,
     `${validation.effect.id.replace("/", "-")}-${validation.effect.version}.clash-effect.json`
   );
-  await (0, import_promises12.mkdir)((0, import_node_path25.dirname)(output), { recursive: true });
-  await (0, import_promises12.writeFile)(output, `${JSON.stringify(bundle, null, 2)}
+  await (0, import_promises13.mkdir)((0, import_node_path25.dirname)(output), { recursive: true });
+  await (0, import_promises13.writeFile)(output, `${JSON.stringify(bundle, null, 2)}
 `, "utf8");
   return { output, bundle };
 }
 async function installEffectPackage(options) {
-  const bundleValue = JSON.parse(await (0, import_promises12.readFile)(options.bundle, "utf8"));
+  const bundleValue = JSON.parse(await (0, import_promises13.readFile)(options.bundle, "utf8"));
   const parsed = parseBundle(bundleValue);
   const [namespace, name] = parsed.effect.id.split("/");
   const installPath = (0, import_node_path25.join)(options.effectsRoot, namespace, name, String(parsed.effect.version));
-  await (0, import_promises12.mkdir)((0, import_node_path25.dirname)(installPath), { recursive: true });
+  await (0, import_promises13.mkdir)((0, import_node_path25.dirname)(installPath), { recursive: true });
   try {
-    await (0, import_promises12.mkdir)(installPath, { recursive: false });
+    await (0, import_promises13.mkdir)(installPath, { recursive: false });
   } catch (error51) {
     if (isRecord6(error51) && error51.code === "EEXIST") {
       throw new Error(`Effect "${parsed.effect.id}@${parsed.effect.version}" is already installed.`);
@@ -60426,8 +61804,8 @@ async function installEffectPackage(options) {
   }
   for (const file2 of parsed.files) {
     const output = (0, import_node_path25.join)(installPath, file2.path);
-    await (0, import_promises12.mkdir)((0, import_node_path25.dirname)(output), { recursive: true });
-    await (0, import_promises12.writeFile)(output, Buffer.from(file2.contentBase64, "base64"));
+    await (0, import_promises13.mkdir)((0, import_node_path25.dirname)(output), { recursive: true });
+    await (0, import_promises13.writeFile)(output, Buffer.from(file2.contentBase64, "base64"));
   }
   return { installPath, effect: parsed.effect };
 }
@@ -60462,7 +61840,7 @@ function parseBundle(value) {
   return { schemaVersion: 1, effect, files };
 }
 function sha256(content) {
-  return (0, import_node_crypto12.createHash)("sha256").update(content).digest("hex");
+  return (0, import_node_crypto11.createHash)("sha256").update(content).digest("hex");
 }
 
 // ../../packages/cli/src/commands/effects.ts
@@ -60576,7 +61954,7 @@ hostCommand.command("status").description("Show local host discovery status").op
 });
 
 // ../../packages/cli/src/commands/models.ts
-var import_promises13 = require("node:fs/promises");
+var import_promises14 = require("node:fs/promises");
 var defaultLocalAudioModelDependencies = {
   apiJson: (path, options) => apiJson(path, options),
   recordObservation: recordAgentObservation,
@@ -60687,7 +62065,7 @@ async function providerCredentialsFromOptions(options) {
   if (typeof options.serviceAccountKeyFile !== "string" || !options.serviceAccountKeyFile.trim()) {
     return void 0;
   }
-  const contents = await (0, import_promises13.readFile)(options.serviceAccountKeyFile.trim(), "utf8");
+  const contents = await (0, import_promises14.readFile)(options.serviceAccountKeyFile.trim(), "utf8");
   const parsed = JSON.parse(contents);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("Service-account key file must contain a JSON object");
@@ -60826,7 +62204,7 @@ for (const operation of ["install", "remove"]) {
 }
 
 // ../../packages/cli/src/commands/plugin.ts
-var import_promises15 = require("node:fs/promises");
+var import_promises16 = require("node:fs/promises");
 var import_node_path29 = require("node:path");
 
 // ../../packages/cli/src/lib/plugin-draft-location.ts
@@ -60850,7 +62228,7 @@ function assertDraftOutsideManagedStorage(candidate, env = process.env) {
 
 // ../../packages/cli/src/lib/plugin-build.ts
 var import_esbuild = __toESM(require_main());
-var import_promises14 = require("node:fs/promises");
+var import_promises15 = require("node:fs/promises");
 var import_node_path28 = require("node:path");
 function pluginBuildPlan(runtime) {
   if (runtime.kind !== "local") return void 0;
@@ -60890,11 +62268,11 @@ async function buildPluginEntrypoint(pluginDirInput, runtime) {
     "entrypoint"
   );
   try {
-    await (0, import_promises14.access)(sourcePath);
+    await (0, import_promises15.access)(sourcePath);
   } catch {
     throw new Error(`Plugin build source is missing: ${plan.source}`);
   }
-  await (0, import_promises14.mkdir)((0, import_node_path28.dirname)(outputPath), { recursive: true });
+  await (0, import_promises15.mkdir)((0, import_node_path28.dirname)(outputPath), { recursive: true });
   const result = await (0, import_esbuild.build)({
     entryPoints: [sourcePath],
     outfile: outputPath,
@@ -60927,7 +62305,6 @@ async function buildPluginEntrypointIfDeclared(pluginDir, runtime) {
 }
 
 // ../../packages/cli/src/commands/plugin.ts
-var REGISTRY_URL = "https://raw.githubusercontent.com/clash-community/awesome-actions/main/registry.json";
 async function requestLocalPluginHost(path, init) {
   const response = await fetch(`${getServerUrl()}${path}`, {
     ...init,
@@ -60944,16 +62321,13 @@ async function requestLocalPluginHost(path, init) {
   }
   return body;
 }
-function customActionSecretHint(runtime) {
-  return runtime === "local" ? "  \u2192 Local actions read credentials from their local runtime environment." : "  \u2192 Remote worker action secrets are managed in hosted/remote Settings.";
-}
 async function tryInstallLocalMarketplaceAction(options) {
   const request = options.request ?? fetch;
   const response = await request(
     `${options.serverUrl}/api/marketplace/actions/${encodeURIComponent(options.packageId)}/install`,
     {
       method: "POST",
-      headers: { Authorization: `Bearer ${options.apiKey}` }
+      ...options.apiKey ? { headers: { Authorization: `Bearer ${options.apiKey}` } } : {}
     }
   );
   if (response.status === 404) return null;
@@ -60984,118 +62358,102 @@ function validateDownloadedActionPackage(input) {
     }
     if (typeof contents === "string") files[path] = contents;
   }
-  if (manifestInput.apiVersion === "clash.plugin/v1") {
-    const parsedManifest = ExecutablePluginManifestSchema.parse(manifestInput);
-    const contributions = parsedManifest.contributes;
-    if (parsedManifest.id !== id2) {
-      throw new Error(
-        `Package id ${id2} does not match plugin manifest id ${parsedManifest.id}.`
-      );
-    }
-    if (parsedManifest.runtime.kind === "local" && typeof files[parsedManifest.runtime.entrypoint] !== "string") {
-      throw new Error(
-        `Plugin entrypoint ${parsedManifest.runtime.entrypoint} is missing.`
-      );
-    }
-    const cardDocuments = {};
-    for (const card of contributions.cards) {
-      const encoded = files[card.path];
-      if (typeof encoded !== "string") {
-        throw new Error(`Missing declared Card document: ${card.path}`);
-      }
-      try {
-        cardDocuments[card.path] = JSON.parse(
-          Buffer.from(encoded, "base64").toString("utf8")
-        );
-      } catch (error51) {
-        throw new Error(
-          `Invalid Card JSON at ${card.path}: ${error51.message}`
-        );
-      }
-    }
-    const providerDocuments = {};
-    for (const provider of contributions.providers) {
-      const encoded = files[provider.path];
-      if (typeof encoded !== "string") {
-        throw new Error(`Missing declared Provider document: ${provider.path}`);
-      }
-      try {
-        providerDocuments[provider.path] = JSON.parse(
-          Buffer.from(encoded, "base64").toString("utf8")
-        );
-      } catch (error51) {
-        throw new Error(
-          `Invalid Provider JSON at ${provider.path}: ${error51.message}`
-        );
-      }
-    }
-    const modelBindingDocuments = {};
-    for (const binding of contributions.modelBindings) {
-      const encoded = files[binding.path];
-      if (typeof encoded !== "string") {
-        throw new Error(
-          `Missing declared model Provider binding: ${binding.path}`
-        );
-      }
-      try {
-        modelBindingDocuments[binding.path] = JSON.parse(
-          Buffer.from(encoded, "base64").toString("utf8")
-        );
-      } catch (error51) {
-        throw new Error(
-          `Invalid model Provider binding JSON at ${binding.path}: ${error51.message}`
-        );
-      }
-    }
-    const contractTestDocuments = {};
-    for (const path of parsedManifest.contractTests) {
-      const encoded = files[path];
-      if (typeof encoded !== "string") {
-        throw new Error(`Missing declared contract test: ${path}`);
-      }
-      try {
-        contractTestDocuments[path] = JSON.parse(
-          Buffer.from(encoded, "base64").toString("utf8")
-        );
-      } catch (error51) {
-        throw new Error(
-          `Invalid contract test JSON at ${path}: ${error51.message}`
-        );
-      }
-    }
-    const validated = validateExecutablePluginPackage(
-      parsedManifest,
-      cardDocuments,
-      contractTestDocuments,
-      {
-        providers: providerDocuments,
-        modelBindings: modelBindingDocuments
-      }
-    );
-    return {
-      id: id2,
-      format: "executable-plugin",
-      manifest: validated.manifest,
-      files
-    };
-  }
-  const legacy = CustomActionDefinitionSchema.parse(manifestInput);
-  if (legacy.id !== id2) {
+  if (manifestInput.apiVersion !== "clash.plugin/v1") {
     throw new Error(
-      `Package id ${id2} does not match action manifest id ${legacy.id}.`
+      "Unsupported package protocol; expected a clash.plugin/v1 executable plugin."
     );
   }
-  const entrypoint = typeof manifestInput.entrypoint === "string" ? manifestInput.entrypoint : "handler.py";
-  if (!isSafePluginRelativePath(entrypoint)) {
-    throw new Error(`Refusing suspicious action entrypoint: ${entrypoint}`);
+  const parsedManifest = ExecutablePluginManifestSchema.parse(manifestInput);
+  const contributions = parsedManifest.contributes;
+  if (parsedManifest.id !== id2) {
+    throw new Error(
+      `Package id ${id2} does not match plugin manifest id ${parsedManifest.id}.`
+    );
   }
-  if (legacy.runtime === "local" && typeof files[entrypoint] !== "string") {
-    throw new Error(`Action entrypoint ${entrypoint} is missing.`);
+  if (parsedManifest.runtime.kind === "local" && typeof files[parsedManifest.runtime.entrypoint] !== "string") {
+    throw new Error(
+      `Plugin entrypoint ${parsedManifest.runtime.entrypoint} is missing.`
+    );
   }
+  const cardDocuments = {};
+  for (const card of contributions.cards) {
+    const encoded = files[card.path];
+    if (typeof encoded !== "string") {
+      throw new Error(`Missing declared Card document: ${card.path}`);
+    }
+    try {
+      cardDocuments[card.path] = JSON.parse(
+        Buffer.from(encoded, "base64").toString("utf8")
+      );
+    } catch (error51) {
+      throw new Error(
+        `Invalid Card JSON at ${card.path}: ${error51.message}`
+      );
+    }
+  }
+  const providerDocuments = {};
+  for (const provider of contributions.providers) {
+    const encoded = files[provider.path];
+    if (typeof encoded !== "string") {
+      throw new Error(`Missing declared Provider document: ${provider.path}`);
+    }
+    try {
+      providerDocuments[provider.path] = JSON.parse(
+        Buffer.from(encoded, "base64").toString("utf8")
+      );
+    } catch (error51) {
+      throw new Error(
+        `Invalid Provider JSON at ${provider.path}: ${error51.message}`
+      );
+    }
+  }
+  const modelBindingDocuments = {};
+  for (const binding of contributions.modelBindings) {
+    const encoded = files[binding.path];
+    if (typeof encoded !== "string") {
+      throw new Error(
+        `Missing declared model Provider binding: ${binding.path}`
+      );
+    }
+    try {
+      modelBindingDocuments[binding.path] = JSON.parse(
+        Buffer.from(encoded, "base64").toString("utf8")
+      );
+    } catch (error51) {
+      throw new Error(
+        `Invalid model Provider binding JSON at ${binding.path}: ${error51.message}`
+      );
+    }
+  }
+  const contractTestDocuments = {};
+  for (const path of parsedManifest.contractTests) {
+    const encoded = files[path];
+    if (typeof encoded !== "string") {
+      throw new Error(`Missing declared contract test: ${path}`);
+    }
+    try {
+      contractTestDocuments[path] = JSON.parse(
+        Buffer.from(encoded, "base64").toString("utf8")
+      );
+    } catch (error51) {
+      throw new Error(
+        `Invalid contract test JSON at ${path}: ${error51.message}`
+      );
+    }
+  }
+  const validated = validateExecutablePluginPackage(
+    parsedManifest,
+    cardDocuments,
+    contractTestDocuments,
+    {
+      providers: providerDocuments,
+      modelBindings: modelBindingDocuments
+    }
+  );
   return {
     id: id2,
-    format: "legacy-custom-action",
-    manifest: { ...manifestInput, ...legacy, entrypoint },
+    format: "executable-plugin",
+    manifest: validated.manifest,
     files
   };
 }
@@ -61106,9 +62464,9 @@ async function checkoutExecutablePluginDraft(options) {
   if (pkg.id !== id2) {
     throw new Error(`Host returned plugin ${pkg.id} for ${id2}.`);
   }
-  await (0, import_promises15.mkdir)((0, import_node_path29.dirname)(targetDir), { recursive: true });
+  await (0, import_promises16.mkdir)((0, import_node_path29.dirname)(targetDir), { recursive: true });
   try {
-    await (0, import_promises15.mkdir)(targetDir);
+    await (0, import_promises16.mkdir)(targetDir);
   } catch (error51) {
     if (error51.code === "EEXIST") {
       throw new Error(`Plugin draft directory already exists: ${targetDir}`);
@@ -61116,19 +62474,19 @@ async function checkoutExecutablePluginDraft(options) {
     throw error51;
   }
   try {
-    await (0, import_promises15.writeFile)(
+    await (0, import_promises16.writeFile)(
       (0, import_node_path29.join)(targetDir, "manifest.json"),
       `${JSON.stringify(pkg.manifest, null, 2)}
 `
     );
     for (const [relativePath2, encoded] of Object.entries(pkg.files)) {
       const destination = (0, import_node_path29.join)(targetDir, relativePath2);
-      await (0, import_promises15.mkdir)((0, import_node_path29.dirname)(destination), { recursive: true });
-      await (0, import_promises15.writeFile)(destination, Buffer.from(encoded, "base64"));
+      await (0, import_promises16.mkdir)((0, import_node_path29.dirname)(destination), { recursive: true });
+      await (0, import_promises16.writeFile)(destination, Buffer.from(encoded, "base64"));
     }
     return { pluginDir: targetDir, id: id2, version: pkg.version };
   } catch (error51) {
-    await (0, import_promises15.rm)(targetDir, { recursive: true, force: true });
+    await (0, import_promises16.rm)(targetDir, { recursive: true, force: true });
     throw error51;
   }
 }
@@ -61257,9 +62615,9 @@ async function scaffoldExecutablePluginDraft(options) {
     { [cardPath]: card },
     { [contractTestPath]: contractTest }
   );
-  await (0, import_promises15.mkdir)((0, import_node_path29.dirname)(pluginDir), { recursive: true });
+  await (0, import_promises16.mkdir)((0, import_node_path29.dirname)(pluginDir), { recursive: true });
   try {
-    await (0, import_promises15.mkdir)(pluginDir);
+    await (0, import_promises16.mkdir)(pluginDir);
   } catch (error51) {
     if (error51.code === "EEXIST") {
       throw new Error(`Plugin draft directory already exists: ${pluginDir}`);
@@ -61267,19 +62625,19 @@ async function scaffoldExecutablePluginDraft(options) {
     throw error51;
   }
   try {
-    await (0, import_promises15.mkdir)((0, import_node_path29.join)(pluginDir, "cards"));
-    await (0, import_promises15.mkdir)((0, import_node_path29.join)(pluginDir, "contract-tests"));
-    await (0, import_promises15.writeFile)(
+    await (0, import_promises16.mkdir)((0, import_node_path29.join)(pluginDir, "cards"));
+    await (0, import_promises16.mkdir)((0, import_node_path29.join)(pluginDir, "contract-tests"));
+    await (0, import_promises16.writeFile)(
       (0, import_node_path29.join)(pluginDir, "manifest.json"),
       jsonDocument(manifest)
     );
-    await (0, import_promises15.writeFile)((0, import_node_path29.join)(pluginDir, cardPath), jsonDocument(card));
-    await (0, import_promises15.writeFile)(
+    await (0, import_promises16.writeFile)((0, import_node_path29.join)(pluginDir, cardPath), jsonDocument(card));
+    await (0, import_promises16.writeFile)(
       (0, import_node_path29.join)(pluginDir, contractTestPath),
       jsonDocument(contractTest)
     );
     if (language === "python") {
-      await (0, import_promises15.writeFile)(
+      await (0, import_promises16.writeFile)(
         (0, import_node_path29.join)(pluginDir, "handler.py"),
         [
           "import json",
@@ -61304,7 +62662,7 @@ async function scaffoldExecutablePluginDraft(options) {
           '            "protocol": "clash.plugin.result/v1",',
           '            "invocationId": invocation["invocationId"],',
           '            "status": "failed",',
-          '            "error": {"code": "UNKNOWN_EXPORT", "message": "Unknown export", "retryable": False},',
+          '            "error": {"code": "invalid_request", "message": "Unknown export", "retryable": False, "requestState": "rejected"},',
           "        }",
           '    sys.stdout.write(json.dumps(result) + "\\n")',
           "    sys.stdout.flush()",
@@ -61312,8 +62670,8 @@ async function scaffoldExecutablePluginDraft(options) {
         ].join("\n")
       );
     } else {
-      await (0, import_promises15.mkdir)((0, import_node_path29.join)(pluginDir, "src"), { recursive: true });
-      await (0, import_promises15.writeFile)(
+      await (0, import_promises16.mkdir)((0, import_node_path29.join)(pluginDir, "src"), { recursive: true });
+      await (0, import_promises16.writeFile)(
         (0, import_node_path29.join)(pluginDir, "src", "stdio.ts"),
         [
           'import { createInterface } from "node:readline";',
@@ -61337,7 +62695,7 @@ async function scaffoldExecutablePluginDraft(options) {
           '        protocol: "clash.plugin.result/v1",',
           "        invocationId: invocation.invocationId,",
           '        status: "failed",',
-          '        error: { code: "UNKNOWN_EXPORT", message: "Unknown export", retryable: false },',
+          '        error: { code: "invalid_request", message: "Unknown export", retryable: false, requestState: "rejected" },',
           "      };",
           "  process.stdout.write(`${JSON.stringify(result)}\\n`);",
           "});",
@@ -61345,7 +62703,7 @@ async function scaffoldExecutablePluginDraft(options) {
         ].join("\n")
       );
     }
-    await (0, import_promises15.writeFile)(
+    await (0, import_promises16.writeFile)(
       (0, import_node_path29.join)(pluginDir, "AGENTS.md"),
       [
         "# Executable Plugin Authoring",
@@ -61372,19 +62730,19 @@ async function scaffoldExecutablePluginDraft(options) {
       contractTests: validated.contractTests
     };
   } catch (error51) {
-    await (0, import_promises15.rm)(pluginDir, { recursive: true, force: true });
+    await (0, import_promises16.rm)(pluginDir, { recursive: true, force: true });
     throw error51;
   }
 }
 async function collectPluginDraftFiles(root, directory, output) {
-  for (const entry of await (0, import_promises15.readdir)(directory, { withFileTypes: true })) {
+  for (const entry of await (0, import_promises16.readdir)(directory, { withFileTypes: true })) {
     if (entry.name === "node_modules") continue;
     const absolutePath = (0, import_node_path29.join)(directory, entry.name);
     const relativePath2 = absolutePath.slice(root.length + 1).split("\\").join("/");
     if (!isSafePluginRelativePath(relativePath2)) {
       throw new Error(`Refusing suspicious draft path: ${relativePath2}`);
     }
-    const metadata = await (0, import_promises15.lstat)(absolutePath);
+    const metadata = await (0, import_promises16.lstat)(absolutePath);
     if (metadata.isSymbolicLink()) {
       throw new Error(
         `Executable plugin drafts cannot contain symbolic links: ${relativePath2}`
@@ -61395,14 +62753,14 @@ async function collectPluginDraftFiles(root, directory, output) {
       continue;
     }
     if (!metadata.isFile() || relativePath2 === "manifest.json") continue;
-    output[relativePath2] = (await (0, import_promises15.readFile)(absolutePath)).toString(
+    output[relativePath2] = (await (0, import_promises16.readFile)(absolutePath)).toString(
       "base64"
     );
   }
 }
 async function packageExecutablePluginDraft(pluginDir) {
   const manifest = JSON.parse(
-    await (0, import_promises15.readFile)((0, import_node_path29.join)(pluginDir, "manifest.json"), "utf8")
+    await (0, import_promises16.readFile)((0, import_node_path29.join)(pluginDir, "manifest.json"), "utf8")
   );
   if (typeof manifest.id !== "string") {
     throw new Error("Executable plugin draft manifest id is required.");
@@ -61435,7 +62793,7 @@ async function buildDeclaredPluginEntrypoint(pluginDir) {
   let runtime;
   try {
     const manifest = JSON.parse(
-      await (0, import_promises15.readFile)((0, import_node_path29.join)(pluginDir, "manifest.json"), "utf8")
+      await (0, import_promises16.readFile)((0, import_node_path29.join)(pluginDir, "manifest.json"), "utf8")
     );
     runtime = manifest.runtime ?? manifest.spec?.runtime;
   } catch {
@@ -61461,18 +62819,6 @@ async function activateExecutablePluginDraft(options) {
     ...activated,
     contractTests: activated.contractTests ?? { passed: 0 }
   };
-}
-async function activateDownloadedActionPackage(input, _legacyRoot) {
-  const pkg = validateDownloadedActionPackage(input);
-  if (pkg.format !== "executable-plugin") {
-    throw new Error(
-      "Legacy local action packages are no longer supported by local-api."
-    );
-  }
-  return requestLocalPluginHost(
-    "/api/v1/local/plugins/activate",
-    { method: "POST", body: JSON.stringify(pkg) }
-  );
 }
 async function rollbackDownloadedActionPackage(id2) {
   return requestLocalPluginHost(
@@ -61612,178 +62958,37 @@ pluginCommand.command("activate").description(
     process.exit(1);
   }
 });
-pluginCommand.command("install").description(
-  "Install an action. Two modes:\n  clash plugin install <id>                                  activate through the local host\n  clash plugin install --project <id> --repo owner/repo      register a project-level worker action"
-).argument("[id]", "Action id to fetch from the server registry").option(
-  "--project <id>",
-  "Project ID (for --repo / --url Loro register flow)"
-).option(
-  "--repo <owner/repo>",
-  "GitHub repo (e.g. user/style-transfer-action)"
-).option(
-  "--url <workerUrl>",
-  "Direct CF Worker URL for author-deployed actions"
-).option("--json", "Output as JSON").action(async (id2, options) => {
-  if (id2 && !options.repo && !options.url) {
-    await installFromRegistry(id2, options);
-    return;
-  }
-  if ((options.repo || options.url) && !options.project) {
-    console.error("--project <id> is required when using --repo or --url");
-    process.exit(1);
-  }
-  if (!id2 && !options.repo && !options.url) {
-    console.error(
-      "Provide an action id (e.g. `clash plugin install grid-split`)\nor --repo / --url for the project-level register flow."
-    );
-    process.exit(1);
-  }
-  let manifest;
-  if (options.url) {
-    try {
-      const resp = await fetch(options.url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "manifest" })
-      });
-      if (resp.ok) {
-        manifest = await resp.json();
-      }
-    } catch {
-    }
-    if (!manifest) {
-      console.error(
-        "Could not fetch manifest from worker URL. Provide --repo to fetch action.json from GitHub."
-      );
-      process.exit(1);
-    }
-    manifest.runtime = "worker";
-    manifest.workerUrl = options.url;
-  } else if (options.repo) {
-    const [owner, repo] = options.repo.includes("/") ? options.repo.split("/") : [null, null];
-    if (!owner || !repo) {
-      console.error("Invalid repo format. Use: owner/repo");
-      process.exit(1);
-    }
-    const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main/action.json`;
-    const resp = await fetch(rawUrl);
-    if (!resp.ok) {
-      console.error(
-        `Failed to fetch action.json from ${rawUrl} (${resp.status})`
-      );
-      process.exit(1);
-    }
-    manifest = await resp.json();
-  } else {
-    console.error("Provide --repo or --url");
-    process.exit(1);
-  }
-  const parsedManifest = CustomActionDefinitionSchema.safeParse(manifest);
-  if (!parsedManifest.success) {
-    console.error(`Invalid action manifest: ${parsedManifest.error.message}`);
-    process.exit(1);
-  }
-  manifest = parsedManifest.data;
-  const definition = {
-    id: manifest.id,
-    name: manifest.name,
-    description: manifest.description || "",
-    parameters: manifest.parameters || [],
-    outputType: manifest.outputType || "image",
-    icon: manifest.icon || "",
-    color: manifest.color || "",
-    runtime: manifest.runtime || "worker",
-    version: manifest.version || "0.0.0",
-    author: manifest.author || "",
-    repository: manifest.repository || options.repo || "",
-    workerUrl: manifest.workerUrl || options.url || "",
-    secrets: manifest.secrets || [],
-    model: manifest.model,
-    pluginBinding: manifest.pluginBinding,
-    tags: manifest.tags || []
-  };
-  const registered = await sendProjectCommand(options.project, {
-    action: "register_custom_action",
-    actionId: manifest.id,
-    definition
-  });
-  if (registered.error) throw new Error(registered.error);
-  if (isJsonMode(options)) {
-    printJson({
-      installed: true,
-      actionId: manifest.id,
-      runtime: manifest.runtime
-    });
-  } else {
-    console.log(`Installed action: ${manifest.name} (${manifest.id})`);
-    console.log(`  Runtime:  ${manifest.runtime || "worker"}`);
-    console.log(`  Output:   ${manifest.outputType}`);
-    if (manifest.workerUrl) console.log(`  Worker:   ${manifest.workerUrl}`);
-    if (manifest.secrets?.length) {
-      console.log(
-        `  Requires: ${manifest.secrets.map((s) => s.id).join(", ")}`
-      );
-      console.log(customActionSecretHint(manifest.runtime));
-    }
-  }
+pluginCommand.command("install").description("Install an executable plugin from the local host marketplace").argument("<id>", "Marketplace plugin package id").option("--json", "Output as JSON").action(async (id2, options) => {
+  await installFromMarketplace(id2, options);
 });
-pluginCommand.command("list").description(
-  "List actions. Without --local, lists actions registered in a project (requires --project). With --local, lists packages installed under $CLASH_HOME/actions/."
-).option("--project <id>", "Project ID (omit when using --local)").option(
+pluginCommand.command("list").description("List executable plugins active in the local host").option(
   "--local",
-  "List packages installed locally under $CLASH_HOME/actions/"
+  "Compatibility flag; plugin state is always owned by the local host"
 ).option("--json", "Output as JSON").action(async (options) => {
-  if (options.local) {
-    const installed = await requestLocalPluginHost("/api/v1/local/plugins");
-    if (isJsonMode(options)) {
-      printJson(installed);
-    } else if (installed.length === 0) {
-      console.log("No local plugins are active in the local host.");
-      console.log("Install one with: clash plugin install <id>");
-    } else {
-      for (const a of installed) {
-        const version2 = a.version ? `@${a.version}` : "";
-        const drift = a.drifted ? "  \u26A0 differs from its activation receipt" : "";
-        console.log(
-          `  \u{1F5A5}  ${(a.name ?? a.id).padEnd(25)} ${a.id}${version2}${drift}`
-        );
-      }
-      if (installed.some((a) => a.drifted)) {
-        console.log(
-          "\nReactivate a drifted plugin before editing it: clash plugin activate <dir>"
-        );
-      }
-      console.log(`
-${installed.length} local plugin(s)`);
-    }
-    return;
-  }
-  if (!options.project) {
-    console.error(
-      "--project <id> is required (or pass --local to list local installs)"
-    );
-    process.exit(1);
-  }
-  const listed = await sendProjectCommand(options.project, { action: "list_custom_actions" });
-  if (listed.error) throw new Error(listed.error);
-  const actions = Object.values(listed.actions ?? {});
+  const installed = await requestLocalPluginHost("/api/v1/local/plugins");
   if (isJsonMode(options)) {
-    printJson(actions);
-  } else if (actions.length === 0) {
-    console.log(
-      "No actions installed. Use `clash plugin install` to add one."
-    );
+    printJson(installed);
+  } else if (installed.length === 0) {
+    console.log("No executable plugins are active in the local host.");
+    console.log("Install one with: clash plugin install <id>");
   } else {
-    for (const a of actions) {
-      const action = a;
-      const runtime = action.runtime === "worker" ? "\u2601\uFE0F" : "\u{1F5A5}";
-      console.log(`  ${runtime} ${action.name?.padEnd(25)} ${action.id}`);
+    for (const plugin of installed) {
+      const version2 = plugin.version ? `@${plugin.version}` : "";
+      const drift = plugin.drifted ? "  \u26A0 differs from its activation receipt" : "";
+      console.log(
+        `  \u{1F5A5}  ${(plugin.name ?? plugin.id).padEnd(25)} ${plugin.id}${version2}${drift}`
+      );
+    }
+    if (installed.some((plugin) => plugin.drifted)) {
+      console.log(
+        "\nReactivate a drifted plugin before editing it: clash plugin activate <dir>"
+      );
     }
     console.log(`
-${actions.length} action(s)`);
+${installed.length} local plugin(s)`);
   }
 });
-pluginCommand.command("uninstall").description("Remove a locally-installed plugin package from the local host").argument("<id>", "Action id").option("-y, --yes", "Skip confirmation prompt").option("--json", "Output as JSON").action(async (id2, options) => {
+pluginCommand.command("uninstall").description("Remove a locally-installed plugin package from the local host").argument("<id>", "Plugin id").option("-y, --yes", "Skip confirmation prompt").option("--json", "Output as JSON").action(async (id2, options) => {
   if (!options.yes) {
     const ok = await confirm(`Remove ${id2} from the local host? [y/N] `);
     if (!ok) {
@@ -61809,7 +63014,7 @@ pluginCommand.command("uninstall").description("Remove a locally-installed plugi
     );
   }
 });
-pluginCommand.command("rollback").description("Restore the newest retained local action/plugin version").argument("<id>", "Action or plugin id").option("-y, --yes", "Skip confirmation prompt").option("--json", "Output as JSON").action(async (id2, options) => {
+pluginCommand.command("rollback").description("Restore the newest retained local plugin version").argument("<id>", "Plugin id").option("-y, --yes", "Skip confirmation prompt").option("--json", "Output as JSON").action(async (id2, options) => {
   if (!options.yes) {
     const ok = await confirm(
       `Roll back ${id2} to its newest retained version? [y/N] `
@@ -61828,157 +63033,29 @@ pluginCommand.command("rollback").description("Restore the newest retained local
     process.exit(1);
   }
 });
-pluginCommand.command("remove").description("Remove an action from a project").requiredOption("--project <id>", "Project ID").requiredOption("--action <id>", "Action ID to remove").option("--json", "Output as JSON").action(async (options) => {
-  const removed = await sendProjectCommand(options.project, {
-    action: "unregister_custom_action",
-    actionId: options.action
-  });
-  if (removed.error) throw new Error(removed.error);
-  if (isJsonMode(options)) {
-    printJson({
-      removed: removed.removed === true,
-      actionId: options.action
-    });
-  } else {
-    console.log(`Removed action: ${options.action}`);
-  }
-});
-pluginCommand.command("search").description("Search community actions from the awesome-list registry").argument("<query>", "Search query").option("--tag <tag>", "Filter by tag").option("--json", "Output as JSON").action(async (query, options) => {
-  try {
-    const resp = await fetch(REGISTRY_URL);
-    if (!resp.ok) {
-      console.error(
-        `Failed to fetch registry (${resp.status}). Check your network.`
-      );
-      process.exit(1);
-    }
-    const registry2 = await resp.json();
-    let results = registry2.actions;
-    if (options.tag) {
-      results = results.filter(
-        (a) => a.tags?.some((t) => t.toLowerCase() === options.tag.toLowerCase())
-      );
-    }
-    const q = query.toLowerCase();
-    results = results.filter(
-      (a) => a.name.toLowerCase().includes(q) || a.id.toLowerCase().includes(q) || (a.description || "").toLowerCase().includes(q) || (a.tags || []).some((t) => t.toLowerCase().includes(q))
-    );
-    if (isJsonMode(options)) {
-      printJson(results);
-    } else if (results.length === 0) {
-      console.log(`No actions found for "${query}".`);
-    } else {
-      for (const a of results) {
-        const runtime = a.runtime === "worker" ? "\u2601\uFE0F" : "\u{1F5A5}";
-        console.log(`  ${runtime} ${a.name}`);
-        console.log(
-          `    ${a.id} \xB7 ${a.outputType || "image"} \xB7 ${a.author || "unknown"}`
-        );
-        if (a.description) console.log(`    ${a.description}`);
-        if (a.repository) console.log(`    \u2192 ${a.repository}`);
-        console.log();
-      }
-      console.log(`${results.length} result(s)`);
-    }
-  } catch (e) {
-    console.error("Failed to search registry:", e);
-    process.exit(1);
-  }
-});
-async function installFromRegistry(id2, options) {
-  const apiKey = requireApiKey();
+async function installFromMarketplace(id2, options) {
   const serverUrl = getServerUrl();
-  const url3 = `${serverUrl}/api/v1/actions/${encodeURIComponent(id2)}/package`;
-  let resp;
-  try {
-    resp = await fetch(url3, {
-      headers: { Authorization: `Bearer ${apiKey}` }
-    });
-  } catch (e) {
+  const marketplaceInstall = await tryInstallLocalMarketplaceAction({
+    packageId: id2,
+    serverUrl
+  }).catch((error51) => {
     console.error(
-      `Failed to reach server ${serverUrl}: ${e.message}`
+      `Failed to install local marketplace plugin: ${error51.message}`
     );
     process.exit(1);
-  }
-  if (resp.status === 404) {
-    const marketplaceInstall = await tryInstallLocalMarketplaceAction({
-      packageId: id2,
-      serverUrl,
-      apiKey
-    }).catch((error51) => {
-      console.error(
-        `Failed to install local marketplace action: ${error51.message}`
-      );
-      process.exit(1);
-    });
-    if (marketplaceInstall) {
-      if (isJsonMode(options)) {
-        printJson(marketplaceInstall);
-      } else {
-        const verb = marketplaceInstall.installed ? "Installed" : "Already installed";
-        console.log(
-          `${verb} ${marketplaceInstall.actionId} from ${marketplaceInstall.packageId}.`
-        );
-        console.log(`Path: ${marketplaceInstall.targetDir}`);
-      }
-      return;
-    }
-    console.error(`Unknown action: ${id2}`);
+  });
+  if (!marketplaceInstall) {
+    console.error(`Unknown marketplace plugin: ${id2}`);
     process.exit(1);
-  }
-  if (!resp.ok) {
-    console.error(
-      `Server returned ${resp.status} ${resp.statusText} for ${url3}`
-    );
-    const body = await resp.text().catch(() => "");
-    if (body) console.error(body);
-    process.exit(1);
-  }
-  let pkg;
-  try {
-    pkg = validateDownloadedActionPackage(await resp.json());
-  } catch (error51) {
-    console.error(`Invalid action package: ${error51.message}`);
-    process.exit(1);
-  }
-  if (pkg.id !== id2) {
-    console.error(
-      `Server returned a package with mismatched id (${pkg.id} != ${id2})`
-    );
-    process.exit(1);
-  }
-  const newVersion = pkg.manifest.version ?? "0.0.0";
-  let activated;
-  try {
-    activated = await activateDownloadedActionPackage(pkg);
-  } catch (error51) {
-    if (/version .* is already active/i.test(error51.message)) {
-      if (isJsonMode(options)) {
-        printJson({
-          installed: false,
-          id: id2,
-          version: newVersion,
-          reason: "already-installed"
-        });
-      } else {
-        console.log(`${id2}@${newVersion} is already active.`);
-      }
-      return;
-    }
-    throw error51;
   }
   if (isJsonMode(options)) {
-    printJson({
-      installed: true,
-      id: id2,
-      version: newVersion,
-      path: activated.targetDir,
-      files: Object.keys(pkg.files),
-      rollbackPath: activated.rollbackDir
-    });
+    printJson(marketplaceInstall);
   } else {
-    console.log(`Installed ${id2}@${newVersion} to ${activated.targetDir}.`);
-    console.log("The local host will hot-reload it.");
+    const verb = marketplaceInstall.installed ? "Installed" : "Already installed";
+    console.log(
+      `${verb} ${marketplaceInstall.actionId} from ${marketplaceInstall.packageId}.`
+    );
+    console.log(`Path: ${marketplaceInstall.targetDir}`);
   }
 }
 async function confirm(question) {
@@ -62052,10 +63129,19 @@ function parseTimelineFileForApply(raw) {
   }
   const result = timelineDslFromYaml(raw);
   if (!result.ok) return result;
+  const persisted = normalizeProjectTimelinePersistenceState(result.dsl);
+  if (!persisted.ok) {
+    return {
+      ok: false,
+      error: `${persisted.error.replace(/ persisted$/, " applied")}; import the media first and set assetId`
+    };
+  }
   return {
     ok: true,
-    dsl: result.dsl,
-    sources: sourceNodeIdsFromResolved(result.dsl)
+    dsl: persisted.state,
+    sources: sourceNodeIdsFromResolved(
+      persisted.state
+    )
   };
 }
 function timelineHash(dsl) {
@@ -62151,20 +63237,20 @@ function normalizeItemForYaml(item, trackId, itemIndex) {
 }
 
 // ../../packages/cli/src/commands/timeline.ts
-var import_node_crypto15 = require("node:crypto");
+var import_node_crypto14 = require("node:crypto");
 var import_node_fs10 = require("node:fs");
 var import_node_path32 = require("node:path");
 
 // ../../packages/cli/src/lib/timeline-transcript-projection.ts
-var import_node_crypto14 = require("node:crypto");
+var import_node_crypto13 = require("node:crypto");
 var import_node_fs9 = require("node:fs");
-var import_promises16 = require("node:fs/promises");
+var import_promises17 = require("node:fs/promises");
 var import_node_path31 = require("node:path");
 
 // ../../packages/cli/src/lib/attach-transcript.ts
-var import_node_crypto13 = require("node:crypto");
+var import_node_crypto12 = require("node:crypto");
 function transcriptGridHash(transcript) {
-  return `sha256:${(0, import_node_crypto13.createHash)("sha256").update(transcriptContentHashInput(transcript), "utf8").digest("hex")}`;
+  return `sha256:${(0, import_node_crypto12.createHash)("sha256").update(transcriptContentHashInput(transcript), "utf8").digest("hex")}`;
 }
 
 // ../../packages/cli/src/lib/timeline-transcript-projection.ts
@@ -62248,7 +63334,7 @@ function transcriptFromPersistedTextLineage(input) {
 async function transcriptFromAssetMetadata(input) {
   let manifestRaw;
   try {
-    manifestRaw = await (0, import_promises16.readFile)((0, import_node_path31.join)(input.cwd, "assets", "manifest.json"), "utf8");
+    manifestRaw = await (0, import_promises17.readFile)((0, import_node_path31.join)(input.cwd, "assets", "manifest.json"), "utf8");
   } catch {
     return null;
   }
@@ -62328,7 +63414,7 @@ async function writeTimelineTranscriptProjection(input) {
           words: transcript.words,
           segments: []
         });
-        const assetHash = (0, import_node_crypto14.createHash)("sha256").update(item.assetId).digest("hex").slice(0, 8);
+        const assetHash = (0, import_node_crypto13.createHash)("sha256").update(item.assetId).digest("hex").slice(0, 8);
         const sourceFilePath = (0, import_node_path31.join)(
           sourceDirectory,
           `${fileSlug(item.assetId)}-${assetHash}.json`
@@ -62339,7 +63425,7 @@ async function writeTimelineTranscriptProjection(input) {
         (0, import_node_fs9.writeFileSync)(sourceFilePath, sourceContents, "utf8");
         source = {
           sourcePath: projectRelativePath(input.cwd, sourceFilePath),
-          sourceHash: `sha256:${(0, import_node_crypto14.createHash)("sha256").update(sourceContents).digest("hex")}`,
+          sourceHash: `sha256:${(0, import_node_crypto13.createHash)("sha256").update(sourceContents).digest("hex")}`,
           words: projectAsrTimedTranscriptWords(timedTranscript, fps)
         };
         transcriptFiles.set(item.assetId, source);
@@ -62574,7 +63660,7 @@ timelineCommand.command("attach").description(TIMELINE_OPERATION_CATALOG.agent["
   const context = await resolveCanvasProjectContext(options);
   const timelineId = String(options.timeline);
   const observedVersion = await requireTimelineObservation(context, timelineId);
-  const actionNodeId = options.node?.trim() || (0, import_node_crypto15.randomUUID)().slice(0, 8);
+  const actionNodeId = options.node?.trim() || (0, import_node_crypto14.randomUUID)().slice(0, 8);
   const result = await sendProjectCommand(context.projectId, {
     action: "attach_timeline",
     timelineId,
@@ -62621,8 +63707,8 @@ timelineCommand.command("copy").description(TIMELINE_OPERATION_CATALOG.agent["ti
   const context = await resolveCanvasProjectContext(options);
   const timelineId = String(options.timeline);
   const observedVersion = await requireTimelineObservation(context, timelineId);
-  const newTimelineId = options.newTimeline?.trim() || (0, import_node_crypto15.randomUUID)().slice(0, 8);
-  const newActionNodeId = options.newNode?.trim() || (0, import_node_crypto15.randomUUID)().slice(0, 8);
+  const newTimelineId = options.newTimeline?.trim() || (0, import_node_crypto14.randomUUID)().slice(0, 8);
+  const newActionNodeId = options.newNode?.trim() || (0, import_node_crypto14.randomUUID)().slice(0, 8);
   const result = await sendProjectCommand(context.projectId, {
     action: "copy_timeline_action",
     sourceTimelineId: timelineId,
@@ -62646,12 +63732,12 @@ timelineCommand.command("copy").description(TIMELINE_OPERATION_CATALOG.agent["ti
   if (isJsonMode(options)) printJson(result.timeline);
   else console.log(`Copied Timeline ${timelineId} to ${newTimelineId} on Canvas ${options.canvas}`);
 });
-timelineCommand.command("render").description(TIMELINE_OPERATION_CATALOG.agent["timeline.render"].description).requiredOption("--timeline <id>", "Timeline ID").option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)").option("--no-wait", "Return the durable render-node receipt without waiting for completion").option("--timeout-ms <milliseconds>", "Maximum completion wait in milliseconds", "600000").option("--json", "Output the render receipt as JSON").action(async (options) => {
+timelineCommand.command("render").description(TIMELINE_OPERATION_CATALOG.agent["timeline.render"].description).requiredOption("--timeline <id>", "Timeline ID").option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)").option("--no-wait", "Return the durable render-node receipt without waiting for completion").option("--timeout-ms <milliseconds>", "Maximum completion wait in milliseconds", "1800000").option("--json", "Output the render receipt as JSON").action(async (options) => {
   const context = await resolveCanvasProjectContext(options);
   const timelineId = String(options.timeline);
   const timeoutMs = Number(options.timeoutMs);
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 1e3 || timeoutMs > 9e5) {
-    throw new Error("--timeout-ms must be an integer between 1000 and 900000");
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1e3) {
+    throw new Error("--timeout-ms must be an integer of at least 1000");
   }
   const actor = await resolveCanvasActor();
   const submitted = await sendProjectCommand(context.projectId, {
@@ -62684,7 +63770,15 @@ timelineCommand.command("render").description(TIMELINE_OPERATION_CATALOG.agent["
       if (typeof data.assetId !== "string" || !data.assetId.trim()) {
         receipt = { ...base, completed: false, status: "failed", error: "Timeline render completed without an immutable Asset id" };
       } else {
-        receipt = { ...base, completed: true, status: "completed", asset: await fetchAssetRecord({ assetId: data.assetId.trim() }) };
+        receipt = {
+          ...base,
+          completed: true,
+          status: "completed",
+          asset: await fetchAssetRecord({
+            assetId: data.assetId.trim(),
+            projectId: context.projectId
+          })
+        };
       }
       break;
     }
@@ -62869,7 +63963,7 @@ var import_node_fs11 = require("node:fs");
 var import_node_path34 = require("node:path");
 
 // ../../packages/cli/src/lib/text-projection.ts
-var import_node_crypto16 = require("node:crypto");
+var import_node_crypto15 = require("node:crypto");
 var import_node_path33 = require("node:path");
 function resolveTextFilePath(options) {
   const filePath = options.file ? options.file : (0, import_node_path33.join)(options.cwd, "projections", "text", `${textFileSlug(options.nodeId)}.md`);
@@ -62912,7 +64006,7 @@ function createTextAppliedRevision(options) {
     createdAt,
     actor: options.actor ?? null
   };
-  const revisionSuffix = (0, import_node_crypto16.createHash)("sha256").update(stableJsonForHash(revisionSeed)).digest("hex").slice(0, 12);
+  const revisionSuffix = (0, import_node_crypto15.createHash)("sha256").update(stableJsonForHash(revisionSeed)).digest("hex").slice(0, 12);
   return {
     schemaVersion: 1,
     kind: "clash.text.revision",

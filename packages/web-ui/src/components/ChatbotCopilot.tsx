@@ -1686,10 +1686,10 @@ function ChatbotCopilot({
 
     // ─── @-mention nodes for ChatInput ────────────────────────
     // `thumbnail` decides whether the mention renders as an inline image chip:
-    //   - image nodes  → asset.srcR2Key (the image itself)
-    //   - video nodes  → asset.coverR2Key (persisted cover)
+    //   - image nodes  → ResolvedAsset.url
+    //   - video nodes  → ResolvedAsset.thumbnailUrl
     //   - text / no asset → plain text mention
-    // Resolving assets is async (getAsset hits /api/v1/assets/:id); we stash
+    // Resolving assets is async (getAsset hits the Project-scoped Asset route); we stash
     // the results in a Map keyed by nodeId and populate it lazily. Nodes
     // without a resolved asset yet render as text-only mentions, which is
     // the same outcome as "no thumbnail" used to be.
@@ -1706,11 +1706,11 @@ function ChatbotCopilot({
                 const assetId = typeof n.data?.assetId === 'string' ? n.data.assetId : undefined;
                 if (!assetId) continue;
                 try {
-                    const asset = await getAsset(assetId);
-                    const r2Key = n.type === 'video'
-                        ? (asset.coverR2Key ?? asset.srcR2Key)
-                        : asset.srcR2Key;
-                    if (r2Key) next.set(n.id, r2Key);
+                    const asset = await getAsset(projectId, assetId);
+                    const previewUrl = n.type === 'video'
+                        ? (asset.thumbnailUrl ?? asset.url)
+                        : asset.url;
+                    if (previewUrl) next.set(n.id, previewUrl);
                 } catch {
                     // asset not yet available; skip
                 }
@@ -1735,7 +1735,7 @@ function ChatbotCopilot({
             });
         })();
         return () => { cancelled = true; };
-    }, [nodes]);
+    }, [nodes, projectId]);
 
     const mentionableNodes = useMemo(() => {
         if (mentionSources.length > 0) {
@@ -1911,8 +1911,9 @@ function ChatbotCopilot({
             onUploadFiles(attachments);
         }
 
-        // Message text is already markdown with inline images: ![name](storageKey)
-        // The agent can parse these directly
+        // Message text carries Project Asset media URLs plus explicit stable-id
+        // markers. Runtime consumers can use the URL for this turn while all
+        // product identity stays on assetId.
         const msgText = buildCopilotPrompt(value, workspaceContext, mentionableNodes, annotations);
 
         if (!threadId) {

@@ -36,10 +36,11 @@ Non-obvious executor duties, all learned from production traffic:
   the task fails; read the task-level status message
   (e.g. `data.task_status_msg`) before any envelope message, and never
   surface a literal `"success"` as an error.
-- **Poll retries**: one transient network error during polling must not
-  discard an already-billed upstream task. Retry polls a bounded number of
-  times. Do **not** auto-retry submits — a submit may have been received, and
-  retrying can double-bill; leave submit retries to the caller.
+- **Single-step execution**: one plugin invocation performs at most one
+  upstream submit or one upstream status request. A transient poll failure is
+  returned with `retryable: true` and `requestState: "accepted"`; the Host's
+  durable step policy schedules the next poll without discarding the
+  checkpointed task. Plugins do not loop or retry submit/poll calls themselves.
 - **Unit normalization**: convert upstream units to card units explicitly
   (e.g. duration seconds → milliseconds) and lock it with a test.
 - **Conditional rules** that static defaults can't express stay in the
@@ -79,7 +80,7 @@ per client.
 - [ ] No provider-flavoured card ids; no invented tiers
 - [ ] Value domains live in `parameterOverrides`, defaults in
       `defaultParamOverrides`, dead controls in `excludedParameterIds`
-- [ ] Executor: real failure reasons, bounded poll retries, no submit retries
+- [ ] Executor: real failure reasons; exactly one submit or poll request per invocation
 - [ ] Contract tests per API family, strict URL + body deep-equal
 - [ ] One recorded real run per family; fixtures checked in
 - [ ] Recorded traffic replays through local-api to the final Canvas entity

@@ -1,43 +1,9 @@
 /**
- * Custom action host — supervises Python (or other) subprocesses defined
- * under `$CLASH_HOME/actions/<id>/`.
+ * Local executable-plugin host.
  *
- * Each subdirectory contains:
- *   - manifest.json   (CustomActionDefinition shape; see shared-types)
- *   - handler.py      (Python action entrypoint, uses clash-sdk)
- *
- * On start() we scan the actions dir and spawn one subprocess per manifest.
- * Legacy Custom Actions inherit the original SDK credentials for backwards
- * compatibility. For `clash.plugin/v1`, stdio carries invocations and typed
- * Host dependencies. Plugins obtain Clash-scoped store, asset, and Host-tool
- * capabilities through the injected SDK context; network and filesystem access
- * remain ordinary process capabilities, and external HTTP does not use a Host broker.
- *
- *   CLASH_SERVER_URL   ← from credentials.json
- *   CLASH_PROJECT_ID   ← unset (the SDK gates on global runtime, not project)
- *                        but the python example reads it; for now we wire
- *                        the user's "active project" by leaving it empty
- *                        and letting the daemon configure it via a separate
- *                        per-project field on the action manifest later.
- *   CLASH_API_KEY      ← creds.agentApiKey (clsh_*) — same token ACP agents use
- *   CLASH_RUNTIME_ID   ← creds.runtimeId — links registration to this machine
- *   PYTHONPATH         ← prepended with the workspace's clash-sdk python pkg
- *
- * Lifecycle:
- *   - host start  → spawn all
- *   - host stop   → SIGTERM all, await exit (5s deadline) then SIGKILL
- *   - subprocess exits unexpectedly → restart with exponential backoff
- *     (1s → 2s → 4s → … capped at 60s; reset after 60s of healthy uptime)
- *   - subprocess exits immediately → disable until the host restarts
- *
- * Design notes:
- *   - Legacy actions still open their own WS via the Python/JS SDK.
- *   - Executable Plugins are strictly validated with all declared Cards and
- *     function links before the process is spawned.
- *   - We don't tail child stdout/stderr into the host log on purpose:
- *     action authors usually want their own logs in their own format, and
- *     mixing them into the host log makes both harder to read. We do
- *     log spawn/exit lines at the host level for visibility.
+ * Every child is an activated `clash.plugin/v1` package. Invocations and
+ * Host-owned dependencies travel over the versioned stdio protocol; plugin
+ * processes never receive a Clash API key or a second websocket mutation path.
  */
 
 import { providerRegistrationsFrom } from "./provider-declarations.js";
@@ -107,18 +73,10 @@ function actionsDir(): string {
 }
 
 export interface ActionEnv {
-  /** CLASH_SERVER_URL — full URL (http[s]://). The python SDK converts http→ws. */
-  serverUrl: string;
-  /** clsh_* API key used by the action's SDK for WS + REST auth. */
-  apiKey: string;
-  /** Runtime row id; forwarded as the x-runtime-id WS header. */
-  runtimeId: string;
   /** Kernel-owned asset/store/tool context for v1 stdio plugins. */
   pluginBroker?: PluginBroker;
   /** Override for embedded/self-hosted kernels that share local hosting code. */
   actionsRoot?: string;
-  /** Do not launch legacy websocket actions in an embedded plugin-only host. */
-  executablePluginsOnly?: boolean;
   /** Test-runner-owned HTTP recording/replay preloaded outside plugin business code. */
   providerHttpInstrumentation?: ProviderHttpInstrumentationLaunch;
   /**
@@ -140,49 +98,12 @@ export interface ProviderHttpInstrumentationLaunch {
   loaderPath?: string;
 }
 
-export interface ActionManifest {
-  id: string;
-  name: string;
-  description?: string;
-  outputType?: string;
-  promptModalities?: string[];
-  parameters?: unknown[];
-  model?: Record<string, unknown>;
-  secrets?: Array<Record<string, unknown>>;
-  /** Must be "local" — worker-runtime actions don't get supervised here. */
-  runtime?: string;
-  /** Path relative to the action dir, e.g. "handler.py". */
-  entrypoint?: string;
-  version?: string;
-  /**
-   * Project ids the action attaches to. `"*"` (the default) means every
-   * project this user is in. Currently logged on load but not yet acted
-   * on — the supervisor still spawns one subprocess per action and the
-   * SDK joins whatever single project the env supplies. Per-project
-   * spawning lands in a future change; this field is read & logged now
-   * so the contract is stable before then.
-   */
-  attachedProjects?: string[];
-}
-
-type HostedActionManifest = ActionManifest | ExecutablePluginManifest;
-
-function isExecutablePluginManifest(
-  manifest: HostedActionManifest | Record<string, unknown>,
-): manifest is ExecutablePluginManifest {
-  return "apiVersion" in manifest && manifest.apiVersion === "clash.plugin/v1";
-}
-
-function hostedEntrypoint(manifest: HostedActionManifest): string {
-  return isExecutablePluginManifest(manifest)
-    ? manifest.runtime.kind === "local"
-      ? manifest.runtime.entrypoint
-      : ""
-    : (manifest.entrypoint ?? "handler.py");
-}
+type LocalExecutablePluginManifest = ExecutablePluginManifest & {
+  runtime: Extract<ExecutablePluginManifest["runtime"], { kind: "local" }>;
+};
 
 interface HostedActionPackage {
-  manifest: HostedActionManifest;
+  manifest: LocalExecutablePluginManifest;
   cards: Record<string, ExecutablePluginCardDocument>;
   providers: Record<string, ExecutablePluginProviderDocument>;
   modelBindings: Record<string, ExecutablePluginModelBindingDocument>;
@@ -193,44 +114,46 @@ async function readHostedPackage(dir: string): Promise<HostedActionPackage> {
   const raw = JSON.parse(
     await readFile(join(dir, "manifest.json"), "utf8"),
   ) as Record<string, unknown>;
-  if (raw.apiVersion !== "clash.plugin/v1") {
-    return {
-      manifest: raw as unknown as ActionManifest,
-      cards: {},
-      providers: {},
-      modelBindings: {},
-      contractTests: {},
-    };
-  }
-
   const manifest = ExecutablePluginManifestSchema.parse(raw);
   if (manifest.runtime.kind !== "local") {
     throw new Error(`runtime=${manifest.runtime.kind} is not local`);
   }
+  const localManifest: LocalExecutablePluginManifest = {
+    ...manifest,
+    runtime: manifest.runtime,
+  };
   const cards: Record<string, unknown> = {};
-  for (const card of manifest.contributes.cards) {
+  for (const card of localManifest.contributes.cards) {
     cards[card.path] = JSON.parse(await readFile(join(dir, card.path), "utf8"));
   }
   const providers: Record<string, unknown> = {};
-  for (const provider of manifest.contributes.providers) {
+  for (const provider of localManifest.contributes.providers) {
     providers[provider.path] = JSON.parse(
       await readFile(join(dir, provider.path), "utf8"),
     );
   }
   const modelBindings: Record<string, unknown> = {};
-  for (const binding of manifest.contributes.modelBindings) {
+  for (const binding of localManifest.contributes.modelBindings) {
     modelBindings[binding.path] = JSON.parse(
       await readFile(join(dir, binding.path), "utf8"),
     );
   }
   const contractTests: Record<string, unknown> = {};
-  for (const path of manifest.contractTests) {
+  for (const path of localManifest.contractTests) {
     contractTests[path] = JSON.parse(await readFile(join(dir, path), "utf8"));
   }
-  return validateExecutablePluginPackage(manifest, cards, contractTests, {
-    providers,
-    modelBindings,
-  });
+  return {
+    ...validateExecutablePluginPackage(
+      localManifest,
+      cards,
+      contractTests,
+      {
+        providers,
+        modelBindings,
+      },
+    ),
+    manifest: localManifest,
+  };
 }
 
 function canonicalJson(value: unknown): string {
@@ -319,9 +242,6 @@ export async function createExecutablePluginActivationReceipt(
   pluginDir: string,
 ): Promise<ExecutablePluginActivationReceipt> {
   const hostedPackage = await readHostedPackage(pluginDir);
-  if (!isExecutablePluginManifest(hostedPackage.manifest)) {
-    throw new Error("Activation receipts require a clash.plugin/v1 manifest.");
-  }
   return ExecutablePluginActivationReceiptSchema.parse({
     apiVersion: "clash.plugin.activation/v1",
     pluginId: hostedPackage.manifest.id,
@@ -381,13 +301,13 @@ async function verifyExecutablePluginActivation(
 }
 
 interface LoadedAction {
-  manifest: HostedActionManifest;
+  manifest: LocalExecutablePluginManifest;
   /** Absolute path to the action's directory. */
   dir: string;
   cards: Record<string, ExecutablePluginCardDocument>;
   providers: Record<string, ExecutablePluginProviderDocument>;
   modelBindings: Record<string, ExecutablePluginModelBindingDocument>;
-  schemaHash?: `sha256:${string}`;
+  schemaHash: `sha256:${string}`;
 }
 
 interface SupervisedAction {
@@ -404,7 +324,6 @@ interface SupervisedAction {
 }
 
 interface PythonDepsStamp {
-  sdk?: string;
   requirements?: Record<string, string>;
 }
 
@@ -505,48 +424,23 @@ export class ActionsHost {
       return "skipped";
     }
     const { manifest, cards, providers, modelBindings } = hostedPackage;
-    if (
-      this.env.executablePluginsOnly &&
-      !isExecutablePluginManifest(manifest)
-    ) {
-      return "ignored";
-    }
-
-    if (!manifest.id) {
+    try {
+      await verifyExecutablePluginActivation(
+        this.root,
+        dir,
+        manifest,
+        cards,
+        providers,
+        modelBindings,
+      );
+    } catch (error) {
       process.stderr.write(
-        `actions: ${dirName}: manifest missing id — skipping\n`,
+        `actions: ${manifest.id}: ${(error as Error).message} — skipping\n`,
       );
       return "skipped";
     }
-    if (
-      !isExecutablePluginManifest(manifest) &&
-      manifest.runtime &&
-      manifest.runtime !== "local"
-    ) {
-      process.stderr.write(
-        `actions: ${manifest.id}: runtime=${manifest.runtime} not local — skipping\n`,
-      );
-      return "skipped";
-    }
-    if (isExecutablePluginManifest(manifest)) {
-      try {
-        await verifyExecutablePluginActivation(
-          this.root,
-          dir,
-          manifest,
-          cards,
-          providers,
-          modelBindings,
-        );
-      } catch (error) {
-        process.stderr.write(
-          `actions: ${manifest.id}: ${(error as Error).message} — skipping\n`,
-        );
-        return "skipped";
-      }
-    }
 
-    const entrypoint = hostedEntrypoint(manifest);
+    const entrypoint = manifest.runtime.entrypoint;
     if (!isSafePluginRelativePath(entrypoint)) {
       process.stderr.write(
         `actions: ${manifest.id}: unsafe entrypoint ${entrypoint} — skipping\n`,
@@ -561,33 +455,18 @@ export class ActionsHost {
       return "skipped";
     }
 
-    if (
-      !isExecutablePluginManifest(manifest) &&
-      manifest.attachedProjects &&
-      manifest.attachedProjects.length > 0
-    ) {
-      process.stderr.write(
-        `actions: ${manifest.id}: attachedProjects=${JSON.stringify(manifest.attachedProjects)} ` +
-          `(field reserved; honored on next host restart in a future change)\n`,
-      );
-    }
-
     const loaded: LoadedAction = {
       manifest,
       dir,
       cards,
       providers,
       modelBindings,
-      ...(isExecutablePluginManifest(manifest)
-        ? {
-            schemaHash: executablePluginSchemaHash(
-              manifest,
-              cards,
-              providers,
-              modelBindings,
-            ),
-          }
-        : {}),
+      schemaHash: executablePluginSchemaHash(
+        manifest,
+        cards,
+        providers,
+        modelBindings,
+      ),
     };
     const supervised: SupervisedAction = {
       loaded,
@@ -687,12 +566,7 @@ export class ActionsHost {
     const registrations: ExecutablePluginCardRegistration[] = [];
     for (const supervised of this.actions.values()) {
       const { manifest, cards, schemaHash } = supervised.loaded;
-      if (
-        !isExecutablePluginManifest(manifest) ||
-        !supervised.session ||
-        !schemaHash
-      )
-        continue;
+      if (!supervised.session) continue;
       for (const document of Object.values(cards)) {
         registrations.push({
           pluginId: manifest.id,
@@ -736,7 +610,6 @@ export class ActionsHost {
     const supervised = this.actions.get(pluginId);
     if (!supervised) return [];
     const { manifest } = supervised.loaded;
-    if (!isExecutablePluginManifest(manifest)) return [];
     return manifest.contributes.functions;
   }
 
@@ -745,12 +618,7 @@ export class ActionsHost {
     const registrations: ExecutablePluginModelBindingRegistration[] = [];
     for (const supervised of this.actions.values()) {
       const { manifest, modelBindings, schemaHash } = supervised.loaded;
-      if (
-        !isExecutablePluginManifest(manifest) ||
-        !supervised.session ||
-        !schemaHash
-      )
-        continue;
+      if (!supervised.session) continue;
       for (const document of Object.values(modelBindings)) {
         registrations.push({
           pluginId: manifest.id,
@@ -775,13 +643,10 @@ export class ActionsHost {
     kind: "action" | "provider-projector" | "provider-executor",
   ): ExecutablePluginBinding {
     const supervised = this.actions.get(pluginId);
-    if (
-      !supervised ||
-      !isExecutablePluginManifest(supervised.loaded.manifest)
-    ) {
+    if (!supervised) {
       throw new Error(`Executable plugin ${pluginId} is not installed.`);
     }
-    if (!supervised.session || !supervised.loaded.schemaHash) {
+    if (!supervised.session) {
       throw new Error(`Executable plugin ${pluginId} is not running.`);
     }
     const exported = supervised.loaded.manifest.contributes.functions.find(
@@ -801,29 +666,34 @@ export class ActionsHost {
   }
 
   /** Invoke one exact, already-supervised plugin version over stdio. */
-  invoke(
+  async invoke(
     pluginId: string,
     invocation: unknown,
     options: { timeoutMs?: number; accountId?: string } = {},
   ): Promise<ExecutablePluginResult> {
     const supervised = this.actions.get(pluginId);
     if (!supervised?.session) {
-      return Promise.reject(
-        new Error(`Executable plugin ${pluginId} is not running.`),
-      );
+      throw new Error(`Executable plugin ${pluginId} is not running.`);
     }
     const parsed = ExecutablePluginInvocationSchema.parse(invocation);
     if (
       !supervised.loaded.schemaHash ||
       parsed.target.schemaHash !== supervised.loaded.schemaHash
     ) {
-      return Promise.reject(
-        new Error(
-          `Executable plugin ${pluginId} schema hash does not match the pinned invocation.`,
-        ),
+      throw new Error(
+        `Executable plugin ${pluginId} schema hash does not match the pinned invocation.`,
       );
     }
-    return supervised.session.invoke(parsed, options);
+    const exported = supervised.loaded.manifest.contributes.functions.find(
+      (entry) =>
+        entry.id === parsed.target.exportId && entry.kind === parsed.target.kind,
+    );
+    if (!exported) {
+      throw new Error(
+        `Executable plugin ${pluginId} does not export ${parsed.target.kind} ${parsed.target.exportId}.`,
+      );
+    }
+    return await supervised.session.invoke(parsed, options);
   }
 
   // ─── fs.watch / reconciliation ──────────────────────────────
@@ -989,36 +859,26 @@ export class ActionsHost {
         continue;
       }
       const { manifest } = hostedPackage;
-      if (!manifest.id) continue;
-      if (
-        !isExecutablePluginManifest(manifest) &&
-        manifest.runtime &&
-        manifest.runtime !== "local"
-      )
+      try {
+        await verifyExecutablePluginActivation(
+          this.root,
+          dir,
+          manifest,
+          hostedPackage.cards,
+          hostedPackage.providers,
+          hostedPackage.modelBindings,
+        );
+      } catch (error) {
+        const active = this.actions.get(manifest.id);
+        if (active)
+          await this.stopOne(manifest.id, "activation-receipt-mismatch");
+        process.stderr.write(
+          `actions: ${manifest.id}: ${(error as Error).message} — disabled\n`,
+        );
         continue;
-
-      if (isExecutablePluginManifest(manifest)) {
-        try {
-          await verifyExecutablePluginActivation(
-            this.root,
-            dir,
-            manifest,
-            hostedPackage.cards,
-            hostedPackage.providers,
-            hostedPackage.modelBindings,
-          );
-        } catch (error) {
-          const active = this.actions.get(manifest.id);
-          if (active)
-            await this.stopOne(manifest.id, "activation-receipt-mismatch");
-          process.stderr.write(
-            `actions: ${manifest.id}: ${(error as Error).message} — disabled\n`,
-          );
-          continue;
-        }
       }
 
-      const entrypoint = hostedEntrypoint(manifest);
+      const entrypoint = manifest.runtime.entrypoint;
       if (!isSafePluginRelativePath(entrypoint)) continue;
       if (!existsSync(join(dir, entrypoint))) continue;
 
@@ -1136,7 +996,7 @@ export class ActionsHost {
    */
   private async restartOne(
     dirName: string,
-    _newManifest: HostedActionManifest,
+    _newManifest: LocalExecutablePluginManifest,
     _dir: string,
   ): Promise<void> {
     const oldId = this.dirIndex.get(dirName);
@@ -1150,17 +1010,11 @@ export class ActionsHost {
     if (this.stopping || sup.stopping) return;
 
     const { manifest, dir } = sup.loaded;
-    const executablePlugin = isExecutablePluginManifest(manifest);
-    const executableRuntime =
-      executablePlugin && manifest.runtime.kind === "local"
-        ? manifest.runtime
-        : undefined;
-    const entrypoint = hostedEntrypoint(manifest);
+    const executableRuntime = manifest.runtime;
+    const entrypoint = executableRuntime.entrypoint;
     const entrypointPath = join(dir, entrypoint);
-    const runtimeDir = executablePlugin ? realpathSync(dir) : dir;
-    const runtimeEntrypointPath = executablePlugin
-      ? realpathSync(entrypointPath)
-      : entrypointPath;
+    const runtimeDir = realpathSync(dir);
+    const runtimeEntrypointPath = realpathSync(entrypointPath);
 
     // Locate the workspace clash-sdk python source so the subprocess can
     // import it without a pip install. In dev, this lives at
@@ -1169,18 +1023,7 @@ export class ActionsHost {
     // compiled CLI location. Packaged installs provide CLASH_ACTIONS_SDK_PATH.
     const sdkPythonDir = resolveSdkPythonDir();
 
-    const childEnv: NodeJS.ProcessEnv = executablePlugin
-      ? credentialFreePluginEnv(manifest)
-      : {
-          ...process.env,
-          CLASH_SERVER_URL: this.env.serverUrl,
-          CLASH_API_KEY: this.env.apiKey,
-          CLASH_RUNTIME_ID: this.env.runtimeId,
-        };
-    if (!executablePlugin && sdkPythonDir) {
-      const prev = process.env.PYTHONPATH;
-      childEnv.PYTHONPATH = prev ? `${sdkPythonDir}:${prev}` : sdkPythonDir;
-    }
+    const childEnv = credentialFreePluginEnv(manifest);
 
     // Pick interpreter by entrypoint file extension.
     //
@@ -1191,75 +1034,50 @@ export class ActionsHost {
     //                        authors compile to .js (the marketplace install
     //                        endpoint serves built .js, not .ts).
     //
-    // Why two languages: we ship both a Python SDK (existing) and a JS SDK
-    // (`@clash/sdk`). The wire protocol is identical; only the host
-    // language differs. The host is interpreter-agnostic — it just spawns
-    // whatever runtime the manifest's entrypoint demands.
+    // Executable plugins may use either the JS action SDK or the Python
+    // stdio helper. The Host is interpreter-agnostic and binds both to the
+    // same clash.plugin/v1 invocation/result protocol.
     const ext = entrypoint.toLowerCase().slice(entrypoint.lastIndexOf("."));
     let bin: string;
     let args: string[];
     if (ext === ".py") {
-      if (executablePlugin) {
-        const pythonBin = resolveExecutablePluginPythonBin({
-          manifestId: manifest.id,
-          pluginDir: runtimeDir,
-          sdkPythonDir,
-          logPrefix: "",
-        });
-        if (!pythonBin) {
-          process.stderr.write(
-            `actions: ${manifest.id}: no Python runtime available for plugin — set CLASH_ACTIONS_PYTHON or install the app-managed runtime\n`,
-          );
-          return;
-        }
-        bin = pythonBin;
-        args = executablePluginPythonArgs(
-          runtimeEntrypointPath,
-          executableRuntime?.args ?? [],
+      const pythonBin = resolveExecutablePluginPythonBin({
+        manifestId: manifest.id,
+        pluginDir: runtimeDir,
+        logPrefix: "",
+      });
+      if (!pythonBin) {
+        process.stderr.write(
+          `actions: ${manifest.id}: no Python runtime available for plugin — set CLASH_ACTIONS_PYTHON or install the app-managed runtime\n`,
         );
+        return;
+      }
+      bin = pythonBin;
+      args = executablePluginPythonArgs(
+        runtimeEntrypointPath,
+        executableRuntime.args,
+      );
+      Object.assign(
+        childEnv,
+        executablePluginPythonEnv(manifest, sdkPythonDir),
+      );
+      if (this.env.providerHttpInstrumentation) {
         Object.assign(
           childEnv,
-          executablePluginPythonEnv(manifest, sdkPythonDir),
-        );
-        if (this.env.providerHttpInstrumentation) {
-          Object.assign(
+          providerHttpInstrumentationPythonEnvironment(
+            this.env.providerHttpInstrumentation,
             childEnv,
-            providerHttpInstrumentationPythonEnvironment(
-              this.env.providerHttpInstrumentation,
-              childEnv,
-            ),
-          );
-        }
-      } else {
-        const explicitPython = process.env.CLASH_ACTIONS_PYTHON;
-        const pythonBin = explicitPython
-          ? prepareExplicitPythonRuntime({
-              pythonBin: explicitPython,
-              actionId: manifest.id,
-              actionDir: dir,
-              sdkPythonDir,
-              logPrefix: "",
-            })
-          : prepareManagedPythonRuntime({
-              actionId: manifest.id,
-              actionDir: dir,
-              sdkPythonDir,
-              logPrefix: "",
-            });
-        if (!pythonBin) return;
-        bin = pythonBin;
-        args = [entrypointPath];
+          ),
+        );
       }
     } else if (ext === ".js" || ext === ".mjs") {
       bin = resolveExecutablePluginNodePath();
-      args = executablePlugin
-        ? executablePluginNodeArgs(
-            runtimeEntrypointPath,
-            executableRuntime?.args ?? [],
-            this.env.providerHttpInstrumentation,
-          )
-        : [entrypointPath];
-      if (executablePlugin && this.env.providerHttpInstrumentation) {
+      args = executablePluginNodeArgs(
+        runtimeEntrypointPath,
+        executableRuntime.args,
+        this.env.providerHttpInstrumentation,
+      );
+      if (this.env.providerHttpInstrumentation) {
         Object.assign(
           childEnv,
           providerHttpInstrumentationEnvironment(
@@ -1288,11 +1106,7 @@ export class ActionsHost {
       child = spawn(bin, args, {
         cwd: runtimeDir,
         env: childEnv,
-        // v1 plugins reserve stdin/stdout for the versioned JSON-lines ABI.
-        // Legacy actions keep their SDK-driven websocket lifecycle.
-        stdio: executablePlugin
-          ? ["pipe", "pipe", "pipe"]
-          : ["ignore", "inherit", "inherit"],
+        stdio: ["pipe", "pipe", "pipe"],
       });
     } catch (e) {
       process.stderr.write(
@@ -1304,34 +1118,32 @@ export class ActionsHost {
     sup.child = child;
     sup.startedAt = Date.now();
 
-    if (executablePlugin) {
-      if (!child.stdin || !child.stdout) {
-        process.stderr.write(
-          `actions: ${manifest.id}: stdio pipes unavailable — disabling\n`,
-        );
-        try {
-          child.kill("SIGTERM");
-        } catch {
-          /* already gone */
-        }
-        return;
+    if (!child.stdin || !child.stdout) {
+      process.stderr.write(
+        `actions: ${manifest.id}: stdio pipes unavailable — disabling\n`,
+      );
+      try {
+        child.kill("SIGTERM");
+      } catch {
+        /* already gone */
       }
-      sup.session = new PluginStdioSession({
-        manifest,
-        stdin: child.stdin,
-        stdout: child.stdout,
-        broker:
-          this.env.pluginBroker ??
-          (async () => {
-            throw new Error("Clash local plugin host context is unavailable.");
-          }),
-      });
-      child.stderr?.on("data", (chunk: Buffer) => {
-        process.stderr.write(
-          `plugin[${manifest.id}]: ${chunk.toString("utf8")}`,
-        );
-      });
+      return;
     }
+    sup.session = new PluginStdioSession({
+      manifest,
+      stdin: child.stdin,
+      stdout: child.stdout,
+      broker:
+        this.env.pluginBroker ??
+        (async () => {
+          throw new Error("Clash local plugin host context is unavailable.");
+        }),
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      process.stderr.write(
+        `plugin[${manifest.id}]: ${chunk.toString("utf8")}`,
+      );
+    });
 
     child.once("exit", (code, signal) => {
       const uptime = Date.now() - sup.startedAt;
@@ -1381,19 +1193,8 @@ export class ActionsHost {
  * but reconcile() only fires on a watcher tick — JSON.stringify is fast
  * enough, and key order is stable since we control the writer.
  */
-function manifestKey(m: HostedActionManifest): string {
-  if (isExecutablePluginManifest(m)) return JSON.stringify(m);
-  return JSON.stringify({
-    id: m.id,
-    name: m.name,
-    version: m.version,
-    runtime: m.runtime,
-    entrypoint: m.entrypoint,
-    parameters: m.parameters,
-    outputType: m.outputType,
-    promptModalities: m.promptModalities,
-    attachedProjects: m.attachedProjects,
-  });
+function manifestKey(m: LocalExecutablePluginManifest): string {
+  return JSON.stringify(m);
 }
 
 export function credentialFreePluginEnv(
@@ -1575,7 +1376,6 @@ function managedLocalModelsPythonBin(): string | null {
 function resolveExecutablePluginPythonBin(opts: {
   manifestId: string;
   pluginDir: string;
-  sdkPythonDir: string | null;
   logPrefix: string;
 }): string | null {
   const hasRequirements = existsSync(join(opts.pluginDir, "requirements.txt"));
@@ -1587,9 +1387,7 @@ function resolveExecutablePluginPythonBin(opts: {
       stampDir: explicitPythonStampDir(explicit),
       actionId: opts.manifestId,
       actionDir: opts.pluginDir,
-      sdkPythonDir: opts.sdkPythonDir,
       logPrefix: opts.logPrefix,
-      installSdk: false,
     });
   }
   if (!hasRequirements) {
@@ -1619,9 +1417,7 @@ function resolveExecutablePluginPythonBin(opts: {
     stampDir: venvDir,
     actionId: opts.manifestId,
     actionDir: opts.pluginDir,
-    sdkPythonDir: opts.sdkPythonDir,
     logPrefix: opts.logPrefix,
-    installSdk: false,
   });
 }
 
@@ -1635,9 +1431,6 @@ export async function runExecutablePluginContractTests(
 ): Promise<ExecutablePluginContractTestRun> {
   const pluginDir = realpathSync(pluginDirInput);
   const hostedPackage = await readHostedPackage(pluginDir);
-  if (!isExecutablePluginManifest(hostedPackage.manifest)) {
-    throw new Error("Contract tests require a clash.plugin/v1 manifest.");
-  }
   const { manifest, cards, contractTests } = hostedPackage;
   if (
     manifest.runtime.kind !== "local" ||
@@ -1669,7 +1462,6 @@ export async function runExecutablePluginContractTests(
           const pythonBin = resolveExecutablePluginPythonBin({
             manifestId: manifest.id,
             pluginDir,
-            sdkPythonDir,
             logPrefix: "",
           });
           if (!pythonBin) {
@@ -1864,119 +1656,16 @@ function explicitPythonStampDir(pythonBin: string): string {
   return join(actionsDir(), ".python-deps", key);
 }
 
-function prepareExplicitPythonRuntime(opts: {
-  pythonBin: string;
-  actionId: string;
-  actionDir: string;
-  sdkPythonDir: string | null;
-  logPrefix: string;
-}): string | null {
-  return preparePythonRuntimeDeps({
-    pythonBin: opts.pythonBin,
-    stampDir: explicitPythonStampDir(opts.pythonBin),
-    actionId: opts.actionId,
-    actionDir: opts.actionDir,
-    sdkPythonDir: opts.sdkPythonDir,
-    logPrefix: opts.logPrefix,
-  });
-}
-
-function prepareManagedPythonRuntime(opts: {
-  actionId: string;
-  actionDir: string;
-  sdkPythonDir: string | null;
-  logPrefix: string;
-}): string | null {
-  const venvDir = managedPythonVenvDir();
-  const pythonBin = managedPythonBin(venvDir);
-
-  if (!existsSync(pythonBin)) {
-    mkdirSync(venvDir, { recursive: true });
-    process.stderr.write(
-      `${opts.logPrefix}actions: python venv create path=${venvDir}\n`,
-    );
-    if (
-      !runPythonSetup(
-        "python3",
-        ["-m", "venv", venvDir],
-        opts.logPrefix,
-        opts.actionId,
-      )
-    ) {
-      return null;
-    }
-  }
-
-  return preparePythonRuntimeDeps({
-    pythonBin,
-    stampDir: venvDir,
-    actionId: opts.actionId,
-    actionDir: opts.actionDir,
-    sdkPythonDir: opts.sdkPythonDir,
-    logPrefix: opts.logPrefix,
-  });
-}
-
 function preparePythonRuntimeDeps(opts: {
   pythonBin: string;
   stampDir: string;
   actionId: string;
   actionDir: string;
-  sdkPythonDir: string | null;
   logPrefix: string;
-  /** Executable plugins speak raw stdio JSONL; they import the pure-
-   * Python SDK via PYTHONPATH and never need the agent's aiohttp, so the SDK
-   * pip step is skipped for them. Plugin requirements.txt still installs. */
-  installSdk?: boolean;
 }): string | null {
   const { pythonBin } = opts;
-  const installSdk = opts.installSdk ?? true;
   const stamp = readPythonDepsStamp(opts.stampDir);
   let changed = false;
-  if (
-    installSdk &&
-    opts.sdkPythonDir &&
-    existsSync(join(opts.sdkPythonDir, "pyproject.toml"))
-  ) {
-    const sdkKey = `${opts.sdkPythonDir}:${fileVersionKey(join(opts.sdkPythonDir, "pyproject.toml"))}`;
-    const sdkStampMatches = stamp.sdk === sdkKey;
-    const sdkImportsOk = sdkStampMatches
-      ? canImportPythonSdkRuntimeDeps(
-          pythonBin,
-          opts.logPrefix,
-          opts.actionId,
-          false,
-        )
-      : false;
-    if (!sdkStampMatches || !sdkImportsOk) {
-      process.stderr.write(
-        `${opts.logPrefix}actions: python deps install id=${opts.actionId} package=clash-sdk\n`,
-      );
-      if (
-        !runPythonSetup(
-          pythonBin,
-          ["-m", "pip", "install", "-e", opts.sdkPythonDir],
-          opts.logPrefix,
-          opts.actionId,
-        )
-      ) {
-        return null;
-      }
-      stamp.sdk = sdkKey;
-      changed = true;
-    }
-    if (
-      !canImportPythonSdkRuntimeDeps(
-        pythonBin,
-        opts.logPrefix,
-        opts.actionId,
-        true,
-      )
-    ) {
-      return null;
-    }
-  }
-
   const requirementsPath = join(opts.actionDir, "requirements.txt");
   if (existsSync(requirementsPath)) {
     const requirements = stamp.requirements ?? {};
@@ -2003,33 +1692,6 @@ function preparePythonRuntimeDeps(opts: {
 
   if (changed) writePythonDepsStamp(opts.stampDir, stamp);
   return pythonBin;
-}
-
-function canImportPythonSdkRuntimeDeps(
-  pythonBin: string,
-  logPrefix: string,
-  actionId: string,
-  verbose: boolean,
-): boolean {
-  const result = spawnSync(
-    pythonBin,
-    ["-c", "import clash_sdk; import aiohttp"],
-    {
-      env: process.env,
-      stdio: verbose ? "inherit" : "ignore",
-    },
-  );
-  if (result.status === 0) return true;
-  if (verbose) {
-    const detail =
-      result.error instanceof Error
-        ? result.error.message
-        : `exit=${result.status}`;
-    process.stderr.write(
-      `${logPrefix}actions: python deps import failed id=${actionId} modules=clash_sdk,aiohttp ${detail}\n`,
-    );
-  }
-  return false;
 }
 
 function runPythonSetup(

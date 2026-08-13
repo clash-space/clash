@@ -44,6 +44,7 @@ export const SETTINGS_NAV_ITEMS: NavItem[] = [
   { id: 'appearance', label: 'Appearance', icon: PaintBrush },
   { id: 'agents', label: 'Agents', icon: Plug },
   { id: 'sync', label: 'Sync', icon: CloudArrowUp },
+  { id: 'public-storage', label: 'Public storage', icon: CloudArrowUp },
   { id: 'audio', label: 'Voice input', icon: Microphone },
   { id: 'tokens', label: 'API Tokens', icon: Key },
   { id: 'providers', label: 'Providers', icon: Plug },
@@ -54,6 +55,7 @@ export const SETTINGS_NAV_ITEMS: NavItem[] = [
 ];
 
 const HOSTED_ONLY_SETTINGS_SECTIONS = new Set<SettingsSection>(['tokens', 'variables', 'actions', 'skills']);
+const LOCAL_ONLY_SETTINGS_SECTIONS = new Set<SettingsSection>(['public-storage']);
 
 type LoadState =
   | { status: 'idle' }
@@ -110,12 +112,14 @@ function supportsHostedSettings(): boolean {
 }
 
 function availableSettingsNavItems(hostedSettingsAvailable: boolean): NavItem[] {
-  if (hostedSettingsAvailable) return SETTINGS_NAV_ITEMS;
-  return SETTINGS_NAV_ITEMS.filter((item) => !HOSTED_ONLY_SETTINGS_SECTIONS.has(item.id));
+  return SETTINGS_NAV_ITEMS.filter((item) => hostedSettingsAvailable
+    ? !LOCAL_ONLY_SETTINGS_SECTIONS.has(item.id)
+    : !HOSTED_ONLY_SETTINGS_SECTIONS.has(item.id));
 }
 
 function effectiveSettingsSection(section: SettingsSection, hostedSettingsAvailable: boolean): SettingsSection {
   if (!hostedSettingsAvailable && HOSTED_ONLY_SETTINGS_SECTIONS.has(section)) return 'agents';
+  if (hostedSettingsAvailable && LOCAL_ONLY_SETTINGS_SECTIONS.has(section)) return 'agents';
   return section;
 }
 

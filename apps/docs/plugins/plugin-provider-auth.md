@@ -54,32 +54,55 @@ The scoping above is only a boundary if the plugin cannot choose which scope it
 is in. If a store call carried a plugin id, any plugin could read any other's
 credentials by asking for them, and the isolation would be a naming convention.
 
-So the plugin never sends one. At spawn the host mints a random token, keeps it
-in memory mapped to `{ pluginId, accountId }`, and passes it to the process it
-just started. Store calls carry the token; the host resolves it.
+So the plugin never sends one. The Host binds the selected account to each
+pending invocation. A broker request carries only its unforgeable active
+`invocationId` plus the store key; the Host looks up the pending invocation,
+then supplies `{ pluginId, accountId }` to the store adapter internally. One
+stdio process may serve concurrent invocations for different accounts without
+ever receiving either account id on the plugin wire.
 
 ```
 host                                     plugin
- │ spawn, env CLASH_STORE_TOKEN=<32 random bytes>
- │───────────────────────────────────────▶
- │ token → { pluginId, accountId }        │
- │   held in memory only                  │
+ │ invoke(invocationId), remember         │
+ │ invocationId → { pluginId, accountId } │
+ │───────────────────────────────────────▶│
  │                                        │
- │ ◀── get(token, "apiKey") ─────────────│
- │ resolve token, then read that scope     │
+ │ ◀── get(invocationId, "apiKey") ──────│
+ │ resolve pending invocation and scope    │
 ```
 
-Why a token rather than the id itself:
+Why the binding belongs to the pending invocation rather than the process:
 
-- **Unguessable.** A plugin id is public — it is in the manifest, the docs and
-  the directory name. Knowing another plugin's id must not be enough.
-- **It dies on restart.** The map is memory, never written, so a token that
-  leaks into a log or a crash dump is worthless by the time anyone reads it.
-- **It is per-spawn.** Two accounts of the same plugin get different tokens, so
-  one cannot reach the other's credentials.
+- **No forgeable scope field.** A plugin id is public and an account id is not
+  authority; neither appears in a broker store operation.
+- **It dies with the invocation.** A broker request for an invocation that is
+  no longer pending is rejected.
+- **It is concurrency-safe.** Two requests handled by one process retain their
+  own account bindings even when their async work overlaps.
 
 The key is data, not a path. `"../other/apiKey"` addresses a row named exactly
 that, in the caller's own scope, and finds nothing.
+
+### Account selection belongs to the Host
+
+A Provider contribution describes a vendor route and the form used to configure
+accounts for it. It does not select one of those accounts. In particular,
+`accountId` is not valid in Provider `bindingDefaults`, a contributed
+`model-provider-binding`, or a contributed model Card's
+`providerImplementations`.
+
+Those documents are package content shared by every installation, while an
+account is user- and Host-local state. Allowing a bundled or third-party package
+to name an account would make the package choose credentials it does not own and
+would make the same binding mean different things on different Hosts.
+
+At execution time the Host resolves the eligible configured accounts, applies
+Host-owned routing policy, and binds the selected account to its private
+pending-invocation record. Host internals may therefore carry an `accountId`,
+but the plugin invocation and broker operation do not. `context.store` resolves
+through that record, so the plugin receives the assigned account scope without
+gaining a way to switch scopes in its manifest, Provider document, model
+binding, invocation, or store call.
 
 ### This is where settings live now, too
 
@@ -135,7 +158,8 @@ redundant in the first place.
 present and ignored teaches the reader that fields can be ignored.
 
 An account records which method it uses, so method ids must be unique. A method must collect
-something or start a flow: one that does neither offers a name and nothing to do with it.
+something, start a flow, or declare an installed-app import: one that does none of those offers a
+name and nothing to do with it.
 
 How many methods is the vendor's business, not a matter of symmetry. MiniMax declares one, because
 the same key is presented the same way to either host — its `international`/`domestic` choice is a
@@ -163,9 +187,10 @@ Declared, not coded. The host renders it and writes results to storage. A form b
 }
 ```
 
-A field with no declared default is required. A `button` is only drawn when its own method declares
-a flow — under the old flat shape there was one flow for the whole declaration, so a button in one
-part of the form was enabled by a flow declared for another.
+A field with no declared default is required. A declared form `button` is only drawn when its own
+method declares a flow — under the old flat shape there was one flow for the whole declaration, so
+a button in one part of the form was enabled by a flow declared for another. A flow-only method is
+also valid: the Host draws one action using the method label, without inventing a form field.
 
 The host never learns what a field **means**. `apiKey` is a secret field and `serviceAccountKey` is
 a secret field; that one is a token and the other is JSON, and what either authorises, stays the
@@ -199,6 +224,34 @@ PKCE, the `state` parameter, the port and the timeout are the host's. A plugin
 that had to implement `state` correctly would eventually implement it
 incorrectly, and the failure is a silent CSRF rather than an error.
 
+### Installed-app import
+
+An import-only method lets the Host reuse a credential already held by an installed desktop app.
+It has no form and no browser flow; the method label is the action shown to the user.
+
+```jsonc
+{
+  "id": "reuse-local-login",
+  "label": "Reuse MiniMax Hub login",
+  "import": {
+    "format": "electron-store-aes-256-gcm-v2",
+    "appDataSubdirectory": "@hilo/MiniMax Hub Global",
+    "configFile": "hub-config-global.json",
+    "keyFile": ".token-key",
+    "tokenPath": ["tokens", "accessToken"],
+    "storeAs": "accessToken"
+  }
+}
+```
+
+The path is constrained to a declared subdirectory of the platform application-data root, and the
+format is explicit rather than sniffed. This is not a plugin sandbox—installed plugins already run
+with the user's process privileges. The declaration gives the Host enough structure to make the
+operation visible, validate accidental path escapes, and write the result into the selected
+account's scoped store under `storeAs`. The Host resolves `pluginId` from the installed Provider and
+requires an existing Host-selected `accountId`; neither value comes from plugin business code. The
+public authorization record keeps only status and label, not a second copy of the imported secret.
+
 ### Renewal
 
 The plugin declares whether renewal applies and when. The plugin's own code
@@ -215,11 +268,13 @@ protocol the host knows — a refresh-token exchange, a re-signed JWT and a
 re-run CLI are all just code.
 
 These two are declarations because only the host can act on them: it is the one
-awake when nobody is using the app. A credential rejected *during* a call is not
-in that category — the plugin is already running, already holds the response,
-and can refresh and retry in the same function. Declaring that case would mean
-reporting a failure outward and waiting to be called again, to do something the
-plugin could have done immediately.
+awake when nobody is using the app. A plugin may refresh an expired credential
+before it crosses the semantic Provider submit/poll boundary. Once that
+Provider operation has been sent, however, it must not refresh and issue a
+second submit or poll inside the same invocation. It returns the structured
+authentication or transport failure instead; Host durable policy decides
+whether another invocation is allowed without losing the request-state
+boundary.
 
 What the host does own is the **failure**: when renewal fails, the account is
 marked as needing attention and the form says so. A dead refresh token must not

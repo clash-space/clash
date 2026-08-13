@@ -17,19 +17,22 @@
     "clash-artifact-bench": "./src/cli.ts"
   },
   "scripts": {
-    "benchmark": "tsx src/cli.ts",
+    "benchmark": "tsx --tsconfig tsconfig.dev.json src/cli.ts",
     "build": "tsup src/index.ts src/cli.ts src/pi-clash-extension.ts --format esm --dts",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit --project tsconfig.dev.json",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit --project tsconfig.dev.json"
   },
   "dependencies": {
+    "@clash/asset-sdk": "workspace:*",
+    "@clash/shared-runtime": "workspace:*",
     "@clash/shared-types": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "yaml": "^2.6.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@clash/gui": "workspace:*",
     "@types/node": "^24.0.0",
     "tsx": "^4.23.0",
     "tsup": "^8.5.1",

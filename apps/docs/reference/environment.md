@@ -16,9 +16,7 @@
 
 | Variable | Purpose |
 | --- | --- |
-| `CLASH_PROVIDER_TRAFFIC_RECORDING_PATH` | Record all provider HTTP traffic (built-in **and** plugin broker) to this JSONL file |
-| `CLASH_PROVIDER_TRAFFIC_REPLAY_PATH` | Replay from this file instead of hitting providers; mutually exclusive with recording |
-| `CLASH_PROVIDER_TEST_RECORDING_PATH` | Provider conformance test recording |
+| `CLASH_PROVIDER_TEST_RECORDING_PATH` | Provider conformance-script recording path. Plugin traffic recording/replay is injected by the test harness at the process boundary; it is not a production runtime switch. |
 
 ## Plugin broker
 

@@ -53,7 +53,7 @@ export function createExecutablePluginActionInvoker(options: {
     });
     return ExecutablePluginResultSchema.parse(
       await options.client.invoke(binding.pluginId, invocation, {
-        timeoutMs: options.timeoutMs ?? 600_000,
+        timeoutMs: options.timeoutMs ?? 1_800_000,
       }),
     );
   };

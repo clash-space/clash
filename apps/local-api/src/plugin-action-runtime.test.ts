@@ -44,7 +44,7 @@ describe("local executable plugin action invoker", () => {
         target: { ...binding, kind: "action" },
         actor: { kind: "agent", id: "agent-1" },
       }),
-      { timeoutMs: 600_000 },
+      { timeoutMs: 1_800_000 },
     );
   });
 });

@@ -1,8 +1,9 @@
 # Traffic Record & Replay
 
-Provider regression fixtures come from real upstream runs. The same Project
-backend case is then replayed offline, byte-for-byte, without credentials or
-provider billing.
+An upstream-acceptance Provider fixture comes from a real upstream run. The
+same Project backend case is then replayed offline, byte-for-byte, without
+credentials or provider billing. A deterministic fixture or contract test that
+was not recorded upstream must not be described as live traffic.
 
 ## Process-boundary instrumentation
 
@@ -45,15 +46,26 @@ Keep credentials and temporary recordings under the ignored
 {
   "env": {
     "CLASH_MINIMAX_API_KEY": "...",
-    "CLASH_MINIMAX_RECORDING_PATH": "/absolute/private/minimax.jsonl"
+    "CLASH_MINIMAX_RECORDING_PATH": "/absolute/private/minimax.jsonl",
+    "CLASH_PROVIDER_E2E_TIMEOUT_MS": "1800000"
   }
 }
 ```
+
+Each case has a 30-minute total lifetime by default. Set
+`CLASH_PROVIDER_E2E_TIMEOUT_MS` in the process environment or the config file's
+`env` object only when a documented upstream model needs a different budget;
+individual HTTP calls and Provider-owned client timeouts remain separate.
 
 Run every supported provider family at least once: text, image, video, speech,
 music, reference inputs, and queued resume paths where the catalog exposes
 them. A successful HTTP response is not enough; grade the completed backend
 result.
+
+The current repo-owned live recordings cover Google, MiniMax, and the Hilo Hub
+peer. The first-party fal executor has contract and durable-backend coverage,
+but no checked-in real-upstream traffic fixture yet; it is therefore not
+live-verified by this suite.
 
 ### Third-party provider plugins
 
@@ -87,8 +99,14 @@ Checked-in fixtures run in the normal local-api test suite:
 
 ```sh
 env -u GOOGLE_API_KEY -u GEMINI_API_KEY -u CLASH_MINIMAX_API_KEY \
-  pnpm --filter @clash/local-api test
+  pnpm --filter @clash/local-api test:providers
 ```
+
+The matching opt-in live recorder entry point is
+`pnpm --filter @clash/local-api test:providers:live` with
+`CLASH_PROVIDER_E2E=live` and the config file above. These maintained commands
+cover Google, MiniMax, and Hilo. Volcengine has its own provider workstream and
+is deliberately not hidden inside either command.
 
 Replay blocks real egress from the instrumented plugin process. Requests
 match by method, normalized URL, and normalized body, and matching fixtures are

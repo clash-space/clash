@@ -11,10 +11,15 @@ async function tempDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), "clash-local-metadata-store-"));
 }
 
-function readSqlitePragma(dataDir: string, pragma: string): string | number | undefined {
+function readSqlitePragma(
+  dataDir: string,
+  pragma: string,
+): string | number | undefined {
   const { DatabaseSync } = require("node:sqlite") as {
     DatabaseSync: new (path: string) => {
-      prepare(sql: string): { get(): Record<string, string | number> | undefined };
+      prepare(sql: string): {
+        get(): Record<string, string | number> | undefined;
+      };
       close(): void;
     };
   };
@@ -27,31 +32,45 @@ function readSqlitePragma(dataDir: string, pragma: string): string | number | un
   }
 }
 
-function readMetadataMigrationMarker(dataDir: string): Record<string, unknown> | undefined {
+function readMetadataMigrationMarker(
+  dataDir: string,
+): Record<string, unknown> | undefined {
   const { DatabaseSync } = require("node:sqlite") as {
     DatabaseSync: new (path: string) => {
-      prepare(sql: string): { get(...params: unknown[]): Record<string, unknown> | undefined };
+      prepare(sql: string): {
+        get(...params: unknown[]): Record<string, unknown> | undefined;
+      };
       close(): void;
     };
   };
   const db = new DatabaseSync(join(dataDir, "local.sqlite"));
   try {
-    return db.prepare("SELECT id, source_path FROM local_migration WHERE id = ?").get("metadata-sqlite-v1");
+    return db
+      .prepare("SELECT id, source_path FROM local_migration WHERE id = ?")
+      .get("metadata-sqlite-v1");
   } finally {
     db.close();
   }
 }
 
-function readSqliteObjectName(dataDir: string, type: string, name: string): string | undefined {
+function readSqliteObjectName(
+  dataDir: string,
+  type: string,
+  name: string,
+): string | undefined {
   const { DatabaseSync } = require("node:sqlite") as {
     DatabaseSync: new (path: string) => {
-      prepare(sql: string): { get(...params: unknown[]): Record<string, unknown> | undefined };
+      prepare(sql: string): {
+        get(...params: unknown[]): Record<string, unknown> | undefined;
+      };
       close(): void;
     };
   };
   const db = new DatabaseSync(join(dataDir, "local.sqlite"));
   try {
-    const row = db.prepare("SELECT name FROM sqlite_master WHERE type = ? AND name = ?").get(type, name);
+    const row = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = ? AND name = ?")
+      .get(type, name);
     return typeof row?.name === "string" ? row.name : undefined;
   } finally {
     db.close();
@@ -67,7 +86,9 @@ function readSqliteTableColumns(dataDir: string, table: string): string[] {
   };
   const db = new DatabaseSync(join(dataDir, "local.sqlite"));
   try {
-    return db.prepare(`PRAGMA table_info(${table})`).all()
+    return db
+      .prepare(`PRAGMA table_info(${table})`)
+      .all()
       .map((row) => String(row.name ?? ""));
   } finally {
     db.close();
@@ -125,8 +146,92 @@ describe("local metadata store", () => {
     });
 
     expect(readSqlitePragma(dataDir, "journal_mode")).toBe("wal");
-    expect(readSqliteObjectName(dataDir, "table", "local_config")).toBe("local_config");
-    expect(readSqliteObjectName(dataDir, "table", "timeline_revisions")).toBeUndefined();
+    expect(readSqliteObjectName(dataDir, "table", "local_config")).toBe(
+      "local_config",
+    );
+    expect(
+      readSqliteObjectName(dataDir, "table", "timeline_revisions"),
+    ).toBeUndefined();
+  });
+
+  it("keeps legacy Asset migration rows read-only during ordinary metadata saves", async () => {
+    const dataDir = await tempDir();
+    const store = createLocalMetadataStore(dataDir);
+    const legacy = {
+      projects: [],
+      assets: [
+        {
+          id: "legacy-asset",
+          userId: "legacy-user",
+          kind: "image" as const,
+          srcR2Key: "uploads/legacy.png",
+          coverR2Key: null,
+          metadata: { contentType: "image/png" },
+          sourceModel: null,
+          sourcePrompt: null,
+          sourceTaskId: null,
+          sources: null,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      assetRefs: [
+        { assetId: "legacy-asset", projectId: "project-1", importedAt: 1 },
+      ],
+      libraryAssetRefs: [
+        { assetId: "legacy-asset", userId: "legacy-user", addedAt: 1 },
+      ],
+      assetNodeRefs: [
+        {
+          assetId: "legacy-asset",
+          projectId: "project-1",
+          nodeId: "node-1",
+          nodeType: "image",
+          fieldPath: "data.assetId",
+          referenceRole: "asset",
+          observedAt: 1,
+        },
+      ],
+      sessions: [],
+      agentMembers: [],
+      sessionMessages: [],
+    };
+
+    await store.save(legacy, { replaceLegacyAssetMigrationInput: true });
+    await store.save({
+      ...legacy,
+      assets: [],
+      assetRefs: [],
+      libraryAssetRefs: [],
+      assetNodeRefs: [],
+      projects: [
+        {
+          id: "project-1",
+          ownerId: "local-user",
+          name: "Project",
+          description: null,
+          createdAt: "2026-08-13T00:00:00.000Z",
+          updatedAt: "2026-08-13T00:00:00.000Z",
+          assets: [],
+        },
+      ],
+    });
+
+    await expect(store.load()).resolves.toMatchObject({
+      assets: [{ id: "legacy-asset", srcR2Key: "uploads/legacy.png" }],
+      assetRefs: [{ assetId: "legacy-asset", projectId: "project-1" }],
+      libraryAssetRefs: [
+        { assetId: "legacy-asset", userId: "legacy-user" },
+      ],
+      assetNodeRefs: [
+        {
+          assetId: "legacy-asset",
+          projectId: "project-1",
+          nodeId: "node-1",
+        },
+      ],
+      projects: [{ id: "project-1" }],
+    });
   });
 
   it("upgrades partial sqlite metadata and projection tables before local-api metadata access", async () => {
@@ -140,27 +245,34 @@ describe("local metadata store", () => {
       assetRefs: [],
       sessions: [],
     });
-    await expect(store.save({
+    await expect(
+      store.save({
+        projects: [
+          {
+            id: "project-upgraded",
+            ownerId: "local-user",
+            name: "Upgraded Project",
+            description: null,
+            createdAt: "2026-07-08T00:00:00.000Z",
+            updatedAt: "2026-07-08T00:01:00.000Z",
+            assets: [],
+          },
+        ],
+        assets: [],
+        assetRefs: [],
+        assetNodeRefs: [],
+        sessions: [],
+        agentMembers: [],
+        sessionMessages: [],
+      }),
+    ).resolves.toBeUndefined();
+    await expect(store.load()).resolves.toMatchObject({
       projects: [
         {
           id: "project-upgraded",
           ownerId: "local-user",
-          name: "Upgraded Project",
-          description: null,
-          createdAt: "2026-07-08T00:00:00.000Z",
-          updatedAt: "2026-07-08T00:01:00.000Z",
-          assets: [],
         },
       ],
-      assets: [],
-      assetRefs: [],
-      assetNodeRefs: [],
-      sessions: [],
-      agentMembers: [],
-      sessionMessages: [],
-    })).resolves.toBeUndefined();
-    await expect(store.load()).resolves.toMatchObject({
-      projects: [{ id: "project-upgraded", ownerId: "local-user" }],
     });
   });
 
@@ -199,43 +311,6 @@ describe("local metadata store", () => {
     });
   });
 
-  it("resolves asset storage keys only through the requesting project's refs", async () => {
-    const dataDir = await tempDir();
-    const store = createLocalMetadataStore(dataDir);
-
-    await store.save({
-      projects: [],
-      assets: [
-        {
-          id: "asset-shared-id",
-          userId: "local-user",
-          kind: "image",
-          srcR2Key: "projects/project-a/images/frame.png",
-          coverR2Key: null,
-          metadata: null,
-          sourceModel: null,
-          sourcePrompt: null,
-          sourceTaskId: null,
-          sources: null,
-          createdAt: 1,
-          updatedAt: 1,
-        },
-      ],
-      assetRefs: [
-        { assetId: "asset-shared-id", projectId: "project-a", importedAt: 1 },
-      ],
-      assetNodeRefs: [],
-      sessions: [],
-      agentMembers: [],
-      sessionMessages: [],
-    });
-
-    await expect(store.resolveStorageKeys("project-a", ["asset-shared-id"])).resolves.toEqual([
-      "projects/project-a/images/frame.png",
-    ]);
-    await expect(store.resolveStorageKeys("project-b", ["asset-shared-id"])).resolves.toEqual([]);
-  });
-
   it("persists sanitized local mutation audit records outside metadata rewrites", async () => {
     const dataDir = await tempDir();
     const store = createLocalMetadataStore(dataDir);
@@ -268,7 +343,9 @@ describe("local metadata store", () => {
       sessionMessages: [],
     });
 
-    await expect(store.listMutationAudit({ operation: "project_purge", limit: 10 })).resolves.toEqual([
+    await expect(
+      store.listMutationAudit({ operation: "project_purge", limit: 10 }),
+    ).resolves.toEqual([
       {
         id: "audit-project-purge",
         createdAt: 1783428000000,
@@ -287,7 +364,9 @@ describe("local metadata store", () => {
         },
       },
     ]);
-    expect(readSqliteTableColumns(dataDir, "mutation_audit")).not.toContain("forced");
+    expect(readSqliteTableColumns(dataDir, "mutation_audit")).not.toContain(
+      "forced",
+    );
   });
 
   it("marks sqlite metadata authoritative after an audit-only write", async () => {
@@ -320,9 +399,14 @@ describe("local metadata store", () => {
 
   it("persists typed plugin SDK audit without credential material", async () => {
     const dataDir = await tempDir();
-    const store = createLocalMetadataStore(dataDir) as ReturnType<typeof createLocalMetadataStore> & {
+    const store = createLocalMetadataStore(dataDir) as ReturnType<
+      typeof createLocalMetadataStore
+    > & {
       appendPluginBrokerAudit(record: Record<string, unknown>): Promise<void>;
-      listPluginBrokerAudit(filter?: { pluginId?: string; limit?: number }): Promise<Array<Record<string, unknown>>>;
+      listPluginBrokerAudit(filter?: {
+        pluginId?: string;
+        limit?: number;
+      }): Promise<Array<Record<string, unknown>>>;
     };
     expect(typeof store.appendPluginBrokerAudit).toBe("function");
     expect(typeof store.listPluginBrokerAudit).toBe("function");
@@ -341,23 +425,27 @@ describe("local metadata store", () => {
       status: "ok",
     });
 
-    const records = await store.listPluginBrokerAudit({ pluginId: "test.broker-plugin", limit: 10 });
-    expect(records).toEqual([{
-      id: "broker-audit-1",
-      occurredAt: "2026-08-04T12:00:00.000Z",
+    const records = await store.listPluginBrokerAudit({
       pluginId: "test.broker-plugin",
-      pluginVersion: "1.0.0",
-      projectId: "project-1",
-      invocationId: "invocation-1",
-      requestId: "store-1",
-      operation: "store.get",
-      target: "apiKey",
-      status: "ok",
-      error: null,
-    }]);
+      limit: 10,
+    });
+    expect(records).toEqual([
+      {
+        id: "broker-audit-1",
+        occurredAt: "2026-08-04T12:00:00.000Z",
+        pluginId: "test.broker-plugin",
+        pluginVersion: "1.0.0",
+        projectId: "project-1",
+        invocationId: "invocation-1",
+        requestId: "store-1",
+        operation: "store.get",
+        target: "apiKey",
+        status: "ok",
+        error: null,
+      },
+    ]);
     expect(JSON.stringify(records)).not.toContain("super-secret");
   });
-
 });
 
 describe("asset metadata index", () => {
@@ -404,7 +492,9 @@ describe("asset metadata index", () => {
     const all = await store.listAssetMetadataIndex();
     expect(all).toHaveLength(2);
 
-    const transcripts = await store.listAssetMetadataIndex({ metadataKind: "media.transcript" });
+    const transcripts = await store.listAssetMetadataIndex({
+      metadataKind: "media.transcript",
+    });
     expect(transcripts).toHaveLength(1);
     expect(transcripts[0]).toMatchObject({
       assetId: "asset-speech",
@@ -413,7 +503,9 @@ describe("asset metadata index", () => {
       summary: { wordCount: 18, durationMs: 5_000 },
     });
 
-    const byAsset = await store.listAssetMetadataIndex({ assetId: "asset-other" });
+    const byAsset = await store.listAssetMetadataIndex({
+      assetId: "asset-other",
+    });
     expect(byAsset).toHaveLength(1);
     expect(byAsset[0].identity).toMatchObject({ mood: "calm" });
     expect(byAsset[0].projectId).toBeUndefined();

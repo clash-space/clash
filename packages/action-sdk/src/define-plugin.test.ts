@@ -1,7 +1,34 @@
 import { describe, expect, it, vi } from "vitest";
 import { PassThrough } from "node:stream";
 
-import { definePlugin } from "./define-plugin";
+import {
+  definePlugin as definePluginWithoutStaticContext,
+  type ExecutorContext,
+  type PluginDefinition,
+} from "./define-plugin";
+
+/**
+ * Test harness injection lives on the Host side of the stdio boundary.
+ *
+ * Older tests put these fakes in `PluginDefinition.context`, which also exposed that override to
+ * real plugin authors. Keep the test call sites compact while exercising the production rule: the
+ * plugin contributes executors; `start()` receives invocation-scoped Host capabilities.
+ */
+function definePlugin(
+  definition: PluginDefinition & { context?: Partial<ExecutorContext> },
+) {
+  const { context, ...pluginDefinition } = definition;
+  const plugin = definePluginWithoutStaticContext(pluginDefinition);
+  return {
+    ...plugin,
+    start(options: Parameters<typeof plugin.start>[0] = {}) {
+      return plugin.start({
+        ...options,
+        ...(context ? { context } : {}),
+      });
+    },
+  };
+}
 
 /**
  * A plugin declares what it exports. It does not wire a dispatcher.
@@ -42,6 +69,7 @@ const invocation = (exportId: string, operation = "submit", invocationId = "i-1"
   // The protocol requires a poll to carry the state the plugin returned when it accepted the work.
   // A poll without it names no task, which is the shape of a wait that can never end.
   ...(operation === "poll" ? { pollState: { taskId: "task-1" } } : {}),
+  ...(operation === "callback" ? { callbackPayload: { taskId: "task-1", status: "done" } } : {}),
   actor: { kind: "agent" },
 });
 
@@ -65,6 +93,53 @@ describe("definePlugin", () => {
     expect(poll).toHaveBeenCalledOnce();
     expect(submit).not.toHaveBeenCalled();
     expect(written.join("")).toContain("completed");
+  });
+
+  it("routes callback to the executor's callback without submitting again", async () => {
+    const submit = vi.fn(async () => ({ status: "accepted" as const, pollState: { id: "1" } }));
+    const callback = vi.fn(async () => ({ status: "completed" as const, outputs: [] }));
+    const plugin = definePlugin({ executors: { "x-execute": { submit, callback } } });
+    const { written, started } = run(plugin, [invocation("x-execute", "callback")]);
+    await started;
+
+    expect(callback).toHaveBeenCalledOnce();
+    expect(submit).not.toHaveBeenCalled();
+    expect(written.join("")).toContain("completed");
+  });
+
+  it("fails an unsupported callback without submitting again", async () => {
+    const submit = vi.fn(async () => ({ status: "accepted" as const, pollState: { id: "1" } }));
+    const plugin = definePlugin({ executors: { "x-execute": { submit } } });
+    const { written, started } = run(plugin, [invocation("x-execute", "callback")]);
+    await started;
+
+    expect(submit).not.toHaveBeenCalled();
+    expect(JSON.parse(written.join(""))).toMatchObject({
+      status: "failed",
+      error: {
+        code: "contract_violation",
+        retryable: false,
+        requestState: "accepted",
+      },
+    });
+  });
+
+  it("preserves a structured executor failure", async () => {
+    const error = {
+      code: "execution_failed" as const,
+      message: "provider rejected the request",
+      retryable: true,
+      requestState: "rejected" as const,
+      providerCode: "quota_exceeded",
+      details: { limit: 10 },
+    };
+    const plugin = definePlugin({
+      executors: { "x-execute": { submit: async () => ({ status: "failed" as const, error }) } },
+    });
+    const { written, started } = run(plugin, [invocation("x-execute")]);
+    await started;
+
+    expect(JSON.parse(written.join(""))).toMatchObject({ status: "failed", error });
   });
 
   it("says so when asked to poll an executor that cannot", async () => {

@@ -476,125 +476,6 @@ export function createCanvasTools(
     },
   });
 
-  const listCustomActions = tool({
-    description:
-      "List custom marketplace actions installed in this project (e.g. grid-split, upscale). Each entry shows its id, name, description, output type, declared input modalities, and parameters. Use this BEFORE create_custom_action_node — the agent doesn't know which actions are available a priori.",
-    inputSchema: z.object({}),
-    execute: async () => {
-      try {
-        const actionsMap = doc.getMap("customActions");
-        const entries: Array<Record<string, unknown>> = [];
-        for (const [, raw] of actionsMap.entries()) {
-          if (!raw || typeof raw !== "object") continue;
-          entries.push(raw as Record<string, unknown>);
-        }
-        if (entries.length === 0) {
-          return "No custom actions are registered in this project. The user needs to run a local agent (e.g. `python examples/grid_split.py`) that calls register_custom_actions before any can be used.";
-        }
-        return JSON.stringify(
-          entries.map((a) => ({
-            id: a.id,
-            name: a.name,
-            description: a.description,
-            outputType: a.outputType,
-            promptModalities: a.promptModalities ?? ["text"],
-            parameters: a.parameters ?? [],
-            runtime: a.runtime ?? "local",
-          })),
-          null,
-          2,
-        );
-      } catch (e) {
-        return `Error listing custom actions: ${e}`;
-      }
-    },
-  });
-
-  const createCustomActionNode = tool({
-    description:
-      "Create an action-badge that runs a custom marketplace action (one of the ids from list_custom_actions). The action-badge is the input node; after creation call run_generation_node to spawn its pending child + dispatch the task to the registered agent. Reference assets (e.g. a source image for grid-split) MUST be passed via `reference_ids` — those become canvas edges that the executor reads as inputs.",
-    inputSchema: z.object({
-      action_id: z
-        .string()
-        .describe("The custom action id (e.g. 'grid-split'). Must be one of the ids returned by list_custom_actions."),
-      label: z.string().describe("Display label shown above the action-badge"),
-      prompt: z
-        .string()
-        .describe(
-          "Free-text prompt. Required by the current validation gate even when the action ignores text (the agent should pass a short descriptive string). For prompt-driven actions, write the actual instruction here.",
-        ),
-      reference_ids: z
-        .array(z.string())
-        .optional()
-        .describe(
-          "Canvas node ids of upstream image/video/audio assets to wire as inputs. Each becomes an incoming edge to the new action-badge. Required for actions whose promptModalities include 'image'/'video'/'audio'.",
-        ),
-      params: z
-        .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
-        .optional()
-        .describe(
-          "Custom action parameters (data.customActionParams). Schema is per-action — read it from list_custom_actions.parameters before populating.",
-        ),
-      position: z.object({ x: z.number(), y: z.number() }).optional(),
-      parent_id: z.string().optional(),
-    }),
-    execute: async (args) => {
-      const { action_id, label, prompt, reference_ids, params, position, parent_id } = args;
-      try {
-        // Look up the custom action definition so we know its outputType.
-        const def = canvas.getCustomAction(action_id);
-        if (!def) {
-          return `Error: custom action '${action_id}' is not registered. Run list_custom_actions to see what's available.`;
-        }
-        const resolvedParent = parent_id ?? getWorkspaceGroupId() ?? null;
-        const nodeId = generateId();
-        const assetId = generateId();
-
-        const data: Record<string, unknown> = {
-          label,
-          content: prompt,
-          prompt,
-          actionType: `custom:${action_id}`,
-          customActionId: action_id,
-          customActionParams: params ?? {},
-          outputType: def.outputType,
-        };
-        stampActor(data);
-
-        // ActionBadge reads refs from incoming edges (matching the web
-        // UI). referenceImageOrder is what the prompt-editor chips use
-        // for stable positional rendering.
-        const refs = (reference_ids ?? []).filter((id) => !!id);
-        if (refs.length > 0) data.referenceImageOrder = refs;
-
-        // Map image_gen -> the right node type based on the action's
-        // declared outputType. Custom actions can output any modality.
-        const nodeType =
-          def.outputType === "video"
-            ? NodeType.VideoGen
-            : def.outputType === "audio"
-              ? NodeType.AudioGen
-              : def.outputType === "text"
-                ? NodeType.TextGen
-                : NodeType.ImageGen;
-
-        const result = canvas.createNode(nodeId, nodeType, data, position, resolvedParent, assetId);
-        if (result.error) return `Error: ${result.error}`;
-
-        // Wire each ref as an incoming edge to the new badge.
-        for (const sourceNodeId of refs) {
-          if (!canvas.readNode(sourceNodeId)) continue;
-          canvas.insertEdge(`${sourceNodeId}-${nodeId}`, sourceNodeId, nodeId, "default");
-        }
-
-        return `Created custom action node ${result.node_id} (action=${action_id}, refs=${refs.length}). Call run_generation_node next to dispatch.`;
-      } catch (e) {
-        log.error("create_custom_action_node error", e);
-        return `Error creating custom action node: ${e}`;
-      }
-    },
-  });
-
   return {
     list_canvas_nodes: listCanvasNodes,
     read_canvas_node: readCanvasNode,
@@ -605,8 +486,6 @@ export function createCanvasTools(
     rerun_generation_node: rerunGenerationNode,
     search_canvas: searchCanvas,
     list_models: listModels,
-    list_custom_actions: listCustomActions,
-    create_custom_action_node: createCustomActionNode,
     understand_asset: understandAsset,
   };
 }

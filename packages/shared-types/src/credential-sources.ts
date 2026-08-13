@@ -1,6 +1,9 @@
 import { z } from "zod";
 
-import type { PluginAuthDeclaration, PluginAuthFormItem } from "./plugin-auth.js";
+import type {
+  PluginAuthDeclaration,
+  PluginAuthFormItem,
+} from "./plugin-auth.js";
 
 /**
  * Credential sources, normalized.
@@ -63,6 +66,8 @@ export interface CredentialSource {
   interactive: boolean;
   /** Storage key this source populates; the same value as `id`, named for its use. */
   credentialId: string;
+  /** The complete authentication method that owns this source. */
+  methodId: string;
   /**
    * True when the value must be stored encrypted and drawn masked.
    *
@@ -79,8 +84,8 @@ export interface CredentialSource {
    * backed up with the project long after it stopped working.
    */
   secret: boolean;
-  /** The originating form item, for host code that needs its kind-specific fields. */
-  item: PluginAuthFormItem;
+  /** The originating form item, when the method obtains the value from a form. */
+  item?: PluginAuthFormItem;
 }
 
 /**
@@ -106,8 +111,12 @@ export function resolveCredentialSources(
   // on the strength of a flow declared for an entirely different way of signing in.
   for (const method of declaration.methods) {
     const opensWindow = method.flow !== undefined;
+    let flowHasDeclaredButton = false;
     for (const item of method.form ?? []) {
       if (item.kind === "notice") continue;
+      if (item.kind === "button" && method.flow) {
+        flowHasDeclaredButton = true;
+      }
       const control: CredentialSourceControl = item.kind === "button"
         ? (opensWindow ? "button-window" : "button-action")
         : "field";
@@ -121,8 +130,38 @@ export function resolveCredentialSources(
         // blocked by it; a button that calls the host needs nobody at all.
         interactive: control === "button-window",
         credentialId: item.key,
+        methodId: method.id,
         secret: item.kind === "field" ? item.secret === true : false,
         item,
+      });
+    }
+
+    // A method is a whole way to obtain credentials. Flow-only and import-only methods deliberately
+    // have no form: the user either signs in or asks the Host to reuse an installed app's login.
+    // Dropping them because there is no form field makes the Provider's two easiest paths invisible.
+    if (method.flow && !flowHasDeclaredButton) {
+      const credentialId = method.flow.credential?.storeAs ?? method.id;
+      sources.push({
+        id: credentialId,
+        kind: "button",
+        label: method.label,
+        control: "button-window",
+        interactive: true,
+        credentialId,
+        methodId: method.id,
+        secret: true,
+      });
+    }
+    if (method.import) {
+      sources.push({
+        id: method.import.storeAs,
+        kind: "button",
+        label: method.label,
+        control: "button-action",
+        interactive: false,
+        credentialId: method.import.storeAs,
+        methodId: method.id,
+        secret: true,
       });
     }
   }

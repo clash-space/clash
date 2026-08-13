@@ -15,9 +15,10 @@
   "expect": {
     "status": "failed",
     "error": {
-      "code": "execution_failed",
+      "code": "authentication_failed",
       "message": "This Google account has neither an accessToken nor an apiKey stored.",
-      "retryable": false
+      "retryable": false,
+      "requestState": "rejected"
     }
   },
   "brokerFixtures": [

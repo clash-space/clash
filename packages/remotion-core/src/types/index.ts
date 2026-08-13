@@ -390,8 +390,8 @@ export type Asset = {
   readOnly?: boolean;
   /** ID of the source node when asset is linked from canvas (for deduplication) */
   sourceNodeId?: string;
-  /** Stable D1 asset row id for media identity (thumbnail cache, metadata, etc.) */
-  backingAssetId?: string;
+  /** Stable Project Asset identity; runtime URLs and Canvas ids are projections. */
+  projectAssetId?: string;
 };
 
 export type EditorTranscriptWord = {
@@ -448,10 +448,6 @@ export type EditorState = {
   durationInFrames: number;
 };
 
-export type TimelineMediaAssetRef = {
-  assetId: string;
-};
-
 // Editor actions
 export type EditorAction =
   | { type: 'ADD_TRACK'; payload: Track }
@@ -483,5 +479,4 @@ export type TimelineDsl = Pick<
   EditorState,
   'tracks' | 'compositionWidth' | 'compositionHeight' | 'fps' | 'durationInFrames'
 > & Pick<Partial<EditorState>, 'primaryTrackId' | 'assetTranscripts'> & {
-  mediaAssetRefs?: TimelineMediaAssetRef[];
 };

@@ -21,7 +21,11 @@ import {
 } from "./canvas.js";
 import { MODEL_CARDS, normalizeModelId, type ModelCard } from "./models.js";
 import { ExecutablePluginBindingSchema } from "./executable-plugin.js";
-import { ensureProjectCanvas, readProjectTimeline } from "./project-workspace.js";
+import { DirectorReferencePacketSchema } from "./director-reference.js";
+import {
+  ensureProjectCanvas,
+  readProjectTimeline,
+} from "./project-workspace.js";
 import {
   clearNodeUpstreamRefs,
   deleteNodeUpstreamRef,
@@ -29,6 +33,17 @@ import {
   readNodeUpstreamRefs,
   upsertNodeUpstreamRef,
 } from "./node-upstreams.js";
+import {
+  ACTION_ASSET_BINDING_AUTHORITY_VERSION,
+  actionAssetBindingAuthorityVersion,
+  replaceDraftActionAssetInputBindings,
+  type DraftActionAssetInput,
+} from "./action-asset-bindings.js";
+import {
+  canvasActionAssetInputs,
+  isCanvasManagedAssetAction,
+} from "./canvas-action-asset-inputs.js";
+import { readProjectAsset } from "./project-assets.js";
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -99,10 +114,72 @@ export interface TaskStatusResult {
 
 // ─── Internal Helpers ────────────────────────────────────
 
+export function projectVisibleNodeData(
+  data: Record<string, unknown>,
+): Record<string, unknown> {
+  const visible = { ...data };
+  delete visible.providerAccountId;
+  delete visible.provider_id;
+  delete visible.src;
+  delete visible.url;
+  delete visible.remoteUrl;
+  delete visible.signedUrl;
+  delete visible.signedCoverUrl;
+  delete visible.storageKey;
+  delete visible.srcR2Key;
+  delete visible.localPath;
+  delete visible.filePath;
+  delete visible.thumbnail;
+  delete visible.thumbnailUrl;
+  delete visible.poster;
+  delete visible.posterUrl;
+  delete visible.coverUrl;
+  delete visible.previewUrl;
+  delete visible.sourceUrl;
+  delete visible.referenceImageUrls;
+  delete visible.referenceVideoUrls;
+  delete visible.referenceAudioUrls;
+  delete visible.referenceImageR2Keys;
+  delete visible.referenceVideoR2Keys;
+  delete visible.referenceAudioR2Keys;
+  delete visible.startFrameUrl;
+  delete visible.endFrameUrl;
+  delete visible.outputVideoSrc;
+  delete visible.outputVideoPreviewUrl;
+  if (visible.directorReferencePacket !== undefined) {
+    const packet = DirectorReferencePacketSchema.safeParse(
+      visible.directorReferencePacket,
+    );
+    if (packet.success) visible.directorReferencePacket = packet.data;
+    else delete visible.directorReferencePacket;
+  }
+  if (Array.isArray(visible.directorShotReferencePackets)) {
+    visible.directorShotReferencePackets =
+      visible.directorShotReferencePackets.flatMap((candidate) => {
+        const packet = DirectorReferencePacketSchema.safeParse(candidate);
+        return packet.success ? [packet.data] : [];
+      });
+  }
+  if (
+    visible.modelParams &&
+    typeof visible.modelParams === "object" &&
+    !Array.isArray(visible.modelParams)
+  ) {
+    const modelParams = {
+      ...(visible.modelParams as Record<string, unknown>),
+    };
+    delete modelParams.provider_id;
+    visible.modelParams = modelParams;
+  }
+  return visible;
+}
+
 function randomIdPart(): string {
-  const cryptoObject = (globalThis as unknown as {
-    crypto?: { randomUUID?: () => string };
-  }).crypto;
+  const cryptoObject = (
+    globalThis as unknown as {
+      crypto?: { randomUUID?: () => string };
+    }
+  ).crypto;
   if (cryptoObject?.randomUUID) return cryptoObject.randomUUID().slice(0, 8);
   return Math.random().toString(36).slice(2, 10);
 }
@@ -203,12 +280,17 @@ export class Canvas {
   findNode(idOrAssetId: string): NodeInfo | null {
     const byId = this.readNode(idOrAssetId);
     if (byId) return byId;
-    return this.listNodes().find((n) => (n.data.assetId as string) === idOrAssetId) ?? null;
+    return (
+      this.listNodes().find(
+        (n) => (n.data.assetId as string) === idOrAssetId,
+      ) ?? null
+    );
   }
 
   getNodeStatus(nodeIdOrAssetId: string): TaskStatusResult {
     const node = this.findNode(nodeIdOrAssetId);
-    if (!node) return { status: TaskStatus.NodeNotFound, error: "Node not found" };
+    if (!node)
+      return { status: TaskStatus.NodeNotFound, error: "Node not found" };
     const status = (node.data.status as string) ?? TaskStatus.Completed;
     const error = node.data.error as string | undefined;
     return error ? { status, error } : { status };
@@ -223,7 +305,9 @@ export class Canvas {
    *  been installed in this project. Same map NodeProcessor reads
    *  later when it dispatches the pending task — keeping the readers
    *  aligned avoids drift. */
-  getCustomAction(actionId: string): import("./canvas.js").CustomActionDefinition | null {
+  getCustomAction(
+    actionId: string,
+  ): import("./canvas.js").CustomActionDefinition | null {
     try {
       const map = this.doc.getMap("customActions");
       const raw = map.get(actionId);
@@ -243,16 +327,65 @@ export class Canvas {
     parentId: string | null,
     position: { x: number; y: number },
   ): void {
-    const versionBefore = this.doc.version();
-    this.ensureWritableCanvas();
-    const nodesMap = this.doc.getMap("nodes");
-    nodesMap.set(nodeId, {
+    this.insertNodeRecord(nodeId, {
       canvasId: this.canvasId,
       type: nodeType,
       data,
       parentId: parentId ?? undefined,
       position,
     });
+  }
+
+  /**
+   * Inserts one framework node without bypassing Canvas-owned binding writes.
+   * GUI adapters use this form to preserve layout fields alongside node data.
+   */
+  insertNodeRecord(nodeId: string, input: Record<string, unknown>): void {
+    const versionBefore = this.doc.version();
+    const visibleData = projectVisibleNodeData(
+      input.data && typeof input.data === "object" && !Array.isArray(input.data)
+        ? (input.data as Record<string, unknown>)
+        : {},
+    );
+    const raw: Record<string, unknown> = {
+      ...input,
+      canvasId: this.canvasId,
+      data: visibleData,
+    };
+    const nextNode: NodeInfo = {
+      id: nodeId,
+      canvas_id: this.canvasId,
+      upstream: Array.isArray(raw.upstream)
+        ? (raw.upstream as UpstreamRef[])
+        : [],
+      type: typeof raw.type === "string" ? raw.type : "text",
+      data: visibleData,
+      parent_id:
+        typeof raw.parentId === "string"
+          ? raw.parentId
+          : typeof raw.parent_id === "string"
+            ? raw.parent_id
+            : null,
+      position:
+        raw.position && typeof raw.position === "object"
+          ? (raw.position as { x: number; y: number })
+          : { x: 0, y: 0 },
+      width: typeof raw.width === "number" ? raw.width : null,
+      height: typeof raw.height === "number" ? raw.height : null,
+      style:
+        raw.style && typeof raw.style === "object" && !Array.isArray(raw.style)
+          ? (raw.style as Record<string, unknown>)
+          : null,
+    };
+    const bindingPlans = this.planActionAssetBindings(
+      [...this.listNodes(), nextNode],
+      this.listEdges(),
+    );
+    this.validateActionAssetBindingPlans(bindingPlans);
+    this.ensureWritableCanvas();
+    const nodesMap = this.doc.getMap("nodes");
+    nodesMap.set(nodeId, raw);
+    this.applyActionAssetBindingPlans(bindingPlans);
     const update = this.doc.export({ mode: "update", from: versionBefore });
     this.broadcast(update);
   }
@@ -267,18 +400,42 @@ export class Canvas {
   ): void {
     const sourceNode = this.readNode(source);
     const targetNode = this.readNode(target);
-    if (!sourceNode) throw new Error(`Source node ${source} not found in canvas ${this.canvasId}`);
-    if (!targetNode) throw new Error(`Target node ${target} not found in canvas ${this.canvasId}`);
+    if (!sourceNode)
+      throw new Error(
+        `Source node ${source} not found in canvas ${this.canvasId}`,
+      );
+    if (!targetNode)
+      throw new Error(
+        `Target node ${target} not found in canvas ${this.canvasId}`,
+      );
 
     const versionBefore = this.doc.version();
+    const bindingPlans = this.planActionAssetBindings(this.listNodes(), [
+      ...this.listEdges(),
+      {
+        id: edgeId,
+        source,
+        target,
+        type: edgeType ?? "default",
+        ...(sourceHandle ? { sourceHandle } : {}),
+        ...(targetHandle ? { targetHandle } : {}),
+      },
+    ]);
+    this.validateActionAssetBindingPlans(bindingPlans);
     const raw = this.doc.getMap("nodes").get(target) as Record<string, unknown>;
-    upsertNodeUpstreamRef(this.doc, target, {
-      nodeId: source,
-      edgeId,
-      type: edgeType ?? "default",
-      ...(sourceHandle ? { sourceHandle } : {}),
-      ...(targetHandle ? { targetHandle } : {}),
-    }, raw);
+    upsertNodeUpstreamRef(
+      this.doc,
+      target,
+      {
+        nodeId: source,
+        edgeId,
+        type: edgeType ?? "default",
+        ...(sourceHandle ? { sourceHandle } : {}),
+        ...(targetHandle ? { targetHandle } : {}),
+      },
+      raw,
+    );
+    this.applyActionAssetBindingPlans(bindingPlans);
     const update = this.doc.export({ mode: "update", from: versionBefore });
     this.broadcast(update);
   }
@@ -291,25 +448,53 @@ export class Canvas {
     if (!existing) return false;
     const source = patch.source ?? existing.source;
     const target = patch.target ?? existing.target;
-    if (!this.readNode(source)) throw new Error(`Source node ${source} not found in canvas ${this.canvasId}`);
-    if (!this.readNode(target)) throw new Error(`Target node ${target} not found in canvas ${this.canvasId}`);
+    if (!this.readNode(source))
+      throw new Error(
+        `Source node ${source} not found in canvas ${this.canvasId}`,
+      );
+    if (!this.readNode(target))
+      throw new Error(
+        `Target node ${target} not found in canvas ${this.canvasId}`,
+      );
 
     const versionBefore = this.doc.version();
+    const nextEdge: CanvasEdgeInfo = {
+      ...existing,
+      ...patch,
+      id: edgeId,
+      source,
+      target,
+      type: patch.type ?? existing.type,
+    };
+    const bindingPlans = this.planActionAssetBindings(
+      this.listNodes(),
+      this.listEdges().map((edge) => (edge.id === edgeId ? nextEdge : edge)),
+    );
+    this.validateActionAssetBindingPlans(bindingPlans);
     const nodesMap = this.doc.getMap("nodes");
-    const previousTarget = nodesMap.get(existing.target) as Record<string, unknown>;
+    const previousTarget = nodesMap.get(existing.target) as Record<
+      string,
+      unknown
+    >;
     deleteNodeUpstreamRef(this.doc, existing.target, edgeId, previousTarget);
     const nextTarget = nodesMap.get(target) as Record<string, unknown>;
-    upsertNodeUpstreamRef(this.doc, target, {
-      nodeId: source,
-      edgeId,
-      type: patch.type ?? existing.type,
-      ...(patch.sourceHandle ?? existing.sourceHandle
-        ? { sourceHandle: patch.sourceHandle ?? existing.sourceHandle }
-        : {}),
-      ...(patch.targetHandle ?? existing.targetHandle
-        ? { targetHandle: patch.targetHandle ?? existing.targetHandle }
-        : {}),
-    }, nextTarget);
+    upsertNodeUpstreamRef(
+      this.doc,
+      target,
+      {
+        nodeId: source,
+        edgeId,
+        type: patch.type ?? existing.type,
+        ...((patch.sourceHandle ?? existing.sourceHandle)
+          ? { sourceHandle: patch.sourceHandle ?? existing.sourceHandle }
+          : {}),
+        ...((patch.targetHandle ?? existing.targetHandle)
+          ? { targetHandle: patch.targetHandle ?? existing.targetHandle }
+          : {}),
+      },
+      nextTarget,
+    );
+    this.applyActionAssetBindingPlans(bindingPlans);
     const update = this.doc.export({ mode: "update", from: versionBefore });
     this.broadcast(update);
     return true;
@@ -319,19 +504,81 @@ export class Canvas {
     const existing = this.listEdges().find((edge) => edge.id === edgeId);
     if (!existing) return false;
     const versionBefore = this.doc.version();
-    const raw = this.doc.getMap("nodes").get(existing.target) as Record<string, unknown>;
+    const bindingPlans = this.planActionAssetBindings(
+      this.listNodes(),
+      this.listEdges().filter((edge) => edge.id !== edgeId),
+    );
+    this.validateActionAssetBindingPlans(bindingPlans);
+    const raw = this.doc.getMap("nodes").get(existing.target) as Record<
+      string,
+      unknown
+    >;
     deleteNodeUpstreamRef(this.doc, existing.target, edgeId, raw);
+    this.applyActionAssetBindingPlans(bindingPlans);
     const update = this.doc.export({ mode: "update", from: versionBefore });
     this.broadcast(update);
     return true;
   }
 
   updateNode(nodeId: string, updates: Record<string, unknown>): boolean {
+    return this.updateNodeRecord(nodeId, { data: updates });
+  }
+
+  /** Updates one complete framework node through the Canvas authority. */
+  updateNodeRecord(nodeId: string, patch: Record<string, unknown>): boolean {
     const nodesMap = this.doc.getMap("nodes");
     const raw = nodesMap.get(nodeId) as Record<string, any> | undefined;
     if (!raw) return false;
+    const currentNode = this.readNode(nodeId);
+    if (!currentNode) return false;
     const versionBefore = this.doc.version();
-    nodesMap.set(nodeId, { ...raw, data: { ...(raw.data ?? {}), ...updates } });
+    const patchData =
+      patch.data && typeof patch.data === "object" && !Array.isArray(patch.data)
+        ? (patch.data as Record<string, unknown>)
+        : {};
+    const nextData = projectVisibleNodeData({
+      ...(raw.data ?? {}),
+      ...patchData,
+    });
+    const nextNode: NodeInfo = {
+      ...currentNode,
+      type: typeof patch.type === "string" ? patch.type : currentNode.type,
+      data: nextData,
+      parent_id:
+        typeof patch.parentId === "string"
+          ? patch.parentId
+          : patch.parentId === null
+            ? null
+            : currentNode.parent_id,
+      position:
+        patch.position && typeof patch.position === "object"
+          ? (patch.position as { x: number; y: number })
+          : currentNode.position,
+      width: typeof patch.width === "number" ? patch.width : currentNode.width,
+      height:
+        typeof patch.height === "number" ? patch.height : currentNode.height,
+      style:
+        patch.style &&
+        typeof patch.style === "object" &&
+        !Array.isArray(patch.style)
+          ? (patch.style as Record<string, unknown>)
+          : currentNode.style,
+    };
+    const bindingPlans = this.planActionAssetBindings(
+      this.listNodes().map((node) => (node.id === nodeId ? nextNode : node)),
+      this.listEdges(),
+      isCanvasManagedAssetAction(currentNode) &&
+        !isCanvasManagedAssetAction(nextNode)
+        ? [`node:${nodeId}`]
+        : [],
+    );
+    this.validateActionAssetBindingPlans(bindingPlans);
+    nodesMap.set(nodeId, {
+      ...raw,
+      ...patch,
+      data: nextData,
+    });
+    this.applyActionAssetBindingPlans(bindingPlans);
     const update = this.doc.export({ mode: "update", from: versionBefore });
     this.broadcast(update);
     return true;
@@ -355,22 +602,48 @@ export class Canvas {
     return this.deleteNodes([nodeId]).deletedNodeIds.length === 1;
   }
 
-  deleteNodes(nodeIds: string[]): { deletedNodeIds: string[]; deletedEdgeIds: string[] } {
-    const uniqueNodeIds = [...new Set(nodeIds.map((nodeId) => nodeId.trim()).filter(Boolean))];
-    if (uniqueNodeIds.length === 0) return { deletedNodeIds: [], deletedEdgeIds: [] };
+  deleteNodes(nodeIds: string[]): {
+    deletedNodeIds: string[];
+    deletedEdgeIds: string[];
+  } {
+    const uniqueNodeIds = [
+      ...new Set(nodeIds.map((nodeId) => nodeId.trim()).filter(Boolean)),
+    ];
+    if (uniqueNodeIds.length === 0)
+      return { deletedNodeIds: [], deletedEdgeIds: [] };
 
     const nodesMap = this.doc.getMap("nodes");
-    const deletedNodeIds = uniqueNodeIds.filter((nodeId) => Boolean(this.readNode(nodeId)));
-    if (deletedNodeIds.length === 0) return { deletedNodeIds: [], deletedEdgeIds: [] };
+    const deletedNodeIds = uniqueNodeIds.filter((nodeId) =>
+      Boolean(this.readNode(nodeId)),
+    );
+    if (deletedNodeIds.length === 0)
+      return { deletedNodeIds: [], deletedEdgeIds: [] };
 
     const deletedSet = new Set(deletedNodeIds);
     const versionBefore = this.doc.version();
+    const bindingPlans = this.planActionAssetBindings(
+      this.listNodes().filter((node) => !deletedSet.has(node.id)),
+      this.listEdges().filter(
+        (edge) => !deletedSet.has(edge.source) && !deletedSet.has(edge.target),
+      ),
+      this.listNodes()
+        .filter(
+          (node) => deletedSet.has(node.id) && isCanvasManagedAssetAction(node),
+        )
+        .map((node) => `node:${node.id}`),
+    );
+    this.validateActionAssetBindingPlans(bindingPlans);
     for (const [key, value] of nodesMap.entries()) {
       const raw = value as Record<string, any> | undefined;
       if (!raw || typeof raw !== "object") continue;
-      const nodeCanvasId = typeof raw.canvasId === "string" ? raw.canvasId : "main";
+      const nodeCanvasId =
+        typeof raw.canvasId === "string" ? raw.canvasId : "main";
       if (nodeCanvasId !== this.canvasId) continue;
-      if (typeof raw.parentId === "string" && deletedSet.has(raw.parentId) && !deletedSet.has(key)) {
+      if (
+        typeof raw.parentId === "string" &&
+        deletedSet.has(raw.parentId) &&
+        !deletedSet.has(key)
+      ) {
         const { parentId: _parentId, extent: _extent, ...rest } = raw;
         nodesMap.set(key, rest);
       }
@@ -380,7 +653,8 @@ export class Canvas {
     for (const [targetId, value] of nodesMap.entries()) {
       const raw = value as Record<string, any> | undefined;
       if (!raw || typeof raw !== "object") continue;
-      const nodeCanvasId = typeof raw.canvasId === "string" ? raw.canvasId : "main";
+      const nodeCanvasId =
+        typeof raw.canvasId === "string" ? raw.canvasId : "main";
       if (nodeCanvasId !== this.canvasId) continue;
       const upstream = readNodeUpstreamRefs(this.doc, targetId, raw);
       for (const ref of upstream) {
@@ -388,9 +662,11 @@ export class Canvas {
         if (remove) deletedEdgeIds.push(ref.edgeId);
         if (remove) deleteNodeUpstreamRef(this.doc, targetId, ref.edgeId, raw);
       }
-      if (deletedSet.has(targetId)) clearNodeUpstreamRefs(this.doc, targetId, raw);
+      if (deletedSet.has(targetId))
+        clearNodeUpstreamRefs(this.doc, targetId, raw);
     }
     for (const nodeId of deletedNodeIds) nodesMap.delete(nodeId);
+    this.applyActionAssetBindingPlans(bindingPlans);
 
     const update = this.doc.export({ mode: "update", from: versionBefore });
     this.broadcast(update);
@@ -408,7 +684,10 @@ export class Canvas {
     assetId?: string | null,
   ): CreateNodeResult {
     const canvases = this.doc.getMap("canvases");
-    if (!canvases.get(this.canvasId) && !(this.canvasId === "main" && canvases.size === 0)) {
+    if (
+      !canvases.get(this.canvasId) &&
+      !(this.canvasId === "main" && canvases.size === 0)
+    ) {
       return {
         node_id: null,
         error: `Canvas ${this.canvasId} not found`,
@@ -416,20 +695,26 @@ export class Canvas {
         asset_id: null,
       };
     }
-    const existingRaw = this.doc.getMap("nodes").get(nodeId) as Record<string, unknown> | undefined;
+    const existingRaw = this.doc.getMap("nodes").get(nodeId) as
+      Record<string, unknown> | undefined;
     if (existingRaw) {
-      const existingCanvasId = typeof existingRaw.canvasId === "string" ? existingRaw.canvasId : "main";
+      const existingCanvasId =
+        typeof existingRaw.canvasId === "string"
+          ? existingRaw.canvasId
+          : "main";
       return {
         node_id: null,
-        error: existingCanvasId === this.canvasId
-          ? `Node ${nodeId} already exists`
-          : `Node ${nodeId} already exists in canvas ${existingCanvasId}`,
+        error:
+          existingCanvasId === this.canvasId
+            ? `Node ${nodeId} already exists`
+            : `Node ${nodeId} already exists in canvas ${existingCanvasId}`,
         proposal: null,
         asset_id: null,
       };
     }
 
-    const mapping = AGENT_NODE_TYPE_MAP[nodeType as keyof typeof AGENT_NODE_TYPE_MAP];
+    const mapping =
+      AGENT_NODE_TYPE_MAP[nodeType as keyof typeof AGENT_NODE_TYPE_MAP];
     const rfType = mapping?.rfType ?? nodeType;
     let proposalType: string = ProposalType.Simple;
     let resolvedAssetId = assetId ?? null;
@@ -453,7 +738,8 @@ export class Canvas {
     // overwrite our routing hint. Built-in types still get the
     // canonical actionType from the map so renames don't leak into
     // CLI / agent callers.
-    const callerActionType = typeof nodeData.actionType === "string" ? nodeData.actionType : undefined;
+    const callerActionType =
+      typeof nodeData.actionType === "string" ? nodeData.actionType : undefined;
     if (mapping && "actionType" in mapping) {
       if (!callerActionType?.startsWith("custom:")) {
         nodeData.actionType = mapping.actionType;
@@ -471,7 +757,11 @@ export class Canvas {
         parentId: parentId ?? undefined,
         data: nodeData,
       };
-      const result = autoInsertNode(nodeId, [...existingNodes, virtualNode], this.listEdges());
+      const result = autoInsertNode(
+        nodeId,
+        [...existingNodes, virtualNode],
+        this.listEdges(),
+      );
       finalPos = result.position;
 
       this.insertNode(nodeId, rfType, nodeData, parentId ?? null, finalPos);
@@ -483,7 +773,8 @@ export class Canvas {
       this.insertNode(nodeId, rfType, nodeData, parentId ?? null, finalPos);
     }
 
-    const upstreamNodeIds = (data.upstreamNodeIds ?? data.upstreamIds) as string[] | undefined;
+    const upstreamNodeIds = (data.upstreamNodeIds ?? data.upstreamIds) as
+      string[] | undefined;
     const proposalNodeData: Record<string, unknown> = { id: nodeId, ...data };
     const proposal: Record<string, unknown> = {
       id: `proposal-${randomIdPart()}`,
@@ -504,7 +795,12 @@ export class Canvas {
       if (deduped.length) proposal.upstreamNodeIds = deduped;
     }
 
-    return { node_id: nodeId, error: null, proposal, asset_id: resolvedAssetId };
+    return {
+      node_id: nodeId,
+      error: null,
+      proposal,
+      asset_id: resolvedAssetId,
+    };
   }
 
   createLinkedNode(opts: {
@@ -570,26 +866,58 @@ export class Canvas {
    * phrase its log line ("created pending asset" vs "created pending
    * render-video") without re-reading the node.
    */
-  execute(nodeId: string, generateId: () => string,
+  execute(
+    nodeId: string,
+    generateId: () => string,
     /** Answer with this account and no other. */
     providerAccountId?: string,
   ): ExecuteResult {
     const node = this.readNode(nodeId);
     if (!node) {
-      return { kind: null, childNodeId: "", childNodeType: "", position: { x: 0, y: 0 }, error: `Node ${nodeId} not found` };
+      return {
+        kind: null,
+        childNodeId: "",
+        childNodeType: "",
+        position: { x: 0, y: 0 },
+        error: `Node ${nodeId} not found`,
+      };
     }
     if (node.type === "video-editor") {
       const r = this.executeRender(nodeId, generateId);
       if (r.error) {
-        return { kind: null, childNodeId: "", childNodeType: "", position: { x: 0, y: 0 }, error: r.error };
+        return {
+          kind: null,
+          childNodeId: "",
+          childNodeType: "",
+          position: { x: 0, y: 0 },
+          error: r.error,
+        };
       }
-      return { kind: "render", childNodeId: r.renderNodeId, childNodeType: "video", position: r.position, error: null };
+      return {
+        kind: "render",
+        childNodeId: r.renderNodeId,
+        childNodeType: "video",
+        position: r.position,
+        error: null,
+      };
     }
     const r = this.executeGeneration(nodeId, generateId, providerAccountId);
     if (r.error) {
-      return { kind: null, childNodeId: "", childNodeType: "", position: { x: 0, y: 0 }, error: r.error };
+      return {
+        kind: null,
+        childNodeId: "",
+        childNodeType: "",
+        position: { x: 0, y: 0 },
+        error: r.error,
+      };
     }
-    return { kind: "generation", childNodeId: r.assetNodeId, childNodeType: r.assetNodeType, position: r.position, error: null };
+    return {
+      kind: "generation",
+      childNodeId: r.assetNodeId,
+      childNodeType: r.assetNodeType,
+      position: r.position,
+      error: null,
+    };
   }
 
   /**
@@ -602,16 +930,20 @@ export class Canvas {
     nodeId: string,
     generateId: () => string,
     /**
-     * Answer with this account and no other.
-     *
-     * Recorded on the pending node rather than resolved here, because resolution happens in the
-     * host at request time and the choice has to survive the gap -- including a restart.
+     * Compatibility argument for host surfaces that accept an account override. Account identity
+     * is owner-private execution state and must be handed to the host separately, never projected
+     * into the pending Project node.
      */
-    providerAccountId?: string,
+    _providerAccountId?: string,
   ): ExecuteGenerationResult {
     const node = this.readNode(nodeId);
     if (!node) {
-      return { assetNodeId: "", assetNodeType: "", position: { x: 0, y: 0 }, error: `Node ${nodeId} not found` };
+      return {
+        assetNodeId: "",
+        assetNodeType: "",
+        position: { x: 0, y: 0 },
+        error: `Node ${nodeId} not found`,
+      };
     }
 
     const nodeData = node.data || {};
@@ -628,15 +960,27 @@ export class Canvas {
       actionType === ACTION_TYPE.VideoGen ||
       actionType === ACTION_TYPE.AudioGen ||
       actionType === ACTION_TYPE.TextGen;
-    const isCustomGen = typeof actionType === "string" && actionType.startsWith("custom:");
+    const isCustomGen =
+      typeof actionType === "string" && actionType.startsWith("custom:");
     if (!isActionBadge || (!isBuiltInGen && !isCustomGen)) {
-      return { assetNodeId: "", assetNodeType: "", position: { x: 0, y: 0 }, error: `Node ${nodeId} is not a generation node` };
+      return {
+        assetNodeId: "",
+        assetNodeType: "",
+        position: { x: 0, y: 0 },
+        error: `Node ${nodeId} is not a generation node`,
+      };
     }
 
     // Extract prompt
-    const prompt = (nodeData.content as string) || (nodeData.prompt as string) || "";
+    const prompt =
+      (nodeData.content as string) || (nodeData.prompt as string) || "";
     if (isBuiltInGen && !prompt.trim()) {
-      return { assetNodeId: "", assetNodeType: "", position: { x: 0, y: 0 }, error: "No prompt provided" };
+      return {
+        assetNodeId: "",
+        assetNodeType: "",
+        position: { x: 0, y: 0 },
+        error: "No prompt provided",
+      };
     }
 
     // Resolve the generation config — built-in model or custom action.
@@ -645,17 +989,31 @@ export class Canvas {
     // Capability shape under the hood).
     let config: import("./canvas.js").GenerationConfig;
     if (isCustomGen) {
-      const customActionId = (nodeData.customActionId as string) || actionType.replace("custom:", "");
+      const customActionId =
+        (nodeData.customActionId as string) ||
+        actionType.replace("custom:", "");
       const customDef = this.getCustomAction(customActionId);
       if (!customDef) {
-        return { assetNodeId: "", assetNodeType: "", position: { x: 0, y: 0 }, error: `Custom action not installed: ${customActionId}` };
+        return {
+          assetNodeId: "",
+          assetNodeType: "",
+          position: { x: 0, y: 0 },
+          error: `Custom action not installed: ${customActionId}`,
+        };
       }
-      const customActionParams = (nodeData.customActionParams as Record<string, string | number | boolean>) || {};
+      const customActionParams =
+        (nodeData.customActionParams as Record<
+          string,
+          string | number | boolean
+        >) || {};
       config = { kind: "custom", customDef, customActionParams };
     } else {
-      const requestedModelId = (nodeData.modelId as string) || (nodeData.model as string) || "";
+      const requestedModelId =
+        (nodeData.modelId as string) || (nodeData.model as string) || "";
       const modelId = normalizeModelId(requestedModelId) ?? requestedModelId;
-      const modelCard = this.modelCards.find((c: ModelCard) => c.id === modelId);
+      const modelCard = this.modelCards.find(
+        (c: ModelCard) => c.id === modelId,
+      );
       if (!modelCard) {
         return {
           assetNodeId: "",
@@ -664,7 +1022,9 @@ export class Canvas {
           error: `Unknown model: ${requestedModelId || "(missing)"}`,
         };
       }
-      const modelParams = (nodeData.modelParams as Record<string, string | number | boolean>) || {};
+      const modelParams =
+        (nodeData.modelParams as Record<string, string | number | boolean>) ||
+        {};
       config = { kind: "model", modelCard, modelParams };
     }
 
@@ -697,7 +1057,10 @@ export class Canvas {
     // directly) carry their refs as bare `referenceImageAssetIds` on
     // the action-badge data. Synthesize stand-in ref nodes so the
     // unified payload builder can partition them too.
-    if (resolvedRefNodes.length === 0 && Array.isArray(nodeData.referenceImageAssetIds)) {
+    if (
+      resolvedRefNodes.length === 0 &&
+      Array.isArray(nodeData.referenceImageAssetIds)
+    ) {
       for (const aid of nodeData.referenceImageAssetIds as string[]) {
         resolvedRefNodes.push({
           id: aid,
@@ -711,7 +1074,8 @@ export class Canvas {
 
     const configId =
       config.kind === "model"
-        ? (config.modelCard?.id ?? ((nodeData.modelId as string) || (nodeData.model as string) || ""))
+        ? (config.modelCard?.id ??
+          ((nodeData.modelId as string) || (nodeData.model as string) || ""))
         : config.customDef.id;
     const { pendingInput, validationError } = buildGenerationPayload({
       prompt,
@@ -727,13 +1091,20 @@ export class Canvas {
         | `custom:${string}`,
       label: nodeData.label as string | undefined,
       referenceMode: nodeData.referenceMode as string | undefined,
-      pluginBinding: ExecutablePluginBindingSchema.safeParse(nodeData.pluginBinding).success
+      pluginBinding: ExecutablePluginBindingSchema.safeParse(
+        nodeData.pluginBinding,
+      ).success
         ? ExecutablePluginBindingSchema.parse(nodeData.pluginBinding)
         : undefined,
     });
 
     if (validationError) {
-      return { assetNodeId: "", assetNodeType: "", position: { x: 0, y: 0 }, error: validationError };
+      return {
+        assetNodeId: "",
+        assetNodeType: "",
+        position: { x: 0, y: 0 },
+        error: validationError,
+      };
     }
 
     // Build pending asset node
@@ -747,12 +1118,10 @@ export class Canvas {
       };
     }
 
-    const pendingNode = buildPendingAssetNode({ ...pendingInput, nodeId: assetNodeId });
-    if (providerAccountId) {
-      // Carried on the node so the host honours it whenever it gets to the request -- a queued
-      // generation that resumes after a restart must still go to the account that was named.
-      (pendingNode.data as Record<string, unknown>).providerAccountId = providerAccountId;
-    }
+    const pendingNode = buildPendingAssetNode({
+      ...pendingInput,
+      nodeId: assetNodeId,
+    });
     const pendingData: Record<string, unknown> = { ...pendingNode.data };
     if (nodeData.actorType === "user" || nodeData.actorType === "agent") {
       pendingData.actorType = nodeData.actorType;
@@ -795,12 +1164,23 @@ export class Canvas {
   executeRender(
     editorNodeId: string,
     generateId: () => string,
-  ): { renderNodeId: string; position: { x: number; y: number }; error: string | null } {
+  ): {
+    renderNodeId: string;
+    position: { x: number; y: number };
+    error: string | null;
+  } {
     const node = this.readNode(editorNodeId);
     if (!node) {
-      return { renderNodeId: "", position: { x: 0, y: 0 }, error: `Node ${editorNodeId} not found` };
+      return {
+        renderNodeId: "",
+        position: { x: 0, y: 0 },
+        error: `Node ${editorNodeId} not found`,
+      };
     }
-    const timelineId = typeof node.data?.timelineId === "string" ? node.data.timelineId : undefined;
+    const timelineId =
+      typeof node.data?.timelineId === "string"
+        ? node.data.timelineId
+        : undefined;
     if (!timelineId) {
       return {
         renderNodeId: "",
@@ -809,10 +1189,12 @@ export class Canvas {
       };
     }
     const timeline = readProjectTimeline(this.doc, timelineId);
-    if (!timeline ||
+    if (
+      !timeline ||
       timeline.owner.kind !== "canvas-action" ||
       timeline.owner.canvasId !== this.canvasId ||
-      timeline.owner.actionNodeId !== editorNodeId) {
+      timeline.owner.actionNodeId !== editorNodeId
+    ) {
       return {
         renderNodeId: "",
         position: { x: 0, y: 0 },
@@ -820,15 +1202,34 @@ export class Canvas {
       };
     }
     const timelineDsl = timeline.state as
-      | { tracks?: Array<{ items?: Array<{ from?: number; durationInFrames?: number }> }>; compositionWidth?: number; compositionHeight?: number; fps?: number; durationInFrames?: number }
+      | {
+          tracks?: Array<{
+            items?: Array<{ from?: number; durationInFrames?: number }>;
+          }>;
+          compositionWidth?: number;
+          compositionHeight?: number;
+          fps?: number;
+          durationInFrames?: number;
+        }
       | undefined;
     if (!timelineDsl || typeof timelineDsl !== "object") {
-      return { renderNodeId: "", position: { x: 0, y: 0 }, error: `Node ${editorNodeId} has no timelineDsl — pull / edit / push one first.` };
+      return {
+        renderNodeId: "",
+        position: { x: 0, y: 0 },
+        error: `Node ${editorNodeId} has no timelineDsl — pull / edit / push one first.`,
+      };
     }
     const tracks = Array.isArray(timelineDsl.tracks) ? timelineDsl.tracks : [];
-    const totalItems = tracks.reduce((n, t) => n + (Array.isArray(t.items) ? t.items.length : 0), 0);
+    const totalItems = tracks.reduce(
+      (n, t) => n + (Array.isArray(t.items) ? t.items.length : 0),
+      0,
+    );
     if (totalItems === 0) {
-      return { renderNodeId: "", position: { x: 0, y: 0 }, error: `Node ${editorNodeId} timelineDsl has no items — nothing to render.` };
+      return {
+        renderNodeId: "",
+        position: { x: 0, y: 0 },
+        error: `Node ${editorNodeId} timelineDsl has no items — nothing to render.`,
+      };
     }
 
     // Compute the actual playable length (max item end). Falls back to
@@ -839,15 +1240,27 @@ export class Canvas {
     for (const track of tracks) {
       for (const item of track.items ?? []) {
         const from = typeof item.from === "number" ? item.from : 0;
-        const dur = typeof item.durationInFrames === "number" ? item.durationInFrames : 0;
+        const dur =
+          typeof item.durationInFrames === "number" ? item.durationInFrames : 0;
         if (from + dur > maxEnd) maxEnd = from + dur;
       }
     }
-    const declaredDuration = typeof timelineDsl.durationInFrames === "number" ? timelineDsl.durationInFrames : 0;
+    const declaredDuration =
+      typeof timelineDsl.durationInFrames === "number"
+        ? timelineDsl.durationInFrames
+        : 0;
     const renderDurationInFrames = Math.max(maxEnd, declaredDuration, 1);
 
-    const naturalWidth = typeof timelineDsl.compositionWidth === "number" && timelineDsl.compositionWidth > 0 ? timelineDsl.compositionWidth : 1920;
-    const naturalHeight = typeof timelineDsl.compositionHeight === "number" && timelineDsl.compositionHeight > 0 ? timelineDsl.compositionHeight : 1080;
+    const naturalWidth =
+      typeof timelineDsl.compositionWidth === "number" &&
+      timelineDsl.compositionWidth > 0
+        ? timelineDsl.compositionWidth
+        : 1920;
+    const naturalHeight =
+      typeof timelineDsl.compositionHeight === "number" &&
+      timelineDsl.compositionHeight > 0
+        ? timelineDsl.compositionHeight
+        : 1080;
 
     const renderNodeId = generateId();
     if (this.readNode(renderNodeId)) {
@@ -883,7 +1296,68 @@ export class Canvas {
 
   // ── Private ──────────────────────────────────────────
 
-  private batchUpdatePositions(updates: Map<string, { x: number; y: number }>): void {
+  private planActionAssetBindings(
+    nodes: readonly NodeInfo[],
+    edges: readonly CanvasEdgeInfo[],
+    clearedActionIds: readonly string[] = [],
+  ): Array<{ actionId: string; inputs: DraftActionAssetInput[] }> {
+    const plans = new Map<string, DraftActionAssetInput[]>();
+    for (const actionId of clearedActionIds) plans.set(actionId, []);
+    for (const node of nodes) {
+      const inputs = canvasActionAssetInputs({ node, nodes, edges });
+      if (inputs === null) continue;
+      plans.set(`node:${node.id}`, inputs);
+    }
+    return [...plans.entries()].map(([actionId, inputs]) => ({
+      actionId,
+      inputs,
+    }));
+  }
+
+  private validateActionAssetBindingPlans(
+    plans: readonly {
+      actionId: string;
+      inputs: readonly DraftActionAssetInput[];
+    }[],
+  ): void {
+    const authority = actionAssetBindingAuthorityVersion(this.doc);
+    if (authority === undefined) return;
+    if (authority !== ACTION_ASSET_BINDING_AUTHORITY_VERSION) {
+      throw new Error(
+        `Unsupported Action Asset binding authority version: ${String(authority)}`,
+      );
+    }
+    for (const plan of plans) {
+      for (const input of plan.inputs) {
+        const asset = readProjectAsset(this.doc, input.projectAssetId);
+        if (!asset || asset.lifecycle.state !== "active") {
+          throw new Error(
+            `Project Asset ${input.projectAssetId} is not active`,
+          );
+        }
+      }
+    }
+  }
+
+  private applyActionAssetBindingPlans(
+    plans: readonly {
+      actionId: string;
+      inputs: readonly DraftActionAssetInput[];
+    }[],
+  ): void {
+    for (const plan of plans) {
+      const result = replaceDraftActionAssetInputBindings(
+        this.doc,
+        plan.actionId,
+        plan.inputs,
+      );
+      if (!result.ok) throw new Error(result.error);
+    }
+  }
+
+  private batchUpdatePositions(
+    updates: Map<string, { x: number; y: number }>,
+  ): void {
     if (updates.size === 0) return;
     const versionBefore = this.doc.version();
     const nodesMap = this.doc.getMap("nodes");

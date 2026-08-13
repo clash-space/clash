@@ -1,11 +1,12 @@
 export const CLASH_MCP_COMMAND_IDS = [
   "workspace",
+  "assets",
   "canvas",
   "director",
   "timeline",
 ] as const;
 
-export type ClashMcpCommandId = typeof CLASH_MCP_COMMAND_IDS[number];
+export type ClashMcpCommandId = (typeof CLASH_MCP_COMMAND_IDS)[number];
 export type ClashMcpToolFamily = ClashMcpCommandId | "other";
 
 export type ClashMcpCommand = {
@@ -22,19 +23,27 @@ export const CLASH_MCP_COMMANDS: readonly ClashMcpCommand[] = [
     useWhen: "binding or inspecting the local Clash project workspace",
   },
   {
+    id: "assets",
+    title: "Project Assets",
+    useWhen: "importing, finding, reading, or managing immutable Project media",
+  },
+  {
     id: "canvas",
     title: "Canvas",
-    useWhen: "creating, finding, connecting, or executing media and generation nodes",
+    useWhen:
+      "creating, finding, connecting, or executing media and generation nodes",
   },
   {
     id: "director",
     title: "Director Stage",
-    useWhen: "blocking characters, cameras, shots, performance, and spatial continuity",
+    useWhen:
+      "blocking characters, cameras, shots, performance, and spatial continuity",
   },
   {
     id: "timeline",
     title: "Timeline editor",
-    useWhen: "assembling picture, sound, captions, transitions, graphics, and editorial timing",
+    useWhen:
+      "assembling picture, sound, captions, transitions, graphics, and editorial timing",
   },
 ] as const;
 
@@ -51,7 +60,9 @@ export type ClashMcpCommandMenu<T> = {
 };
 
 export function classifyClashMcpTool(name: string): ClashMcpToolFamily {
-  if (name.startsWith("clash_workspace_") || name.startsWith("clash_studio_")) return "workspace";
+  if (name.startsWith("clash_workspace_") || name.startsWith("clash_studio_"))
+    return "workspace";
+  if (name.startsWith("clash_assets_")) return "assets";
   if (name.startsWith("clash_canvas_")) return "canvas";
   if (name.startsWith("clash_director_")) return "director";
   if (name.startsWith("clash_timeline_")) return "timeline";
@@ -69,9 +80,10 @@ export function buildClashMcpCommandMenu<T>(input: {
   selectedCommand?: ClashMcpCommandId;
   belongsToCommand(operation: T, command: ClashMcpCommand): boolean;
 }): ClashMcpCommandMenu<T> {
-  const operationsFor = (command: ClashMcpCommand): T[] => (
-    input.operations.filter((operation) => input.belongsToCommand(operation, command))
-  );
+  const operationsFor = (command: ClashMcpCommand): T[] =>
+    input.operations.filter((operation) =>
+      input.belongsToCommand(operation, command),
+    );
   const root = {
     schemaVersion: 1 as const,
     commands: CLASH_MCP_COMMANDS.map((command) => ({

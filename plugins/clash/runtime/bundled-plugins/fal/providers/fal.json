@@ -1,0 +1,27 @@
+{
+  "apiVersion": "clash.provider/v1",
+  "kind": "provider",
+  "spec": {
+    "id": "fal",
+    "name": "fal.ai",
+    "upstreamId": "fal",
+    "apiShape": "fal-queue",
+    "executorExportId": "fal-execute",
+    "auth": {
+      "methods": [
+        {
+          "id": "api-key",
+          "label": "API key",
+          "form": [
+            {
+              "kind": "field",
+              "key": "apiKey",
+              "label": "API key",
+              "secret": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

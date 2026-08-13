@@ -28,6 +28,7 @@ import {
 } from "node:path";
 import { createConnection } from "node:net";
 import { fileURLToPath } from "node:url";
+import type { ProjectHostResponse } from "@clash/shared-runtime/project-host-client";
 import {
   DirectorStageStateSchema,
   projectDirectorStageReadToken,
@@ -59,6 +60,13 @@ import {
   type RemotionProductReadbackReport,
   type TimelineProductReadbackReport,
 } from "./product-readback";
+import {
+  assertProjectHostReady,
+  assertWorkspaceProject,
+  productHostContext,
+  requestProjectHost,
+  type ProductHostReady,
+} from "./project-host";
 import type {
   AgentRunReport,
   ArtifactBenchmarkCase,
@@ -100,7 +108,6 @@ type ResolvedClashHost = {
   persistedClashHome: string;
   localDataDir: string;
   localApiPluginSocket: string;
-  projectPluginSocket: string;
   agentMemberId: string;
   agentName: string;
 };
@@ -112,16 +119,12 @@ type RunningClashHost = ResolvedClashHost & {
   child: ChildProcess;
 };
 
-type ProjectDaemonReady = {
+type ProjectHostReady = ProductHostReady & {
   projectId: string;
   workspaceId: string;
   initDisposition: "created" | "reused";
   markerSha256: string;
-  daemonPid: number;
-  mcpUrl: string;
-  socketPath: string;
   apiUrl: string;
-  ownership: "owned" | "reused";
   readyAt: string;
 };
 
@@ -914,8 +917,8 @@ async function resolveClashHost(
   const persistedClashHome = join(caseRoot, "clash-home");
   await mkdir(persistedClashHome, { recursive: true });
   // macOS limits Unix-domain socket paths to roughly 104 bytes. Its default
-  // per-user temp directory is already long enough that the project daemon's
-  // hashed socket name can exceed that limit, so keep the runtime-only home
+  // per-user temp directory can make the plugin-host IPC path exceed that
+  // limit, so keep the runtime-only home
   // under the short /tmp alias there. Durable case data still lives in the
   // configured benchmark output root.
   const runtimeTempRoot = process.platform === "darwin" ? "/tmp" : tmpdir();
@@ -935,7 +938,6 @@ async function resolveClashHost(
       persistedClashHome,
       localDataDir,
       localApiPluginSocket: join(clashHome, "sockets", "plugin-host.sock"),
-      projectPluginSocket: join(clashHome, "sockets", "plugin-host.sock"),
       agentMemberId: `headless-eval-${basename(caseRoot)}`,
       agentName: `Headless Eval ${basename(caseRoot)}`,
     };
@@ -1128,8 +1130,8 @@ async function stopClashHost(host: RunningClashHost): Promise<void> {
   await terminateChildAndWait(host.child);
 }
 
-type ProjectDaemonController = {
-  ready: Promise<ProjectDaemonReady>;
+type ProjectHostController = {
+  ready: Promise<ProjectHostReady>;
   stop(): Promise<void>;
 };
 
@@ -1365,139 +1367,16 @@ export async function prepareBenchmarkWorkspaceBinding(input: {
   return binding;
 }
 
-async function pingProjectDaemon(socketPath: string): Promise<boolean> {
-  return await new Promise<boolean>((resolvePing) => {
-    const socket = createConnection(socketPath);
-    let settled = false;
-    let response = "";
-    const finish = (ready: boolean) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      socket.destroy();
-      resolvePing(ready);
-    };
-    const timeout = setTimeout(() => finish(false), 500);
-    socket.once("connect", () => {
-      socket.write(`${JSON.stringify({ action: "ping" })}\n`);
-    });
-    socket.on("data", (chunk) => {
-      response += chunk.toString();
-      const newline = response.indexOf("\n");
-      if (newline < 0) return;
-      try {
-        const parsed = JSON.parse(response.slice(0, newline)) as {
-          pong?: unknown;
-        };
-        finish(parsed.pong === true);
-      } catch {
-        finish(false);
-      }
-    });
-    socket.once("end", () => {
-      try {
-        const parsed = JSON.parse(response) as { pong?: unknown };
-        finish(parsed.pong === true);
-      } catch {
-        finish(false);
-      }
-    });
-    socket.once("error", () => finish(false));
-  });
-}
-
-type ProjectDaemonProbe = {
-  daemonPid: number;
-  mcpUrl: string;
-  socketPath: string;
-};
-
-function isLoopbackHttpUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return (
-      (url.protocol === "http:" || url.protocol === "https:") &&
-      (url.hostname === "127.0.0.1" ||
-        url.hostname === "localhost" ||
-        url.hostname === "[::1]" ||
-        url.hostname === "::1")
-    );
-  } catch {
-    return false;
-  }
-}
-
-async function probeProjectDaemon(input: {
-  pidPath: string;
-  mcpPath: string;
-  socketPath: string;
-}): Promise<ProjectDaemonProbe | undefined> {
-  let daemonPid: number;
-  let mcpUrl: string;
-  try {
-    daemonPid = Number.parseInt(
-      (await readFile(input.pidPath, "utf8")).trim(),
-      10,
-    );
-    const mcp = JSON.parse(await readFile(input.mcpPath, "utf8")) as {
-      url?: unknown;
-    };
-    if (
-      !Number.isInteger(daemonPid) ||
-      daemonPid <= 0 ||
-      !processExists(daemonPid)
-    ) {
-      return undefined;
-    }
-    if (typeof mcp.url !== "string" || !isLoopbackHttpUrl(mcp.url)) {
-      throw new Error("Clash project daemon advertised a non-loopback MCP URL");
-    }
-    mcpUrl = mcp.url;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    if (error instanceof SyntaxError) return undefined;
-    throw error;
-  }
-  if (!(await pingProjectDaemon(input.socketPath))) return undefined;
-  try {
-    const response = await fetch(new URL("/health", mcpUrl), {
-      signal: AbortSignal.timeout(1_000),
-    });
-    if (!response.ok) return undefined;
-    const health = (await response.json()) as Record<string, unknown>;
-    if (
-      health.status !== "ok" ||
-      health.transport !== "streamable-http" ||
-      health.endpoint !== "/mcp"
-    ) {
-      return undefined;
-    }
-  } catch {
-    return undefined;
-  }
-  return {
-    daemonPid,
-    mcpUrl,
-    socketPath: input.socketPath,
-  };
-}
-
-function startProjectDaemonController(input: {
+function startProjectHostController(input: {
   host: RunningClashHost;
   binding: BenchmarkWorkspaceBinding;
   workspace: string;
   caseRoot: string;
-  logsRoot: string;
   agentReadyPath: string;
-  processScope: BenchmarkProcessScope;
-}): ProjectDaemonController {
-  let cancelled = false;
-  let connectChild: ChildProcess | undefined;
-  let ownership: ProjectDaemonReady["ownership"] = "owned";
-  const environment = clashProjectEnvironment(input.host, input.workspace);
+}): ProjectHostController {
   const reportPath = join(input.caseRoot, "clash-project-host.json");
 
-  const task = (async (): Promise<ProjectDaemonReady> => {
+  const task = (async (): Promise<ProjectHostReady> => {
     const markerPath = join(input.workspace, ".clash", "project.toml");
     const marker = await readFile(markerPath, "utf8");
     const projectId = /^project_id\s*=\s*"([^"]+)"/mu.exec(marker)?.[1];
@@ -1506,127 +1385,41 @@ function startProjectDaemonController(input: {
       sha256Bytes(marker) !== input.binding.markerSha256
     ) {
       throw new Error(
-        "Workspace project marker changed between initialization and daemon startup",
+        "Workspace project marker changed between initialization and Host activation",
       );
     }
-
-    const key = createHash("sha256")
-      .update(projectId)
-      .digest("hex")
-      .slice(0, 32);
-    const pidPath = join(input.host.clashHome, "sockets", `${key}.pid`);
-    const mcpPath = join(input.host.clashHome, "sockets", `${key}.mcp.json`);
-    const socketPath = join(input.host.clashHome, "sockets", `${key}.sock`);
-    const publishReady = async (
-      probe: ProjectDaemonProbe,
-      daemonOwnership: ProjectDaemonReady["ownership"],
-    ): Promise<ProjectDaemonReady> => {
-      const readyAt = new Date().toISOString();
-      const publicReport = {
-        schemaVersion: 1,
-        status: "ready",
-        projectId,
-        workspaceId: input.binding.workspaceId,
-        initDisposition: input.binding.initDisposition,
-        markerSha256: input.binding.markerSha256,
-        agentMemberId: input.host.agentMemberId,
-        localApiReadyAt: input.host.readyAt,
-        readyAt,
-      };
-      await Promise.all([
-        writeJson(reportPath, {
-          ...publicReport,
-          daemonPid: probe.daemonPid,
-          socketPath: probe.socketPath,
-          mcpUrl: probe.mcpUrl,
-          apiUrl: input.host.endpoint,
-          ownership: daemonOwnership,
-        }),
-        writeJson(input.agentReadyPath, publicReport),
-      ]);
-      return {
-        projectId,
-        workspaceId: input.binding.workspaceId,
-        initDisposition: input.binding.initDisposition,
-        markerSha256: input.binding.markerSha256,
-        daemonPid: probe.daemonPid,
-        mcpUrl: probe.mcpUrl,
-        socketPath: probe.socketPath,
-        apiUrl: input.host.endpoint,
-        ownership: daemonOwnership,
-        readyAt,
-      };
+    const readyAt = new Date().toISOString();
+    const ready: ProjectHostReady = {
+      projectId,
+      workspaceId: input.binding.workspaceId,
+      initDisposition: input.binding.initDisposition,
+      markerSha256: input.binding.markerSha256,
+      apiUrl: input.host.endpoint,
+      readyAt,
     };
-
-    const existing = await probeProjectDaemon({ pidPath, mcpPath, socketPath });
-    if (existing) {
-      ownership = "reused";
-      return await publishReady(existing, ownership);
-    }
-
-    const stdout = await open(
-      join(input.logsRoot, "clash-project-host.stdout.log"),
-      "w",
+    await assertProjectHostReady(
+      productHostContext({ ready, workspace: input.workspace }),
     );
-    const stderr = await open(
-      join(input.logsRoot, "clash-project-host.stderr.log"),
-      "w",
-    );
-    let connectSpawnError: Error | undefined;
-    try {
-      connectChild = input.processScope.track(
-        spawn(input.host.agentCliPath, ["canvas", "connect"], {
-          cwd: input.workspace,
-          env: environment,
-          shell: false,
-          detached: process.platform !== "win32",
-          stdio: ["ignore", stdout.fd, stderr.fd],
-        }),
-      );
-      connectChild.once("error", (error) => {
-        connectSpawnError = error;
-      });
-    } catch (error) {
-      await Promise.all([stdout.close(), stderr.close()]);
-      throw error;
-    }
-    await Promise.all([stdout.close(), stderr.close()]);
-
-    const deadline = Date.now() + 15_000;
-    while (!cancelled && Date.now() < deadline) {
-      if (connectSpawnError) {
-        throw new Error(
-          `Unable to start Clash project host: ${connectSpawnError.message}`,
-        );
-      }
-      if (childHasExited(connectChild) && connectChild.exitCode !== 0) {
-        throw new Error(
-          `Clash project host exited before readiness with code ${connectChild.exitCode}`,
-        );
-      }
-      if (childHasExited(connectChild) && connectChild.exitCode === 0) {
-        ownership = "reused";
-      }
-      const probe = await probeProjectDaemon({ pidPath, mcpPath, socketPath });
-      if (probe && connectChild.pid === probe.daemonPid) {
-        ownership = "owned";
-        return await publishReady(probe, ownership);
-      }
-      if (
-        probe &&
-        childHasExited(connectChild) &&
-        connectChild.exitCode === 0
-      ) {
-        ownership = "reused";
-        return await publishReady(probe, ownership);
-      }
-      await delay(25);
-    }
-    if (!cancelled)
-      throw new Error(`Timed out starting Clash project host for ${projectId}`);
-    throw new Error(
-      `Clash project host startup was cancelled for ${projectId}`,
-    );
+    const publicReport = {
+      schemaVersion: 1,
+      status: "ready",
+      projectId,
+      workspaceId: input.binding.workspaceId,
+      initDisposition: input.binding.initDisposition,
+      markerSha256: input.binding.markerSha256,
+      agentMemberId: input.host.agentMemberId,
+      localApiReadyAt: input.host.readyAt,
+      readyAt,
+    };
+    await Promise.all([
+      writeJson(reportPath, {
+        ...publicReport,
+        apiUrl: input.host.endpoint,
+        transport: "project-host-http",
+      }),
+      writeJson(input.agentReadyPath, publicReport),
+    ]);
+    return ready;
   })();
   const settledTask = task.catch(async (error): Promise<never> => {
     const report = {
@@ -1646,34 +1439,7 @@ function startProjectDaemonController(input: {
 
   return {
     ready: settledTask,
-    stop: async () => {
-      cancelled = true;
-      await settledTask.catch(() => undefined);
-      if (ownership === "reused") return;
-      if (!connectChild || childHasExited(connectChild)) return;
-
-      let disconnect: ChildProcess | undefined;
-      try {
-        disconnect = input.processScope.track(
-          spawn(input.host.agentCliPath, ["canvas", "disconnect"], {
-            cwd: input.workspace,
-            env: environment,
-            shell: false,
-            stdio: "ignore",
-          }),
-        );
-        disconnect.once("error", () => {
-          // The persistent connect process is still terminated below.
-        });
-        if (!(await waitForProcessClose(disconnect, 5_000))) {
-          await terminateChildAndWait(disconnect);
-        }
-      } finally {
-        if (!(await waitForProcessClose(connectChild, 3_000))) {
-          await terminateChildAndWait(connectChild);
-        }
-      }
-    },
+    stop: async () => undefined,
   };
 }
 
@@ -1765,7 +1531,7 @@ function parseProjectDirectorStage(value: unknown): ProjectDirectorStage {
 }
 
 async function verifyDirectorCaptureWithProductRenderer(input: {
-  ready: ProjectDaemonReady;
+  ready: ProjectHostReady;
   stage: ProjectDirectorStage;
   stateSha256: string;
   frames: DirectorReadbackReport["captures"][number]["frames"];
@@ -1829,58 +1595,11 @@ async function verifyDirectorCaptureWithProductRenderer(input: {
   });
 }
 
-function sendDaemonCommand(
-  socketPath: string,
-  command: object,
-): Promise<unknown> {
-  return new Promise((resolveCommand, rejectCommand) => {
-    const socket = createConnection(socketPath);
-    let settled = false;
-    let data = "";
-    const finish = (error?: Error, value?: unknown): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      socket.destroy();
-      if (error) rejectCommand(error);
-      else resolveCommand(value);
-    };
-    const timer = setTimeout(
-      () => finish(new Error("Director host readback timed out")),
-      15_000,
-    );
-    socket.once("connect", () => {
-      socket.write(`${JSON.stringify(command)}\n`);
-    });
-    socket.on("data", (chunk) => {
-      data += chunk.toString();
-      const newline = data.indexOf("\n");
-      if (newline < 0) return;
-      try {
-        finish(undefined, JSON.parse(data.slice(0, newline)) as unknown);
-      } catch (error) {
-        finish(
-          new Error(
-            `Invalid Director host readback: ${error instanceof Error ? error.message : String(error)}`,
-          ),
-        );
-      }
-    });
-    socket.once("error", (error) => finish(error));
-    socket.once("end", () => {
-      if (!settled)
-        finish(
-          new Error("Director host readback ended without a JSON response"),
-        );
-    });
-  });
-}
-
 async function captureDirectorReadback(input: {
   benchmark: ArtifactBenchmarkCase;
   workspace: string;
   caseRoot: string;
-  ready?: ProjectDaemonReady;
+  ready?: ProjectHostReady;
 }): Promise<DirectorReadbackReport> {
   const reportPath = join(input.caseRoot, "director-readback.json");
   const matchedArtifactIds: string[] = [];
@@ -1890,21 +1609,19 @@ async function captureDirectorReadback(input: {
   const imageMatches: DirectorReadbackReport["imageMatches"] = [];
   try {
     if (!input.ready)
-      throw new Error("Clash project daemon did not become ready");
-    if (!processExists(input.ready.daemonPid))
-      throw new Error("Clash project daemon exited before trusted readback");
-    const marker = await readFile(
-      join(input.workspace, ".clash", "project.toml"),
-      "utf8",
-    );
-    const markerProjectId = /^project_id\s*=\s*"([^"]+)"/mu.exec(marker)?.[1];
-    if (markerProjectId !== input.ready.projectId) {
-      throw new Error(
-        "Workspace project marker does not match the live project daemon",
-      );
-    }
-    const response = await sendDaemonCommand(input.ready.socketPath, {
-      action: "list_director_stages",
+      throw new Error("Clash Project Host did not become ready");
+    const host = productHostContext({
+      ready: input.ready,
+      workspace: input.workspace,
+    });
+    await assertProjectHostReady(host);
+    await assertWorkspaceProject(input.workspace, input.ready.projectId);
+    const response = await requestProjectHost<ProjectHostResponse & {
+      stages?: unknown;
+      versions?: unknown;
+    }>({
+      ...host,
+      command: { action: "list_director_stages" },
     });
     if (!response || typeof response !== "object" || Array.isArray(response)) {
       throw new Error("Director host readback response must be an object");
@@ -1937,7 +1654,7 @@ async function captureDirectorReadback(input: {
         !/^[A-Za-z0-9._~-]{1,256}$/u.test(hostReceipt.slice(prefix.length))
       ) {
         throw new Error(
-          `Director Stage ${stage.id} is missing a live daemon read receipt`,
+          `Director Stage ${stage.id} is missing a live Host read receipt`,
         );
       }
       stages.push({
@@ -2140,7 +1857,7 @@ async function captureDirectorReadback(input: {
       matches,
       captures,
       imageMatches,
-      detail: `Matched ${matches.length} Director Stage artifact(s) and ${imageMatches.length} product-rendered capture frame(s) with daemon receipts.`,
+      detail: `Matched ${matches.length} Director Stage artifact(s) and ${imageMatches.length} product-rendered capture frame(s) with Host receipts.`,
     };
     await writeJson(reportPath, report);
     return report;
@@ -2203,7 +1920,7 @@ async function captureRequiredProductReadback(input: {
   benchmark: ArtifactBenchmarkCase;
   workspace: string;
   caseRoot: string;
-  ready?: ProjectDaemonReady;
+  ready?: ProjectHostReady;
 }): Promise<TrustedProductReadback | undefined> {
   const readbackMechanism =
     input.benchmark.execution?.productReadback?.mechanism;
@@ -2685,11 +2402,10 @@ async function runCase(input: {
           persistedClashHome: clashHostConfig.persistedClashHome,
           localDataDir: clashHostConfig.localDataDir,
           localApiPluginSocket: clashHostConfig.localApiPluginSocket,
-          projectPluginSocket: clashHostConfig.projectPluginSocket,
           executionWorkspace: workspace,
           finalWorkspace,
           workspaceBinding: "runner-managed",
-          projectDaemonGate: "required-before-agent",
+          projectHostGate: "required-before-agent",
         }),
       );
     }
@@ -2697,8 +2413,8 @@ async function runCase(input: {
 
     const logsRoot = join(caseRoot, "logs");
     let clashHost: RunningClashHost | undefined;
-    let projectDaemon: ProjectDaemonController | undefined;
-    let projectReady: ProjectDaemonReady | undefined;
+    let projectHost: ProjectHostController | undefined;
+    let projectReady: ProjectHostReady | undefined;
     let agent: AgentRunReport;
     let productReadback: TrustedProductReadback | undefined;
     try {
@@ -2728,21 +2444,19 @@ async function runCase(input: {
             { cause: error },
           );
         }
-        projectDaemon = startProjectDaemonController({
+        projectHost = startProjectHostController({
           host: clashHost,
           binding,
           workspace,
           caseRoot,
-          logsRoot,
           agentReadyPath,
-          processScope: input.processScope,
         });
         try {
-          projectReady = await projectDaemon.ready;
+          projectReady = await projectHost.ready;
         } catch (error) {
           throw new BenchmarkInfrastructureError(
-            "project-daemon-setup",
-            `Clash project daemon setup failed: ${error instanceof Error ? error.message : String(error)}`,
+            "project-host-setup",
+            `Clash Project Host setup failed: ${error instanceof Error ? error.message : String(error)}`,
             { cause: error },
           );
         }
@@ -2754,7 +2468,6 @@ async function runCase(input: {
           persistedClashHome: clashHost.persistedClashHome,
           localDataDir: clashHost.localDataDir,
           localApiPluginSocket: clashHost.localApiPluginSocket,
-          projectPluginSocket: clashHost.projectPluginSocket,
           endpoint: clashHost.endpoint,
           agentCliPath: clashHost.agentCliPath,
           agentMemberId: clashHost.agentMemberId,
@@ -2767,10 +2480,9 @@ async function runCase(input: {
           workspaceId: projectReady.workspaceId,
           initDisposition: projectReady.initDisposition,
           markerSha256: projectReady.markerSha256,
-          projectDaemonReadyAt: projectReady.readyAt,
-          projectDaemonOwnership: projectReady.ownership,
+          projectHostReadyAt: projectReady.readyAt,
           workspaceBinding: "ready",
-          projectDaemonGate: "satisfied-before-agent",
+          projectHostGate: "satisfied-before-agent",
           lifecycleOwner: "benchmark-runner",
         });
       }
@@ -2798,7 +2510,7 @@ async function runCase(input: {
       });
     } finally {
       try {
-        if (projectDaemon) await projectDaemon.stop();
+        if (projectHost) await projectHost.stop();
       } finally {
         if (clashHost) await stopClashHost(clashHost);
       }
@@ -3860,23 +3572,21 @@ async function recapturePersistedProductReadback(input: {
     "headless-host-ready.json",
   );
   let runningHost: RunningClashHost | undefined;
-  let projectDaemon: ProjectDaemonController | undefined;
+  let projectHost: ProjectHostController | undefined;
   try {
     runningHost = await startClashHost(resolvedHost, logsRoot, processScope);
     const binding = await loadPersistedWorkspaceBinding(
       input.caseRoot,
       input.workspace,
     );
-    projectDaemon = startProjectDaemonController({
+    projectHost = startProjectHostController({
       host: runningHost,
       binding,
       workspace: input.workspace,
       caseRoot: input.caseRoot,
-      logsRoot,
       agentReadyPath,
-      processScope,
     });
-    const ready = await projectDaemon.ready;
+    const ready = await projectHost.ready;
     return await captureRequiredProductReadback({
       benchmark: input.benchmark,
       workspace: input.workspace,
@@ -3885,7 +3595,7 @@ async function recapturePersistedProductReadback(input: {
     });
   } finally {
     try {
-      if (projectDaemon) await projectDaemon.stop();
+      if (projectHost) await projectHost.stop();
     } finally {
       if (runningHost) await stopClashHost(runningHost);
       await processScope.dispose();

@@ -17,37 +17,45 @@
  * can call them without entangling lifecycles.
  */
 
-import { getItemSourceNodeId, type Track, type Item } from '@clash/remotion-core';
-import type { Node } from '@xyflow/react';
+import {
+  getItemSourceNodeId,
+  type Track,
+  type Item,
+} from "@clash/remotion-core";
+import type { Node } from "@xyflow/react";
 
 /** Known prefixes the asset routes are mounted under — used to recover a raw
  *  R2 key from a legacy persisted URL. */
-const ASSET_URL_PREFIXES = ['/assets/', '/api/assets/view/', '/api/assets/'];
+const ASSET_URL_PREFIXES = ["/assets/", "/api/assets/view/", "/api/assets/"];
 
 function urlPathnameFromSrc(src: string): string | null {
-    if (!src.startsWith('/') && !src.startsWith('http://') && !src.startsWith('https://')) {
-        return null;
-    }
-    try {
-        const u = src.startsWith('http')
-            ? new URL(src)
-            : new URL(src, 'http://placeholder.local');
-        return u.pathname;
-    } catch {
-        return null;
-    }
+  if (
+    !src.startsWith("/") &&
+    !src.startsWith("http://") &&
+    !src.startsWith("https://")
+  ) {
+    return null;
+  }
+  try {
+    const u = src.startsWith("http")
+      ? new URL(src)
+      : new URL(src, "http://placeholder.local");
+    return u.pathname;
+  } catch {
+    return null;
+  }
 }
 
 /** Best-effort: given an item `src` (possibly a legacy signed URL), return
  *  the raw R2 key so the canvas can match it against `node.data.src`. */
 export function srcToR2Key(src: string): string {
-    if (!src) return src;
-    const pathname = urlPathnameFromSrc(src);
-    if (pathname === null) return src; // already a bare key
-    for (const prefix of ASSET_URL_PREFIXES) {
-        if (pathname.startsWith(prefix)) return pathname.slice(prefix.length);
-    }
-    return src;
+  if (!src) return src;
+  const pathname = urlPathnameFromSrc(src);
+  if (pathname === null) return src; // already a bare key
+  for (const prefix of ASSET_URL_PREFIXES) {
+    if (pathname.startsWith(prefix)) return pathname.slice(prefix.length);
+  }
+  return src;
 }
 
 /**
@@ -59,52 +67,55 @@ export function srcToR2Key(src: string): string {
  * Idempotent — items that already have `sourceNodeId` keep it and only fill
  * `assetId` from the source node when possible.
  */
-export function hydrateAssetIdsFromNodes(tracks: Track[], nodes: Node[]): Track[] {
-    const srcToNodeId = new Map<string, string>();
-    const nodeById = new Map<string, Node>();
-    for (const n of nodes) {
-        nodeById.set(n.id, n);
-        const s = (n.data as Record<string, unknown> | undefined)?.src;
-        if (typeof s === 'string' && s && !srcToNodeId.has(s)) {
-            srcToNodeId.set(s, n.id);
-        }
+export function hydrateAssetIdsFromNodes(
+  tracks: Track[],
+  nodes: Node[],
+): Track[] {
+  const srcToNodeId = new Map<string, string>();
+  const nodeById = new Map<string, Node>();
+  for (const n of nodes) {
+    nodeById.set(n.id, n);
+    const s = (n.data as Record<string, unknown> | undefined)?.src;
+    if (typeof s === "string" && s && !srcToNodeId.has(s)) {
+      srcToNodeId.set(s, n.id);
     }
-    return tracks.map((track) => ({
-        ...track,
-        items: track.items.map((item) => {
-            let sourceNodeId = item.sourceNodeId;
+  }
+  return tracks.map((track) => ({
+    ...track,
+    items: track.items.map((item) => {
+      let sourceNodeId = item.sourceNodeId;
 
-            if (!sourceNodeId && item.assetId && nodeById.has(item.assetId)) {
-                sourceNodeId = item.assetId;
-            }
+      if (!sourceNodeId && item.assetId && nodeById.has(item.assetId)) {
+        sourceNodeId = item.assetId;
+      }
 
-            if (!sourceNodeId) {
-                const legacySrc = (item as Item & { src?: string }).src;
-                if (typeof legacySrc === 'string') {
-                    const key = srcToR2Key(legacySrc);
-                    sourceNodeId = srcToNodeId.get(key) ?? srcToNodeId.get(legacySrc);
-                }
-            }
+      if (!sourceNodeId) {
+        const legacySrc = (item as Item & { src?: string }).src;
+        if (typeof legacySrc === "string") {
+          const key = srcToR2Key(legacySrc);
+          sourceNodeId = srcToNodeId.get(key) ?? srcToNodeId.get(legacySrc);
+        }
+      }
 
-            if (!sourceNodeId) {
-                return item;
-            }
+      if (!sourceNodeId) {
+        return item;
+      }
 
-            const sourceNode = nodeById.get(sourceNodeId);
-            const backingAssetId =
-                typeof sourceNode?.data?.assetId === 'string'
-                    ? sourceNode.data.assetId
-                    : item.sourceNodeId
-                        ? item.assetId
-                        : undefined;
+      const sourceNode = nodeById.get(sourceNodeId);
+      const projectAssetId =
+        typeof sourceNode?.data?.assetId === "string"
+          ? sourceNode.data.assetId
+          : item.sourceNodeId
+            ? item.assetId
+            : undefined;
 
-            return {
-                ...item,
-                sourceNodeId,
-                ...(backingAssetId ? { assetId: backingAssetId } : {}),
-            } as Item;
-        }),
-    }));
+      return {
+        ...item,
+        sourceNodeId,
+        ...(projectAssetId ? { assetId: projectAssetId } : {}),
+      } as Item;
+    }),
+  }));
 }
 
 /**
@@ -113,18 +124,22 @@ export function hydrateAssetIdsFromNodes(tracks: Track[], nodes: Node[]): Track[
  * render path even if hydration couldn't fully migrate them).
  */
 export function stripSrcFromTracks(tracks: Track[]): Track[] {
-    return tracks.map((track) => ({
-        ...track,
-        items: track.items.map((item) => {
-            const sourceNodeId = getItemSourceNodeId(item);
-            const { src: _src, justInserted: _justInserted, ...rest } = item as Item & {
-                src?: string;
-                justInserted?: boolean;
-            };
-            return {
-                ...rest,
-                ...(sourceNodeId ? { sourceNodeId } : {}),
-            } as Item;
-        }),
-    }));
+  return tracks.map((track) => ({
+    ...track,
+    items: track.items.map((item) => {
+      const sourceNodeId = getItemSourceNodeId(item);
+      const {
+        src: _src,
+        justInserted: _justInserted,
+        ...rest
+      } = item as Item & {
+        src?: string;
+        justInserted?: boolean;
+      };
+      return {
+        ...rest,
+        ...(sourceNodeId ? { sourceNodeId } : {}),
+      } as Item;
+    }),
+  }));
 }

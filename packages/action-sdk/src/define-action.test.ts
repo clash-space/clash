@@ -87,9 +87,10 @@ describe("defineAction", () => {
           }),
         }),
       },
-      context: { upload: async () => ({ assetId: "a-1", uri: "clash-asset://a-1" }) } as never,
     });
-    const result = await plugin.invoke(invocation("render-timeline") as never);
+    const result = await plugin.invoke(invocation("render-timeline") as never, {
+      upload: async () => ({ assetId: "a-1", uri: "clash-asset://a-1" }),
+    } as never);
     expect(result.status).toBe("completed");
   });
 

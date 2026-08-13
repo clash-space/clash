@@ -28,7 +28,6 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import type { Edge, Node } from '@xyflow/react';
 import { EditorModalDialog } from './EditorModalDialog';
 import { useOptionalLoroSyncContext } from './LoroSyncContext';
-import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { autoInsertNode } from '@clash/web-ui/lib/layout';
 import { applyVideoCrop, applyVideoScreenshot, type EditApplyResult } from '../features/assets/action-client';
@@ -41,7 +40,7 @@ export interface OpenVideoClipperInput {
     editorNodeId?: string;
     projectId: string;
     sourceAssetId: string;
-    sourceR2Key: string;
+    sourceUrl: string;
     /** Source video duration, used to bound the time slider. */
     durationSec: number;
     initialParams: VideoClipParams | undefined;
@@ -112,7 +111,7 @@ export function VideoClipperPanel({
     loroSync: ReturnType<typeof useOptionalLoroSyncContext>;
     onClose: () => void;
 }) {
-    const signedUrl = useSignedUrl(input.sourceR2Key);
+    const signedUrl = input.sourceUrl;
     const videoRef = useRef<HTMLVideoElement>(null);
     const [duration, setDuration] = useState<number>(Math.max(0.001, input.durationSec));
 
@@ -181,7 +180,7 @@ export function VideoClipperPanel({
                 : await applyVideoScreenshot({
                     projectId: input.projectId,
                     sourceAssetId: input.sourceAssetId,
-                    sourceR2Key: input.sourceR2Key,
+                    sourceUrl: input.sourceUrl,
                     params,
                     origin: input.origin,
                 });

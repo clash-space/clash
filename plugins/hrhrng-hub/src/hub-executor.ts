@@ -1,6 +1,31 @@
 import type { ExecutablePluginInvocation } from "@clash/shared-types/executable-plugin";
+import {
+  ProviderExecutionError,
+  providerHttpError,
+} from "@clash/action-sdk";
 
 import type { ResolvedReference } from "./executor-contract";
+
+function rejectedInvalidRequest(message: string): ProviderExecutionError {
+  return new ProviderExecutionError({
+    code: "invalid_request",
+    message,
+    retryable: false,
+    requestState: "rejected",
+  });
+}
+
+function invalidResponse(
+  message: string,
+  requestState: "rejected" | "unknown" | "accepted",
+): ProviderExecutionError {
+  return new ProviderExecutionError({
+    code: "invalid_response",
+    message,
+    retryable: false,
+    requestState,
+  });
+}
 
 /**
  * MiniMax Hub's generation API, translated.
@@ -280,27 +305,6 @@ function failureReason(value: unknown): string | undefined {
   return text.trim().toLowerCase() === "success" ? undefined : text;
 }
 
-/**
- * A single transient network error during polling must not discard an already
- * billed upstream task; the task keeps running on Hub either way.
- */
-async function pollWithRetry<T>(
-  attempt: () => Promise<T>,
-  sleep: (milliseconds: number) => Promise<void>,
-  retries = 3,
-): Promise<T> {
-  let lastError: unknown;
-  for (let remaining = retries; remaining >= 0; remaining -= 1) {
-    try {
-      return await attempt();
-    } catch (error) {
-      lastError = error;
-      if (remaining > 0) await sleep(5_000);
-    }
-  }
-  throw lastError;
-}
-
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -315,14 +319,6 @@ function number(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value)
     ? value
     : undefined;
-}
-
-function array(values: Record<string, Json>, key: string): string[] {
-  return Array.isArray(values[key])
-    ? (values[key] as Json[]).filter(
-        (value): value is string => typeof value === "string" && !!value,
-      )
-    : [];
 }
 
 function taskId(value: unknown): string | undefined {
@@ -535,9 +531,11 @@ export async function uploadMedia(
   } else {
     const response = await fetchImpl(media.url);
     if (!response.ok) {
-      throw new Error(
-        `Hilo Hub ${prefix} reference ${media.url} returned HTTP ${response.status}.`,
-      );
+      throw providerHttpError({
+        status: response.status,
+        message: `Hilo Hub ${prefix} reference ${media.url} returned HTTP ${response.status}.`,
+        operation: "submit",
+      });
     }
     bytes = new Uint8Array(await response.arrayBuffer());
     const contentType = response.headers
@@ -560,7 +558,12 @@ export async function uploadMedia(
     file_prefix: prefix,
   });
   const url = string(uploaded.url);
-  if (!url) throw new Error(`Hilo Hub ${prefix} upload returned no URL.`);
+  if (!url) {
+    throw invalidResponse(
+      `Hilo Hub ${prefix} upload returned no URL.`,
+      "rejected",
+    );
+  }
   return url;
 }
 
@@ -615,7 +618,9 @@ function inlineParts(
     };
   }
   const inline = dataUri(media.url);
-  if (!inline) throw new Error("Veo start/end frames must be inline media.");
+  if (!inline) {
+    throw rejectedInvalidRequest("Veo start/end frames must be inline media.");
+  }
   return inline;
 }
 
@@ -626,35 +631,6 @@ export interface HubReferences {
   audios: HubMedia[];
   startFrame?: HubMedia;
   endFrame?: HubMedia;
-}
-
-/**
- * One value from the legacy channel, which carries no reach.
- *
- * `local-aigc.ts` sends `references: []` on the provider-executor path and puts reference media in
- * `values.referenceImageUrls` and friends, as bare strings. A string says nothing about who can
- * fetch it, so this is the one place left that has to guess -- and it guesses the safe way round:
- * a `data:` URI becomes bytes we upload, and anything else is assumed to be an address Hub can
- * read, because that is all the channel can express.
- */
-function mediaFromValue(
-  value: string,
-  prefix: "image" | "video" | "audio",
-): HubMedia {
-  const inline = dataUri(value);
-  if (inline) {
-    return {
-      form: "bytes",
-      bytes: Uint8Array.from(Buffer.from(inline.base64, "base64")),
-      mediaType: inline.mimeType,
-    };
-  }
-  if (!/^https?:\/\//i.test(value)) {
-    throw new Error(
-      `Hilo Hub ${prefix} reference is neither a public URL nor inline media.`,
-    );
-  }
-  return { form: "url", url: value };
 }
 
 /**
@@ -669,7 +645,9 @@ function mediaFromResolved(
   resolved: ResolvedReference,
   prefix: "image" | "video" | "audio",
 ): HubMedia {
-  if (resolved.form === "url") return { form: "url", url: resolved.url };
+  if (resolved.form === "provider-url") {
+    return { form: "url", url: resolved.providerUrl };
+  }
   if (resolved.form === "bytes") {
     return {
       form: "bytes",
@@ -679,7 +657,7 @@ function mediaFromResolved(
   }
   // A text reference in a media slot is a wiring mistake upstream. Sending the words to an upload
   // endpoint would store them as a file and generate from a blank image.
-  throw new Error(
+  throw rejectedInvalidRequest(
     `Hilo Hub ${prefix} reference resolved to text, which is not media.`,
   );
 }
@@ -692,13 +670,7 @@ const SLOT_PREFIXES: Record<string, "image" | "video" | "audio"> = {
   audio: "audio",
 };
 
-/**
- * Both channels, resolved into one shape.
- *
- * The references array is preferred whenever the host sent one, because those entries carry reach
- * and the values strings do not. The values fallback stays because `local-aigc.ts` still sends its
- * media that way on this path; when it stops, the fallback goes with it.
- */
+/** Resolve the protocol's one typed reference channel into Hub's media groups. */
 export async function collectReferences(
   invocation: ExecutablePluginInvocation,
   resolve: ((reference: unknown) => Promise<ResolvedReference>) | undefined,
@@ -706,39 +678,64 @@ export async function collectReferences(
   const collected: HubReferences = { images: [], videos: [], audios: [] };
   const references = invocation.input.references ?? [];
 
-  if (references.length && resolve) {
-    // Index order, because a caller that named a first and second reference image meant that order
-    // and the vendor bodies below are positional.
-    const ordered = [...references].sort(
-      (left, right) => left.index - right.index,
+  if (!references.length) return collected;
+  if (!resolve) {
+    throw rejectedInvalidRequest(
+      "Hilo Hub references require the Host reference resolver.",
     );
-    for (const reference of ordered) {
-      const prefix = SLOT_PREFIXES[reference.slot];
-      if (!prefix) continue;
-      const media = mediaFromResolved(await resolve(reference), prefix);
-      if (reference.slot === "startFrame") collected.startFrame = media;
-      else if (reference.slot === "endFrame") collected.endFrame = media;
-      else if (reference.slot === "image") collected.images.push(media);
-      else if (reference.slot === "video") collected.videos.push(media);
-      else collected.audios.push(media);
-    }
-    return collected;
   }
-
-  const values = invocation.input.values as Record<string, Json>;
-  collected.images = array(values, "referenceImageUrls").map((v) =>
-    mediaFromValue(v, "image"),
-  );
-  collected.videos = array(values, "referenceVideoUrls").map((v) =>
-    mediaFromValue(v, "video"),
-  );
-  collected.audios = array(values, "referenceAudioUrls").map((v) =>
-    mediaFromValue(v, "audio"),
-  );
-  const startFrame = string(values.startFrameUrl);
-  const endFrame = string(values.endFrameUrl);
-  if (startFrame) collected.startFrame = mediaFromValue(startFrame, "image");
-  if (endFrame) collected.endFrame = mediaFromValue(endFrame, "image");
+  // Global content indexes interleave text and media. Stable sort preserves array position for
+  // grouped slots that legitimately reuse the same per-slot index.
+  const ordered = references
+    .map((reference, position) => ({ reference, position }))
+    .sort(
+      (left, right) =>
+        left.reference.index - right.reference.index ||
+        left.position - right.position,
+    )
+    .map(({ reference }) => reference);
+  for (const reference of ordered) {
+    if (reference.slot === "content") {
+      const resolved = await resolve(reference);
+      if (resolved.form === "text") continue;
+      if (!("asset" in reference)) {
+        throw rejectedInvalidRequest(
+          "Hilo Hub content media is missing its typed Asset handle.",
+        );
+      }
+      const prefix = reference.asset.kind;
+      if (prefix !== "image" && prefix !== "video" && prefix !== "audio") {
+        throw rejectedInvalidRequest(
+          `Hilo Hub does not accept ${prefix} content references.`,
+        );
+      }
+      const media = mediaFromResolved(resolved, prefix);
+      if (prefix === "image") collected.images.push(media);
+      else if (prefix === "video") collected.videos.push(media);
+      else collected.audios.push(media);
+      continue;
+    }
+    const prefix = SLOT_PREFIXES[reference.slot];
+    if (!prefix) continue;
+    const media = mediaFromResolved(await resolve(reference), prefix);
+    if (reference.slot === "startFrame") {
+      if (collected.startFrame) {
+        throw rejectedInvalidRequest(
+          "Hilo Hub received more than one startFrame reference.",
+        );
+      }
+      collected.startFrame = media;
+    } else if (reference.slot === "endFrame") {
+      if (collected.endFrame) {
+        throw rejectedInvalidRequest(
+          "Hilo Hub received more than one endFrame reference.",
+        );
+      }
+      collected.endFrame = media;
+    } else if (reference.slot === "image") collected.images.push(media);
+    else if (reference.slot === "video") collected.videos.push(media);
+    else collected.audios.push(media);
+  }
   return collected;
 }
 
@@ -996,7 +993,7 @@ async function buildBody(
   }
   if (route.family === "seedance") {
     if (startFrame && (images.length || videos.length || audios.length)) {
-      throw new Error(
+      throw rejectedInvalidRequest(
         "Seedance start/end frames cannot be mixed with reference media.",
       );
     }
@@ -1065,7 +1062,7 @@ async function buildBody(
   }
   if (route.family === "kling-video") {
     if (audios.length) {
-      throw new Error(
+      throw rejectedInvalidRequest(
         "The Hilo Kling Omni endpoint does not accept standalone audio references.",
       );
     }
@@ -1148,7 +1145,9 @@ async function buildBody(
   }
   if (route.family === "seedaudio") {
     if (audios.length && images.length) {
-      throw new Error("SeedAudio audio and image references cannot be mixed.");
+      throw rejectedInvalidRequest(
+        "SeedAudio audio and image references cannot be mixed.",
+      );
     }
     const [audioUrls, imageUrls] = await Promise.all([
       uploadReferences(request, audios, "audio", fetchImpl),
@@ -1189,7 +1188,10 @@ async function buildBody(
       });
       lyrics = string(generated.lyrics);
       if (!lyrics)
-        throw new Error("Hilo Hub automatic lyrics returned no lyrics.");
+        throw invalidResponse(
+          "Hilo Hub automatic lyrics returned no lyrics.",
+          "rejected",
+        );
     }
     return {
       prompt,
@@ -1263,6 +1265,7 @@ async function buildBody(
 export function createHubRequest(
   fetchImpl: typeof globalThis.fetch,
   accessToken: string,
+  operation: "submit" | "poll",
 ): HubRequest {
   return async (path, method, body) => {
     const url = new URL(path, HUB_ORIGIN);
@@ -1277,9 +1280,11 @@ export function createHubRequest(
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     if (!response.ok) {
-      throw new Error(
-        `Hilo Hub ${method} ${path} returned HTTP ${response.status}.`,
-      );
+      throw providerHttpError({
+        status: response.status,
+        message: `Hilo Hub ${method} ${path} returned HTTP ${response.status}.`,
+        operation,
+      });
     }
     const raw = await response.text();
     if (!raw) return {};
@@ -1288,8 +1293,9 @@ export function createHubRequest(
     } catch {
       // A proxy or a login page answers with HTML. Folding that into an empty object loses the only
       // explanation there was, and the caller then reports a missing task_id instead.
-      throw new Error(
+      throw invalidResponse(
         `Hilo Hub ${method} ${path} returned a non-JSON body: ${raw.slice(0, 200)}`,
+        operation === "submit" ? "unknown" : "accepted",
       );
     }
   };
@@ -1297,8 +1303,11 @@ export function createHubRequest(
 
 function routeFor(values: Record<string, Json>): Route {
   const upstreamModel = string(values.upstreamModel);
-  if (!upstreamModel)
-    throw new Error("Hilo Hub invocation is missing upstreamModel.");
+  if (!upstreamModel) {
+    throw rejectedInvalidRequest(
+      "Hilo Hub invocation is missing upstreamModel.",
+    );
+  }
   const modelId = string(values.modelId) ?? "";
   const kindHint =
     modelId.includes("image") || modelId.startsWith("midjourney")
@@ -1315,7 +1324,12 @@ function routeFor(values: Record<string, Json>): Route {
     matches.find((route) => route.kind === kindHint) ??
     matches[0] ??
     (() => {
-      throw new Error(`Unsupported Hilo Hub model: ${upstreamModel}`);
+      throw new ProviderExecutionError({
+        code: "invalid_request",
+        message: `Unsupported Hilo Hub model: ${upstreamModel}`,
+        retryable: false,
+        requestState: "rejected",
+      });
     })()
   );
 }
@@ -1330,22 +1344,42 @@ function routeFor(values: Record<string, Json>): Route {
 export function readPollState(invocation: ExecutablePluginInvocation): {
   taskId: string;
   upstreamModel: string;
+  fileId?: string;
   route: Route;
 } {
   const state = record(invocation.pollState);
   const taskId = string(state.taskId);
   const upstreamModel = string(state.upstreamModel);
+  const fileId = string(state.fileId);
   if (!taskId || !upstreamModel) {
-    throw new Error("Hilo Hub poll state is missing its task id or model.");
+    throw new ProviderExecutionError({
+      code: "contract_violation",
+      message: "Hilo Hub poll state is missing its task id or model.",
+      retryable: false,
+      requestState: "accepted",
+    });
   }
   const route =
     HILO_MODEL_ROUTES.find(
       (candidate) => candidate.upstreamModel === upstreamModel,
     ) ??
     (() => {
-      throw new Error(`Unsupported Hilo Hub model: ${upstreamModel}`);
+      throw new ProviderExecutionError({
+        code: "contract_violation",
+        message: `Unsupported Hilo Hub model: ${upstreamModel}`,
+        retryable: false,
+        requestState: "accepted",
+      });
     })();
-  return { taskId, upstreamModel, route };
+  if (fileId && !route.filePath) {
+    throw new ProviderExecutionError({
+      code: "contract_violation",
+      message: `Hilo Hub model ${upstreamModel} does not support file poll state.`,
+      retryable: false,
+      requestState: "accepted",
+    });
+  }
+  return { taskId, upstreamModel, ...(fileId ? { fileId } : {}), route };
 }
 
 /** The route a submit will take, checked before anything is spent on it. */
@@ -1354,7 +1388,10 @@ export function readSubmitRoute(invocation: ExecutablePluginInvocation): Route {
 }
 
 export type HubStep =
-  | { status: "accepted"; pollState: { taskId: string; upstreamModel: string } }
+  | {
+      status: "accepted";
+      pollState: { taskId: string; upstreamModel: string; fileId?: string };
+    }
   | {
       status: "completed";
       media: Record<
@@ -1388,8 +1425,9 @@ export async function submitHubModel(
   if (!url && route.queryPath) {
     const submittedTaskId = taskId(submitted);
     if (!submittedTaskId) {
-      throw new Error(
+      throw invalidResponse(
         `Hilo Hub ${route.upstreamModel} submit response is missing task_id.`,
+        "unknown",
       );
     }
     // The upstream has the work. Hand back what identifies it and let the host decide when to ask
@@ -1405,8 +1443,9 @@ export async function submitHubModel(
   if (!url) {
     // No queue to ask and nothing returned. Reporting completion would store an empty asset and
     // close the task as though it had worked.
-    throw new Error(
+    throw invalidResponse(
       `Hilo Hub ${route.upstreamModel} returned neither a task_id nor a URL.`,
+      "accepted",
     );
   }
   return completedResult(route, url);
@@ -1422,32 +1461,41 @@ export async function submitHubModel(
 export async function pollHubModel(
   invocation: ExecutablePluginInvocation,
   request: HubRequest,
-  options: { sleep?: (ms: number) => Promise<void> } = {},
 ): Promise<HubStep> {
   const {
     taskId: submittedTaskId,
     upstreamModel,
+    fileId: pendingFileId,
     route,
   } = readPollState(invocation);
-  const sleep =
-    options.sleep ??
-    ((milliseconds: number) =>
-      new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
+  if (pendingFileId) {
+    const file = await request(
+      `${route.filePath!}/${encodeURIComponent(pendingFileId)}`,
+      "GET",
+    );
+    const url = firstUrl(file);
+    if (!url) {
+      throw invalidResponse(
+        `Hilo Hub file ${pendingFileId} returned no result URL.`,
+        "accepted",
+      );
+    }
+    return completedResult(route, url);
+  }
 
-  let final = await pollWithRetry(
-    () =>
-      request(
-        `${route.queryPath}/${encodeURIComponent(submittedTaskId)}`,
-        "GET",
-      ),
-    sleep,
+  const final = await request(
+    `${route.queryPath}/${encodeURIComponent(submittedTaskId)}`,
+    "GET",
   );
   const currentStatus = status(final);
   if (FAILED_STATUSES.has(currentStatus)) {
     const base = record(final.base ?? final.base_resp);
     const data = record(final.data);
-    throw new Error(
-      failureReason(final.error_message) ??
+    throw new ProviderExecutionError({
+      code: currentStatus === "cancelled" || currentStatus === "canceled"
+        ? "cancelled"
+        : "provider_failed",
+      message: failureReason(final.error_message) ??
         failureReason(data.task_status_msg) ??
         failureReason(data.error_message) ??
         failureReason(final.message) ??
@@ -1455,22 +1503,33 @@ export async function pollHubModel(
         failureReason(base.message) ??
         failureReason(base.status_msg) ??
         `Hilo Hub task ${submittedTaskId} failed.`,
-    );
+      retryable: false,
+      requestState: "accepted",
+      providerCode: currentStatus,
+    });
   }
-  let url = firstUrl(final);
+  const url = firstUrl(final);
   if (url) return completedResult(route, url);
   if (route.filePath && SUCCESS_STATUSES.has(currentStatus)) {
     const fileId = string(final.file_id) ?? string(record(final.data).file_id);
     if (!fileId)
-      throw new Error(
+      throw invalidResponse(
         `Hilo Hub task ${submittedTaskId} succeeded without file_id.`,
+        "accepted",
       );
-    final = await request(
-      `${route.filePath}/${encodeURIComponent(fileId)}`,
-      "GET",
+    // The status request consumed this Provider step. Persist the file identity and let the Host
+    // schedule one later poll invocation for the file endpoint; doing both here would make a
+    // single poll step perform two upstream requests and leave no checkpoint between them.
+    return {
+      status: "accepted",
+      pollState: { taskId: submittedTaskId, upstreamModel, fileId },
+    };
+  }
+  if (SUCCESS_STATUSES.has(currentStatus)) {
+    throw invalidResponse(
+      `Hilo Hub task ${submittedTaskId} succeeded without a result URL.`,
+      "accepted",
     );
-    url = firstUrl(final);
-    if (url) return completedResult(route, url);
   }
   // Still running, or succeeded without a URL yet. Same state, asked again later.
   //
@@ -1480,10 +1539,15 @@ export async function pollHubModel(
   // because a status added upstream next month would then become an unbounded wait on work that
   // already died, with no symptom except that nothing ever happens.
   if (!RUNNING_STATUSES.has(currentStatus)) {
-    throw new Error(
-      `Hilo Hub task ${submittedTaskId} reported status "${currentStatus}", which this plugin ` +
+    throw new ProviderExecutionError({
+      code: "invalid_response",
+      message:
+        `Hilo Hub task ${submittedTaskId} reported status "${currentStatus}", which this plugin ` +
         "does not recognise. Refusing to keep waiting on a task whose state is unknown.",
-    );
+      retryable: false,
+      requestState: "accepted",
+      providerCode: currentStatus,
+    });
   }
   return {
     status: "accepted",

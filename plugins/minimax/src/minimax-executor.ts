@@ -1,3 +1,8 @@
+import {
+  ProviderExecutionError,
+  providerHttpError,
+} from "@clash/action-sdk";
+
 /**
  * MiniMax's generation APIs, as two translations.
  *
@@ -114,27 +119,40 @@ function messageFrom(body: Record<string, unknown>, fallback: string): string {
  * checked together -- a transport failure carrying a zeroed envelope is still a failure.
  */
 function assertEnvelopeOk(
-  ok: boolean,
+  response: Awaited<ReturnType<FetchLike>>,
   body: Record<string, unknown>,
   what: string,
-  httpFallback: string,
 ): void {
   const baseResp = nested(body, "base_resp");
   // Only an explicit non-zero code is a verdict. An absent envelope, or one that does not state a
   // code, is not the vendor refusing anything -- and treating either as failure would mask the more
   // precise error the caller is about to raise, such as a submission that came back with no task id.
   const code = baseResp?.status_code;
-  if (ok && (code === undefined || code === 0)) return;
+  if (response.ok && (code === undefined || code === 0)) return;
   const statusMsg = baseResp?.status_msg;
-  throw new Error(
+  const message =
     `MiniMax ${what} request failed: ` +
       // The envelope's own words when it has any, and otherwise whatever the body actually said. A
       // gateway between here and MiniMax answers with HTML, and passing that through is the
       // difference between diagnosing a proxy and staring at "Bad Gateway".
       (typeof statusMsg === "string" && statusMsg
         ? statusMsg
-        : messageFrom(body, httpFallback)),
-  );
+        : messageFrom(body, response.statusText));
+  if (!response.ok) {
+    throw providerHttpError({
+      status: response.status,
+      message,
+      operation: "submit",
+      ...(code === undefined ? {} : { providerCode: String(code) }),
+    });
+  }
+  throw new ProviderExecutionError({
+    code: code === 1004 ? "authentication_failed" : "provider_failed",
+    message,
+    retryable: false,
+    requestState: "rejected",
+    ...(code === undefined ? {} : { providerCode: String(code) }),
+  });
 }
 
 function hexToBytes(data: string): Uint8Array {
@@ -142,7 +160,12 @@ function hexToBytes(data: string): Uint8Array {
   if (!clean || clean.length % 2 !== 0 || !/^[0-9a-f]+$/i.test(clean)) {
     // An odd length means the payload was truncated in transit. Decoding it leniently would store a
     // corrupt asset that only fails later, when someone tries to play it.
-    throw new Error("MiniMax response returned invalid hex media.");
+    throw new ProviderExecutionError({
+      code: "invalid_response",
+      message: "MiniMax response returned invalid hex media.",
+      retryable: false,
+      requestState: "accepted",
+    });
   }
   return new Uint8Array(Buffer.from(clean, "hex"));
 }
@@ -209,7 +232,7 @@ export async function minimaxSubmit(
       },
     );
     const body = await readBody(response);
-    assertEnvelopeOk(response.ok, body, "text", response.statusText);
+    assertEnvelopeOk(response, body, "text");
     const firstChoice = Array.isArray(body.choices)
       ? body.choices[0]
       : undefined;
@@ -220,9 +243,12 @@ export async function minimaxSubmit(
         ? nested(firstChoice as Record<string, unknown>, "message")
         : undefined;
     if (typeof message?.content !== "string" || !message.content.trim()) {
-      throw new Error(
-        "MiniMax text response returned no choices[0].message.content.",
-      );
+      throw new ProviderExecutionError({
+        code: "invalid_response",
+        message: "MiniMax text response returned no choices[0].message.content.",
+        retryable: false,
+        requestState: "accepted",
+      });
     }
     return { status: "completed", text: message.content };
   }
@@ -236,11 +262,16 @@ export async function minimaxSubmit(
       body: JSON.stringify(options.body),
     });
     const body = await readBody(response);
-    assertEnvelopeOk(response.ok, body, what, response.statusText);
+    assertEnvelopeOk(response, body, what);
 
     const audio = nested(body, "data")?.audio;
     if (typeof audio !== "string" || !audio) {
-      throw new Error(`MiniMax ${what} response returned no audio.`);
+      throw new ProviderExecutionError({
+        code: "invalid_response",
+        message: `MiniMax ${what} response returned no audio.`,
+        retryable: false,
+        requestState: "accepted",
+      });
     }
     // `music_duration` is already milliseconds, unlike the video task's whole seconds. Scaling it
     // here as well would report every track a thousand times too long.
@@ -266,7 +297,7 @@ export async function minimaxSubmit(
     },
   );
   const created = await readBody(response);
-  assertEnvelopeOk(response.ok, created, "video", response.statusText);
+  assertEnvelopeOk(response, created, "video");
   const rawTaskId = created.task_id;
   const taskId =
     typeof rawTaskId === "string"
@@ -279,7 +310,12 @@ export async function minimaxSubmit(
   if (!taskId) {
     // Nothing to poll. Reporting success would leave the host waiting on work it can never ask
     // about, while the job may well be running and billable upstream.
-    throw new Error("MiniMax video response returned no task_id.");
+    throw new ProviderExecutionError({
+      code: "invalid_response",
+      message: "MiniMax video response returned no task_id.",
+      retryable: false,
+      requestState: "unknown",
+    });
   }
   return { status: "accepted", pollState: { taskId } };
 }
@@ -328,9 +364,11 @@ export async function minimaxPoll(options: {
   );
   const body = await readBody(response);
   if (!response.ok) {
-    throw new Error(
-      `MiniMax video status failed: ${messageFrom(body, response.statusText)}`,
-    );
+    throw providerHttpError({
+      status: response.status,
+      message: `MiniMax video status failed: ${messageFrom(body, response.statusText)}`,
+      operation: "poll",
+    });
   }
 
   const task = nested(body, "task") ?? {};
@@ -348,7 +386,13 @@ export async function minimaxPoll(options: {
         : typeof task.message === "string" && task.message
           ? task.message
           : status;
-    throw new Error(`MiniMax video generation failed: ${detail}`);
+    throw new ProviderExecutionError({
+      code: status === "cancelled" ? "cancelled" : "provider_failed",
+      message: `MiniMax video generation failed: ${detail}`,
+      retryable: false,
+      requestState: "accepted",
+      providerCode: status,
+    });
   }
   if (RUNNING_STATUSES.has(status)) {
     // Unchanged state: MiniMax identifies the task the same way for as long as it exists.
@@ -358,19 +402,27 @@ export async function minimaxPoll(options: {
     // Neither finished, nor failed, nor a state this executor can vouch for as still running. The
     // quoted spelling is what MiniMax actually sent, so whoever reads this can add it here or find
     // out what it means.
-    throw new Error(
-      `MiniMax reported status "${String(task.status)}" for task ${taskId}, which this executor ` +
+    throw new ProviderExecutionError({
+      code: "invalid_response",
+      message:
+        `MiniMax reported status "${String(task.status)}" for task ${taskId}, which this executor ` +
         "does not recognise. Refusing to keep waiting on a task whose state is unknown.",
-    );
+      retryable: false,
+      requestState: "accepted",
+      providerCode: status,
+    });
   }
 
   const url = nested(task, "content")?.url;
   if (typeof url !== "string" || !url) {
     // A succeeded task with no url is not a result. Passing it on would store an asset pointing
     // nowhere, which reads as success everywhere except when someone opens it.
-    throw new Error(
-      `MiniMax video response returned no video URL for ${taskId}`,
-    );
+    throw new ProviderExecutionError({
+      code: "invalid_response",
+      message: `MiniMax video response returned no video URL for ${taskId}`,
+      retryable: false,
+      requestState: "accepted",
+    });
   }
   return {
     status: "completed",

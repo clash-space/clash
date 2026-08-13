@@ -1,43 +1,47 @@
+import { useEffect, useState } from "react";
+import {
+  createPersonalGlobalAssetHttpClient,
+  createProjectAssetHttpClient,
+} from "@clash/asset-sdk";
+import type { AssetKind, ResolvedAsset } from "@clash/shared-types";
+import { fetchWithRetry } from "./retryFetch";
 
-import { useEffect, useState } from 'react';
-import type { Asset } from '@clash/shared-types';
-import { fetchWithRetry } from './retryFetch';
-import { primeSignedUrl } from './useSignedUrl';
+type ScopedAsset = {
+  projectId: string;
+  assetId: string;
+};
+
+type PendingAsset = ScopedAsset & {
+  resolve: (asset: ResolvedAsset) => void;
+  reject: (error: unknown) => void;
+};
 
 /**
- * In-memory asset cache shared across all hook instances.
- * Asset rows are write-mostly-once (created on upload/generation, cover/desc patched once),
- * so we cache forever and invalidate manually when our own code mutates.
+ * ResolvedAsset projections are scoped by Project. The same asset id may be
+ * visible, unavailable, or projected to a different Host URL in another
+ * Project, so every cache and in-flight key includes projectId.
  */
-const cache = new Map<string, Asset>();
-const inflight = new Map<string, Promise<Asset>>();
-const pending = new Map<string, {
-  resolve: (asset: Asset) => void;
-  reject: (err: unknown) => void;
-}>();
+const cache = new Map<string, ResolvedAsset>();
+const inflight = new Map<string, Promise<ResolvedAsset>>();
+const pending = new Map<string, PendingAsset>();
 let pendingTimer: ReturnType<typeof setTimeout> | undefined;
 
-async function fetchAsset(id: string): Promise<Asset> {
-  const res = await fetchWithRetry(`/api/v1/assets/${encodeURIComponent(id)}`);
-  if (!res.ok) throw new Error(`Asset fetch failed: ${res.status}`);
-  return (await res.json()) as Asset;
+function scopedKey(projectId: string, assetId: string): string {
+  return JSON.stringify([projectId, assetId]);
 }
 
-async function fetchAssetsBatch(ids: string[]): Promise<Asset[]> {
-  const res = await fetchWithRetry('/api/v1/assets/batch', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ ids }),
-  });
-  if (!res.ok) throw new Error(`Asset batch fetch failed: ${res.status}`);
-  const json = (await res.json()) as { assets?: Asset[] };
-  return json.assets ?? [];
-}
+const projectAssets = createProjectAssetHttpClient({
+  credentials: "include",
+  fetch: (input, init) => fetchWithRetry(String(input), init),
+});
 
-function cacheAsset(asset: Asset): void {
-  cache.set(asset.id, asset);
-  primeSignedUrl(asset.srcR2Key, asset.signedUrl, asset.signedUrlExp);
-  primeSignedUrl(asset.coverR2Key ?? undefined, asset.signedCoverUrl, asset.signedCoverUrlExp);
+const personalGlobalAssets = createPersonalGlobalAssetHttpClient({
+  credentials: "include",
+  fetch: (input, init) => fetchWithRetry(String(input), init),
+});
+
+function cacheAsset(projectId: string, asset: ResolvedAsset): void {
+  cache.set(scopedKey(projectId, asset.id), asset);
 }
 
 function scheduleFlush(): void {
@@ -48,73 +52,97 @@ function scheduleFlush(): void {
   }, 0);
 }
 
-async function flushPending(): Promise<void> {
-  const entries = Array.from(pending.entries());
-  pending.clear();
-  if (entries.length === 0) return;
-
-  const ids = entries.map(([id]) => id);
+async function flushProject(
+  projectId: string,
+  entries: PendingAsset[],
+): Promise<void> {
+  const assetIds = entries.map((entry) => entry.assetId);
   try {
-    if (ids.length === 1) {
-      const asset = await fetchAsset(ids[0]);
-      cacheAsset(asset);
-      entries[0][1].resolve(asset);
+    if (entries.length === 1) {
+      const asset = (
+        await projectAssets.get({ projectId, assetId: entries[0].assetId })
+      ).value;
+      cacheAsset(projectId, asset);
+      entries[0].resolve(asset);
       return;
     }
 
-    const assets = await fetchAssetsBatch(ids);
+    const assets = await projectAssets.batch({ projectId, assetIds });
     const byId = new Map(assets.map((asset) => [asset.id, asset]));
-    for (const asset of assets) cacheAsset(asset);
+    for (const asset of assets) cacheAsset(projectId, asset);
 
-    for (const [id, handlers] of entries) {
-      const asset = byId.get(id);
-      if (asset) {
-        handlers.resolve(asset);
-      } else {
-        handlers.reject(new Error(`Asset ${id} not found`));
-      }
+    for (const entry of entries) {
+      const asset = byId.get(entry.assetId);
+      if (asset) entry.resolve(asset);
+      else
+        entry.reject(
+          new Error(`Asset ${entry.assetId} not found in Project ${projectId}`),
+        );
     }
-  } catch (err) {
-    for (const [, handlers] of entries) handlers.reject(err);
+  } catch (error) {
+    for (const entry of entries) entry.reject(error);
   } finally {
-    for (const id of ids) inflight.delete(id);
+    for (const assetId of assetIds)
+      inflight.delete(scopedKey(projectId, assetId));
   }
 }
 
-function getOrFetch(id: string): Promise<Asset> {
-  const cached = cache.get(id);
+async function flushPending(): Promise<void> {
+  const entries = Array.from(pending.values());
+  pending.clear();
+  if (entries.length === 0) return;
+
+  const byProject = new Map<string, PendingAsset[]>();
+  for (const entry of entries) {
+    const projectEntries = byProject.get(entry.projectId) ?? [];
+    projectEntries.push(entry);
+    byProject.set(entry.projectId, projectEntries);
+  }
+  await Promise.all(
+    Array.from(byProject, ([projectId, projectEntries]) =>
+      flushProject(projectId, projectEntries),
+    ),
+  );
+}
+
+function getOrFetch(
+  projectId: string,
+  assetId: string,
+): Promise<ResolvedAsset> {
+  const key = scopedKey(projectId, assetId);
+  const cached = cache.get(key);
   if (cached) return Promise.resolve(cached);
 
-  let p = inflight.get(id);
-  if (!p) {
-    p = new Promise<Asset>((resolve, reject) => {
-      pending.set(id, { resolve, reject });
+  let request = inflight.get(key);
+  if (!request) {
+    request = new Promise<ResolvedAsset>((resolve, reject) => {
+      pending.set(key, { projectId, assetId, resolve, reject });
       scheduleFlush();
     });
-    inflight.set(id, p);
+    inflight.set(key, request);
   }
-  return p;
+  return request;
 }
 
-/**
- * React hook: resolve an assetId to its full Asset record.
- * Returns `undefined` while loading or if the id is missing.
- */
-export function useAsset(assetId: string | undefined): Asset | undefined {
-  const [asset, setAsset] = useState<Asset | undefined>(() => {
-    if (!assetId) return undefined;
-    return cache.get(assetId);
-  });
+/** Resolve a Project-scoped, Host-projected read-only Asset view. */
+export function useAsset(
+  projectId: string | undefined,
+  assetId: string | undefined,
+): ResolvedAsset | undefined {
+  const key = projectId && assetId ? scopedKey(projectId, assetId) : undefined;
+  const [asset, setAsset] = useState<ResolvedAsset | undefined>(() =>
+    key ? cache.get(key) : undefined,
+  );
 
   useEffect(() => {
-    if (!assetId) {
+    if (!projectId || !assetId) {
       setAsset(undefined);
       return;
     }
     let cancelled = false;
-    getOrFetch(assetId)
-      .then((a) => {
-        if (!cancelled) setAsset(a);
+    getOrFetch(projectId, assetId)
+      .then((resolved) => {
+        if (!cancelled) setAsset(resolved);
       })
       .catch(() => {
         if (!cancelled) setAsset(undefined);
@@ -122,19 +150,133 @@ export function useAsset(assetId: string | undefined): Asset | undefined {
     return () => {
       cancelled = true;
     };
-  }, [assetId]);
+  }, [assetId, projectId]);
 
   return asset;
 }
 
-/** Invalidate the cache entry for an asset (call after PATCH-style mutations). */
-export function invalidateAsset(id: string): void {
-  cache.delete(id);
-  inflight.delete(id);
-  pending.delete(id);
+/** Invalidate one Project-scoped projection after a mutation. */
+export function invalidateAsset(projectId: string, assetId: string): void {
+  const key = scopedKey(projectId, assetId);
+  cache.delete(key);
+  inflight.delete(key);
+  pending.delete(key);
 }
 
-/** Imperative read for non-React contexts (e.g. workflow callbacks). */
-export async function getAsset(id: string): Promise<Asset> {
-  return getOrFetch(id);
+/** Imperative Project-scoped read for workflow callbacks. */
+export async function getAsset(
+  projectId: string,
+  assetId: string,
+): Promise<ResolvedAsset> {
+  return getOrFetch(projectId, assetId);
+}
+
+/**
+ * Import immutable bytes and publish one ProjectAsset in a single Host operation.
+ * The client-selected id makes a retried multipart request idempotent; callers only
+ * receive the same read-only ResolvedAsset projection used by every other surface.
+ */
+export async function importProjectAssetFile(
+  projectId: string,
+  file: File,
+  options: { kind: AssetKind; projectAssetId?: string },
+): Promise<ResolvedAsset> {
+  const projectAssetId =
+    options.projectAssetId ?? `asset-${crypto.randomUUID()}`;
+  const asset = await projectAssets.importFile({
+    projectId,
+    file,
+    kind: options.kind,
+    projectAssetId,
+  });
+  if (asset.id !== projectAssetId) {
+    throw new Error(
+      `Project Asset import returned ${asset.id}; expected ${projectAssetId}`,
+    );
+  }
+  cacheAsset(projectId, asset);
+  return asset;
+}
+
+/** Admit a pinned personal-library Resource as one Project-scoped Asset identity. */
+export async function admitPersonalGlobalAssetToProject(
+  projectId: string,
+  globalAssetId: string,
+): Promise<ResolvedAsset> {
+  const asset = await projectAssets.admit({ projectId, globalAssetId });
+  cacheAsset(projectId, asset);
+  return asset;
+}
+
+/** List the personal reusable-media library through the canonical Global Asset adapter. */
+export function listPersonalGlobalAssets(): Promise<ResolvedAsset[]> {
+  return personalGlobalAssets.list();
+}
+
+/** Import immutable bytes into the personal reusable-media library. */
+export function importPersonalGlobalAssetFile(
+  file: File,
+  kind: AssetKind,
+): Promise<ResolvedAsset> {
+  return personalGlobalAssets.importFile({ file, kind });
+}
+
+/** Publish a Project Resource as an independent personal-library entry. */
+export function publishProjectAssetToPersonalLibrary(
+  projectId: string,
+  projectAssetId: string,
+): Promise<ResolvedAsset> {
+  return personalGlobalAssets.publish({ projectId, projectAssetId });
+}
+
+/** Logically trash one Project Asset after observing its current reference set. */
+export async function trashProjectAsset(
+  projectId: string,
+  projectAssetId: string,
+): Promise<ResolvedAsset> {
+  const observation = await projectAssets.get({
+    projectId,
+    assetId: projectAssetId,
+  });
+  const result = await projectAssets.trash({
+    projectId,
+    assetId: projectAssetId,
+    actorClientType: "gui",
+    receipt: observation.receipt,
+  });
+  cacheAsset(projectId, result.value);
+  return result.value;
+}
+
+/** Restore a logically trashed Project Asset using the same observed-CAS flow. */
+export async function restoreProjectAsset(
+  projectId: string,
+  projectAssetId: string,
+): Promise<ResolvedAsset> {
+  const observation = await projectAssets.get({
+    projectId,
+    assetId: projectAssetId,
+  });
+  const result = await projectAssets.restore({
+    projectId,
+    assetId: projectAssetId,
+    actorClientType: "gui",
+    receipt: observation.receipt,
+  });
+  cacheAsset(projectId, result.value);
+  return result.value;
+}
+
+/** Logically trash one personal Global Asset without affecting admitted Projects. */
+export function trashPersonalGlobalAsset(
+  globalAssetId: string,
+): Promise<ResolvedAsset> {
+  return personalGlobalAssets.trash({ globalAssetId });
+}
+
+/** Restore one personal Global Asset during its logical recovery window. */
+export function restorePersonalGlobalAsset(
+  globalAssetId: string,
+): Promise<ResolvedAsset> {
+  return personalGlobalAssets.restore({ globalAssetId });
 }

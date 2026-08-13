@@ -8,7 +8,7 @@ const readSource = (path: string) =>
 describe("InviteAgentMenu primitives", () => {
   it("uses the shared Radix-backed dropdown menu instead of hand-rolled portal positioning", () => {
     const source = readSource("packages/web-ui/src/_group-chat/InviteAgentMenu.tsx");
-    const dropdown = readSource("packages/web-ui/src/components/ui/dropdown-menu.tsx");
+    const dropdown = readSource("packages/gui/src/components/ui/dropdown-menu.tsx");
 
     expect(source).toContain("../components/ui/dropdown-menu");
     expect(source).toContain("DropdownMenu");
@@ -27,7 +27,7 @@ describe("InviteAgentMenu primitives", () => {
 
   it("uses the shared tooltip primitive for the trigger and removes redundant browser title attributes", () => {
     const source = readSource("packages/web-ui/src/_group-chat/InviteAgentMenu.tsx");
-    const tooltipSource = readSource("packages/web-ui/src/components/ui/tooltip.tsx");
+    const tooltipSource = readSource("packages/gui/src/components/ui/tooltip.tsx");
 
     expect(tooltipSource).toContain("@ariakit/react");
     expect(source).toContain("../components/ui/tooltip");

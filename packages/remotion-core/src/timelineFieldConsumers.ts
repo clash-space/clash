@@ -92,8 +92,7 @@ export type TimelineSharedDefaults = {
     | 'fps'
     | 'durationInFrames'
     | 'primaryTrackId'
-    | 'assetTranscripts'
-    | 'mediaAssetRefs'>;
+    | 'assetTranscripts'>;
   track: RequiredDefaults<Track, 'name' | 'hidden' | 'locked'>;
   itemBase: {
     properties: Required<NonNullable<BaseItem['properties']>>;
@@ -139,7 +138,6 @@ export const TIMELINE_SHARED_DEFAULTS: TimelineSharedDefaults = {
     durationInFrames: 300,
     primaryTrackId: null,
     assetTranscripts: {},
-    mediaAssetRefs: [],
   },
   track: {
     name: '',

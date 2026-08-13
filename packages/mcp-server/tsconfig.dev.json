@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "paths": {
+      "@clash/asset-sdk": ["../asset-sdk/src/index.ts"],
+      "@clash/shared-runtime": ["../shared-runtime/src/index.ts"],
+      "@clash/shared-runtime/*": ["../shared-runtime/src/*.ts"],
+      "@clash/shared-types": ["../shared-types/src/index.ts"],
+      "@clash/shared-types/*": ["../shared-types/src/*.ts"]
+    }
+  }
+}

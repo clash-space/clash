@@ -57,10 +57,6 @@ export const TIMELINE_EDITOR_ROOT_TRACK_FIELD_CONSUMERS = {
     primaryTrackId: editor('Primary-lane layout, transcript selection, and item-placement rules consume this identity.'),
     tracks: editor('The Timeline, Canvas, transcript, captions, and properties surfaces edit the track collection.'),
     assetTranscripts: editor('Transcript and caption workflows read and update persisted word timing.'),
-    mediaAssetRefs: classifyTimelineField(
-      ['meta', 'persistence'],
-      'Host-owned asset rehydration references are preserved outside interactive editor state and have no direct control.',
-    ),
   },
   track: {
     id: editor('Selection, drag-and-drop, updates, annotations, and React identity use the stable track id.'),
@@ -228,7 +224,6 @@ export const TIMELINE_EDITOR_DEFAULT_COVERAGE = {
     },
     primaryTrackId: defaultDisposition('helper', 'Editor state initialization owns the null primary-track fallback.'),
     assetTranscripts: defaultDisposition('helper', 'Editor state initialization owns the empty transcript map.'),
-    mediaAssetRefs: defaultDisposition('not-read', 'Host media references are projection metadata outside the editor state.'),
   },
   track: {
     name: defaultDisposition('schema-normalized', 'Authored normalization supplies the required track label.'),

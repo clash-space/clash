@@ -14,7 +14,6 @@ import type {
   AgentAnnotationTarget,
 } from "@clash/shared-types";
 import { useAsset } from "@clash/web-ui/lib/hooks/useAsset";
-import { useSignedUrl } from "@clash/web-ui/lib/hooks/useSignedUrl";
 import { IconButton } from "../ui/icon-button";
 import { Popover, PopoverAnchor, PopoverContent } from "../ui/popover";
 import { Textarea } from "../ui/textarea";
@@ -137,13 +136,12 @@ function AnnotationAssetThumbnail({
   target: AgentAnnotationTarget;
   size?: "sm" | "md" | "lg";
 }) {
-  const asset = useAsset(target.previewAssetId);
+  const asset = useAsset(target.projectId, target.previewAssetId);
   const isVideo =
     target.objectType.includes("video") || asset?.kind === "video";
-  const r2Key = isVideo
-    ? (asset?.coverR2Key ?? asset?.srcR2Key)
-    : asset?.srcR2Key;
-  const signedUrl = useSignedUrl(r2Key ?? undefined);
+  const mediaUrl = isVideo
+    ? (asset?.thumbnailUrl ?? asset?.url)
+    : asset?.url;
   const sizeClass =
     size === "lg"
       ? "h-auto max-h-36 w-auto max-w-full rounded-md"
@@ -152,11 +150,11 @@ function AnnotationAssetThumbnail({
         : "h-5 w-5 rounded";
 
   if (size === "lg") {
-    if (!signedUrl) return null;
-    return isVideo && asset?.srcR2Key && !asset?.coverR2Key ? (
+    if (!mediaUrl) return null;
+    return isVideo && asset?.url && !asset?.thumbnailUrl ? (
       <video
         data-testid="annotation-asset-preview"
-        src={`${signedUrl}#t=0.1`}
+        src={`${mediaUrl}#t=0.1`}
         className={`${sizeClass} bg-warm-muted object-contain`}
         preload="metadata"
         muted
@@ -167,7 +165,7 @@ function AnnotationAssetThumbnail({
       /* eslint-disable-next-line @next/next/no-img-element */
       <img
         data-testid="annotation-asset-preview"
-        src={signedUrl}
+        src={mediaUrl}
         alt={target.objectLabel}
         className={`${sizeClass} bg-warm-muted object-contain`}
       />
@@ -176,30 +174,30 @@ function AnnotationAssetThumbnail({
 
   // No resolved media yet (still signing, or nothing renderable): show
   // nothing rather than an empty gray tile.
-  if (!signedUrl) return null;
+  if (!mediaUrl) return null;
 
   return (
     <span
       data-testid="annotation-asset-thumbnail"
       className={`${sizeClass} shrink-0 overflow-hidden bg-warm-muted ring-1 ring-warm-border flex items-center justify-center`}
     >
-      {isVideo && asset?.srcR2Key && !asset?.coverR2Key && signedUrl ? (
+      {isVideo && asset?.url && !asset?.thumbnailUrl ? (
         <video
-          src={`${signedUrl}#t=0.1`}
+          src={`${mediaUrl}#t=0.1`}
           className="h-full w-full object-cover"
           preload="metadata"
           muted
           playsInline
           aria-label={target.objectLabel}
         />
-      ) : signedUrl ? (
+      ) : (
         /* eslint-disable-next-line @next/next/no-img-element */
         <img
-          src={signedUrl}
+          src={mediaUrl}
           alt={target.objectLabel}
           className="h-full w-full object-cover"
         />
-      ) : null}
+      )}
     </span>
   );
 }

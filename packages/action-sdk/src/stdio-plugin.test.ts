@@ -2,12 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import { PassThrough } from "node:stream";
 
 import { defineStdioExecutablePlugin } from "./stdio-plugin";
+import { ProviderExecutionError } from "./executable-failure";
 
 /**
- * The transport belongs to the SDK, the way it already does for hosted plugins.
- *
- * `defineHostedExecutablePlugin` has existed here all along, so a hosted author writes a handler and
- * nothing else. A stdio author had no such thing and hand-wrote the loop — `createInterface`,
+ * The transport belongs to the SDK. A stdio author previously hand-wrote the loop — `createInterface`,
  * `JSON.parse(line)`, `process.stdout.write(JSON.stringify(result) + "\n")` — once per plugin.
  * first-party-media and codex-imagegen each carry their own copy, and they already differ: one
  * answers malformed input by writing a failure frame, the other by constructing a sentinel object
@@ -45,6 +43,24 @@ const invocation = (exportId: string, invocationId = "i-1") => JSON.stringify({
   actor: { kind: "agent" },
 });
 
+const pollInvocation = (exportId: string, invocationId = "i-poll") => {
+  const submitted = JSON.parse(invocation(exportId, invocationId));
+  return JSON.stringify({
+    ...submitted,
+    operation: "poll",
+    pollState: { taskId: "accepted-task" },
+  });
+};
+
+const callbackInvocation = (exportId: string, invocationId = "i-callback") => {
+  const submitted = JSON.parse(invocation(exportId, invocationId));
+  return JSON.stringify({
+    ...submitted,
+    operation: "callback",
+    callbackPayload: { taskId: "accepted-task", status: "done" },
+  });
+};
+
 describe("defineStdioExecutablePlugin", () => {
   it("routes a line to the handler named by the invocation", async () => {
     const handler = vi.fn(async () => ({ status: "completed" as const, outputs: [] })) as never;
@@ -78,6 +94,23 @@ describe("defineStdioExecutablePlugin", () => {
     expect(written.join("")).toMatch(/nope/);
   });
 
+  it("does not forget known acceptance when a callback names no handler", async () => {
+    const { written, plugin } = run(
+      { "x-execute": vi.fn() },
+      [callbackInvocation("missing-execute")],
+    );
+    await plugin.done;
+
+    expect(JSON.parse(written.join(""))).toMatchObject({
+      status: "failed",
+      error: {
+        code: "contract_violation",
+        retryable: false,
+        requestState: "accepted",
+      },
+    });
+  });
+
   it("keeps answering after a handler throws", async () => {
     const handlers = {
       "x-execute": vi.fn(async (inv: { invocationId: string }) => {
@@ -98,7 +131,82 @@ describe("defineStdioExecutablePlugin", () => {
       const parsed = JSON.parse(f) as { invocationId: string };
       return [parsed.invocationId, f];
     }));
-    expect(byId["i-1"]).toContain("upstream refused");
+    expect(JSON.parse(byId["i-1"]!)).toMatchObject({
+      status: "failed",
+      error: {
+        code: "execution_failed",
+        message: "upstream refused",
+        retryable: false,
+        requestState: "unknown",
+      },
+    });
     expect(byId["i-2"]).toContain("completed");
+  });
+
+  it("does not forget known acceptance when polling throws", async () => {
+    const handler = vi.fn(async () => { throw new Error("poll failed"); });
+    const { written, plugin } = run({ "x-execute": handler as never }, [pollInvocation("x-execute")]);
+    await plugin.done;
+
+    expect(JSON.parse(written.join(""))).toMatchObject({
+      status: "failed",
+      error: { requestState: "accepted" },
+    });
+  });
+
+  it("keeps a submit transport failure retryable without claiming rejection", async () => {
+    const transportFailure = Object.assign(new TypeError("fetch failed"), {
+      cause: { code: "ECONNRESET" },
+    });
+    const handler = vi.fn(async () => { throw transportFailure; });
+    const { written, plugin } = run({ "x-execute": handler as never }, [invocation("x-execute")]);
+    await plugin.done;
+
+    expect(JSON.parse(written.join(""))).toMatchObject({
+      status: "failed",
+      error: {
+        code: "transport_error",
+        retryable: true,
+        requestState: "unknown",
+      },
+    });
+  });
+
+  it("preserves an explicit preflight rejection from the executor", async () => {
+    const handler = vi.fn(async () => {
+      throw new ProviderExecutionError({
+        code: "invalid_request",
+        message: "unsupported model",
+        retryable: false,
+        requestState: "rejected",
+      });
+    });
+    const { written, plugin } = run({ "x-execute": handler as never }, [invocation("x-execute")]);
+    await plugin.done;
+
+    expect(JSON.parse(written.join(""))).toMatchObject({
+      status: "failed",
+      error: {
+        code: "invalid_request",
+        retryable: false,
+        requestState: "rejected",
+      },
+    });
+  });
+
+  it("does not retry an ambiguous handler abort as a transport timeout", async () => {
+    const aborted = Object.assign(new Error("cancelled by handler"), { name: "AbortError" });
+    const handler = vi.fn(async () => { throw aborted; });
+    const { written, plugin } = run({ "x-execute": handler as never }, [invocation("x-execute")]);
+    await plugin.done;
+
+    expect(JSON.parse(written.join(""))).toMatchObject({
+      status: "failed",
+      error: {
+        code: "execution_failed",
+        retryable: false,
+        requestState: "unknown",
+      },
+    });
   });
 });

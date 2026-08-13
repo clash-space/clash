@@ -20,7 +20,7 @@ describe('buildProjectMentionSources', () => {
         { id: 'review-note', type: 'text', canvasId: 'canvas-review', data: { label: 'Legal note' } },
       ],
       assets: [
-        { id: 'asset-1', name: 'Logo master', type: 'image', thumbnailUrl: '/logo.png' },
+        { id: 'asset-1', name: 'Logo master', kind: 'image', metadata: {}, thumbnailUrl: 'https://media.clash.test/logo.png' },
       ],
       timelines: [
         { id: 'timeline-1', name: 'Social cut' },
@@ -44,7 +44,7 @@ describe('buildProjectMentionSources', () => {
       activeSurface: { kind: 'timeline', timelineId: 'timeline-2' },
       canvases: [{ id: 'canvas-main', name: 'Main' }],
       nodes: [],
-      assets: [{ id: 'asset-1', name: 'Logo', type: 'image' }],
+      assets: [{ id: 'asset-1', name: 'Logo', kind: 'image', metadata: {} }],
       timelines: [
         { id: 'timeline-1', name: 'Rough cut' },
         { id: 'timeline-2', name: 'Final cut' },
@@ -65,7 +65,7 @@ describe('buildProjectMentionSources', () => {
       activeSurface: { kind: 'director-stage', stageId: 'stage-2' },
       canvases: [{ id: 'canvas-main', name: 'Main' }],
       nodes: [],
-      assets: [{ id: 'asset-1', name: 'Backdrop', type: 'image' }],
+      assets: [{ id: 'asset-1', name: 'Backdrop', kind: 'image', metadata: {} }],
       timelines: [],
       directorStages: [
         { id: 'stage-1', name: 'Wide blocking' },

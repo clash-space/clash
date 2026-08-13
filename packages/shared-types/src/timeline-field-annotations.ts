@@ -359,10 +359,6 @@ export const TimelineEditorAssetTranscriptSchema = z.object({
   language: NonEmptyStringSchema.optional(),
 });
 
-export const TimelineMediaAssetRefSchema = z.object({
-  assetId: NonEmptyStringSchema,
-});
-
 export const TimelineSequenceSchema = z.object({
   baseUrl: NonEmptyStringSchema,
   frameCount: PositiveFrameSchema,
@@ -425,12 +421,6 @@ const rootFields = {
     editor: noControl,
     runtimeConsumers: ["editor", "transcript", "caption-generation", "persistence"],
     defaultValue: {},
-  }),
-  mediaAssetRefs: derived(z.array(TimelineMediaAssetRefSchema), "Host-owned media asset references required to rehydrate Timeline assets; agents must preserve them.", {
-    required: false,
-    editor: noControl,
-    runtimeConsumers: ["editor", "asset-loader", "persistence"],
-    defaultValue: [],
   }),
 } as const;
 

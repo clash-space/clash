@@ -85,7 +85,7 @@ export const CaptionWorkspace: React.FC<CaptionWorkspaceProps> = ({
     const byId = new Map<string, Asset>();
     for (const asset of assets) {
       byId.set(asset.id, asset);
-      if (asset.backingAssetId) byId.set(asset.backingAssetId, asset);
+      if (asset.projectAssetId) byId.set(asset.projectAssetId, asset);
     }
     const result: Asset[] = [];
     const seen = new Set<string>();
@@ -134,7 +134,7 @@ export const CaptionWorkspace: React.FC<CaptionWorkspaceProps> = ({
     try {
       const transcripts = { ...assetTranscripts };
       for (const asset of mediaAssets) {
-        const transcriptId = asset.backingAssetId ?? asset.id;
+        const transcriptId = asset.projectAssetId ?? asset.id;
         if (transcripts[transcriptId] || transcripts[asset.id]) continue;
         if (!onTranscribeAsset) throw new Error('Caption recognition is unavailable for media without a transcript.');
         const transcript = await onTranscribeAsset(asset);

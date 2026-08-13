@@ -46,6 +46,24 @@ describe("self-hosted user configuration", () => {
     }
   });
 
+  it("rejects malformed public storage settings before any plugin can use them", async () => {
+    // Regression caught: permissive YAML would turn a misspelled provider into a silently missing
+    // Host capability even though the settings file appeared configured.
+    const clashHome = await mkdtemp(join(tmpdir(), "clash-user-config-storage-"));
+    try {
+      await writeFile(
+        join(clashHome, "config.yaml"),
+        "version: 1\npublic_storage:\n  mode: byos\n  provider: s-three\n  bucket: assets\n",
+      );
+
+      await expect(
+        createClashUserConfigStore(clashHome).getSection("public_storage"),
+      ).rejects.toThrow("public_storage.provider");
+    } finally {
+      await rm(clashHome, { recursive: true, force: true });
+    }
+  });
+
   it("observes editor saves from the parent directory and reloads valid YAML", async () => {
     const clashHome = await mkdtemp(join(tmpdir(), "clash-user-config-watch-"));
     let stop: () => void = () => undefined;

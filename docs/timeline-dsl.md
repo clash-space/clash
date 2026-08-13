@@ -41,7 +41,6 @@ authored optional field is absent; parsing does not silently materialize it.
 | `primaryTrackId` | optional / optional | editable | `null` | timeline | all declared owners | editor, timeline-semantics, transcript, export | Id of the track that defines the semantic primary edit. |
 | `tracks` | authored / runtime | editable | — | timeline | all declared owners | editor, preview, render, export, yaml | Ordered Timeline track collection. |
 | `assetTranscripts` | optional / optional | preserve / derived | `{}` | none | all declared owners | editor, transcript, caption-generation, persistence | Persisted word-level transcripts keyed by asset id; agents must preserve entries they do not edit. |
-| `mediaAssetRefs` | optional / optional | preserve / derived | `[]` | none | all declared owners | editor, asset-loader, persistence | Host-owned media asset references required to rehydrate Timeline assets; agents must preserve them. |
 
 ### Track
 

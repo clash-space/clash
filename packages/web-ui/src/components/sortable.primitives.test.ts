@@ -6,7 +6,7 @@ const readSource = (path: string) => readFileSync(join(process.cwd(), path), "ut
 
 describe("Sortable primitives", () => {
   it("centralizes vertical dnd-kit wiring behind a shared primitive", async () => {
-    const sortablePath = join(process.cwd(), "packages/web-ui/src/components/ui/sortable.tsx");
+    const sortablePath = join(process.cwd(), "packages/gui/src/components/ui/sortable.tsx");
 
     expect(existsSync(sortablePath)).toBe(true);
 

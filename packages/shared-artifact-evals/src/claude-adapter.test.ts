@@ -226,7 +226,7 @@ describe("Claude Code headless adapter", () => {
     });
   });
 
-  it("starts the project daemon first and binds the Clash stdio MCP server", async () => {
+  it("verifies the Project Host first and binds the Clash stdio MCP server", async () => {
     const root = await mkdtemp(join(tmpdir(), "clash-claude-host-"));
     const suiteRoot = join(root, "suite");
     const outputRoot = join(root, "runs");
@@ -253,7 +253,7 @@ describe("Claude Code headless adapter", () => {
         'fs.rmSync(pluginSocket, {force:true})',
         'const ipc = net.createServer((socket) => socket.end())',
         'ipc.listen(pluginSocket)',
-        'const server = http.createServer((_request, response) => { response.setHeader("content-type", "application/json"); response.end("{}") })',
+        'const server = http.createServer((request, response) => { const chunks = []; request.on("data", (chunk) => chunks.push(chunk)); request.on("end", () => { let body = {}; if (request.method === "POST" && /\\/api\\/v1\\/projects\\/[^/]+\\/host-command$/.test(request.url || "")) { const command = JSON.parse(Buffer.concat(chunks).toString("utf8")); body = command.action === "ping" ? {pong:true} : {error:"unsupported"} } response.setHeader("content-type", "application/json"); response.end(JSON.stringify(body)) }) })',
         'server.listen(0, "127.0.0.1", () => { const port = server.address().port; fs.writeFileSync(discovery, JSON.stringify({endpoint:"http://127.0.0.1:" + port,pid:process.pid,profile:process.env.CLASH_PROFILE,launchMode:"user-service",startedBy:"plugin",agentCliPath:process.env.CLASH_CLI_ENTRY_PATH})) })',
         'process.on("SIGTERM", () => { server.close(); ipc.close(); fs.rmSync(discovery, {force:true}); fs.rmSync(pluginSocket, {force:true}); process.exit(0) })',
       ].join("\n"),
@@ -264,31 +264,13 @@ describe("Claude Code headless adapter", () => {
       fakeClashCli,
       [
         `#!${process.execPath}`,
-        'const crypto = require("node:crypto")',
         'const fs = require("node:fs")',
-        'const http = require("node:http")',
-        'const net = require("node:net")',
         'const path = require("node:path")',
         'const argv = process.argv.slice(2)',
         'const marker = path.join(process.cwd(), ".clash", "project.toml")',
         'if (argv[0] === "init") { const projectId = argv[argv.indexOf("--project") + 1]; fs.mkdirSync(path.dirname(marker), {recursive:true}); fs.writeFileSync(marker, "schema_version = 1\\nproject_id = " + JSON.stringify(projectId) + "\\nworkspace_id = \\"managed:claude\\"\\nstore = \\"managed\\"\\n"); process.stdout.write(JSON.stringify({projectId,markerPath:marker,workspaceId:"managed:claude",reused:false}) + "\\n"); process.exit(0) }',
         'if (!fs.existsSync(marker)) process.exit(43)',
-        'const projectId = /project_id\\s*=\\s*"([^"]+)"/.exec(fs.readFileSync(marker, "utf8"))?.[1]',
-        'const key = crypto.createHash("sha256").update(projectId).digest("hex").slice(0, 32)',
-        'const socketRoot = path.join(process.env.CLASH_HOME, "sockets")',
-        'const pidPath = path.join(socketRoot, key + ".pid")',
-        'const mcpPath = path.join(socketRoot, key + ".mcp.json")',
-        'const socketPath = path.join(socketRoot, key + ".sock")',
-        'if (argv.join(" ") === "canvas disconnect") { const pid = Number(fs.readFileSync(pidPath, "utf8")); process.kill(pid, "SIGTERM"); process.exit(0) }',
-        'if (argv.join(" ") !== "canvas connect") process.exit(2)',
-        'fs.mkdirSync(socketRoot, {recursive:true})',
-        'fs.rmSync(socketPath, {force:true})',
-        'const daemon = net.createServer((connection) => { let data = ""; connection.on("data", (chunk) => { data += chunk.toString(); if (!data.includes("\\n")) return; const request = JSON.parse(data.slice(0, data.indexOf("\\n"))); connection.end(JSON.stringify(request.action === "ping" ? {pong:true} : {error:"unsupported"}) + "\\n") }) })',
-        'const mcp = http.createServer((request, response) => { if (request.url !== "/health") { response.statusCode = 404; return response.end() } response.setHeader("content-type", "application/json"); response.end(JSON.stringify({status:"ok",transport:"streamable-http",endpoint:"/mcp"})) })',
-        'mcp.listen(0, "127.0.0.1", () => { const port = mcp.address().port; daemon.listen(socketPath, () => { fs.writeFileSync(pidPath, String(process.pid)); fs.writeFileSync(mcpPath, JSON.stringify({url:"http://127.0.0.1:" + port + "/mcp"})) }) })',
-        'const cleanup = () => { daemon.close(); mcp.close(); fs.rmSync(pidPath, {force:true}); fs.rmSync(mcpPath, {force:true}); fs.rmSync(socketPath, {force:true}); process.exit(0) }',
-        'process.on("SIGTERM", cleanup)',
-        'setInterval(() => {}, 1000)',
+        'process.exit(2)',
       ].join("\n"),
       "utf8",
     );
@@ -328,7 +310,7 @@ describe("Claude Code headless adapter", () => {
             title: "Claude host",
             category: "director",
             outcome: {
-              objective: "Create a report after the Clash daemon is ready.",
+              objective: "Create a report after the Clash Project Host is ready.",
               acceptanceCriteria: ["The report is persisted."],
               deliverables: [
                 { artifactId: "result", kind: "report", description: "Result" },
@@ -388,7 +370,7 @@ describe("Claude Code headless adapter", () => {
     expect(observation.argv).toContain("--strict-mcp-config");
     expect(observation.argv.at(-2)).toBe("--");
     expect(observation.argv.at(-1)).toContain(
-      "Create a report after the Clash daemon is ready.",
+      "Create a report after the Clash Project Host is ready.",
     );
     const resolvedPluginRoot = await realpath(pluginRoot);
     expect(observation.config.mcpServers.clash).toMatchObject({

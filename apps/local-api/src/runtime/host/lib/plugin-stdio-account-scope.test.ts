@@ -89,4 +89,54 @@ describe("stdio plugin Host account scope", () => {
     await expect(completed).resolves.toMatchObject({ status: "completed" });
     session.close();
   });
+
+  it("ignores an invalid result for an invocation that is no longer pending", async () => {
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const session = new PluginStdioSession({
+      manifest,
+      stdin,
+      stdout,
+      broker: vi.fn(),
+    });
+
+    const completed = session.invoke(invocation, { timeoutMs: 1_000 });
+    stdout.write(`${JSON.stringify({
+      protocol: "clash.plugin.result/v1",
+      invocationId: "already-finished",
+      status: "failed",
+      error: { code: "execution_failed", message: "late failure", retryable: false },
+    })}\n`);
+    stdout.write(`${JSON.stringify({
+      protocol: "clash.plugin.result/v1",
+      invocationId: invocation.invocationId,
+      status: "completed",
+      outputs: [{ slot: "text", kind: "value", value: "done" }],
+    })}\n`);
+
+    await expect(completed).resolves.toMatchObject({ status: "completed" });
+    session.close();
+  });
+
+  it("rejects the pending invocation when its result violates the plugin protocol", async () => {
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const session = new PluginStdioSession({
+      manifest,
+      stdin,
+      stdout,
+      broker: vi.fn(),
+    });
+
+    const completed = session.invoke(invocation, { timeoutMs: 1_000 });
+    stdout.write(`${JSON.stringify({
+      protocol: "clash.plugin.result/v1",
+      invocationId: invocation.invocationId,
+      status: "failed",
+      error: { code: "execution_failed", message: "invalid failure", retryable: false },
+    })}\n`);
+
+    await expect(completed).rejects.toThrow(/invalid result.*invocation-1/i);
+    session.close();
+  });
 });

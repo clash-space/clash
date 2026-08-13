@@ -1,19 +1,28 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { sourceMatches } from '../test-support/source-match';
 
 describe('ProjectTimelineEditorSurface NLE handoff', () => {
   it('uses a hash-style Canvas icon for the persistent parent Canvas action', () => {
     const source = readFileSync(new URL('./ProjectWorkspaceSurfaces.tsx', import.meta.url), 'utf8');
-    expect(source).toContain("import { CanvasIcon } from './ProjectSurfaceIcon';");
+    expect(
+      sourceMatches(
+        source,
+        /import\s+\{\s*CanvasIcon\s*\}\s+from\s+["']\.\/ProjectSurfaceIcon["'];?/,
+      ),
+    ).toBe(true);
     expect(source).toContain('icon={<CanvasIcon className="h-4 w-4" weight="regular" />}');
     expect(source).not.toContain('icon={<SquaresFour className="h-4 w-4" weight="regular" />}');
   });
 
   it('only exposes Open in when the desktop bridge supports it', () => {
     const source = readFileSync(new URL('./ProjectWorkspaceSurfaces.tsx', import.meta.url), 'utf8');
-    expect(source).toContain(
-      'onOpenInNle={globalThis.__CLASH_DESKTOP__?.openInNle ? openInNle : undefined}',
-    );
+    expect(
+      sourceMatches(
+        source,
+        /onOpenInNle=\{\s*globalThis\.__CLASH_DESKTOP__\?\.openInNle\s*\?\s*openInNle\s*:\s*undefined\s*\}/,
+      ),
+    ).toBe(true);
     expect(source).toContain('desktop.getNleAvailability()');
     expect(source).toContain('nleAvailabilityError');
     expect(source).toContain('nleAvailability={nleAvailability}');

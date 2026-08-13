@@ -103,7 +103,7 @@ const LOCAL_ASR_MODEL_CATALOG = [
       id: "sensevoice-small-asr",
       name: "SenseVoice Small",
       provider: "Local",
-      kind: "asr",
+      kind: "text",
       defaultAspectRatio: "1:1",
       description: "Local microphone transcription.",
       parameters: [],
@@ -119,7 +119,7 @@ const LOCAL_ASR_MODEL_CATALOG = [
     routes: [
       {
         modelCode: "sensevoice-small-asr",
-        kind: "asr",
+        kind: "text",
         providerId: "local",
         upstreamId: "local",
         upstreamModel: "iic/SenseVoiceSmall",
@@ -129,7 +129,7 @@ const LOCAL_ASR_MODEL_CATALOG = [
     ],
     selectedRoute: {
       modelCode: "sensevoice-small-asr",
-      kind: "asr",
+      kind: "text",
       providerId: "local",
       upstreamId: "local",
       upstreamModel: "iic/SenseVoiceSmall",
@@ -267,7 +267,7 @@ const VIBEVOICE_MODEL_CATALOG = [{
     id: "vibevoice-asr",
     name: "VibeVoice ASR",
     provider: "Local",
-    kind: "asr",
+    kind: "text",
     defaultAspectRatio: "1:1",
     description: "Long-form transcription with speaker diarization.",
     parameters: [],
@@ -281,7 +281,7 @@ const VIBEVOICE_MODEL_CATALOG = [{
   tier: "available",
   routes: [{
     modelCode: "vibevoice-asr",
-    kind: "asr",
+    kind: "text",
     providerId: "local",
     upstreamId: "local",
     upstreamModel: "mlx-community/VibeVoice-ASR-4bit",
@@ -290,7 +290,7 @@ const VIBEVOICE_MODEL_CATALOG = [{
   }],
   selectedRoute: {
     modelCode: "vibevoice-asr",
-    kind: "asr",
+    kind: "text",
     providerId: "local",
     upstreamId: "local",
     upstreamModel: "mlx-community/VibeVoice-ASR-4bit",
@@ -409,6 +409,27 @@ describe("SettingsSurface tab state", () => {
     );
 
     expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+  });
+
+  it("offers machine public storage only when settings are backed by local-api", () => {
+    const { unmount } = render(
+      <MemoryRouter>
+        <SettingsSurface active="agents" onActiveChange={vi.fn()} variant="page" />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole("tab", { name: "Public storage" })).toBeNull();
+    unmount();
+
+    globalThis.__CLASH_RUNTIME_CONFIG__ = {
+      mode: "desktop",
+      apiBaseUrl: "http://127.0.0.1:49152",
+    };
+    render(
+      <MemoryRouter>
+        <SettingsSurface active="public-storage" onActiveChange={vi.fn()} variant="page" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("tab", { name: "Public storage" })).toBeTruthy();
   });
 
   it("keeps hosted API tokens available", async () => {
@@ -553,7 +574,7 @@ describe("SettingsSurface tab state", () => {
       resolve(process.cwd(), "packages/web-ui/src/components/SettingsSurface.tsx"),
       "utf8",
     );
-    const tabsPath = resolve(process.cwd(), "packages/web-ui/src/components/ui/tabs.tsx");
+    const tabsPath = resolve(process.cwd(), "packages/gui/src/components/ui/tabs.tsx");
     const tabsSource = existsSync(tabsPath) ? readFileSync(tabsPath, "utf8") : "";
 
     expect(existsSync(tabsPath)).toBe(true);
@@ -572,7 +593,7 @@ describe("SettingsSurface tab state", () => {
       "utf8",
     );
     const tooltipSource = readFileSync(
-      resolve(process.cwd(), "packages/web-ui/src/components/ui/tooltip.tsx"),
+      resolve(process.cwd(), "packages/gui/src/components/ui/tooltip.tsx"),
       "utf8",
     );
 
@@ -593,7 +614,7 @@ describe("SettingsSurface tab state", () => {
       "utf8",
     );
     const tooltipSource = readFileSync(
-      resolve(process.cwd(), "packages/web-ui/src/components/ui/tooltip.tsx"),
+      resolve(process.cwd(), "packages/gui/src/components/ui/tooltip.tsx"),
       "utf8",
     );
     const agentsSectionStart = source.indexOf("function AgentsSection()");
@@ -618,7 +639,7 @@ describe("SettingsSurface tab state", () => {
       "utf8",
     );
     const tooltipSource = readFileSync(
-      resolve(process.cwd(), "packages/web-ui/src/components/ui/tooltip.tsx"),
+      resolve(process.cwd(), "packages/gui/src/components/ui/tooltip.tsx"),
       "utf8",
     );
     const audioSectionStart = source.indexOf("function LocalSpeechSettingsCard(");
@@ -639,7 +660,7 @@ describe("SettingsSurface tab state", () => {
       "utf8",
     );
     const tooltipSource = readFileSync(
-      resolve(process.cwd(), "packages/web-ui/src/components/ui/tooltip.tsx"),
+      resolve(process.cwd(), "packages/gui/src/components/ui/tooltip.tsx"),
       "utf8",
     );
 
@@ -655,7 +676,7 @@ describe("SettingsSurface tab state", () => {
       "utf8",
     );
     const tooltipSource = readFileSync(
-      resolve(process.cwd(), "packages/web-ui/src/components/ui/tooltip.tsx"),
+      resolve(process.cwd(), "packages/gui/src/components/ui/tooltip.tsx"),
       "utf8",
     );
 
@@ -996,7 +1017,7 @@ describe("SettingsClient audio section", () => {
     );
 
     expect(screen.getByText("SenseVoice Small")).toBeTruthy();
-    expect(screen.getByText("ASR")).toBeTruthy();
+    expect(screen.getByText("Text")).toBeTruthy();
     const getModelCard = () => screen.getByText("sensevoice-small-asr").closest(".rounded-xl") as HTMLElement;
     const modelCard = getModelCard();
     expect(modelCard).toBeTruthy();
@@ -4460,14 +4481,21 @@ describe("SettingsClient model routing", () => {
       upstreamId: "hilo-hub",
       apiShape: "hilo-hub",
       executorExportId: "hilo-hub-execute",
-      auth: [{
-        type: "oauth",
-        id: "hilo-hub",
-        flow: "browser",
-        authorizationUrl: "https://hub.minimax.io/login",
-        callback: { type: "custom-scheme", scheme: "minimax-hub" },
-        accessTokenField: "accessToken",
-      }],
+      auth: {
+        methods: [{
+          id: "sign-in",
+          label: "Sign in to MiniMax Hub",
+          flow: {
+            open: "https://hub.minimax.io/login",
+            callback: { type: "scheme", scheme: "minimax-hub" },
+            credential: {
+              from: "query",
+              name: "accessToken",
+              storeAs: "accessToken",
+            },
+          },
+        }],
+      },
     }]);
     vi.mocked(actions.listProviderOAuth).mockResolvedValue([]);
     vi.mocked(actions.startProviderOAuth).mockResolvedValue({
@@ -4553,18 +4581,20 @@ describe("SettingsClient model routing", () => {
       upstreamId: "hilo-hub",
       apiShape: "hilo-hub",
       executorExportId: "hilo-hub-execute",
-      auth: [{
-        type: "local-token-import",
-        id: "hilo-hub",
-        label: "Reuse MiniMax Hub login",
-        source: {
-          format: "electron-store-aes-256-gcm-v2",
-          appDataSubdirectory: "@hilo/MiniMax Hub Global",
-          configFile: "hub-config-global.json",
-          keyFile: ".token-key",
-          tokenPath: ["tokens", "accessToken"],
-        },
-      }],
+      auth: {
+        methods: [{
+          id: "reuse-local-login",
+          label: "Reuse MiniMax Hub login",
+          import: {
+            format: "electron-store-aes-256-gcm-v2",
+            appDataSubdirectory: "@hilo/MiniMax Hub Global",
+            configFile: "hub-config-global.json",
+            keyFile: ".token-key",
+            tokenPath: ["tokens", "accessToken"],
+            storeAs: "accessToken",
+          },
+        }],
+      },
     }]);
     vi.mocked(actions.listProviderOAuth).mockResolvedValue([]);
     vi.mocked(actions.importLocalProviderToken).mockResolvedValue({
@@ -5331,7 +5361,7 @@ describe("SettingsClient model routing", () => {
     });
   });
 
-  it("treats Google Cloud service account credentials as a configured Google Cloud Agent Platform provider", () => {
+  it("treats a Google Cloud service account as a configured account of the unified Google provider", () => {
     render(
       <MemoryRouter>
         <SettingsClient
@@ -5345,7 +5375,7 @@ describe("SettingsClient model routing", () => {
             {
               id: "openai-primary",
               providerId: "official",
-              upstreamId: "google-agent-platform",
+              upstreamId: "google-ai-studio",
               region: "global",
               enabled: true,
               configuredCredentials: ["serviceAccountKey"],
@@ -5357,10 +5387,10 @@ describe("SettingsClient model routing", () => {
     );
 
     const configuredProviders = screen.getByRole("list", { name: "Configured BYOK providers" });
-    expect(within(configuredProviders).getByText("Google Cloud Agent Platform")).toBeTruthy();
+    expect(within(configuredProviders).getByText("Google AI Studio")).toBeTruthy();
     expect(within(configuredProviders).getByText("1 key")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Open Google Cloud Agent Platform BYOK settings" })).toBeTruthy();
-    expect(screen.queryByRole("switch", { name: "Provider enabled for Google Cloud Agent Platform" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Open Google AI Studio BYOK settings" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open Google Cloud Agent Platform BYOK settings" })).toBeNull();
   });
 
   it("hides legacy provider rows that do not map to a configurable provider", () => {
@@ -5472,12 +5502,12 @@ describe("SettingsClient model routing", () => {
     expect(document.querySelector('[data-model-provider-logo="openai"]')).toBeTruthy();
   });
 
-  it("labels legacy speech catalog entries as ASR and TTS from the built-in model spec", () => {
+  it("groups speech catalog entries by the output kind declared on the model card", () => {
     const catalogEntry = (
       id: string,
       name: string,
-      kind: "asr" | "audio",
-      task?: "speech-to-text" | "text-to-speech" | "music-generation",
+      kind: "text" | "audio",
+      promptModalities: Array<"text" | "audio">,
     ) => ({
       model: {
         id,
@@ -5485,11 +5515,10 @@ describe("SettingsClient model routing", () => {
         name,
         provider: "Example",
         kind,
-        ...(task ? { task } : {}),
         parameters: [],
         defaultParams: {},
         defaultAspectRatio: "1:1",
-        input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
+        input: { requiresPrompt: promptModalities.includes("text"), inputMode: {}, promptModalities },
       },
       tier: "available",
       selectedRoute: null,
@@ -5510,20 +5539,20 @@ describe("SettingsClient model routing", () => {
           activeSection="models"
           embedded
           initialModelCatalog={[
-            catalogEntry("sensevoice-small-asr", "SenseVoice Small", "asr"),
-            catalogEntry("piper-huayan-tts", "Piper Huayan", "audio"),
-            catalogEntry("suno-v5.5", "Suno V5.5", "audio"),
+            catalogEntry("sensevoice-small-asr", "SenseVoice Small", "text", ["audio"]),
+            catalogEntry("piper-huayan-tts", "Piper Huayan", "audio", ["text"]),
+            catalogEntry("suno-v5.5", "Suno V5.5", "audio", ["text", "audio"]),
           ] as any}
         />
       </MemoryRouter>,
     );
 
     fireEvent.click(screen.getByRole("combobox", { name: "Model type" }));
-    expect(screen.getByRole("option", { name: "ASR" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "TTS" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "Music" })).toBeTruthy();
-    expect(screen.queryByRole("option", { name: "Audio" })).toBeNull();
-    expect(screen.queryByRole("option", { name: "Asr" })).toBeNull();
+    expect(screen.getByRole("option", { name: "Text" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Audio" })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: "ASR" })).toBeNull();
+    expect(screen.queryByRole("option", { name: "TTS" })).toBeNull();
+    expect(screen.queryByRole("option", { name: "Music" })).toBeNull();
   });
 
   it("opens a model card second-level page for description, prompt guidance, and provider order", () => {
@@ -5681,7 +5710,7 @@ describe("SettingsClient model routing", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("TTS model")).toBeTruthy();
+    expect(screen.getByText("Audio model")).toBeTruthy();
     const configured = screen.getByRole("region", { name: "Configured for this model" });
     const unconfigured = screen.getByRole("region", { name: "Supported, not configured" });
     expect(within(configured).getByRole("link", { name: "Configure MiniMax" }).getAttribute("href")).toContain("section=providers");

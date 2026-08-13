@@ -92,7 +92,7 @@ describe("ProjectEditor workspace model", () => {
   it("routes Director text-to-3D through the local runtime and stage callback", () => {
     expect(sourceContains(source, "onGenerateModel={generateDirectorModel}"), `mechanism missing`).toBe(true);
     expect(sourceContains(source, 'runtimeApiUrl("/api/v1/director-model-generations")'), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "body: JSON.stringify({ projectId: project.id, ...input })"), "mechanism missing").toBe(true);
+    expect(sourceContains(source, "body: JSON.stringify({ actionRunId, projectId: project.id, ...input })"), "mechanism missing").toBe(true);
   });
 
   it("sizes Director Stage shot nodes to the captured aspect ratio", () => {
@@ -112,7 +112,8 @@ describe("ProjectEditor workspace model", () => {
 
     expect(exportCallback).toContain("importProjectAssetFile");
     expect(exportCallback).toContain("outputVideoAssetId");
-    expect(exportCallback).toContain("outputVideoSrc");
+    expect(exportCallback).not.toContain("outputVideoSrc");
+    expect(exportCallback).not.toContain("outputVideoPreviewUrl");
     expect(exportCallback).toContain("createDirectorReferencePacket");
     expect(exportCallback).toContain("directorReferencePacket");
     expect(exportCallback).toContain("directorShotReferencePackets");

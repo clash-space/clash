@@ -36,12 +36,6 @@ const addCommand = z.object({
 }).strict();
 
 export const ProjectHostCommandSchema = z.discriminatedUnion("action", [
-  command("list_custom_actions"),
-  command("register_custom_action", {
-    actionId: id,
-    definition: z.record(z.string(), z.unknown()),
-  }),
-  command("unregister_custom_action", { actionId: id }),
   command("list_canvases"),
   command("create_canvas", { canvasId: id, name: id }),
   command("rename_canvas", { canvasId: id, name: id, ...observed }),

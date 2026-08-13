@@ -110,6 +110,139 @@ def test_host_dependency_error_fails_the_invocation():
     assert "unavailable" in result["error"]["message"]
 
 
+def test_reference_resolves_the_full_slot_to_a_provider_url():
+    out = io.StringIO()
+    invocation = _invoke()
+    reference = {
+        "slot": "startFrame",
+        "index": 0,
+        "asset": {
+            "assetId": "asset-1",
+            "uri": "clash-asset://asset-1",
+            "kind": "image",
+            "mediaType": "image/png",
+        },
+    }
+    invocation["input"]["references"] = [reference]
+    seen = {}
+
+    async def submit(current, context):
+        seen["resolved"] = await context.reference(current["input"]["references"][0])
+        return []
+
+    serve(
+        {"execute": {"submit": submit}},
+        stdin=_lines(
+            invocation,
+            {
+                "protocol": "clash.plugin.broker-response/v1",
+                "requestId": "py-inv-1-1",
+                "status": "ok",
+                "result": {
+                    "form": "provider-url",
+                    "providerUrl": "https://objects.example.test/reference.png?sig=1",
+                    "expiresAt": "2026-08-13T12:00:00.000Z",
+                    "kind": "image",
+                    "mediaType": "image/png",
+                },
+            },
+        ),
+        stdout=out,
+    )
+    request, result = _parse(out)
+    assert request["operation"] == {"kind": "asset.resolve", "reference": reference}
+    assert seen["resolved"] == {
+        "form": "provider-url",
+        "providerUrl": "https://objects.example.test/reference.png?sig=1",
+        "expiresAt": "2026-08-13T12:00:00.000Z",
+        "kind": "image",
+        "mediaType": "image/png",
+    }
+    assert result["status"] == "completed"
+
+
+def test_reference_decodes_host_bytes_base64_before_plugin_code_sees_it():
+    out = io.StringIO()
+    invocation = _invoke()
+    reference = {
+        "slot": "reference",
+        "index": 0,
+        "asset": {
+            "assetId": "asset-1",
+            "uri": "clash-asset://asset-1",
+            "kind": "image",
+        },
+    }
+    invocation["input"]["references"] = [reference]
+    seen = {}
+
+    async def submit(current, context):
+        seen["resolved"] = await context.reference(current["input"]["references"][0])
+        return []
+
+    serve(
+        {"execute": {"submit": submit}},
+        stdin=_lines(
+            invocation,
+            {
+                "protocol": "clash.plugin.broker-response/v1",
+                "requestId": "py-inv-1-1",
+                "status": "ok",
+                "result": {
+                    "form": "bytes",
+                    "bytesBase64": "AQID",
+                    "kind": "image",
+                    "mediaType": "image/png",
+                },
+            },
+        ),
+        stdout=out,
+    )
+    request, result = _parse(out)
+    assert request["operation"] == {"kind": "asset.resolve", "reference": reference}
+    assert seen["resolved"] == {
+        "form": "bytes",
+        "bytes": b"\x01\x02\x03",
+        "kind": "image",
+        "mediaType": "image/png",
+    }
+    assert result["status"] == "completed"
+
+
+def test_reference_resolves_text_through_the_host_instead_of_short_circuiting():
+    out = io.StringIO()
+    invocation = _invoke()
+    reference = {
+        "slot": "prompt",
+        "index": 0,
+        "text": {"nodeId": "text-1", "value": "A paper moon"},
+    }
+    invocation["input"]["references"] = [reference]
+    seen = {}
+
+    async def submit(current, context):
+        seen["resolved"] = await context.reference(current["input"]["references"][0])
+        return []
+
+    serve(
+        {"execute": {"submit": submit}},
+        stdin=_lines(
+            invocation,
+            {
+                "protocol": "clash.plugin.broker-response/v1",
+                "requestId": "py-inv-1-1",
+                "status": "ok",
+                "result": {"form": "text", "text": "A paper moon"},
+            },
+        ),
+        stdout=out,
+    )
+    request, result = _parse(out)
+    assert request["operation"] == {"kind": "asset.resolve", "reference": reference}
+    assert seen["resolved"] == {"form": "text", "text": "A paper moon"}
+    assert result["status"] == "completed"
+
+
 def test_unknown_export_fails_without_calling_handlers():
     out = io.StringIO()
     async def submit(_invocation, _context):

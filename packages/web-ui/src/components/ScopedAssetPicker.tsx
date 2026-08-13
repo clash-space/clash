@@ -164,7 +164,7 @@ export function ScopedAssetPicker({
                 >
                   <span className="relative flex aspect-square items-center justify-center overflow-hidden rounded-[22px] bg-warm-muted ring-1 ring-warm-border transition-[transform,box-shadow] duration-200 ease-out group-hover:-translate-y-0.5 group-hover:ring-brand/35 group-hover:shadow-md group-active:translate-y-0 group-active:scale-[0.985] group-focus-visible:ring-2 group-focus-visible:ring-brand group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-overlay-surface motion-reduce:transform-none motion-reduce:transition-none">
                     <AssetThumbnail
-                      type={asset.type}
+                      kind={asset.type}
                       src={asset.thumbnail || asset.src}
                       label={asset.name}
                       variant="card"

@@ -12,6 +12,7 @@ import type {
   ExecutorStep,
   ProviderExecutor,
 } from "./executor-contract";
+import { ProviderExecutionError } from "@clash/action-sdk";
 
 /**
  * The credential, read by the key this plugin's own declaration names.
@@ -20,25 +21,38 @@ import type {
  * in code -- the host scopes the store to this plugin and this account from the spawn, so the read
  * carries no plugin id or account id that could name somebody else's.
  *
- * The declaration gives the field `default: ""`, which makes it optional to *store*; it does not
- * make an empty token usable. An empty string travels to Hub as `authorization: Bearer ` and comes
- * back as an authentication failure that names the token rather than its absence, which sends the
- * reader looking for a revoked credential instead of an unconfigured one.
+ * The Host may have no value yet while an account is being configured; that does not make an empty
+ * token usable. An empty string travels to Hub as `authorization: Bearer ` and comes back as an
+ * authentication failure that names the token rather than its absence, which sends the reader
+ * looking for a revoked credential instead of an unconfigured one.
  */
-async function requireAccessToken(context: ExecutorContext): Promise<string> {
+async function requireAccessToken(
+  context: ExecutorContext,
+  requestState: "rejected" | "accepted",
+): Promise<string> {
   const accessToken = await context.store?.get("accessToken");
   if (!accessToken) {
-    throw new Error(
-      "This MiniMax Hub account has no accessToken stored. Sign in, or paste a token into the " +
+    throw new ProviderExecutionError({
+      code: "authentication_failed",
+      message:
+        "This MiniMax Hub account has no accessToken stored. Sign in, or paste a token into the " +
         "account's Access token field.",
-    );
+      retryable: false,
+      requestState,
+    });
   }
   return accessToken;
 }
 
-function hubRequest(context: ExecutorContext) {
-  return requireAccessToken(context).then((accessToken) =>
-    createHubRequest(globalThis.fetch, accessToken),
+function hubRequest(
+  context: ExecutorContext,
+  operation: "submit" | "poll",
+) {
+  return requireAccessToken(
+    context,
+    operation === "submit" ? "rejected" : "accepted",
+  ).then((accessToken) =>
+    createHubRequest(globalThis.fetch, accessToken, operation),
   );
 }
 
@@ -65,13 +79,13 @@ export const hubAdapter: ProviderExecutor = {
     // problem that is not there.
     readSubmitRoute(invocation);
     const resolved = await references(invocation, context);
-    const request = await hubRequest(context);
+    const request = await hubRequest(context, "submit");
     return submitHubModel(invocation, request, resolved, {
       fetch: globalThis.fetch,
     });
   },
   async poll(invocation, context: ExecutorContext): Promise<ExecutorStep> {
     readPollState(invocation);
-    return pollHubModel(invocation, await hubRequest(context));
+    return pollHubModel(invocation, await hubRequest(context, "poll"));
   },
 };

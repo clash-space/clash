@@ -35,11 +35,15 @@ describe("PIPELINE_MENU_OPTIONS", () => {
         expect(data?.model).toBe(data?.modelId);
     });
 
-    it("does not offer TTS downstream from an image source", () => {
+    it("offers audio generation from an image only through a compatible model card", () => {
         const option = PIPELINE_MENU_OPTIONS.find((item) => item.id === "audio-gen");
 
-        expect(option?.isCompatibleWithSource("image", ENABLED_CATALOG)).toBe(false);
+        expect(option?.isCompatibleWithSource("image", ENABLED_CATALOG)).toBe(true);
         expect(option?.isCompatibleWithSource("text", ENABLED_CATALOG)).toBe(true);
+        const selectedId = option?.getNodeData("image", ENABLED_CATALOG).modelId;
+        const selected = MODEL_CARDS.find((card) => card.id === selectedId);
+        expect(selected).toBeDefined();
+        expect(capability(selected!).ref.image.accepts).toBe(true);
     });
 
     it("selects a video model by audio-input capability rather than model id", () => {

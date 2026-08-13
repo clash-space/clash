@@ -13,8 +13,8 @@ import {
   Spinner,
 } from "@phosphor-icons/react";
 import { useMediaViewer } from "../MediaViewerContext";
-import { useSignedUrl } from "@clash/web-ui/lib/hooks/useSignedUrl";
 import { useAsset } from "@clash/web-ui/lib/hooks/useAsset";
+import { useProject } from "../ProjectContext";
 import {
   normalizeStatus,
   isActiveStatus,
@@ -86,14 +86,14 @@ const AudioNode = ({
   id,
 }: NodeProps<Node<Record<string, any>>>) => {
   const [label, setLabel] = useState(data.label || "Audio Node");
+  const { projectId } = useProject();
   const { openAssetPreview } = useMediaViewer();
-  const asset = useAsset(data.assetId);
-  const audioR2Key = asset?.srcR2Key;
+  const asset = useAsset(projectId, data.assetId);
+  const projectedAudioUrl = asset?.url;
   const [status, setStatus] = useState<AssetStatus>(
     normalizeStatus(data.status) || (data.assetId ? "completed" : "generating"),
   );
-  const [audioUrl, setAudioUrl] = useState<string | undefined>(audioR2Key);
-  const signedAudioUrl = useSignedUrl(audioUrl);
+  const [audioUrl, setAudioUrl] = useState<string | undefined>(projectedAudioUrl);
 
   // Prefer server-probed metadata when present; client-side decode is only
   // the fallback when render-server couldn't produce duration / waveform.
@@ -123,8 +123,8 @@ const AudioNode = ({
       const next = normalizeStatus(data.status);
       return next !== prev ? next : prev;
     });
-    setAudioUrl((prev) => (audioR2Key !== prev ? audioR2Key : prev));
-  }, [data.status, audioR2Key]);
+    setAudioUrl((prev) => (projectedAudioUrl !== prev ? projectedAudioUrl : prev));
+  }, [data.status, projectedAudioUrl]);
 
   // Reset / re-seed state when the source or its server-side metadata changes.
   useEffect(() => {
@@ -140,17 +140,17 @@ const AudioNode = ({
         ? metaWaveform
         : undefined,
     );
-  }, [audioR2Key, metaDurationMs, metaWaveform]);
+  }, [projectedAudioUrl, metaDurationMs, metaWaveform]);
 
   // Client-side decode fallback: only runs when the server didn't produce
   // both duration and waveform. Cached across opens (same session) via
   // `waveformCache`.
   useEffect(() => {
-    if (!showModal || !signedAudioUrl) return;
+    if (!showModal || !audioUrl) return;
     const hasDuration = duration > 0;
     const hasPeaks = !!peaks && peaks.length > 0;
     if (hasDuration && hasPeaks) return;
-    const cached = waveformCache.get(cacheKey(signedAudioUrl));
+    const cached = waveformCache.get(cacheKey(audioUrl));
     if (cached) {
       if (!hasPeaks) setPeaks(cached.peaks);
       if (!hasDuration) setDuration(cached.duration);
@@ -161,7 +161,7 @@ const AudioNode = ({
     setDecoding(true);
     (async () => {
       try {
-        const resp = await fetch(signedAudioUrl, { signal: controller.signal });
+        const resp = await fetch(audioUrl, { signal: controller.signal });
         if (!resp.ok) throw new Error(`fetch ${resp.status}`);
         const buf = await resp.arrayBuffer();
         const Ctor = window.AudioContext ?? (window as any).webkitAudioContext;
@@ -171,7 +171,7 @@ const AudioNode = ({
           const decoded = await ctx.decodeAudioData(buf.slice(0));
           if (aborted) return;
           const computed = computePeaks(decoded, WAVEFORM_BARS);
-          waveformCache.set(cacheKey(signedAudioUrl), {
+          waveformCache.set(cacheKey(audioUrl), {
             peaks: computed,
             duration: decoded.duration,
           });
@@ -190,7 +190,7 @@ const AudioNode = ({
       aborted = true;
       controller.abort();
     };
-  }, [showModal, signedAudioUrl]);
+  }, [showModal, audioUrl]);
 
   // Bind <audio> element events — drives currentTime + provides a duration
   // fallback in case decode hasn't finished yet.
@@ -224,7 +224,7 @@ const AudioNode = ({
       audio.removeEventListener("play", onPlay);
       audio.removeEventListener("pause", onPause);
     };
-  }, [signedAudioUrl]);
+  }, [audioUrl]);
 
   // Pause playback when modal closes.
   useEffect(() => {
@@ -357,7 +357,7 @@ const AudioNode = ({
           />
           <IconButton
             onClick={togglePlay}
-            disabled={!signedAudioUrl}
+            disabled={!audioUrl}
             label={isPlaying ? "Pause" : "Play"}
             icon={isPlaying ? (
               <Pause size={28} weight="fill" />
@@ -459,7 +459,7 @@ const AudioNode = ({
           {audioUrl && (
             <audio
               ref={audioRef}
-              src={signedAudioUrl || undefined}
+              src={audioUrl || undefined}
               preload="metadata"
             />
           )}

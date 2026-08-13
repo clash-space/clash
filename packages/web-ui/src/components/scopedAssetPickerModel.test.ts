@@ -1,145 +1,232 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from "vitest";
 import {
   buildScopedAssetSections,
   buildScopedTimelineAssetInput,
-} from './scopedAssetPickerModel';
+} from "./scopedAssetPickerModel";
 
+const lifecycle = { state: "active" as const };
 const projectAssets = [
-  { id: 'asset-canvas', assetId: 'asset-canvas', name: 'Opening frame', url: '/opening.png', thumbnailUrl: '/opening-thumb.png', type: 'image' as const, storageKey: 'projects/private/opening.png', createdAt: null },
-  { id: 'asset-project', assetId: 'asset-project', name: 'Voice over', url: '/voice.wav', type: 'audio' as const, storageKey: 'generated/private/voice.wav', createdAt: null },
+  {
+    id: "asset-canvas",
+    name: "Opening frame",
+    url: "https://media.clash.test/assets/opening",
+    thumbnailUrl: "https://media.clash.test/thumbnails/opening",
+    kind: "image" as const,
+    lifecycle,
+    metadata: {},
+    status: "ready" as const,
+  },
+  {
+    id: "asset-project",
+    name: "Voice over",
+    url: "https://media.clash.test/assets/voice",
+    kind: "audio" as const,
+    lifecycle,
+    metadata: {},
+    status: "ready" as const,
+  },
 ];
 const globalAssets = [
-  { id: 'asset-global', assetId: 'asset-global', name: 'Brand sting', url: '/sting.mp4', thumbnailUrl: '/sting-cover.webp', type: 'video' as const, storageKey: 'library/private/sting.mp4', createdAt: null },
+  {
+    id: "asset-global",
+    name: "Brand sting",
+    url: "https://media.clash.test/assets/sting",
+    thumbnailUrl: "https://media.clash.test/thumbnails/sting",
+    kind: "video" as const,
+    lifecycle,
+    metadata: {},
+    status: "ready" as const,
+  },
   projectAssets[1],
 ];
 const nodes = [
-  { id: 'opening-node', canvasId: 'main', type: 'image', data: { assetId: 'asset-canvas', label: 'Opening frame' } },
-  { id: 'other-node', canvasId: 'other', type: 'audio', data: { assetId: 'asset-project', label: 'Other voice' } },
+  {
+    id: "opening-node",
+    canvasId: "main",
+    type: "image",
+    data: { assetId: "asset-canvas", label: "Opening frame" },
+  },
+  {
+    id: "other-node",
+    canvasId: "other",
+    type: "audio",
+    data: { assetId: "asset-project", label: "Other voice" },
+  },
 ];
 
-describe('buildScopedAssetSections', () => {
-  it('gives a Canvas project assets plus one external scope and no parent Canvas section', () => {
+describe("buildScopedAssetSections", () => {
+  it("gives a Canvas project assets plus one external scope and no parent Canvas section", () => {
     const sections = buildScopedAssetSections({
-      target: { kind: 'canvas', canvasId: 'main' },
+      target: { kind: "canvas", canvasId: "main" },
       projectAssets,
       globalAssets,
       nodes,
     });
-    expect(sections.map((section) => section.scope)).toEqual(['project', 'external']);
-    expect(sections.some((section) => section.scope === 'current-canvas')).toBe(false);
-    expect(sections[0].assets.map((asset) => asset.assetId)).toEqual(['asset-project']);
-    expect(sections.find((section) => section.scope === 'external')?.allowLocalUpload).toBe(true);
+    expect(sections.map((section) => section.scope)).toEqual([
+      "project",
+      "external",
+    ]);
+    expect(sections.some((section) => section.scope === "current-canvas")).toBe(
+      false,
+    );
+    expect(sections[0].assets.map((asset) => asset.assetId)).toEqual([
+      "asset-project",
+    ]);
+    expect(
+      sections.find((section) => section.scope === "external")
+        ?.allowLocalUpload,
+    ).toBe(true);
   });
 
-  it('adds current Canvas assets only for a Canvas-owned Timeline and removes duplicates downstream', () => {
+  it("adds current Canvas assets only for a Canvas-owned Timeline and removes duplicates downstream", () => {
     const sections = buildScopedAssetSections({
       target: {
-        kind: 'timeline',
-        timelineId: 'cut',
-        owner: { kind: 'canvas-action', canvasId: 'main', actionNodeId: 'editor' },
+        kind: "timeline",
+        timelineId: "cut",
+        owner: {
+          kind: "canvas-action",
+          canvasId: "main",
+          actionNodeId: "editor",
+        },
       },
       projectAssets,
       globalAssets,
       nodes,
-      edges: [{ canvasId: 'main', source: 'opening-node', target: 'editor' }],
+      bindings: [
+        {
+          id: "binding-opening",
+          owner: { kind: "draft", actionId: "node:editor" },
+          direction: "input",
+          slot: "timeline:item:opening",
+          projectAssetId: "asset-canvas",
+        },
+      ],
     });
-    expect(sections.map((section) => section.scope)).toEqual(['current-canvas', 'project', 'external']);
+    expect(sections.map((section) => section.scope)).toEqual([
+      "current-canvas",
+      "project",
+      "external",
+    ]);
     expect(sections[0].assets).toEqual([]);
-    expect(sections[1].assets.map((asset) => asset.assetId)).toEqual(['asset-project']);
-    expect(sections[2].assets.map((asset) => asset.assetId)).toEqual(['asset-global']);
+    expect(sections[1].assets.map((asset) => asset.assetId)).toEqual([
+      "asset-project",
+    ]);
+    expect(sections[2].assets.map((asset) => asset.assetId)).toEqual([
+      "asset-global",
+    ]);
   });
 
-  it('removes assets already referenced by a standalone Timeline from every larger scope', () => {
+  it("removes assets already bound to a standalone Timeline from every larger scope", () => {
     const sections = buildScopedAssetSections({
       target: {
-        kind: 'timeline',
-        timelineId: 'standalone',
-        owner: { kind: 'project' },
+        kind: "timeline",
+        timelineId: "standalone",
+        owner: { kind: "project" },
       },
-      targetState: { mediaAssetRefs: [{ assetId: 'asset-project' }] },
+      bindings: [
+        {
+          id: "binding-1",
+          owner: { kind: "draft", actionId: "timeline:standalone" },
+          direction: "input",
+          slot: "timeline:item:voice-over",
+          projectAssetId: "asset-project",
+        },
+      ],
       projectAssets,
       globalAssets,
       nodes,
     });
-    expect(sections[0].assets.map((asset) => asset.assetId)).toEqual(['asset-canvas']);
-    expect(sections[1].assets.map((asset) => asset.assetId)).toEqual(['asset-global']);
+    expect(sections[0].assets.map((asset) => asset.assetId)).toEqual([
+      "asset-canvas",
+    ]);
+    expect(sections[1].assets.map((asset) => asset.assetId)).toEqual([
+      "asset-global",
+    ]);
   });
 
-  it('never uses a storage key or UUID as visible copy', () => {
+  it("never uses a storage key or UUID as visible copy", () => {
     const sections = buildScopedAssetSections({
-      target: { kind: 'canvas', canvasId: 'main' },
-      projectAssets: [{
-        id: 'fce43e93-badc-4c4e-88bf-a4ec8b1a1871',
-        url: '/image.png',
-        type: 'image',
-        storageKey: 'projects/private/fce43e93-badc-4c4e-88bf-a4ec8b1a1871.png',
-        createdAt: null,
-      }],
+      target: { kind: "canvas", canvasId: "main" },
+      projectAssets: [
+        {
+          id: "fce43e93-badc-4c4e-88bf-a4ec8b1a1871",
+          url: "https://media.clash.test/assets/fce43e93-badc-4c4e-88bf-a4ec8b1a1871",
+          kind: "image",
+          lifecycle,
+          metadata: {},
+          status: "ready",
+        },
+      ],
       globalAssets: [],
       nodes: [],
     });
-    expect(sections[0].assets[0].name).toBe('Image');
+    expect(sections[0].assets[0].name).toBe("Image");
   });
 
-  it('inserts playable video bytes while keeping the cover as its thumbnail', () => {
+  it("inserts playable video bytes while keeping the cover as its thumbnail", () => {
     const sections = buildScopedAssetSections({
-      target: { kind: 'timeline', timelineId: 'standalone', owner: { kind: 'project' } },
-      projectAssets: [{
-        id: 'asset-video',
-        assetId: 'asset-video',
-        name: 'Talking head',
-        url: '/assets/covers/talking-head.png',
-        thumbnailUrl: '/assets/covers/talking-head.png',
-        type: 'video',
-        storageKey: 'local-blobs/video/original.mp4',
-        createdAt: null,
-      }],
+      target: {
+        kind: "timeline",
+        timelineId: "standalone",
+        owner: { kind: "project" },
+      },
+      projectAssets: [
+        {
+          id: "asset-video",
+          name: "Talking head",
+          url: "https://media.clash.test/assets/asset-video",
+          thumbnailUrl: "https://media.clash.test/thumbnails/asset-video",
+          kind: "video",
+          lifecycle,
+          metadata: {},
+          status: "ready",
+        },
+      ],
       globalAssets: [],
       nodes: [],
     });
 
     expect(sections[0].assets[0]).toMatchObject({
-      src: '/assets/local-blobs/video/original.mp4',
-      thumbnail: '/assets/covers/talking-head.png',
+      src: "https://media.clash.test/assets/asset-video",
+      thumbnail: "https://media.clash.test/thumbnails/asset-video",
     });
   });
 
-  it('hydrates Timeline insertion dimensions and duration from the authoritative Asset row', () => {
-    expect(buildScopedTimelineAssetInput({
-      option: {
-        assetId: 'asset-video',
-        name: 'Talking head',
-        type: 'video',
-        src: '/fallback.mp4',
-        thumbnail: '/fallback-cover.jpg',
-        source: { kind: 'project', assetId: 'asset-video' },
-      },
-      sourceNodeId: 'timeline-asset:asset-video',
-      backingAssetId: 'asset-video',
-      asset: {
-        id: 'asset-video',
-        userId: 'local-user',
-        kind: 'video',
-        srcR2Key: 'uploads/talking-head.mp4',
-        coverR2Key: 'covers/talking-head.jpg',
-        metadata: {
-          width: 1920,
-          height: 1080,
-          durationMs: 32_661,
-          waveform: [0.1, 0.7],
+  it("hydrates Timeline insertion dimensions and duration from the authoritative Asset row", () => {
+    expect(
+      buildScopedTimelineAssetInput({
+        option: {
+          assetId: "asset-video",
+          name: "Talking head",
+          type: "video",
+          src: "/fallback.mp4",
+          thumbnail: "/fallback-cover.jpg",
+          source: { kind: "project", assetId: "asset-video" },
         },
-        signedUrl: '/assets/uploads/talking-head.mp4',
-        signedCoverUrl: '/assets/covers/talking-head.jpg',
-        createdAt: 1,
-        updatedAt: 1,
-      },
-    })).toMatchObject({
-      id: 'timeline-asset:asset-video',
-      backingAssetId: 'asset-video',
-      sourceNodeId: 'timeline-asset:asset-video',
-      src: '/assets/uploads/talking-head.mp4',
-      thumbnail: '/assets/covers/talking-head.jpg',
-      type: 'video',
+        sourceNodeId: "timeline-asset:asset-video",
+        projectAssetId: "asset-video",
+        asset: {
+          id: "asset-video",
+          kind: "video",
+          status: "ready",
+          lifecycle,
+          url: "https://media.clash.test/assets/asset-video",
+          thumbnailUrl: "https://media.clash.test/thumbnails/asset-video",
+          metadata: {
+            width: 1920,
+            height: 1080,
+            durationMs: 32_661,
+            waveform: [0.1, 0.7],
+          },
+        },
+      }),
+    ).toMatchObject({
+      id: "timeline-asset:asset-video",
+      projectAssetId: "asset-video",
+      sourceNodeId: "timeline-asset:asset-video",
+      src: "https://media.clash.test/assets/asset-video",
+      thumbnail: "https://media.clash.test/thumbnails/asset-video",
+      type: "video",
       width: 1920,
       height: 1080,
       duration: 32.661,

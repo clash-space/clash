@@ -84,10 +84,9 @@ function filesUnder(path: string): string[] {
 
 describe("local data dir contract", () => {
   it("uses only the canonical local-api data directory in conformance scripts", () => {
-    const providerConformance = readScript("provider-conformance.ts");
     const googleAgentPlatform = readScript("google-agent-platform-conformance.ts");
 
-    for (const script of [providerConformance, googleAgentPlatform]) {
+    for (const script of [googleAgentPlatform]) {
       expect(script).toContain("defaultLocalApiDataDir(process.env)");
       expect(script).not.toContain("Application Support");
       expect(script).not.toContain("defaultDesktopDataDir");

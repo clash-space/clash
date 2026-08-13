@@ -5,6 +5,8 @@ export default defineConfig({
   format: ["esm"],
   clean: true,
   target: "node24",
-  noExternal: ["@clash/shared-types/executable-plugin"],
+  // An activated plugin is copied below the Host data directory and cannot resolve workspace
+  // packages from the repository. Keep every Clash SDK dependency inside this single-file payload.
+  noExternal: [/^@clash\//],
   outExtension: () => ({ js: ".mjs" }),
 });

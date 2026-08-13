@@ -32,6 +32,16 @@
       "types": "./dist/project-host-client.d.ts",
       "import": "./dist/project-host-client.js",
       "default": "./dist/project-host-client.js"
+    },
+    "./project-asset-client": {
+      "types": "./dist/project-asset-client.d.ts",
+      "import": "./dist/project-asset-client.js",
+      "default": "./dist/project-asset-client.js"
+    },
+    "./minimax-h3": {
+      "types": "./dist/minimax-h3.d.ts",
+      "import": "./dist/minimax-h3.js",
+      "default": "./dist/minimax-h3.js"
     }
   },
   "engines": {
@@ -44,6 +54,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@clash/asset-sdk": "workspace:*",
     "@clash/shared-types": "workspace:*"
   },
   "devDependencies": {

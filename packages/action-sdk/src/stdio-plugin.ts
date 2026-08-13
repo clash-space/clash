@@ -8,12 +8,12 @@ import {
   type ExecutablePluginOutput,
   type ExecutablePluginResult,
 } from "@clash/shared-types/executable-plugin";
+import { executableFailureFromThrown } from "./executable-failure.js";
 
 /**
  * The stdio transport, so a plugin author does not write one.
  *
- * `defineHostedExecutablePlugin` has been here all along: a hosted author writes a handler and the
- * SDK does the framing. A stdio author had no counterpart and hand-wrote the same loop each time --
+ * A stdio author previously hand-wrote the same loop each time --
  * `createInterface`, `JSON.parse(line)`, `process.stdout.write(JSON.stringify(result) + "\n")`.
  *
  * Three copies existed, and they had already drifted. first-party-media answers malformed input by
@@ -33,7 +33,7 @@ export type StdioExecutablePluginHandler = (
 export interface StdioExecutablePluginOptions {
   stdin?: Readable;
   stdout?: Writable;
-  /** How a handler reaches the host for account-scoped state and assets. */
+  /** In-process Host/test injection; production stdio invocations use the scoped broker channel. */
   context?: Partial<ExecutorContext>;
   /** How long to wait for one Host dependency response. Defaults to 30s. */
   hostRequestTimeoutMs?: number;
@@ -47,11 +47,13 @@ export interface StdioExecutablePlugin {
 function failure(
   invocationId: string,
   message: string,
+  requestState: "rejected" | "unknown" | "accepted" = "rejected",
 ): ExecutablePluginResult {
   return {
+    protocol: "clash.plugin.result/v1",
     invocationId,
     status: "failed",
-    error: { code: "execution_failed", message, retryable: false },
+    error: { code: "execution_failed", message, retryable: false, requestState },
   } as ExecutablePluginResult;
 }
 
@@ -227,13 +229,19 @@ export function defineStdioExecutablePlugin(
     const handler = handlers[invocation.target.exportId];
     if (!handler) {
       // Naming the export and what is registered turns "nothing happened" into one line of reading.
-      write(
-        failure(
-          id,
-          `No handler is registered for ${invocation.target.exportId}. ` +
+      write({
+        protocol: "clash.plugin.result/v1",
+        invocationId: id,
+        status: "failed",
+        error: {
+          code: "contract_violation",
+          message:
+            `No handler is registered for ${invocation.target.exportId}. ` +
             `This plugin exports: ${Object.keys(handlers).join(", ") || "nothing"}.`,
-        ),
-      );
+          retryable: false,
+          requestState: invocation.operation === "submit" ? "rejected" : "accepted",
+        },
+      } satisfies ExecutablePluginResult);
       return;
     }
 
@@ -258,7 +266,12 @@ export function defineStdioExecutablePlugin(
           const frame = (error as Error)?.stack?.split("\n")[1]?.trim();
           if (frame)
             console.error(`[plugin] ${(error as Error)?.message} ${frame}`);
-          write(failure(id, (error as Error)?.message ?? String(error)));
+          write({
+            protocol: "clash.plugin.result/v1",
+            invocationId: id,
+            status: "failed",
+            error: executableFailureFromThrown(error, invocation.operation),
+          } satisfies ExecutablePluginResult);
         }),
     );
   });

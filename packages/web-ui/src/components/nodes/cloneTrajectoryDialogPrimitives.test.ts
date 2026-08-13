@@ -22,7 +22,7 @@ describe("CloneTrajectoryDialog primitives", () => {
     const source = readSource(
       "packages/web-ui/src/components/nodes/CloneTrajectoryDialog.tsx",
     );
-    const tooltipSource = readSource("packages/web-ui/src/components/ui/tooltip.tsx");
+    const tooltipSource = readSource("packages/gui/src/components/ui/tooltip.tsx");
 
     expect(tooltipSource).toContain("@ariakit/react");
     expect(source).toContain("../ui/tooltip");

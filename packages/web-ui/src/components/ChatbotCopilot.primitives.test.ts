@@ -25,7 +25,7 @@ describe("ChatbotCopilot primitives", () => {
 
   it("uses the shared combobox primitive for the slash command palette", () => {
     const source = readComponentSource("ChatbotCopilot.tsx");
-    const comboboxPath = join(process.cwd(), "packages/web-ui/src/components/ui/combobox.tsx");
+    const comboboxPath = join(process.cwd(), "packages/gui/src/components/ui/combobox.tsx");
     const comboboxSource = existsSync(comboboxPath) ? readFileSync(comboboxPath, "utf8") : "";
 
     expect(existsSync(comboboxPath)).toBe(true);

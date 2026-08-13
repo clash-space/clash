@@ -1,6 +1,7 @@
 import {
   serializeAgentAnnotationPromptBlock,
   type AgentAnnotationDraft,
+  type ResolvedAsset,
 } from '@clash/shared-types';
 
 export type CopilotMentionKind = 'agent' | 'node' | 'asset' | 'timeline' | 'director-stage';
@@ -43,14 +44,10 @@ type MentionNodeInput = {
 };
 
 type MentionCanvasInput = { id: string; name: string };
-type MentionAssetInput = {
-  id: string;
-  assetId?: string;
-  name?: string;
-  type: string;
-  thumbnailUrl?: string;
-  url?: string;
-};
+type MentionAssetInput = Pick<
+  ResolvedAsset,
+  'id' | 'kind' | 'name' | 'metadata' | 'thumbnailUrl' | 'url'
+>;
 type MentionTimelineInput = { id: string; name: string };
 type MentionDirectorStageInput = { id: string; name: string };
 type ActiveSurfaceInput =
@@ -91,7 +88,6 @@ export function buildProjectMentionSources(input: {
   const assetsById = new Map<string, MentionAssetInput>();
   for (const asset of input.assets) {
     assetsById.set(asset.id, asset);
-    if (asset.assetId) assetsById.set(asset.assetId, asset);
   }
   const currentCanvas: CopilotMentionSource[] = [];
   const otherCanvases: CopilotMentionSource[] = [];
@@ -117,15 +113,15 @@ export function buildProjectMentionSources(input: {
   }
 
   const assets: CopilotMentionSource[] = input.assets.map((asset) => ({
-    id: asset.assetId || asset.id,
-    type: asset.type,
-    label: asset.name?.trim() || asset.id,
+    id: asset.id,
+    type: asset.kind,
+    label: asset.name?.trim() || asset.metadata.originalName?.trim() || asset.id,
     kind: 'asset',
     scope: input.activeSurface.kind === 'asset' && input.activeSurface.assetId === asset.id
       ? 'current-surface'
       : 'project-assets',
-    description: `${humanizeType(asset.type)} · Project asset`,
-    thumbnail: asset.thumbnailUrl || (asset.type === 'image' ? asset.url : undefined),
+    description: `${humanizeType(asset.kind)} · Project asset`,
+    thumbnail: asset.thumbnailUrl || (asset.kind === 'image' ? asset.url : undefined),
   }));
 
   const timelines: CopilotMentionSource[] = input.timelines.map((timeline) => ({

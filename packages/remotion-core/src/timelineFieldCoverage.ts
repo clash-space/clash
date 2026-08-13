@@ -22,7 +22,6 @@ import {
   TimelineEditorTranscriptWordSchema,
   TimelineEffectInstanceRefSchema,
   TimelineItemPropertiesSchema,
-  TimelineMediaAssetRefSchema,
   TimelineSourceToOutputFrameMapSchema,
   TimelineSequenceSchema,
   TimelineTypographyStyleSchema,
@@ -145,7 +144,6 @@ type _StickerSequenceShapeCoverage = Assert<SameKeys<keyof NonNullable<StickerIt
 type _DerivedAssetShapeCoverage = Assert<SameKeys<keyof DerivedOverlayItem["derivation"], keyof SchemaOutput<typeof TimelineDerivedAssetSchema>>>;
 type _TranscriptWordShapeCoverage = Assert<SameKeys<keyof EditorTranscriptWord, keyof SchemaOutput<typeof TimelineEditorTranscriptWordSchema>>>;
 type _TranscriptShapeCoverage = Assert<SameKeys<keyof EditorAssetTranscript, keyof SchemaOutput<typeof TimelineEditorAssetTranscriptSchema>>>;
-type _MediaAssetRefShapeCoverage = Assert<SameKeys<keyof NonNullable<TimelineDsl["mediaAssetRefs"]>[number], keyof SchemaOutput<typeof TimelineMediaAssetRefSchema>>>;
 type _ItemPropertiesTypeCoverage = Assert<SameType<ItemProperties, SchemaOutput<typeof TimelineItemPropertiesSchema>>>;
 type _ClipAnimationTypeParity = Assert<SameType<NonNullable<VideoItem["entranceAnimation"]>, SchemaOutput<typeof TimelineClipAnimationSchema>>>;
 type _AudioDuckingTypeParity = Assert<SameType<AudioDuckingSettings, SchemaOutput<typeof TimelineAudioDuckingSchema>>>;
@@ -158,7 +156,6 @@ type _StickerSequenceTypeParity = Assert<SameType<NonNullable<StickerItem["seque
 type _DerivedAssetTypeParity = Assert<SameType<DerivedOverlayItem["derivation"], SchemaOutput<typeof TimelineDerivedAssetSchema>>>;
 type _TranscriptWordTypeParity = Assert<SameType<EditorTranscriptWord, SchemaOutput<typeof TimelineEditorTranscriptWordSchema>>>;
 type _TranscriptTypeParity = Assert<SameType<EditorAssetTranscript, SchemaOutput<typeof TimelineEditorAssetTranscriptSchema>>>;
-type _MediaAssetRefTypeParity = Assert<SameType<NonNullable<TimelineDsl["mediaAssetRefs"]>[number], SchemaOutput<typeof TimelineMediaAssetRefSchema>>>;
 type _BaseItemRequiredness = Assert<SameKeys<RequiredKeys<BaseItem>, "id" | "from" | "durationInFrames">>;
 type _SolidRequiredness = Assert<SameKeys<RequiredKeys<SolidItem>, RequiredKeys<BaseItem> | "type" | "color">>;
 type _TextRequiredness = Assert<SameKeys<RequiredKeys<TextItem>, RequiredKeys<BaseItem> | "type" | "text" | "color">>;

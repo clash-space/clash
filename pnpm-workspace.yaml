@@ -9,6 +9,7 @@ packages:
   - 'packages/director-*'
   - 'packages/shared-*'
   - 'packages/action-sdk'
+  - 'packages/asset-sdk'
   - 'packages/clash-sdk/js'
   - 'packages/gui'
   - 'packages/web-ui'

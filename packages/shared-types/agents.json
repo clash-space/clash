@@ -13,7 +13,13 @@
   "key_files": {
     "src/index.ts": "Main entry point exporting all types.",
     "src/executable-plugin.ts": "Versioned agent-editable plugin contribution manifest, Card document/package validation, SDK dependency operations, local/hosted invocation ABI, and immutable plugin bindings for persisted workflows.",
+    "src/plugin-auth.ts": "Declarative Provider account methods: forms, browser flows, installed-app imports, and renewal policy without vendor-specific auth kinds.",
+    "src/credential-sources.ts": "Method-aware projection of Provider auth declarations into field, browser-action, and Host-action credential sources.",
     "src/agent-annotation.ts": "Transient structured annotation blocks that address editable Canvas, Timeline, and Director Stage objects, including exact text-quote selections and viewport highlight hints.",
+    "src/project-assets.ts": "Project Loro authority for Project Asset membership and logical lifecycle.",
+    "src/action-asset-bindings.ts": "Project Loro authority for semantic Action media bindings, direct draft-input replacement, reverse reference checks, explicit unbind, and atomic trash-if-unreferenced.",
+    "src/canvas-action-asset-inputs.ts": "Single compiler from editable Canvas node, prompt, and edge projections to semantic draft Action Asset input slots; shared by live writes and one-way legacy materialization.",
+    "src/timeline-persistence.ts": "Storage-free Project Timeline write boundary: strips Host projections when Project Asset identity exists and rejects URL/path-only media.",
     "src/timeline-mask.ts": "Implementation-side clip-mask annotations that generate validation, defaults, UI bindings, runtime constants, DSL metadata, examples, and docs.",
     "src/timeline-keyframes.ts": "Item-local transform and mask animation channels plus structural validation.",
     "src/timeline-yaml.ts": "Timeline YAML parsing and semantic validation, including mask/keyframe compatibility rules.",

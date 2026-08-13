@@ -19,7 +19,9 @@ import { ProviderPluginHostUnavailableError } from "./local-aigc.js";
 
 export interface ProviderPluginExecutorClient {
   /** Declared entry points, used to check an acceptance against what the plugin says it supports. */
-  listFunctionExports?(pluginId: string): Promise<ExecutablePluginFunctionExport[]>;
+  listFunctionExports?(
+    pluginId: string,
+  ): Promise<ExecutablePluginFunctionExport[]>;
   resolveBinding(
     pluginId: string,
     exportId: string,
@@ -31,8 +33,6 @@ export interface ProviderPluginExecutorClient {
     options?: { timeoutMs?: number; accountId?: string },
   ): Promise<ExecutablePluginResult>;
 }
-
-const PROVIDER_PLUGIN_EXECUTION_TIMEOUT_MS = 30 * 60_000;
 
 /**
  * Everything a finished generation produced, in order.
@@ -49,23 +49,38 @@ export function mediaListFromResult(
 ): ProviderPluginExecutorMedia[] {
   const result = ExecutablePluginResultSchema.parse(input);
   if (result.status === "failed") {
-    throw new Error(`Provider plugin failed (${result.error.code}): ${result.error.message}`);
+    throw new Error(
+      `Provider plugin failed (${result.error.code}): ${result.error.message}`,
+    );
   }
   if (result.status === "accepted") {
     // Reading media off an accepted result would invent an answer the provider has not given yet.
     // The caller decides what to do with an acceptance; this function only reads finished work.
-    throw new Error("Provider plugin accepted the work; no media is available yet.");
+    throw new Error(
+      "Provider plugin accepted the work; no media is available yet.",
+    );
   }
   const outputs = result.outputs.filter((entry) => entry.slot === "media");
-  if (outputs.length === 0) throw new Error("Provider plugin returned no media output.");
+  if (outputs.length === 0)
+    throw new Error("Provider plugin returned no media output.");
   return outputs.map((output) => mediaFromOutput(output));
 }
 
-/** The first media output, for callers that attach exactly one asset to one node. */
-export function mediaFromResult(
-  input: unknown,
-): ProviderPluginExecutorMedia {
-  return mediaListFromResult(input)[0]!;
+/**
+ * The one media output accepted by the current Provider Run contract.
+ *
+ * A Project Run owns one output slot and one ProjectAsset publication. Until the public contract
+ * gives multiple outputs distinct slots/identities, accepting several here would silently publish
+ * only the first. Reject the ambiguous result instead of reporting partial success.
+ */
+export function mediaFromResult(input: unknown): ProviderPluginExecutorMedia {
+  const media = mediaListFromResult(input);
+  if (media.length !== 1) {
+    throw new Error(
+      `Provider plugin returned ${media.length} media outputs for one durable output slot; expected exactly one.`,
+    );
+  }
+  return media[0]!;
 }
 
 type CompletedOutput = Extract<
@@ -73,9 +88,7 @@ type CompletedOutput = Extract<
   { status: "completed" }
 >["outputs"][number];
 
-function mediaFromOutput(
-  output: CompletedOutput,
-): ProviderPluginExecutorMedia {
+function mediaFromOutput(output: CompletedOutput): ProviderPluginExecutorMedia {
   // The asset channel is the typed one: the media type is a declared field and the URL states who
   // can fetch it. The value channel stays supported because installed plugins use it -- it was the
   // only way to return a published link before the asset channel accepted a url.
@@ -87,17 +100,25 @@ function mediaFromOutput(
     // This layer consumes that opaque address and never derives a path from assetId.
     if (asset.url && (asset.reach === "public" || asset.reach === "private")) {
       return {
+        assetId: asset.assetId,
         url: new URL(asset.url).toString(),
         ...(asset.mediaType ? { contentType: asset.mediaType } : {}),
       };
     }
-
-    throw new Error(
-      `Provider plugin media asset ${asset.assetId} has no storage projection url.`,
-    );
+    // A local Host has already installed these bytes in CAS and issued a project-scoped staging
+    // receipt. The durable output step consumes that receipt directly, so requiring a loopback URL
+    // here would force the Host to download its own immutable Resource a second time.
+    return {
+      assetId: asset.assetId,
+      ...(asset.mediaType ? { contentType: asset.mediaType } : {}),
+    };
   }
 
-  if (!output.value || typeof output.value !== "object" || Array.isArray(output.value)) {
+  if (
+    !output.value ||
+    typeof output.value !== "object" ||
+    Array.isArray(output.value)
+  ) {
     throw new Error("Provider plugin returned no media value output.");
   }
   const value = output.value as Record<string, unknown>;
@@ -106,39 +127,63 @@ function mediaFromOutput(
   }
   const url = new URL(value.url).toString();
   const optionalString = (key: string) =>
-    typeof value[key] === "string" && value[key] ? String(value[key]) : undefined;
+    typeof value[key] === "string" && value[key]
+      ? String(value[key])
+      : undefined;
   const optionalNumber = (key: string) =>
-    typeof value[key] === "number" && Number.isFinite(value[key]) ? Number(value[key]) : undefined;
-  const waveform = Array.isArray(value.waveform)
-    && value.waveform.every((entry) => typeof entry === "number" && Number.isFinite(entry))
-    ? value.waveform as number[]
-    : undefined;
+    typeof value[key] === "number" && Number.isFinite(value[key])
+      ? Number(value[key])
+      : undefined;
+  const waveform =
+    Array.isArray(value.waveform) &&
+    value.waveform.every(
+      (entry) => typeof entry === "number" && Number.isFinite(entry),
+    )
+      ? (value.waveform as number[])
+      : undefined;
   return {
     url,
-    ...(optionalString("contentType") ? { contentType: optionalString("contentType") } : {}),
-    ...(optionalString("requestId") ? { requestId: optionalString("requestId") } : {}),
-    ...(optionalNumber("width") !== undefined ? { width: optionalNumber("width") } : {}),
-    ...(optionalNumber("height") !== undefined ? { height: optionalNumber("height") } : {}),
-    ...(optionalNumber("durationMs") !== undefined ? { durationMs: optionalNumber("durationMs") } : {}),
+    ...(optionalString("contentType")
+      ? { contentType: optionalString("contentType") }
+      : {}),
+    ...(optionalString("requestId")
+      ? { requestId: optionalString("requestId") }
+      : {}),
+    ...(optionalNumber("width") !== undefined
+      ? { width: optionalNumber("width") }
+      : {}),
+    ...(optionalNumber("height") !== undefined
+      ? { height: optionalNumber("height") }
+      : {}),
+    ...(optionalNumber("durationMs") !== undefined
+      ? { durationMs: optionalNumber("durationMs") }
+      : {}),
     ...(waveform ? { waveform } : {}),
-    ...(optionalString("transcript") ? { transcript: optionalString("transcript") } : {}),
+    ...(optionalString("transcript")
+      ? { transcript: optionalString("transcript") }
+      : {}),
   };
 }
 
 function assertMediaOutputsMatchKind(
   result: Extract<ExecutablePluginResult, { status: "completed" }>,
-  expectedKind: "image" | "video" | "audio",
+  expectedKind: "image" | "video" | "audio" | "model",
   target: string,
 ): void {
   const expectedPrefix = `${expectedKind}/`;
-  for (const output of result.outputs.filter((candidate) => candidate.slot === "media")) {
+  for (const output of result.outputs.filter(
+    (candidate) => candidate.slot === "media",
+  )) {
     if (output.kind === "asset") {
       if (output.asset.kind !== expectedKind) {
         throw new Error(
           `Provider plugin ${target} returned media asset kind ${output.asset.kind} for a ${expectedKind} route.`,
         );
       }
-      if (output.asset.mediaType && !output.asset.mediaType.startsWith(expectedPrefix)) {
+      if (
+        output.asset.mediaType &&
+        !output.asset.mediaType.startsWith(expectedPrefix)
+      ) {
         throw new Error(
           `Provider plugin ${target} returned media type ${output.asset.mediaType} for a ${expectedKind} route.`,
         );
@@ -148,7 +193,11 @@ function assertMediaOutputsMatchKind(
     const value = output.value;
     if (!value || typeof value !== "object" || Array.isArray(value)) continue;
     const contentType = (value as Record<string, unknown>).contentType;
-    if (typeof contentType === "string" && contentType && !contentType.startsWith(expectedPrefix)) {
+    if (
+      typeof contentType === "string" &&
+      contentType &&
+      !contentType.startsWith(expectedPrefix)
+    ) {
       throw new Error(
         `Provider plugin ${target} returned media type ${contentType} for a ${expectedKind} route.`,
       );
@@ -163,24 +212,27 @@ function assertMediaOutputsMatchKind(
  * fields that hash into a contract check -- and adding capability to it would make two plugins with
  * identical contracts hash differently.
  *
- * Fails closed. If the declaration cannot be read, the answer is no, because the cost of being
- * wrong runs one way: accepting work nobody can collect loses money, while refusing an acceptance
- * costs a round trip on the path that already worked.
+ * A submit reads this before crossing the Provider boundary. A transient manifest failure must not
+ * be collapsed into "does not support poll" after the Provider has already accepted paid work.
  */
 async function declaresPoll(
   client: ProviderPluginExecutorClient,
   pluginId: string,
   exportId: string,
 ): Promise<boolean> {
-  const entries = await client.listFunctionExports?.(pluginId).catch(() => undefined);
+  const entries = await client.listFunctionExports?.(pluginId);
   const entry = entries?.find((candidate) => candidate.id === exportId);
   return entry?.operations?.includes("poll") ?? false;
 }
 
 export function createProviderPluginExecutor(options: {
   client: ProviderPluginExecutorClient;
+  now?: () => number;
 }): ProviderPluginExecutor {
+  const now = options.now ?? Date.now;
   return async (request) => {
+    const invocationDeadlineAt =
+      request.timeoutMs === undefined ? undefined : now() + request.timeoutMs;
     let binding: ExecutablePluginBinding;
     try {
       binding = request.binding
@@ -192,14 +244,19 @@ export function createProviderPluginExecutor(options: {
           );
     } catch (error) {
       if (pluginHostUnavailable(error)) {
-        throw new ProviderPluginHostUnavailableError((error as Error).message, { cause: error });
+        throw new ProviderPluginHostUnavailableError((error as Error).message, {
+          cause: error,
+        });
       }
       throw error;
     }
-    if (binding.pluginId !== request.pluginId || binding.exportId !== request.exportId) {
+    if (
+      binding.pluginId !== request.pluginId ||
+      binding.exportId !== request.exportId
+    ) {
       throw new Error(
-        `Plugin host resolved ${binding.pluginId}/${binding.exportId}, expected `
-          + `${request.pluginId}/${request.exportId}.`,
+        `Plugin host resolved ${binding.pluginId}/${binding.exportId}, expected ` +
+          `${request.pluginId}/${request.exportId}.`,
       );
     }
     // Account selection is host state. Remove similarly named model values even when an internal
@@ -235,15 +292,37 @@ export function createProviderPluginExecutor(options: {
         ? {}
         : { operation: "poll" as const, pollState: request.pollState }),
     });
+    // Capability discovery is a submit preflight. Looking it up after an `accepted` response can
+    // strand a paid task when the plugin host restarts in the narrow gap between the two calls.
+    // Existing poll work already has a durable token, so a transient manifest read must not block
+    // its recovery path.
+    const pollDeclared =
+      request.pollState === undefined
+        ? await declaresPoll(options.client, request.pluginId, request.exportId)
+        : true;
+    let invokeTimeoutMs = request.timeoutMs;
+    if (invocationDeadlineAt !== undefined) {
+      const remainingMs = invocationDeadlineAt - now();
+      if (remainingMs <= 0) {
+        throw new Error(
+          `Plugin invocation ${invocation.invocationId} timed out before Provider ${invocation.operation}.`,
+        );
+      }
+      invokeTimeoutMs = Math.max(1, Math.ceil(remainingMs));
+    }
     let result: ExecutablePluginResult;
     try {
       result = await options.client.invoke(request.pluginId, invocation, {
-        timeoutMs: PROVIDER_PLUGIN_EXECUTION_TIMEOUT_MS,
+        ...(invokeTimeoutMs === undefined
+          ? {}
+          : { timeoutMs: invokeTimeoutMs }),
         ...(request.accountId ? { accountId: request.accountId } : {}),
       });
     } catch (error) {
       if (pluginHostUnavailable(error)) {
-        throw new ProviderPluginHostUnavailableError((error as Error).message, { cause: error });
+        throw new ProviderPluginHostUnavailableError((error as Error).message, {
+          cause: error,
+        });
       }
       throw error;
     }
@@ -251,23 +330,41 @@ export function createProviderPluginExecutor(options: {
       // A plugin that never said it could be polled has just taken money for work nobody can
       // collect. Refusing here turns a silent loss into a loud one, at the only moment it is still
       // cheap to notice.
-      if (!(await declaresPoll(options.client, request.pluginId, request.exportId))) {
-        throw new Error(
-          `Provider plugin ${request.pluginId}/${request.exportId} accepted work but does not `
-            + "declare the poll operation, so its result could never be collected.",
-        );
+      if (!pollDeclared) {
+        return {
+          status: "failed",
+          binding,
+          error: {
+            code: "contract_violation",
+            message:
+              `Provider plugin ${request.pluginId}/${request.exportId} accepted work but does not ` +
+              "declare the poll operation, so its result could never be collected.",
+            retryable: false,
+            // The invocation has already crossed the Provider boundary. Throwing here used to
+            // classify this as an ambiguous submit and could buy the same work a second time.
+            requestState: "accepted",
+          },
+        };
       }
       return {
         status: "accepted",
         binding,
         pollState: result.pollState,
-        ...(result.retryAfterMs === undefined ? {} : { retryAfterMs: result.retryAfterMs }),
+        ...(result.retryAfterMs === undefined
+          ? {}
+          : { retryAfterMs: result.retryAfterMs }),
       };
     }
     if (result.status === "failed") {
-      throw new Error(`Provider plugin failed (${result.error.code}): ${result.error.message}`);
+      return {
+        status: "failed",
+        binding,
+        error: result.error,
+      };
     }
-    const textOutputs = result.outputs.filter((output) => output.slot === "text");
+    const textOutputs = result.outputs.filter(
+      (output) => output.slot === "text",
+    );
     const target = `${request.pluginId}/${request.exportId}`;
     if (textOutputs.length > 1) {
       throw new Error(
@@ -286,8 +383,11 @@ export function createProviderPluginExecutor(options: {
         );
       }
       const candidate = textOutputs[0];
-      if (candidate?.kind !== "value" || typeof candidate.value !== "string"
-        || !candidate.value.trim()) {
+      if (
+        candidate?.kind !== "value" ||
+        typeof candidate.value !== "string" ||
+        !candidate.value.trim()
+      ) {
         throw new Error(
           `Provider plugin ${target} returned an invalid slot "text"; expected a non-empty string value.`,
         );
@@ -299,7 +399,9 @@ export function createProviderPluginExecutor(options: {
       };
     }
     if (request.kind === "text") {
-      throw new Error(`Provider plugin ${target} returned no canonical slot "text" output.`);
+      throw new Error(
+        `Provider plugin ${target} returned no canonical slot "text" output.`,
+      );
     }
     assertMediaOutputsMatchKind(result, request.kind, target);
     return {
@@ -311,12 +413,15 @@ export function createProviderPluginExecutor(options: {
 }
 
 function pluginHostUnavailable(error: unknown): boolean {
-  const code = error && typeof error === "object" && "code" in error
-    ? String((error as { code?: unknown }).code)
-    : "";
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? String((error as { code?: unknown }).code)
+      : "";
   const message = error instanceof Error ? error.message : String(error);
-  return code === "ENOENT"
-    || code === "ECONNREFUSED"
-    || /plugin host.*(closed|timed out)/i.test(message)
-    || /executable plugin .* (is not installed|is not running)/i.test(message);
+  return (
+    code === "ENOENT" ||
+    code === "ECONNREFUSED" ||
+    /plugin host.*(closed|timed out)/i.test(message) ||
+    /executable plugin .* (is not installed|is not running)/i.test(message)
+  );
 }

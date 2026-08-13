@@ -6,7 +6,12 @@ describe('applyVideoCrop', () => {
 
   it('routes time-range edits through the server and marks preview edits implicit', async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
-      assetId: 'edited-video', srcR2Key: 'edits/video.mp4', coverR2Key: null,
+      id: 'edited-video',
+      kind: 'video',
+      metadata: {},
+      lifecycle: { state: 'active' },
+      status: 'ready',
+      url: 'https://assets.example/edited-video.mp4',
     }), { status: 200, headers: { 'content-type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -35,5 +40,25 @@ describe('applyVideoCrop', () => {
         mode: 'implicit',
       },
     });
+  });
+
+  it('rejects a successful HTTP response that is not a ResolvedAsset', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ id: 'edited-video' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      ),
+    );
+
+    await expect(
+      applyVideoCrop({
+        projectId: 'project-1',
+        sourceAssetId: 'source-video',
+        params: { mode: 'crop', startSec: 1, endSec: 4 },
+      }),
+    ).rejects.toThrow();
   });
 });

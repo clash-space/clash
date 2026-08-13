@@ -214,12 +214,12 @@ export function yieldToMainThread(timeout = 80): Promise<void> {
 }
 
 export function getPersistentVideoCacheId(
-  backingAssetId?: string,
+  projectAssetId?: string,
   sourceNodeId?: string,
   videoSrc?: string
 ): string | null {
-  if (backingAssetId) {
-    return backingAssetId;
+  if (projectAssetId) {
+    return projectAssetId;
   }
 
   if (videoSrc) {

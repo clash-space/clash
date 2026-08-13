@@ -14,7 +14,11 @@ type CapturedRequest = {
 
 function invocation(
   values: Record<string, unknown>,
-  options: { operation?: "submit" | "poll"; pollState?: unknown } = {},
+  options: {
+    operation?: "submit" | "poll";
+    pollState?: unknown;
+    references?: unknown[];
+  } = {},
 ) {
   return {
     invocationId: "invocation-1",
@@ -26,7 +30,7 @@ function invocation(
       values: {
         ...values,
       },
-      references: [],
+      references: options.references ?? [],
     },
   } as never;
 }
@@ -40,6 +44,7 @@ function context(
     region: "us-central1",
     service: "agent-platform",
   },
+  reference?: (input: unknown) => Promise<unknown>,
 ) {
   vi.stubGlobal(
     "fetch",
@@ -63,10 +68,47 @@ function context(
       put: async () => undefined,
       remove: async () => undefined,
     },
+    ...(reference ? { reference } : {}),
   } as never;
 }
 
 describe("Google API families", () => {
+  it("classifies a non-JSON submit outage as an ambiguous retryable failure", async () => {
+    vi.stubGlobal("fetch", async () => ({
+      ok: false,
+      status: 503,
+      statusText: "Service Unavailable",
+      text: async () => "<html>upstream unavailable</html>",
+    }));
+
+    await expect(
+      googleAdapter.submit(
+        invocation({
+          modelId: "nano-banana-2",
+          upstreamModel: "gemini-3.1-flash-image",
+          kind: "image",
+          prompt: "A red circle.",
+        }),
+        {
+          store: {
+            get: async (key: string) =>
+              ({
+                apiKey: "test-key",
+                service: "ai-studio",
+              })[key],
+          },
+        } as never,
+      ),
+    ).rejects.toMatchObject({
+      failure: {
+        code: "provider_unavailable",
+        retryable: true,
+        requestState: "unknown",
+        providerCode: "HTTP_503",
+      },
+    });
+  });
+
   it("reads image resolution from the model parameter envelope used by the backend", async () => {
     const requests: CapturedRequest[] = [];
     await googleAdapter.submit(
@@ -150,19 +192,39 @@ describe("Google API families", () => {
     });
   });
 
-  it("sends inline audio to generateContent and returns text for ASR", async () => {
+  it("sends a Host-resolved Provider URL to generateContent for ASR", async () => {
     const requests: CapturedRequest[] = [];
     const result = await googleAdapter.submit(
-      invocation({
-        modelId: "gemini-3.5-flash",
-        upstreamModel: "gemini-3.5-flash",
-        kind: "text",
-        prompt: "Transcribe this audio exactly.",
-        orderedContentParts: [
-          { type: "text", text: "Transcribe this audio exactly." },
-          { type: "audio", url: "data:audio/wav;base64,UklGRg==" },
-        ],
-      }),
+      invocation(
+        {
+          modelId: "gemini-3.5-flash",
+          upstreamModel: "gemini-3.5-flash",
+          kind: "text",
+          prompt: "This scalar prompt must not replace authored content parts.",
+        },
+        {
+          // Deliberately shuffled: `index`, not array insertion order, is the authored order.
+          references: [
+            {
+              slot: "content",
+              index: 1,
+              asset: {
+                assetId: "asr-audio",
+                uri: "clash-asset://asr-audio",
+                kind: "audio",
+              },
+            },
+            {
+              slot: "content",
+              index: 0,
+              text: {
+                nodeId: "prompt-text",
+                value: "Transcribe this audio exactly.",
+              },
+            },
+          ],
+        },
+      ),
       context(
         {
           candidates: [
@@ -170,6 +232,26 @@ describe("Google API families", () => {
           ],
         },
         requests,
+        undefined,
+        async (reference) => {
+          const typed = reference as {
+            asset?: { assetId?: string };
+            text?: { value?: string };
+          };
+          if (typed.text) {
+            return { form: "text", text: typed.text.value ?? "" };
+          }
+          if (typed.asset?.assetId === "asr-audio") {
+            return {
+              form: "provider-url",
+              providerUrl: "https://objects.example.test/asr.wav?sig=1",
+              expiresAt: "2026-08-13T12:00:00.000Z",
+              kind: "audio",
+              mediaType: "audio/wav",
+            };
+          }
+          throw new Error("unexpected Google reference");
+        },
       ),
     );
 
@@ -179,7 +261,12 @@ describe("Google API families", () => {
           role: "user",
           parts: [
             { text: "Transcribe this audio exactly." },
-            { inlineData: { mimeType: "audio/wav", data: "UklGRg==" } },
+            {
+              fileData: {
+                mimeType: "audio/wav",
+                fileUri: "https://objects.example.test/asr.wav?sig=1",
+              },
+            },
           ],
         },
       ],
@@ -196,21 +283,60 @@ describe("Google API families", () => {
   it("submits Veo text/reference work through predictLongRunning", async () => {
     const requests: CapturedRequest[] = [];
     const result = await googleAdapter.submit(
-      invocation({
-        modelId: "veo-3.1-fast",
-        upstreamModel: "veo-3.1-fast-generate-001",
-        kind: "video",
-        prompt: "A paper kite rises above a quiet beach.",
-        aspectRatio: "16:9",
-        duration: 4,
-        modelParams: { generate_audio: true },
-        referenceImageUrls: ["data:image/png;base64,iVBORw0KGgo="],
-      }),
+      invocation(
+        {
+          modelId: "veo-3.1-fast",
+          upstreamModel: "veo-3.1-fast-generate-001",
+          kind: "video",
+          prompt: "A paper kite rises above a quiet beach.",
+          aspectRatio: "16:9",
+          duration: 4,
+          modelParams: { generate_audio: true },
+        },
+        {
+          references: [
+            {
+              slot: "image",
+              index: 1,
+              asset: {
+                assetId: "kite-2",
+                uri: "clash-asset://kite-2",
+                kind: "image",
+              },
+            },
+            {
+              slot: "image",
+              index: 0,
+              asset: {
+                assetId: "kite-1",
+                uri: "clash-asset://kite-1",
+                kind: "image",
+              },
+            },
+          ],
+        },
+      ),
       context(
         {
           name: "projects/test-project/locations/us-central1/operations/operation-1",
         },
         requests,
+        undefined,
+        async (reference) => {
+          const assetId = (reference as { asset?: { assetId?: string } }).asset
+            ?.assetId;
+          return {
+            form: "bytes",
+            bytes: Uint8Array.from(
+              Buffer.from(
+                assetId === "kite-1" ? "a2l0ZS0x" : "a2l0ZS0y",
+                "base64",
+              ),
+            ),
+            kind: "image",
+            mediaType: "image/png",
+          };
+        },
       ),
     );
 
@@ -224,7 +350,14 @@ describe("Google API families", () => {
           referenceImages: [
             {
               image: {
-                bytesBase64Encoded: "iVBORw0KGgo=",
+                bytesBase64Encoded: "a2l0ZS0x",
+                mimeType: "image/png",
+              },
+              referenceType: "asset",
+            },
+            {
+              image: {
+                bytesBase64Encoded: "a2l0ZS0y",
                 mimeType: "image/png",
               },
               referenceType: "asset",
@@ -253,15 +386,54 @@ describe("Google API families", () => {
   it("preserves Veo first and last frames as distinct fields", async () => {
     const requests: CapturedRequest[] = [];
     await googleAdapter.submit(
-      invocation({
-        modelId: "veo-3.1-startend",
-        upstreamModel: "veo-3.1-generate-001",
-        kind: "video",
-        prompt: "Move gently from dawn to dusk.",
-        startFrameUrl: "data:image/png;base64,c3RhcnQ=",
-        endFrameUrl: "data:image/jpeg;base64,ZW5k",
-      }),
-      context({ name: "operation-2" }, requests),
+      invocation(
+        {
+          modelId: "veo-3.1-startend",
+          upstreamModel: "veo-3.1-generate-001",
+          kind: "video",
+          prompt: "Move gently from dawn to dusk.",
+        },
+        {
+          references: [
+            {
+              slot: "endFrame",
+              index: 0,
+              asset: {
+                assetId: "end-frame",
+                uri: "clash-asset://end-frame",
+                kind: "image",
+              },
+            },
+            {
+              slot: "startFrame",
+              index: 0,
+              asset: {
+                assetId: "start-frame",
+                uri: "clash-asset://start-frame",
+                kind: "image",
+              },
+            },
+          ],
+        },
+      ),
+      context(
+        { name: "operation-2" },
+        requests,
+        undefined,
+        async (reference) => {
+          const assetId = (reference as { asset?: { assetId?: string } }).asset
+            ?.assetId;
+          const end = assetId === "end-frame";
+          return {
+            form: "bytes",
+            bytes: Uint8Array.from(
+              Buffer.from(end ? "ZW5k" : "c3RhcnQ=", "base64"),
+            ),
+            kind: "image",
+            mediaType: end ? "image/jpeg" : "image/png",
+          };
+        },
+      ),
     );
 
     expect(requests[0]?.body).toMatchObject({
@@ -320,21 +492,42 @@ describe("Google API families", () => {
   it("uses the Interactions API for Gemini Omni instead of generateContent", async () => {
     const requests: CapturedRequest[] = [];
     const result = await googleAdapter.submit(
-      invocation({
-        modelId: "gemini-omni-flash",
-        upstreamModel: "gemini-omni-flash-preview",
-        apiShape: "google-ai-studio-interactions",
-        kind: "video",
-        prompt: "A small origami bird takes flight with soft wing sounds.",
-        aspectRatio: "16:9",
-        duration: 5,
-      }),
+      invocation(
+        {
+          modelId: "gemini-omni-flash",
+          upstreamModel: "gemini-omni-flash-preview",
+          apiShape: "google-ai-studio-interactions",
+          kind: "video",
+          prompt: "A stale scalar prompt.",
+          aspectRatio: "16:9",
+          duration: 5,
+        },
+        {
+          references: [
+            {
+              slot: "content",
+              index: 0,
+              text: {
+                nodeId: "omni-prompt",
+                value:
+                  "A small origami bird takes flight with soft wing sounds.",
+              },
+            },
+          ],
+        },
+      ),
       context(
         {
           id: "interaction-7",
           status: "in_progress",
         },
         requests,
+        undefined,
+        async (reference) => ({
+          form: "text",
+          text:
+            (reference as { text?: { value?: string } }).text?.value ?? "",
+        }),
       ),
     );
 
@@ -364,6 +557,55 @@ describe("Google API families", () => {
       status: "accepted",
       pollState: { family: "interaction", interactionId: "interaction-7" },
     });
+  });
+
+  it("fails closed when Gemini Omni receives unrecorded reference media", async () => {
+    const requests: CapturedRequest[] = [];
+
+    await expect(
+      googleAdapter.submit(
+        invocation(
+          {
+            modelId: "gemini-omni-flash",
+            upstreamModel: "gemini-omni-flash-preview",
+            apiShape: "google-ai-studio-interactions",
+            kind: "video",
+            prompt: "Animate this image.",
+          },
+          {
+            references: [
+              {
+                slot: "image",
+                index: 0,
+                asset: {
+                  assetId: "unrecorded-omni-image",
+                  uri: "clash-asset://unrecorded-omni-image",
+                  kind: "image",
+                },
+              },
+            ],
+          },
+        ),
+        context(
+          { id: "must-not-submit", status: "in_progress" },
+          requests,
+          undefined,
+          async () => ({
+            form: "bytes",
+            bytes: Uint8Array.from([137, 80, 78, 71]),
+            kind: "image",
+            mediaType: "image/png",
+          }),
+        ),
+      ),
+    ).rejects.toMatchObject({
+      failure: {
+        code: "invalid_request",
+        retryable: false,
+        requestState: "rejected",
+      },
+    });
+    expect(requests).toEqual([]);
   });
 
   it("addresses Gemini Omni on AI Studio when the account uses an API key", async () => {

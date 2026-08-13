@@ -21,6 +21,13 @@ export default defineConfig({
         replacement: resolve(__dirname, "../../packages/shared-runtime/src/index.ts"),
       },
       {
+        find: /^@clash\/asset-sdk$/,
+        replacement: resolve(
+          __dirname,
+          "../../packages/asset-sdk/src/index.ts",
+        ),
+      },
+      {
         find: /^@clash\/shared-layout$/,
         replacement: resolve(__dirname, "../../packages/shared-layout/src/index.ts"),
       },

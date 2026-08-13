@@ -24,9 +24,6 @@ import { processPendingNodes, recoverOrphanedTasks } from "../loro/NodeProcessor
 import { pollNodeTasks } from "../loro/TaskPolling";
 import { updateNodeData, appendNodeLog } from "../loro/NodeUpdater";
 import { authenticateRequest } from "../loro/auth";
-import { deriveRuntimeStatus } from "../lib/runtime-status";
-import { markRuntimeOnline } from "../lib/runtime-heartbeat";
-import { loadSecrets } from "../services/user-variables";
 import type {
   ClientInfo,
   ClientType,
@@ -37,30 +34,13 @@ import type {
   AwarenessPeer,
 } from "@clash/shared-types";
 import {
-  Canvas,
   DEFAULT_CANVAS_ID,
   canvasGraphReconciliationChanged,
-  CustomActionDefinitionSchema,
   listNodeOwnedEdges,
   reconcileCanvasGraph,
   reconcileProjectTimelineOwnership,
   reconcileProjectDirectorStageOwnership,
 } from "@clash/shared-types";
-
-/**
- * Extended client identity persisted on the WebSocket via serializeAttachment.
- *
- * The CLI / agent client variant carries the local runtime row id that
- * registered it — set from the `x-runtime-id` HTTP header on the WS
- * handshake. NodeProcessor uses this to gate custom-action dispatch on
- * runtime liveness (deriveRuntimeStatus); register_custom_actions stamps
- * it onto each Loro `customActions` entry so the action knows which
- * machine owns it.
- *
- * Browser clients leave this undefined — they don't host any actions
- * and aren't gating runtime liveness.
- */
-type ClientInfoWithRuntime = ClientInfo & { runtimeId?: string };
 
 /** Alarm intervals in milliseconds */
 const TASK_POLL_INTERVAL_MS = 60_000; // 60 seconds
@@ -100,7 +80,7 @@ export class ProjectRoom extends DurableObject<Env> {
   private unsubscribeLocalUpdates: (() => void) | null = null;
 
   /** Connected client identity map for presence tracking. */
-  private clients: Map<WebSocket, ClientInfoWithRuntime> = new Map();
+  private clients: Map<WebSocket, ClientInfo> = new Map();
 
   /** Throttle activity broadcasts: nodeId → last broadcast timestamp */
   private activityThrottle: Map<string, number> = new Map();
@@ -163,15 +143,6 @@ export class ProjectRoom extends DurableObject<Env> {
     let userId = "unknown";
     let userName = "User";
     let userAvatar: string | undefined;
-    /**
-     * runtime_id of the local runtime this WS client represents. Only
-     * set when the python SDK / bridge forwarded `x-runtime-id` in the
-     * WS handshake. Validated against the `runtime` table — must belong
-     * to the same user as the auth token, else we 403. Browser clients
-     * leave this undefined.
-     */
-    let runtimeId: string | undefined;
-
     if (!isInternal) {
       try {
         const authResult = await authenticateRequest(request, this.env, projectId);
@@ -184,31 +155,6 @@ export class ProjectRoom extends DurableObject<Env> {
         if (clientTypeHeader === "cli") {
           clientType = "cli";
           userName = authResult.userName ?? "CLI Agent";
-        }
-
-        // Resolve and validate runtime_id (if provided). CLI clients that
-        // intend to host custom actions MUST send this — register_custom_actions
-        // rejects registrations without it.
-        const runtimeHeader = request.headers.get("x-runtime-id");
-        if (runtimeHeader) {
-          const runtimeRow = await this.env.DB
-            .prepare("SELECT id, owner_user_id FROM runtime WHERE id = ? LIMIT 1")
-            .bind(runtimeHeader)
-            .first<{ id: string; owner_user_id: string }>();
-          if (!runtimeRow) {
-            log.warn("Rejecting WS — unknown runtime_id", { runtimeId: runtimeHeader });
-            return new Response("Unknown runtime", { status: 403 });
-          }
-          if (runtimeRow.owner_user_id !== userId) {
-            log.warn("Rejecting WS — runtime_id belongs to another user", {
-              runtimeId: runtimeHeader,
-              wsUser: userId,
-              runtimeOwner: runtimeRow.owner_user_id,
-            });
-            return new Response("Forbidden — runtime owned by another user", { status: 403 });
-          }
-          runtimeId = runtimeRow.id;
-          await this.markRuntimeOnline(runtimeId, "connect");
         }
       } catch (error) {
         log.error("Auth failed:", error);
@@ -237,15 +183,13 @@ export class ProjectRoom extends DurableObject<Env> {
     this.ctx.acceptWebSocket(server);
 
     // Register client for presence — persist via serializeAttachment so it survives hibernation
-    const clientInfo: ClientInfoWithRuntime = {
+    const clientInfo: ClientInfo = {
       id: crypto.randomUUID(),
       userId,
       clientType,
       name: userName,
       avatar: userAvatar,
       connectedAt: Date.now(),
-      // Only stamped for CLI/local-runtime clients — browsers leave it undefined.
-      ...(runtimeId ? { runtimeId } : {}),
     };
     server.serializeAttachment(clientInfo);
     this.clients.set(server, clientInfo);
@@ -380,7 +324,7 @@ export class ProjectRoom extends DurableObject<Env> {
 
     for (const ws of liveWs) {
       if (!knownWs.has(ws)) {
-        const attachment = ws.deserializeAttachment() as ClientInfoWithRuntime | null;
+        const attachment = ws.deserializeAttachment() as ClientInfo | null;
         if (attachment) {
           this.clients.set(ws, attachment);
         }
@@ -393,52 +337,6 @@ export class ProjectRoom extends DurableObject<Env> {
       if (!liveSet.has(ws)) {
         this.clients.delete(ws);
       }
-    }
-  }
-
-  private getClientInfo(ws: WebSocket): ClientInfoWithRuntime | undefined {
-    const known = this.clients.get(ws);
-    if (known) return known;
-
-    const attachment = ws.deserializeAttachment() as ClientInfoWithRuntime | null;
-    if (attachment) {
-      this.clients.set(ws, attachment);
-      return attachment;
-    }
-    return undefined;
-  }
-
-  private async markRuntimeOnline(runtimeId: string, source: "connect" | "message"): Promise<void> {
-    try {
-      await markRuntimeOnline(this.env.DB, runtimeId);
-    } catch (error) {
-      log.warn("Failed to refresh runtime heartbeat from ProjectRoom", {
-        runtimeId,
-        source,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  private async withTaskSecretsForRuntime(
-    task: Record<string, any>,
-    userId: string,
-  ): Promise<Record<string, any>> {
-    const secretIds = Array.isArray(task.secretIds)
-      ? task.secretIds.filter((id: unknown): id is string => typeof id === "string" && id.length > 0)
-      : [];
-    if (secretIds.length === 0 || !this.env.ACTION_SECRET_KEY) return task;
-
-    try {
-      const secrets = await loadSecrets(this.env.DB, userId, [...new Set(secretIds)], this.env.ACTION_SECRET_KEY);
-      return { ...task, secrets };
-    } catch (error) {
-      log.warn("Failed to inject custom action task secrets for runtime replay", {
-        taskId: task.taskId,
-        actionId: task.customActionId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return task;
     }
   }
 
@@ -614,11 +512,6 @@ export class ProjectRoom extends DurableObject<Env> {
       if (this.initPromise) await this.initPromise;
     }
 
-    const senderRuntimeId = this.getClientInfo(ws)?.runtimeId;
-    if (senderRuntimeId) {
-      await this.markRuntimeOnline(senderRuntimeId, "message");
-    }
-
     // Handle binary messages (Loro CRDT updates)
     if (message instanceof ArrayBuffer) {
       const updates = new Uint8Array(message);
@@ -632,7 +525,7 @@ export class ProjectRoom extends DurableObject<Env> {
       return;
     }
 
-    // Handle text messages (custom action protocol)
+    // Handle collaboration sideband messages.
     if (typeof message === "string") {
       try {
         const parsed = JSON.parse(message);
@@ -644,9 +537,7 @@ export class ProjectRoom extends DurableObject<Env> {
     }
   }
 
-  /**
-   * Handle JSON text messages from clients (custom action protocol).
-   */
+  /** Handle JSON collaboration sideband messages from clients. */
   private async handleTextMessage(sender: WebSocket, msg: Record<string, any>): Promise<void> {
     if (this.initPromise) await this.initPromise;
 
@@ -677,136 +568,26 @@ export class ProjectRoom extends DurableObject<Env> {
       return;
     }
 
-    if (msg.type === "register_custom_actions") {
-      // Local agent registering custom action definitions.
-      //
-      // SECURITY: Registrations are REJECTED without a valid x-runtime-id
-      // on the WS handshake. Without this gate, anyone with a user-level
-      // API token could register arbitrary action ids and impersonate the
-      // user's local runtimes. Dev path: export CLASH_RUNTIME_ID=$(jq -r
-      // .runtimeId ~/.clash/credentials.json) before running the python
-      // script — the bridge writes this file during `clash setup` so it's
-      // a one-liner for SDK authors.
-      const senderInfo = this.clients.get(sender);
-      const senderRuntimeId = senderInfo?.runtimeId;
-      const actions = msg.actions as Array<Record<string, any>>;
-      if (!Array.isArray(actions)) return;
-      const wantsLocalRuntime = actions.some((action) => (action?.runtime || "local") !== "worker");
-      if (wantsLocalRuntime && !senderRuntimeId) {
-        log.warn("Rejecting register_custom_actions — no runtime_id on WS", {
-          clientType: senderInfo?.clientType,
-          userId: senderInfo?.userId,
-        });
-        try {
-          sender.send(JSON.stringify({
-            type: "register_custom_actions.rejected",
-            error: "missing_runtime_id",
-            message:
-              "Custom action registration requires an x-runtime-id WS header. " +
-              "Set CLASH_RUNTIME_ID env var (from ~/.clash/credentials.json) and reconnect.",
-          }));
-        } catch { /* socket might already be closed */ }
-        return;
+    if (
+      msg.type === "register_custom_actions" ||
+      msg.type === "unregister_custom_actions" ||
+      msg.type === "complete_custom_task"
+    ) {
+      try {
+        sender.send(
+          JSON.stringify({
+            type: `${msg.type}.rejected`,
+            code: "LEGACY_CUSTOM_ACTION_PROTOCOL_RETIRED",
+            error:
+              "Legacy ClashAgent custom-action transport is retired; use a clash.plugin/v1 executable plugin through local-api.",
+            ...(typeof msg.taskId === "string" ? { taskId: msg.taskId } : {}),
+            ...(typeof msg.nodeId === "string" ? { nodeId: msg.nodeId } : {}),
+          }),
+        );
+      } catch {
+        // The peer may have closed between receive and rejection.
       }
-
-      const versionBefore = this.doc.version();
-      const actionsMap = this.doc.getMap("customActions");
-      for (const action of actions) {
-        const parsed = CustomActionDefinitionSchema.safeParse(action);
-        if (!parsed.success) {
-          log.warn("Skipping invalid custom action registration", {
-            actionId: action?.id,
-            error: parsed.error.message,
-          });
-          continue;
-        }
-        const def = parsed.data;
-        const storedDef: Record<string, unknown> = {
-          id: def.id,
-          name: def.name,
-          description: def.description || "",
-          parameters: def.parameters || [],
-          outputType: def.outputType || "image",
-          icon: def.icon || "",
-          color: def.color || "",
-          runtime: def.runtime || "local",
-          version: def.version || "",
-          author: def.author || "",
-          repository: def.repository || "",
-          workerUrl: def.workerUrl || "",
-          secrets: def.secrets || [],
-          tags: def.tags || [],
-          promptModalities: def.promptModalities,
-        };
-        if (def.model) storedDef.model = def.model;
-        if (def.pluginBinding) storedDef.pluginBinding = def.pluginBinding;
-        // Stamp the registering runtime so NodeProcessor can gate local
-        // dispatch on runtime liveness. Worker actions are hosted remotely
-        // and do not need a local runtime row.
-        if (def.runtime === "local" && senderRuntimeId) {
-          storedDef.registeredByRuntime = senderRuntimeId;
-        }
-        actionsMap.set(def.id, storedDef);
-      }
-      const update = this.doc.export({ mode: "update", from: versionBefore });
-      this.broadcastBinary(update);
-
-      log.info("Custom actions registered", {
-        count: actions.length,
-        ids: actions.map((a) => a.id),
-        runtimeId: senderRuntimeId,
-      });
-
-      // Replay any unfinished tasks for the actions this agent just
-      // registered. Without this, an agent that reconnects (daemon
-      // restart, network blip) would silently leave any in-flight
-      // task hanging until the next pendingProcess fires — and that
-      // only emits on NEW pending nodes, not on tasks already in
-      // the tasks map.
-      //
-      // Scoped to tasks whose registered action is owned by THIS
-      // runtime — otherwise a separate runtime (different bridge on
-      // another laptop) would steal tasks intended for the original.
-      const registeredIds = new Set(actions.map((a) => a.id).filter(Boolean));
-      const tasksMap = this.doc.getMap("tasks");
-      let replayCount = 0;
-      let scannedCount = 0;
-      for (const [, raw] of tasksMap.entries()) {
-        scannedCount++;
-        const t = raw as Record<string, any>;
-        if (t?.status !== "waiting_for_agent") continue;
-        if (!registeredIds.has(t.customActionId)) continue;
-        // Only replay if the task's owning runtime matches us. This
-        // task field is set by NodeProcessor at dispatch time (see
-        // taskRecord.registeredByRuntime there).
-        if (t.registeredByRuntime && t.registeredByRuntime !== senderRuntimeId) continue;
-        try {
-          const task = await this.withTaskSecretsForRuntime(t, senderInfo?.userId ?? "");
-          sender.send(JSON.stringify({ type: "custom_task_assigned", task }));
-          replayCount++;
-        } catch (e) {
-          log.error("Failed to replay task to agent:", e);
-        }
-      }
-      // Only log when there's something interesting — most registrations
-      // run against an empty tasks map and spam this otherwise.
-      if (scannedCount > 0 || replayCount > 0) {
-        log.info("Replay scan", { scanned: scannedCount, replayed: replayCount, registered: [...registeredIds], runtimeId: senderRuntimeId });
-      }
-    }
-
-    if (msg.type === "unregister_custom_actions") {
-      // Local agent removing its custom action definitions
-      const actionIds = msg.actionIds as string[];
-      if (!Array.isArray(actionIds)) return;
-
-      const versionBefore = this.doc.version();
-      const actionsMap = this.doc.getMap("customActions");
-      for (const id of actionIds) {
-        actionsMap.delete(id);
-      }
-      const update = this.doc.export({ mode: "update", from: versionBefore });
-      this.broadcastBinary(update);
+      return;
     }
 
     if (msg.type === "write_understanding") {
@@ -839,153 +620,6 @@ export class ProjectRoom extends DurableObject<Env> {
       log.info("Understanding written", { nodeId, keys: Object.keys(understanding) });
     }
 
-    if (msg.type === "complete_custom_task") {
-      // Local agent reporting task completion. Multi-asset shape:
-      //   result.assets = [{type, storageKey?, content?, mimeType?, label?}, ...]
-      // The first asset lands on the existing pending child; outputs
-      // 2..N spawn sibling nodes positioned by autoInsertNode,
-      // sharing the original node's incoming edges (preserves lineage
-      // for the canvas graph + agent visualisations).
-      //
-      // The /api/custom-action/upload route has already written each
-      // asset row to D1 by this point — `storageKey` is just our
-      // pointer into R2 for resolving the assetId from D1.
-      const { taskId, nodeId, status, result } = msg;
-      if (!taskId || !nodeId) return;
-
-      // Idempotency guard: the tasks-map entry is deleted at the end of
-      // a successful run, so a duplicate `complete_custom_task` for the
-      // same taskId sees nothing and returns. Without this, two agent
-      // messages (race in the sideband / replay / network retry) would
-      // each spawn a fresh set of sibling nodes from scratch — exactly
-      // the "7 tile nodes instead of 4" symptom that surfaced in
-      // practice.
-      const tasksMapPre = this.doc.getMap("tasks");
-      if (!tasksMapPre.get(taskId)) {
-        log.info("Ignoring duplicate complete_custom_task", { taskId, nodeId });
-        return;
-      }
-
-      const assets: Array<{
-        type: "image" | "video" | "audio" | "text";
-        storageKey?: string;
-        content?: string;
-        mimeType?: string;
-        label?: string;
-      }> = Array.isArray(result?.assets) ? result.assets : [];
-
-      const isFailure = status === "failed";
-
-      if (isFailure || assets.length === 0) {
-        // Failure path / no-output path — just close out the original
-        // pending node with whatever metadata the agent reported.
-        const nodeUpdates: Record<string, any> = {
-          pendingTask: undefined,
-          status: isFailure ? "failed" : "completed",
-        };
-        if (result?.description) nodeUpdates.description = result.description;
-        if (result?.error) nodeUpdates.error = result.error;
-        updateNodeData(this.doc, nodeId, nodeUpdates, (data) =>
-          this.broadcastBinary(data)
-        );
-      } else {
-        // Resolve uploaded R2 keys → D1 asset ids. The upload route
-        // already seeded asset rows (id = taskId for primary, taskId-N
-        // for siblings — see custom-action/upload). We use the same
-        // convention here rather than threading ids through the wire,
-        // so the SDK doesn't need to know D1's asset-id format.
-        const primary = assets[0];
-        const primaryUpdates: Record<string, any> = {
-          pendingTask: undefined,
-          status: "completed",
-        };
-        if (primary.type === "text") {
-          primaryUpdates.content = primary.content ?? "";
-        } else if (primary.storageKey) {
-          // The upload route used `id: taskId` for index 0 — assert it
-          // by reading back what `createAsset` returned, but for the
-          // common case we trust the convention.
-          primaryUpdates.assetId = taskId;
-          // Refresh the asset row in case the agent's per-output label
-          // should override what the upload route set.
-        }
-        if (primary.label) primaryUpdates.label = primary.label;
-        if (result?.description) primaryUpdates.description = result.description;
-
-        updateNodeData(this.doc, nodeId, primaryUpdates, (data) =>
-          this.broadcastBinary(data)
-        );
-
-        // Outputs 2..N: spawn sibling nodes via Canvas.createLinkedNode.
-        // We re-use every incoming edge of the original pending node
-        // so siblings share the same upstream lineage — for the common
-        // case (one action-badge → one pending child) this means each
-        // sibling has the action-badge as its source. Canvas handles
-        // autoInsertNode positioning so they cascade to the right of
-        // the primary without manual placement math.
-        if (assets.length > 1) {
-          const canvas = new Canvas(this.doc, (data) => this.broadcastBinary(data));
-          const incoming = canvas.listEdges().filter((e) => e.target === nodeId);
-          for (let i = 1; i < assets.length; i++) {
-            const a = assets[i];
-            const siblingNodeId = crypto.randomUUID().slice(0, 8);
-            const siblingAssetId = `${taskId}-${i}`; // matches upload route convention
-            const siblingType =
-              a.type === "video" ? "video" : a.type === "audio" ? "audio" : a.type === "text" ? "text" : "image";
-            const siblingData: Record<string, any> = {
-              status: "completed",
-              label: a.label || `Output ${i + 1}`,
-            };
-            if (a.type === "text") {
-              siblingData.content = a.content ?? "";
-            } else {
-              siblingData.assetId = siblingAssetId;
-            }
-            // Linked from the FIRST incoming edge's source so
-            // autoInsertNode has a reference for positioning; we then
-            // append the remaining incoming sources manually so the
-            // sibling shares the original node's full provenance.
-            if (incoming.length === 0) {
-              // Defensive: the original pending node had no parent
-              // (shouldn't happen in practice). Drop it standalone.
-              canvas.createNode(siblingNodeId, siblingType, siblingData);
-            } else {
-              const primarySource = incoming[0].source;
-              canvas.createLinkedNode({
-                nodeId: siblingNodeId,
-                nodeType: siblingType,
-                data: siblingData,
-                parentId: null,
-                sourceNodeId: primarySource,
-              });
-              for (let k = 1; k < incoming.length; k++) {
-                const extra = incoming[k];
-                canvas.insertEdge(
-                  `${extra.source}-${siblingNodeId}`,
-                  extra.source,
-                  siblingNodeId,
-                  "default",
-                );
-              }
-            }
-            log.info("Custom action sibling spawned", {
-              taskId,
-              siblingNodeId,
-              siblingAssetId,
-              label: siblingData.label,
-            });
-          }
-        }
-      }
-
-      const versionBefore = this.doc.version();
-      const tasksMap = this.doc.getMap("tasks");
-      tasksMap.delete(taskId);
-      const update = this.doc.export({ mode: "update", from: versionBefore });
-      this.broadcastBinary(update);
-
-      log.info("Custom task completed", { taskId, nodeId, status, outputCount: assets.length });
-    }
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
@@ -1201,33 +835,6 @@ export class ProjectRoom extends DurableObject<Env> {
     }
   }
 
-  /**
-   * Send a JSON message to every connected CLI client.
-   *
-   * Sideband channel for the Python SDK (and `clash canvas connect`),
-   * which can't parse Loro CRDT binary updates. Used by NodeProcessor
-   * to announce newly-assigned custom-action tasks.
-   */
-  private broadcastJsonToCli(payload: unknown, targetRuntimeId?: string): void {
-    // Rebuild this.clients from live sockets — DO hibernation drops
-    // the in-memory map but WebSockets survive via serializeAttachment,
-    // so without this we'd never resolve any ws to clientType='cli' and
-    // the sideband would silently no-op. broadcastPresence does the
-    // same thing for the same reason.
-    this.rebuildClientsFromWebSockets();
-    const text = JSON.stringify(payload);
-    for (const ws of this.ctx.getWebSockets()) {
-      const info = this.clients.get(ws);
-      if (info?.clientType !== "cli") continue;
-      if (targetRuntimeId && info.runtimeId !== targetRuntimeId) continue;
-      try {
-        ws.send(text);
-      } catch (error) {
-        log.error("Failed to broadcast JSON to CLI:", error);
-      }
-    }
-  }
-
   // ─── Guarded Node Processing ─────────────────────────────────
 
   /**
@@ -1244,7 +851,6 @@ export class ProjectRoom extends DurableObject<Env> {
         this.projectId,
         (data: Uint8Array) => this.broadcastBinary(data),
         async () => this.triggerTaskPolling(),
-        (json: unknown, options?: { runtimeId?: string }) => this.broadcastJsonToCli(json, options?.runtimeId),
       );
     } finally {
       this.isProcessingNodes = false;

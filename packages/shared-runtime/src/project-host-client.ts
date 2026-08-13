@@ -16,19 +16,25 @@ export type ProjectHostConnection = {
   token?: string;
 };
 
-export type ProjectHostRequest<T extends ProjectHostResponse = ProjectHostResponse> = {
+export type ProjectHostRequest<
+  T extends ProjectHostResponse = ProjectHostResponse,
+> = {
   command: ProjectHostCommand;
   cwd?: string;
   projectId?: string;
 };
 
-export type ProjectHostRequestResult<T extends ProjectHostResponse = ProjectHostResponse> = {
+export type ProjectHostRequestResult<
+  T extends ProjectHostResponse = ProjectHostResponse,
+> = {
   projectId: string;
   workspaceRoot?: string;
   value: T;
 };
 
 export type ProjectHostClient = {
+  /** Reuse the exact discovered Host endpoint across peer capability clients. */
+  resolveConnection?(): Promise<ProjectHostConnection>;
   resolveContext(input?: {
     cwd?: string;
     projectId?: string;
@@ -43,12 +49,30 @@ export class ProjectHostHttpError extends Error {
     readonly status: number,
     readonly body: unknown,
   ) {
-    super(`Project host request failed with HTTP ${status}`);
+    const record =
+      body !== null && typeof body === "object"
+        ? (body as Record<string, unknown>)
+        : undefined;
+    const code = cleanErrorField(record?.code);
+    const detail = cleanErrorField(record?.error);
+    const reason = [code, detail].filter(Boolean).join(": ");
+    super(
+      reason
+        ? `${reason} (Project host HTTP ${status})`
+        : `Project host request failed with HTTP ${status}`,
+    );
     this.name = "ProjectHostHttpError";
   }
 }
 
-export function projectHostCommandUrl(endpoint: string, projectId: string): string {
+function cleanErrorField(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+export function projectHostCommandUrl(
+  endpoint: string,
+  projectId: string,
+): string {
   return `${endpoint.replace(/\/+$/, "")}/api/v1/projects/${encodeURIComponent(projectId)}/host-command`;
 }
 
@@ -60,11 +84,15 @@ function cleanProjectId(value: unknown): string | undefined {
 
 function markerProjectId(markerPath: string, source: string): string {
   if (!/^schema_version\s*=\s*1\s*$/m.test(source)) {
-    throw new Error(`Invalid project marker at ${markerPath}: schema_version must be 1`);
+    throw new Error(
+      `Invalid project marker at ${markerPath}: schema_version must be 1`,
+    );
   }
   const match = /^project_id\s*=\s*(.+)$/m.exec(source);
   if (!match) {
-    throw new Error(`Invalid project marker at ${markerPath}: project_id is required`);
+    throw new Error(
+      `Invalid project marker at ${markerPath}: project_id is required`,
+    );
   }
   try {
     const value = JSON.parse(match[1]!.trim()) as unknown;
@@ -73,10 +101,14 @@ function markerProjectId(markerPath: string, source: string): string {
   } catch {
     // Use the stable marker error below.
   }
-  throw new Error(`Invalid project marker at ${markerPath}: project_id must be a string`);
+  throw new Error(
+    `Invalid project marker at ${markerPath}: project_id must be a string`,
+  );
 }
 
-async function findProjectMarker(startCwd: string): Promise<string | undefined> {
+async function findProjectMarker(
+  startCwd: string,
+): Promise<string | undefined> {
   let current = resolve(startCwd);
   while (true) {
     const markerPath = join(current, PROJECT_MARKER);
@@ -92,17 +124,19 @@ async function findProjectMarker(startCwd: string): Promise<string | undefined> 
 }
 
 /** Resolve project identity without importing a particular frontend such as the CLI. */
-export async function resolveProjectHostContext(options: {
-  cwd?: string;
-  projectId?: string;
-  env?: Record<string, string | undefined>;
-} = {}): Promise<ResolvedProjectHostContext> {
+export async function resolveProjectHostContext(
+  options: {
+    cwd?: string;
+    projectId?: string;
+    env?: Record<string, string | undefined>;
+  } = {},
+): Promise<ResolvedProjectHostContext> {
   const env = options.env ?? process.env;
   const cwd = resolve(
-    options.cwd?.trim()
-      || env.CLASH_WORKSPACE_ROOT?.trim()
-      || env.CODEX_WORKSPACE_ROOT?.trim()
-      || process.cwd(),
+    options.cwd?.trim() ||
+      env.CLASH_WORKSPACE_ROOT?.trim() ||
+      env.CODEX_WORKSPACE_ROOT?.trim() ||
+      process.cwd(),
   );
   const explicitProjectId = cleanProjectId(options.projectId);
   const markerPath = await findProjectMarker(cwd);
@@ -120,8 +154,8 @@ export async function resolveProjectHostContext(options: {
   const envProjectId = cleanProjectId(env.CLASH_PROJECT_ID);
   if (marker && envProjectId && marker !== envProjectId) {
     throw new Error(
-      `Project context conflict: ${markerPath} points to ${marker}, `
-      + `but CLASH_PROJECT_ID is ${envProjectId}. Pass projectId explicitly to choose.`,
+      `Project context conflict: ${markerPath} points to ${marker}, ` +
+        `but CLASH_PROJECT_ID is ${envProjectId}. Pass projectId explicitly to choose.`,
     );
   }
   if (marker) {
@@ -139,7 +173,9 @@ export async function resolveProjectHostContext(options: {
 }
 
 /** Neutral local-api client shared by peer frontends such as CLI and MCP. */
-export async function sendProjectHostCommand<T extends ProjectHostResponse = ProjectHostResponse>(options: {
+export async function sendProjectHostCommand<
+  T extends ProjectHostResponse = ProjectHostResponse,
+>(options: {
   endpoint: string;
   projectId: string;
   command: ProjectHostCommand;
@@ -157,7 +193,7 @@ export async function sendProjectHostCommand<T extends ProjectHostResponse = Pro
       body: JSON.stringify(options.command),
     },
   );
-  const body = await response.json().catch(() => undefined) as unknown;
+  const body = (await response.json().catch(() => undefined)) as unknown;
   if (!response.ok) throw new ProjectHostHttpError(response.status, body);
   return body as T;
 }
@@ -167,26 +203,30 @@ export async function sendProjectHostCommand<T extends ProjectHostResponse = Pro
  * Endpoint acquisition is injectable so a distribution can ensure its self-host
  * without coupling this neutral client to a particular lifecycle owner.
  */
-export function createProjectHostClient(options: {
-  endpoint?: string;
-  token?: string;
-  env?: Record<string, string | undefined>;
-  fetch?: typeof globalThis.fetch;
-  resolveConnection?: () => Promise<ProjectHostConnection>;
-} = {}): ProjectHostClient {
+export function createProjectHostClient(
+  options: {
+    endpoint?: string;
+    token?: string;
+    env?: Record<string, string | undefined>;
+    fetch?: typeof globalThis.fetch;
+    resolveConnection?: () => Promise<ProjectHostConnection>;
+  } = {},
+): ProjectHostClient {
   const env = options.env ?? process.env;
   const connection = async (): Promise<ProjectHostConnection> => {
     if (options.resolveConnection) return options.resolveConnection();
     return {
-      endpoint: options.endpoint?.trim()
-        || env.CLASH_API_URL?.trim()
-        || "http://127.0.0.1:8789",
+      endpoint:
+        options.endpoint?.trim() ||
+        env.CLASH_API_URL?.trim() ||
+        "http://127.0.0.1:8789",
       ...(options.token?.trim() || env.CLASH_API_KEY?.trim()
         ? { token: options.token?.trim() || env.CLASH_API_KEY?.trim() }
         : {}),
     };
   };
   return {
+    resolveConnection: connection,
     resolveContext(input = {}) {
       return resolveProjectHostContext({
         cwd: input.cwd,
@@ -208,7 +248,9 @@ export function createProjectHostClient(options: {
       });
       return {
         projectId: context.projectId,
-        ...(context.workspaceRoot ? { workspaceRoot: context.workspaceRoot } : {}),
+        ...(context.workspaceRoot
+          ? { workspaceRoot: context.workspaceRoot }
+          : {}),
         value,
       };
     },

@@ -10,8 +10,12 @@ import {
   type ExecutorStep,
   type ProviderExecutor,
 } from "./executor-contract";
-import type { ExecutablePluginInvocation } from "@clash/shared-types/executable-plugin";
+import type {
+  ExecutablePluginInvocation,
+  ExecutablePluginReference,
+} from "@clash/shared-types/executable-plugin";
 import { aspectRatioLabel } from "@clash/shared-types/executable-plugin";
+import { ProviderExecutionError, providerHttpError } from "@clash/action-sdk";
 
 /**
  * Google's generateContent surface, for both hosts.
@@ -62,15 +66,6 @@ function record(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function strings(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter(
-        (entry): entry is string =>
-          typeof entry === "string" && entry.length > 0,
-      )
-    : [];
-}
-
 function stringValue(
   values: Record<string, unknown>,
   params: Record<string, unknown>,
@@ -111,12 +106,15 @@ async function storedField(
   return value ? { [key]: value } : {};
 }
 
-async function readJson(response: {
-  ok: boolean;
-  status: number;
-  statusText: string;
-  text(): Promise<string>;
-}): Promise<Record<string, unknown>> {
+async function readJson(
+  response: {
+    ok: boolean;
+    status: number;
+    statusText: string;
+    text(): Promise<string>;
+  },
+  operation: "submit" | "poll",
+): Promise<Record<string, unknown>> {
   const raw = await response.text();
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -126,9 +124,41 @@ async function readJson(response: {
   } catch {
     // A proxy or a quota page answers with HTML, and folding that into an empty object loses the
     // only explanation there was.
-    throw new Error(
-      `Google returned a non-JSON response (${response.status}): ${raw.slice(0, 200)}`,
-    );
+    const message = `Google returned a non-JSON response (${response.status}): ${raw.slice(0, 200)}`;
+    if (!response.ok) {
+      throw providerHttpError({
+        status: response.status,
+        message,
+        operation,
+      });
+    }
+    throw new ProviderExecutionError({
+      code: "invalid_response",
+      message,
+      retryable: false,
+      requestState: operation === "submit" ? "unknown" : "accepted",
+    });
+  }
+}
+
+function googleBaseUrlFor(
+  credentials: GoogleCredentials,
+  requestState: "rejected" | "accepted",
+): string {
+  try {
+    return googleBaseUrl({
+      ...(credentials.endpoint ? { endpoint: credentials.endpoint } : {}),
+      ...(credentials.service ? { service: credentials.service } : {}),
+      ...(credentials.region ? { region: credentials.region } : {}),
+      hasServiceAccount: Boolean(credentials.projectId),
+    });
+  } catch (error) {
+    throw new ProviderExecutionError({
+      code: "invalid_request",
+      message: error instanceof Error ? error.message : String(error),
+      retryable: false,
+      requestState,
+    });
   }
 }
 
@@ -235,39 +265,181 @@ function dataPart(
   return { fileData: { mimeType: fallbackMimeType, fileUri: url } };
 }
 
+type ResolvedReference = Awaited<ReturnType<ExecutorContext["reference"]>>;
+type GoogleMediaKind = "image" | "video" | "audio";
+type GoogleMediaReference =
+  | {
+      form: "url";
+      url: string;
+      kind: GoogleMediaKind;
+      mediaType: string;
+    }
+  | {
+      form: "bytes";
+      bytes: Uint8Array;
+      kind: GoogleMediaKind;
+      mediaType: string;
+    };
+type GoogleContentReference =
+  { form: "text"; text: string } | GoogleMediaReference;
+
+interface GoogleInputReferences {
+  content: GoogleContentReference[];
+  images: GoogleMediaReference[];
+  videos: GoogleMediaReference[];
+  audios: GoogleMediaReference[];
+  startFrame?: GoogleMediaReference;
+  endFrame?: GoogleMediaReference;
+}
+
+function referenceFailure(message: string): ProviderExecutionError {
+  return new ProviderExecutionError({
+    code: "invalid_request",
+    message,
+    retryable: false,
+    requestState: "rejected",
+  });
+}
+
+function defaultMediaType(kind: GoogleMediaKind): string {
+  if (kind === "image") return "image/png";
+  if (kind === "video") return "video/mp4";
+  return "audio/wav";
+}
+
+function mediaReference(
+  reference: ExecutablePluginReference,
+  resolved: ResolvedReference,
+  expectedKind?: GoogleMediaKind,
+): GoogleMediaReference {
+  if (resolved.form === "text") {
+    throw referenceFailure(
+      `Google ${reference.slot} reference resolved to text instead of media.`,
+    );
+  }
+  const declaredKind = "asset" in reference ? reference.asset.kind : undefined;
+  const kind = expectedKind ?? resolved.kind ?? declaredKind;
+  if (kind !== "image" && kind !== "video" && kind !== "audio") {
+    throw referenceFailure(
+      `Google ${reference.slot} reference has unsupported kind ${kind ?? "(missing)"}.`,
+    );
+  }
+  if (
+    expectedKind &&
+    ((resolved.kind && resolved.kind !== expectedKind) ||
+      (declaredKind && declaredKind !== expectedKind))
+  ) {
+    throw referenceFailure(
+      `Google ${reference.slot} reference must be ${expectedKind}.`,
+    );
+  }
+  const mediaType = resolved.mediaType ?? defaultMediaType(kind);
+  return resolved.form === "provider-url"
+    ? { form: "url", url: resolved.providerUrl, kind, mediaType }
+    : { form: "bytes", bytes: resolved.bytes, kind, mediaType };
+}
+
+function sortedReferences(
+  references: readonly ExecutablePluginReference[],
+): ExecutablePluginReference[] {
+  return references
+    .map((reference, position) => ({ reference, position }))
+    .sort(
+      (left, right) =>
+        left.reference.index - right.reference.index ||
+        left.position - right.position,
+    )
+    .map(({ reference }) => reference);
+}
+
+async function resolveInputReferences(
+  invocation: ExecutablePluginInvocation,
+  context: ExecutorContext,
+): Promise<GoogleInputReferences> {
+  const collected: GoogleInputReferences = {
+    content: [],
+    images: [],
+    videos: [],
+    audios: [],
+  };
+
+  for (const reference of sortedReferences(invocation.input.references)) {
+    const slot = reference.slot;
+    if (
+      slot !== "content" &&
+      slot !== "image" &&
+      slot !== "video" &&
+      slot !== "audio" &&
+      slot !== "startFrame" &&
+      slot !== "endFrame"
+    ) {
+      continue;
+    }
+    const resolved = await context.reference(reference);
+    if (slot === "content") {
+      collected.content.push(
+        resolved.form === "text"
+          ? { form: "text", text: resolved.text }
+          : mediaReference(reference, resolved),
+      );
+      continue;
+    }
+    const expectedKind =
+      slot === "startFrame" || slot === "endFrame" ? "image" : slot;
+    const media = mediaReference(reference, resolved, expectedKind);
+    if (slot === "image") collected.images.push(media);
+    else if (slot === "video") collected.videos.push(media);
+    else if (slot === "audio") collected.audios.push(media);
+    else if (slot === "startFrame") {
+      if (collected.startFrame)
+        throw referenceFailure(
+          "Google received more than one startFrame reference.",
+        );
+      collected.startFrame = media;
+    } else {
+      if (collected.endFrame)
+        throw referenceFailure(
+          "Google received more than one endFrame reference.",
+        );
+      collected.endFrame = media;
+    }
+  }
+  return collected;
+}
+
+function googleMediaPart(media: GoogleMediaReference): Record<string, unknown> {
+  if (media.form === "url") return dataPart(media.url, media.mediaType);
+  return {
+    inlineData: {
+      mimeType: media.mediaType,
+      data: Buffer.from(media.bytes).toString("base64"),
+    },
+  };
+}
+
 function orderedParts(
   values: Record<string, unknown>,
+  references: GoogleInputReferences,
 ): Record<string, unknown>[] {
-  const ordered = values.orderedContentParts;
-  if (Array.isArray(ordered) && ordered.length > 0) {
-    return ordered.flatMap((entry): Record<string, unknown>[] => {
-      const part = record(entry);
-      if (part.type === "text" && typeof part.text === "string")
-        return [{ text: part.text }];
-      if (typeof part.url !== "string") return [];
-      if (part.type === "image") return [dataPart(part.url, "image/png")];
-      if (part.type === "video") return [dataPart(part.url, "video/mp4")];
-      if (part.type === "audio") return [dataPart(part.url, "audio/wav")];
-      return [];
-    });
+  if (references.content.length > 0) {
+    return references.content.map((reference) =>
+      reference.form === "text"
+        ? { text: reference.text }
+        : googleMediaPart(reference),
+    );
   }
   const prompt = typeof values.prompt === "string" ? values.prompt : "";
   return [
     ...(prompt ? [{ text: prompt }] : []),
-    ...strings(values.referenceImageUrls).map((url) =>
-      dataPart(url, "image/png"),
-    ),
-    ...strings(values.referenceVideoUrls).map((url) =>
-      dataPart(url, "video/mp4"),
-    ),
-    ...strings(values.referenceAudioUrls).map((url) =>
-      dataPart(url, "audio/wav"),
-    ),
+    ...references.images.map(googleMediaPart),
+    ...references.videos.map(googleMediaPart),
+    ...references.audios.map(googleMediaPart),
   ];
 }
 
 function generateContentBody(
   values: Record<string, unknown>,
+  references: GoogleInputReferences,
 ): Record<string, unknown> {
   const explicit = values.body;
   if (explicit && typeof explicit === "object")
@@ -298,7 +470,7 @@ function generateContentBody(
     ...(systemPrompt
       ? { systemInstruction: { parts: [{ text: systemPrompt }] } }
       : {}),
-    contents: [{ role: "user", parts: orderedParts(values) }],
+    contents: [{ role: "user", parts: orderedParts(values, references) }],
     generationConfig: {
       responseModalities,
       ...(kind === "image" && Object.keys(imageConfig).length
@@ -315,8 +487,8 @@ function generateContentBody(
   };
 }
 
-function veoImage(url: string): Record<string, unknown> {
-  const part = dataPart(url, "image/png");
+function veoImage(media: GoogleMediaReference): Record<string, unknown> {
+  const part = googleMediaPart(media);
   const inline = record(part.inlineData);
   if (typeof inline.data === "string") {
     return {
@@ -332,14 +504,14 @@ function veoImage(url: string): Record<string, unknown> {
   };
 }
 
-function veoBody(values: Record<string, unknown>): Record<string, unknown> {
+function veoBody(
+  values: Record<string, unknown>,
+  references: GoogleInputReferences,
+): Record<string, unknown> {
   const params = record(values.modelParams);
   const prompt = typeof values.prompt === "string" ? values.prompt : "";
-  const start =
-    typeof values.startFrameUrl === "string" ? values.startFrameUrl : undefined;
-  const end =
-    typeof values.endFrameUrl === "string" ? values.endFrameUrl : undefined;
-  const references = strings(values.referenceImageUrls);
+  const start = references.startFrame;
+  const end = references.endFrame;
   const duration = Number(params.duration ?? values.duration ?? 4);
   return {
     instances: [
@@ -347,10 +519,10 @@ function veoBody(values: Record<string, unknown>): Record<string, unknown> {
         prompt,
         ...(start ? { image: veoImage(start) } : {}),
         ...(end ? { lastFrame: veoImage(end) } : {}),
-        ...(references.length
+        ...(references.images.length
           ? {
-              referenceImages: references.map((url) => ({
-                image: veoImage(url),
+              referenceImages: references.images.map((reference) => ({
+                image: veoImage(reference),
                 referenceType: "asset",
               })),
             }
@@ -369,12 +541,42 @@ function veoBody(values: Record<string, unknown>): Record<string, unknown> {
 function interactionBody(
   values: Record<string, unknown>,
   model: string,
+  references: GoogleInputReferences,
 ): Record<string, unknown> {
   const params = record(values.modelParams);
   const duration = Number(params.duration ?? values.duration ?? 5);
+  const mediaContent = references.content.some(
+    (reference) => reference.form !== "text",
+  );
+  if (
+    mediaContent ||
+    references.images.length > 0 ||
+    references.videos.length > 0 ||
+    references.audios.length > 0 ||
+    references.startFrame ||
+    references.endFrame
+  ) {
+    const received = [
+      ...references.content.map((reference) =>
+        reference.form === "text" ? "content:text" : `content:${reference.kind}`,
+      ),
+      ...references.images.map(() => "image"),
+      ...references.videos.map(() => "video"),
+      ...references.audios.map(() => "audio"),
+      ...(references.startFrame ? ["startFrame"] : []),
+      ...(references.endFrame ? ["endFrame"] : []),
+    ];
+    throw referenceFailure(
+      `Google Interactions does not expose reference media through this adapter; received ${received.join(", ")}.`,
+    );
+  }
+  const authoredText = references.content
+    .map((reference) => (reference.form === "text" ? reference.text : ""))
+    .join("");
   return {
     model,
-    input: typeof values.prompt === "string" ? values.prompt : "",
+    input:
+      authoredText || (typeof values.prompt === "string" ? values.prompt : ""),
     response_format: {
       type: "video",
       aspect_ratio: String(params.aspect_ratio ?? values.aspectRatio ?? "16:9"),
@@ -388,6 +590,7 @@ function interactionBody(
 
 function googleAuthHeaders(
   credentials: GoogleCredentials,
+  requestState: "rejected" | "accepted",
 ): Record<string, string> {
   if (credentials.accessToken) {
     return {
@@ -401,20 +604,29 @@ function googleAuthHeaders(
       "content-type": "application/json",
     };
   }
-  throw new Error(
-    "This Google account has neither an accessToken nor an apiKey stored.",
-  );
+  throw new ProviderExecutionError({
+    code: "authentication_failed",
+    message:
+      "This Google account has neither an accessToken nor an apiKey stored.",
+    retryable: false,
+    requestState,
+  });
 }
 
 function agentPlatformPrefix(
   baseUrl: string,
   credentials: GoogleCredentials,
+  requestState: "rejected" | "accepted",
   version = "v1",
 ): string {
   if (!credentials.projectId) {
-    throw new Error(
-      "This Agent Platform account has no project id; it comes from the service account key.",
-    );
+    throw new ProviderExecutionError({
+      code: "invalid_request",
+      message:
+        "This Agent Platform account has no project id; it comes from the service account key.",
+      retryable: false,
+      requestState,
+    });
   }
   const location = credentials.region || "global";
   const origin = baseUrl.replace(/\/v1(?:beta1)?\/?$/, "");
@@ -425,14 +637,16 @@ function veoPath(
   baseUrl: string,
   credentials: GoogleCredentials,
   model: string,
-  operation: string,
+  apiMethod: string,
+  requestState: "rejected" | "accepted",
 ): string {
-  return `${agentPlatformPrefix(baseUrl, credentials)}/publishers/google/models/${encodeURIComponent(model)}:${operation}`;
+  return `${agentPlatformPrefix(baseUrl, credentials, requestState)}/publishers/google/models/${encodeURIComponent(model)}:${apiMethod}`;
 }
 
 function interactionPath(
   baseUrl: string,
   credentials: GoogleCredentials,
+  requestState: "rejected" | "accepted",
   interactionId?: string,
 ): string {
   const trimmed = baseUrl.replace(/\/+$/, "");
@@ -445,7 +659,12 @@ function interactionPath(
     const origin = trimmed.replace(/\/v1(?:beta1)?\/?$/, "");
     return `${origin}/v1beta1/${interactionId}`;
   }
-  const prefix = agentPlatformPrefix(baseUrl, credentials, "v1beta1");
+  const prefix = agentPlatformPrefix(
+    baseUrl,
+    credentials,
+    requestState,
+    "v1beta1",
+  );
   return `${prefix}/interactions${interactionId ? `/${interactionId.replace(/^interactions\//, "")}` : ""}`;
 }
 
@@ -468,7 +687,12 @@ function pollState(value: unknown): GooglePollState {
   ) {
     return { family: "interaction", interactionId: state.interactionId };
   }
-  throw new Error("Google poll state is missing or invalid.");
+  throw new ProviderExecutionError({
+    code: "contract_violation",
+    message: "Google poll state is missing or invalid.",
+    retryable: false,
+    requestState: "accepted",
+  });
 }
 
 function mediaFromUnknown(
@@ -653,17 +877,19 @@ export const googleAdapter: ProviderExecutor = {
     context: ExecutorContext,
   ): Promise<ExecutorStep> {
     const credentials = await credentialsFor(context);
-    const headers = googleAuthHeaders(credentials);
+    const headers = googleAuthHeaders(credentials, "rejected");
     const fetchImpl = globalThis.fetch as unknown as FetchLike;
-    const baseUrl = googleBaseUrl({
-      ...(credentials.endpoint ? { endpoint: credentials.endpoint } : {}),
-      ...(credentials.service ? { service: credentials.service } : {}),
-      ...(credentials.region ? { region: credentials.region } : {}),
-      hasServiceAccount: Boolean(credentials.projectId),
-    });
+    const baseUrl = googleBaseUrlFor(credentials, "rejected");
     const values = invocation.input.values;
     const model = String(values.upstreamModel ?? values.model ?? "");
-    if (!model) throw new Error("Google executor needs a model.");
+    if (!model) {
+      throw new ProviderExecutionError({
+        code: "invalid_request",
+        message: "Google executor needs a model.",
+        retryable: false,
+        requestState: "rejected",
+      });
+    }
 
     const modelId = String(values.modelId ?? "");
     const kind = String(values.kind ?? "image");
@@ -673,10 +899,11 @@ export const googleAdapter: ProviderExecutor = {
     const veo =
       kind === "video" &&
       (modelId.startsWith("veo-") || model.startsWith("veo-"));
+    const references = await resolveInputReferences(invocation, context);
     const url = interaction
-      ? interactionPath(baseUrl, credentials)
+      ? interactionPath(baseUrl, credentials, "rejected")
       : veo
-        ? veoPath(baseUrl, credentials, model, "predictLongRunning")
+        ? veoPath(baseUrl, credentials, model, "predictLongRunning", "rejected")
         : googleModelPath({
             baseUrl,
             model,
@@ -686,28 +913,36 @@ export const googleAdapter: ProviderExecutor = {
             ...(credentials.region ? { location: credentials.region } : {}),
           });
     const request = interaction
-      ? interactionBody(values, model)
+      ? interactionBody(values, model, references)
       : veo
-        ? veoBody(values)
-        : generateContentBody(values);
+        ? veoBody(values, references)
+        : generateContentBody(values, references);
     const response = await fetchImpl(url, {
       method: "POST",
       headers,
       body: JSON.stringify(request),
     });
-    const body = await readJson(response);
+    const body = await readJson(response, "submit");
     if (!response.ok) {
       const error = (body.error as { message?: unknown } | undefined)?.message;
-      throw new Error(
-        `Google ${interaction ? "Interactions" : veo ? "Veo" : "generateContent"} failed: ` +
+      throw providerHttpError({
+        status: response.status,
+        message:
+          `Google ${interaction ? "Interactions" : veo ? "Veo" : "generateContent"} failed: ` +
           `${typeof error === "string" ? error : response.statusText}`,
-      );
+        operation: invocation.operation,
+      });
     }
 
     if (veo) {
       const operationName = body.name;
       if (typeof operationName !== "string" || !operationName) {
-        throw new Error(`Google Veo returned no operation name for ${model}.`);
+        throw new ProviderExecutionError({
+          code: "invalid_response",
+          message: `Google Veo returned no operation name for ${model}.`,
+          retryable: false,
+          requestState: "unknown",
+        });
       }
       return {
         status: "accepted",
@@ -731,7 +966,12 @@ export const googleAdapter: ProviderExecutor = {
           pollState: { family: "interaction", interactionId },
         };
       }
-      throw new Error(`Google Interactions returned no media for ${model}.`);
+      throw new ProviderExecutionError({
+        code: "invalid_response",
+        message: `Google Interactions returned no media for ${model}.`,
+        retryable: false,
+        requestState: "accepted",
+      });
     }
 
     const media = firstInlineMedia(body);
@@ -749,7 +989,12 @@ export const googleAdapter: ProviderExecutor = {
 
     // Finished with nothing in it is not a result. Reporting completion here would attach an empty
     // asset and close the task as though it had worked.
-    throw new Error(`Google returned no media or text for ${model}.`);
+    throw new ProviderExecutionError({
+      code: "invalid_response",
+      message: `Google returned no media or text for ${model}.`,
+      retryable: false,
+      requestState: "accepted",
+    });
   },
 
   async poll(
@@ -758,18 +1003,19 @@ export const googleAdapter: ProviderExecutor = {
   ): Promise<ExecutorStep> {
     const state = pollState(invocation.pollState);
     const credentials = await credentialsFor(context);
-    const headers = googleAuthHeaders(credentials);
-    const baseUrl = googleBaseUrl({
-      ...(credentials.endpoint ? { endpoint: credentials.endpoint } : {}),
-      ...(credentials.service ? { service: credentials.service } : {}),
-      ...(credentials.region ? { region: credentials.region } : {}),
-      hasServiceAccount: Boolean(credentials.projectId),
-    });
+    const headers = googleAuthHeaders(credentials, "accepted");
+    const baseUrl = googleBaseUrlFor(credentials, "accepted");
     const fetchImpl = globalThis.fetch as unknown as FetchLike;
     const response =
       state.family === "veo"
         ? await fetchImpl(
-            veoPath(baseUrl, credentials, state.model, "fetchPredictOperation"),
+            veoPath(
+              baseUrl,
+              credentials,
+              state.model,
+              "fetchPredictOperation",
+              "accepted",
+            ),
             {
               method: "POST",
               headers,
@@ -777,18 +1023,25 @@ export const googleAdapter: ProviderExecutor = {
             },
           )
         : await fetchImpl(
-            interactionPath(baseUrl, credentials, state.interactionId),
+            interactionPath(
+              baseUrl,
+              credentials,
+              "accepted",
+              state.interactionId,
+            ),
             {
               method: "GET",
               headers,
             },
           );
-    const body = await readJson(response);
+    const body = await readJson(response, "poll");
     if (!response.ok) {
       const error = (body.error as { message?: unknown } | undefined)?.message;
-      throw new Error(
-        `Google poll failed: ${typeof error === "string" ? error : response.statusText}`,
-      );
+      throw providerHttpError({
+        status: response.status,
+        message: `Google poll failed: ${typeof error === "string" ? error : response.statusText}`,
+        operation: invocation.operation,
+      });
     }
     const media = mediaFromUnknown(
       body.response ?? body.outputs ?? body.output ?? body,
@@ -800,9 +1053,15 @@ export const googleAdapter: ProviderExecutor = {
       body.status === "cancelled"
     ) {
       const error = record(body.error).message;
-      throw new Error(
-        `Google generation finished without media${typeof error === "string" ? `: ${error}` : "."}`,
-      );
+      throw new ProviderExecutionError({
+        code: body.status === "cancelled" ? "cancelled" : "provider_failed",
+        message: `Google generation finished without media${typeof error === "string" ? `: ${error}` : "."}`,
+        retryable: false,
+        requestState: "accepted",
+        ...(typeof body.status === "string"
+          ? { providerCode: body.status }
+          : {}),
+      });
     }
     return { status: "accepted", pollState: state };
   },

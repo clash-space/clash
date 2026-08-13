@@ -9,7 +9,7 @@ describe("AttributionLine primitives", () => {
       "utf8",
     );
     const tooltipSource = readFileSync(
-      join(process.cwd(), "packages/web-ui/src/components/ui/tooltip.tsx"),
+      join(process.cwd(), "packages/gui/src/components/ui/tooltip.tsx"),
       "utf8",
     );
 

@@ -6,7 +6,7 @@ const readNodeSource = (file: string) =>
     readFileSync(join(process.cwd(), "packages/web-ui/src/components/nodes", file), "utf8");
 
 const readUiSource = (file: string) =>
-    readFileSync(join(process.cwd(), "packages/web-ui/src/components/ui", file), "utf8");
+    readFileSync(join(process.cwd(), "packages/gui/src/components/ui", file), "utf8");
 
 describe("media node description disclosure primitives", () => {
     it.each(["ImageNode.tsx", "VideoNode.tsx"])("%s uses the shared collapsible primitive for description disclosure", (file) => {

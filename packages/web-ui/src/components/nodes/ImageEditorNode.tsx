@@ -35,13 +35,13 @@ const ImageEditorNode = ({ id, data }: NodeProps<Node<Record<string, any>>>) => 
         if (upstreamNode?.type !== 'image') return undefined;
         return (upstreamNode.data as Record<string, unknown> | undefined)?.assetId as string | undefined;
     }, [upstreamImageNodeId]));
-    const upstreamAsset = useAsset(upstreamAssetId);
-    const previewR2Key = upstreamAsset?.srcR2Key;
+    const upstreamAsset = useAsset(projectId, upstreamAssetId);
+    const previewUrl = upstreamAsset?.url;
 
     const editParams: ImageEditParams = (data.editParams as ImageEditParams | undefined) ?? {};
 
     const handleOpen = useCallback(() => {
-        if (!upstreamAsset || !upstreamAssetId || !previewR2Key) return;
+        if (!upstreamAsset || !upstreamAssetId || !previewUrl) return;
         const naturalWidth = upstreamAsset.metadata?.width ?? 1024;
         const naturalHeight = upstreamAsset.metadata?.height ?? 1024;
 
@@ -49,7 +49,7 @@ const ImageEditorNode = ({ id, data }: NodeProps<Node<Record<string, any>>>) => 
             editorNodeId: id,
             projectId,
             sourceAssetId: upstreamAssetId,
-            sourceR2Key: previewR2Key,
+            sourceUrl: previewUrl,
             naturalWidth,
             naturalHeight,
             initialParams: editParams,
@@ -57,7 +57,7 @@ const ImageEditorNode = ({ id, data }: NodeProps<Node<Record<string, any>>>) => 
             edges: reactFlow.getEdges(),
             parentId: typeof data.parentId === 'string' ? data.parentId : undefined,
         });
-    }, [upstreamAsset, upstreamAssetId, previewR2Key, editParams, id, projectId, openEditor, reactFlow, data.parentId]);
+    }, [upstreamAsset, upstreamAssetId, previewUrl, editParams, id, projectId, openEditor, reactFlow, data.parentId]);
 
     // Build a one-line summary of current params for the card footer.
     const paramSummary = useMemo(() => {
@@ -86,8 +86,8 @@ const ImageEditorNode = ({ id, data }: NodeProps<Node<Record<string, any>>>) => 
 
                 {/* Preview */}
                 <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden border-b border-warm-border bg-warm-muted">
-                    {previewR2Key ? (
-                        <SignedImg src={previewR2Key} alt="Source preview" className="w-full h-full object-cover pointer-events-none" />
+                    {previewUrl ? (
+                        <SignedImg src={previewUrl} alt="Source preview" className="w-full h-full object-cover pointer-events-none" />
                     ) : (
                         <div className="flex flex-col items-center gap-2 p-6 text-center">
                             <div className="rounded-2xl w-14 h-14 flex items-center justify-center bg-warm-surface shadow-sm border border-warm-border">

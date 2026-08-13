@@ -85,7 +85,6 @@ type RawTimelineDsl = {
   fps?: number;
   durationInFrames?: number;
   assetTranscripts?: Record<string, unknown>;
-  mediaAssetRefs?: Array<{ assetId: string }>;
   [key: string]: unknown;
 };
 
@@ -110,7 +109,6 @@ export type ResolvedTimelineDsl = {
   fps?: number;
   durationInFrames?: number;
   assetTranscripts?: Record<string, unknown>;
-  mediaAssetRefs?: Array<{ assetId: string }>;
   [key: string]: unknown;
 };
 

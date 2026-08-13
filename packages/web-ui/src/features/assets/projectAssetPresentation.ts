@@ -1,4 +1,4 @@
-import type { ProjectAsset } from "../../lib/types";
+import type { ResolvedAsset } from "@clash/shared-types";
 
 type CanvasAssetNode = {
   type?: string;
@@ -24,87 +24,54 @@ function isMachineAssetName(value?: string | null): boolean {
   );
 }
 
-function assetKindLabel(type?: string): string {
-  if (type === "video") return "video";
-  if (type === "audio") return "audio";
+function assetKindLabel(kind?: string): string {
+  if (kind === "video") return "video";
+  if (kind === "audio") return "audio";
+  if (kind === "model") return "model";
   return "image";
 }
 
-export function projectAssetDisplayName(asset: ProjectAsset): string {
+export function projectAssetDisplayName(asset: ResolvedAsset): string {
   const explicitName = asset.name?.trim();
   if (explicitName && !isMachineAssetName(explicitName)) return explicitName;
 
-  const path = asset.storageKey?.trim() || asset.url || asset.id;
-  const normalizedPath = path.toLocaleLowerCase();
-  const kind = assetKindLabel(asset.type);
-  if (/(?:^|\/)edits?(?:\/|$)/.test(normalizedPath)) return `Edited ${kind}`;
-  if (
-    /(?:^|\/)generated(?:\/|$)/.test(normalizedPath) ||
-    /local-(?:asset-)?gen-/.test(normalizedPath)
-  )
-    return `Generated ${kind}`;
-  if (/(?:^|\/)uploads?(?:\/|$)/.test(normalizedPath))
-    return `Uploaded ${kind}`;
+  const originalName = asset.metadata.originalName?.trim();
+  if (originalName && !isMachineAssetName(originalName)) return originalName;
 
-  const fileName = basename(path);
-  return fileName && !isMachineAssetName(fileName)
-    ? fileName
+  const kind = assetKindLabel(asset.kind);
+  const provenanceLabel =
+    asset.provenance?.kind === "import"
+      ? "Uploaded"
+      : asset.provenance?.kind === "generation"
+        ? "Generated"
+        : asset.provenance?.kind === "edit"
+          ? "Edited"
+          : asset.provenance?.kind === "render"
+            ? "Rendered"
+            : asset.provenance?.kind === "admission"
+              ? "Imported"
+              : undefined;
+  return provenanceLabel
+    ? `${provenanceLabel} ${kind}`
     : kind[0].toLocaleUpperCase() + kind.slice(1);
 }
 
-export function projectAssetThumbnailSource(asset: ProjectAsset): string {
-  return asset.thumbnailUrl?.trim() || asset.url;
-}
-
-function assetKeys(asset: ProjectAsset): string[] {
-  return [
-    asset.id,
-    asset.assetId,
-    asset.storageKey,
-    asset.url,
-    asset.thumbnailUrl,
-  ]
-    .filter(
-      (value): value is string => typeof value === "string" && Boolean(value),
-    )
-    .flatMap((value) => [value, basename(value)])
-    .map((value) => value.toLocaleLowerCase());
+export function projectAssetThumbnailSource(asset: ResolvedAsset): string {
+  return asset.thumbnailUrl?.trim() || asset.url?.trim() || "";
 }
 
 export function resolveCanvasNodeProjectAsset(
   node: CanvasAssetNode,
-  assets: readonly ProjectAsset[],
-): ProjectAsset | undefined {
+  assets: readonly ResolvedAsset[],
+): ResolvedAsset | undefined {
   const assetId = node.data?.assetId;
-  if (typeof assetId === "string" && assetId) {
-    const byId = assets.find(
-      (asset) => asset.id === assetId || asset.assetId === assetId,
-    );
-    if (byId) return byId;
-  }
-
-  const nodeKeys = [
-    node.data?.fileName,
-    node.data?.label,
-    node.data?.name,
-    node.data?.src,
-    node.data?.previewUrl,
-  ]
-    .filter(
-      (value): value is string => typeof value === "string" && Boolean(value),
-    )
-    .flatMap((value) => [value, basename(value)])
-    .map((value) => value.toLocaleLowerCase());
-  if (nodeKeys.length === 0) return undefined;
-  return assets.find((asset) => {
-    const keys = new Set(assetKeys(asset));
-    return nodeKeys.some((key) => keys.has(key));
-  });
+  if (typeof assetId !== "string" || !assetId) return undefined;
+  return assets.find((asset) => asset.id === assetId);
 }
 
 export function canvasNodeAssetDisplayName(
   node: CanvasAssetNode,
-  asset?: ProjectAsset,
+  asset?: ResolvedAsset,
 ): string {
   const nodeName = [
     node.data?.label,

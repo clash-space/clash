@@ -97,9 +97,12 @@ Desktop   ──imports─────────▶ shared contracts/runtime +
 - **CLI is a client.** It discovers the active host, calls its API, and manages explicit working-tree
   projections. It does not own ACP sessions, plugin subprocesses, local persistence, or cloud
   replication.
-- **MCP is a peer client.** `clash mcp` exposes the same capability catalog and semantics as the CLI,
-  but calls the local host protocol directly. Agents may choose either surface; neither invokes the
-  other or owns another daemon, Project replica, or independently implemented business layer.
+- **MCP is a peer client.** `clash mcp` calls the local host protocol directly. Its current Project
+  catalog covers Assets, Canvas, Timeline, and Director with the same semantics as the matching CLI
+  operations. Host/project/component lifecycle commands and working-tree projection conveniences
+  remain CLI-only by design. Canvas collection management and Text Revision history/restore are the
+  remaining MCP Project-semantic gaps. Neither client invokes the other or owns another daemon,
+  Project replica, or independently implemented business layer.
 - **Desktop is a shell and lifecycle client.** It discovers or starts the packaged `local-api` and renders the product
   UI against that host. It also directly consumes shared contracts and runtime primitives plus
   Desktop-specific modules such as Electron lifecycle, window management, OS integration, and
@@ -129,8 +132,12 @@ takeover is intentionally not implemented yet.
 
 ## GUI and business-controller layers
 
-Desktop presentation is platform-neutral and does not own product I/O. The shared renderer boundary
-is `@clash/gui`; Web and Desktop supply different controllers around the same views:
+The target presentation boundary is platform-neutral and does not own product
+I/O. `@clash/gui` already owns the shared interaction primitives and a small
+set of pure views, while most product views still live in `@clash/web-ui` and
+are being separated from their Web/local controller glue. The completed shape
+has Web and Desktop supply different controllers around the same `@clash/gui`
+views:
 
 ```mermaid
 flowchart LR
@@ -146,10 +153,16 @@ The GUI package may depend on browser-safe contracts and visual primitives. It r
 actions through props or typed ports; it must not call `fetch`, open a `WebSocket`, access browser
 storage, import Electron or `local-api`, or import `node:*`. Hosted authentication, projects, assets,
 sessions, sync, and persistence adapters belong to the Web application. Host lifecycle, ACP,
-windowing, and local runtime wiring belong to Desktop controllers. Thus Web shares Desktop's GUI,
-not Desktop business logic.
+windowing, and local runtime wiring belong to Desktop controllers. Until the extraction from
+`@clash/web-ui` is complete, this diagram is a boundary rule and migration target rather than a
+claim that every product view already lives in `@clash/gui`. Web must share Desktop's GUI, not
+Desktop business logic.
 
 ## Asset system
+
+The Local Host implementation described in this section is current. Team OSS,
+Resource Registry, multi-device transfer, and Cloud/Web execution paragraphs
+describe the required future Cloud adapter; they are not deployed behavior.
 
 Global and Project Asset libraries have independent product lifecycles while
 sharing immutable, content-addressed Resources underneath. Project Assets are
@@ -158,41 +171,42 @@ Canvas, Timeline, Director, prompts, generation, editing, and rendering express
 all strong media usage through Action input/output bindings. The current Host
 resolves those stable identities to a URL or read-only file projection.
 
-Project Loro synchronizes Project Asset entries and Action bindings, never blob
-bytes, storage keys, local paths, signed URLs, or transfer progress. Team
-Resource replication records stable Resource-to-OSS bindings in the cloud
-Resource registry; there is no second Project sync envelope and OSS keys never
-enter Loro. Local-origin nodes, metadata, ProjectAsset entries, and Action
-bindings may synchronize before the silent OSS upload finishes, so collaborators
-see a pending placeholder and other Hosts reject byte-dependent work until the
-Resource is ready. A cloud-origin ActionRun and its placeholder node may also
-appear immediately, but its output ProjectAsset and binding appear only after
-the cloud runtime has written and verified the Resource in OSS. Other devices
+Project Loro currently synchronizes Project Asset entries and Action bindings,
+never blob bytes, storage keys, local paths, signed URLs, or transfer progress.
+The future Cloud adapter will record stable Resource-to-OSS bindings in the
+cloud Resource Registry; it must not introduce a second Project sync envelope
+or put OSS keys in Loro. Its target behavior allows local-origin structure to
+synchronize before silent OSS upload finishes, while other Hosts reject
+byte-dependent work until the Resource is ready. A cloud-origin ActionRun and
+placeholder may likewise synchronize early, but its output ProjectAsset and
+binding may appear only after verified OSS staging. Other devices will then
 download and verify ready Resources asynchronously.
 
-Task execution follows the initiating surface rather than the device that later
-observes synchronized state. Web submissions run in the cloud task runtime;
-Desktop, CLI, and MCP submissions run in the designated local-api Host. A
-shared Action is frozen into an ActionRevision and a single-owner ActionRun, so
-Project sync cannot cause another cloud or local runtime to execute it again.
-Both execution realms use the same Durable Run Engine and step graph. Local
-steps persist through SQLite plus local CAS; cloud steps use Workflow state plus
-OSS staging. An interrupted Provider submit attempt follows the shared retry
-policy and may create duplicate upstream work when the first response was
-ambiguous; this is an explicit availability trade-off. Once a Provider task
-token is checkpointed, recovery only polls that task. Output publication and
-Resource replication remain idempotent. Attempt journals and Provider tokens
-stay owner-private; Project Loro carries only coarse ActionRun state and never
-holds a transaction open across an external request.
+The target execution rule follows the initiating surface rather than a device
+that later observes synchronized state: Web will use the cloud task runtime,
+while Desktop, CLI, and MCP use the designated local-api Host. Only the Local
+adapter is implemented today. It persists the shared Durable Run Engine and
+step graph through SQLite plus local CAS. The future Cloud adapter must reuse
+that graph with Workflow state plus OSS staging. In both adapters, an ambiguous
+interrupted submit may be attempted again as an explicit availability trade-off;
+once a Provider task token is checkpointed, recovery only polls that task, and
+publication remains idempotent. Attempt journals and Provider tokens stay
+owner-private; Project Loro carries only coarse ActionRun state and never holds
+a transaction open across an external request.
 
-Canonical Asset deletion is explicit and split into two lifecycles. Logical
-deletion atomically checks Action bindings and changes the ProjectAsset to
+See [Durable Run Protocol](/guide/durable-run-protocol) for the shared step
+graph, checkpoint and idempotency rules, collaboration projection, owner-only
+recovery, and the future Cloud adapter ports.
+
+Canonical Asset deletion is explicit and split into two lifecycles. The current
+Local Host atomically checks Action bindings and changes the ProjectAsset to
 `trashed` in Project Loro; that CRDT update is the complete user-visible delete
-and remains undoable during the recovery window. Resource claims stay active
-until a later terminal `purged` tombstone. Registry reconciliation then releases
-the claim, and a physical-delete worker removes OSS bytes only when no claim
-remains. Storage cleanup failure may retain bytes but cannot change Project
-state. Background orphan inference is not an Asset lifecycle mechanism.
+and remains undoable during the recovery window. Terminal Asset purge exists in
+the shared authority/SDK but has no Local product command or scheduler yet. In
+the future Cloud/physical-reclamation path, Registry reconciliation will release
+a claim only after terminal purge, and a worker may remove OSS bytes only when
+no claim remains. Cleanup failure may retain bytes but cannot change Project
+state. Background orphan inference is never an Asset lifecycle mechanism.
 
 See [Asset System: Product and Technical Design](/guide/asset-system) for the
 complete product vocabulary, link rules, Action reference model, collaboration
@@ -236,17 +250,21 @@ and the selected route.
 UI/CLI submits task to local-api
   → host resolves route (card × provider implementation)
   → host binds the selected Provider account to the invocation
-  → plugin host invokes the plugin's provider-executor over stdio
+  → Durable Run Engine claims and checkpoints one submit or poll step
+  → plugin host invokes the plugin's provider-executor once over stdio
   → plugin reads account-scoped state through context.store
-  → plugin drives upstream HTTP with its own fetch/Axios/client
-     (submit → poll → fetch file)
-  → plugin returns outputs; host persists them as project assets
+  → plugin performs exactly one Provider operation with its own fetch/Axios/client
+     (one submit, or one status poll plus completed-result conversion)
+  → accepted state is checkpointed; the Host schedules the next poll step
+  → completed outputs are staged in CAS and idempotently published as Project Assets
   → typed store/reference/upload operations are audited by the host
 ```
 
 The manifest declares only what the plugin contributes. Network and filesystem
 access are ordinary process capabilities; provider traffic recording and replay
-are test-runner instrumentation, not branches in plugin business code.
+are test-runner instrumentation, not branches in plugin business code. Provider
+plugins never own retry loops, total task lifetime, restart recovery, or Project
+publication; those belong to the Host's durable step graph.
 
 ## Kinds
 

@@ -2,11 +2,11 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { LoroDoc } from "loro-crdt";
 import {
-  Canvas,
   DEFAULT_CANVAS_ID,
   canvasGraphReconciliationChanged,
-  CustomActionDefinitionSchema,
   reconcileCanvasGraph,
+  reconcileActionAssetBindingTargets,
+  reconcileProjectCoverBindings,
   reconcileProjectTimelineOwnership,
   reconcileProjectDirectorStageOwnership,
   loroSyncUpdateId,
@@ -17,10 +17,7 @@ import {
 } from "@clash/shared-types";
 import { WebSocketServer, type WebSocket } from "ws";
 import { FileReplicaStore } from "./loro/file-replica-store.js";
-import {
-  createLocalWorkflowProcessor,
-  type LocalWorkflowProcessor,
-} from "./local-processor.js";
+import type { LocalWorkflowProcessor } from "./local-processor.js";
 
 type UpgradeCapableServer = {
   on(
@@ -205,23 +202,31 @@ async function loadDoc(options: LocalSyncOptions): Promise<{
   const graphRepair = reconcileCanvasGraph(doc);
   const timelineRepair = reconcileProjectTimelineOwnership(doc);
   const directorRepair = reconcileProjectDirectorStageOwnership(doc);
+  const projectCoverRepair = reconcileProjectCoverBindings(doc);
+  const assetBindingRepair = reconcileActionAssetBindingTargets(doc);
   const workspaceRepaired =
     canvasGraphReconciliationChanged(graphRepair) ||
     timelineRepair.removedActionNodeIds.length > 0 ||
     timelineRepair.detachedTimelineIds.length > 0 ||
     directorRepair.removedActionNodeIds.length > 0 ||
-    directorRepair.detachedStageIds.length > 0;
+    directorRepair.detachedStageIds.length > 0 ||
+    projectCoverRepair.changed ||
+    assetBindingRepair.restoredProjectAssetIds.length > 0;
 
   return { doc, store, importedRemoteSnapshot, workspaceRepaired };
 }
 
 export class LocalLoroRoom {
   private peers = new Map<PeerId, LocalPeer>();
+  private projectOperations: Promise<void> = Promise.resolve();
   private updatesSinceSnapshot = 0;
   private updateBytesSinceSnapshot = 0;
   private activityThrottle = new Map<string, number>();
   private pendingWorkQueue: Promise<void> = Promise.resolve();
   private pollTimer: ReturnType<typeof setTimeout> | undefined;
+  private pollScheduleVersion = 0;
+  private closed = false;
+  private closePromise: Promise<void> | undefined;
 
   private constructor(
     private readonly projectId: string,
@@ -233,16 +238,12 @@ export class LocalLoroRoom {
 
   static async open(options: LocalSyncOptions): Promise<LocalLoroRoom> {
     const loaded = await loadDoc(options);
-    const workflowProcessor =
-      options.workflowProcessor === undefined
-        ? createLocalWorkflowProcessor({ dataDir: options.dataDir })
-        : (options.workflowProcessor ?? undefined);
     const room = new LocalLoroRoom(
       options.projectId,
       loaded.doc,
       loaded.store,
       options.remotePersistence,
-      workflowProcessor,
+      options.workflowProcessor ?? undefined,
     );
     if (loaded.importedRemoteSnapshot || loaded.workspaceRepaired)
       await room.saveSnapshot();
@@ -254,22 +255,76 @@ export class LocalLoroRoom {
     return this.doc.export({ mode: "snapshot" });
   }
 
+  private async enqueueProjectOperation<T>(
+    task: () => Promise<T> | T,
+  ): Promise<T> {
+    const run = this.projectOperations.then(task);
+    this.projectOperations = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  inspectProject<T>(read: (doc: LoroDoc) => T | Promise<T>): Promise<T> {
+    return this.enqueueProjectOperation(() => read(this.doc));
+  }
+
+  mutateProject<T>(
+    mutation: (
+      doc: LoroDoc,
+    ) => { value: T; save?: boolean } | Promise<{ value: T; save?: boolean }>,
+  ): Promise<T> {
+    return this.enqueueProjectOperation(async () => {
+      const versionBefore = this.doc.version();
+      const result = await mutation(this.doc);
+      const update = exactBytes(
+        this.doc.export({ mode: "update", from: versionBefore }),
+      );
+      // `save` is an optimization hint for the file-backed adapter. The live room trusts the
+      // actual CRDT delta: if a callback changed the Project, leaving it only in memory would make
+      // the next compaction erase the HTTP mutation.
+      if (update.byteLength > 0) {
+        await this.persistUpdate(update);
+        for (const peer of this.peers.values()) peer.sendUpdate(update);
+        this.mirrorRemoteUpdate(update);
+      }
+      return result.value;
+    });
+  }
+
   /**
    * Imports a mutation committed through the local HTTP project-command surface, then runs the
    * same pending-work queue used by WebSocket peers. GUI, CLI, and MCP therefore share one room
    * authority even when the command did not originate on the room socket.
    */
   async refreshFromStore(): Promise<void> {
+    await this.enqueueProjectOperation(() => this.refreshFromStoreUnsafe());
+    await this.processPendingWork();
+  }
+
+  private async refreshFromStoreUnsafe(): Promise<void> {
     const persisted = await this.store.recover(this.projectId);
     const versionBefore = this.doc.version();
     this.doc.import(persisted.export({ mode: "snapshot" }));
+    const repairVersion = this.doc.version();
+    const projectCoverRepair = reconcileProjectCoverBindings(this.doc);
+    const assetBindingRepair = reconcileActionAssetBindingTargets(this.doc);
+    const repairUpdate =
+      projectCoverRepair.changed ||
+      assetBindingRepair.restoredProjectAssetIds.length > 0
+        ? exactBytes(this.doc.export({ mode: "update", from: repairVersion }))
+        : null;
     const update = exactBytes(
       this.doc.export({ mode: "update", from: versionBefore }),
     );
     if (update.byteLength > 0) {
       for (const peer of this.peers.values()) peer.sendUpdate(update);
     }
-    await this.processPendingWork();
+    if (repairUpdate?.byteLength) {
+      await this.persistUpdate(repairUpdate);
+      this.mirrorRemoteUpdate(repairUpdate);
+    }
   }
 
   addPeer(
@@ -298,6 +353,16 @@ export class LocalLoroRoom {
   }
 
   async receive(sender: PeerId, update: Uint8Array): Promise<void> {
+    await this.enqueueProjectOperation(() =>
+      this.receiveUnsafe(sender, update),
+    );
+    await this.processPendingWork();
+  }
+
+  private async receiveUnsafe(
+    sender: PeerId,
+    update: Uint8Array,
+  ): Promise<void> {
     const updateBytes = exactBytes(update);
     const nodesMap = this.doc.getMap("nodes");
     const nodesBefore = new Map<string, Record<string, any>>();
@@ -309,12 +374,16 @@ export class LocalLoroRoom {
     const graphRepair = reconcileCanvasGraph(this.doc);
     const timelineRepair = reconcileProjectTimelineOwnership(this.doc);
     const directorRepair = reconcileProjectDirectorStageOwnership(this.doc);
+    const projectCoverRepair = reconcileProjectCoverBindings(this.doc);
+    const assetBindingRepair = reconcileActionAssetBindingTargets(this.doc);
     const workspaceRepaired =
       canvasGraphReconciliationChanged(graphRepair) ||
       timelineRepair.removedActionNodeIds.length > 0 ||
       timelineRepair.detachedTimelineIds.length > 0 ||
       directorRepair.removedActionNodeIds.length > 0 ||
-      directorRepair.detachedStageIds.length > 0;
+      directorRepair.detachedStageIds.length > 0 ||
+      projectCoverRepair.changed ||
+      assetBindingRepair.restoredProjectAssetIds.length > 0;
     const repairUpdate = workspaceRepaired
       ? exactBytes(this.doc.export({ mode: "update", from: repairVersion }))
       : null;
@@ -333,7 +402,6 @@ export class LocalLoroRoom {
       this.mirrorRemoteUpdate(repairUpdate);
     }
     this.broadcastNodeActivity(sender, nodesBefore);
-    await this.processPendingWork();
   }
 
   private broadcastNodeActivity(
@@ -398,85 +466,28 @@ export class LocalLoroRoom {
   }
 
   async receiveJson(sender: PeerId, msg: Record<string, any>): Promise<void> {
-    if (msg.type === "register_custom_actions") {
-      const peer = this.peers.get(sender);
-      const runtimeId = peer?.runtimeId;
-      const actions = Array.isArray(msg.actions)
-        ? (msg.actions as Array<Record<string, any>>)
-        : [];
-      const wantsLocalRuntime = actions.some(
-        (action) => (action?.runtime || "local") !== "worker",
-      );
-      if (wantsLocalRuntime && !runtimeId) {
-        peer?.sendJson?.({
-          type: "register_custom_actions.rejected",
-          error: "missing_runtime_id",
-        });
-        return;
-      }
-      const versionBefore = this.doc.version();
-      const actionsMap = this.doc.getMap("customActions");
-      for (const action of actions) {
-        const parsed = CustomActionDefinitionSchema.safeParse(action);
-        if (!parsed.success) continue;
-        const def = parsed.data;
-        const storedDef: Record<string, unknown> = {
-          id: def.id,
-          name: def.name,
-          description: def.description || "",
-          parameters: def.parameters || [],
-          outputType: def.outputType || "image",
-          icon: def.icon || "",
-          color: def.color || "",
-          runtime: def.runtime || "local",
-          version: def.version || "",
-          author: def.author || "",
-          repository: def.repository || "",
-          workerUrl: def.workerUrl || "",
-          secrets: def.secrets || [],
-          tags: def.tags || [],
-          promptModalities: def.promptModalities,
-        };
-        const model = (def as typeof def & { model?: unknown }).model;
-        if (model) storedDef.model = model;
-        if (def.runtime === "local" && runtimeId)
-          storedDef.registeredByRuntime = runtimeId;
-        actionsMap.set(def.id, storedDef);
-      }
-      await this.publishUpdate(versionBefore);
+    return this.enqueueProjectOperation(() =>
+      this.receiveJsonUnsafe(sender, msg),
+    );
+  }
 
-      const registeredIds = new Set(
-        actions.map((action) => action.id).filter(Boolean),
-      );
-      const tasksMap = this.doc.getMap("tasks");
-      for (const [, raw] of tasksMap.entries()) {
-        const task = raw as Record<string, any>;
-        if (task?.status !== "waiting_for_agent") continue;
-        if (!registeredIds.has(task.customActionId)) continue;
-        if (task.registeredByRuntime && task.registeredByRuntime !== runtimeId)
-          continue;
-        peer?.sendJson?.({ type: "custom_task_assigned", task });
-      }
-      return;
-    }
-
-    if (msg.type === "unregister_custom_actions") {
-      const actionIds = Array.isArray(msg.actionIds)
-        ? msg.actionIds.filter(
-            (id: unknown): id is string =>
-              typeof id === "string" && id.length > 0,
-          )
-        : [];
-      if (!actionIds.length) return;
-      const versionBefore = this.doc.version();
-      const actionsMap = this.doc.getMap("customActions");
-      for (const id of actionIds) actionsMap.delete(id);
-      await this.publishUpdate(versionBefore);
-      return;
-    }
-
-    if (msg.type === "complete_custom_task") {
-      await this.completeCustomTask(msg);
+  private async receiveJsonUnsafe(
+    sender: PeerId,
+    msg: Record<string, any>,
+  ): Promise<void> {
+    if (
+      msg.type === "register_custom_actions" ||
+      msg.type === "unregister_custom_actions" ||
+      msg.type === "complete_custom_task"
+    ) {
+      this.peers.get(sender)?.sendJson?.({
+        type: `${msg.type}.rejected`,
+        code: "LEGACY_CUSTOM_ACTION_PROTOCOL_RETIRED",
+        error:
+          "Legacy ClashAgent custom-action transport is retired; install a clash.plugin/v1 executable plugin.",
+        ...(typeof msg.taskId === "string" ? { taskId: msg.taskId } : {}),
+        ...(typeof msg.nodeId === "string" ? { nodeId: msg.nodeId } : {}),
+      });
     }
   }
 
@@ -503,54 +514,66 @@ export class LocalLoroRoom {
   }
 
   private processPendingWork(): Promise<void> {
-    const run = this.pendingWorkQueue.then(() => this.processPendingWorkOnce());
+    if (this.closed) return Promise.resolve();
+    const run = this.pendingWorkQueue.then(() =>
+      this.enqueueProjectOperation(() => this.processPendingWorkOnce()),
+    );
     this.pendingWorkQueue = run.catch(() => undefined);
     void run.then(() => this.scheduleNextPoll()).catch(() => undefined);
     return run;
   }
 
   /**
-   * Comes back for work a provider is still holding.
+   * Comes back for journaled work a Provider is still holding.
    *
    * Pending work otherwise runs only when the document changes or a room loads, which was enough
    * while a generation was one long await -- the call that started it also finished it. Once submit
    * and poll became separate, nothing returned: a node sat at `generating` with its due time ten
    * minutes past and nobody looking, while the result waited upstream, paid for.
    *
-   * Woken for the node due soonest rather than on a fixed tick, because the interval is the
-   * provider's to state: a fixed one either wastes requests on a provider that asked for a long
-   * wait or ignores one that asked for a short one.
+   * The owner-private journal supplies the next wake for this project. Project Loro contains only
+   * coarse generating/completed/failed state and is never a scheduler index.
    */
-  private scheduleNextPoll(): void {
+  private async scheduleNextPoll(): Promise<void> {
+    const scheduleVersion = ++this.pollScheduleVersion;
     if (this.pollTimer) {
       clearTimeout(this.pollTimer);
       this.pollTimer = undefined;
     }
-    if (!this.workflowProcessor) return;
-    let earliest = Number.POSITIVE_INFINITY;
-    const nodes = this.doc.getMap("nodes");
-    for (const id of nodes.keys()) {
-      const node = nodes.get(id) as
-        { data?: Record<string, unknown> } | undefined;
-      const data = node?.data;
-      if (
-        !data ||
-        data.status !== "generating" ||
-        data.providerPollState === undefined
-      )
-        continue;
-      const dueAt =
-        typeof data.providerPollAt === "number" ? data.providerPollAt : 0;
-      if (dueAt < earliest) earliest = dueAt;
-    }
-    if (!Number.isFinite(earliest)) return;
+    if (this.closed || !this.workflowProcessor?.nextWakeAt) return;
+    const earliest = await this.workflowProcessor.nextWakeAt(this.projectId);
+    if (
+      this.closed ||
+      scheduleVersion !== this.pollScheduleVersion ||
+      earliest === undefined
+    )
+      return;
     // A floor, so a provider that asks for no delay cannot turn this into a busy loop.
-    const delay = Math.max(1_000, earliest - Date.now());
+    const delay = Math.max(
+      this.workflowProcessor.minimumPollDelayMs ?? 1_000,
+      earliest - Date.now(),
+    );
     this.pollTimer = setTimeout(() => {
       this.pollTimer = undefined;
       void this.processPendingWork();
     }, delay);
     this.pollTimer.unref?.();
+  }
+
+  close(): Promise<void> {
+    return (this.closePromise ??= this.closeOnce());
+  }
+
+  private async closeOnce(): Promise<void> {
+    this.closed = true;
+    this.pollScheduleVersion += 1;
+    if (this.pollTimer) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = undefined;
+    }
+    await this.pendingWorkQueue.catch(() => undefined);
+    await this.projectOperations.catch(() => undefined);
+    this.peers.clear();
   }
 
   private async processPendingWorkOnce(): Promise<void> {
@@ -567,130 +590,23 @@ export class LocalLoroRoom {
       for (const peer of this.peers.values()) peer.sendUpdate(update);
       this.mirrorRemoteUpdate(update);
     };
-    const changed = await this.workflowProcessor.process({
+    let changed = await this.workflowProcessor.process({
       doc: this.doc,
       projectId: this.projectId,
       broadcastJson: (msg) => sideband.push(msg),
       checkpoint,
     });
+    const projectCoverRepair = reconcileProjectCoverBindings(this.doc);
+    changed = projectCoverRepair.changed || changed;
     if (!changed) return;
     await checkpoint();
     for (const msg of sideband) this.broadcastJson(msg);
-  }
-
-  private async publishUpdate(versionBefore: unknown): Promise<void> {
-    const update = exactBytes(
-      this.doc.export({ mode: "update", from: versionBefore as never }),
-    );
-    await this.persistUpdate(update);
-    for (const peer of this.peers.values()) {
-      peer.sendUpdate(update);
-    }
-    this.mirrorRemoteUpdate(update);
   }
 
   private broadcastJson(msg: Record<string, unknown>): void {
     for (const peer of this.peers.values()) {
       peer.sendJson?.(msg);
     }
-  }
-
-  private async completeCustomTask(msg: Record<string, any>): Promise<void> {
-    const taskId = typeof msg.taskId === "string" ? msg.taskId : "";
-    const nodeId = typeof msg.nodeId === "string" ? msg.nodeId : "";
-    if (!taskId || !nodeId) return;
-    const tasksMap = this.doc.getMap("tasks");
-    if (!tasksMap.get(taskId)) return;
-
-    const versionBefore = this.doc.version();
-    const nodesMap = this.doc.getMap("nodes");
-    const node = nodesMap.get(nodeId) as Record<string, any> | undefined;
-    const data = node?.data && typeof node.data === "object" ? node.data : {};
-    const result =
-      msg.result && typeof msg.result === "object" ? msg.result : {};
-    const assets = Array.isArray(result.assets)
-      ? (result.assets as Array<Record<string, any>>)
-      : [];
-    const isFailure = msg.status === "failed";
-
-    if (!node) {
-      tasksMap.delete(taskId);
-      await this.publishUpdate(versionBefore);
-      return;
-    }
-
-    if (isFailure || assets.length === 0) {
-      nodesMap.set(nodeId, {
-        ...node,
-        data: {
-          ...data,
-          pendingTask: undefined,
-          status: isFailure ? "failed" : "completed",
-          ...(result.description ? { description: result.description } : {}),
-          ...(result.error ? { error: result.error } : {}),
-        },
-      });
-    } else {
-      const primary = assets[0];
-      const primaryData: Record<string, unknown> = {
-        ...data,
-        pendingTask: undefined,
-        status: "completed",
-      };
-      if (primary.type === "text") primaryData.content = primary.content ?? "";
-      else if (primary.storageKey) primaryData.assetId = taskId;
-      if (primary.label) primaryData.label = primary.label;
-      if (result.description) primaryData.description = result.description;
-      nodesMap.set(nodeId, { ...node, data: primaryData });
-
-      if (assets.length > 1) {
-        const canvas = new Canvas(this.doc, () => {});
-        const incoming = canvas
-          .listEdges()
-          .filter((edge) => edge.target === nodeId);
-        for (let i = 1; i < assets.length; i++) {
-          const asset = assets[i];
-          const siblingNodeId = crypto.randomUUID().slice(0, 8);
-          const siblingType =
-            asset.type === "video"
-              ? "video"
-              : asset.type === "audio"
-                ? "audio"
-                : asset.type === "text"
-                  ? "text"
-                  : "image";
-          const siblingData: Record<string, unknown> = {
-            status: "completed",
-            label: asset.label || `Output ${i + 1}`,
-          };
-          if (asset.type === "text") siblingData.content = asset.content ?? "";
-          else siblingData.assetId = `${taskId}-${i}`;
-          if (incoming.length === 0) {
-            canvas.createNode(siblingNodeId, siblingType, siblingData);
-          } else {
-            canvas.createLinkedNode({
-              nodeId: siblingNodeId,
-              nodeType: siblingType,
-              data: siblingData,
-              parentId: null,
-              sourceNodeId: incoming[0].source,
-            });
-            for (let k = 1; k < incoming.length; k++) {
-              const extra = incoming[k];
-              canvas.insertEdge(
-                `${extra.source}-${siblingNodeId}`,
-                extra.source,
-                siblingNodeId,
-                "default",
-              );
-            }
-          }
-        }
-      }
-    }
-
-    tasksMap.delete(taskId);
-    await this.publishUpdate(versionBefore);
   }
 
   private mirrorRemoteUpdate(update: Uint8Array): void {
@@ -719,6 +635,8 @@ export class LocalLoroRoom {
 
 export class LocalLoroRoomHub {
   private rooms = new Map<string, Promise<LocalLoroRoom>>();
+  private closed = false;
+  private closePromise: Promise<void> | undefined;
 
   constructor(
     private readonly dataDir: string,
@@ -727,6 +645,9 @@ export class LocalLoroRoomHub {
   ) {}
 
   room(projectId: string): Promise<LocalLoroRoom> {
+    if (this.closed) {
+      return Promise.reject(new Error("Local Project room hub is closed."));
+    }
     let room = this.rooms.get(projectId);
     if (!room) {
       room = LocalLoroRoom.open({
@@ -740,6 +661,22 @@ export class LocalLoroRoomHub {
     return room;
   }
 
+  async inspectProject<T>(
+    projectId: string,
+    read: (doc: LoroDoc) => T | Promise<T>,
+  ): Promise<T> {
+    return (await this.room(projectId)).inspectProject(read);
+  }
+
+  async mutateProject<T>(
+    projectId: string,
+    mutation: (
+      doc: LoroDoc,
+    ) => { value: T; save?: boolean } | Promise<{ value: T; save?: boolean }>,
+  ): Promise<T> {
+    return (await this.room(projectId)).mutateProject(mutation);
+  }
+
   async refresh(projectId: string): Promise<void> {
     const existing = this.rooms.get(projectId);
     if (!existing) {
@@ -747,6 +684,21 @@ export class LocalLoroRoomHub {
       return;
     }
     await (await existing).refreshFromStore();
+  }
+
+  close(): Promise<void> {
+    return (this.closePromise ??= this.closeOnce());
+  }
+
+  private async closeOnce(): Promise<void> {
+    this.closed = true;
+    const rooms = await Promise.allSettled(this.rooms.values());
+    await Promise.all(
+      rooms.flatMap((result) =>
+        result.status === "fulfilled" ? [result.value.close()] : [],
+      ),
+    );
+    this.rooms.clear();
   }
 }
 

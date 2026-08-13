@@ -139,11 +139,23 @@ export class PluginStdioSession {
   }
 
   private acceptResult(message: unknown): void {
-    const result = ExecutablePluginResultSchema.parse(message);
-    const pending = this.pending.get(result.invocationId);
+    const invocationId = (message as { invocationId?: unknown })?.invocationId;
+    if (typeof invocationId !== "string") return;
+    const pending = this.pending.get(invocationId);
     if (!pending) return;
+    let result: ExecutablePluginResult;
+    try {
+      result = ExecutablePluginResultSchema.parse(message);
+    } catch (error) {
+      clearTimeout(pending.timer);
+      this.pending.delete(invocationId);
+      pending.reject(new Error(
+        `Plugin ${this.manifest.id} emitted an invalid result for ${invocationId}: ${(error as Error).message}`,
+      ));
+      return;
+    }
     clearTimeout(pending.timer);
-    this.pending.delete(result.invocationId);
+    this.pending.delete(invocationId);
     pending.resolve(result);
   }
 

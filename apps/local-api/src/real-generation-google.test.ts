@@ -8,13 +8,17 @@ import {
   createGoogleOmniProviderCases,
   createGoogleProviderCases,
 } from "./google-provider-e2e-cases.js";
-import { loadProviderLiveTestConfig } from "./provider-live-test-config.test-helper.js";
+import {
+  loadProviderLiveTestConfig,
+  providerLiveTestTimeoutMs,
+} from "./provider-live-test-config.test-helper.js";
 import { loadProviderLiveTestLocalAccount } from "./provider-live-test-config.test-helper.js";
 import { runProviderLiveTestHarness } from "./provider-replay-test-harness.js";
 import { readJsonlProviderTestRecording } from "./provider-test-recorder.js";
 import { resolveStoredCredentials } from "./service-account-exchange.js";
 
 const e2e = await loadProviderLiveTestConfig(process.env);
+const providerTimeoutMs = providerLiveTestTimeoutMs(e2e);
 const temporaryRoots: string[] = [];
 
 interface GoogleLiveCredentialSelection {
@@ -155,7 +159,7 @@ describe.runIf(e2e.mode === "live")("Google provider live recorder", () => {
           credentials: credentialSelection.credentials,
         },
         cases,
-        timeoutMs: 20 * 60_000,
+        timeoutMs: providerTimeoutMs,
       });
       expect(result.cases).toHaveLength(cases.length);
 
@@ -238,7 +242,7 @@ describe.runIf(e2e.mode === "live")("Google provider live recorder", () => {
           credentials: credentialSelection.credentials,
         },
         cases,
-        timeoutMs: 20 * 60_000,
+        timeoutMs: providerTimeoutMs,
       });
       expect(result.cases).toHaveLength(1);
 

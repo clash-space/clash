@@ -10,6 +10,21 @@ export interface ProviderLiveTestConfig {
   env: Record<string, string>;
 }
 
+export const DEFAULT_PROVIDER_E2E_TIMEOUT_MS = 30 * 60_000;
+
+/** Total lifetime for one live Provider case, configurable from env or the JSON config env map. */
+export function providerLiveTestTimeoutMs(
+  config: Pick<ProviderLiveTestConfig, "env">,
+): number {
+  const raw = config.env.CLASH_PROVIDER_E2E_TIMEOUT_MS?.trim();
+  if (!raw) return DEFAULT_PROVIDER_E2E_TIMEOUT_MS;
+  const timeoutMs = Number(raw);
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+    throw new Error("CLASH_PROVIDER_E2E_TIMEOUT_MS must be a positive integer");
+  }
+  return timeoutMs;
+}
+
 /**
  * Test-only: loads credentials only for explicitly opted-in live Vitest runs. Default
  * test execution ignores machine credentials and remains offline replay.

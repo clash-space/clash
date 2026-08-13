@@ -98,10 +98,13 @@ function collectTypeScriptSources(directory: string): string[] {
 const workspacePackages = ["apps", "packages", "plugins"]
   .flatMap((directory) => collectWorkspacePackages(resolve(repoRoot, directory)));
 
+// Repository-wide filesystem walks can overlap with package tests and type-checkers in CI.
+const REPOSITORY_SCAN_TIMEOUT_MS = 30_000;
+
 describe("repository conventions", () => {
   it("keeps source files in TypeScript, not JavaScript", () => {
     expect(collectJavaScriptSourceFiles(repoRoot)).toEqual([]);
-  });
+  }, REPOSITORY_SCAN_TIMEOUT_MS);
 
   it("declares every directly imported workspace package", () => {
     const workspaceNames = new Set(workspacePackages.map(({ manifest }) => manifest.name));
@@ -150,7 +153,7 @@ describe("repository conventions", () => {
     });
 
     expect(missing).toEqual([]);
-  });
+  }, REPOSITORY_SCAN_TIMEOUT_MS);
 
   it("keeps cross-workspace orchestration in the root package", () => {
     const crossWorkspaceScripts = workspacePackages.flatMap(({ manifest }) =>

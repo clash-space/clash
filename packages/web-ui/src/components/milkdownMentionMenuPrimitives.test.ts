@@ -8,8 +8,8 @@ const readSource = (path: string) =>
 describe("Milkdown mention menu primitives", () => {
   it("uses the shared popover primitive with a body-level anchor for transformed chat panels", () => {
     const source = readSource("packages/web-ui/src/components/MilkdownEditor.tsx");
-    const popover = readSource("packages/web-ui/src/components/ui/popover.tsx");
-    const comboboxPath = join(process.cwd(), "packages/web-ui/src/components/ui/combobox.tsx");
+    const popover = readSource("packages/gui/src/components/ui/popover.tsx");
+    const comboboxPath = join(process.cwd(), "packages/gui/src/components/ui/combobox.tsx");
     const comboboxSource = existsSync(comboboxPath) ? readFileSync(comboboxPath, "utf8") : "";
 
     expect(source).toContain("./ui/popover");

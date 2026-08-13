@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, within } from "@testing-library/react";
 
+import { ProjectProvider } from "../ProjectContext";
 import TextNode from "./TextNode";
 import AudioNode from "./AudioNode";
 
@@ -126,23 +127,25 @@ describe("node handle wiring", () => {
 
   it("renders an inbound target handle for audio nodes", () => {
     const { container } = render(
-      <AudioNode
-        id="audio-1"
-        selected={false}
-        type="audio"
-        dragging={false}
-        draggable={true}
-        selectable={true}
-        deletable={true}
-        zIndex={1}
-        isConnectable={true}
-        positionAbsoluteX={0}
-        positionAbsoluteY={0}
-        data={{
-          label: "Narration",
-          status: "draft",
-        }}
-      />,
+      <ProjectProvider projectId="project-test" initialModelCatalog={[]}>
+        <AudioNode
+          id="audio-1"
+          selected={false}
+          type="audio"
+          dragging={false}
+          draggable={true}
+          selectable={true}
+          deletable={true}
+          zIndex={1}
+          isConnectable={true}
+          positionAbsoluteX={0}
+          positionAbsoluteY={0}
+          data={{
+            label: "Narration",
+            status: "draft",
+          }}
+        />
+      </ProjectProvider>,
     );
 
     const view = within(container);

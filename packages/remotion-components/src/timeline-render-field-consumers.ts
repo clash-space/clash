@@ -53,10 +53,6 @@ export const TIMELINE_RENDER_ROOT_TRACK_FIELD_CONSUMERS = {
     primaryTrackId: unsupported('VideoComposition preserves authored track order and does not select a semantic primary track.'),
     tracks: rendered('VideoComposition schedules the ordered track and item collection.'),
     assetTranscripts: persistence('Word-level transcript state is preserved upstream; rendered captions consume item cues instead.'),
-    mediaAssetRefs: classifyTimelineField(
-      ['meta', 'unsupported'],
-      'Host asset-resolution metadata is not read by VideoComposition; it receives already resolved nodes and sources.',
-    ),
   },
   track: {
     id: meta('Used as stable React identity for a prepared render track.'),
@@ -313,7 +309,6 @@ export const TIMELINE_RENDER_DEFAULT_COVERAGE = {
     durationInFrames: defaultDisposition('helper', 'The Remotion composition host owns normalized root duration.'),
     primaryTrackId: defaultDisposition('not-read', 'Pixel rendering is ordered by tracks and does not select the semantic primary track.'),
     assetTranscripts: defaultDisposition('not-read', 'Transcript storage is not a renderer input.'),
-    mediaAssetRefs: defaultDisposition('not-read', 'The host resolves media nodes before VideoComposition renders.'),
   },
   track: {
     name: defaultDisposition('not-read', 'Track names do not alter rendered output.'),

@@ -17,9 +17,10 @@
   "expect": {
     "status": "failed",
     "error": {
-      "code": "execution_failed",
+      "code": "contract_violation",
       "message": "Hilo Hub poll state is missing its task id or model.",
-      "retryable": false
+      "retryable": false,
+      "requestState": "accepted"
     }
   }
 }

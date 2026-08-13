@@ -776,63 +776,17 @@ describe("Hono routes", () => {
   // ─── POST /api/custom-action/upload ───
 
   describe("POST /api/custom-action/upload", () => {
-    it("rejects when required form fields are missing", async () => {
+    it("tombstones the retired ClashAgent upload protocol", async () => {
       const form = new FormData();
       form.append("file", new File([new Uint8Array([1, 2, 3])], "x.png", { type: "image/png" }));
-      // missing projectId / taskId / nodeId
 
       const res = await app.request("/api/custom-action/upload", { method: "POST", body: form }, env);
-      expect(res.status).toBe(400);
-    });
-
-    it("text outputType returns content without R2 upload or DB write", async () => {
-      const r2Put = env.R2_BUCKET.put as any;
-      const dbPrepare = env.DB.prepare as any;
-
-      const form = new FormData();
-      form.append("projectId", "p1");
-      form.append("taskId", "task-1");
-      form.append("nodeId", "node-1");
-      form.append("outputType", "text");
-      form.append("content", "hello world");
-
-      const res = await app.request("/api/custom-action/upload", { method: "POST", body: form }, env);
-      expect(res.status).toBe(200);
-      const json: any = await res.json();
-      expect(json.success).toBe(true);
-      expect(json.content).toBe("hello world");
-      expect(json.storageKey).toBeNull();
-      expect(r2Put).not.toHaveBeenCalled();
-      expect(dbPrepare).not.toHaveBeenCalled();
-    });
-
-    it("image outputType uploads to R2 + writes asset row + returns assetId", async () => {
-      // Project owner lookup returns user-1; subsequent prepare calls run insert.
-      (env.DB.prepare as any).mockImplementation((sql: string) => ({
-        bind: vi.fn().mockReturnValue({
-          run: vi.fn().mockResolvedValue({}),
-          first: vi.fn().mockImplementation(async () => {
-            if (sql.includes("FROM project")) return { ownerId: "user-1" };
-            return null;
-          }),
-        }),
-      }));
-
-      const form = new FormData();
-      form.append("projectId", "p1");
-      form.append("taskId", "task-img");
-      form.append("nodeId", "node-1");
-      form.append("outputType", "image");
-      form.append("actorUserId", "user-1");
-      form.append("file", new File([new Uint8Array([1, 2, 3])], "x.png", { type: "image/png" }));
-
-      const res = await app.request("/api/custom-action/upload", { method: "POST", body: form }, env);
-      expect(res.status).toBe(200);
-      const json: any = await res.json();
-      expect(json.success).toBe(true);
-      expect(json.storageKey).toMatch(/projects\/p1\/custom\/task-img\.png/);
-      expect(json.assetId).toBe("task-img");
-      expect(env.R2_BUCKET.put).toHaveBeenCalled();
+      expect(res.status).toBe(410);
+      await expect(res.json()).resolves.toMatchObject({
+        code: "LEGACY_CUSTOM_ACTION_PROTOCOL_RETIRED",
+      });
+      expect(env.R2_BUCKET.put).not.toHaveBeenCalled();
+      expect(env.DB.prepare).not.toHaveBeenCalled();
     });
   });
 

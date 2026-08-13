@@ -46,17 +46,16 @@ const mocks = vi.hoisted(() => ({
     asset: {
         id: 'video-asset',
         kind: 'video',
-        srcR2Key: 'legacy-storage/video-without-extension',
-        coverR2Key: 'legacy-storage/video-cover.webp' as string | null,
-        signedUrl: 'https://media.clash.test/video',
-        signedCoverUrl: 'https://media.clash.test/video-cover.webp' as string | undefined,
+        status: 'ready' as const,
+        url: 'https://media.clash.test/video',
+        thumbnailUrl: 'https://media.clash.test/video-cover.webp' as string | undefined,
         metadata: {},
     },
     audioAsset: {
         id: 'audio-asset',
         kind: 'audio',
-        srcR2Key: 'legacy-storage/narration-without-extension',
-        signedUrl: 'https://media.clash.test/narration',
+        status: 'ready' as const,
+        url: 'https://media.clash.test/narration',
         metadata: {},
     },
 }));
@@ -76,6 +75,10 @@ vi.mock('@xyflow/react', () => ({
 
 vi.mock('../VideoEditorContext', () => ({
     useVideoEditor: () => ({ openTimeline: vi.fn() }),
+}));
+
+vi.mock('../ProjectContext', () => ({
+    useProject: () => ({ projectId: 'project-1' }),
 }));
 
 vi.mock('../LoroSyncContext', () => ({
@@ -103,17 +106,8 @@ vi.mock('@clash/shared-types', async (importOriginal) => ({
 }));
 
 vi.mock('@clash/web-ui/lib/hooks/useAsset', () => ({
-    getAsset: vi.fn(async (assetId: string) =>
+    getAsset: vi.fn(async (_projectId: string, assetId: string) =>
         assetId === mocks.audioAsset.id ? mocks.audioAsset : mocks.asset),
-}));
-
-vi.mock('@clash/web-ui/lib/hooks/useSignedUrl', () => ({
-    useSignedUrl: (src?: string) => {
-        if (src === mocks.asset.coverR2Key) return mocks.asset.signedCoverUrl ?? '';
-        if (src === mocks.asset.srcR2Key) return mocks.asset.signedUrl;
-        if (src === mocks.audioAsset.srcR2Key) return mocks.audioAsset.signedUrl;
-        return src ?? '';
-    },
 }));
 
 const baseNodeProps = {
@@ -130,8 +124,7 @@ const baseNodeProps = {
 
 afterEach(() => {
     cleanup();
-    mocks.asset.coverR2Key = 'legacy-storage/video-cover.webp';
-    mocks.asset.signedCoverUrl = 'https://media.clash.test/video-cover.webp';
+    mocks.asset.thumbnailUrl = 'https://media.clash.test/video-cover.webp';
     mocks.nodes = [
         {
             id: 'video-node',
@@ -158,10 +151,10 @@ afterEach(() => {
 });
 
 describe('VideoEditorNode cover', () => {
-    it('keeps the preview locator stable instead of capturing an expiring delivery URL', () => {
+    it('uses the Host-projected thumbnail without reconstructing a storage locator', () => {
         expect(assetPreviewMedia(mocks.asset as never)).toEqual({
             kind: 'image',
-            source: mocks.asset.coverR2Key,
+            source: mocks.asset.thumbnailUrl,
         });
     });
 
@@ -176,13 +169,12 @@ describe('VideoEditorNode cover', () => {
         );
 
         await waitFor(() => {
-            expect(document.querySelector('img')?.getAttribute('src')).toBe(mocks.asset.signedCoverUrl);
+            expect(document.querySelector('img')?.getAttribute('src')).toBe(mocks.asset.thumbnailUrl);
         });
     });
 
     it('renders a local video source when its cover is not available yet', async () => {
-        mocks.asset.coverR2Key = null;
-        mocks.asset.signedCoverUrl = undefined;
+        mocks.asset.thumbnailUrl = undefined;
 
         render(
             <VideoEditorNode
@@ -194,7 +186,7 @@ describe('VideoEditorNode cover', () => {
         );
 
         await waitFor(() => {
-            expect(document.querySelector('video')?.getAttribute('src')).toBe(mocks.asset.signedUrl);
+            expect(document.querySelector('video')?.getAttribute('src')).toBe(mocks.asset.url);
         });
         expect(document.querySelector('img')).toBeNull();
     });
@@ -227,7 +219,7 @@ describe('VideoEditorNode cover', () => {
         );
 
         await waitFor(() => {
-            expect(document.querySelector('img')?.getAttribute('src')).toBe(mocks.asset.signedCoverUrl);
+            expect(document.querySelector('img')?.getAttribute('src')).toBe(mocks.asset.thumbnailUrl);
         });
     });
 
@@ -254,7 +246,7 @@ describe('VideoEditorNode cover', () => {
         );
 
         await waitFor(() => {
-            expect(document.querySelector('img')?.getAttribute('src')).toBe(mocks.asset.signedCoverUrl);
+            expect(document.querySelector('img')?.getAttribute('src')).toBe(mocks.asset.thumbnailUrl);
         });
     });
 });

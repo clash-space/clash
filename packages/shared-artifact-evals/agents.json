@@ -11,7 +11,7 @@
     "src/evaluator.ts": "Director, Timeline, MG, media, artifact-set, and mixed-lineage grading.",
     "src/runner.ts": "Isolated workspace provisioning, skill installation, native Codex and Claude Code execution, logs, and outcome result generation.",
     "src/cli.ts": "CLI entry point for real Codex, Claude Code, and command-based benchmark runs.",
-    "src/claude-adapter.test.ts": "Claude print-mode arguments, daemon-first MCP binding, skills, stream-json trajectory, and error contracts.",
+    "src/claude-adapter.test.ts": "Claude print-mode arguments, Project Host readiness before stdio MCP binding, skills, stream-json trajectory, and error contracts.",
     "src/index.test.ts": "Artifact security, hard-gate, mixed-source, suite, and real child-process runner contracts."
   }
 }

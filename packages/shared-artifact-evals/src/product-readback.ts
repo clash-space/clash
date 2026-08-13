@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
-import { createConnection } from "node:net";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { createProjectAssetHttpClient } from "@clash/asset-sdk";
+import type { ProjectHostResponse } from "@clash/shared-runtime/project-host-client";
 import {
   PROJECT_ASSET_RENDER_CANVAS_ID,
   TimelineDslSchema,
@@ -12,15 +13,17 @@ import {
 import { parse as parseYaml } from "yaml";
 
 import { loadSubmission } from "./artifacts";
+import {
+  assertProjectHostReady,
+  assertWorkspaceProject,
+  productHostContext,
+  requestProjectHost,
+  type ProductHostContext,
+  type ProductHostReady,
+} from "./project-host";
 import type { ArtifactBenchmarkCase } from "./types";
 
-export type ProductDaemonReady = {
-  projectId: string;
-  daemonPid: number;
-  mcpUrl: string;
-  socketPath: string;
-  apiUrl: string;
-};
+export type { ProductHostReady } from "./project-host";
 
 export type RemotionProductReadbackReport = {
   schemaVersion: 1;
@@ -114,59 +117,6 @@ function timelineStateFromArtifact(
   return state;
 }
 
-function processExists(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function sendDaemonCommand(
-  socketPath: string,
-  command: object,
-): Promise<unknown> {
-  return new Promise((resolveCommand, rejectCommand) => {
-    const socket = createConnection(socketPath);
-    let settled = false;
-    let data = "";
-    const finish = (error?: Error, value?: unknown): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      socket.destroy();
-      if (error) rejectCommand(error);
-      else resolveCommand(value);
-    };
-    const timer = setTimeout(
-      () => finish(new Error("Remotion host readback timed out")),
-      15_000,
-    );
-    socket.once("connect", () => socket.write(`${JSON.stringify(command)}\n`));
-    socket.on("data", (chunk) => {
-      data += chunk.toString();
-      const newline = data.indexOf("\n");
-      if (newline < 0) return;
-      try {
-        finish(undefined, JSON.parse(data.slice(0, newline)) as unknown);
-      } catch (error) {
-        finish(
-          new Error(
-            `Invalid Remotion host readback: ${error instanceof Error ? error.message : String(error)}`,
-          ),
-        );
-      }
-    });
-    socket.once("error", (error) => finish(error));
-    socket.once("end", () => {
-      if (!settled)
-        finish(
-          new Error("Remotion host readback ended without a JSON response"),
-        );
-    });
-  });
-}
 
 function parseProjectTimeline(value: unknown): ProjectTimeline {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -220,38 +170,27 @@ function sha256Source(source: string): string {
 
 async function readRenderedAssetSha256(input: {
   apiUrl: string;
+  projectId: string;
   assetId: string;
   expectedSha256: string;
 }): Promise<string> {
-  const metadataResponse = await fetch(
-    new URL(
-      `/api/v1/assets/${encodeURIComponent(input.assetId)}`,
-      input.apiUrl,
-    ),
-    { signal: AbortSignal.timeout(15_000) },
-  );
-  if (!metadataResponse.ok) {
+  const client = createProjectAssetHttpClient({
+    endpoint: input.apiUrl,
+    fetch: (request, init) =>
+      fetch(request, { ...init, signal: AbortSignal.timeout(15_000) }),
+  });
+  const asset = (
+    await client.get({
+      projectId: input.projectId,
+      assetId: input.assetId,
+    })
+  ).value;
+  if (asset.id !== input.assetId || asset.status !== "ready" || !asset.url) {
     throw new Error(
-      `Rendered Asset ${input.assetId} readback failed with HTTP ${metadataResponse.status}`,
+      `Rendered Asset ${input.assetId} is not a ready ResolvedAsset with playable media`,
     );
   }
-  const metadata = (await metadataResponse.json()) as {
-    id?: unknown;
-    signedUrl?: unknown;
-    readToken?: unknown;
-  };
-  if (
-    metadata.id !== input.assetId ||
-    typeof metadata.signedUrl !== "string" ||
-    !metadata.signedUrl ||
-    typeof metadata.readToken !== "string" ||
-    !metadata.readToken
-  ) {
-    throw new Error(
-      `Rendered Asset ${input.assetId} is missing signed media readback metadata`,
-    );
-  }
-  const mediaResponse = await fetch(metadata.signedUrl, {
+  const mediaResponse = await fetch(asset.url, {
     signal: AbortSignal.timeout(60_000),
   });
   if (!mediaResponse.ok) {
@@ -296,7 +235,7 @@ function compositionItems(
     );
 }
 
-type DaemonNode = {
+type HostNode = {
   id: string;
   type: string;
   data?: Record<string, unknown>;
@@ -305,7 +244,7 @@ type DaemonNode = {
 };
 
 type TrustedTimelineRender = {
-  node: DaemonNode;
+  node: HostNode;
   lineage: {
     sourceTimelineId: string;
     sourceTimelineRevisionId: string;
@@ -315,11 +254,17 @@ type TrustedTimelineRender = {
 };
 
 async function listTimelineRenders(
-  socketPath: string,
+  input: ProductHostContext,
 ): Promise<TrustedTimelineRender[]> {
-  const response = await sendDaemonCommand(socketPath, {
-    action: "list_timeline_renders",
-    status: "completed",
+  const response = await requestProjectHost<
+    ProjectHostResponse & {
+      canvasId?: unknown;
+      status?: unknown;
+      renders?: unknown;
+    }
+  >({
+    ...input,
+    command: { action: "list_timeline_renders", status: "completed" },
   });
   if (!response || typeof response !== "object" || Array.isArray(response)) {
     throw new Error("Timeline render host readback response must be an object");
@@ -342,7 +287,9 @@ async function listTimelineRenders(
   }
   return raw.renders.map((value, index) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
-      throw new Error(`Timeline render readback entry ${index} must be an object`);
+      throw new Error(
+        `Timeline render readback entry ${index} must be an object`,
+      );
     }
     const render = value as {
       node?: unknown;
@@ -355,9 +302,11 @@ async function listTimelineRenders(
       typeof render.node !== "object" ||
       Array.isArray(render.node)
     ) {
-      throw new Error(`Timeline render readback entry ${index} is missing its node`);
+      throw new Error(
+        `Timeline render readback entry ${index} is missing its node`,
+      );
     }
-    const node = render.node as DaemonNode;
+    const node = render.node as HostNode;
     if (
       typeof node.id !== "string" ||
       node.type !== "video" ||
@@ -365,14 +314,18 @@ async function listTimelineRenders(
       !node.data ||
       typeof node.data !== "object"
     ) {
-      throw new Error(`Timeline render readback entry ${index} has an invalid node`);
+      throw new Error(
+        `Timeline render readback entry ${index} has an invalid node`,
+      );
     }
     if (
       !render.lineage ||
       typeof render.lineage !== "object" ||
       Array.isArray(render.lineage)
     ) {
-      throw new Error(`Timeline render readback entry ${index} is missing lineage`);
+      throw new Error(
+        `Timeline render readback entry ${index} is missing lineage`,
+      );
     }
     const lineage = render.lineage as Record<string, unknown>;
     if (
@@ -381,7 +334,9 @@ async function listTimelineRenders(
       typeof lineage.sourceTimelineRevisionId !== "string" ||
       lineage.sourceTimelineRevisionId !== node.data.sourceTimelineRevisionId
     ) {
-      throw new Error(`Timeline render readback entry ${index} has invalid lineage`);
+      throw new Error(
+        `Timeline render readback entry ${index} has invalid lineage`,
+      );
     }
     const version = canvasNodeReadToken(node);
     const receiptPrefix = `${version}:receipt:`;
@@ -394,7 +349,7 @@ async function listTimelineRenders(
       )
     ) {
       throw new Error(
-        `Timeline render ${node.id} is missing a live daemon read receipt`,
+        `Timeline render ${node.id} is missing a live Host read receipt`,
       );
     }
     return {
@@ -410,16 +365,25 @@ async function listTimelineRenders(
 }
 
 async function readCanvasNode(
-  socketPath: string,
+  input: ProductHostContext,
   canvasIds: string[],
   nodeId: string,
-): Promise<{ node: DaemonNode; version: string; readToken: string } | null> {
+): Promise<{ node: HostNode; version: string; readToken: string } | null> {
   for (const canvasId of canvasIds) {
-    const response = await sendDaemonCommand(socketPath, {
-      action: "get",
-      canvasId,
-      nodeId,
+    const requested = await input.client.request<ProjectHostResponse & {
+      node?: unknown;
+      version?: unknown;
+      readToken?: unknown;
+    }>({
+      cwd: input.workspace,
+      projectId: input.ready.projectId,
+      command: { action: "get", canvasId, nodeId },
     });
+    if (requested.projectId !== input.ready.projectId) {
+      throw new Error("Project Host readback resolved a different Project");
+    }
+    const response = requested.value;
+    if (response.error) continue;
     if (!response || typeof response !== "object" || Array.isArray(response))
       continue;
     const raw = response as {
@@ -439,7 +403,7 @@ async function readCanvasNode(
       raw.readToken.startsWith(`${raw.version}:receipt:`)
     ) {
       return {
-        node: raw.node as DaemonNode,
+        node: raw.node as HostNode,
         version: raw.version,
         readToken: raw.readToken,
       };
@@ -456,7 +420,7 @@ export async function captureRemotionProductReadback(input: {
   benchmark: ArtifactBenchmarkCase;
   workspace: string;
   caseRoot: string;
-  ready?: ProductDaemonReady;
+  ready?: ProductHostReady;
 }): Promise<RemotionProductReadbackReport> {
   const reportPath = join(input.caseRoot, "remotion-readback.json");
   const matchedArtifactIds: string[] = [];
@@ -465,24 +429,20 @@ export async function captureRemotionProductReadback(input: {
   const matches: RemotionProductReadbackReport["matches"] = [];
   try {
     if (!input.ready)
-      throw new Error("Clash project daemon did not become ready");
-    if (!processExists(input.ready.daemonPid))
-      throw new Error(
-        "Clash project daemon exited before trusted Remotion readback",
-      );
-    const marker = await readFile(
-      join(input.workspace, ".clash", "project.toml"),
-      "utf8",
-    );
-    const markerProjectId = /^project_id\s*=\s*"([^"]+)"/mu.exec(marker)?.[1];
-    if (markerProjectId !== input.ready.projectId) {
-      throw new Error(
-        "Workspace project marker does not match the live project daemon",
-      );
-    }
+      throw new Error("Clash Project Host did not become ready");
+    const host = productHostContext({
+      ready: input.ready,
+      workspace: input.workspace,
+    });
+    await assertProjectHostReady(host);
+    await assertWorkspaceProject(input.workspace, input.ready.projectId);
 
-    const response = await sendDaemonCommand(input.ready.socketPath, {
-      action: "list_timelines",
+    const response = await requestProjectHost<ProjectHostResponse & {
+      timelines?: unknown;
+      versions?: unknown;
+    }>({
+      ...host,
+      command: { action: "list_timelines" },
     });
     if (!response || typeof response !== "object" || Array.isArray(response)) {
       throw new Error("Remotion host readback response must be an object");
@@ -515,7 +475,7 @@ export async function captureRemotionProductReadback(input: {
         !/^[A-Za-z0-9._~-]{1,256}$/u.test(hostReceipt.slice(prefix.length))
       ) {
         throw new Error(
-          `Timeline ${timeline.id} is missing a live daemon read receipt`,
+          `Timeline ${timeline.id} is missing a live Host read receipt`,
         );
       }
       timelines.push({
@@ -528,8 +488,11 @@ export async function captureRemotionProductReadback(input: {
       });
     }
 
-    const canvasesResponse = await sendDaemonCommand(input.ready.socketPath, {
-      action: "list_canvases",
+    const canvasesResponse = await requestProjectHost<ProjectHostResponse & {
+      canvases?: unknown;
+    }>({
+      ...host,
+      command: { action: "list_canvases" },
     });
     const canvasIds = [
       "main",
@@ -605,7 +568,7 @@ export async function captureRemotionProductReadback(input: {
     const componentSha256 = sha256Source(
       componentArtifact.content.toString("utf8"),
     );
-    const renderNodes = await listTimelineRenders(input.ready.socketPath);
+    const renderNodes = await listTimelineRenders(host);
 
     for (const timeline of parsedTimelines) {
       if (sha256Json(timeline.state) !== timelineSha256) continue;
@@ -623,13 +586,14 @@ export async function captureRemotionProductReadback(input: {
       const renderAssetId = String(renderNode.node.data!.assetId);
       const renderAssetSha256 = await readRenderedAssetSha256({
         apiUrl: input.ready.apiUrl,
+        projectId: input.ready.projectId,
         assetId: renderAssetId,
         expectedSha256: videoArtifact.evidence.sha256,
       });
       for (const item of compositionItems(timeline)) {
         const sourceNodeId = String(item.sourceNodeId);
         const source = await readCanvasNode(
-          input.ready.socketPath,
+          host,
           canvasIds,
           sourceNodeId,
         );
@@ -686,7 +650,7 @@ export async function captureRemotionProductReadback(input: {
       timelines,
       sourceNodes,
       matches,
-      detail: `Matched Remotion source, Timeline revision, and completed product render for ${matches.length} live composition(s) with daemon receipts.`,
+      detail: `Matched Remotion source, Timeline revision, and completed product render for ${matches.length} live composition(s) with Host receipts.`,
     };
     await writeJson(reportPath, report);
     return report;
@@ -710,7 +674,7 @@ export async function captureTimelineProductReadback(input: {
   benchmark: ArtifactBenchmarkCase;
   workspace: string;
   caseRoot: string;
-  ready?: ProductDaemonReady;
+  ready?: ProductHostReady;
 }): Promise<TimelineProductReadbackReport> {
   const reportPath = join(input.caseRoot, "timeline-readback.json");
   const matchedArtifactIds: string[] = [];
@@ -718,24 +682,20 @@ export async function captureTimelineProductReadback(input: {
   const matches: TimelineProductReadbackReport["matches"] = [];
   try {
     if (!input.ready)
-      throw new Error("Clash project daemon did not become ready");
-    if (!processExists(input.ready.daemonPid))
-      throw new Error(
-        "Clash project daemon exited before trusted Timeline readback",
-      );
-    const marker = await readFile(
-      join(input.workspace, ".clash", "project.toml"),
-      "utf8",
-    );
-    const markerProjectId = /^project_id\s*=\s*"([^"]+)"/mu.exec(marker)?.[1];
-    if (markerProjectId !== input.ready.projectId) {
-      throw new Error(
-        "Workspace project marker does not match the live project daemon",
-      );
-    }
+      throw new Error("Clash Project Host did not become ready");
+    const host = productHostContext({
+      ready: input.ready,
+      workspace: input.workspace,
+    });
+    await assertProjectHostReady(host);
+    await assertWorkspaceProject(input.workspace, input.ready.projectId);
 
-    const response = await sendDaemonCommand(input.ready.socketPath, {
-      action: "list_timelines",
+    const response = await requestProjectHost<ProjectHostResponse & {
+      timelines?: unknown;
+      versions?: unknown;
+    }>({
+      ...host,
+      command: { action: "list_timelines" },
     });
     if (!response || typeof response !== "object" || Array.isArray(response)) {
       throw new Error("Timeline host readback response must be an object");
@@ -768,7 +728,7 @@ export async function captureTimelineProductReadback(input: {
         !/^[A-Za-z0-9._~-]{1,256}$/u.test(hostReceipt.slice(prefix.length))
       ) {
         throw new Error(
-          `Timeline ${timeline.id} is missing a live daemon read receipt`,
+          `Timeline ${timeline.id} is missing a live Host read receipt`,
         );
       }
       timelines.push({
@@ -831,7 +791,7 @@ export async function captureTimelineProductReadback(input: {
     const timelineSha256 = sha256Json(
       timelineStateFromArtifact(parsedTimeline.data),
     );
-    const renderNodes = await listTimelineRenders(input.ready.socketPath);
+    const renderNodes = await listTimelineRenders(host);
 
     for (const timeline of parsedTimelines) {
       if (sha256Json(timeline.state) !== timelineSha256) continue;
@@ -849,6 +809,7 @@ export async function captureTimelineProductReadback(input: {
       const renderAssetId = String(renderNode.node.data!.assetId);
       const renderAssetSha256 = await readRenderedAssetSha256({
         apiUrl: input.ready.apiUrl,
+        projectId: input.ready.projectId,
         assetId: renderAssetId,
         expectedSha256: videoArtifact.evidence.sha256,
       });
@@ -882,7 +843,7 @@ export async function captureTimelineProductReadback(input: {
       matchedArtifactIds,
       timelines,
       matches,
-      detail: `Matched Timeline revision and completed product render for ${matches.length} live Timeline(s) with daemon receipts.`,
+      detail: `Matched Timeline revision and completed product render for ${matches.length} live Timeline(s) with Host receipts.`,
     };
     await writeJson(reportPath, report);
     return report;

@@ -1,4 +1,3 @@
-import { createServer } from "node:net";
 import { createServer as createHttpServer } from "node:http";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -151,18 +150,15 @@ const timelineBenchmark: ArtifactBenchmarkCase = {
   },
 };
 
-async function withProductDaemon<T>(
+async function withProductHost<T>(
   timelines: unknown[],
   run: (input: {
-    socketPath: string;
     projectId: string;
     apiUrl: string;
     requestedActions: string[];
   }) => Promise<T>,
   options: { renderReadbackError?: string } = {},
 ): Promise<T> {
-  const root = await mkdtemp("/tmp/remotion-readback-");
-  const socketPath = join(root, "daemon.sock");
   const projectId = "project-remotion-readback";
   const versions = Object.fromEntries(
     timelines.map((value) => {
@@ -172,38 +168,44 @@ async function withProductDaemon<T>(
     }),
   );
   const requestedActions: string[] = [];
-  const server = createServer((connection) => {
-    let data = "";
-    connection.on("data", (chunk) => {
-      data += chunk.toString();
-      if (!data.includes("\n")) return;
-      const request = JSON.parse(data.slice(0, data.indexOf("\n"))) as {
+  let apiUrl = "";
+  const httpServer = createHttpServer(async (request, response) => {
+    if (
+      request.method === "POST" &&
+      request.url ===
+        `/api/v1/projects/${encodeURIComponent(projectId)}/host-command`
+    ) {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      const command = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
         action?: string;
         nodeId?: string;
         canvasId?: string;
         status?: string;
       };
-      requestedActions.push(String(request.action ?? ""));
-      let response: unknown = { error: "unsupported" };
-      if (request.action === "list_timelines")
-        response = { timelines, versions };
-      if (request.action === "list_canvases")
-        response = { canvases: [{ id: "main", name: "Main" }] };
-      if (request.action === "get" && request.nodeId === sourceNode.id) {
-        response = {
+      requestedActions.push(String(command.action ?? ""));
+      let body: unknown = { error: "unsupported" };
+      if (command.action === "ping") body = { pong: true };
+      if (command.action === "list_timelines") body = { timelines, versions };
+      if (command.action === "list_canvases")
+        body = { canvases: [{ id: "main", name: "Main" }] };
+      if (command.action === "get" && command.nodeId === sourceNode.id) {
+        body = {
           node: sourceNode,
           version: "node-v1:source",
           readToken: "node-v1:source:receipt:trusted-host",
         };
       }
-      if (request.action === "list_timeline_renders") {
+      if (command.action === "list_timeline_renders") {
         if (options.renderReadbackError) {
-          response = { error: options.renderReadbackError };
+          body = { error: options.renderReadbackError };
         } else {
           const version = canvasNodeReadToken(renderNode);
-          response = {
+          body = {
             canvasId: PROJECT_ASSET_RENDER_CANVAS_ID,
-            status: request.status ?? "completed",
+            status: command.status ?? "completed",
             renders: [
               {
                 node: renderNode,
@@ -220,29 +222,30 @@ async function withProductDaemon<T>(
         }
       }
       if (
-        request.action === "list" &&
-        request.canvasId === PROJECT_ASSET_RENDER_CANVAS_ID
+        command.action === "list" &&
+        command.canvasId === PROJECT_ASSET_RENDER_CANVAS_ID
       ) {
-        response = {
+        body = {
           error: `Canvas ${PROJECT_ASSET_RENDER_CANVAS_ID} is internal and unregistered`,
         };
       }
-      connection.end(`${JSON.stringify(response)}\n`);
-    });
-  });
-  await new Promise<void>((resolveListen, rejectListen) => {
-    server.once("error", rejectListen);
-    server.listen(socketPath, resolveListen);
-  });
-  let apiUrl = "";
-  const httpServer = createHttpServer((request, response) => {
-    if (request.url === `/api/v1/assets/${renderNode.data.assetId}`) {
       response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify(body));
+      return;
+    }
+    if (
+      request.url ===
+      `/api/v1/projects/${projectId}/assets/${renderNode.data.assetId}`
+    ) {
+      response.setHeader("content-type", "application/json");
+      response.setHeader("x-clash-read-receipt", "receipt-render-asset");
       response.end(
         JSON.stringify({
           id: renderNode.data.assetId,
-          signedUrl: `${apiUrl}/assets/render.mp4`,
-          readToken: "asset-read-receipt:trusted-host",
+          kind: "video",
+          metadata: { contentType: "video/mp4" },
+          status: "ready",
+          url: `${apiUrl}/assets/render.mp4`,
         }),
       );
       return;
@@ -268,23 +271,19 @@ async function withProductDaemon<T>(
     });
   });
   try {
-    return await run({ socketPath, projectId, apiUrl, requestedActions });
+    return await run({ projectId, apiUrl, requestedActions });
   } finally {
-    await new Promise<void>((resolveClose) =>
-      server.close(() => resolveClose()),
-    );
     await new Promise<void>((resolveClose) =>
       httpServer.close(() => resolveClose()),
     );
-    await rm(root, { recursive: true, force: true });
   }
 }
 
 describe("trusted Remotion product readback", () => {
   it("matches a product-exported Timeline envelope to its live state and render", async () => {
-    await withProductDaemon(
+    await withProductHost(
       [timeline],
-      async ({ socketPath, projectId, apiUrl, requestedActions }) => {
+      async ({ projectId, apiUrl, requestedActions }) => {
         const caseRoot = await mkdtemp(join("/tmp", "remotion-readback-case-"));
         const workspace = join(caseRoot, "workspace");
         await mkdir(join(workspace, ".clash"), { recursive: true });
@@ -325,9 +324,6 @@ describe("trusted Remotion product readback", () => {
           caseRoot,
           ready: {
             projectId,
-            daemonPid: process.pid,
-            mcpUrl: "http://127.0.0.1/mcp",
-            socketPath,
             apiUrl,
           },
         });
@@ -353,7 +349,9 @@ describe("trusted Remotion product readback", () => {
           /:receipt:trusted-host$/u,
         );
         expect(
-          requestedActions.filter((action) => action === "list_timeline_renders"),
+          requestedActions.filter(
+            (action) => action === "list_timeline_renders",
+          ),
         ).toEqual(["list_timeline_renders"]);
         expect(requestedActions).not.toContain("list");
         expect(
@@ -367,9 +365,9 @@ describe("trusted Remotion product readback", () => {
   });
 
   it("matches a plain Timeline revision to its completed product render", async () => {
-    await withProductDaemon(
+    await withProductHost(
       [timeline],
-      async ({ socketPath, projectId, apiUrl, requestedActions }) => {
+      async ({ projectId, apiUrl, requestedActions }) => {
         const caseRoot = await mkdtemp(join("/tmp", "timeline-readback-case-"));
         const workspace = join(caseRoot, "workspace");
         await mkdir(join(workspace, ".clash"), { recursive: true });
@@ -399,9 +397,6 @@ describe("trusted Remotion product readback", () => {
           caseRoot,
           ready: {
             projectId,
-            daemonPid: process.pid,
-            mcpUrl: "http://127.0.0.1/mcp",
-            socketPath,
             apiUrl,
           },
         });
@@ -421,7 +416,9 @@ describe("trusted Remotion product readback", () => {
           ],
         });
         expect(
-          requestedActions.filter((action) => action === "list_timeline_renders"),
+          requestedActions.filter(
+            (action) => action === "list_timeline_renders",
+          ),
         ).toEqual(["list_timeline_renders"]);
         expect(requestedActions).not.toContain("list");
         expect(
@@ -435,7 +432,7 @@ describe("trusted Remotion product readback", () => {
   });
 
   it("rejects files that were never persisted through the live product graph", async () => {
-    await withProductDaemon([], async ({ socketPath, projectId, apiUrl }) => {
+    await withProductHost([], async ({ projectId, apiUrl }) => {
       const caseRoot = await mkdtemp(
         join("/tmp", "remotion-readback-missing-"),
       );
@@ -477,9 +474,6 @@ describe("trusted Remotion product readback", () => {
         caseRoot,
         ready: {
           projectId,
-          daemonPid: process.pid,
-          mcpUrl: "http://127.0.0.1/mcp",
-          socketPath,
           apiUrl,
         },
       });
@@ -491,11 +485,13 @@ describe("trusted Remotion product readback", () => {
     });
   });
 
-  it("reports the exact daemon error from Timeline render readback", async () => {
-    await withProductDaemon(
+  it("reports the exact Host error from Timeline render readback", async () => {
+    await withProductHost(
       [timeline],
-      async ({ socketPath, projectId, apiUrl }) => {
-        const caseRoot = await mkdtemp(join("/tmp", "timeline-readback-error-"));
+      async ({ projectId, apiUrl }) => {
+        const caseRoot = await mkdtemp(
+          join("/tmp", "timeline-readback-error-"),
+        );
         const workspace = join(caseRoot, "workspace");
         await mkdir(join(workspace, ".clash"), { recursive: true });
         await writeFile(
@@ -524,9 +520,6 @@ describe("trusted Remotion product readback", () => {
           caseRoot,
           ready: {
             projectId,
-            daemonPid: process.pid,
-            mcpUrl: "http://127.0.0.1/mcp",
-            socketPath,
             apiUrl,
           },
         });

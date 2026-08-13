@@ -1,9 +1,9 @@
 import { createRequire } from "node:module";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { serve } from "@hono/node-server";
 import {
   PluginHostClient,
@@ -27,10 +27,7 @@ import {
   type ExecutablePluginCardRegistration,
   type ExecutablePluginModelBindingRegistration,
 } from "@clash/shared-types";
-import {
-  createLocalApiApp,
-  createLocalTtsGenerationHandler,
-} from "./app.js";
+import { createLocalApiApp, createLocalTtsGenerationHandler } from "./app.js";
 import {
   createHostDiscoveryRecord,
   removeHostDiscovery,
@@ -38,11 +35,6 @@ import {
 } from "./host-discovery.js";
 import { resolveMediaBaseUrl } from "./media-base-url.js";
 import { createMockExternalAigcService } from "./local-aigc.js";
-import {
-  createJsonlProviderTestRecorder,
-  createProviderTestReplayFixtures,
-  readJsonlProviderTestRecording,
-} from "./provider-test-recorder.js";
 import { createProviderPluginProjector } from "./provider-plugin-projector.js";
 import { createProviderPluginExecutor } from "./provider-plugin-executor.js";
 import { createExecutablePluginActionInvoker } from "./plugin-action-runtime.js";
@@ -76,6 +68,7 @@ import {
   createLocalWorkflowProcessor,
   type LocalTimelineRenderer,
 } from "./local-processor.js";
+import { createSqliteDurableRunJournal } from "./durable-run-journal.js";
 import {
   providerAccountsForRuntime,
   publicProviderAccounts,
@@ -84,10 +77,14 @@ import { createLocalProviderStore } from "./local-provider-store.js";
 import { fetchIntoSlot } from "./upload-slot-fetch.js";
 import { openPluginStore } from "./plugin-store.js";
 import { createLocalMetadataStore } from "./local-metadata-store.js";
-import { assetPathForRead, assetPathForWrite } from "./local-asset-paths.js";
 import {
-  createLocalExecutablePluginBroker,
-} from "./local-plugin-broker.js";
+  createLocalProjectAssetService,
+  type LocalProjectAssetReplica,
+} from "./local-project-assets.js";
+import { createLocalPluginAssetStagingStore } from "./local-plugin-asset-staging.js";
+import type { LocalPluginAssetStagingStore } from "./local-plugin-asset-staging.js";
+import { FileReplicaStore } from "./loro/file-replica-store.js";
+import { createLocalExecutablePluginBroker } from "./local-plugin-broker.js";
 import {
   attachLocalSync,
   LocalLoroRoomHub,
@@ -104,6 +101,10 @@ import {
   resolveClashProfile,
 } from "./local-paths.js";
 import { watchClashUserConfig } from "./user-config.js";
+import {
+  createPublicAssetStorageService,
+  type PublicAssetStorageService,
+} from "./public-asset-storage.js";
 import type { LocalDirectorStageRenderer } from "./director-stage-renderer.js";
 import { createNpxSkillsMarketplace } from "./marketplace-skills.js";
 import skillMarketplaceRegistry from "../../../skills/registry.json" with { type: "json" };
@@ -127,15 +128,15 @@ export interface LocalApiServerOptions {
   directorStageRenderer?: LocalDirectorStageRenderer;
   localAcp?: LocalAcpRuntimeAdapter;
   audioConfig?: LocalAudioConfigStore;
+  /** Injectable so a signed-in Desktop can provide managed Clash storage later. */
+  publicAssetStorage?: PublicAssetStorageService;
   remotePersistence?: RemoteLoroPersistenceSource | null;
   /** Injectable download transport for completed provider media URLs. */
   providerAssetFetch?: typeof fetch;
-  /** Optional JSONL capture path; production normally supplies the equivalent environment value. */
-  providerTrafficRecordingPath?: string;
-  /** Optional JSONL replay path; production normally supplies the equivalent environment value. */
-  providerTrafficReplayPath?: string;
   /** Replay harness only: workflow scheduling cap; provider responses remain untouched. */
   providerPollDelayCapMs?: number;
+  /** Host policy for the whole Provider run. Defaults to 30 minutes. */
+  providerGenerationDeadlineMs?: number;
   /** Test-only process-boundary instrumentation for ordinary plugin HTTP clients. */
   providerHttpInstrumentation?: {
     mode: "record" | "replay";
@@ -148,9 +149,7 @@ export interface LocalApiServerOptions {
    * Development-only source roots for already-attested first-party plugin launchers.
    * Omitted by the packaged host and every normal `startLocalApiServer` caller.
    */
-  developmentPluginWatchRoots?: Readonly<
-    Record<string, readonly string[]>
-  >;
+  developmentPluginWatchRoots?: Readonly<Record<string, readonly string[]>>;
   discovery?: {
     enabled?: boolean;
     runDir?: string;
@@ -158,6 +157,28 @@ export interface LocalApiServerOptions {
     ownerClientId?: string;
     startedBy?: HostStartedBy;
   };
+}
+
+/**
+ * Reopen every Project with owner-private work after a Host restart.
+ *
+ * A room normally opens when a client connects or calls a Project endpoint. Durable Provider work
+ * cannot depend on that visit: an accepted upstream task must keep polling even when Desktop stays
+ * closed after the daemon restarts. Opening the room runs its normal recovery scan and installs the
+ * next journal wake timer; Project Loro remains a projection rather than the scheduler index.
+ */
+export async function bootstrapLocalDurableRunRecovery(options: {
+  dataDir: string;
+  ownerId: string;
+  roomHub: Pick<LocalLoroRoomHub, "room">;
+}): Promise<string[]> {
+  const projectIds = await createSqliteDurableRunJournal(
+    options.dataDir,
+  ).listOwnedProjectIds(options.ownerId);
+  await Promise.all(
+    projectIds.map((projectId) => options.roomHub.room(projectId)),
+  );
+  return projectIds;
 }
 
 function shellQuote(value: string): string {
@@ -198,7 +219,9 @@ export function createLocalAgentToolEnv({
   const cliInvocation = [
     ...(cliLoader ? ["--import", cliLoader] : []),
     cliEntry,
-  ].map(shellQuote).join(" ");
+  ]
+    .map(shellQuote)
+    .join(" ");
   const shim = join(binDir, "clash");
   writeFileSync(
     shim,
@@ -236,10 +259,18 @@ export function createLocalAgentToolEnv({
     CLASH_HOME: clashHome,
     CLASH_PROFILE: profile,
     CLASH_LOCAL_DATA_DIR: localDataDir,
-    ...(env.CLASH_NODE_EXEC_PATH ? { CLASH_NODE_EXEC_PATH: env.CLASH_NODE_EXEC_PATH } : {}),
-    ...(env.CLASH_CLI_ENTRY_PATH ? { CLASH_CLI_ENTRY_PATH: env.CLASH_CLI_ENTRY_PATH } : {}),
-    ...(env.CLASH_CLI_NODE_PATH ? { CLASH_CLI_NODE_PATH: env.CLASH_CLI_NODE_PATH } : {}),
-    ...(env.TSX_TSCONFIG_PATH ? { TSX_TSCONFIG_PATH: env.TSX_TSCONFIG_PATH } : {}),
+    ...(env.CLASH_NODE_EXEC_PATH
+      ? { CLASH_NODE_EXEC_PATH: env.CLASH_NODE_EXEC_PATH }
+      : {}),
+    ...(env.CLASH_CLI_ENTRY_PATH
+      ? { CLASH_CLI_ENTRY_PATH: env.CLASH_CLI_ENTRY_PATH }
+      : {}),
+    ...(env.CLASH_CLI_NODE_PATH
+      ? { CLASH_CLI_NODE_PATH: env.CLASH_CLI_NODE_PATH }
+      : {}),
+    ...(env.TSX_TSCONFIG_PATH
+      ? { TSX_TSCONFIG_PATH: env.TSX_TSCONFIG_PATH }
+      : {}),
     PATH: [binDir, env.PATH].filter(Boolean).join(delimiter),
   };
 }
@@ -392,7 +423,9 @@ function createMockAcpSessionManager(send: SessionSender): SessionManagerLike {
   const delayMs = Number(process.env.CLASH_E2E_STUB_ACP_DELAY_MS ?? "0");
   const promptDelayMs = Number.isFinite(delayMs) && delayMs > 0 ? delayMs : 0;
   const waitForPromptDelay = () =>
-    promptDelayMs > 0 ? new Promise<void>((resolve) => setTimeout(resolve, promptDelayMs)) : Promise.resolve();
+    promptDelayMs > 0
+      ? new Promise<void>((resolve) => setTimeout(resolve, promptDelayMs))
+      : Promise.resolve();
 
   return {
     start: ({ session_id }) => {
@@ -451,7 +484,11 @@ function createMockAcpSessionManager(send: SessionSender): SessionManagerLike {
             rawOutput: [
               { id: "dianmwa7", type: "action-badge", label: "Image Prompt" },
               { id: "lrcleamx", type: "image", label: "生成类似的" },
-              { id: "upload-1781414847642-oq6cbcl", type: "image", label: "258251d8857f30efff6b9b7085302bf5.JPG" },
+              {
+                id: "upload-1781414847642-oq6cbcl",
+                type: "image",
+                label: "258251d8857f30efff6b9b7085302bf5.JPG",
+              },
             ],
           },
         });
@@ -592,7 +629,8 @@ export function createConfiguredLocalAcpAdapter(
     spawnEnv: {
       ...createLocalAgentToolEnv({
         dataDir: localDataDir,
-        apiBaseUrl: options.apiBaseUrl ?? env.CLASH_API_URL ?? `http://127.0.0.1:${port}`,
+        apiBaseUrl:
+          options.apiBaseUrl ?? env.CLASH_API_URL ?? `http://127.0.0.1:${port}`,
         env,
       }),
       CLASH_ACP_BIN_DIR: acpBinDir,
@@ -619,18 +657,28 @@ async function loadLocalModelCards(
   pluginModelBindings: readonly ExecutablePluginModelBindingRegistration[] = [],
 ) {
   const store = createLocalProviderStore(dataDir);
-  const [providerAccounts, providerOAuth, modelCardConfigs] = await Promise.all([
-    store.loadProviderAccounts(),
-    store.loadProviderOAuth(),
-    store.loadModelCardConfigs(),
-  ]);
-  const providers = providerAccountsForRuntime(providerAccounts, userId, providerOAuth);
+  const [providerAccounts, providerOAuth, modelCardConfigs] = await Promise.all(
+    [
+      store.loadProviderAccounts(),
+      store.loadProviderOAuth(),
+      store.loadModelCardConfigs(),
+    ],
+  );
+  const providers = providerAccountsForRuntime(
+    providerAccounts,
+    userId,
+    providerOAuth,
+  );
   return buildEffectiveModelCards({
     configs: modelCardConfigs
       .filter((config) => (config.userId ?? userId) === userId)
       .map(({ userId: _userId, ...config }) => config),
     providers,
-    baseModels: composeExecutablePluginModelCards(MODEL_CARDS, pluginCards, pluginModelBindings),
+    baseModels: composeExecutablePluginModelCards(
+      MODEL_CARDS,
+      pluginCards,
+      pluginModelBindings,
+    ),
   });
 }
 
@@ -640,14 +688,17 @@ async function loadLocalModelCards(
  * In memory and per process. A slot that survived a restart would name a URL nothing is listening
  * on, and the plugin holding it would stream into a void and report success.
  */
-const pendingUploads = new Map<string, {
-  assetId: string;
-  slot: string;
-  /** Absent when the vendor answered with a link: there is no count until the fetch finishes. */
-  byteLength?: number;
-  bytes: Uint8Array | undefined;
-  mediaType?: string;
-}>();
+const pendingUploads = new Map<
+  string,
+  {
+    assetId: string;
+    slot: string;
+    /** Absent when the vendor answered with a link: there is no count until the fetch finishes. */
+    byteLength?: number;
+    bytes: Uint8Array | undefined;
+    mediaType?: string;
+  }
+>();
 
 /**
  * Receive bytes for a slot that was handed out.
@@ -664,6 +715,8 @@ export function acceptPluginUpload(token: string, bytes: Uint8Array): boolean {
 
 export function createLocalPluginBrokerServices(options: {
   dataDir: string;
+  assetStaging?: LocalPluginAssetStagingStore;
+  projectAssetReplica?: LocalProjectAssetReplica;
   /**
    * Where a plugin should PUT bytes it was given a slot for.
    *
@@ -672,11 +725,53 @@ export function createLocalPluginBrokerServices(options: {
    */
   uploadOrigin?: string | (() => string);
   assetFetch?: typeof fetch;
+  publicAssetStorage?: PublicAssetStorageService;
 }) {
   const providerStore = createLocalProviderStore(options.dataDir);
   const metadataStore = createLocalMetadataStore(options.dataDir);
   const clashRoot = clashHomeForLocalDataDir(options.dataDir);
+  const stagedAssets =
+    options.assetStaging ??
+    createLocalPluginAssetStagingStore({
+      dataDir: options.dataDir,
+      clashRoot,
+    });
+  const projectAssets = createLocalProjectAssetService({
+    dataDir: options.dataDir,
+    clashRoot,
+    ...(options.projectAssetReplica
+      ? { replica: options.projectAssetReplica }
+      : {}),
+    projectionOrigin: () => {
+      const origin =
+        typeof options.uploadOrigin === "function"
+          ? options.uploadOrigin()
+          : options.uploadOrigin;
+      return origin || "http://127.0.0.1";
+    },
+  });
   async function writeAssetBytes({
+    pluginId,
+    pluginVersion,
+    projectId,
+    invocationId,
+    taskId,
+    slot,
+    kind,
+    mediaType,
+    bytes,
+  }: {
+    pluginId: string;
+    pluginVersion: string;
+    projectId: string;
+    invocationId: string;
+    taskId: string;
+    slot: string;
+    kind: "image" | "video" | "audio" | "model";
+    mediaType?: string;
+    bytes: Uint8Array;
+  }) {
+    const staged = await stagedAssets.stage({
       pluginId,
       pluginVersion,
       projectId,
@@ -684,84 +779,23 @@ export function createLocalPluginBrokerServices(options: {
       taskId,
       slot,
       kind,
-      mediaType,
+      ...(mediaType ? { mediaType } : {}),
       bytes,
-    }: {
-      pluginId: string; pluginVersion: string; projectId: string; invocationId: string;
-      taskId: string; slot: string; kind: "image" | "video" | "audio" | "model"; mediaType?: string; bytes: Uint8Array;
-    }) {
-      const contentHash = createHash("sha256").update(bytes).digest("hex");
-      const safe = (value: string) => value.replace(/[^a-zA-Z0-9._-]/g, "-");
-      const extension = mediaType === "image/jpeg" ? "jpg"
-        : mediaType === "image/webp" ? "webp"
-          : mediaType === "video/mp4" ? "mp4"
-            : mediaType === "audio/mpeg" ? "mp3"
-              : mediaType === "audio/wav" ? "wav"
-                : kind === "video" ? "mp4"
-                  : kind === "audio" ? "mp3"
-                    : kind === "model" ? "bin"
-                      : "png";
-      const assetId = [
-        "plugin",
-        safe(invocationId),
-        safe(slot),
-        contentHash.slice(0, 12),
-      ].join("-");
-      const storageKey = [
-        "projects",
-        safe(projectId),
-        "plugins",
-        `${assetId}.${extension}`,
-      ].join("/");
-      await writeFile(
-        await assetPathForWrite(options.dataDir, storageKey, clashRoot),
-        bytes,
-      );
-      const at = Math.floor(Date.now() / 1000);
-      await metadataStore.upsertAsset({
-        id: assetId,
-        userId: "local-user",
-        kind,
-        srcR2Key: storageKey,
-        coverR2Key: null,
-        metadata: {
-          bytes: bytes.byteLength,
-          ...(mediaType ? { contentType: mediaType } : {}),
-          contentHash,
-        },
-        sourceModel: `plugin:${pluginId}@${pluginVersion}`,
-        sourcePrompt: null,
-        sourceTaskId: taskId,
-        sources: null,
-        createdAt: at,
-        updatedAt: at,
-        projectId,
-      }, {
-        assetId,
-        projectId,
-        importedAt: at,
-      });
-      const assetOrigin = typeof options.uploadOrigin === "function"
-        ? options.uploadOrigin()
-        : options.uploadOrigin;
-      return {
-        assetId,
-        uri: `clash-asset://${assetId}`,
-        kind,
-        ...(mediaType ? { mediaType } : {}),
-        ...(assetOrigin
-          ? {
-              url: `${assetOrigin.replace(/\/+$/, "")}/assets/${storageKey}`,
-              reach: "private" as const,
-            }
-          : {}),
-      };
+    });
+    return {
+      assetId: staged.projectAssetId,
+      uri: `clash-asset://${staged.projectAssetId}`,
+      kind,
+      ...(staged.mediaType ? { mediaType: staged.mediaType } : {}),
+    };
   }
 
   // Opened on first use rather than at construction: the table and the encryption key are created
   // as a side effect, and a host that never runs a plugin should not create either.
-  let storePromise: Promise<Awaited<ReturnType<typeof openPluginStore>>> | undefined;
-  const pluginStore = () => (storePromise ??= openPluginStore({ dataDir: options.dataDir }));
+  let storePromise:
+    Promise<Awaited<ReturnType<typeof openPluginStore>>> | undefined;
+  const pluginStore = () =>
+    (storePromise ??= openPluginStore({ dataDir: options.dataDir }));
 
   return createLocalExecutablePluginBroker({
     loadProviderAccounts: async () => {
@@ -773,32 +807,36 @@ export function createLocalPluginBrokerServices(options: {
     },
     generateCodexImage: createCodexImageGenerator(),
     readAsset: async ({ assetId, projectId }) => {
-      const metadata = await metadataStore.load();
-      const hasProjectRef = metadata.assetRefs.some(
-        (reference) => reference.assetId === assetId && reference.projectId === projectId,
-      );
-      const asset = metadata.assets.find((candidate) =>
-        candidate.id === assetId
-        && (candidate.projectId === projectId || (!candidate.projectId && hasProjectRef))
-      );
-      if (!asset?.srcR2Key) {
-        throw new Error(`Asset ${assetId} is not available in project ${projectId}.`);
-      }
-      const bytes = await readFile(
-        await assetPathForRead(options.dataDir, asset.srcR2Key, clashRoot),
-      );
-      const metadataRecord = asset.metadata && typeof asset.metadata === "object"
-        && !Array.isArray(asset.metadata)
-        ? asset.metadata as Record<string, unknown>
-        : {};
+      const projection = await projectAssets.openProjection(projectId, assetId);
       return {
-        kind: asset.kind,
-        ...(typeof metadataRecord.contentType === "string"
-          ? { mediaType: metadataRecord.contentType }
+        kind: projection.resource.kind,
+        ...(projection.resource.contentType
+          ? { mediaType: projection.resource.contentType }
           : {}),
-        bytes,
+        bytes: new Uint8Array(await readFile(projection.path)),
       };
     },
+    ...(options.publicAssetStorage
+      ? {
+          publishAsset: async ({
+            pluginId,
+            invocationId,
+            assetId,
+            mediaType,
+            bytes,
+          }) => {
+            const published = await options.publicAssetStorage!.publish({
+              key: `plugins/${pluginId}/${invocationId}/${assetId}`,
+              bytes,
+              ...(mediaType ? { contentType: mediaType } : {}),
+            });
+            return {
+              url: published.url,
+              expiresAt: published.expiresAt,
+            };
+          },
+        }
+      : {}),
     /**
      * This plugin's own stored values, for the account this invocation runs on.
      *
@@ -812,7 +850,14 @@ export function createLocalPluginBrokerServices(options: {
       return await store.get({ pluginId, accountId, key });
     },
 
-    storePut: async ({ pluginId, accountId, key, value, secret, expiresAt }) => {
+    storePut: async ({
+      pluginId,
+      accountId,
+      key,
+      value,
+      secret,
+      expiresAt,
+    }) => {
       const store = await pluginStore();
       await store.put({
         pluginId,
@@ -820,7 +865,9 @@ export function createLocalPluginBrokerServices(options: {
         key,
         value,
         ...(secret === undefined ? {} : { secret }),
-        ...(expiresAt === undefined ? {} : { expiresAt: Date.parse(expiresAt) }),
+        ...(expiresAt === undefined
+          ? {}
+          : { expiresAt: Date.parse(expiresAt) }),
       });
     },
 
@@ -868,10 +915,16 @@ export function createLocalPluginBrokerServices(options: {
         });
       }
 
-      pendingUploads.set(token, { assetId, slot, byteLength, bytes: undefined });
-      const uploadOrigin = typeof options.uploadOrigin === "function"
-        ? options.uploadOrigin()
-        : options.uploadOrigin;
+      pendingUploads.set(token, {
+        assetId,
+        slot,
+        byteLength,
+        bytes: undefined,
+      });
+      const uploadOrigin =
+        typeof options.uploadOrigin === "function"
+          ? options.uploadOrigin()
+          : options.uploadOrigin;
       return {
         uploadUrl: `${uploadOrigin ?? ""}/api/v1/plugin-uploads/${token}`,
         assetId,
@@ -887,19 +940,20 @@ export function createLocalPluginBrokerServices(options: {
       }
       if (pending.bytes.byteLength !== pending.byteLength) {
         throw new Error(
-          `${input.slot} was announced as ${pending.byteLength} bytes and arrived as `
-          + `${pending.bytes.byteLength}.`,
+          `${input.slot} was announced as ${pending.byteLength} bytes and arrived as ` +
+            `${pending.bytes.byteLength}.`,
         );
       }
       pendingUploads.delete(token);
-      return await writeAssetBytes({ ...input, pluginVersion: "", bytes: pending.bytes });
+      return await writeAssetBytes({ ...input, bytes: pending.bytes });
     },
 
     writeAsset: writeAssetBytes,
-    audit: (record) => metadataStore.appendPluginBrokerAudit({
-      id: randomUUID(),
-      ...record,
-    }),
+    audit: (record) =>
+      metadataStore.appendPluginBrokerAudit({
+        id: randomUUID(),
+        ...record,
+      }),
   });
 }
 
@@ -915,22 +969,41 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
   const npxSkillsMarketplace = createNpxSkillsMarketplace({
     registry: skillMarketplaceRegistry,
   });
-  const providerStore = createLocalProviderStore(options.dataDir);
+  const projectAssetFileReplica = new FileReplicaStore(
+    join(options.dataDir, "projects"),
+  );
+  let roomHub: LocalLoroRoomHub | undefined;
+  const projectAssetReplica: LocalProjectAssetReplica = {
+    async inspect(projectId, read) {
+      if (roomHub) return roomHub.inspectProject(projectId, read);
+      return read(await projectAssetFileReplica.recover(projectId));
+    },
+    async mutate(projectId, mutation) {
+      if (roomHub) return roomHub.mutateProject(projectId, mutation);
+      return projectAssetFileReplica.updateSnapshotAtomic(projectId, mutation);
+    },
+  };
   let boundPort: number | undefined = options.port || undefined;
-  const localOrigin = () => boundPort ? `http://127.0.0.1:${boundPort}` : "";
-  const providerTrafficRecordingPath = options.providerTrafficRecordingPath
-    ?? process.env.CLASH_PROVIDER_TRAFFIC_RECORDING_PATH?.trim();
-  const providerTrafficReplayPath = options.providerTrafficReplayPath
-    ?? process.env.CLASH_PROVIDER_TRAFFIC_REPLAY_PATH?.trim();
-  if (providerTrafficRecordingPath && providerTrafficReplayPath) {
-    throw new Error(
-      "CLASH_PROVIDER_TRAFFIC_RECORDING_PATH and CLASH_PROVIDER_TRAFFIC_REPLAY_PATH are mutually exclusive.",
-    );
-  }
+  const localOrigin = () => (boundPort ? `http://127.0.0.1:${boundPort}` : "");
+  const pluginAssetStaging = createLocalPluginAssetStagingStore({
+    dataDir: options.dataDir,
+    clashRoot: clashHome,
+  });
+  const publicAssetStorage =
+    options.publicAssetStorage ??
+    createPublicAssetStorageService({ dataDir: options.dataDir });
   const pluginBroker = createLocalPluginBrokerServices({
     dataDir: options.dataDir,
+    assetStaging: pluginAssetStaging,
+    // Provider execution runs while the Project room owns its serial mutation queue. Resolving a
+    // reference through that same live-room adapter would enqueue a read behind the invocation
+    // that is waiting for it. Provider inputs are immutable committed facts, so this broker reads
+    // the durable replica and Resource CAS instead of uncommitted in-memory room state.
     uploadOrigin: localOrigin,
-    ...(options.providerAssetFetch ? { assetFetch: options.providerAssetFetch } : {}),
+    publicAssetStorage,
+    ...(options.providerAssetFetch
+      ? { assetFetch: options.providerAssetFetch }
+      : {}),
   });
   // Every first-party Provider, not one of them. Seeding a single plugin is what left clash.google
   // and clash.minimax invisible after the split: they were activated into ~/.clash/actions by hand,
@@ -945,9 +1018,13 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     // it. Two were found on a development machine, from `clash-first-party-media` and
     // `hilo-hub-media`.
     try {
-      const pruned = await pruneOrphanActivationReceipts(join(clashHome, "actions"));
+      const pruned = await pruneOrphanActivationReceipts(
+        join(clashHome, "actions"),
+      );
       if (pruned.length > 0) {
-        console.warn(`[local-api] pruned orphaned activation receipts: ${pruned.join(", ")}`);
+        console.warn(
+          `[local-api] pruned orphaned activation receipts: ${pruned.join(", ")}`,
+        );
       }
     } catch (error) {
       console.error(
@@ -958,7 +1035,10 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
 
     for (const plugin of BUNDLED_PLUGINS) {
       try {
-        await ensureBundledPlugin({ id: plugin.id, actionsRoot: join(clashHome, "actions") });
+        await ensureBundledPlugin({
+          id: plugin.id,
+          actionsRoot: join(clashHome, "actions"),
+        });
       } catch (error) {
         console.error(
           `[local-api] bundled plugin ${plugin.id} seed degraded:`,
@@ -970,7 +1050,9 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
   const pluginHostClient = new PluginHostClient({
     socketPath: pluginHostSocketPath(process.env, clashHome),
   });
-  const pluginHostProjector = createProviderPluginProjector({ client: pluginHostClient });
+  const pluginHostProjector = createProviderPluginProjector({
+    client: pluginHostClient,
+  });
   const pluginHostProviderExecutor = createProviderPluginExecutor({
     client: pluginHostClient,
   });
@@ -980,41 +1062,42 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
   let embeddedPluginHost: ActionsHost | null = null;
   let embeddedPluginIpc: PluginHostIpcServer | null = null;
   let pluginRuntimeReady: Promise<void> | null = null;
-  const ensurePluginRuntime = () => pluginRuntimeReady ??= bundledPluginsReady.then(async () => {
-    // A broken package degrades only that Provider. The host still starts every
-    // successfully activated plugin, so Google work is not blocked by a bad
-    // MiniMax payload (and vice versa). Resolving a binding for the failed
-    // plugin will surface the provider-specific error at the operation boundary.
-    const host = new ActionsHost({
-      serverUrl: `http://127.0.0.1:${options.port}`,
-      apiKey: "",
-      runtimeId: "local-api",
-      actionsRoot: join(clashHome, "actions"),
-      executablePluginsOnly: true,
-      pluginBroker,
-      ...(options.providerHttpInstrumentation
-        ? { providerHttpInstrumentation: options.providerHttpInstrumentation }
-        : {}),
-      ...(options.developmentPluginWatchRoots
-        ? { developmentPluginWatchRoots: options.developmentPluginWatchRoots }
-        : {}),
-    });
-    await host.start();
-    try {
-      embeddedPluginIpc = await startPluginHostIpcServer({
-        host,
-        socketPath: pluginHostSocketPath(process.env, clashHome),
+  const ensurePluginRuntime = () =>
+    (pluginRuntimeReady ??= bundledPluginsReady.then(async () => {
+      // A broken package degrades only that Provider. The host still starts every
+      // successfully activated plugin, so Google work is not blocked by a bad
+      // MiniMax payload (and vice versa). Resolving a binding for the failed
+      // plugin will surface the provider-specific error at the operation boundary.
+      const host = new ActionsHost({
+        actionsRoot: join(clashHome, "actions"),
+        pluginBroker,
+        ...(options.providerHttpInstrumentation
+          ? { providerHttpInstrumentation: options.providerHttpInstrumentation }
+          : {}),
+        ...(options.developmentPluginWatchRoots
+          ? { developmentPluginWatchRoots: options.developmentPluginWatchRoots }
+          : {}),
       });
-      embeddedPluginHost = host;
-    } catch (error) {
-      await host.stopAll();
-      if (!(error && typeof error === "object" && "code" in error
-        && (error as { code?: unknown }).code === "EADDRINUSE")) {
-        throw error;
+      await host.start();
+      try {
+        embeddedPluginIpc = await startPluginHostIpcServer({
+          host,
+          socketPath: pluginHostSocketPath(process.env, clashHome),
+        });
+        embeddedPluginHost = host;
+      } catch (error) {
+        await host.stopAll();
+        if (!(
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          (error as { code?: unknown }).code === "EADDRINUSE"
+        )) {
+          throw error;
+        }
+        // Another local-api host already owns the socket.
       }
-      // Another local-api host already owns the socket.
-    }
-  });
+    }));
   const providerPluginProjector = (async (request) => {
     await ensurePluginRuntime();
     return pluginHostProjector(request);
@@ -1023,6 +1106,14 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     await ensurePluginRuntime();
     return pluginHostProviderExecutor(request);
   }) satisfies import("./local-aigc.js").ProviderPluginExecutor;
+  const resolveProviderPluginBinding = async (
+    pluginId: string,
+    exportId: string,
+    kind: "provider-executor",
+  ) => {
+    await ensurePluginRuntime();
+    return pluginHostClient.resolveBinding(pluginId, exportId, kind);
+  };
   const executablePluginAction = (async (request) => {
     await ensurePluginRuntime();
     return pluginHostExecutableAction(request);
@@ -1039,12 +1130,13 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     await ensurePluginRuntime();
     return pluginHostClient.listModelBindings();
   };
-  const discoveryRunDir =
-    options.discovery?.runDir ?? join(clashHome, "run");
-  const localAcp = options.localAcp ?? createConfiguredLocalAcpAdapter(process.env, {
-    apiBaseUrl: `http://127.0.0.1:${options.port}`,
-    dataDir: options.dataDir,
-  });
+  const discoveryRunDir = options.discovery?.runDir ?? join(clashHome, "run");
+  const localAcp =
+    options.localAcp ??
+    createConfiguredLocalAcpAdapter(process.env, {
+      apiBaseUrl: `http://127.0.0.1:${options.port}`,
+      dataDir: options.dataDir,
+    });
   let configWatcherClosed = false;
   let localAcpReady!: Promise<void>;
   let configReloadQueue = Promise.resolve();
@@ -1074,31 +1166,15 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     );
   });
   const falMock = createMockFalQueueService();
-  const providerTraffic = providerTrafficRecordingPath
-    ? {
-        mode: "record" as const,
-        recorder: (() => {
-          const recorder = createJsonlProviderTestRecorder(providerTrafficRecordingPath);
-          return () => recorder;
-        })(),
-      }
-    : providerTrafficReplayPath
-      ? {
-          mode: "replay" as const,
-          fixtures: (() => {
-            const fixtures = readJsonlProviderTestRecording(providerTrafficReplayPath)
-              .then(createProviderTestReplayFixtures);
-            return () => fixtures;
-          })(),
-        }
-      : undefined;
   const syncConfig = createLocalSyncConfigStore({
     dataDir: options.dataDir,
     env: process.env,
   });
-  const audioConfig = options.audioConfig ?? createLocalAudioConfigStore({
-    dataDir: options.dataDir,
-  });
+  const audioConfig =
+    options.audioConfig ??
+    createLocalAudioConfigStore({
+      dataDir: options.dataDir,
+    });
   void audioConfig.getVoiceInputConfig?.().catch((error) => {
     console.error(
       "[local-api] voice input startup probe degraded:",
@@ -1106,29 +1182,31 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     );
   });
   const localTts = createLocalTtsGenerationHandler(audioConfig);
-  let roomHub: LocalLoroRoomHub | undefined;
   const app = createLocalApiApp({
     dataDir: options.dataDir,
+    projectAssetProjectionOrigin: localOrigin,
+    projectAssetReplica,
     acceptPluginUpload,
-    hostIdentity: pendingDiscoveryHostId ? {
-      hostId: pendingDiscoveryHostId,
-      pid: process.pid,
-      profile: discoveryProfile,
-      protocolVersion: LOCAL_HOST_PROTOCOL_VERSION,
-    } : undefined,
+    hostIdentity: pendingDiscoveryHostId
+      ? {
+          hostId: pendingDiscoveryHostId,
+          pid: process.pid,
+          profile: discoveryProfile,
+          protocolVersion: LOCAL_HOST_PROTOCOL_VERSION,
+        }
+      : undefined,
     localAcp,
     localAcpReady,
     falMock,
     syncConfig,
+    publicAssetStorage,
     audioConfig,
-    providerTestRecordingPath: process.env.CLASH_PROVIDER_TEST_RECORDING_PATH,
-    providerTestOpenAiBaseUrl: process.env.OPENAI_BASE_URL,
-    providerTestAnthropicBaseUrl: process.env.ANTHROPIC_BASE_URL,
-    providerTestFalQueueBaseUrl: process.env.CLASH_FAL_QUEUE_URL,
-    providerTestGoogleAiStudioBaseUrl: process.env.CLASH_GOOGLE_AI_STUDIO_URL,
-    providerTestPikaBaseUrl: process.env.CLASH_PIKA_URL,
-    providerTestReplicateBaseUrl: process.env.CLASH_REPLICATE_URL,
     providerPluginExecutor,
+    ...(options.providerGenerationDeadlineMs === undefined
+      ? {}
+      : {
+          providerGenerationDeadlineMs: options.providerGenerationDeadlineMs,
+        }),
     processProjectWork: async (projectId) => {
       if (!roomHub) {
         throw new Error("Local project room hub is not ready.");
@@ -1136,23 +1214,29 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       await roomHub.refresh(projectId);
     },
     marketplaceActions: [...codexImagegenMarketplace.actions],
-    listInstalledMarketplaceActions: () => codexImagegenMarketplace.listInstalled(),
-    installMarketplaceAction: (packageId) => codexImagegenMarketplace.install(packageId),
-    uninstallMarketplaceAction: (actionId) => codexImagegenMarketplace.uninstall(actionId),
+    listInstalledMarketplaceActions: () =>
+      codexImagegenMarketplace.listInstalled(),
+    installMarketplaceAction: (packageId) =>
+      codexImagegenMarketplace.install(packageId),
+    uninstallMarketplaceAction: (actionId) =>
+      codexImagegenMarketplace.uninstall(actionId),
     marketplaceSkills: [...npxSkillsMarketplace.skills],
     listInstalledMarketplaceSkills: () => npxSkillsMarketplace.listInstalled(),
     installMarketplaceSkill: (skillId) => npxSkillsMarketplace.install(skillId),
-    uninstallMarketplaceSkill: (skillId) => npxSkillsMarketplace.uninstall(skillId),
+    uninstallMarketplaceSkill: (skillId) =>
+      npxSkillsMarketplace.uninstall(skillId),
     pluginPackages: {
       list: () => listHostExecutablePluginPackages(actionsRoot),
-      validate: (input) => validateHostExecutablePluginPackageContracts(
-        input as HostExecutablePluginPackage,
-        actionsRoot,
-      ),
-      activate: (input) => activateOrUpdateHostExecutablePluginPackage(
-        input as HostExecutablePluginPackage,
-        actionsRoot,
-      ),
+      validate: (input) =>
+        validateHostExecutablePluginPackageContracts(
+          input as HostExecutablePluginPackage,
+          actionsRoot,
+        ),
+      activate: (input) =>
+        activateOrUpdateHostExecutablePluginPackage(
+          input as HostExecutablePluginPackage,
+          actionsRoot,
+        ),
       read: (id) => readHostExecutablePluginPackage(actionsRoot, id),
       rollback: (id) => rollbackHostExecutablePluginPackage(actionsRoot, id),
       remove: (id) => removeHostExecutablePluginPackage(actionsRoot, id),
@@ -1172,16 +1256,26 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
   const workflowProcessor = createLocalWorkflowProcessor({
     dataDir: options.dataDir,
     mediaBaseUrl: resolveMediaBaseUrl(() => boundPort),
+    ...(options.providerGenerationDeadlineMs === undefined
+      ? {}
+      : {
+          providerGenerationDeadlineMs: options.providerGenerationDeadlineMs,
+        }),
     ...(options.providerPollDelayCapMs === undefined
       ? {}
       : { providerPollDelayCapMs: options.providerPollDelayCapMs }),
-    modelCards: async () => loadLocalModelCards(
-      options.dataDir,
-      "local-user",
-      await listPluginCards(),
-      await listPluginModelBindings(),
-    ),
+    modelCards: async () =>
+      loadLocalModelCards(
+        options.dataDir,
+        "local-user",
+        await listPluginCards(),
+        await listPluginModelBindings(),
+      ),
     executablePluginAction,
+    durableProviderRuns: {
+      ownerId: "local-api",
+      providerPluginExecutor,
+    },
     timelineRenderer: options.timelineRenderer,
     textAgent: localAcp.runTextTask
       ? {
@@ -1190,12 +1284,15 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
               projectId: input.projectId,
               prompt: input.prompt,
               ...(input.actorAgentId ? { agentId: input.actorAgentId } : {}),
-              modelId: typeof input.modelParams?.acp_model === "string" && input.modelParams.acp_model.trim()
-                ? input.modelParams.acp_model.trim()
-                : undefined,
-              systemPrompt: typeof input.modelParams?.system_prompt === "string"
-                ? input.modelParams.system_prompt
-                : undefined,
+              modelId:
+                typeof input.modelParams?.acp_model === "string" &&
+                input.modelParams.acp_model.trim()
+                  ? input.modelParams.acp_model.trim()
+                  : undefined,
+              systemPrompt:
+                typeof input.modelParams?.system_prompt === "string"
+                  ? input.modelParams.system_prompt
+                  : undefined,
             });
             return {
               text: result.text,
@@ -1209,28 +1306,40 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       fal: falMock,
       origin: `http://127.0.0.1:${options.port}`,
       providerAccounts: () => loadLocalProviderAccounts(options.dataDir),
-      modelCards: async () => loadLocalModelCards(
-        options.dataDir,
-        "local-user",
-        await listPluginCards(),
-        await listPluginModelBindings(),
-      ),
-      openAiBaseUrl: process.env.OPENAI_BASE_URL,
-      anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL,
-      falQueueBaseUrl: process.env.CLASH_FAL_QUEUE_URL,
-      googleAiStudioApiKey: process.env.GOOGLE_API_KEY ?? process.env.GEMINI_API_KEY,
-      googleAiStudioBaseUrl: process.env.GOOGLE_AI_STUDIO_BASE_URL,
-      pikaBaseUrl: process.env.CLASH_PIKA_URL,
-      providerUsageAudit: (event) => providerStore.appendProviderUsageEvent(event),
-      providerTraffic,
+      modelCards: async () =>
+        loadLocalModelCards(
+          options.dataDir,
+          "local-user",
+          await listPluginCards(),
+          await listPluginModelBindings(),
+        ),
       providerPluginProjector,
       providerPluginExecutor,
+      resolveProviderPluginStagedAsset: async ({
+        projectId,
+        projectAssetId,
+      }) => {
+        const staged = await pluginAssetStaging.resolve({
+          projectId,
+          projectAssetId,
+        });
+        if (!staged) return undefined;
+        return {
+          bytes: new Uint8Array(await readFile(staged.projection.path)),
+          kind: staged.projection.resource.kind,
+          ...(staged.projection.resource.contentType
+            ? { contentType: staged.projection.resource.contentType }
+            : {}),
+        };
+      },
+      resolveProviderPluginBinding,
       localTts,
     }),
   });
-  const remotePersistence = options.remotePersistence === undefined
-    ? () => syncConfig.resolveRemotePersistence()
-    : options.remotePersistence ?? undefined;
+  const remotePersistence =
+    options.remotePersistence === undefined
+      ? () => syncConfig.resolveRemotePersistence()
+      : (options.remotePersistence ?? undefined);
   roomHub = new LocalLoroRoomHub(
     options.dataDir,
     remotePersistence,
@@ -1244,37 +1353,58 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     rejectListening = reject;
   });
   let publishedDiscoveryHostId: string | undefined;
-  const server = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: options.port }, (info) => {
-    settled = true;
-    boundPort = info.port;
-    localAcp.updateSpawnEnv(createLocalAgentToolEnv({
-      dataDir: options.dataDir,
-      apiBaseUrl: `http://127.0.0.1:${info.port}`,
-      env: process.env,
-    }));
-    console.log(`[local-api] listening on http://127.0.0.1:${info.port}`);
-    console.log(`[local-api] data dir: ${options.dataDir}`);
-    void syncConfig.getPublicConfig().then((config) => {
-      if (config.remote_loro.enabled) {
-        console.log(`[local-api] remote Loro persistence: enabled (${config.remote_loro.source})`);
-      }
-    });
-    void (async () => {
-      if (pendingDiscoveryHostId) {
-        publishedDiscoveryHostId = await writeServerDiscoveryRecord(
-          info.port,
-          options,
-          discoveryRunDir,
-          pendingDiscoveryHostId,
-          discoveryProfile,
-        );
-      }
-      resolveListening(server);
-    })().catch((error) => {
-      server.close();
-      rejectListening(error);
-    });
-  });
+  let startupRecovery: Promise<unknown> = Promise.resolve();
+  const server = serve(
+    { fetch: app.fetch, hostname: "127.0.0.1", port: options.port },
+    (info) => {
+      settled = true;
+      boundPort = info.port;
+      localAcp.updateSpawnEnv(
+        createLocalAgentToolEnv({
+          dataDir: options.dataDir,
+          apiBaseUrl: `http://127.0.0.1:${info.port}`,
+          env: process.env,
+        }),
+      );
+      console.log(`[local-api] listening on http://127.0.0.1:${info.port}`);
+      console.log(`[local-api] data dir: ${options.dataDir}`);
+      void syncConfig.getPublicConfig().then((config) => {
+        if (config.remote_loro.enabled) {
+          console.log(
+            `[local-api] remote Loro persistence: enabled (${config.remote_loro.source})`,
+          );
+        }
+      });
+      void (async () => {
+        if (pendingDiscoveryHostId) {
+          publishedDiscoveryHostId = await writeServerDiscoveryRecord(
+            info.port,
+            options,
+            discoveryRunDir,
+            pendingDiscoveryHostId,
+            discoveryProfile,
+          );
+        }
+        // Recovery is owner-driven, not client-driven. Do not await Project processing here: a
+        // Provider call may consume the remaining attempt budget, while the HTTP Host must become
+        // reachable immediately so plugins can use its injected Asset endpoints.
+        startupRecovery = bootstrapLocalDurableRunRecovery({
+          dataDir: options.dataDir,
+          ownerId: "local-api",
+          roomHub: roomHub!,
+        }).catch((error) => {
+          console.error(
+            "[local-api] durable run startup recovery degraded:",
+            error instanceof Error ? error.message : String(error),
+          );
+        });
+        resolveListening(server);
+      })().catch((error) => {
+        server.close();
+        rejectListening(error);
+      });
+    },
+  );
   wrapServerCloseWithLifecycleCleanup(
     server,
     async () => {
@@ -1283,10 +1413,15 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       await Promise.all([
         localAcp.disposeAll(),
         options.directorStageRenderer?.dispose(),
-        (pluginRuntimeReady ?? bundledPluginsReady).catch(() => undefined).then(async () => {
-          await embeddedPluginIpc?.close().catch(() => undefined);
-          await embeddedPluginHost?.stopAll().catch(() => undefined);
-        }),
+        startupRecovery
+          .catch(() => undefined)
+          .then(() => roomHub?.close()),
+        (pluginRuntimeReady ?? bundledPluginsReady)
+          .catch(() => undefined)
+          .then(async () => {
+            await embeddedPluginIpc?.close().catch(() => undefined);
+            await embeddedPluginHost?.stopAll().catch(() => undefined);
+          }),
       ]);
     },
     () => publishedDiscoveryHostId,
@@ -1341,10 +1476,12 @@ function wrapServerCloseWithLifecycleCleanup(
     if (cleanupPromise) return cleanupPromise;
     cleanupPromise = Promise.all([
       Promise.resolve(disposeLocalAcp()).catch(() => undefined),
-      Promise.resolve().then(async () => {
-        const hostId = getHostId();
-        if (hostId) await removeHostDiscovery(hostId, { runDir });
-      }).catch(() => undefined),
+      Promise.resolve()
+        .then(async () => {
+          const hostId = getHostId();
+          if (hostId) await removeHostDiscovery(hostId, { runDir });
+        })
+        .catch(() => undefined),
     ]).then(() => undefined);
     return cleanupPromise;
   };
@@ -1357,6 +1494,9 @@ function wrapServerCloseWithLifecycleCleanup(
 }
 
 const directRunUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";
-if (import.meta.url === directRunUrl && !process.env.CLASH_LOCAL_API_WRAPPER_ENTRY) {
+if (
+  import.meta.url === directRunUrl &&
+  !process.env.CLASH_LOCAL_API_WRAPPER_ENTRY
+) {
   void startLocalApiServer({ port, dataDir });
 }

@@ -8,7 +8,7 @@ function readSource(path: string): string {
 describe('PresenceBar tooltip primitives', () => {
   it('uses the shared tooltip primitive instead of local Ariakit tooltip plumbing', () => {
     const source = readSource('packages/web-ui/src/components/PresenceBar.tsx');
-    const tooltipSource = readSource('packages/web-ui/src/components/ui/tooltip.tsx');
+    const tooltipSource = readSource('packages/gui/src/components/ui/tooltip.tsx');
 
     expect(tooltipSource).toContain('@ariakit/react');
     expect(tooltipSource).toContain('TooltipProvider');

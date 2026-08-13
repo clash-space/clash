@@ -20,7 +20,7 @@ describe("Input primitives", () => {
     // editor surface -- so requiring the Input primitive here asserted nothing.
     "packages/web-ui/src/components/nodes/VideoNode.tsx",
   ])("%s uses the shared Input primitive instead of raw input controls", (file) => {
-    const inputPath = join(process.cwd(), "packages/web-ui/src/components/ui/input.tsx");
+    const inputPath = join(process.cwd(), "packages/gui/src/components/ui/input.tsx");
     const inputSource = existsSync(inputPath) ? readFileSync(inputPath, "utf8") : "";
     const source = readSource(file);
 

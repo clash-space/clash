@@ -28,6 +28,7 @@ import {
   ModelInputRuleSchema,
   ModelParameterSchema,
   ModelProviderImplementationSchema,
+  ProviderAssetInputSchema,
   type ModelCard,
 } from "./models.js";
 
@@ -253,7 +254,17 @@ export const ExecutablePluginCardDocumentSchema = z.discriminatedUnion("kind", [
     kind: z.literal("action-card"),
     spec: ExecutableActionCardSchema,
   }).strict(),
-]);
+]).superRefine((document, ctx) => {
+  if (document.kind !== "model-card") return;
+  document.spec.providerImplementations?.forEach((implementation, index) => {
+    if (implementation.accountId === undefined) return;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["spec", "providerImplementations", index, "accountId"],
+      message: "Plugin model Cards cannot select a Provider account; the Host selects it at runtime.",
+    });
+  });
+});
 
 export const ExecutablePluginProviderDefinitionSchema = z.object({
   /**
@@ -283,7 +294,6 @@ export const ExecutablePluginProviderDefinitionSchema = z.object({
     priority: z.number().nonnegative().optional(),
     weight: z.number().nonnegative().optional(),
     region: z.string().trim().min(1).optional(),
-    accountId: z.string().trim().min(1).optional(),
   }).strict().optional(),
 }).strict();
 
@@ -299,7 +309,14 @@ export const ExecutablePluginModelBindingSpecSchema = z.intersection(
     modelId: z.string().trim().min(1),
   }),
   ModelProviderImplementationSchema,
-);
+).superRefine((binding, ctx) => {
+  if (binding.accountId === undefined) return;
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    path: ["accountId"],
+    message: "Plugin model bindings cannot select a Provider account; the Host selects it at runtime.",
+  });
+});
 
 /**
  * The two facts a binding actually carries.
@@ -319,8 +336,14 @@ export const ExecutablePluginModelBindingInputSchema = z.object({
   priority: z.number().optional(),
   weight: z.number().optional(),
   region: z.string().trim().min(1).optional(),
-  accountId: z.string().trim().min(1).optional(),
-}).passthrough();
+}).passthrough().superRefine((binding, ctx) => {
+  if (binding.accountId === undefined) return;
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    path: ["accountId"],
+    message: "Plugin model bindings cannot select a Provider account; the Host selects it at runtime.",
+  });
+});
 
 /**
  * Fill a binding's route from the provider that owns it.
@@ -358,7 +381,7 @@ export function resolveModelBindingFromProvider(
   if (parsed.requiredOAuth) resolved.requiredOAuth = parsed.requiredOAuth;
   else delete resolved.requiredOAuth;
 
-  for (const key of ["priority", "weight", "region", "accountId"] as const) {
+  for (const key of ["priority", "weight", "region"] as const) {
     const value = parsed[key] ?? defaults[key];
     if (value === undefined) delete resolved[key];
     else resolved[key] = value;
@@ -504,11 +527,10 @@ export function composeExecutablePluginModelCards(
         : {}),
     });
     const entries = bindingsByModel.get(modelId) ?? [];
-    const routeKey = [implementation.providerId, implementation.accountId ?? "", implementation.region ?? ""]
+    const routeKey = [implementation.providerId, implementation.region ?? ""]
       .join(":");
     const duplicate = entries.find((entry) => [
       entry.implementation.providerId,
-      entry.implementation.accountId ?? "",
       entry.implementation.region ?? "",
     ].join(":") === routeKey);
     if (duplicate) {
@@ -525,11 +547,10 @@ export function composeExecutablePluginModelCards(
     if (external.length === 0) return model;
     const implementations = [...(model.providerImplementations ?? [])];
     for (const entry of external) {
-      const routeKey = [entry.implementation.providerId, entry.implementation.accountId ?? "", entry.implementation.region ?? ""]
+      const routeKey = [entry.implementation.providerId, entry.implementation.region ?? ""]
         .join(":");
       const duplicate = implementations.some((implementation) => [
         implementation.providerId,
-        implementation.accountId ?? "",
         implementation.region ?? "",
       ].join(":") === routeKey);
       if (duplicate) {
@@ -582,90 +603,9 @@ const ExecutablePluginAssetHandleObjectSchema = z.object({
   uri: z.string().regex(/^clash-asset:\/\/.+/),
   kind: AssetKindSchema,
   mediaType: z.string().trim().min(1).optional(),
-  /**
-   * Where the bytes are, when the host has not stored them yet.
-   *
-   * A generation plugin ends up with a link its upstream published, and returning it through the
-   * asset channel keeps the media type a declared field instead of a hand-rolled one. Absent for a
-   * handle that names an asset the host already holds.
-   */
-  url: z.string().url().optional(),
-  /** Who can fetch `url`. The host cannot retrieve an address only the plugin can see. */
-  reach: z.enum(["public", "private"]).optional(),
 }).strict();
 
-/**
- * Same fields, with the url/reach pairing enforced. `extend` needs the plain object, so the
- * refinement lives on this export rather than on the shape itself.
- */
-export const ExecutablePluginAssetHandleSchema = ExecutablePluginAssetHandleObjectSchema
-  .superRefine((handle, ctx) => {
-  if (handle.url && !handle.reach) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "An asset handle with a url must state its reach.",
-    });
-  }
-  if (!handle.url && handle.reach) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "An asset handle's reach applies to a url.",
-    });
-  }
-});
-
-/**
- * What the broker returns when a plugin resolves a `clash-asset://` handle.
- *
- * Either shape is valid, and exactly one must be present. The local broker reads a file and
- * returns `dataBase64`; a hosted broker whose assets live in object storage can return a
- * short-lived `url` and move no bytes at all. That is the seam the cloud path needs: a Card
- * may accept a 30 MB reference and several of them, and copying those through an IPC frame
- * does not scale.
- *
- * A plugin branches on which field it received -- a capability question -- and never on
- * whether it is running locally or hosted, which would fork the workflow the local-first
- * model keeps single.
- */
-export const ExecutablePluginAssetReadResultSchema = z.object({
-  handle: z.string().trim().min(1),
-  kind: AssetKindSchema,
-  mediaType: z.string().trim().min(1).optional(),
-  byteLength: z.number().int().nonnegative(),
-  /** Fetchable by the plugin. A `clash-asset://` handle is the request, not an answer. */
-  url: z.string().url().refine(value => !value.startsWith("clash-asset://"), {
-    message: "asset.read url must be fetchable, not another asset handle.",
-  }).optional(),
-  /**
-   * Who can fetch `url`.
-   *
-   * `public` means the provider can retrieve it directly, so it may be forwarded upstream.
-   * `private` means only this plugin process can -- a local asset served on loopback, say --
-   * and forwarding it would hand the provider an address that answers for somebody else.
-   * Both are `https?://` strings, so nothing downstream can tell them apart by inspection.
-   */
-  reach: z.enum(["public", "private"]).optional(),
-  dataBase64: z.string().optional(),
-}).strict().superRefine((result, ctx) => {
-  if (Boolean(result.url) === Boolean(result.dataBase64)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "asset.read returns exactly one of url or dataBase64.",
-    });
-  }
-  if (result.url && !result.reach) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "asset.read url requires a reach of public or private.",
-    });
-  }
-  if (result.dataBase64 && result.reach) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "asset.read reach applies to a url; bytes have none.",
-    });
-  }
-});
+export const ExecutablePluginAssetHandleSchema = ExecutablePluginAssetHandleObjectSchema;
 
 const ExecutablePluginReferenceBaseSchema = z.object({
   slot: z.string().trim().min(1),
@@ -684,6 +624,27 @@ export const ExecutablePluginReferenceSchema = z.union([
   }).strict(),
 ]);
 
+/** JSON wire result for `asset.resolve`; SDKs decode bytes before plugin business code sees it. */
+export const ExecutablePluginResolvedReferenceSchema = z.discriminatedUnion("form", [
+  z.object({
+    form: z.literal("provider-url"),
+    providerUrl: z.string().url(),
+    expiresAt: z.string().datetime(),
+    kind: AssetKindSchema.optional(),
+    mediaType: z.string().trim().min(1).optional(),
+  }).strict(),
+  z.object({
+    form: z.literal("bytes"),
+    bytesBase64: z.string(),
+    kind: AssetKindSchema.optional(),
+    mediaType: z.string().trim().min(1).optional(),
+  }).strict(),
+  z.object({
+    form: z.literal("text"),
+    text: z.string(),
+  }).strict(),
+]);
+
 export const ExecutablePluginInvocationSchema = z.object({
   protocol: z.literal("clash.plugin.invoke/v1"),
   invocationId: z.string().trim().min(1),
@@ -697,6 +658,8 @@ export const ExecutablePluginInvocationSchema = z.object({
     values: z.record(ExecutablePluginJsonValueSchema).default({}),
     references: z.array(ExecutablePluginReferenceSchema).default([]),
   }).strict(),
+  /** Delivery contract copied from the exact selected Provider binding. */
+  assetInputs: z.array(ProviderAssetInputSchema).default([]),
   actor: z.object({
     kind: z.enum(["user", "agent", "system"]),
     id: z.string().trim().min(1).optional(),
@@ -809,6 +772,42 @@ export const ExecutablePluginOutputSchema = z.union([
   }).strict(),
 ]);
 
+/** Stable Host-level failure categories; raw upstream spellings belong in `providerCode`. */
+export const ExecutablePluginFailureCodeSchema = z.enum([
+  "invalid_request",
+  "authentication_failed",
+  "permission_denied",
+  "content_rejected",
+  "rate_limited",
+  "quota_exhausted",
+  "provider_unavailable",
+  "provider_failed",
+  "task_not_found",
+  "task_expired",
+  "transport_timeout",
+  "transport_error",
+  "invalid_response",
+  "execution_failed",
+  "contract_violation",
+  "cancelled",
+  "plugin_unavailable",
+  "deadline_exceeded",
+  "output_persistence_failed",
+  "publication_failed",
+]);
+
+/** Structured failure facts shared by runtime results and declarative contract expectations. */
+export const ExecutablePluginFailureErrorSchema = z.object({
+  /** Stable Clash category. Provider-specific spellings belong in `providerCode`. */
+  code: ExecutablePluginFailureCodeSchema,
+  message: z.string().trim().min(1),
+  retryable: z.boolean(),
+  /** Whether the provider definitely rejected, may have accepted, or later failed the work. */
+  requestState: z.enum(["rejected", "unknown", "accepted"]),
+  providerCode: z.string().trim().min(1).optional(),
+  details: ExecutablePluginJsonValueSchema.optional(),
+}).strict();
+
 export const ExecutablePluginResultSchema = z.discriminatedUnion("status", [
   z.object({
     protocol: z.literal("clash.plugin.result/v1"),
@@ -847,19 +846,14 @@ export const ExecutablePluginResultSchema = z.discriminatedUnion("status", [
     protocol: z.literal("clash.plugin.result/v1"),
     invocationId: z.string().trim().min(1),
     status: z.literal("failed"),
-    error: z.object({
-      code: z.string().trim().min(1),
-      message: z.string().trim().min(1),
-      retryable: z.boolean().default(false),
-      details: ExecutablePluginJsonValueSchema.optional(),
-    }).strict(),
+    error: ExecutablePluginFailureErrorSchema,
   }).strict(),
 ]);
 
 export const ExecutablePluginBrokerOperationSchema = z.union([
   z.object({
-    kind: z.literal("asset.read"),
-    asset: ExecutablePluginAssetHandleSchema,
+    kind: z.literal("asset.resolve"),
+    reference: ExecutablePluginReferenceSchema,
   }).strict(),
   /**
    * Somewhere to put bytes that is not this message.
@@ -1069,12 +1063,7 @@ export const ExecutablePluginContractTestDocumentSchema = z.object({
     }).strict(),
     z.object({
       status: z.literal("failed"),
-      error: z.object({
-        code: z.string().trim().min(1),
-        message: z.string().trim().min(1),
-        retryable: z.boolean().default(false),
-        details: ExecutablePluginJsonValueSchema.optional(),
-      }).strict(),
+      error: ExecutablePluginFailureErrorSchema,
     }).strict(),
   ]),
   timeoutMs: z.number().int().positive().max(120_000).default(10_000),
@@ -1235,7 +1224,7 @@ export function executablePluginDependencyError(
       : `Plugin ${manifest.id} does not contribute anything that produces assets.`;
   }
 
-  if (operation.kind === "asset.read") {
+  if (operation.kind === "asset.resolve") {
     return capabilities.assets
       ? null
       : `Plugin ${manifest.id} does not contribute anything that reads assets.`;
@@ -1469,10 +1458,12 @@ export type ExecutablePluginModelBindingRegistration = z.infer<
 >;
 export type ExecutablePluginBinding = z.infer<typeof ExecutablePluginBindingSchema>;
 export type ExecutablePluginAssetHandle = z.infer<typeof ExecutablePluginAssetHandleSchema>;
-export type ExecutablePluginAssetReadResult = z.infer<typeof ExecutablePluginAssetReadResultSchema>;
+export type ExecutablePluginResolvedReference = z.infer<typeof ExecutablePluginResolvedReferenceSchema>;
 export type ExecutablePluginReference = z.infer<typeof ExecutablePluginReferenceSchema>;
 export type ExecutablePluginInvocation = z.infer<typeof ExecutablePluginInvocationSchema>;
 export type ExecutablePluginOutput = z.infer<typeof ExecutablePluginOutputSchema>;
+export type ExecutablePluginFailureCode = z.infer<typeof ExecutablePluginFailureCodeSchema>;
+export type ExecutablePluginFailureError = z.infer<typeof ExecutablePluginFailureErrorSchema>;
 export type ExecutablePluginResult = z.infer<typeof ExecutablePluginResultSchema>;
 export type ExecutablePluginBrokerOperation = z.infer<typeof ExecutablePluginBrokerOperationSchema>;
 export type ExecutablePluginBrokerRequest = z.infer<typeof ExecutablePluginBrokerRequestSchema>;

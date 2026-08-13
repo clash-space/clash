@@ -3,6 +3,23 @@ import type {
   ExecutorContext,
   ExecutorStep,
 } from "@clash/action-sdk";
+import {
+  ProviderExecutionError,
+  providerHttpError,
+} from "@clash/action-sdk";
+import {
+  resolveVolcengineTypedReferences,
+  type VolcengineTypedReferences,
+} from "./typed-references";
+
+function rejectedInvalidRequest(message: string): ProviderExecutionError {
+  return new ProviderExecutionError({
+    code: "invalid_request",
+    message,
+    retryable: false,
+    requestState: "rejected",
+  });
+}
 
 export const VOLCENGINE_SPEECH_DEFAULT_BASE_URL =
   "https://openspeech.bytedance.com/api/v3";
@@ -12,8 +29,6 @@ export interface SeedAudioRequestValues extends Record<string, unknown> {
   upstreamModel?: string;
   prompt?: string;
   modelParams?: Record<string, unknown>;
-  referenceImageUrls?: string[];
-  referenceAudioUrls?: string[];
 }
 
 const SEED_AUDIO_SAMPLE_RATES = new Set([
@@ -25,15 +40,6 @@ function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
-}
-
-function strings(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter(
-        (entry): entry is string =>
-          typeof entry === "string" && entry.trim().length > 0,
-      )
-    : [];
 }
 
 function baseUrl(value: string | undefined): string {
@@ -68,10 +74,14 @@ function seedAudioRate(
 ): number | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(`Volcengine Seed Audio ${label} must be a number.`);
+    throw rejectedInvalidRequest(
+      `Volcengine Seed Audio ${label} must be a number.`,
+    );
   }
   if (value < 0.5 || value > 2) {
-    throw new Error(`Volcengine Seed Audio ${label} must be between 0.5 and 2.`);
+    throw rejectedInvalidRequest(
+      `Volcengine Seed Audio ${label} must be between 0.5 and 2.`,
+    );
   }
   return Math.round((value - 1) * 100);
 }
@@ -87,48 +97,57 @@ function seedAudioReference(
 
 export function buildSeedAudioRequest(
   values: SeedAudioRequestValues,
+  typedReferences: Pick<
+    VolcengineTypedReferences,
+    "images" | "audios"
+  > = { images: [], audios: [] },
 ): Record<string, unknown> {
   const model =
     typeof values.upstreamModel === "string" ? values.upstreamModel.trim() : "";
-  if (!model) throw new Error("Volcengine Seed Audio needs an upstreamModel.");
+  if (!model) {
+    throw rejectedInvalidRequest(
+      "Volcengine Seed Audio needs an upstreamModel.",
+    );
+  }
 
   const prompt = typeof values.prompt === "string" ? values.prompt.trim() : "";
-  if (!prompt) throw new Error("Volcengine Seed Audio requires a prompt.");
+  if (!prompt) {
+    throw rejectedInvalidRequest("Volcengine Seed Audio requires a prompt.");
+  }
   if (prompt.length > 3_000) {
-    throw new Error(
+    throw rejectedInvalidRequest(
       "Volcengine Seed Audio prompts support at most 3000 characters.",
     );
   }
 
-  const images = strings(values.referenceImageUrls);
-  const audios = strings(values.referenceAudioUrls);
+  const { images, audios } = typedReferences;
   const params = record(values.modelParams);
   const voiceId =
     typeof params.voice_id === "string" && params.voice_id.trim()
       ? params.voice_id.trim()
       : undefined;
   if (images.length > 0 && audios.length > 0) {
-    throw new Error(
+    throw rejectedInvalidRequest(
       "Volcengine Seed Audio image and audio references cannot be mixed.",
     );
   }
   if (images.length > 1) {
-    throw new Error(
+    throw rejectedInvalidRequest(
       "Volcengine Seed Audio accepts at most one reference image.",
     );
   }
   if (audios.length > 3) {
-    throw new Error(
+    throw rejectedInvalidRequest(
       "Volcengine Seed Audio accepts at most three reference audios.",
     );
   }
   if (images.length > 0 && voiceId) {
-    throw new Error(
+    throw rejectedInvalidRequest(
       "Volcengine Seed Audio image and speaker references cannot be mixed.",
     );
   }
   if (audios.length + (voiceId ? 1 : 0) > 3) {
-    throw new Error(
+    throw rejectedInvalidRequest(
       "Volcengine Seed Audio accepts at most three speaker or audio references.",
     );
   }
@@ -137,7 +156,7 @@ export function buildSeedAudioRequest(
   const format = params.format;
   if (format !== undefined) {
     if (typeof format !== "string" || !SEED_AUDIO_FORMATS.has(format)) {
-      throw new Error(
+      throw rejectedInvalidRequest(
         "Volcengine Seed Audio format must be wav, mp3, pcm, or ogg_opus.",
       );
     }
@@ -150,7 +169,9 @@ export function buildSeedAudioRequest(
       !Number.isInteger(sampleRate) ||
       !SEED_AUDIO_SAMPLE_RATES.has(sampleRate)
     ) {
-      throw new Error("Volcengine Seed Audio sample_rate is not supported.");
+      throw rejectedInvalidRequest(
+        "Volcengine Seed Audio sample_rate is not supported.",
+      );
     }
     audioConfig.sample_rate = sampleRate;
   }
@@ -165,7 +186,7 @@ export function buildSeedAudioRequest(
       params.pitch < -12 ||
       params.pitch > 12
     ) {
-      throw new Error(
+      throw rejectedInvalidRequest(
         "Volcengine Seed Audio pitch must be an integer between -12 and 12.",
       );
     }
@@ -202,7 +223,12 @@ export async function seedAudioSubmit(options: {
 }): Promise<ExecutorStep> {
   const apiKey = options.apiKey.trim();
   if (!apiKey) {
-    throw new Error("This Volcengine Speech account has no apiKey stored.");
+    throw new ProviderExecutionError({
+      code: "authentication_failed",
+      message: "This Volcengine Speech account has no apiKey stored.",
+      retryable: false,
+      requestState: "rejected",
+    });
   }
   const response = await options.fetch(`${baseUrl(options.baseUrl)}/tts/create`, {
     method: "POST",
@@ -213,27 +239,44 @@ export async function seedAudioSubmit(options: {
     body: JSON.stringify(options.body),
   });
   const body = await responseBody(response);
-  if (!response.ok || (typeof body.code === "number" && body.code !== 0)) {
-    throw new Error(
-      `Volcengine Seed Audio generation failed: ${messageFrom(body, response.statusText)}`,
-    );
+  const providerCode = typeof body.code === "number" && body.code !== 0
+    ? String(body.code)
+    : undefined;
+  const message =
+    `Volcengine Seed Audio generation failed: ${messageFrom(body, response.statusText)}`;
+  if (!response.ok) {
+    throw providerHttpError({
+      status: response.status,
+      message,
+      operation: "submit",
+      ...(providerCode ? { providerCode } : {}),
+    });
+  }
+  if (providerCode) {
+    throw new ProviderExecutionError({
+      code: "provider_failed",
+      message,
+      retryable: false,
+      requestState: "rejected",
+      providerCode,
+    });
   }
 
   const mediaType = seedAudioMediaType(options.body);
   const audio = typeof body.audio === "string" ? body.audio.trim() : "";
   const url = typeof body.url === "string" ? body.url.trim() : "";
   if (!audio && !url) {
-    throw new Error(
-      "Volcengine Seed Audio generation returned neither audio nor url.",
-    );
+    throw new ProviderExecutionError({
+      code: "invalid_response",
+      message: "Volcengine Seed Audio generation returned neither audio nor url.",
+      retryable: false,
+      requestState: "accepted",
+    });
   }
   return {
     status: "completed",
     media: {
-      media: {
-        url: audio ? `data:${mediaType};base64,${audio}` : url,
-        mediaType,
-      },
+      media: audio ? { base64: audio, mediaType } : { url, mediaType },
     },
   };
 }
@@ -246,7 +289,12 @@ async function accountState(
     context.store.get("baseUrl"),
   ]);
   if (!apiKey?.trim()) {
-    throw new Error("This Volcengine Speech account has no apiKey stored.");
+    throw new ProviderExecutionError({
+      code: "authentication_failed",
+      message: "This Volcengine Speech account has no apiKey stored.",
+      retryable: false,
+      requestState: "rejected",
+    });
   }
   return {
     apiKey: apiKey.trim(),
@@ -257,10 +305,19 @@ async function accountState(
 export const volcengineSpeechAdapter: Executor = {
   async submit(invocation, context): Promise<ExecutorStep> {
     const values = invocation.input.values as SeedAudioRequestValues;
+    const references = await resolveVolcengineTypedReferences(
+      invocation,
+      context,
+    );
+    if (references.videos.length || references.startFrame || references.endFrame) {
+      throw rejectedInvalidRequest(
+        "Volcengine Seed Audio accepts only image or audio references.",
+      );
+    }
     const account = await accountState(context);
     return seedAudioSubmit({
       ...account,
-      body: buildSeedAudioRequest(values),
+      body: buildSeedAudioRequest(values, references),
       fetch: globalThis.fetch,
     });
   },

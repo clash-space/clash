@@ -7,15 +7,15 @@ vi.mock('../../lib/hooks/useAsset', () => ({
   useAsset: () => ({
     id: 'image-1',
     kind: 'image',
-    srcR2Key: 'generated/image-1.png',
-    coverR2Key: null,
-    metadata: null,
-    sourceModel: 'nano-banana-2',
-    sourcePrompt: 'A paper city at sunrise',
-    sourceTaskId: 'task-1',
-    sources: [{ assetId: 'source-1', role: 'reference' }],
-    createdAt: 1,
-    updatedAt: 1,
+    url: 'https://media.clash.test/assets/image-1',
+    metadata: {},
+    lifecycle: { state: 'active' },
+    status: 'ready',
+    provenance: {
+      kind: 'generation',
+      model: 'nano-banana-2',
+      prompt: 'A paper city at sunrise',
+    },
   }),
 }));
 
@@ -27,11 +27,11 @@ describe('EditableProjectAssetSurface', () => {
       <EditableProjectAssetSurface
         asset={{
           id: 'image-1',
-          assetId: 'image-1',
-          type: 'image',
-          url: '/assets/image.png',
-          storageKey: null,
-          createdAt: null,
+          kind: 'image',
+          url: 'https://media.clash.test/assets/image-1',
+          metadata: {},
+          lifecycle: { state: 'active' },
+          status: 'ready',
         }}
         projectId="project-1"
         onApplied={vi.fn()}
@@ -41,6 +41,28 @@ describe('EditableProjectAssetSurface', () => {
     expect(screen.getByRole('main', { name: 'image-1 preview' })).toBeTruthy();
   });
 
+  it('sets and clears the explicit Project Asset cover id through the host callback', () => {
+    const onProjectCoverChange = vi.fn();
+    render(
+      <EditableProjectAssetSurface
+        asset={{
+          id: 'image-1',
+          kind: 'image',
+          url: 'https://media.clash.test/assets/image-1',
+          metadata: {},
+          lifecycle: { state: 'active' },
+          status: 'ready',
+        }}
+        projectId="project-1"
+        onApplied={vi.fn()}
+        onProjectCoverChange={onProjectCoverChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use as project cover' }));
+    expect(onProjectCoverChange).toHaveBeenCalledWith(true);
+  });
+
   it('renders a docked provenance rail with navigable Canvas, Timeline, source, and prompt relations', () => {
     const onOpenCanvas = vi.fn();
     const onOpenTimeline = vi.fn();
@@ -48,12 +70,12 @@ describe('EditableProjectAssetSurface', () => {
     render(
       <EditableProjectAssetSurface
         asset={{
-          id: 'image-1', assetId: 'image-1', type: 'image', url: '/assets/image.png',
-          storageKey: 'generated/image-1.png', createdAt: null,
+          id: 'image-1', kind: 'image', url: 'https://media.clash.test/assets/image-1',
+          metadata: {}, lifecycle: { state: 'active' }, status: 'ready',
         }}
         projectId="project-1"
         projectAssets={[
-          { id: 'source-1', assetId: 'source-1', type: 'image', url: '/source.png', storageKey: 'inputs/source.png', createdAt: null },
+          { id: 'source-1', name: 'source.png', kind: 'image', url: 'https://media.clash.test/assets/source-1', metadata: {}, lifecycle: { state: 'active' }, status: 'ready' },
         ]}
         canvases={[{ id: 'main', name: 'Main', position: 0 }]}
         timelines={[{
@@ -61,7 +83,7 @@ describe('EditableProjectAssetSurface', () => {
           state: { tracks: [{ items: [{ id: 'shot-1', assetId: 'image-1' }] }] },
         }]}
         relationNodes={[
-          { id: 'generator', canvasId: 'main', type: 'action-badge', data: { prompt: 'A paper city at sunrise' } },
+          { id: 'generator', canvasId: 'main', type: 'action-badge', data: { prompt: 'A paper city at sunrise', referenceImageAssetIds: ['source-1'] } },
           { id: 'output', canvasId: 'main', type: 'image', data: { assetId: 'image-1' } },
         ]}
         relationEdges={[{ canvasId: 'main', source: 'generator', target: 'output' }]}

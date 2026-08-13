@@ -7,7 +7,7 @@ import {
   modelArkSubmit,
   volcengineAdapter,
 } from "./modelark.js";
-import { volcengineSpeechAdapter } from "./speech.js";
+import { seedAudioSubmit, volcengineSpeechAdapter } from "./speech.js";
 
 function response(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -26,13 +26,15 @@ describe("Volcengine ModelArk request translation", () => {
         prompt: "Use @图像1 and @音频1",
         aspectRatio: "auto",
         duration: "auto",
-        referenceImageUrls: ["https://media.test/image.png"],
-        referenceAudioUrls: ["https://media.test/audio.mp3"],
         modelParams: {
           resolution: "4k",
           generate_audio: true,
           output_format: "mov",
         },
+      }, {
+        images: ["https://media.test/image.png"],
+        videos: [],
+        audios: ["https://media.test/audio.mp3"],
       }),
     ).toEqual({
       model: "doubao-seedance-2-0-260128",
@@ -64,8 +66,11 @@ describe("Volcengine ModelArk request translation", () => {
         prompt: "Replace the subject in @视频1",
         aspectRatio: "16:9",
         duration: 8,
-        referenceVideoUrls: ["https://media.test/source.mp4"],
         modelParams: { edit_mode: true, resolution: "720p" },
+      }, {
+        images: [],
+        videos: ["https://media.test/source.mp4"],
+        audios: [],
       }),
     ).toMatchObject({
       duration: 8,
@@ -76,8 +81,11 @@ describe("Volcengine ModelArk request translation", () => {
         modelId: "seedance-2-ref",
         upstreamModel: "doubao-seedance-2-0-260128",
         prompt: "Replace the subject in @视频1",
-        referenceVideoUrls: ["https://media.test/source.mp4"],
         modelParams: { edit_mode: true },
+      }, {
+        images: [],
+        videos: ["https://media.test/source.mp4"],
+        audios: [],
       }),
     ).not.toHaveProperty("omni_reference_task_type");
   });
@@ -90,12 +98,15 @@ describe("Volcengine ModelArk request translation", () => {
         prompt: "Replace the subject in @视频1",
         aspectRatio: "21:9",
         duration: 12,
-        referenceVideoUrls: ["https://media.test/source.mp4"],
         modelParams: {
           edit_mode: true,
           resolution: "720p",
           output_format: "mov",
         },
+      }, {
+        images: [],
+        videos: ["https://media.test/source.mp4"],
+        audios: [],
       }),
     ).toMatchObject({
       omni_reference_task_type: "edit",
@@ -113,7 +124,10 @@ describe("Volcengine ModelArk request translation", () => {
         prompt: "Follow @视频1 camera motion",
         aspectRatio: "21:9",
         duration: 20,
-        referenceVideoUrls: ["https://media.test/reference.mp4"],
+      }, {
+        images: [],
+        videos: ["https://media.test/reference.mp4"],
+        audios: [],
       }),
     ).toMatchObject({
       omni_reference_task_type: "reference",
@@ -127,7 +141,10 @@ describe("Volcengine ModelArk request translation", () => {
         upstreamModel: "doubao-seedance-2-5-260628",
         prompt: "向后延长 @视频1",
         duration: 10,
-        referenceVideoUrls: ["https://media.test/source.mp4"],
+      }, {
+        images: [],
+        videos: ["https://media.test/source.mp4"],
+        audios: [],
       }),
     ).toMatchObject({
       omni_reference_task_type: "extend",
@@ -144,8 +161,12 @@ describe("Volcengine ModelArk request translation", () => {
         upstreamModel: "doubao-seedance-2-5-260628",
         prompt: "Move from dawn to night",
         aspectRatio: "16:9",
-        startFrameUrl: "https://media.test/first.png",
-        endFrameUrl: "https://media.test/last.png",
+      }, {
+        images: [],
+        videos: [],
+        audios: [],
+        startFrame: "https://media.test/first.png",
+        endFrame: "https://media.test/last.png",
       }),
     ).toMatchObject({
       content: [
@@ -183,7 +204,10 @@ describe("Volcengine ModelArk request translation", () => {
         modelId: "seedance-2.5-extend",
         upstreamModel: "doubao-seedance-2-5-260628",
         prompt: "向后延长",
-        referenceImageUrls: ["https://media.test/image.png"],
+      }, {
+        images: ["https://media.test/image.png"],
+        videos: [],
+        audios: [],
       }),
     ).toThrow(/extension.*reference video/i);
     expect(() =>
@@ -191,8 +215,10 @@ describe("Volcengine ModelArk request translation", () => {
         modelId: "seedance-2.5-extend",
         upstreamModel: "doubao-seedance-2-5-260628",
         prompt: "向后延长 @视频1",
-        referenceVideoUrls: ["https://media.test/video.mp4"],
-        referenceAudioUrls: ["https://media.test/audio.mp3"],
+      }, {
+        images: [],
+        videos: ["https://media.test/video.mp4"],
+        audios: ["https://media.test/audio.mp3"],
       }),
     ).toThrow(/extension.*only.*video/i);
   });
@@ -203,7 +229,11 @@ describe("Volcengine ModelArk request translation", () => {
         modelId: "seedance-2.5-startend",
         upstreamModel: "doubao-seedance-2-5-260628",
         prompt: "Move toward the ending",
-        endFrameUrl: "https://media.test/last.png",
+      }, {
+        images: [],
+        videos: [],
+        audios: [],
+        endFrame: "https://media.test/last.png",
       }),
     ).toThrow(/first frame/i);
   });
@@ -214,7 +244,10 @@ describe("Volcengine ModelArk request translation", () => {
         modelId: "seedance-2-ref",
         upstreamModel: "doubao-seedance-2-0-260128",
         prompt: "Follow @音频1",
-        referenceAudioUrls: ["https://media.test/audio.mp3"],
+      }, {
+        images: [],
+        videos: [],
+        audios: ["https://media.test/audio.mp3"],
       }),
     ).toThrow(/audio.*image or video/i);
   });
@@ -290,6 +323,70 @@ describe("Volcengine ModelArk lifecycle", () => {
     ]);
   });
 
+  it("classifies an ambiguous submit outage as retryable", async () => {
+    await expect(
+      modelArkSubmit({
+        apiKey: "ark-key",
+        body: { model: "seedance", content: [] },
+        fetch: (async () => response(
+          { error: { message: "upstream unavailable" } },
+          { status: 503, statusText: "Service Unavailable" },
+        )) as typeof globalThis.fetch,
+      }),
+    ).rejects.toMatchObject({
+      failure: {
+        code: "provider_unavailable",
+        retryable: true,
+        requestState: "unknown",
+        providerCode: "HTTP_503",
+      },
+    });
+  });
+
+  it("reports a terminal provider task as accepted and non-retryable", async () => {
+    await expect(
+      modelArkPoll({
+        apiKey: "ark-key",
+        state: { taskId: "cgt-failed" },
+        fetch: (async () => response({
+          status: "failed",
+          error: { message: "content policy" },
+        })) as typeof globalThis.fetch,
+      }),
+    ).rejects.toMatchObject({
+      failure: {
+        code: "provider_failed",
+        message: expect.stringMatching(/content policy/),
+        retryable: false,
+        requestState: "accepted",
+        providerCode: "failed",
+      },
+    });
+  });
+
+  it("surfaces a poll transport failure after one status request", async () => {
+    const fetchFailure = Object.assign(new TypeError("fetch failed"), {
+      cause: { code: "ECONNRESET" },
+    });
+    const fetch = vi.fn(async () => {
+      throw fetchFailure;
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(
+      volcengineAdapter.poll!(
+        {
+          operation: "poll",
+          pollState: { taskId: "cgt-paid" },
+        } as never,
+        {
+          store: { get: async (key: string) => key === "apiKey" ? "ark-key" : undefined },
+        } as never,
+      ),
+    ).rejects.toBe(fetchFailure);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("reads the selected account from Host-scoped store state", async () => {
     const fetch = vi.fn(
       async (_input: string | URL | Request, _init?: RequestInit) =>
@@ -361,10 +458,6 @@ describe("Volcengine Seed Audio lifecycle", () => {
               modelId: "seed-audio-1",
               upstreamModel: "seed-audio-1.0",
               prompt: "Read @音频1, then add rain",
-              referenceAudioUrls: [
-                "https://media.test/reference.wav",
-                `data:audio/mpeg;base64,${reference}`,
-              ],
               modelParams: {
                 speed: 1.25,
                 volume: 0.75,
@@ -373,18 +466,54 @@ describe("Volcengine Seed Audio lifecycle", () => {
                 format: "mp3",
               },
             },
-            references: [],
+            references: [
+              {
+                slot: "audio",
+                index: 0,
+                asset: {
+                  assetId: "audio-url",
+                  uri: "clash-asset://audio-url",
+                  kind: "audio",
+                },
+              },
+              {
+                slot: "audio",
+                index: 1,
+                asset: {
+                  assetId: "audio-bytes",
+                  uri: "clash-asset://audio-bytes",
+                  kind: "audio",
+                  mediaType: "audio/mpeg",
+                },
+              },
+            ],
           },
         } as never,
         {
           store: { get: async (key: string) => store.get(key) },
+          reference: async (input: unknown) => {
+            const assetId = (input as { asset: { assetId: string } }).asset.assetId;
+            return assetId === "audio-url"
+              ? {
+                  form: "provider-url" as const,
+                  providerUrl: "https://media.test/reference.wav",
+                  expiresAt: "2026-08-13T12:00:00.000Z",
+                  kind: "audio" as const,
+                }
+              : {
+                  form: "bytes" as const,
+                  bytes: Uint8Array.from(Buffer.from(reference, "base64")),
+                  mediaType: "audio/mpeg",
+                  kind: "audio" as const,
+                };
+          },
         } as never,
       ),
     ).resolves.toEqual({
       status: "completed",
       media: {
         media: {
-          url: `data:audio/mpeg;base64,${audio}`,
+          base64: audio,
           mediaType: "audio/mpeg",
         },
       },
@@ -418,6 +547,27 @@ describe("Volcengine Seed Audio lifecycle", () => {
     ]);
   });
 
+  it("preserves a Seed Audio envelope rejection as provider failure facts", async () => {
+    await expect(
+      seedAudioSubmit({
+        apiKey: "speech-key",
+        body: { model: "seed-audio-1.0", text_prompt: "hello" },
+        fetch: (async () => response({
+          code: 1201,
+          message: "request rejected",
+        })) as typeof globalThis.fetch,
+      }),
+    ).rejects.toMatchObject({
+      failure: {
+        code: "provider_failed",
+        message: expect.stringMatching(/request rejected/),
+        retryable: false,
+        requestState: "rejected",
+        providerCode: "1201",
+      },
+    });
+  });
+
   it("rejects the image and audio reference combination the speech API forbids", async () => {
     const store = new Map([["apiKey", "speech-key"]]);
 
@@ -430,14 +580,42 @@ describe("Volcengine Seed Audio lifecycle", () => {
               modelId: "seed-audio-1",
               upstreamModel: "seed-audio-1.0",
               prompt: "Read this",
-              referenceImageUrls: ["https://media.test/voice.png"],
-              referenceAudioUrls: ["https://media.test/voice.mp3"],
             },
-            references: [],
+            references: [
+              {
+                slot: "image",
+                index: 0,
+                asset: {
+                  assetId: "voice-image",
+                  uri: "clash-asset://voice-image",
+                  kind: "image",
+                },
+              },
+              {
+                slot: "audio",
+                index: 0,
+                asset: {
+                  assetId: "voice-audio",
+                  uri: "clash-asset://voice-audio",
+                  kind: "audio",
+                },
+              },
+            ],
           },
         } as never,
         {
           store: { get: async (key: string) => store.get(key) },
+          reference: async (input: unknown) => {
+            const asset = (input as { asset: { assetId: string; kind: "image" | "audio" } }).asset;
+            return {
+              form: "provider-url" as const,
+              providerUrl: asset.kind === "image"
+                ? "https://media.test/voice.png"
+                : "https://media.test/voice.mp3",
+              expiresAt: "2026-08-13T12:00:00.000Z",
+              kind: asset.kind,
+            };
+          },
         } as never,
       ),
     ).rejects.toThrow(/image and audio references cannot be mixed/i);

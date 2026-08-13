@@ -5,12 +5,17 @@ import {
   collectReferences,
   createHubRequest,
   pollHubModel,
+  readPollState,
   submitHubModel,
   type HubReferences,
   type HubStep,
 } from "./hub-executor";
 import { hubAdapter } from "./hub-adapter";
-import type { ExecutorContext } from "./executor-contract";
+import type {
+  ExecutorContext,
+  ResolvedReference,
+} from "./executor-contract";
+import type { ExecutablePluginReference } from "@clash/shared-types/executable-plugin";
 
 /**
  * What this suite drives, and why it changed shape.
@@ -66,10 +71,53 @@ interface Call {
   headers: Record<string, string>;
 }
 
+const fixtureReferenceUrls = new Map<string, string>();
+
 function invocationFor(
   values: Record<string, unknown>,
   extras: { operation?: "submit" | "poll"; pollState?: unknown } = {},
 ) {
+  const fixtureValues = { ...values };
+  const references: ExecutablePluginReference[] = [];
+  const add = (
+    slot: "image" | "video" | "audio" | "startFrame" | "endFrame",
+    kind: "image" | "video" | "audio",
+    urls: unknown,
+  ) => {
+    const values = Array.isArray(urls)
+      ? urls
+      : typeof urls === "string"
+        ? [urls]
+        : [];
+    for (const [index, url] of values.entries()) {
+      if (typeof url !== "string" || !url) continue;
+      const assetId = `fixture-${slot}-${index}`;
+      fixtureReferenceUrls.set(assetId, url);
+      references.push({
+        slot,
+        index,
+        asset: {
+          assetId,
+          uri: `clash-asset://${assetId}`,
+          kind,
+        },
+      });
+    }
+  };
+  add("image", "image", fixtureValues.referenceImageUrls);
+  add("video", "video", fixtureValues.referenceVideoUrls);
+  add("audio", "audio", fixtureValues.referenceAudioUrls);
+  add("startFrame", "image", fixtureValues.startFrameUrl);
+  add("endFrame", "image", fixtureValues.endFrameUrl);
+  for (const key of [
+    "referenceImageUrls",
+    "referenceVideoUrls",
+    "referenceAudioUrls",
+    "startFrameUrl",
+    "endFrameUrl",
+  ]) {
+    delete fixtureValues[key];
+  }
   return {
     protocol: "clash.plugin.invoke/v1" as const,
     invocationId: "invocation-test",
@@ -83,10 +131,36 @@ function invocationFor(
       schemaHash: `sha256:${"a".repeat(64)}`,
       kind: "provider-executor" as const,
     },
-    input: { values: values as never, references: [] },
+    input: { values: fixtureValues as never, references },
     ...(extras.pollState ? { pollState: extras.pollState } : {}),
     actor: { kind: "system" as const, id: "local-aigc" },
   } as never;
+}
+
+async function resolveFixtureReference(
+  input: unknown,
+): Promise<ResolvedReference> {
+  const reference = input as Extract<ExecutablePluginReference, { asset: unknown }>;
+  const url = fixtureReferenceUrls.get(reference.asset.assetId);
+  if (!url) throw new Error(`Fixture Asset ${reference.asset.assetId} has no media.`);
+  const inline = /^data:([^;,]+);base64,(.*)$/s.exec(url);
+  if (inline) {
+    return {
+      form: "bytes",
+      bytes: Uint8Array.from(Buffer.from(inline[2] ?? "", "base64")),
+      mediaType: inline[1] ?? "application/octet-stream",
+      kind: reference.asset.kind,
+    };
+  }
+  return {
+    form: "provider-url",
+    providerUrl: url,
+    expiresAt: "2026-08-13T12:00:00.000Z",
+    kind: reference.asset.kind,
+    ...(reference.asset.mediaType
+      ? { mediaType: reference.asset.mediaType }
+      : {}),
+  };
 }
 
 /**
@@ -146,10 +220,13 @@ async function executeContract(
 ): Promise<Call[]> {
   const { calls, impl } = recordingFetch(defaultResponder);
   const invocation = invocationFor(values);
-  const references = await collectReferences(invocation, undefined);
+  const references = await collectReferences(
+    invocation,
+    resolveFixtureReference,
+  );
   await submitHubModel(
     invocation,
-    createHubRequest(impl, "test-token"),
+    createHubRequest(impl, "test-token", "submit"),
     references,
   );
   return calls;
@@ -195,7 +272,7 @@ describe("Hilo Hub provider executor", () => {
         aspectRatio: "16:9",
         modelParams: { resolution: "2K", generate_audio: true },
       }),
-      createHubRequest(submitFetch.impl, "test-token"),
+      createHubRequest(submitFetch.impl, "test-token", "submit"),
       NO_REFERENCES,
     );
 
@@ -226,7 +303,7 @@ describe("Hilo Hub provider executor", () => {
         ? { file: { download_url: "https://cdn.minimax.io/h3.mp4" } }
         : { task_id: "h3-task-1", status: "success", file_id: "file-1" },
     );
-    const polled = await pollHubModel(
+    const taskPolled = await pollHubModel(
       invocationFor(
         {},
         {
@@ -234,8 +311,29 @@ describe("Hilo Hub provider executor", () => {
           pollState: { taskId: "h3-task-1", upstreamModel: "MiniMax-H3" },
         },
       ),
-      createHubRequest(pollFetch.impl, "test-token"),
-      { sleep: async () => undefined },
+      createHubRequest(pollFetch.impl, "test-token", "poll"),
+    );
+    expect(taskPolled).toEqual({
+      status: "accepted",
+      pollState: {
+        taskId: "h3-task-1",
+        upstreamModel: "MiniMax-H3",
+        fileId: "file-1",
+      },
+    });
+    expect(pollFetch.calls).toHaveLength(1);
+
+    const polled = await pollHubModel(
+      invocationFor(
+        {},
+        {
+          operation: "poll",
+          pollState: taskPolled.status === "accepted"
+            ? taskPolled.pollState
+            : undefined,
+        },
+      ),
+      createHubRequest(pollFetch.impl, "test-token", "poll"),
     );
 
     // Named media rather than a hand-built asset: the plugin knows the address Hub published and
@@ -250,6 +348,34 @@ describe("Hilo Hub provider executor", () => {
         },
       },
     });
+    expect(
+      pollFetch.calls.filter((call) =>
+        new URL(call.url).pathname.includes("/tasks/"),
+      ),
+    ).toHaveLength(1);
+    expect(
+      pollFetch.calls.filter((call) =>
+        new URL(call.url).pathname.includes("/files/"),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("rejects a file phase for a model whose route has no file endpoint", () => {
+    expect(() =>
+      readPollState(
+        invocationFor(
+          {},
+          {
+            operation: "poll",
+            pollState: {
+              taskId: "image-task",
+              upstreamModel: "nano_banana_2",
+              fileId: "forged-file",
+            },
+          },
+        ),
+      ),
+    ).toThrow(/does not support file poll state/);
   });
 
   it("uploads H3 byte and public-URL references before submit, preserving MP3 semantics", async () => {
@@ -282,8 +408,8 @@ describe("Hilo Hub provider executor", () => {
 
     await submitHubModel(
       invocation,
-      createHubRequest(impl, "test-token"),
-      await collectReferences(invocation, undefined),
+      createHubRequest(impl, "test-token", "submit"),
+      await collectReferences(invocation, resolveFixtureReference),
       { fetch: mediaFetch as typeof globalThis.fetch },
     );
 
@@ -403,8 +529,8 @@ describe("Hilo Hub provider executor", () => {
 
     await submitHubModel(
       invocation,
-      createHubRequest(impl, "test-token"),
-      await collectReferences(invocation, undefined),
+      createHubRequest(impl, "test-token", "submit"),
+      await collectReferences(invocation, resolveFixtureReference),
       { fetch: mediaFetch as typeof globalThis.fetch },
     );
 
@@ -674,8 +800,7 @@ describe("Hilo Hub provider executor", () => {
           pollState: { taskId: "duration-task", upstreamModel: "music-3.0" },
         },
       ),
-      createHubRequest(impl, "test-token"),
-      { sleep: async () => undefined },
+      createHubRequest(impl, "test-token", "poll"),
     );
     expect(polled).toEqual({
       status: "completed",
@@ -838,8 +963,7 @@ describe("Hilo Hub provider executor", () => {
             pollState: { taskId: "k-1", upstreamModel: "kling-image-o1" },
           },
         ),
-        createHubRequest(impl, "test-token"),
-        { sleep: async () => undefined },
+        createHubRequest(impl, "test-token", "poll"),
       ),
     ).rejects.toThrow(/resolution value '1K' is invalid/);
   });
@@ -861,40 +985,47 @@ describe("Hilo Hub provider executor", () => {
     }
   });
 
-  it("retries a transient poll network failure instead of losing the paid task", async () => {
-    // Captured from a real run: one poll threw "fetch failed" mid-flight and the whole billed
-    // generation was discarded.
+  it("surfaces a transient poll failure after one status request", async () => {
     let polls = 0;
     const { impl } = recordingFetch(() => {
       polls += 1;
-      if (polls === 1) throw new Error("fetch failed");
-      return {
-        task_id: "t-1",
-        status: "success",
-        image_url: "https://cdn.test/a.png",
-      };
+      throw new Error("fetch failed");
     });
 
-    const polled = await pollHubModel(
-      invocationFor(
-        {},
-        {
-          operation: "poll",
-          pollState: { taskId: "t-1", upstreamModel: "nano_banana_2" },
-        },
+    await expect(
+      pollHubModel(
+        invocationFor(
+          {},
+          {
+            operation: "poll",
+            pollState: { taskId: "t-1", upstreamModel: "nano_banana_2" },
+          },
+        ),
+        createHubRequest(impl, "test-token", "poll"),
       ),
-      createHubRequest(impl, "test-token"),
-      { sleep: async () => undefined },
-    );
-    expect(polls).toBe(2);
-    expect(polled).toEqual({
-      status: "completed",
-      media: {
-        media: {
-          url: "https://cdn.test/a.png",
-          mediaType: "image/png",
-          kind: "image",
-        },
+    ).rejects.toThrow("fetch failed");
+    expect(polls).toBe(1);
+  });
+
+  it("classifies a poll HTTP outage without forgetting the accepted task", async () => {
+    const fetch = (async () => ({
+      ok: false,
+      status: 503,
+      statusText: "Service Unavailable",
+      text: async () => "upstream unavailable",
+    })) as unknown as typeof globalThis.fetch;
+
+    await expect(
+      createHubRequest(fetch, "test-token", "poll")(
+        "/api/v2/image/nano_banana/tasks/t-1",
+        "GET",
+      ),
+    ).rejects.toMatchObject({
+      failure: {
+        code: "provider_unavailable",
+        retryable: true,
+        requestState: "accepted",
+        providerCode: "HTTP_503",
       },
     });
   });
@@ -967,10 +1098,17 @@ describe("Hilo Hub provider executor", () => {
             },
           },
         ),
-        createHubRequest(impl, "test-token"),
-        { sleep: async () => undefined },
+        createHubRequest(impl, "test-token", "poll"),
       ),
-    ).rejects.toThrow(/content policy rejected/);
+    ).rejects.toMatchObject({
+      failure: {
+        code: "provider_failed",
+        message: "content policy rejected",
+        retryable: false,
+        requestState: "accepted",
+        providerCode: "failed",
+      },
+    });
     // Once. A failed task asked again is a task that will fail again, at the cost of a round trip
     // per attempt for as long as the host keeps asking.
     expect(pollCount).toBe(1);
@@ -993,8 +1131,7 @@ describe("Hilo Hub provider executor", () => {
             pollState: { taskId: "t-9", upstreamModel: "nano_banana_2" },
           },
         ),
-        createHubRequest(impl, "test-token"),
-        { sleep: async () => undefined },
+        createHubRequest(impl, "test-token", "poll"),
       ),
     ).rejects.toThrow(/does not recognise/);
   });
@@ -1101,8 +1238,9 @@ describe("Hilo Hub credentials and references", () => {
     } as never;
 
     const references = await collectReferences(invocation, async () => ({
-      form: "url" as const,
-      url: "https://cdn.example.test/fox.png",
+      form: "provider-url" as const,
+      providerUrl: "https://cdn.example.test/fox.png",
+      expiresAt: "2026-08-13T12:00:00.000Z",
     }));
     const mediaFetch = vi.fn(
       async () =>
@@ -1110,7 +1248,7 @@ describe("Hilo Hub credentials and references", () => {
           headers: { "content-type": "image/png" },
         }),
     );
-    await submitHubModel(invocation, createHubRequest(impl, "t"), references, {
+    await submitHubModel(invocation, createHubRequest(impl, "t", "submit"), references, {
       fetch: mediaFetch as typeof globalThis.fetch,
     });
 
@@ -1158,7 +1296,7 @@ describe("Hilo Hub credentials and references", () => {
       bytes: Uint8Array.from(Buffer.from("PNGDATA")),
       mediaType: "image/png",
     }));
-    await submitHubModel(invocation, createHubRequest(impl, "t"), references);
+    await submitHubModel(invocation, createHubRequest(impl, "t", "submit"), references);
 
     expect(uploadCalls(calls).map((call) => call.body)).toEqual([
       {
@@ -1228,12 +1366,75 @@ describe("Hilo Hub credentials and references", () => {
     const references: HubReferences = await collectReferences(
       invocation,
       async (reference) => ({
-        form: "url" as const,
-        url: `https://cdn.test/${(reference as { asset: { assetId: string } }).asset.assetId}.png`,
+        form: "provider-url" as const,
+        providerUrl: `https://cdn.test/${(reference as { asset: { assetId: string } }).asset.assetId}.png`,
+        expiresAt: "2026-08-13T12:00:00.000Z",
       }),
     );
     expect(
       references.images.map((image) => (image.form === "url" ? image.url : "")),
     ).toEqual(["https://cdn.test/first.png", "https://cdn.test/second.png"]);
+  });
+
+  it("groups mixed content media by kind while preserving global indexes and duplicate placements", async () => {
+    const invocation = {
+      ...(invocationFor({
+        modelId: "minimax-h3",
+        upstreamModel: "MiniMax-H3",
+        prompt: "Lead @音频1 then repeat it",
+      }) as Record<string, unknown>),
+      input: {
+        values: {
+          modelId: "minimax-h3",
+          upstreamModel: "MiniMax-H3",
+          prompt: "Lead @音频1 then repeat it",
+        },
+        references: [
+          {
+            slot: "content",
+            index: 2,
+            asset: {
+              assetId: "same-audio",
+              uri: "clash-asset://same-audio",
+              kind: "audio",
+            },
+          },
+          {
+            slot: "content",
+            index: 0,
+            text: { nodeId: "prompt:0", value: "Lead " },
+          },
+          {
+            slot: "content",
+            index: 1,
+            asset: {
+              assetId: "same-audio",
+              uri: "clash-asset://same-audio",
+              kind: "audio",
+            },
+          },
+        ],
+      },
+    } as never;
+
+    const resolved = await collectReferences(invocation, async (reference) =>
+      "text" in (reference as Record<string, unknown>)
+        ? { form: "text" as const, text: "Lead " }
+        : {
+            form: "provider-url" as const,
+            providerUrl: "https://cdn.test/same.mp3",
+            expiresAt: "2026-08-13T12:00:00.000Z",
+            kind: "audio" as const,
+          },
+    );
+
+    expect(
+      resolved.audios.map((audio) => (audio.form === "url" ? audio.url : "")),
+    ).toEqual([
+      "https://cdn.test/same.mp3",
+      "https://cdn.test/same.mp3",
+    ]);
+    expect(resolved.images).toEqual([]);
+    expect(resolved.videos).toEqual([]);
   });
 });

@@ -31,17 +31,20 @@ describe('buildAssetRelationSummary', () => {
       assetId: 'asset-output',
       asset: {
         id: 'asset-output',
-        sourceModel: 'nano-banana-2',
-        sourcePrompt: 'A lighthouse above a coral sea',
-        sourceTaskId: 'task-output',
-        sources: [
-          { assetId: 'asset-sketch', role: 'primary' },
-          { assetId: 'asset-palette', role: 'reference' },
-        ],
+        kind: 'image',
+        metadata: {},
+        lifecycle: { state: 'active' },
+        status: 'ready',
+        url: 'https://media.clash.test/assets/asset-output',
+        provenance: {
+          kind: 'generation',
+          model: 'nano-banana-2',
+          prompt: 'A lighthouse above a coral sea',
+        },
       },
       projectAssets: [
-        { id: 'asset-sketch', assetId: 'asset-sketch', type: 'image', url: '/sketch.png', storageKey: 'inputs/sketch.png', createdAt: null },
-        { id: 'asset-palette', assetId: 'asset-palette', type: 'image', url: '/palette.png', storageKey: 'inputs/palette.png', createdAt: null },
+        { id: 'asset-sketch', name: 'sketch.png', kind: 'image', url: 'https://media.clash.test/assets/asset-sketch', metadata: {}, lifecycle: { state: 'active' }, status: 'ready' },
+        { id: 'asset-palette', name: 'palette.png', kind: 'image', url: 'https://media.clash.test/assets/asset-palette', metadata: {}, lifecycle: { state: 'active' }, status: 'ready' },
       ],
       canvases: [
         { id: 'main', name: 'Main', position: 0 },
@@ -55,6 +58,8 @@ describe('buildAssetRelationSummary', () => {
           data: {
             prompt: 'A lighthouse above a coral sea',
             negativePrompt: 'No text or watermark',
+            primaryAssetId: 'asset-sketch',
+            referenceImageAssetIds: ['asset-palette'],
           },
         },
         { id: 'output-node', canvasId: 'main', type: 'image', data: { assetId: 'asset-output', label: 'Lighthouse' } },
@@ -122,9 +127,9 @@ describe('buildAssetRelationSummary', () => {
   it('recovers prompt, model, and upstream assets from the generated Canvas node when asset lineage is sparse', () => {
     const summary = buildAssetRelationSummary({
       assetId: 'asset-output',
-      asset: { id: 'asset-output' },
+      asset: { id: 'asset-output', kind: 'image', metadata: {}, lifecycle: { state: 'active' }, status: 'ready' },
       projectAssets: [
-        { id: 'source-image', assetId: 'source-image', type: 'image', url: '/source.png', storageKey: 'source.png', createdAt: null },
+        { id: 'source-image', name: 'source.png', kind: 'image', url: 'https://media.clash.test/assets/source-image', metadata: {}, lifecycle: { state: 'active' }, status: 'ready' },
       ],
       canvases: [{ id: 'main', name: 'Main', position: 0 }],
       nodes: [
@@ -157,8 +162,15 @@ describe('buildAssetRelationSummary', () => {
       assetId: 'implicit-edit',
       asset: {
         id: 'implicit-edit',
-        sourceModel: 'implicit:image-editor',
-        sourcePrompt: 'Crop and rotate',
+        kind: 'image',
+        metadata: {},
+        lifecycle: { state: 'active' },
+        status: 'ready',
+        provenance: {
+          kind: 'edit',
+          model: 'implicit:image-editor',
+          prompt: 'Crop and rotate',
+        },
       },
       projectAssets: [],
       canvases: [{ id: 'review', name: 'Review', position: 0 }],

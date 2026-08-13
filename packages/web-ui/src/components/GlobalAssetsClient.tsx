@@ -1,19 +1,32 @@
-import { useMemo, useRef, useState, type ChangeEvent } from "react";
-import type { Asset, AssetKind } from "@clash/shared-types/assets";
-import { FilmSlate, Image as ImageIcon, MusicNote, Plus, UploadSimple } from "@phosphor-icons/react";
-import { runtimeApiUrl } from "../lib/runtimeConfig";
-import { firstAssetMediaUrl } from "../features/assets/media-url";
+import { useRef, useState, type ChangeEvent } from "react";
+import type { AssetKind, ResolvedAsset } from "@clash/shared-types";
+import {
+  FilmSlate,
+  Image as ImageIcon,
+  MusicNote,
+  Plus,
+  ArrowCounterClockwise,
+  Trash,
+  UploadSimple,
+} from "@phosphor-icons/react";
+import {
+  importPersonalGlobalAssetFile,
+  restorePersonalGlobalAsset,
+  trashPersonalGlobalAsset,
+} from "../lib/hooks/useAsset";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
-function assetLabel(asset: Asset): string {
-  return asset.metadata?.originalName
-    ?? asset.srcR2Key.split(/[\\/]/).filter(Boolean).at(-1)
-    ?? asset.id;
+type TrashedResolvedAsset = ResolvedAsset & {
+  lifecycle: Extract<ResolvedAsset["lifecycle"], { state: "trashed" }>;
+};
+
+function assetLabel(asset: ResolvedAsset): string {
+  return asset.metadata?.originalName ?? asset.name ?? asset.id;
 }
 
-function assetPreviewUrl(asset: Asset): string {
-  return firstAssetMediaUrl(asset.signedCoverUrl, asset.signedUrl, `/assets/${asset.srcR2Key}`) ?? "";
+function assetPreviewUrl(asset: ResolvedAsset): string {
+  return asset.thumbnailUrl ?? asset.url ?? "";
 }
 
 function kindForFile(file: File): AssetKind | null {
@@ -23,14 +36,22 @@ function kindForFile(file: File): AssetKind | null {
   return null;
 }
 
-export default function GlobalAssetsClient({ initialAssets }: { initialAssets: Asset[] }) {
+export default function GlobalAssetsClient({
+  initialAssets,
+}: {
+  initialAssets: ResolvedAsset[];
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [assets, setAssets] = useState(initialAssets);
   const [uploading, setUploading] = useState(false);
+  const [mutatingAssetId, setMutatingAssetId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const sortedAssets = useMemo(
-    () => [...assets].sort((a, b) => b.createdAt - a.createdAt),
-    [assets],
+  const activeAssets = assets.filter(
+    (asset) => asset.lifecycle.state === "active",
+  );
+  const trashedAssets = assets.filter(
+    (asset): asset is TrashedResolvedAsset =>
+      asset.lifecycle.state === "trashed",
   );
 
   const uploadFiles = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -41,24 +62,13 @@ export default function GlobalAssetsClient({ initialAssets }: { initialAssets: A
     try {
       for (const file of files) {
         const kind = kindForFile(file);
-        if (!kind) throw new Error(`Unsupported asset type: ${file.type || file.name}`);
-        const formData = new FormData();
-        formData.append("file", file);
-        const uploadResponse = await fetch(runtimeApiUrl("/upload"), { method: "POST", body: formData });
-        if (!uploadResponse.ok) throw new Error((await uploadResponse.text()) || "Upload failed");
-        const { storageKey } = await uploadResponse.json() as { storageKey: string };
-        const registerResponse = await fetch(runtimeApiUrl("/api/v1/assets"), {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ addToLibrary: true, kind, srcR2Key: storageKey, originalName: file.name }),
-        });
-        if (!registerResponse.ok) throw new Error((await registerResponse.text()) || "Asset registration failed");
-        const { id } = await registerResponse.json() as { id: string };
-        const assetResponse = await fetch(runtimeApiUrl(`/api/v1/assets/${encodeURIComponent(id)}`));
-        if (!assetResponse.ok) throw new Error((await assetResponse.text()) || "Asset loading failed");
-        const asset = await assetResponse.json() as Asset;
-        asset.metadata = { ...(asset.metadata ?? {}), originalName: file.name };
-        setAssets((current) => [asset, ...current.filter((candidate) => candidate.id !== asset.id)]);
+        if (!kind)
+          throw new Error(`Unsupported asset type: ${file.type || file.name}`);
+        const asset = await importPersonalGlobalAssetFile(file, kind);
+        setAssets((current) => [
+          asset,
+          ...current.filter((candidate) => candidate.id !== asset.id),
+        ]);
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -68,19 +78,61 @@ export default function GlobalAssetsClient({ initialAssets }: { initialAssets: A
     }
   };
 
+  const updateAsset = (next: ResolvedAsset) => {
+    setAssets((current) =>
+      current.map((asset) => (asset.id === next.id ? next : asset)),
+    );
+  };
+
+  const trashAsset = async (asset: ResolvedAsset) => {
+    setMutatingAssetId(asset.id);
+    setError(null);
+    try {
+      updateAsset(await trashPersonalGlobalAsset(asset.id));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setMutatingAssetId(null);
+    }
+  };
+
+  const restoreAsset = async (asset: ResolvedAsset) => {
+    setMutatingAssetId(asset.id);
+    setError(null);
+    try {
+      updateAsset(await restorePersonalGlobalAsset(asset.id));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setMutatingAssetId(null);
+    }
+  };
+
   return (
     <main className="clash-dashboard-shell min-h-screen">
       <div className="mx-auto max-w-[1600px] px-6 pb-24 pt-20">
         <header className="mb-10 flex items-end justify-between gap-6">
           <div>
-            <p className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Reusable media</p>
-            <h1 className="font-display text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50">Assets</h1>
-            <p className="mt-2 max-w-xl text-base text-stone-600 dark:text-stone-300">One library for source files you want to reuse across canvases.</p>
+            <p className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+              Reusable media
+            </p>
+            <h1 className="font-display text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50">
+              Assets
+            </h1>
+            <p className="mt-2 max-w-xl text-base text-stone-600 dark:text-stone-300">
+              One library for source files you want to reuse across canvases.
+            </p>
           </div>
           <Button
             onClick={() => inputRef.current?.click()}
             disabled={uploading}
-            leftIcon={uploading ? <UploadSimple className="h-4 w-4 animate-pulse" /> : <Plus className="h-4 w-4" weight="bold" />}
+            leftIcon={
+              uploading ? (
+                <UploadSimple className="h-4 w-4 animate-pulse" />
+              ) : (
+                <Plus className="h-4 w-4" weight="bold" />
+              )
+            }
           >
             {uploading ? "Uploading…" : "Add assets"}
           </Button>
@@ -95,42 +147,149 @@ export default function GlobalAssetsClient({ initialAssets }: { initialAssets: A
           />
         </header>
 
-        {error ? <p role="alert" className="mb-6 text-sm font-medium text-red-700">{error}</p> : null}
-        {sortedAssets.length === 0 ? (
+        {error ? (
+          <p role="alert" className="mb-6 text-sm font-medium text-red-700">
+            {error}
+          </p>
+        ) : null}
+        {activeAssets.length === 0 && trashedAssets.length === 0 ? (
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
             className="group flex min-h-72 w-full flex-col items-center justify-center border-y border-dashed border-warm-border bg-warm-surface/40 text-center transition-colors hover:bg-warm-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
           >
-            <UploadSimple className="mb-5 h-8 w-8 text-stone-350 transition-transform duration-200 group-hover:-translate-y-1" weight="light" />
-            <strong className="font-display text-lg text-content-primary">Build your reusable library</strong>
-            <span className="mt-2 text-sm text-content-secondary">Choose images, video, or audio from this Mac.</span>
+            <UploadSimple
+              className="mb-5 h-8 w-8 text-stone-350 transition-transform duration-200 group-hover:-translate-y-1"
+              weight="light"
+            />
+            <strong className="font-display text-lg text-content-primary">
+              Build your reusable library
+            </strong>
+            <span className="mt-2 text-sm text-content-secondary">
+              Choose images, video, or audio from this Mac.
+            </span>
           </button>
         ) : (
-          <ul aria-label="Global asset library" className="grid grid-cols-2 gap-x-5 gap-y-8 md:grid-cols-3 xl:grid-cols-5">
-            {sortedAssets.map((asset) => {
+          <section aria-labelledby="global-asset-library-heading">
+            <h2
+              id="global-asset-library-heading"
+              className="mb-4 font-display text-lg font-semibold text-content-primary"
+            >
+              Library
+            </h2>
+            {activeAssets.length === 0 ? (
+              <p className="border-y border-dashed border-warm-border py-10 text-sm text-content-secondary">
+                No active reusable assets.
+              </p>
+            ) : (
+              <ul
+                aria-label="Global asset library"
+                className="grid grid-cols-2 gap-x-5 gap-y-8 md:grid-cols-3 xl:grid-cols-5"
+              >
+                {activeAssets.map((asset) => {
               const label = assetLabel(asset);
-              const Icon = asset.kind === "video" ? FilmSlate : asset.kind === "audio" ? MusicNote : ImageIcon;
+              const Icon =
+                asset.kind === "video"
+                  ? FilmSlate
+                  : asset.kind === "audio"
+                    ? MusicNote
+                    : ImageIcon;
               return (
                 <li key={asset.id} className="group min-w-0">
                   <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-warm-muted ring-1 ring-warm-border/80">
-                    {asset.kind === "image" ? (
-                      <img src={assetPreviewUrl(asset)} alt="" className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.025]" />
-                    ) : asset.kind === "video" && asset.signedCoverUrl ? (
-                      <img src={assetPreviewUrl(asset)} alt="" className="h-full w-full object-cover" />
+                    {asset.kind === "image" && assetPreviewUrl(asset) ? (
+                      <img
+                        src={assetPreviewUrl(asset)}
+                        alt=""
+                        className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.025]"
+                      />
+                    ) : asset.kind === "video" && assetPreviewUrl(asset) ? (
+                      <video
+                        src={assetPreviewUrl(asset)}
+                        muted
+                        playsInline
+                        preload="metadata"
+                        className="h-full w-full object-cover"
+                      />
                     ) : (
-                      <div className="flex h-full items-center justify-center bg-warm-muted text-content-muted"><Icon className="h-9 w-9" weight="light" /></div>
+                      <div className="flex h-full items-center justify-center bg-warm-muted text-content-muted">
+                        <Icon className="h-9 w-9" weight="light" />
+                      </div>
                     )}
                     <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-md bg-stone-950/75 px-1.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-stone-50">
-                      <Icon className="h-3 w-3" />{asset.kind}
+                      <Icon className="h-3 w-3" />
+                      {asset.kind}
                     </span>
                   </div>
-                  <p className="mt-2 truncate text-sm font-semibold text-content-primary" title={label}>{label}</p>
+                  <p
+                    className="mt-2 truncate text-sm font-semibold text-content-primary"
+                    title={label}
+                  >
+                    {label}
+                  </p>
+                  {asset.status === "unavailable" ? (
+                    <p className="mt-1 text-xs text-content-muted">
+                      Unavailable on this device
+                    </p>
+                  ) : null}
+                  <Button
+                    size="sm"
+                    shape="rounded"
+                    disabled={mutatingAssetId === asset.id}
+                    onClick={() => void trashAsset(asset)}
+                    leftIcon={<Trash className="h-3.5 w-3.5" />}
+                    aria-label={`Move ${label} to Trash`}
+                    className="mt-2"
+                  >
+                    Move to Trash
+                  </Button>
                 </li>
               );
-            })}
-          </ul>
+                })}
+              </ul>
+            )}
+          </section>
         )}
+
+        {trashedAssets.length > 0 ? (
+          <section aria-labelledby="global-asset-trash-heading" className="mt-14">
+            <h2
+              id="global-asset-trash-heading"
+              className="mb-4 font-display text-lg font-semibold text-content-primary"
+            >
+              Trash
+            </h2>
+            <ul
+              aria-label="Global asset trash"
+              className="grid grid-cols-2 gap-x-5 gap-y-8 md:grid-cols-3 xl:grid-cols-5"
+            >
+              {trashedAssets.map((asset) => {
+                const label = assetLabel(asset);
+                return (
+                  <li key={asset.id} className="rounded-xl border border-warm-border bg-warm-surface p-4">
+                    <p className="truncate text-sm font-semibold text-content-primary" title={label}>
+                      {label}
+                    </p>
+                    <p className="mt-1 text-xs text-content-muted">
+                      Recoverable until {asset.lifecycle.purgeAfter}
+                    </p>
+                    <Button
+                      size="sm"
+                      shape="rounded"
+                      disabled={mutatingAssetId === asset.id}
+                      onClick={() => void restoreAsset(asset)}
+                      leftIcon={<ArrowCounterClockwise className="h-3.5 w-3.5" />}
+                      aria-label={`Restore ${label}`}
+                      className="mt-3"
+                    >
+                      Restore
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ) : null}
       </div>
     </main>
   );

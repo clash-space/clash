@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "lib": ["ES2022", "DOM"],
+    "paths": {
+      "@clash/asset-sdk": ["../asset-sdk/src/index.ts"],
+      "@clash/shared-runtime/project-host-client": ["../shared-runtime/src/project-host-client.ts"],
+      "@clash/shared-types": ["../shared-types/src/index.ts"],
+      "@clash/shared-types/*": ["../shared-types/src/*.ts"]
+    }
+  }
+}

@@ -122,8 +122,8 @@ export function AssetRelationsPanel({
               <>
                 {source.asset ? (
                   <AssetThumbnail
-                    type={source.asset.type}
-                    src={source.asset.url}
+                    kind={source.asset.kind}
+                    src={source.asset.thumbnailUrl ?? source.asset.url ?? ''}
                     label={source.label}
                     decorative
                   />

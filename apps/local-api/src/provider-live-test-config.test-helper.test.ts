@@ -2,11 +2,29 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { LocalProviderAccountConfig } from "./provider-accounts.js";
 import {
+  DEFAULT_PROVIDER_E2E_TIMEOUT_MS,
   loadProviderLiveTestConfig,
   loadProviderLiveTestLocalAccount,
+  providerLiveTestTimeoutMs,
 } from "./provider-live-test-config.test-helper.js";
 
 describe("provider live test config", () => {
+  it("defaults each Provider case to thirty minutes and accepts an explicit override", () => {
+    expect(providerLiveTestTimeoutMs({ env: {} })).toBe(
+      DEFAULT_PROVIDER_E2E_TIMEOUT_MS,
+    );
+    expect(
+      providerLiveTestTimeoutMs({
+        env: { CLASH_PROVIDER_E2E_TIMEOUT_MS: "2400000" },
+      }),
+    ).toBe(2_400_000);
+    expect(() =>
+      providerLiveTestTimeoutMs({
+        env: { CLASH_PROVIDER_E2E_TIMEOUT_MS: "0" },
+      }),
+    ).toThrow(/positive integer/);
+  });
+
   it("never reads the local provider store without live opt-in", async () => {
     const loadAccounts = vi.fn(async () => []);
     const config = await loadProviderLiveTestConfig({

@@ -5,6 +5,10 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        find: /^@clash\/asset-sdk$/,
+        replacement: resolve(__dirname, "../asset-sdk/src/index.ts"),
+      },
+      {
         find: /^@clash\/gui\/test-support\/source-match$/,
         replacement: resolve(__dirname, "../gui/test-support/source-match.ts"),
       },

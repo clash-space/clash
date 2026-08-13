@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { LoroDoc } from "loro-crdt";
 import { Canvas } from "./canvas-ops.js";
 import * as shared from "./index.js";
+import {
+  listActionAssetReferences,
+  markActionAssetBindingAuthority,
+} from "./action-asset-bindings.js";
+import { createProjectAsset } from "./project-assets.js";
 
 const emptyStageState = {
   schemaVersion: 1,
@@ -496,6 +501,114 @@ describe("Project Director Stage model", () => {
       (shared as any).projectDirectorStageRevisionId("stage-1", emptyStageState),
     );
     expect((shared as any).listProjectDirectorStages(doc)).toEqual([created.stage]);
+  });
+
+  it("persists Director models by Project Asset identity without Host URLs", () => {
+    const doc = new LoroDoc();
+    const created = (shared as any).createProjectDirectorStage(doc, {
+      id: "stage-storage-free",
+      name: "Storage-free stage",
+      state: {
+        ...emptyStageState,
+        objects: [{
+          id: "model-1",
+          name: "Prop",
+          kind: "model",
+          visible: true,
+          transform: {
+            position: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1],
+          },
+          model: {
+            assetId: "asset-model",
+            sourceUrl: "blob:https://host-a.invalid/local-preview",
+          },
+        }],
+      },
+    });
+
+    expect(created).toMatchObject({ ok: true });
+    expect(created.stage.state.objects[0].model).toEqual({
+      assetId: "asset-model",
+    });
+    expect(
+      (shared as any).readProjectDirectorStage(doc, "stage-storage-free")
+        .state.objects[0].model,
+    ).not.toHaveProperty("sourceUrl");
+  });
+
+  it("updates Director Action input bindings with the Stage revision", () => {
+    const doc = new LoroDoc();
+    for (const [id, kind] of [
+      ["asset-panorama", "image"],
+      ["asset-model", "model"],
+    ] as const) {
+      createProjectAsset(doc, {
+        id,
+        kind,
+        source: { kind: "owned", resourceId: `resource-${id}` },
+        lifecycle: { state: "active" },
+        metadata: {},
+      });
+    }
+    markActionAssetBindingAuthority(doc);
+
+    const state = {
+      ...emptyStageState,
+      scene: {
+        ...emptyStageState.scene,
+        environmentAssetId: "asset-panorama",
+      },
+      objects: [{
+        id: "model-1",
+        name: "Prop",
+        kind: "model",
+        visible: true,
+        transform: {
+          position: [0, 0, 0],
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1],
+        },
+        model: { assetId: "asset-model" },
+      }],
+    };
+    expect((shared as any).createProjectDirectorStage(doc, {
+      id: "stage-bindings",
+      name: "Bindings",
+      state,
+    })).toMatchObject({ ok: true });
+
+    expect(listActionAssetReferences(doc, "asset-panorama")).toMatchObject([{
+      owner: { kind: "draft", actionId: "director:stage-bindings" },
+      slot: "director:environment",
+      direction: "input",
+    }]);
+    expect(listActionAssetReferences(doc, "asset-model")).toMatchObject([{
+      owner: { kind: "draft", actionId: "director:stage-bindings" },
+      slot: "director:model:model-1",
+      direction: "input",
+    }]);
+
+    (shared as any).ensureProjectCanvas(doc, "main");
+    expect((shared as any).attachDirectorStageToCanvas(doc, {
+      stageId: "stage-bindings",
+      canvasId: "main",
+      actionNodeId: "director-action",
+      position: { x: 0, y: 0 },
+    })).toMatchObject({ ok: true });
+    expect(listActionAssetReferences(doc, "asset-model")).toMatchObject([{
+      owner: { kind: "draft", actionId: "node:director-action" },
+      slot: "director:model:model-1",
+    }]);
+
+    expect((shared as any).updateProjectDirectorStageState(
+      doc,
+      "stage-bindings",
+      emptyStageState,
+    )).toMatchObject({ ok: true });
+    expect(listActionAssetReferences(doc, "asset-panorama")).toEqual([]);
+    expect(listActionAssetReferences(doc, "asset-model")).toEqual([]);
   });
 
   it("attaches a Stage through a lightweight Canvas action node", () => {
@@ -1443,6 +1556,8 @@ describe("Project Director Stage model", () => {
     });
 
     expect((shared as any).DirectorReferencePacketSchema.parse(packet)).toEqual(packet);
+    expect(packet.referenceVideo).not.toHaveProperty("src");
+    expect(packet.referenceVideo).not.toHaveProperty("previewUrl");
     expect(packet).toMatchObject({
       schemaVersion: 1,
       stageId: "stage-a",

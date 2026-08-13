@@ -1,4 +1,5 @@
 import {
+  ArrowCounterClockwise,
   CaretRight,
   ChatCenteredDots,
   Cube,
@@ -19,13 +20,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { Link } from "react-router";
 import type {
   AgentAnnotationTarget,
   ProjectCanvas,
   ProjectDirectorStage,
   ProjectTimeline,
+  ResolvedAsset,
 } from "@clash/shared-types";
-import type { ProjectAsset } from "@clash/web-ui/lib/types";
 import { writeProjectAssetDrag } from "@clash/web-ui/lib/projectAssetDrag";
 import { Button } from "./ui/button";
 import {
@@ -83,9 +85,9 @@ interface ProjectWorkspaceNavigatorProps {
   canvases: ProjectCanvas[];
   timelines: ProjectTimeline[];
   directorStages?: ProjectDirectorStage[];
-  assets: ProjectAsset[];
+  assets: ResolvedAsset[];
   textAssets?: ProjectTextAsset[];
-  globalAssets?: ProjectAsset[];
+  globalAssets?: ResolvedAsset[];
   surface: ProjectWorkspaceSurface;
   onSelectCanvas: (canvasId: string) => void;
   onSelectTimeline: (timelineId: string) => void;
@@ -103,6 +105,8 @@ interface ProjectWorkspaceNavigatorProps {
   onAddAsset: () => void;
   onAddGlobalAsset?: (assetId: string) => void | Promise<void>;
   onAddAssetToLibrary?: (assetId: string) => void;
+  onTrashAsset?: (assetId: string) => void | Promise<void>;
+  onRestoreAsset?: (assetId: string) => void | Promise<void>;
   /** Queues an agent annotation for a sidebar object (project id added by the caller). */
   onAnnotate?: (target: Omit<AgentAnnotationTarget, "projectId">) => void;
 }
@@ -312,11 +316,11 @@ function selectedTabId(surface: ProjectWorkspaceSurface): string {
   return assetTabId(surface.assetId);
 }
 
-function assetNavigationLabel(asset: ProjectAsset): {
+function assetNavigationLabel(asset: ResolvedAsset): {
   label: string;
   path: string;
 } {
-  const path = asset.storageKey?.trim() || asset.id;
+  const path = asset.metadata.originalName?.trim() || asset.id;
   const label = projectAssetDisplayName(asset);
   return { label, path };
 }
@@ -348,11 +352,21 @@ export default function ProjectWorkspaceNavigator({
   onAddAsset,
   onAddGlobalAsset,
   onAddAssetToLibrary,
+  onTrashAsset,
+  onRestoreAsset,
   onAnnotate,
 }: ProjectWorkspaceNavigatorProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const activeAssets = useMemo(
+    () => assets.filter((asset) => asset.lifecycle.state === "active"),
+    [assets],
+  );
+  const trashedAssets = useMemo(
+    () => assets.filter((asset) => asset.lifecycle.state === "trashed"),
+    [assets],
+  );
   const [openFolders, setOpenFolders] = useState<
     Record<ProjectFolderId, boolean>
   >({
@@ -382,7 +396,7 @@ export default function ProjectWorkspaceNavigator({
         label: stage.name,
         searchText: `${stage.name} director stage 3d blocking camera`,
       })),
-      ...assets.map((asset) => {
+      ...activeAssets.map((asset) => {
         const { label, path } = assetNavigationLabel(asset);
         return {
           kind: "asset" as const,
@@ -392,8 +406,7 @@ export default function ProjectWorkspaceNavigator({
             label,
             path,
             asset.id,
-            asset.assetId,
-            asset.type,
+            asset.kind,
             "asset assets media",
           ]
             .filter((value): value is string => typeof value === "string")
@@ -412,7 +425,7 @@ export default function ProjectWorkspaceNavigator({
     return results.filter((result) =>
       result.searchText.toLocaleLowerCase().includes(normalizedQuery),
     );
-  }, [assets, canvases, directorStages, searchQuery, textAssets, timelines]);
+  }, [activeAssets, canvases, directorStages, searchQuery, textAssets, timelines]);
 
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
@@ -517,7 +530,7 @@ export default function ProjectWorkspaceNavigator({
       onSelectDirectorStage?.(directorStage.id);
       return;
     }
-    const asset = assets.find(
+    const asset = activeAssets.find(
       (candidate) => assetTabId(candidate.id) === tabId,
     );
     if (asset) {
@@ -932,7 +945,7 @@ export default function ProjectWorkspaceNavigator({
                   </DropdownMenu>
                 }
               >
-                {assets.length > 0 || textAssets.length > 0 ? (
+                {activeAssets.length > 0 || textAssets.length > 0 ? (
                   <ul aria-label="Project assets" className="space-y-0">
                     {textAssets.map((asset) => {
                       const active =
@@ -997,7 +1010,7 @@ export default function ProjectWorkspaceNavigator({
                         </SidebarItemContextMenu>
                       );
                     })}
-                    {assets.map((asset) => {
+                    {activeAssets.map((asset) => {
                       const { label } = assetNavigationLabel(asset);
                       const active =
                         surface.kind === "asset" &&
@@ -1014,7 +1027,7 @@ export default function ProjectWorkspaceNavigator({
                           className={`${rowClass(active, collapsed)} cursor-grab active:cursor-grabbing`}
                         >
                           <AssetThumbnail
-                            type={asset.type}
+                            kind={asset.kind}
                             src={projectAssetThumbnailSource(asset)}
                             label={label}
                             active={active}
@@ -1028,13 +1041,35 @@ export default function ProjectWorkspaceNavigator({
                           </span>
                         </Tab>
                       );
-                      const assetRowId = asset.assetId ?? asset.id;
+                      const assetRowId = asset.id;
                       const canAddToLibrary = Boolean(
                         onAddAssetToLibrary &&
                           !globalAssets.some(
                             (globalAsset) => globalAsset.id === asset.id,
                           ),
                       );
+                      const actions: SidebarContextAction[] = [];
+                      if (canAddToLibrary && onAddAssetToLibrary) {
+                        actions.push({
+                          key: "add-to-library",
+                          label: "Add to Global Assets",
+                          icon: (
+                            <Images className="h-4 w-4 shrink-0 text-stone-500" />
+                          ),
+                          onSelect: () => onAddAssetToLibrary(assetRowId),
+                        });
+                      }
+                      if (onTrashAsset) {
+                        actions.push({
+                          key: "trash",
+                          label: "Move to Trash",
+                          icon: (
+                            <Trash className="h-4 w-4 shrink-0 text-red-500" />
+                          ),
+                          danger: true,
+                          onSelect: () => void onTrashAsset(assetRowId),
+                        });
+                      }
                       return (
                         <SidebarItemContextMenu
                           key={asset.id}
@@ -1046,27 +1081,17 @@ export default function ProjectWorkspaceNavigator({
                                   surfaceId: asset.id,
                                   surfaceLabel: label,
                                   objectId: assetRowId,
-                                  objectType: `asset-${asset.type}`,
+                                  objectType: `asset-${asset.kind}`,
                                   objectLabel: label,
                                   objectPath: `assets/${assetRowId}`,
                                   capabilities: ["read", "modify"],
-                                  ...(asset.type === "image" ||
-                                  asset.type === "video"
+                                  ...(asset.kind === "image" ||
+                                  asset.kind === "video"
                                     ? { previewAssetId: assetRowId }
                                     : {}),
                                 })
                             : undefined}
-                          actions={canAddToLibrary && onAddAssetToLibrary
-                            ? [{
-                                key: "add-to-library",
-                                label: "Add to Global Assets",
-                                icon: (
-                                  <Images className="h-4 w-4 shrink-0 text-stone-500" />
-                                ),
-                                onSelect: () =>
-                                  onAddAssetToLibrary(assetRowId),
-                              }]
-                            : []}
+                          actions={actions}
                         >
                         <li
                           data-agent-annotation-object-id={assetRowId}
@@ -1078,10 +1103,7 @@ export default function ProjectWorkspaceNavigator({
                             tab
                           )}
                           {!collapsed &&
-                          onAddAssetToLibrary &&
-                          !globalAssets.some(
-                            (globalAsset) => globalAsset.id === asset.id,
-                          ) ? (
+                          (canAddToLibrary || onTrashAsset) ? (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <IconButton
@@ -1102,16 +1124,23 @@ export default function ProjectWorkspaceNavigator({
                                 align="start"
                                 className="min-w-48 rounded-xl p-1"
                               >
-                                <DropdownMenuItem
-                                  onSelect={() =>
-                                    onAddAssetToLibrary(
-                                      asset.assetId ?? asset.id,
-                                    )
-                                  }
-                                >
-                                  <Images className="h-4 w-4 text-stone-500" />
-                                  Add to Global Assets
-                                </DropdownMenuItem>
+                                {canAddToLibrary && onAddAssetToLibrary ? (
+                                  <DropdownMenuItem
+                                    onSelect={() => onAddAssetToLibrary(asset.id)}
+                                  >
+                                    <Images className="h-4 w-4 text-stone-500" />
+                                    Add to Global Assets
+                                  </DropdownMenuItem>
+                                ) : null}
+                                {onTrashAsset ? (
+                                  <DropdownMenuItem
+                                    onSelect={() => void onTrashAsset(asset.id)}
+                                    className="text-red-600 data-[highlighted]:text-red-700 dark:text-red-400"
+                                  >
+                                    <Trash className="h-4 w-4" />
+                                    Move to Trash
+                                  </DropdownMenuItem>
+                                ) : null}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           ) : null}
@@ -1120,6 +1149,40 @@ export default function ProjectWorkspaceNavigator({
                       );
                     })}
                   </ul>
+                ) : null}
+                {trashedAssets.length > 0 ? (
+                  <div className="mt-2 border-t border-warm-border/75 pt-2">
+                    {!collapsed ? (
+                      <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-content-muted">
+                        Trash
+                      </p>
+                    ) : null}
+                    <ul aria-label="Project asset trash" className="space-y-0">
+                      {trashedAssets.map((asset) => {
+                        const { label } = assetNavigationLabel(asset);
+                        return (
+                          <li key={asset.id} className="relative min-w-0">
+                            <Button
+                              variant={null}
+                              size={null}
+                              shape={null}
+                              aria-label={`Restore ${label}`}
+                              onClick={() => void onRestoreAsset?.(asset.id)}
+                              disabled={!onRestoreAsset}
+                              className={`${rowClass(false, collapsed)} bg-transparent shadow-none`}
+                              leftIcon={
+                                <ArrowCounterClockwise className="h-3.5 w-3.5 text-content-muted" />
+                              }
+                            >
+                              <span className={collapsed ? "sr-only" : "min-w-0 flex-1 truncate"}>
+                                {label}
+                              </span>
+                            </Button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
                 ) : null}
               </ProjectFolderSection>
             </TabList>
@@ -1164,14 +1227,14 @@ export default function ProjectWorkspaceNavigator({
                       aria-label={`Add ${label}`}
                       onClick={() => {
                         void Promise.resolve(
-                          onAddGlobalAsset?.(asset.assetId ?? asset.id),
+                          onAddGlobalAsset?.(asset.id),
                         ).then(() => setLibraryPickerOpen(false));
                       }}
                       className="group w-full rounded-xl border border-warm-border bg-warm-page/50 p-2 text-left transition-colors hover:border-brand/30 hover:bg-brand/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
                     >
                       <span className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg bg-warm-muted">
                         <AssetThumbnail
-                          type={asset.type}
+                          kind={asset.kind}
                           src={projectAssetThumbnailSource(asset)}
                           label={label}
                           variant="card"
@@ -1192,8 +1255,14 @@ export default function ProjectWorkspaceNavigator({
               No reusable assets available
             </p>
             <p className="mt-1 text-sm text-content-secondary">
-              Add assets from the Home Assets tab first.
+              Add reusable media in Global Assets first.
             </p>
+            <Link
+              to="/assets"
+              className="mt-4 inline-flex min-h-9 items-center justify-center rounded-lg border border-warm-border bg-warm-surface px-3 text-sm font-semibold text-content-primary shadow-sm hover:bg-warm-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+            >
+              Open Global Assets
+            </Link>
           </div>
         )}
       </Dialog>

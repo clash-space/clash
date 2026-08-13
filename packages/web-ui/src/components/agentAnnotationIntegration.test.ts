@@ -23,7 +23,7 @@ describe("agent annotation surface integration", () => {
       "packages/director-ui/src/DirectorViewport.tsx",
     );
     const contextMenu = read(
-      "packages/web-ui/src/components/ui/context-menu.tsx",
+      "packages/gui/src/components/ui/context-menu.tsx",
     );
 
     expect(contextMenu).toContain('from "radix-ui"');

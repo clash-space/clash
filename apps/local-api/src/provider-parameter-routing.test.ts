@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ModelCardSchema } from "@clash/shared-types";
 
@@ -52,7 +52,157 @@ const model = ModelCardSchema.parse({
   ],
 });
 
+const legacyRemoteApiShapes = [
+  "openai-images",
+  "openai-compatible",
+  "anthropic-compatible",
+  "google-ai-studio",
+  "google-ai-studio-interactions",
+  "google-agent-platform",
+  "fal",
+  "bfl",
+  "suno",
+  "minimax",
+  "replicate",
+  "pika",
+  "pika-chat",
+] as const;
+
+function legacyRemoteModel(apiShape: string) {
+  const providerId = `legacy-${apiShape}`;
+  return ModelCardSchema.parse({
+    id: `legacy-${apiShape}-video`,
+    name: `Legacy ${apiShape} video`,
+    provider: "Legacy",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    parameters: [],
+    defaultParams: {},
+    input: {
+      requiresPrompt: true,
+      inputMode: {},
+      promptModalities: ["text"],
+    },
+    availableProviders: [providerId],
+    defaultProvider: providerId,
+    providerImplementations: [
+      {
+        providerId,
+        upstreamId: providerId,
+        upstreamModel: `${apiShape}-model`,
+        apiShape,
+        priority: 1,
+        requiredCredentials: ["apiKey"],
+      },
+    ],
+  });
+}
+
 describe("provider parameter routing", () => {
+  it.each(legacyRemoteApiShapes)(
+    "refuses a %s route without an executable contract before vendor submission",
+    async (apiShape) => {
+      const legacyModel = legacyRemoteModel(apiShape);
+      const providerId = `legacy-${apiShape}`;
+      const vendorFetch = vi.fn(
+        async () =>
+          new Response(JSON.stringify({}), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+      );
+      const executePlugin = vi.fn();
+      const service = createMockExternalAigcService({
+        modelCards: async () => [legacyModel],
+        providerAccounts: async () => [
+          {
+            id: `${providerId}-account`,
+            providerId,
+            upstreamId: providerId,
+            enabled: true,
+            configuredCredentials: ["apiKey"],
+            credentials: { apiKey: "legacy-secret" },
+          },
+        ],
+        fetch: vendorFetch,
+        providerPluginExecutor: executePlugin,
+      });
+
+      await expect(
+        service.generateVideo({
+          taskId: "legacy-task",
+          model: legacyModel.id,
+          prompt: "Do not submit this through a blocking adapter.",
+        }),
+      ).rejects.toThrow(
+        /does not declare an executable submit\/poll contract/i,
+      );
+      expect(vendorFetch).not.toHaveBeenCalled();
+      expect(executePlugin).not.toHaveBeenCalled();
+    },
+  );
+
+  it("freezes the selected executable route, account, binding, and input without submitting", async () => {
+    const execute = vi.fn();
+    const binding = {
+      pluginId: "test.speech",
+      version: "2.0.0",
+      exportId: "full-execute",
+      schemaHash: `sha256:${"b".repeat(64)}`,
+    } as const;
+    const resolveBinding = vi.fn(async () => binding);
+    const service = createMockExternalAigcService({
+      modelCards: async () => [model],
+      providerAccounts: async () => [
+        {
+          id: "full-account",
+          providerId: "speech-full",
+          upstreamId: "speech-full",
+          enabled: true,
+        },
+      ],
+      providerPluginExecutor: execute,
+      resolveProviderPluginBinding: resolveBinding,
+    });
+
+    const plan = await service.planProviderPlugin?.(
+      {
+        taskId: "ignored-before-durable-identity",
+        projectId: "project-1",
+        nodeId: "node-1",
+        model: model.id,
+        prompt: "Read this line.",
+        modelParams: { voice_id: "speaker-123" },
+      },
+      "audio",
+    );
+
+    expect(plan).toEqual({
+      binding,
+      accountId: "full-account",
+      kind: "audio",
+      projectId: "project-1",
+      nodeId: "node-1",
+      provider: "speech-full",
+      modelEndpoint: "audio-v1",
+      input: {
+        values: {
+          modelId: model.id,
+          upstreamModel: "audio-v1",
+          prompt: "Read this line.",
+          modelParams: { voice_id: "speaker-123" },
+        },
+        references: [],
+      },
+    });
+    expect(resolveBinding).toHaveBeenCalledWith(
+      "test.speech",
+      "full-execute",
+      "provider-executor",
+    );
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   it("routes a selected provider-only feature to an implementation that supports it", async () => {
     const requests: ProviderPluginExecutorRequest[] = [];
     const service = createMockExternalAigcService({

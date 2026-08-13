@@ -18,9 +18,10 @@
   "expect": {
     "status": "failed",
     "error": {
-      "code": "execution_failed",
+      "code": "authentication_failed",
       "message": "This MiniMax Hub account has no accessToken stored. Sign in, or paste a token into the account's Access token field.",
-      "retryable": false
+      "retryable": false,
+      "requestState": "rejected"
     }
   },
   "brokerFixtures": [

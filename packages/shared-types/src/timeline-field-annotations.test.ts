@@ -10,7 +10,6 @@ const EXPECTED_FIELDS = {
     "primaryTrackId",
     "tracks",
     "assetTranscripts",
-    "mediaAssetRefs",
   ],
   track: ["id", "name", "role", "category", "items", "hidden", "locked"],
   itemBase: [
@@ -112,10 +111,18 @@ describe("complete Timeline field annotations", () => {
     if (!catalog) return;
     expect(Object.keys(catalog.root.fields)).toEqual(EXPECTED_FIELDS.root);
     expect(Object.keys(catalog.track.fields)).toEqual(EXPECTED_FIELDS.track);
-    expect(Object.keys(catalog.itemBase.fields)).toEqual(EXPECTED_FIELDS.itemBase);
-    expect(Object.keys(catalog.itemTypes)).toEqual(Object.keys(EXPECTED_FIELDS.itemTypes));
-    for (const [itemType, fields] of Object.entries(EXPECTED_FIELDS.itemTypes)) {
-      expect(Object.keys(catalog.itemTypes[itemType].fields), itemType).toEqual(fields);
+    expect(Object.keys(catalog.itemBase.fields)).toEqual(
+      EXPECTED_FIELDS.itemBase,
+    );
+    expect(Object.keys(catalog.itemTypes)).toEqual(
+      Object.keys(EXPECTED_FIELDS.itemTypes),
+    );
+    for (const [itemType, fields] of Object.entries(
+      EXPECTED_FIELDS.itemTypes,
+    )) {
+      expect(Object.keys(catalog.itemTypes[itemType].fields), itemType).toEqual(
+        fields,
+      );
     }
   });
 
@@ -137,7 +144,9 @@ describe("complete Timeline field annotations", () => {
         expect(annotation.description, field).toEqual(expect.any(String));
         expect(annotation.description.length, field).toBeGreaterThan(0);
         expect(annotation.authored, field).toBeTypeOf("boolean");
-        expect(annotation.editor?.surface, field).toMatch(/^(timeline|properties-panel|none)$/);
+        expect(annotation.editor?.surface, field).toMatch(
+          /^(timeline|properties-panel|none)$/,
+        );
         expect(annotation.runtimeConsumers, field).toEqual(expect.any(Array));
       }
     }

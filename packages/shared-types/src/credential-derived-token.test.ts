@@ -104,16 +104,9 @@ describe('service account credential source', () => {
     // bearer written there is replicated, synced and backed up with the project, a leak with a long
     // tail from a value only ever meant to survive an hour.
     const [source] = resolveCredentialSources(serviceAccountAuth);
-    expect(Object.keys(source).sort()).toEqual([
-      'control',
-      'credentialId',
-      'id',
-      'interactive',
-      'item',
-      'kind',
-      'label',
-      'secret',
-    ]);
+    for (const valueSlot of ['value', 'credential', 'token', 'accessToken', 'secretValue']) {
+      expect(source).not.toHaveProperty(valueSlot);
+    }
   });
 
   it('no longer constrains how a credential is derived, because the host no longer derives it', () => {

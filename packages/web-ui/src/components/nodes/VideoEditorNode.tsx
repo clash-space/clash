@@ -5,8 +5,8 @@ import { Handle, Position, NodeProps, useReactFlow, Node } from '@xyflow/react';
 import { FilmSlate, VideoCamera } from '@phosphor-icons/react';
 import { useVideoEditor } from '../VideoEditorContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
-import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
+import { useProject } from '../ProjectContext';
 import { getItemSourceNodeId } from '@clash/remotion-core';
 import { Button } from '../ui/button';
 import { listProjectTimelines, type ProjectTimeline } from '@clash/shared-types';
@@ -29,8 +29,8 @@ function readTimelineForAction(
     return listProjectTimelines(doc).find((timeline) => timeline.id === timelineId) ?? null;
 }
 
-async function resolveAssetPreview(assetId: string, sourceId: string): Promise<AssetPreviewMedia | null> {
-    const asset = await getAsset(assetId).catch((e) => {
+async function resolveAssetPreview(projectId: string, assetId: string, sourceId: string): Promise<AssetPreviewMedia | null> {
+    const asset = await getAsset(projectId, assetId).catch((e) => {
         console.error('[resolveAssetPreview] getAsset failed', { sourceId, assetId, error: e?.message });
         return null;
     });
@@ -39,6 +39,7 @@ async function resolveAssetPreview(assetId: string, sourceId: string): Promise<A
 
 const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => {
     const { openTimeline } = useVideoEditor();
+    const { projectId } = useProject();
     const loroSync = useOptionalLoroSyncContext();
     const reactFlow = useReactFlow();
     const session = betterAuthClient.useSession();
@@ -46,7 +47,7 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
     const [rendering, setRendering] = useState(false);
     const [renderError, setRenderError] = useState<string | null>(null);
     const [previewMedia, setPreviewMedia] = useState<AssetPreviewMedia | null>(null);
-    const signedPreviewUrl = useSignedUrl(previewMedia?.source);
+    const previewUrl = previewMedia?.source ?? '';
 
     // Extract first frame source from timeline
     // Force re-render trigger for Loro updates
@@ -119,7 +120,7 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
 
             candidates.sort((left, right) => left.from - right.from);
             for (const candidate of candidates) {
-                const resolved = await resolveAssetPreview(candidate.assetId, candidate.sourceId);
+                const resolved = await resolveAssetPreview(projectId, candidate.assetId, candidate.sourceId);
                 if (cancelled) return;
                 if (resolved) {
                     setPreviewMedia(resolved);
@@ -133,7 +134,7 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
         return () => {
             cancelled = true;
         };
-    }, [data.timelineId, id, loroSync?.doc, loroUpdateTrigger]);
+    }, [data.timelineId, id, loroSync?.doc, loroUpdateTrigger, projectId, reactFlow]);
 
     const handleOpenEditor = useCallback(() => {
         setRenderError(null);
@@ -190,10 +191,10 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
                 {/* Preview Area */}
                 <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden border-b border-warm-border bg-warm-muted">
                     {previewMedia ? (
-                        signedPreviewUrl ? (
+                        previewUrl ? (
                             previewMedia.kind === 'video' ? (
                                 <video
-                                    src={signedPreviewUrl}
+                                    src={previewUrl}
                                     className="w-full h-full object-cover pointer-events-none"
                                     preload="auto"
                                     muted
@@ -203,7 +204,7 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
                                 />
                             ) : (
                                 <img
-                                    src={signedPreviewUrl}
+                                    src={previewUrl}
                                     alt=""
                                     className="w-full h-full object-cover pointer-events-none"
                                 />

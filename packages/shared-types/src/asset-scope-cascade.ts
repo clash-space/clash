@@ -27,22 +27,7 @@ export type AssetScopeCascadeStep =
   | { kind: "create-project-asset"; addToGlobalLibrary: false }
   | { kind: "ensure-project-reference"; assetId: string }
   | { kind: "ensure-global-library-reference"; assetId?: string }
-  | { kind: "ensure-canvas-placement"; canvasId: string; assetId?: string }
-  | {
-      kind: "ensure-timeline-input";
-      timelineId: string;
-      assetId?: string;
-      via: "timeline-reference";
-    }
-  | {
-      kind: "ensure-timeline-input";
-      timelineId: string;
-      assetId?: string;
-      via: "canvas-edge";
-      canvasId: string;
-      actionNodeId: string;
-      sourceNodeId?: string;
-    };
+  | { kind: "ensure-canvas-placement"; canvasId: string; assetId?: string };
 
 export function visibleAssetSourceScopes(
   target: AssetScopeTarget,
@@ -80,7 +65,13 @@ export function planAssetScopeCascade({
       );
     }
   }
-  const assetId = source.kind === "local-file" ? undefined : source.assetId;
+  // A Global entry and the Project entry admitted from it deliberately have different
+  // identities. Steps after admission therefore consume the identity returned by the Host
+  // instead of carrying the Global id through the Project graph.
+  const assetId =
+    source.kind === "local-file" || source.kind === "global-library"
+      ? undefined
+      : source.assetId;
   const steps: AssetScopeCascadeStep[] = [];
 
   if (source.kind === "local-file") {
@@ -122,27 +113,6 @@ export function planAssetScopeCascade({
         canvasId,
         ...(assetId ? { assetId } : {}),
       });
-    } else if (target.kind === "timeline") {
-      if (target.owner.kind === "project") {
-        steps.push({
-          kind: "ensure-timeline-input",
-          timelineId: target.timelineId,
-          ...(assetId ? { assetId } : {}),
-          via: "timeline-reference",
-        });
-      } else {
-        steps.push({
-          kind: "ensure-timeline-input",
-          timelineId: target.timelineId,
-          ...(assetId ? { assetId } : {}),
-          via: "canvas-edge",
-          canvasId: target.owner.canvasId,
-          actionNodeId: target.owner.actionNodeId,
-          ...(source.kind === "current-canvas"
-            ? { sourceNodeId: source.sourceNodeId }
-            : {}),
-        });
-      }
     }
   }
   return steps;

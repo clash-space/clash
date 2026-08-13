@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ExecutablePluginFailureCodeSchema,
   ExecutablePluginResultSchema,
   ExecutablePluginInvocationSchema,
 } from './executable-plugin.js';
@@ -122,6 +123,75 @@ describe('accepted results', () => {
     // and the host never enters a loop for it.
     const parsed = ExecutablePluginResultSchema.parse({ ...base, status: 'completed', outputs: [] });
     expect(parsed).not.toHaveProperty('pollState');
+  });
+});
+
+describe('failed results', () => {
+  const base = {
+    protocol: 'clash.plugin.result/v1' as const,
+    invocationId: 'inv-failed',
+    status: 'failed' as const,
+  };
+
+  it('preserves the canonical failure and the provider diagnostic separately', () => {
+    const parsed = ExecutablePluginResultSchema.parse({
+      ...base,
+      error: {
+        code: 'execution_failed',
+        message: 'provider refused the request',
+        retryable: true,
+        requestState: 'rejected',
+        providerCode: 'quota_exceeded',
+        details: { limit: 10 },
+      },
+    });
+
+    expect(parsed).toEqual({
+      ...base,
+      error: {
+        code: 'execution_failed',
+        message: 'provider refused the request',
+        retryable: true,
+        requestState: 'rejected',
+        providerCode: 'quota_exceeded',
+        details: { limit: 10 },
+      },
+    });
+  });
+
+  it('requires the request state needed to decide whether submission is safe', () => {
+    expect(ExecutablePluginResultSchema.safeParse({
+      ...base,
+      error: {
+        code: 'execution_failed',
+        message: 'connection closed during submission',
+        retryable: true,
+      },
+    }).success).toBe(false);
+  });
+
+  it('requires an explicit retry decision', () => {
+    expect(ExecutablePluginResultSchema.safeParse({
+      ...base,
+      error: {
+        code: 'execution_failed',
+        message: 'provider failed the request',
+        requestState: 'rejected',
+      },
+    }).success).toBe(false);
+  });
+
+  it('keeps provider spellings out of the canonical code', () => {
+    expect(ExecutablePluginFailureCodeSchema.safeParse('quota_exceeded').success).toBe(false);
+    expect(ExecutablePluginResultSchema.safeParse({
+      ...base,
+      error: {
+        code: 'quota_exceeded',
+        message: 'provider quota exceeded',
+        retryable: true,
+        requestState: 'rejected',
+      },
+    }).success).toBe(false);
   });
 });
 

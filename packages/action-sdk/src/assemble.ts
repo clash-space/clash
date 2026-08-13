@@ -3,11 +3,13 @@ import { join } from "node:path";
 
 import type {
   ExecutablePluginInvocation,
+  ExecutablePluginJsonValue,
   ExecutablePluginResult,
 } from "@clash/shared-types/executable-plugin";
 
 import { defineStdioExecutablePlugin, type StdioExecutablePluginOptions } from "./stdio-plugin.js";
 import { outputsFor, type Executor, type ExecutorContext , ExecutorStep, executorContextFrom} from "./define-plugin.js";
+import { unsupportedAcceptedOperation } from "./executable-failure.js";
 
 /**
  * Assembling a plugin from what its manifest already declares.
@@ -24,7 +26,9 @@ import { outputsFor, type Executor, type ExecutorContext , ExecutorStep, executo
 
 const KIND = Symbol.for("clash.plugin.kind");
 
-export type ProjectorFn = (invocation: ExecutablePluginInvocation) => unknown;
+export type ProjectorFn = (
+  invocation: ExecutablePluginInvocation,
+) => ExecutablePluginJsonValue;
 
 /** Pure arithmetic on an invocation: no network, no credentials, no host calls. */
 export function defineProjector(project: ProjectorFn): ProjectorFn {
@@ -77,7 +81,6 @@ export interface AssembleOptions {
    * long enough to be built, tested and bound to thirteen routes.
    */
   contributes: Record<string, unknown>;
-  context?: ExecutorContext;
 }
 
 export interface AssembledPlugin {
@@ -157,17 +160,11 @@ export function assemblePlugin(options: AssembleOptions): AssembledPlugin {
         );
       }
 
-      // The Host context comes first, then whatever the plugin declared statically for testing.
-       // Dropping the per-invocation context -- which this did, by taking `options.context ?? {}` -- left an
-       // assembled executor with no `context.store` at all.
-       //
-       // hrhrng.hub failed exactly here, reporting "This MiniMax Hub account has no accessToken
-       // stored. Sign in, or paste a token". The account was configured; the plugin had no way to
-       // read it. A message about the user's configuration for a
-       // fault in our wiring is the expensive kind of wrong.
-      const context = executorContextFrom(
-        { ...hostContext, ...options.context } as ExecutorContext,
-      );
+      // Dependencies are scoped by the Host for this invocation. A plugin only contributes its
+      // implementation; it cannot replace `store`, `reference`, `upload`, or `hostTools` with a
+      // static object at assembly time. Besides making account scope ambiguous, a static override
+      // would bypass the one process boundary where the Host can authorize and instrument access.
+      const context = executorContextFrom(hostContext);
 
       if (entry.declaration.kind === "action") {
         const step = await (entry.bean as Action).run(invocation, context);
@@ -176,6 +173,7 @@ export function assemblePlugin(options: AssembleOptions): AssembledPlugin {
 
       if (entry.declaration.kind === "provider-projector") {
         return {
+          protocol: "clash.plugin.result/v1",
           invocationId: invocation.invocationId,
           status: "completed",
           outputs: [{
@@ -183,13 +181,20 @@ export function assemblePlugin(options: AssembleOptions): AssembledPlugin {
             kind: "value",
             value: (entry.bean as ProjectorFn)(invocation),
           }],
-        } as ExecutablePluginResult;
+        } satisfies ExecutablePluginResult;
       }
 
       const executor = entry.bean as Executor;
       const step = invocation.operation === "poll"
         ? await requirePoll(entry.declaration, executor)(invocation, context)
-        : await executor.submit(invocation, context);
+        : invocation.operation === "callback"
+          ? executor.callback
+            ? await executor.callback(invocation, context)
+            : {
+                status: "failed" as const,
+                error: unsupportedAcceptedOperation(entry.declaration.id, "callback"),
+              }
+          : await executor.submit(invocation, context);
       return normalise(invocation, step, context);
     },
   };
@@ -215,20 +220,30 @@ async function normalise(
 ): Promise<ExecutablePluginResult> {
   if (step.status === "accepted") {
     return {
+      protocol: "clash.plugin.result/v1",
       invocationId: invocation.invocationId,
       status: "accepted",
       pollState: step.pollState,
       ...(step.retryAfterMs === undefined ? {} : { retryAfterMs: step.retryAfterMs }),
-    } as ExecutablePluginResult;
+    } satisfies ExecutablePluginResult;
+  }
+  if (step.status === "failed") {
+    return {
+      protocol: "clash.plugin.result/v1",
+      invocationId: invocation.invocationId,
+      status: "failed",
+      error: step.error,
+    } satisfies ExecutablePluginResult;
   }
   return {
+    protocol: "clash.plugin.result/v1",
     invocationId: invocation.invocationId,
     status: "completed",
     // A media step names its files and the SDK stores them. This used to read
     // `"outputs" in step ? step.outputs : []`, which answered `[]` for exactly that shape: the
     // frame said completed, carried nothing, and the upload never happened.
     outputs: "media" in step ? await outputsFor(step.media, context) : step.outputs,
-  } as ExecutablePluginResult;
+  } satisfies ExecutablePluginResult;
 }
 
 function manifestName(manifest: unknown): string {

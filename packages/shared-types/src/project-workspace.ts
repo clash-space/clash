@@ -1,6 +1,11 @@
 import { LoroMap, type LoroDoc } from "loro-crdt";
 import { agentReadToken } from "./agent-read-proof.js";
 import { Canvas } from "./canvas-ops.js";
+import { normalizeProjectTimelinePersistenceState } from "./timeline-persistence.js";
+import {
+  replaceDraftActionAssetInputBindings,
+  type DraftActionAssetInput,
+} from "./action-asset-bindings.js";
 import {
   clearNodeUpstreamRefs,
   deleteNodeUpstreamRef,
@@ -44,6 +49,69 @@ export interface ProjectTimeline {
   owner: TimelineOwner;
   revisionId: string;
   state: unknown;
+}
+
+export function projectTimelineActionId(
+  timelineId: string,
+  owner: TimelineOwner,
+): string {
+  return owner.kind === "canvas-action"
+    ? `node:${owner.actionNodeId}`
+    : `timeline:${timelineId}`;
+}
+
+function projectTimelineAssetInputs(state: unknown): DraftActionAssetInput[] {
+  if (!isRecord(state) || !Array.isArray(state.tracks)) return [];
+  const inputs: DraftActionAssetInput[] = [];
+  for (const track of state.tracks) {
+    if (!isRecord(track) || !Array.isArray(track.items)) continue;
+    for (const item of track.items) {
+      if (!isRecord(item) || typeof item.id !== "string" || !item.id.trim()) {
+        continue;
+      }
+      const projectAssetId =
+        typeof item.assetId === "string" && item.assetId.trim()
+          ? item.assetId.trim()
+          : undefined;
+      if (!projectAssetId) continue;
+      inputs.push({
+        slot: `timeline:item:${item.id.trim()}`,
+        projectAssetId,
+        role: "source",
+      });
+    }
+  }
+  return inputs;
+}
+
+function syncProjectTimelineAssetInputs(
+  doc: LoroDoc,
+  timeline: Pick<ProjectTimeline, "id" | "owner" | "state">,
+): Extract<ProjectTimelineMutationResult, { ok: false }> | undefined {
+  const synced = replaceDraftActionAssetInputBindings(
+    doc,
+    projectTimelineActionId(timeline.id, timeline.owner),
+    projectTimelineAssetInputs(timeline.state),
+  );
+  return synced.ok ? undefined : { ok: false, error: synced.error };
+}
+
+function rehomeProjectTimelineAssetInputs(
+  doc: LoroDoc,
+  previous: Pick<ProjectTimeline, "id" | "owner" | "state">,
+  next: Pick<ProjectTimeline, "id" | "owner" | "state">,
+): Extract<ProjectTimelineMutationResult, { ok: false }> | undefined {
+  const nextError = syncProjectTimelineAssetInputs(doc, next);
+  if (nextError) return nextError;
+  const previousActionId = projectTimelineActionId(previous.id, previous.owner);
+  const nextActionId = projectTimelineActionId(next.id, next.owner);
+  if (previousActionId === nextActionId) return undefined;
+  const cleared = replaceDraftActionAssetInputBindings(
+    doc,
+    previousActionId,
+    [],
+  );
+  return cleared.ok ? undefined : { ok: false, error: cleared.error };
 }
 
 interface ProjectTimelineRevision {
@@ -305,13 +373,17 @@ export function createProjectTimeline(
   if (!name) return { ok: false, error: "Timeline name is required" };
   const timelines = doc.getMap("timelines");
   if (timelines.get(id)) return { ok: false, error: `Timeline ${id} already exists` };
+  const persisted = normalizeProjectTimelinePersistenceState(input.state);
+  if (!persisted.ok) return persisted;
   const timeline: ProjectTimeline = {
     id,
     name,
     owner: { kind: "project" },
-    revisionId: projectTimelineRevisionId(id, input.state),
-    state: input.state,
+    revisionId: projectTimelineRevisionId(id, persisted.state),
+    state: persisted.state,
   };
+  const bindingError = syncProjectTimelineAssetInputs(doc, timeline);
+  if (bindingError) return bindingError;
   setTimelineFields(timelines.ensureMergeableMap(id), timeline);
   return { ok: true, timeline };
 }
@@ -323,11 +395,15 @@ export function updateProjectTimelineState(
 ): ProjectTimelineMutationResult {
   const timeline = readProjectTimeline(doc, timelineId);
   if (!timeline) return { ok: false, error: `Timeline ${timelineId} not found` };
+  const persisted = normalizeProjectTimelinePersistenceState(state);
+  if (!persisted.ok) return persisted;
   const next: ProjectTimeline = {
     ...timeline,
-    revisionId: projectTimelineRevisionId(timelineId, state),
-    state,
+    revisionId: projectTimelineRevisionId(timelineId, persisted.state),
+    state: persisted.state,
   };
+  const bindingError = syncProjectTimelineAssetInputs(doc, next);
+  if (bindingError) return bindingError;
   ensureTimelineFields(doc, timelineId, timeline).set("revision", {
     state: next.state,
     revisionId: next.revisionId,
@@ -351,6 +427,13 @@ export function deleteProjectTimeline(
       error: `STALE_READ: Timeline ${timelineId} changed after it was read`,
     };
   }
+
+  const cleared = replaceDraftActionAssetInputBindings(
+    doc,
+    projectTimelineActionId(timeline.id, timeline.owner),
+    [],
+  );
+  if (!cleared.ok) return { ok: false, error: cleared.error };
 
   const nodes = doc.getMap("nodes");
   for (const [nodeId, raw] of [...nodes.entries()]) {
@@ -396,6 +479,8 @@ export function attachTimelineToCanvas(
       actionNodeId: input.actionNodeId,
     },
   };
+  const bindingError = rehomeProjectTimelineAssetInputs(doc, timeline, next);
+  if (bindingError) return bindingError;
   ensureTimelineFields(doc, input.timelineId, timeline).set("owner", next.owner);
   nodes.set(input.actionNodeId, {
     canvasId: input.canvasId,
@@ -424,6 +509,8 @@ export function detachTimelineFromCanvas(
     new Canvas(doc, () => {}, timeline.owner.canvasId).deleteNode(actionNodeId);
   }
   const next: ProjectTimeline = { ...timeline, owner: { kind: "project" } };
+  const bindingError = rehomeProjectTimelineAssetInputs(doc, timeline, next);
+  if (bindingError) return bindingError;
   ensureTimelineFields(doc, timelineId, timeline).set("owner", next.owner);
   return { ok: true, timeline: next };
 }
@@ -478,6 +565,8 @@ export function copyTimelineActionToCanvas(
     revisionId: projectTimelineRevisionId(input.newTimelineId, source.state),
     state: cloneTimelineState(source.state),
   };
+  const bindingError = syncProjectTimelineAssetInputs(doc, timeline);
+  if (bindingError) return bindingError;
   setTimelineFields(timelines.ensureMergeableMap(input.newTimelineId), timeline);
   nodes.set(input.newActionNodeId, {
     canvasId: input.targetCanvasId,
@@ -555,6 +644,16 @@ export function reconcileProjectTimelineOwnership(
     const ownerMatches = timelineActionTimelineId(rawOwner) === timeline.id &&
       nodeCanvasId(rawOwner) === timeline.owner.canvasId;
     if (ownerMatches) continue;
+    const detached: ProjectTimeline = {
+      ...timeline,
+      owner: { kind: "project" },
+    };
+    const bindingError = rehomeProjectTimelineAssetInputs(
+      doc,
+      timeline,
+      detached,
+    );
+    if (bindingError) throw new Error(bindingError.error);
     ensureTimelineFields(doc, timeline.id, timeline).set("owner", { kind: "project" });
     detachedTimelineIds.push(timeline.id);
   }

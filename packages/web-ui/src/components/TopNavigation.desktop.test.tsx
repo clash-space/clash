@@ -2,7 +2,7 @@
 import type { ReactNode } from "react";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Link, MemoryRouter, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -104,13 +104,17 @@ describe("TopNavigation desktop chrome", () => {
     expect(source).not.toContain("aria-selected={active}");
   });
 
-  it("does not expose a standalone Assets destination", () => {
-    const source = readFileSync(
-      resolve(process.cwd(), "packages/web-ui/src/components/TopNavigation.tsx"),
-      "utf8",
+  it("opens the real Global Assets product surface", () => {
+    render(
+      <MemoryRouter initialEntries={["/assets"]}>
+        <TopNavigation />
+      </MemoryRouter>,
     );
 
-    expect(source).not.toContain("{ name: 'Assets', href: '/assets'");
+    const primary = screen.getByRole("navigation", { name: "Primary" });
+    const assets = within(primary).getByRole("link", { name: "Assets" });
+    expect(assets.getAttribute("href")).toBe("/assets");
+    expect(assets.getAttribute("aria-current")).toBe("page");
   });
 
   it("uses the shared tooltip primitive for desktop icon controls instead of browser title attributes", () => {

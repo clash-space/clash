@@ -120,11 +120,7 @@ it("restarts a plugin when one of its workspace dependency sources changes", asy
   );
 
   const host = new ActionsHost({
-    serverUrl: "http://127.0.0.1:0",
-    apiKey: "",
-    runtimeId: "development-source-test",
     actionsRoot,
-    executablePluginsOnly: true,
     developmentPluginWatchRoots: {
       [PLUGIN_ID]: [sourceRoot, dependencyRoot],
     },

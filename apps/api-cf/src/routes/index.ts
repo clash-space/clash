@@ -6,8 +6,7 @@ import type { Env } from "../config";
 import { log } from "../logger";
 import { startGeneration } from "../generation/start";
 import { Status } from "../domain/canvas";
-import { createAsset, getAssetByTaskId } from "../services/assets";
-import { probeAsset } from "../services/asset-probe";
+import { getAssetByTaskId } from "../services/assets";
 import { uploadBase64Image } from "../services/r2";
 import type { GenerationParams } from "../agents/generation";
 import {
@@ -439,85 +438,19 @@ api.post("/api/tasks/submit", async (c) => {
   return c.json({ error: `Unknown task_type: ${task_type}` }, 400);
 });
 
-// ─── POST /api/custom-action/upload ──────────────────────
-// Used by local agents (Python SDK) to upload results of custom actions.
-
-api.post("/api/custom-action/upload", async (c) => {
-  const formData = await c.req.formData();
-  const file = formData.get("file") as File | null;
-  const projectId = formData.get("projectId") as string;
-  const taskId = formData.get("taskId") as string;
-  const nodeId = formData.get("nodeId") as string;
-  const outputType = (formData.get("outputType") as string) || "image";
-  // Phase 0 attribution — SDK echoes back the actorUserId / actorAgentId
-  // that landed on the custom_task_assigned message. Without these the
-  // resulting asset row would fall back to projectOwner (the bug we're
-  // killing). We accept missing actorUserId only for the legacy SDK that
-  // hasn't been updated yet; in that case the route 400s rather than
-  // silently mis-attributing.
-  const formActorUserId = (formData.get("actorUserId") as string) || "";
-  // Multi-output actions call this endpoint once per output. The
-  // index disambiguates R2 keys and asset ids so siblings from the
-  // same task don't overwrite each other. Single-output actions omit
-  // it (treated as 0). The asset id likewise gets a suffix only for
-  // index>0 — keeps the primary output's id stable for any external
-  // lookups that already key off `taskId`.
-  const outputIndexRaw = formData.get("outputIndex");
-  const outputIndex = outputIndexRaw != null ? parseInt(String(outputIndexRaw), 10) : 0;
-
-  if (!projectId || !taskId || !nodeId) {
-    return c.json({ error: "Missing required fields: projectId, taskId, nodeId" }, 400);
-  }
-
-  if (outputType === "text") {
-    const content = formData.get("content") as string | null;
-    return c.json({ success: true, storageKey: null, content });
-  }
-
-  if (!file) {
-    return c.json({ error: "Missing file for image/video/audio output" }, 400);
-  }
-
-  const ext = outputType === "video" ? "mp4" : outputType === "audio" ? "mp3" : "png";
-  const contentType = outputType === "video" ? "video/mp4" : outputType === "audio" ? file.type || "audio/mpeg" : file.type || "image/png";
-  const indexSuffix = outputIndex > 0 ? `-${outputIndex}` : "";
-  const key = `projects/${projectId}/custom/${taskId}${indexSuffix}.${ext}`;
-
-  await c.env.R2_BUCKET.put(key, file.stream(), {
-    httpMetadata: { contentType },
-  });
-
-  // Fallback chain when the form omitted actorUserId: caller's
-  // x-user-id (set by the gateway from cookie / token). If both are
-  // missing we still bail loudly — silent attribution is worse than a
-  // visible 400 the SDK can react to.
-  const userId = formActorUserId || c.req.header("x-user-id") || "";
-  if (!userId) {
-    return c.json({ error: "Missing actorUserId — Phase 0 attribution requires the SDK to echo actorUserId from the task record" }, 400);
-  }
-  const kind = (outputType === "video" ? "video" : outputType === "audio" ? "audio" : "image") as "image" | "video" | "audio";
-  const assetIdSeed = outputIndex > 0 ? `${taskId}${indexSuffix}` : taskId;
-
-  // Probe the upload for width/height (and cover frame for video) so
-  // the asset row carries metadata. Without this, ImageNode falls
-  // back to a 400x400 square placeholder until metadata reconciles —
-  // and since custom-action uploads previously skipped the probe,
-  // every tile got the square box with white padding under the image.
-  const { metadata, coverR2Key } = await probeAsset(c.env, kind, key, projectId);
-
-  const { id: assetId } = await createAsset(c.env.DB, {
-    id: assetIdSeed,
-    userId,
-    kind,
-    srcR2Key: key,
-    projectId,
-    sourceTaskId: taskId,
-    metadata,
-    coverR2Key,
-  });
-
-  return c.json({ success: true, storageKey: key, assetId });
-});
+// The ProjectRoom ClashAgent upload protocol was replaced by executable
+// plugins hosted by local-api. Keep an explicit tombstone so old SDKs fail
+// deterministically instead of writing a second Asset model into D1/R2.
+api.all("/api/custom-action/upload", (c) =>
+  c.json(
+    {
+      error:
+        "Legacy ClashAgent custom-action upload is retired; use a clash.plugin/v1 executable plugin.",
+      code: "LEGACY_CUSTOM_ACTION_PROTOCOL_RETIRED",
+    },
+    410,
+  ),
+);
 
 // ─── POST /api/generate-ids ───────────────────────────────
 

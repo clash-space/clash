@@ -11,14 +11,12 @@ import {
   legacyEditOriginForSurface,
   type AssetEditActionInvocation,
   type ActionSurface,
+  ResolvedAssetSchema,
 } from '@clash/shared-types';
-import { getSignedUrl } from './hooks/useSignedUrl';
 import { runtimeApiUrl } from './runtimeConfig';
 
 export interface EditApplyResult {
   assetId: string;
-  srcR2Key: string;
-  coverR2Key: string | null;
 }
 
 function actionSurface(origin?: 'canvas-node' | 'asset-preview'): ActionSurface {
@@ -36,11 +34,11 @@ function actionSurface(origin?: 'canvas-node' | 'asset-preview'): ActionSurface 
 export async function applyImageEdit(input: {
   projectId: string;
   sourceAssetId: string;
-  sourceR2Key: string;
+  sourceUrl: string;
   params: ImageEditParams;
   origin?: 'canvas-node' | 'asset-preview';
 }): Promise<EditApplyResult> {
-  const blob = await renderImageEdit(input.sourceR2Key, input.params);
+  const blob = await renderImageEdit(input.sourceUrl, input.params);
   const invocation = createAssetActionInvocation({
     actionId: ASSET_ACTION_ID.ImageEditor,
     projectId: input.projectId,
@@ -66,11 +64,11 @@ export async function applyImageEdit(input: {
 export async function applyVideoScreenshot(input: {
   projectId: string;
   sourceAssetId: string;
-  sourceR2Key: string;
+  sourceUrl: string;
   params: Extract<VideoClipParams, { mode: 'screenshot' }>;
   origin?: 'canvas-node' | 'asset-preview';
 }): Promise<EditApplyResult> {
-  const blob = await renderVideoScreenshot(input.sourceR2Key, input.params.frameTimeSec);
+  const blob = await renderVideoScreenshot(input.sourceUrl, input.params.frameTimeSec);
   const invocation = createAssetActionInvocation({
     actionId: ASSET_ACTION_ID.VideoClipper,
     projectId: input.projectId,
@@ -115,7 +113,8 @@ export async function applyVideoCrop(input: {
     const text = await res.text().catch(() => '');
     throw new Error(`Video crop failed (${res.status}): ${text}`);
   }
-  return await res.json() as EditApplyResult;
+  const asset = ResolvedAssetSchema.parse(await res.json());
+  return { assetId: asset.id };
 }
 
 // ─── Internal: client-side renderers ────────────────────────
@@ -132,8 +131,8 @@ async function loadImage(url: string): Promise<HTMLImageElement> {
 }
 
 /** Render image edit to a PNG blob. Pure browser canvas. */
-async function renderImageEdit(sourceR2Key: string, params: ImageEditParams): Promise<Blob> {
-  const url = await getSignedUrl(sourceR2Key);
+async function renderImageEdit(sourceUrl: string, params: ImageEditParams): Promise<Blob> {
+  const url = sourceUrl;
   const img = await loadImage(url);
 
   // Order: crop first (in source pixel space), THEN rotate. Reverse order
@@ -167,8 +166,8 @@ async function renderImageEdit(sourceR2Key: string, params: ImageEditParams): Pr
 }
 
 /** Render a single frame from a video at the given time, as PNG. */
-async function renderVideoScreenshot(sourceR2Key: string, frameTimeSec: number): Promise<Blob> {
-  const url = await getSignedUrl(sourceR2Key);
+async function renderVideoScreenshot(sourceUrl: string, frameTimeSec: number): Promise<Blob> {
+  const url = sourceUrl;
   const video = document.createElement('video');
   video.crossOrigin = 'anonymous';
   video.preload = 'auto';
@@ -250,6 +249,6 @@ async function postEdit(input: {
     const text = await res.text().catch(() => '');
     throw new Error(`Edit upload failed (${res.status}): ${text}`);
   }
-  const json = (await res.json()) as EditApplyResult;
-  return json;
+  const asset = ResolvedAssetSchema.parse(await res.json());
+  return { assetId: asset.id };
 }

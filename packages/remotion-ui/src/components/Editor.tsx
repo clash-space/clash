@@ -1,6 +1,6 @@
-import React from 'react';
-import type { TimelineLibraryCategory } from '@clash/shared-types/timeline-library';
-import type { AgentAnnotationObjectRef } from '@clash/shared-types';
+import React from "react";
+import type { TimelineLibraryCategory } from "@clash/shared-types/timeline-library";
+import type { AgentAnnotationObjectRef } from "@clash/shared-types";
 import {
   EditorProvider,
   getEditorAssetKey,
@@ -14,30 +14,31 @@ import {
   type EditorAssetTranscript,
   type NleAvailability,
   type NleTarget,
-} from '@clash/remotion-core';
-import { CanvasPreview } from './CanvasPreview';
-import type { TimelineRuntimeNode } from './CanvasPreview';
-import { Timeline } from './Timeline';
-import type { TimelineAssetInsertRequest } from './timeline/insertAssetRequest';
-import { AssetPanel } from './AssetPanel';
-import { PropertiesPanel } from './PropertiesPanel';
-import { TimelineLibraryPanel } from './TimelineLibraryPanel';
-import { CaptionWorkspace } from './CaptionWorkspace';
-import { RemotionButton } from './ui/controls';
-import { Tooltip } from './ui/tooltip';
-import { OpenInMenu } from './OpenInMenu';
-import { editorTypographyVariables } from './editorTypography';
+} from "@clash/remotion-core";
+import { CanvasPreview } from "./CanvasPreview";
+import type { TimelineRuntimeNode } from "./CanvasPreview";
+import { Timeline } from "./Timeline";
+import type { TimelineAssetInsertRequest } from "./timeline/insertAssetRequest";
+import type { TimelineLibraryMediaAdmissionInput } from "../library/applyTimelineLibraryItem";
+import { AssetPanel } from "./AssetPanel";
+import { PropertiesPanel } from "./PropertiesPanel";
+import { TimelineLibraryPanel } from "./TimelineLibraryPanel";
+import { CaptionWorkspace } from "./CaptionWorkspace";
+import { RemotionButton } from "./ui/controls";
+import { Tooltip } from "./ui/tooltip";
+import { OpenInMenu } from "./OpenInMenu";
+import { editorTypographyVariables } from "./editorTypography";
 import {
   TimelinePrimaryToolIcon,
   type TimelinePrimaryToolIconId,
-} from './TimelinePrimaryToolIcon';
+} from "./TimelinePrimaryToolIcon";
 import {
   createPreviewAudioMeterStore,
   PreviewAudioMeter,
-} from './previewAudioMeter';
+} from "./previewAudioMeter";
 
-type EmbeddedPanel = 'media' | 'library' | 'captions';
-type EditorWorkspace = 'assets' | 'canvas' | 'timeline';
+type EmbeddedPanel = "media" | "library" | "captions";
+type EditorWorkspace = "assets" | "canvas" | "timeline";
 type TimelinePrimaryToolId = TimelinePrimaryToolIconId;
 
 type TimelinePrimaryTool = {
@@ -48,53 +49,83 @@ type TimelinePrimaryTool = {
 };
 
 const TIMELINE_PRIMARY_TOOLS: TimelinePrimaryTool[] = [
-  { id: 'media', label: 'Media', panel: 'media' },
-  { id: 'sound-effects', label: 'Audio', panel: 'library', category: 'sound-effects' },
-  { id: 'text', label: 'Text', panel: 'library', category: 'text' },
-  { id: 'stickers', label: 'Graphics', panel: 'library', category: 'stickers' },
-  { id: 'fx', label: 'Effects', panel: 'library', category: 'fx' },
-  { id: 'captions', label: 'Captions', panel: 'captions' },
-  { id: 'filters', label: 'Color', panel: 'library', category: 'filters' },
+  { id: "media", label: "Media", panel: "media" },
+  {
+    id: "sound-effects",
+    label: "Audio",
+    panel: "library",
+    category: "sound-effects",
+  },
+  { id: "text", label: "Text", panel: "library", category: "text" },
+  { id: "stickers", label: "Graphics", panel: "library", category: "stickers" },
+  { id: "fx", label: "Effects", panel: "library", category: "fx" },
+  { id: "captions", label: "Captions", panel: "captions" },
+  { id: "filters", label: "Color", panel: "library", category: "filters" },
 ];
 
-const PRIMARY_TOOL_FOR_LIBRARY_CATEGORY: Record<TimelineLibraryCategory, TimelinePrimaryToolId> = {
-  text: 'text',
-  stickers: 'stickers',
-  'sound-effects': 'sound-effects',
-  transitions: 'fx',
-  fx: 'fx',
-  zoom: 'fx',
-  luts: 'filters',
-  'audio-fx': 'sound-effects',
-  captions: 'captions',
-  filters: 'filters',
-  adjustments: 'filters',
+const PRIMARY_TOOL_FOR_LIBRARY_CATEGORY: Record<
+  TimelineLibraryCategory,
+  TimelinePrimaryToolId
+> = {
+  text: "text",
+  stickers: "stickers",
+  "sound-effects": "sound-effects",
+  transitions: "fx",
+  fx: "fx",
+  zoom: "fx",
+  luts: "filters",
+  "audio-fx": "sound-effects",
+  captions: "captions",
+  filters: "filters",
+  adjustments: "filters",
 };
 
-const EDITOR_WORKSPACE_ORDER: EditorWorkspace[] = ['assets', 'canvas', 'timeline'];
+const EDITOR_WORKSPACE_ORDER: EditorWorkspace[] = [
+  "assets",
+  "canvas",
+  "timeline",
+];
 const SIDE_PANEL_MIN_WIDTH = 220;
 const SIDE_PANEL_MAX_WIDTH = 480;
 const TIMELINE_MIN_HEIGHT = 180;
 const TIMELINE_MAX_HEIGHT = 560;
-const panelCollapseTransitionClass = 'transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none';
+const panelCollapseTransitionClass =
+  "transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none";
 
-const clampLayoutSize = (value: number, minimum: number, maximum: number): number => (
-  Math.min(maximum, Math.max(minimum, value))
-);
+const clampLayoutSize = (
+  value: number,
+  minimum: number,
+  maximum: number,
+): number => Math.min(maximum, Math.max(minimum, value));
 
-const isEditableEditorShortcutTarget = (target: EventTarget | null): boolean => {
+const isEditableEditorShortcutTarget = (
+  target: EventTarget | null,
+): boolean => {
   if (!(target instanceof HTMLElement)) return false;
-  return Boolean(target.closest(
-    'input, textarea, select, [contenteditable="true"], [role="slider"], [role="spinbutton"]',
-  ));
+  return Boolean(
+    target.closest(
+      'input, textarea, select, [contenteditable="true"], [role="slider"], [role="spinbutton"]',
+    ),
+  );
 };
 
-const EditorPanelToggleIcon: React.FC<{ collapsed: boolean }> = ({ collapsed }) => (
+const EditorPanelToggleIcon: React.FC<{ collapsed: boolean }> = ({
+  collapsed,
+}) => (
   <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true">
-    <rect x="2.5" y="3" width="15" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+    <rect
+      x="2.5"
+      y="3"
+      width="15"
+      height="14"
+      rx="2"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+    />
     <path d="M7 3.5v13" fill="none" stroke="currentColor" strokeWidth="1.4" />
     <path
-      d={collapsed ? 'm10.5 7 3 3-3 3' : 'm13.5 7-3 3 3 3'}
+      d={collapsed ? "m10.5 7 3 3-3 3" : "m13.5 7-3 3 3 3"}
       fill="none"
       stroke="currentColor"
       strokeWidth="1.4"
@@ -104,12 +135,23 @@ const EditorPanelToggleIcon: React.FC<{ collapsed: boolean }> = ({ collapsed }) 
   </svg>
 );
 
-const InspectorPanelToggleIcon: React.FC<{ collapsed: boolean }> = ({ collapsed }) => (
+const InspectorPanelToggleIcon: React.FC<{ collapsed: boolean }> = ({
+  collapsed,
+}) => (
   <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true">
-    <rect x="2.5" y="3" width="15" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+    <rect
+      x="2.5"
+      y="3"
+      width="15"
+      height="14"
+      rx="2"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+    />
     <path d="M13 3.5v13" fill="none" stroke="currentColor" strokeWidth="1.4" />
     <path
-      d={collapsed ? 'm9.5 7-3 3 3 3' : 'm6.5 7 3 3-3 3'}
+      d={collapsed ? "m9.5 7-3 3 3 3" : "m6.5 7 3 3-3 3"}
       fill="none"
       stroke="currentColor"
       strokeWidth="1.4"
@@ -121,7 +163,13 @@ const InspectorPanelToggleIcon: React.FC<{ collapsed: boolean }> = ({ collapsed 
 
 const InspectorRevealIcon: React.FC = () => (
   <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true">
-    <path d="M3.5 5.5h4M11 5.5h5.5M3.5 10h8M15 10h1.5M3.5 14.5h2M9 14.5h7.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <path
+      d="M3.5 5.5h4M11 5.5h5.5M3.5 10h8M15 10h1.5M3.5 14.5h2M9 14.5h7.5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    />
     <circle cx="9.25" cy="5.5" r="1.5" fill="currentColor" />
     <circle cx="13.25" cy="10" r="1.5" fill="currentColor" />
     <circle cx="7.25" cy="14.5" r="1.5" fill="currentColor" />
@@ -139,10 +187,12 @@ const AssetInitializer = ({ assets }: { assets: EditorAssetInput[] }) => {
       const next = normalizeEditorAsset(asset);
       const existing = editorAssets.find(
         (candidate) =>
-          getEditorAssetKey(candidate) === assetKey || candidate.id === next.id || candidate.src === next.src,
+          getEditorAssetKey(candidate) === assetKey ||
+          candidate.id === next.id ||
+          candidate.src === next.src,
       );
       if (!existing) {
-        dispatch({ type: 'ADD_ASSET', payload: next });
+        dispatch({ type: "ADD_ASSET", payload: next });
         return;
       }
       const changed =
@@ -153,10 +203,10 @@ const AssetInitializer = ({ assets }: { assets: EditorAssetInput[] }) => {
         existing.height !== next.height ||
         existing.duration !== next.duration ||
         existing.waveform !== next.waveform ||
-        existing.backingAssetId !== next.backingAssetId;
+        existing.projectAssetId !== next.projectAssetId;
       if (changed) {
         dispatch({
-          type: 'UPSERT_ASSET',
+          type: "UPSERT_ASSET",
           payload: { ...next, createdAt: existing.createdAt },
         });
       }
@@ -169,7 +219,11 @@ const AssetInitializer = ({ assets }: { assets: EditorAssetInput[] }) => {
  * Syncs editor state to an external ref without triggering re-renders.
  * Used for "save on close" pattern - parent reads ref when editor closes.
  */
-const StateSyncer = ({ stateRef }: { stateRef: React.MutableRefObject<EditorState | null> }) => {
+const StateSyncer = ({
+  stateRef,
+}: {
+  stateRef: React.MutableRefObject<EditorState | null>;
+}) => {
   const { state } = useEditor();
   // Update ref on every render, no useEffect needed - this is intentional
   stateRef.current = state;
@@ -191,7 +245,7 @@ type EditorProps = {
   headerLeadingAction?: React.ReactNode;
   /** Compact end spacing reserved for a host-owned header control. */
   headerEndInset?: number;
-  onAssetUpload?: (file: File, type: 'video' | 'image' | 'audio') => void;
+  onAssetUpload?: (file: File, type: "video" | "image" | "audio") => void;
   availableAssets?: EditorAssetInput[];
   onAssetPicked?: (asset: EditorAssetInput) => void;
   /** Opens the host workspace's scope-aware asset picker. */
@@ -202,6 +256,10 @@ type EditorProps = {
   insertAssetRequest?: TimelineAssetInsertRequest;
   /** Acknowledges a request after its asset and track have been dispatched. */
   onInsertAssetRequestHandled?: (requestId: string) => void;
+  /** Admits media-backed catalog entries before Timeline creates an item binding. */
+  onAdmitTimelineLibraryMedia?: (
+    input: TimelineLibraryMediaAdmissionInput,
+  ) => Promise<EditorAssetInput>;
   /** Unique key to force remount when opening different editors */
   editorKey?: string;
   /** Export video callback */
@@ -217,7 +275,7 @@ type EditorProps = {
   /** Reports the exact Timeline track/item opened by the shared agent annotation context menu. */
   onAnnotationTargetContextMenu?: (target: AgentAnnotationObjectRef) => void;
   /** Embedded keeps editing tools left and restores Inspector on the right. */
-  layout?: 'standalone' | 'embedded';
+  layout?: "standalone" | "embedded";
 };
 
 export const Editor: React.FC<EditorProps> = ({
@@ -237,6 +295,7 @@ export const Editor: React.FC<EditorProps> = ({
   onTranscribeAsset,
   insertAssetRequest,
   onInsertAssetRequestHandled,
+  onAdmitTimelineLibraryMedia,
   editorKey,
   onExport,
   onOpenInNle,
@@ -245,33 +304,48 @@ export const Editor: React.FC<EditorProps> = ({
   onRefreshNleAvailability,
   projectAssetDropActive = false,
   onAnnotationTargetContextMenu,
-  layout = 'standalone',
+  layout = "standalone",
 }) => {
-  const [embeddedPanel, setEmbeddedPanel] = React.useState<EmbeddedPanel>('media');
-  const [libraryCategory, setLibraryCategory] = React.useState<TimelineLibraryCategory | null>('fx');
+  const [embeddedPanel, setEmbeddedPanel] =
+    React.useState<EmbeddedPanel>("media");
+  const [libraryCategory, setLibraryCategory] =
+    React.useState<TimelineLibraryCategory | null>("fx");
   const [sidePanelCollapsed, setSidePanelCollapsed] = React.useState(false);
   const [sidePanelWidth, setSidePanelWidth] = React.useState(300);
   const [timelineHeight, setTimelineHeight] = React.useState(280);
   const [layoutResizing, setLayoutResizing] = React.useState(false);
   const [inspectorCollapsed, setInspectorCollapsed] = React.useState(false);
-  const [transcriptWorkspaceExpanded, setTranscriptWorkspaceExpanded] = React.useState(false);
+  const [transcriptWorkspaceExpanded, setTranscriptWorkspaceExpanded] =
+    React.useState(false);
   const [audioMeterOpen, setAudioMeterOpen] = React.useState(false);
   const audioMeterStore = React.useMemo(createPreviewAudioMeterStore, []);
   const editorRootRef = React.useRef<HTMLDivElement>(null);
-  const activeWorkspaceRef = React.useRef<EditorWorkspace>('canvas');
-  const sidePanelResizeRef = React.useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
-  const timelineResizeRef = React.useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null);
+  const activeWorkspaceRef = React.useRef<EditorWorkspace>("canvas");
+  const sidePanelResizeRef = React.useRef<{
+    pointerId: number;
+    startX: number;
+    startWidth: number;
+  } | null>(null);
+  const timelineResizeRef = React.useRef<{
+    pointerId: number;
+    startY: number;
+    startHeight: number;
+  } | null>(null);
   const toggleAudioMeter = React.useCallback(() => {
     setAudioMeterOpen((open) => !open);
   }, []);
-  const activePrimaryTool = embeddedPanel === 'media'
-    ? 'media'
-    : embeddedPanel === 'captions'
-      ? 'captions'
-      : libraryCategory
-        ? PRIMARY_TOOL_FOR_LIBRARY_CATEGORY[libraryCategory]
-        : null;
-  const transcriptWorkspaceActive = transcriptWorkspaceExpanded && !sidePanelCollapsed && embeddedPanel === 'captions';
+  const activePrimaryTool =
+    embeddedPanel === "media"
+      ? "media"
+      : embeddedPanel === "captions"
+        ? "captions"
+        : libraryCategory
+          ? PRIMARY_TOOL_FOR_LIBRARY_CATEGORY[libraryCategory]
+          : null;
+  const transcriptWorkspaceActive =
+    transcriptWorkspaceExpanded &&
+    !sidePanelCollapsed &&
+    embeddedPanel === "captions";
   const reserveHeaderEndGutter = headerEndInset > 0;
   const selectPrimaryTool = React.useCallback((tool: TimelinePrimaryTool) => {
     setEmbeddedPanel(tool.panel);
@@ -281,93 +355,135 @@ export const Editor: React.FC<EditorProps> = ({
     setSidePanelCollapsed(false);
   }, []);
   const getSidePanelMaximum = React.useCallback(() => {
-    const rootWidth = editorRootRef.current?.getBoundingClientRect().width ?? 1440;
+    const rootWidth =
+      editorRootRef.current?.getBoundingClientRect().width ?? 1440;
     const reservedPreviewWidth = 336;
     const reservedInspectorWidth = inspectorCollapsed ? 0 : 208;
     const reservedGutters = 16;
     return Math.min(
       SIDE_PANEL_MAX_WIDTH,
-      Math.max(SIDE_PANEL_MIN_WIDTH, rootWidth - reservedPreviewWidth - reservedInspectorWidth - reservedGutters),
+      Math.max(
+        SIDE_PANEL_MIN_WIDTH,
+        rootWidth -
+          reservedPreviewWidth -
+          reservedInspectorWidth -
+          reservedGutters,
+      ),
     );
   }, [inspectorCollapsed]);
-  const resizeSidePanelBy = React.useCallback((delta: number) => {
-    setSidePanelWidth((width) => clampLayoutSize(
-      width + delta,
-      SIDE_PANEL_MIN_WIDTH,
-      getSidePanelMaximum(),
-    ));
-  }, [getSidePanelMaximum]);
+  const resizeSidePanelBy = React.useCallback(
+    (delta: number) => {
+      setSidePanelWidth((width) =>
+        clampLayoutSize(
+          width + delta,
+          SIDE_PANEL_MIN_WIDTH,
+          getSidePanelMaximum(),
+        ),
+      );
+    },
+    [getSidePanelMaximum],
+  );
   const resizeTimelineBy = React.useCallback((delta: number) => {
-    const rootHeight = editorRootRef.current?.getBoundingClientRect().height ?? 900;
-    const maximum = Math.min(TIMELINE_MAX_HEIGHT, Math.max(TIMELINE_MIN_HEIGHT, rootHeight - 260));
-    setTimelineHeight((height) => clampLayoutSize(height + delta, TIMELINE_MIN_HEIGHT, maximum));
+    const rootHeight =
+      editorRootRef.current?.getBoundingClientRect().height ?? 900;
+    const maximum = Math.min(
+      TIMELINE_MAX_HEIGHT,
+      Math.max(TIMELINE_MIN_HEIGHT, rootHeight - 260),
+    );
+    setTimelineHeight((height) =>
+      clampLayoutSize(height + delta, TIMELINE_MIN_HEIGHT, maximum),
+    );
   }, []);
-  const handleSidePanelResizePointerDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    sidePanelResizeRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startWidth: sidePanelWidth,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setLayoutResizing(true);
-  }, [sidePanelWidth]);
-  const handleSidePanelResizePointerMove = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const resize = sidePanelResizeRef.current;
-    if (!resize || resize.pointerId !== event.pointerId) return;
-    setSidePanelWidth(clampLayoutSize(
-      resize.startWidth + event.clientX - resize.startX,
-      SIDE_PANEL_MIN_WIDTH,
-      getSidePanelMaximum(),
-    ));
-  }, [getSidePanelMaximum]);
-  const finishSidePanelResize = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (sidePanelResizeRef.current?.pointerId !== event.pointerId) return;
-    sidePanelResizeRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    setLayoutResizing(false);
-  }, []);
-  const handleTimelineResizePointerDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    timelineResizeRef.current = {
-      pointerId: event.pointerId,
-      startY: event.clientY,
-      startHeight: timelineHeight,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setLayoutResizing(true);
-  }, [timelineHeight]);
-  const handleTimelineResizePointerMove = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const resize = timelineResizeRef.current;
-    if (!resize || resize.pointerId !== event.pointerId) return;
-    const rootHeight = editorRootRef.current?.getBoundingClientRect().height ?? 900;
-    const maximum = Math.min(TIMELINE_MAX_HEIGHT, Math.max(TIMELINE_MIN_HEIGHT, rootHeight - 260));
-    setTimelineHeight(clampLayoutSize(
-      resize.startHeight + resize.startY - event.clientY,
-      TIMELINE_MIN_HEIGHT,
-      maximum,
-    ));
-  }, []);
-  const finishTimelineResize = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (timelineResizeRef.current?.pointerId !== event.pointerId) return;
-    timelineResizeRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    setLayoutResizing(false);
-  }, []);
+  const handleSidePanelResizePointerDown = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      sidePanelResizeRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startWidth: sidePanelWidth,
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setLayoutResizing(true);
+    },
+    [sidePanelWidth],
+  );
+  const handleSidePanelResizePointerMove = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const resize = sidePanelResizeRef.current;
+      if (!resize || resize.pointerId !== event.pointerId) return;
+      setSidePanelWidth(
+        clampLayoutSize(
+          resize.startWidth + event.clientX - resize.startX,
+          SIDE_PANEL_MIN_WIDTH,
+          getSidePanelMaximum(),
+        ),
+      );
+    },
+    [getSidePanelMaximum],
+  );
+  const finishSidePanelResize = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (sidePanelResizeRef.current?.pointerId !== event.pointerId) return;
+      sidePanelResizeRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      setLayoutResizing(false);
+    },
+    [],
+  );
+  const handleTimelineResizePointerDown = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      timelineResizeRef.current = {
+        pointerId: event.pointerId,
+        startY: event.clientY,
+        startHeight: timelineHeight,
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setLayoutResizing(true);
+    },
+    [timelineHeight],
+  );
+  const handleTimelineResizePointerMove = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const resize = timelineResizeRef.current;
+      if (!resize || resize.pointerId !== event.pointerId) return;
+      const rootHeight =
+        editorRootRef.current?.getBoundingClientRect().height ?? 900;
+      const maximum = Math.min(
+        TIMELINE_MAX_HEIGHT,
+        Math.max(TIMELINE_MIN_HEIGHT, rootHeight - 260),
+      );
+      setTimelineHeight(
+        clampLayoutSize(
+          resize.startHeight + resize.startY - event.clientY,
+          TIMELINE_MIN_HEIGHT,
+          maximum,
+        ),
+      );
+    },
+    [],
+  );
+  const finishTimelineResize = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (timelineResizeRef.current?.pointerId !== event.pointerId) return;
+      timelineResizeRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      setLayoutResizing(false);
+    },
+    [],
+  );
 
   React.useEffect(() => {
     const root = editorRootRef.current;
-    if (!root || typeof ResizeObserver === 'undefined') return;
+    if (!root || typeof ResizeObserver === "undefined") return;
     const keepPanelInsideWorkspace = () => {
-      setSidePanelWidth((width) => clampLayoutSize(
-        width,
-        SIDE_PANEL_MIN_WIDTH,
-        getSidePanelMaximum(),
-      ));
+      setSidePanelWidth((width) =>
+        clampLayoutSize(width, SIDE_PANEL_MIN_WIDTH, getSidePanelMaximum()),
+      );
     };
     const observer = new ResizeObserver(keepPanelInsideWorkspace);
     observer.observe(root);
@@ -378,23 +494,32 @@ export const Editor: React.FC<EditorProps> = ({
   React.useEffect(() => {
     const handleWorkspaceShortcut = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
-      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
-      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey)
+        return;
       if (isEditableEditorShortcutTarget(event.target)) return;
 
       const root = editorRootRef.current;
       if (!root) return;
-      const focusedWorkspace = document.activeElement instanceof HTMLElement
-        ? document.activeElement.closest<HTMLElement>('[data-editor-workspace]')
-        : null;
-      const current = focusedWorkspace?.dataset.editorWorkspace as EditorWorkspace | undefined;
-      const available = EDITOR_WORKSPACE_ORDER.filter((workspace) => (
-        workspace !== 'assets' || !sidePanelCollapsed
-      ));
-      const currentIndex = available.indexOf(current ?? activeWorkspaceRef.current);
-      const direction = event.key === 'ArrowDown' ? 1 : -1;
-      const startingIndex = currentIndex >= 0 ? currentIndex : (direction > 0 ? -1 : 0);
-      const nextIndex = (startingIndex + direction + available.length) % available.length;
+      const focusedWorkspace =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement.closest<HTMLElement>(
+              "[data-editor-workspace]",
+            )
+          : null;
+      const current = focusedWorkspace?.dataset.editorWorkspace as
+        EditorWorkspace | undefined;
+      const available = EDITOR_WORKSPACE_ORDER.filter(
+        (workspace) => workspace !== "assets" || !sidePanelCollapsed,
+      );
+      const currentIndex = available.indexOf(
+        current ?? activeWorkspaceRef.current,
+      );
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      const startingIndex =
+        currentIndex >= 0 ? currentIndex : direction > 0 ? -1 : 0;
+      const nextIndex =
+        (startingIndex + direction + available.length) % available.length;
       const nextWorkspace = available[nextIndex];
       const nextElement = root.querySelector<HTMLElement>(
         `[data-editor-workspace="${nextWorkspace}"]`,
@@ -403,14 +528,14 @@ export const Editor: React.FC<EditorProps> = ({
 
       event.preventDefault();
       activeWorkspaceRef.current = nextWorkspace;
-      if (nextWorkspace === 'assets' && layout === 'embedded') {
-        setEmbeddedPanel('media');
+      if (nextWorkspace === "assets" && layout === "embedded") {
+        setEmbeddedPanel("media");
       }
       nextElement.focus({ preventScroll: true });
     };
 
-    window.addEventListener('keydown', handleWorkspaceShortcut);
-    return () => window.removeEventListener('keydown', handleWorkspaceShortcut);
+    window.addEventListener("keydown", handleWorkspaceShortcut);
+    return () => window.removeEventListener("keydown", handleWorkspaceShortcut);
   }, [layout, sidePanelCollapsed]);
   // Seed assets into initialState synchronously so the first render already
   // has them in state.assets. Without this, `CanvasPreview` → `VideoComposition`
@@ -469,7 +594,11 @@ export const Editor: React.FC<EditorProps> = ({
     </RemotionButton>
   );
   return (
-    <EditorProvider initialState={seededInitialState} onStateChange={onStateChange} key={editorKey}>
+    <EditorProvider
+      initialState={seededInitialState}
+      onStateChange={onStateChange}
+      key={editorKey}
+    >
       {stateRef && <StateSyncer stateRef={stateRef} />}
       <AssetInitializer assets={initialAssets || []} />
       <div
@@ -478,24 +607,36 @@ export const Editor: React.FC<EditorProps> = ({
         style={editorTypographyVariables}
         className="h-full w-full overflow-hidden bg-warm-page font-sans text-content-primary"
       >
-        {layout === 'embedded' ? (
+        {layout === "embedded" ? (
           <div
             data-editor-grid=""
-            data-side-panel-collapsed={sidePanelCollapsed ? 'true' : 'false'}
-            data-inspector-collapsed={inspectorCollapsed ? 'true' : 'false'}
-            data-transcript-workspace-expanded={transcriptWorkspaceActive ? 'true' : 'false'}
-            style={{
-              '--clash-timeline-side-panel-min-width': sidePanelCollapsed ? '0px' : 'min(12rem,25%)',
-              '--clash-timeline-side-panel-width': sidePanelCollapsed ? '0px' : `${sidePanelWidth}px`,
-              '--clash-timeline-preview-min-width': 'min(21rem,42%)',
-              '--clash-timeline-height': `${timelineHeight}px`,
-              '--clash-timeline-inspector-min-width': inspectorCollapsed ? '0px' : 'min(13rem,28%)',
-              '--clash-timeline-inspector-width': inspectorCollapsed ? '0px' : 'clamp(280px,22%,340px)',
-            } as React.CSSProperties}
-            className={`group/timeline-editor grid h-full min-h-0 [--clash-timeline-gutter:var(--clash-project-chrome-gutter,0.5rem)] [--clash-timeline-control-gap:var(--clash-control-gap,0.25rem)] [--clash-timeline-control-size:var(--clash-project-control-height,2rem)] gap-[var(--clash-timeline-gutter)] overflow-hidden bg-warm-page pb-[var(--clash-timeline-gutter)] pl-[var(--clash-timeline-gutter)] ${reserveHeaderEndGutter ? 'pr-[var(--clash-timeline-gutter)]' : ''} motion-reduce:transition-none [grid-template-columns:minmax(var(--clash-timeline-side-panel-min-width),var(--clash-timeline-side-panel-width))_minmax(var(--clash-timeline-preview-min-width),1fr)_minmax(var(--clash-timeline-inspector-min-width),var(--clash-timeline-inspector-width))] [grid-template-rows:var(--clash-project-sidebar-header-height,2.5rem)_minmax(0,1fr)_var(--clash-timeline-height)] ${
+            data-side-panel-collapsed={sidePanelCollapsed ? "true" : "false"}
+            data-inspector-collapsed={inspectorCollapsed ? "true" : "false"}
+            data-transcript-workspace-expanded={
+              transcriptWorkspaceActive ? "true" : "false"
+            }
+            style={
+              {
+                "--clash-timeline-side-panel-min-width": sidePanelCollapsed
+                  ? "0px"
+                  : "min(12rem,25%)",
+                "--clash-timeline-side-panel-width": sidePanelCollapsed
+                  ? "0px"
+                  : `${sidePanelWidth}px`,
+                "--clash-timeline-preview-min-width": "min(21rem,42%)",
+                "--clash-timeline-height": `${timelineHeight}px`,
+                "--clash-timeline-inspector-min-width": inspectorCollapsed
+                  ? "0px"
+                  : "min(13rem,28%)",
+                "--clash-timeline-inspector-width": inspectorCollapsed
+                  ? "0px"
+                  : "clamp(280px,22%,340px)",
+              } as React.CSSProperties
+            }
+            className={`group/timeline-editor grid h-full min-h-0 [--clash-timeline-gutter:var(--clash-project-chrome-gutter,0.5rem)] [--clash-timeline-control-gap:var(--clash-control-gap,0.25rem)] [--clash-timeline-control-size:var(--clash-project-control-height,2rem)] gap-[var(--clash-timeline-gutter)] overflow-hidden bg-warm-page pb-[var(--clash-timeline-gutter)] pl-[var(--clash-timeline-gutter)] ${reserveHeaderEndGutter ? "pr-[var(--clash-timeline-gutter)]" : ""} motion-reduce:transition-none [grid-template-columns:minmax(var(--clash-timeline-side-panel-min-width),var(--clash-timeline-side-panel-width))_minmax(var(--clash-timeline-preview-min-width),1fr)_minmax(var(--clash-timeline-inspector-min-width),var(--clash-timeline-inspector-width))] [grid-template-rows:var(--clash-project-sidebar-header-height,2.5rem)_minmax(0,1fr)_var(--clash-timeline-height)] ${
               layoutResizing
-                ? ''
-                : 'transition-[grid-template-columns,grid-template-rows] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]'
+                ? ""
+                : "transition-[grid-template-columns,grid-template-rows] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]"
             }`}
           >
             <header
@@ -534,8 +675,8 @@ export const Editor: React.FC<EditorProps> = ({
                             onClick={() => selectPrimaryTool(tool)}
                             className={`clash-workbench-control-button flex h-8 w-8 shrink-0 items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 ${
                               activePrimaryTool === tool.id
-                                ? 'bg-brand/[0.09] text-brand hover:bg-brand/[0.14]'
-                                : 'text-content-muted hover:bg-warm-hover hover:text-content-primary'
+                                ? "bg-brand/[0.09] text-brand hover:bg-brand/[0.14]"
+                                : "text-content-muted hover:bg-warm-hover hover:text-content-primary"
                             }`}
                           >
                             <TimelinePrimaryToolIcon tool={tool.id} />
@@ -543,7 +684,9 @@ export const Editor: React.FC<EditorProps> = ({
                         </Tooltip>
                       ))}
                     </nav>
-                  ) : sidePanelRevealButton}
+                  ) : (
+                    sidePanelRevealButton
+                  )}
                 </div>
                 <div
                   data-editor-region="inspector-actions"
@@ -568,12 +711,16 @@ export const Editor: React.FC<EditorProps> = ({
               data-editor-workspace="assets"
               aria-hidden={sidePanelCollapsed}
               tabIndex={-1}
-              onPointerDownCapture={() => { activeWorkspaceRef.current = 'assets'; }}
-              onFocusCapture={() => { activeWorkspaceRef.current = 'assets'; }}
-              className={`flex min-h-0 min-w-0 flex-col overflow-hidden bg-warm-page [grid-row:2] ${transcriptWorkspaceActive ? '[grid-column:1/4]' : '[grid-column:1]'} ${panelCollapseTransitionClass} ${
+              onPointerDownCapture={() => {
+                activeWorkspaceRef.current = "assets";
+              }}
+              onFocusCapture={() => {
+                activeWorkspaceRef.current = "assets";
+              }}
+              className={`flex min-h-0 min-w-0 flex-col overflow-hidden bg-warm-page [grid-row:2] ${transcriptWorkspaceActive ? "[grid-column:1/4]" : "[grid-column:1]"} ${panelCollapseTransitionClass} ${
                 sidePanelCollapsed
-                  ? 'pointer-events-none -translate-x-2 opacity-0'
-                  : `translate-x-0 opacity-100 ${transcriptWorkspaceActive ? 'z-10' : ''}`
+                  ? "pointer-events-none -translate-x-2 opacity-0"
+                  : `translate-x-0 opacity-100 ${transcriptWorkspaceActive ? "z-10" : ""}`
               }`}
             >
               <div
@@ -581,8 +728,11 @@ export const Editor: React.FC<EditorProps> = ({
                 role="tabpanel"
                 className="flex min-h-0 min-w-0 flex-1 overflow-hidden"
               >
-                {embeddedPanel === 'media' ? (
-                  <div data-editor-region="media" className="min-h-0 min-w-0 flex-1 overflow-hidden">
+                {embeddedPanel === "media" ? (
+                  <div
+                    data-editor-region="media"
+                    className="min-h-0 min-w-0 flex-1 overflow-hidden"
+                  >
                     <AssetPanel
                       onAssetUpload={onAssetUpload}
                       availableAssets={availableAssets}
@@ -593,20 +743,27 @@ export const Editor: React.FC<EditorProps> = ({
                       headerTrailingAction={collapseSidePanelButton}
                     />
                   </div>
-                ) : embeddedPanel === 'captions' ? (
-                  <div data-editor-region="captions" className="min-h-0 flex-1 overflow-hidden">
+                ) : embeddedPanel === "captions" ? (
+                  <div
+                    data-editor-region="captions"
+                    className="min-h-0 flex-1 overflow-hidden"
+                  >
                     <CaptionWorkspace
                       onTranscribeAsset={onTranscribeAsset}
                       headerTrailingAction={collapseSidePanelButton}
                       onTimelineEditModeChange={setTranscriptWorkspaceExpanded}
                     />
                   </div>
-                ) : embeddedPanel === 'library' ? (
-                  <div data-editor-region="library" className="min-h-0 flex-1 overflow-hidden">
+                ) : embeddedPanel === "library" ? (
+                  <div
+                    data-editor-region="library"
+                    className="min-h-0 flex-1 overflow-hidden"
+                  >
                     <TimelineLibraryPanel
                       selectedCategory={libraryCategory}
                       onSelectedCategoryChange={setLibraryCategory}
                       headerTrailingAction={collapseSidePanelButton}
+                      onAdmitLibraryMedia={onAdmitTimelineLibraryMedia}
                     />
                   </div>
                 ) : null}
@@ -623,8 +780,8 @@ export const Editor: React.FC<EditorProps> = ({
                 aria-valuenow={Math.round(sidePanelWidth)}
                 tabIndex={0}
                 onKeyDown={(event) => {
-                  if (event.key === 'ArrowLeft') resizeSidePanelBy(-12);
-                  if (event.key === 'ArrowRight') resizeSidePanelBy(12);
+                  if (event.key === "ArrowLeft") resizeSidePanelBy(-12);
+                  if (event.key === "ArrowRight") resizeSidePanelBy(12);
                 }}
                 onPointerDown={handleSidePanelResizePointerDown}
                 onPointerMove={handleSidePanelResizePointerMove}
@@ -640,12 +797,16 @@ export const Editor: React.FC<EditorProps> = ({
               data-editor-workspace="canvas"
               aria-hidden={transcriptWorkspaceActive}
               tabIndex={-1}
-              onPointerDownCapture={() => { activeWorkspaceRef.current = 'canvas'; }}
-              onFocusCapture={() => { activeWorkspaceRef.current = 'canvas'; }}
+              onPointerDownCapture={() => {
+                activeWorkspaceRef.current = "canvas";
+              }}
+              onFocusCapture={() => {
+                activeWorkspaceRef.current = "canvas";
+              }}
               className={`flex min-h-0 min-w-0 items-center justify-center overflow-hidden bg-warm-page [grid-column:2] [grid-row:2] transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
                 transcriptWorkspaceActive
-                  ? 'pointer-events-none scale-[0.995] opacity-0'
-                  : 'scale-100 opacity-100'
+                  ? "pointer-events-none scale-[0.995] opacity-0"
+                  : "scale-100 opacity-100"
               }`}
             >
               <div className="clash-timeline-preview-surface clash-timeline-panel-surface h-full w-full overflow-hidden bg-warm-surface">
@@ -663,23 +824,30 @@ export const Editor: React.FC<EditorProps> = ({
               aria-hidden={inspectorCollapsed || transcriptWorkspaceActive}
               className={`flex min-h-0 min-w-0 flex-col overflow-hidden bg-warm-page [grid-column:3] [grid-row:2] ${panelCollapseTransitionClass} ${
                 inspectorCollapsed || transcriptWorkspaceActive
-                  ? 'pointer-events-none translate-x-2 opacity-0'
-                  : 'translate-x-0 opacity-100'
+                  ? "pointer-events-none translate-x-2 opacity-0"
+                  : "translate-x-0 opacity-100"
               }`}
             >
               <div
                 data-editor-inspector-panel=""
                 className="clash-timeline-panel-surface min-h-0 flex-1 overflow-hidden bg-warm-surface"
               >
-                <PropertiesPanel title="Properties" headerAction={collapseInspectorButton} />
+                <PropertiesPanel
+                  title="Properties"
+                  headerAction={collapseInspectorButton}
+                />
               </div>
             </aside>
             <div
               data-editor-region="timeline"
               data-editor-workspace="timeline"
               tabIndex={-1}
-              onPointerDownCapture={() => { activeWorkspaceRef.current = 'timeline'; }}
-              onFocusCapture={() => { activeWorkspaceRef.current = 'timeline'; }}
+              onPointerDownCapture={() => {
+                activeWorkspaceRef.current = "timeline";
+              }}
+              onFocusCapture={() => {
+                activeWorkspaceRef.current = "timeline";
+              }}
               className="clash-timeline-floating-surface clash-timeline-panel-surface relative flex min-h-0 min-w-0 overflow-hidden bg-warm-surface [grid-column:1/4] [grid-row:3]"
             >
               <div
@@ -692,8 +860,8 @@ export const Editor: React.FC<EditorProps> = ({
                 aria-valuenow={Math.round(timelineHeight)}
                 tabIndex={0}
                 onKeyDown={(event) => {
-                  if (event.key === 'ArrowUp') resizeTimelineBy(12);
-                  if (event.key === 'ArrowDown') resizeTimelineBy(-12);
+                  if (event.key === "ArrowUp") resizeTimelineBy(12);
+                  if (event.key === "ArrowDown") resizeTimelineBy(-12);
                 }}
                 onPointerDown={handleTimelineResizePointerDown}
                 onPointerMove={handleTimelineResizePointerMove}
@@ -709,9 +877,12 @@ export const Editor: React.FC<EditorProps> = ({
                   onInsertAssetRequestHandled={onInsertAssetRequestHandled}
                   onAnnotationTargetContextMenu={onAnnotationTargetContextMenu}
                   showTranscriptTimeline={transcriptWorkspaceActive}
+                  onAdmitLibraryMedia={onAdmitTimelineLibraryMedia}
                 />
               </div>
-              {audioMeterOpen ? <PreviewAudioMeter store={audioMeterStore} /> : null}
+              {audioMeterOpen ? (
+                <PreviewAudioMeter store={audioMeterStore} />
+              ) : null}
               {projectAssetDropActive ? (
                 <div
                   data-timeline-project-asset-drop-indicator=""
@@ -730,10 +901,14 @@ export const Editor: React.FC<EditorProps> = ({
             <aside
               data-editor-workspace="assets"
               tabIndex={-1}
-              onPointerDownCapture={() => { activeWorkspaceRef.current = 'assets'; }}
-              onFocusCapture={() => { activeWorkspaceRef.current = 'assets'; }}
+              onPointerDownCapture={() => {
+                activeWorkspaceRef.current = "assets";
+              }}
+              onFocusCapture={() => {
+                activeWorkspaceRef.current = "assets";
+              }}
               className="shrink-0 overflow-hidden rounded-xl border border-warm-border bg-warm-surface shadow-sm"
-              style={{ width: '22%', minWidth: 220, maxWidth: 360 }}
+              style={{ width: "22%", minWidth: 220, maxWidth: 360 }}
             >
               <AssetPanel
                 onBack={onBack}
@@ -751,8 +926,12 @@ export const Editor: React.FC<EditorProps> = ({
                 <div
                   data-editor-workspace="canvas"
                   tabIndex={-1}
-                  onPointerDownCapture={() => { activeWorkspaceRef.current = 'canvas'; }}
-                  onFocusCapture={() => { activeWorkspaceRef.current = 'canvas'; }}
+                  onPointerDownCapture={() => {
+                    activeWorkspaceRef.current = "canvas";
+                  }}
+                  onFocusCapture={() => {
+                    activeWorkspaceRef.current = "canvas";
+                  }}
                   className="flex min-w-0 flex-1 items-center justify-center overflow-hidden rounded-xl border border-warm-border bg-warm-muted p-3 shadow-sm"
                   style={{ minHeight: 0 }}
                 >
@@ -773,8 +952,12 @@ export const Editor: React.FC<EditorProps> = ({
               <div
                 data-editor-workspace="timeline"
                 tabIndex={-1}
-                onPointerDownCapture={() => { activeWorkspaceRef.current = 'timeline'; }}
-                onFocusCapture={() => { activeWorkspaceRef.current = 'timeline'; }}
+                onPointerDownCapture={() => {
+                  activeWorkspaceRef.current = "timeline";
+                }}
+                onFocusCapture={() => {
+                  activeWorkspaceRef.current = "timeline";
+                }}
                 className="relative flex overflow-hidden rounded-xl border border-warm-border bg-warm-surface shadow-sm"
                 style={{ height: 300, flexShrink: 0 }}
               >
@@ -782,10 +965,15 @@ export const Editor: React.FC<EditorProps> = ({
                   <Timeline
                     insertAssetRequest={insertAssetRequest}
                     onInsertAssetRequestHandled={onInsertAssetRequestHandled}
-                    onAnnotationTargetContextMenu={onAnnotationTargetContextMenu}
+                    onAnnotationTargetContextMenu={
+                      onAnnotationTargetContextMenu
+                    }
+                    onAdmitLibraryMedia={onAdmitTimelineLibraryMedia}
                   />
                 </div>
-                {audioMeterOpen ? <PreviewAudioMeter store={audioMeterStore} /> : null}
+                {audioMeterOpen ? (
+                  <PreviewAudioMeter store={audioMeterStore} />
+                ) : null}
               </div>
             </main>
           </div>

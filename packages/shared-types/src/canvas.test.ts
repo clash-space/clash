@@ -16,6 +16,19 @@ import {
 } from "./canvas.js";
 import { Canvas } from "./canvas-ops.js";
 import { MODEL_CARDS, ModelCardSchema } from "./models.js";
+import {
+  listActionAssetBindings,
+  markActionAssetBindingAuthority,
+} from "./action-asset-bindings.js";
+import { createProjectAsset } from "./project-assets.js";
+
+const canvasProjectAsset = (id: string) => ({
+  id,
+  kind: "image" as const,
+  source: { kind: "owned" as const, resourceId: `resource-${id}` },
+  lifecycle: { state: "active" as const },
+  metadata: {},
+});
 
 describe("ACTION_TYPE", () => {
   it("has Custom type", () => {
@@ -55,9 +68,306 @@ describe("Remotion component canvas node contract", () => {
   });
 });
 
+describe("Canvas Project persistence", () => {
+  it("keeps media projections out of synchronized node data", () => {
+    const doc = new LoroDoc();
+    const canvas = new Canvas(doc, () => {}, "main");
+
+    canvas.insertNode(
+      "uploading-image",
+      "image",
+      {
+        status: "uploading",
+        previewUrl: "blob:https://host-a.invalid/local-preview",
+        src: "https://host-a.invalid/signed/image.png",
+        url: "https://host-a.invalid/signed/image.png",
+        remoteUrl: "https://provider.invalid/output.png",
+        signedUrl: "https://host-a.invalid/signed/image.png",
+        signedCoverUrl: "https://host-a.invalid/signed/cover.png",
+        storageKey: "projects/project-1/assets/image.png",
+        srcR2Key: "projects/project-1/assets/image.png",
+        localPath: "/Users/alice/.clash/assets/image.png",
+        filePath: "C:\\Users\\alice\\.clash\\assets\\image.png",
+        thumbnail: "https://host-a.invalid/signed/thumb.png",
+        poster: "https://host-a.invalid/signed/poster.png",
+        referenceImageUrls: ["https://host-a.invalid/signed/reference.png"],
+        referenceVideoUrls: ["https://host-a.invalid/signed/reference.mp4"],
+        referenceAudioUrls: ["https://host-a.invalid/signed/reference.mp3"],
+        referenceImageR2Keys: ["private/reference.png"],
+        referenceVideoR2Keys: ["private/reference.mp4"],
+        referenceAudioR2Keys: ["private/reference.mp3"],
+        startFrameUrl: "https://host-a.invalid/signed/start.png",
+        endFrameUrl: "https://host-a.invalid/signed/end.png",
+      },
+      null,
+      { x: 0, y: 0 },
+    );
+    expect(canvas.readNode("uploading-image")?.data).toEqual({
+      status: "uploading",
+    });
+
+    canvas.updateNode("uploading-image", {
+      status: "completed",
+      assetId: "asset-image",
+    });
+    expect(canvas.readNode("uploading-image")?.data).toMatchObject({
+      status: "completed",
+      assetId: "asset-image",
+    });
+    expect(canvas.readNode("uploading-image")?.data).not.toHaveProperty(
+      "previewUrl",
+    );
+  });
+
+  it("keeps Director output projections out of synchronized node data", () => {
+    const doc = new LoroDoc();
+    const canvas = new Canvas(doc, () => {}, "main");
+
+    canvas.insertNode(
+      "director-stage",
+      "director-stage",
+      {
+        stageId: "stage-1",
+        outputVideoAssetId: "asset-video",
+        outputVideoSrc: "blob:https://host-a.invalid/director-video",
+        outputVideoPreviewUrl:
+          "https://host-a.invalid/signed/poster.jpg?token=secret",
+        directorReferencePacket: {
+          schemaVersion: 1,
+          stageId: "stage-1",
+          stageRevisionId: "stage-revision-1",
+          exportedAt: "2026-08-13T00:00:00.000Z",
+          aspectRatio: "16:9",
+          durationSeconds: 1,
+          fps: 30,
+          cameraIds: ["camera-1"],
+          referenceVideo: {
+            assetId: "asset-video",
+            src: "https://host-a.invalid/signed/video.mp4",
+            previewUrl: "https://host-a.invalid/signed/poster.jpg",
+            mimeType: "video/mp4",
+          },
+          referenceStills: [],
+          shotSpec: { shots: [] },
+        },
+      },
+      null,
+      { x: 0, y: 0 },
+    );
+
+    expect(canvas.readNode("director-stage")?.data).toEqual({
+      stageId: "stage-1",
+      outputVideoAssetId: "asset-video",
+      directorReferencePacket: {
+        schemaVersion: 1,
+        stageId: "stage-1",
+        stageRevisionId: "stage-revision-1",
+        exportedAt: "2026-08-13T00:00:00.000Z",
+        aspectRatio: "16:9",
+        durationSeconds: 1,
+        fps: 30,
+        cameraIds: ["camera-1"],
+        referenceVideo: {
+          assetId: "asset-video",
+          mimeType: "video/mp4",
+        },
+        referenceStills: [],
+        shotSpec: { shots: [] },
+      },
+    });
+  });
+});
+
+describe("Canvas Action Asset binding authority", () => {
+  it("updates the Action input when an edge source is rewired and gives a re-added use a fresh identity", () => {
+    const doc = new LoroDoc();
+    createProjectAsset(doc, canvasProjectAsset("asset-a"));
+    createProjectAsset(doc, canvasProjectAsset("asset-b"));
+    markActionAssetBindingAuthority(doc);
+    const canvas = new Canvas(doc, () => {}, "main");
+
+    canvas.insertNode(
+      "source",
+      RF_NODE_TYPE.Image,
+      { assetId: "asset-a" },
+      null,
+      { x: 0, y: 0 },
+    );
+    canvas.insertNode(
+      "action",
+      RF_NODE_TYPE.ActionBadge,
+      { actionType: ACTION_TYPE.ImageGen, modelId: "gpt-image-2" },
+      null,
+      { x: 200, y: 0 },
+    );
+
+    canvas.insertEdge("source-action", "source", "action", "reference");
+    const [first] = listActionAssetBindings(doc);
+    expect(first).toMatchObject({
+      owner: { kind: "draft", actionId: "node:action" },
+      direction: "input",
+      slot: "image:0",
+      projectAssetId: "asset-a",
+      role: "reference",
+    });
+
+    expect(canvas.updateNode("source", { assetId: "asset-b" })).toBe(true);
+    expect(listActionAssetBindings(doc)).toEqual([
+      expect.objectContaining({
+        id: first!.id,
+        projectAssetId: "asset-b",
+      }),
+    ]);
+
+    expect(canvas.deleteEdge("source-action")).toBe(true);
+    expect(listActionAssetBindings(doc)).toEqual([]);
+
+    canvas.insertEdge("source-action-again", "source", "action", "reference");
+    const [readded] = listActionAssetBindings(doc);
+    expect(readded).toMatchObject({ projectAssetId: "asset-b" });
+    expect(readded!.id).not.toBe(first!.id);
+  });
+
+  it("replaces explicit and prompt-derived Canvas inputs in the node mutation", () => {
+    const doc = new LoroDoc();
+    createProjectAsset(doc, canvasProjectAsset("asset-explicit"));
+    createProjectAsset(doc, canvasProjectAsset("asset-mentioned"));
+    markActionAssetBindingAuthority(doc);
+    const canvas = new Canvas(doc, () => {}, "main");
+
+    canvas.insertNode(
+      "mentioned",
+      RF_NODE_TYPE.Image,
+      { assetId: "asset-mentioned" },
+      null,
+      { x: 0, y: 0 },
+    );
+    canvas.insertNode(
+      "action",
+      RF_NODE_TYPE.ActionBadge,
+      {
+        actionType: ACTION_TYPE.ImageGen,
+        modelId: "gpt-image-2",
+        referenceImageAssetIds: ["asset-explicit"],
+      },
+      null,
+      { x: 200, y: 0 },
+    );
+
+    expect(listActionAssetBindings(doc)).toEqual([
+      expect.objectContaining({
+        slot: "image:0",
+        projectAssetId: "asset-explicit",
+      }),
+    ]);
+
+    expect(
+      canvas.updateNode("action", {
+        referenceImageAssetIds: [],
+        prompt: "Use @[Mentioned](node:mentioned)",
+      }),
+    ).toBe(true);
+    expect(listActionAssetBindings(doc)).toEqual([
+      expect.objectContaining({
+        slot: "image:0",
+        projectAssetId: "asset-mentioned",
+      }),
+    ]);
+
+    expect(canvas.updateNode("action", { prompt: "No reference" })).toBe(true);
+    expect(listActionAssetBindings(doc)).toEqual([]);
+  });
+
+  it("keeps one binding per repeated slot use without multiplying redundant projections", () => {
+    const doc = new LoroDoc();
+    createProjectAsset(doc, canvasProjectAsset("asset-repeated"));
+    markActionAssetBindingAuthority(doc);
+    const canvas = new Canvas(doc, () => {}, "main");
+
+    canvas.insertNode(
+      "same-reference",
+      RF_NODE_TYPE.Image,
+      { assetId: "asset-repeated" },
+      null,
+      { x: 0, y: 0 },
+    );
+    canvas.insertNode(
+      "start-end-action",
+      RF_NODE_TYPE.ActionBadge,
+      {
+        actionType: ACTION_TYPE.VideoGen,
+        modelId: "minimax-h3-startend",
+        referenceImageAssetIds: ["asset-repeated", "asset-repeated"],
+        prompt: "Use @[Same](node:same-reference)",
+      },
+      null,
+      { x: 200, y: 0 },
+    );
+    canvas.insertEdge(
+      "same-reference-start-end",
+      "same-reference",
+      "start-end-action",
+      "reference",
+    );
+
+    expect(
+      listActionAssetBindings(doc)
+        .map(({ slot, projectAssetId, direction, role }) => ({
+          slot,
+          projectAssetId,
+          direction,
+          role,
+        }))
+        .sort((left, right) => left.slot.localeCompare(right.slot)),
+    ).toEqual([
+      {
+        slot: "image:0",
+        projectAssetId: "asset-repeated",
+        direction: "input",
+        role: "reference",
+      },
+      {
+        slot: "image:1",
+        projectAssetId: "asset-repeated",
+        direction: "input",
+        role: "reference",
+      },
+    ]);
+  });
+
+  it("rejects an edge to a non-admitted Asset without persisting half of the mutation", () => {
+    const doc = new LoroDoc();
+    markActionAssetBindingAuthority(doc);
+    const canvas = new Canvas(doc, () => {}, "main");
+
+    canvas.insertNode(
+      "unadmitted",
+      RF_NODE_TYPE.Image,
+      { assetId: "missing-project-asset" },
+      null,
+      { x: 0, y: 0 },
+    );
+    canvas.insertNode(
+      "action",
+      RF_NODE_TYPE.ActionBadge,
+      { actionType: ACTION_TYPE.ImageGen, modelId: "gpt-image-2" },
+      null,
+      { x: 200, y: 0 },
+    );
+
+    expect(() =>
+      canvas.insertEdge("invalid-edge", "unadmitted", "action", "reference"),
+    ).toThrow(/missing-project-asset.*not active/i);
+    expect(canvas.listEdges()).toEqual([]);
+    expect(listActionAssetBindings(doc)).toEqual([]);
+  });
+});
+
 describe("buildGenerationPayload", () => {
   it("rejects undeclared built-in model parameters before creating a pending asset", () => {
-    const modelCard = MODEL_CARDS.find((card) => card.id === "nano-banana-2-lite");
+    const modelCard = MODEL_CARDS.find(
+      (card) => card.id === "nano-banana-2-lite",
+    );
     expect(modelCard).toBeDefined();
 
     const result = buildGenerationPayload({
@@ -75,39 +385,81 @@ describe("buildGenerationPayload", () => {
     expect(result.validationError).toMatch(/unsupported_knob.*not declared/i);
   });
 
+  it("keeps host-private provider selection out of pending Project nodes", () => {
+    const modelCard = MODEL_CARDS.find((card) => card.id === "gpt-image-2");
+    expect(modelCard).toBeDefined();
+
+    const result = buildGenerationPayload({
+      prompt: "A paper city at night",
+      refNodes: [],
+      configId: modelCard!.id,
+      config: {
+        kind: "model",
+        modelCard,
+        modelParams: {
+          provider_id: "private-account",
+          require_real_provider: true,
+        },
+      },
+      actionType: "image-gen",
+    });
+
+    expect(result.validationError).toBeNull();
+    expect(result.pendingInput.modelParams).toEqual({
+      require_real_provider: true,
+    });
+  });
+
   it("validates executable custom-action parameters and declarative constraints", () => {
     const customDef = CustomActionDefinitionSchema.parse({
       id: "custom-image",
       name: "Custom Image",
       outputType: "image",
-      parameters: [{
-        id: "quality",
-        label: "Quality",
-        type: "select",
-        required: true,
-        options: [{ label: "High", value: "high" }],
-        defaultValue: "high",
-      }],
+      parameters: [
+        {
+          id: "quality",
+          label: "Quality",
+          type: "select",
+          required: true,
+          options: [{ label: "High", value: "high" }],
+          defaultValue: "high",
+        },
+      ],
       input: {
         requiresPrompt: true,
         inputMode: { images: { max: 1 } },
         promptModalities: ["text", "image"],
       },
-      constraints: [{ type: "max-length", field: "prompt", max: 8, message: "Prompt too long." }],
+      constraints: [
+        {
+          type: "max-length",
+          field: "prompt",
+          max: 8,
+          message: "Prompt too long.",
+        },
+      ],
     });
 
     const invalidCandidate = buildGenerationPayload({
       prompt: "short",
       refNodes: [],
       configId: customDef.id,
-      config: { kind: "custom", customDef, customActionParams: { quality: "draft" } },
+      config: {
+        kind: "custom",
+        customDef,
+        customActionParams: { quality: "draft" },
+      },
       actionType: "custom:custom-image",
     });
     const invalidConstraint = buildGenerationPayload({
       prompt: "longer than eight",
       refNodes: [],
       configId: customDef.id,
-      config: { kind: "custom", customDef, customActionParams: { quality: "high" } },
+      config: {
+        kind: "custom",
+        customDef,
+        customActionParams: { quality: "high" },
+      },
       actionType: "custom:custom-image",
     });
 
@@ -118,7 +470,8 @@ describe("buildGenerationPayload", () => {
   it("preserves authored inline reference order in the pending prompt", () => {
     const modelCard = MODEL_CARDS.find((card) => card.id === "gpt-5.4");
     expect(modelCard).toBeDefined();
-    const authoredPrompt = "Compare @[First](node:image-a), then explain @[Second](node:image-b).";
+    const authoredPrompt =
+      "Compare @[First](node:image-a), then explain @[Second](node:image-b).";
 
     const result = buildGenerationPayload({
       prompt: authoredPrompt,
@@ -133,7 +486,10 @@ describe("buildGenerationPayload", () => {
 
     expect(result.cleanedPrompt).toBe("Compare First, then explain Second.");
     expect(result.pendingInput.prompt).toBe(authoredPrompt);
-    expect(result.pendingInput.referenceImageAssetIds).toEqual(["asset-a", "asset-b"]);
+    expect(result.pendingInput.referenceImageAssetIds).toEqual([
+      "asset-a",
+      "asset-b",
+    ]);
   });
 
   it("ignores legacy lyrics references and only sends directly entered Lyrics", () => {
@@ -142,15 +498,19 @@ describe("buildGenerationPayload", () => {
 
     const result = buildGenerationPayload({
       prompt: "Dreamy synth pop with a restrained vocal",
-      refNodes: [{
-        type: "text",
-        data: { content: "Keep the production intimate" },
-      }],
+      refNodes: [
+        {
+          type: "text",
+          data: { content: "Keep the production intimate" },
+        },
+      ],
       lyrics: "[Verse]\nNeon rain on the window",
-      lyricsRefNodes: [{
-        type: "text",
-        data: { content: "[Chorus]\nStay until the morning" },
-      }],
+      lyricsRefNodes: [
+        {
+          type: "text",
+          data: { content: "[Chorus]\nStay until the morning" },
+        },
+      ],
       configId: modelCard!.id,
       config: {
         kind: "model",
@@ -185,7 +545,9 @@ describe("buildGenerationPayload", () => {
       actionType: "audio-gen",
     });
 
-    expect(result.validationError).toBe("Lyrics accept at most 3500 characters.");
+    expect(result.validationError).toBe(
+      "Lyrics accept at most 3500 characters.",
+    );
   });
 
   it("maps Suno text references into custom-mode lyrics while using the prompt as style", () => {
@@ -225,7 +587,11 @@ describe("buildGenerationPayload", () => {
       parameters: [],
       defaultParams: {},
       defaultAspectRatio: "1:1",
-      input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
+      input: {
+        requiresPrompt: true,
+        inputMode: {},
+        promptModalities: ["text"],
+      },
       musicInput: {
         lyricsTarget: "modelParam",
         lyricsParam: "lyrics",
@@ -248,7 +614,9 @@ describe("buildGenerationPayload", () => {
   });
 
   it("rejects attached modalities before partitioning unsupported refs away", () => {
-    const modelCard = MODEL_CARDS.find((card) => card.id === "gemini-3.1-flash-tts");
+    const modelCard = MODEL_CARDS.find(
+      (card) => card.id === "gemini-3.1-flash-tts",
+    );
     expect(modelCard).toBeDefined();
 
     const result = buildGenerationPayload({
@@ -259,7 +627,9 @@ describe("buildGenerationPayload", () => {
       actionType: "audio-gen",
     });
 
-    expect(result.validationError).toBe("Selected model does not accept reference images.");
+    expect(result.validationError).toBe(
+      "Selected model does not accept reference images.",
+    );
   });
 
   it("passes an exported Director Stage video to a downstream reference-video model", () => {
@@ -268,20 +638,24 @@ describe("buildGenerationPayload", () => {
 
     const result = buildGenerationPayload({
       prompt: "Keep the blocking and camera language from the reference",
-      refNodes: [{
-        type: "director-stage",
-        data: {
-          stageId: "stage-1",
-          outputVideoAssetId: "director-reference-video-1",
+      refNodes: [
+        {
+          type: "director-stage",
+          data: {
+            stageId: "stage-1",
+            outputVideoAssetId: "director-reference-video-1",
+          },
         },
-      }],
+      ],
       configId: modelCard!.id,
       config: { kind: "model", modelCard, modelParams: {} },
       actionType: "video-gen",
     });
 
     expect(result.validationError).toBeNull();
-    expect(result.partition.videoAssetIds).toEqual(["director-reference-video-1"]);
+    expect(result.partition.videoAssetIds).toEqual([
+      "director-reference-video-1",
+    ]);
     expect(result.pendingInput.referenceVideoAssetIds).toEqual([
       "director-reference-video-1",
     ]);
@@ -293,10 +667,12 @@ describe("buildGenerationPayload", () => {
 
     const result = buildGenerationPayload({
       prompt: "Continue this shot",
-      refNodes: [{
-        type: "director-stage",
-        data: { stageId: "stage-without-export" },
-      }],
+      refNodes: [
+        {
+          type: "director-stage",
+          data: { stageId: "stage-without-export" },
+        },
+      ],
       configId: modelCard!.id,
       config: { kind: "model", modelCard, modelParams: {} },
       actionType: "video-gen",
@@ -314,35 +690,39 @@ describe("buildGenerationPayload", () => {
 
     const result = buildGenerationPayload({
       prompt: "Preserve the staged performance and camera plan",
-      refNodes: [{
-        type: "director-stage",
-        data: {
-          stageId: "stage-1",
-          directorReferencePacket: {
-            schemaVersion: 1,
+      refNodes: [
+        {
+          type: "director-stage",
+          data: {
             stageId: "stage-1",
-            stageRevisionId: "stage-revision-1",
-            exportedAt: "2026-07-24T00:00:00.000Z",
-            aspectRatio: "16:9",
-            durationSeconds: 6,
-            fps: 30,
-            cameraIds: ["camera-a"],
-            referenceVideo: {
-              assetId: "director-reference-video-1",
-              mimeType: "video/webm",
-            },
-            referenceStills: [{
-              assetId: "director-reference-still-1",
-              cameraId: "camera-a",
-              shotId: "shot-a",
-              aspectRatio: "16:9",
+            directorReferencePacket: {
+              schemaVersion: 1,
+              stageId: "stage-1",
               stageRevisionId: "stage-revision-1",
-              timeSeconds: 0,
-            }],
-            shotSpec: { shots: [] },
+              exportedAt: "2026-07-24T00:00:00.000Z",
+              aspectRatio: "16:9",
+              durationSeconds: 6,
+              fps: 30,
+              cameraIds: ["camera-a"],
+              referenceVideo: {
+                assetId: "director-reference-video-1",
+                mimeType: "video/webm",
+              },
+              referenceStills: [
+                {
+                  assetId: "director-reference-still-1",
+                  cameraId: "camera-a",
+                  shotId: "shot-a",
+                  aspectRatio: "16:9",
+                  stageRevisionId: "stage-revision-1",
+                  timeSeconds: 0,
+                },
+              ],
+              shotSpec: { shots: [] },
+            },
           },
         },
-      }],
+      ],
       configId: modelCard!.id,
       config: { kind: "model", modelCard, modelParams: {} },
       actionType: "video-gen",
@@ -361,113 +741,128 @@ describe("buildGenerationPayload", () => {
 
     const result = buildGenerationPayload({
       prompt: "Keep the actors grounded and natural.",
-      refNodes: [{
-        type: "director-stage",
-        data: {
-          directorReferencePacket: {
-            schemaVersion: 1,
-            stageId: "stage-1",
-            stageRevisionId: "stage-revision-8",
-            exportedAt: "2026-07-24T00:00:00.000Z",
-            aspectRatio: "16:9",
-            durationSeconds: 6,
-            fps: 30,
-            cameraIds: ["camera-wide", "camera-close"],
-            referenceVideo: {
-              assetId: "director-reference-video-1",
-              mimeType: "video/webm",
-            },
-            referenceStills: [],
-            shotSpec: {
-              shots: [{
-                id: "shot-wide",
-                name: "Opening wide",
-                cameraId: "camera-wide",
-                startTime: 0,
-                durationSeconds: 3,
-                aspectRatio: "16:9",
-                transition: "cut",
-                cameraMove: { preset: "push-in", easing: "ease-in-out" },
-              }, {
-                id: "shot-close",
-                name: "Reaction close-up",
-                cameraId: "camera-close",
-                startTime: 3,
-                durationSeconds: 3,
-                aspectRatio: "16:9",
-                transition: "dissolve",
-              }],
+      refNodes: [
+        {
+          type: "director-stage",
+          data: {
+            directorReferencePacket: {
+              schemaVersion: 1,
+              stageId: "stage-1",
+              stageRevisionId: "stage-revision-8",
+              exportedAt: "2026-07-24T00:00:00.000Z",
+              aspectRatio: "16:9",
+              durationSeconds: 6,
+              fps: 30,
+              cameraIds: ["camera-wide", "camera-close"],
+              referenceVideo: {
+                assetId: "director-reference-video-1",
+                mimeType: "video/webm",
+              },
+              referenceStills: [],
+              shotSpec: {
+                shots: [
+                  {
+                    id: "shot-wide",
+                    name: "Opening wide",
+                    cameraId: "camera-wide",
+                    startTime: 0,
+                    durationSeconds: 3,
+                    aspectRatio: "16:9",
+                    transition: "cut",
+                    cameraMove: { preset: "push-in", easing: "ease-in-out" },
+                  },
+                  {
+                    id: "shot-close",
+                    name: "Reaction close-up",
+                    cameraId: "camera-close",
+                    startTime: 3,
+                    durationSeconds: 3,
+                    aspectRatio: "16:9",
+                    transition: "dissolve",
+                  },
+                ],
+              },
             },
           },
         },
-      }],
+      ],
       configId: modelCard!.id,
       config: { kind: "model", modelCard, modelParams: {} },
       actionType: "video-gen",
     });
 
     expect(result.validationError).toBeNull();
-    expect(result.cleanedPrompt).toContain("Keep the actors grounded and natural.");
+    expect(result.cleanedPrompt).toContain(
+      "Keep the actors grounded and natural.",
+    );
     expect(result.cleanedPrompt).toContain("Director shot plan");
-    expect(result.cleanedPrompt).toContain("Opening wide · 0.00–3.00s · Cut · push-in / ease-in-out");
-    expect(result.cleanedPrompt).toContain("Reaction close-up · 3.00–6.00s · Dissolve");
+    expect(result.cleanedPrompt).toContain(
+      "Opening wide · 0.00–3.00s · Cut · push-in / ease-in-out",
+    );
+    expect(result.cleanedPrompt).toContain(
+      "Reaction close-up · 3.00–6.00s · Dissolve",
+    );
     expect(result.cleanedPrompt).toContain("Stage revision: stage-revision-8");
     expect(result.pendingInput.prompt).toBe(result.cleanedPrompt);
   });
 
   it("falls back to Director keyframe stills for an image-reference video model", () => {
-    const modelCard = MODEL_CARDS.find((card) => card.id === "seedance-2-startend");
+    const modelCard = MODEL_CARDS.find(
+      (card) => card.id === "seedance-2-startend",
+    );
     expect(modelCard).toBeDefined();
 
     const result = buildGenerationPayload({
       prompt: "Generate from the staged opening and closing frames",
-      refNodes: [{
-        type: "director-stage",
-        data: {
-          stageId: "stage-1",
-          directorReferencePacket: {
-            schemaVersion: 1,
+      refNodes: [
+        {
+          type: "director-stage",
+          data: {
             stageId: "stage-1",
-            stageRevisionId: "stage-revision-1",
-            exportedAt: "2026-07-24T00:00:00.000Z",
-            aspectRatio: "16:9",
-            durationSeconds: 6,
-            fps: 30,
-            cameraIds: ["camera-a"],
-            referenceVideo: {
-              assetId: "director-reference-video-1",
-              mimeType: "video/webm",
+            directorReferencePacket: {
+              schemaVersion: 1,
+              stageId: "stage-1",
+              stageRevisionId: "stage-revision-1",
+              exportedAt: "2026-07-24T00:00:00.000Z",
+              aspectRatio: "16:9",
+              durationSeconds: 6,
+              fps: 30,
+              cameraIds: ["camera-a"],
+              referenceVideo: {
+                assetId: "director-reference-video-1",
+                mimeType: "video/webm",
+              },
+              referenceStills: [
+                {
+                  assetId: "director-reference-still-start",
+                  cameraId: "camera-a",
+                  shotId: "shot-a",
+                  aspectRatio: "16:9",
+                  stageRevisionId: "stage-revision-1",
+                  timeSeconds: 0,
+                },
+                {
+                  assetId: "director-reference-still-middle",
+                  cameraId: "camera-a",
+                  shotId: "shot-middle",
+                  aspectRatio: "16:9",
+                  stageRevisionId: "stage-revision-1",
+                  timeSeconds: 3,
+                },
+                {
+                  assetId: "director-reference-still-end",
+                  cameraId: "camera-a",
+                  shotId: "shot-b",
+                  aspectRatio: "16:9",
+                  stageRevisionId: "stage-revision-1",
+                  timeSeconds: 6,
+                },
+              ],
+              shotSpec: { shots: [] },
             },
-            referenceStills: [
-              {
-                assetId: "director-reference-still-start",
-                cameraId: "camera-a",
-                shotId: "shot-a",
-                aspectRatio: "16:9",
-                stageRevisionId: "stage-revision-1",
-                timeSeconds: 0,
-              },
-              {
-                assetId: "director-reference-still-middle",
-                cameraId: "camera-a",
-                shotId: "shot-middle",
-                aspectRatio: "16:9",
-                stageRevisionId: "stage-revision-1",
-                timeSeconds: 3,
-              },
-              {
-                assetId: "director-reference-still-end",
-                cameraId: "camera-a",
-                shotId: "shot-b",
-                aspectRatio: "16:9",
-                stageRevisionId: "stage-revision-1",
-                timeSeconds: 6,
-              },
-            ],
-            shotSpec: { shots: [] },
           },
         },
-      }],
+      ],
       configId: modelCard!.id,
       config: { kind: "model", modelCard, modelParams: {} },
       actionType: "video-gen",
@@ -609,10 +1004,14 @@ describe("NodeDataSchema", () => {
       exportId: "minimax-execute",
       schemaHash: `sha256:${"c".repeat(64)}`,
     };
-    expect(NodeDataSchema.parse({ pluginBinding }).pluginBinding).toEqual(pluginBinding);
-    expect(NodeDataSchema.safeParse({
-      pluginBinding: { ...pluginBinding, version: "latest" },
-    }).success).toBe(false);
+    expect(NodeDataSchema.parse({ pluginBinding }).pluginBinding).toEqual(
+      pluginBinding,
+    );
+    expect(
+      NodeDataSchema.safeParse({
+        pluginBinding: { ...pluginBinding, version: "latest" },
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -656,6 +1055,28 @@ describe("buildPendingAssetNode", () => {
     });
   });
 
+  it("keeps provider-supported references on pending audio nodes", () => {
+    const withImage = buildPendingAssetNode({
+      nodeId: "aud-image-ref",
+      prompt: "Create an ambience for this scene",
+      modelId: "seed-audio-1",
+      modelParams: {},
+      actionType: ACTION_TYPE.AudioGen,
+      referenceImageAssetIds: ["image-asset"],
+    });
+    const withAudio = buildPendingAssetNode({
+      nodeId: "aud-audio-ref",
+      prompt: "Follow this rhythm",
+      modelId: "seed-audio-1",
+      modelParams: {},
+      actionType: ACTION_TYPE.AudioGen,
+      referenceAudioAssetIds: ["audio-asset"],
+    });
+
+    expect(withImage.data.referenceImageAssetIds).toEqual(["image-asset"]);
+    expect(withAudio.data.referenceAudioAssetIds).toEqual(["audio-asset"]);
+  });
+
   it("builds a pending text node for text generation", () => {
     const node = buildPendingAssetNode({
       nodeId: "txt-1",
@@ -674,6 +1095,66 @@ describe("buildPendingAssetNode", () => {
       model: "gpt-5.4",
       modelId: "gpt-5.4",
     });
+  });
+});
+
+describe("Canvas Project mutation privacy", () => {
+  it("keeps host-private provider selection out of inserted nodes", () => {
+    const doc = new LoroDoc();
+    const canvas = new Canvas(doc, () => {});
+
+    canvas.insertNode(
+      "private-route-action",
+      RF_NODE_TYPE.ActionBadge,
+      {
+        actionType: ACTION_TYPE.ImageGen,
+        modelParams: {
+          provider_id: "private-account",
+          require_real_provider: true,
+        },
+        providerAccountId: "private-account",
+      },
+      null,
+      { x: 0, y: 0 },
+    );
+
+    expect(canvas.readNode("private-route-action")?.data).toEqual({
+      actionType: ACTION_TYPE.ImageGen,
+      modelParams: { require_real_provider: true },
+    });
+    expect(JSON.stringify(doc.getMap("nodes").toJSON())).not.toContain(
+      "private-account",
+    );
+  });
+
+  it("removes host-private provider selection during node updates", () => {
+    const doc = new LoroDoc();
+    const canvas = new Canvas(doc, () => {});
+    doc.getMap("nodes").set("legacy-action", {
+      canvasId: "main",
+      type: RF_NODE_TYPE.ActionBadge,
+      data: {
+        actionType: ACTION_TYPE.ImageGen,
+        modelParams: { provider_id: "legacy-private-account" },
+      },
+      position: { x: 0, y: 0 },
+    });
+
+    expect(
+      canvas.updateNode("legacy-action", {
+        label: "Updated",
+        providerAccountId: "new-private-account",
+      }),
+    ).toBe(true);
+
+    expect(canvas.readNode("legacy-action")?.data).toEqual({
+      actionType: ACTION_TYPE.ImageGen,
+      label: "Updated",
+      modelParams: {},
+    });
+    expect(JSON.stringify(doc.getMap("nodes").toJSON())).not.toContain(
+      "private-account",
+    );
   });
 });
 
@@ -737,9 +1218,17 @@ describe("Canvas.execute", () => {
       null,
       { x: 160, y: 0 },
     );
-    canvas.insertEdge("source-image-split-action", "source-image", "split-action");
+    canvas.insertEdge(
+      "source-image-split-action",
+      "source-image",
+      "split-action",
+    );
 
-    const result = canvas.execute("split-action", () => "pending-split");
+    const result = canvas.execute(
+      "split-action",
+      () => "pending-split",
+      "private-provider-account",
+    );
 
     expect(result.error).toBeNull();
     expect(result.kind).toBe("generation");
@@ -756,6 +1245,10 @@ describe("Canvas.execute", () => {
       referenceImageAssetIds: ["asset-grid"],
       status: "pending",
     });
+    expect(pending?.data).not.toHaveProperty("providerAccountId");
+    expect(JSON.stringify(doc.getMap("nodes").toJSON())).not.toContain(
+      "private-provider-account",
+    );
   });
 
   it("keeps Prompt and Lyrics Text references separate during Canvas execution", () => {
@@ -789,8 +1282,16 @@ describe("Canvas.execute", () => {
       null,
       { x: 160, y: 0 },
     );
-    canvas.insertEdge("style-notes-music-action", "style-notes", "music-action");
-    canvas.insertEdge("chorus-draft-music-action", "chorus-draft", "music-action");
+    canvas.insertEdge(
+      "style-notes-music-action",
+      "style-notes",
+      "music-action",
+    );
+    canvas.insertEdge(
+      "chorus-draft-music-action",
+      "chorus-draft",
+      "music-action",
+    );
 
     const result = canvas.execute("music-action", () => "pending-song");
 
@@ -837,7 +1338,11 @@ describe("Canvas.execute", () => {
       null,
       { x: 160, y: 0 },
     );
-    canvas.insertEdge("source-image-split-action", "source-image", "split-action");
+    canvas.insertEdge(
+      "source-image-split-action",
+      "source-image",
+      "split-action",
+    );
 
     const result = canvas.execute("split-action", () => "pending-split");
 
@@ -873,7 +1378,10 @@ describe("Canvas.moveNode", () => {
     const doc = new LoroDoc();
     const main = new Canvas(doc, () => {}, "main");
     const selects = new Canvas(doc, () => {}, "selects");
-    main.insertNode("main-note", RF_NODE_TYPE.Text, { label: "Main" }, null, { x: 0, y: 0 });
+    main.insertNode("main-note", RF_NODE_TYPE.Text, { label: "Main" }, null, {
+      x: 0,
+      y: 0,
+    });
 
     expect(selects.moveNode("main-note", { x: 10, y: 20 })).toBe(false);
     expect(main.readNode("main-note")?.position).toEqual({ x: 0, y: 0 });
@@ -929,9 +1437,7 @@ describe("CustomActionDefinitionSchema", () => {
       name: "Style Transfer",
       description: "Apply artistic style",
       outputType: "image",
-      parameters: [
-        { id: "style", label: "Style", type: "select" },
-      ],
+      parameters: [{ id: "style", label: "Style", type: "select" }],
       icon: "🎨",
       color: "#8B5CF6",
       runtime: "worker",
@@ -955,7 +1461,9 @@ describe("CustomActionDefinitionSchema", () => {
     expect(def.secrets).toHaveLength(1);
     expect(def.tags).toEqual(["image", "style"]);
     expect(def.input.inputMode.images).toMatchObject({ min: 1, max: 2 });
-    expect(def.constraints).toEqual([{ type: "max-length", field: "prompt", max: 500 }]);
+    expect(def.constraints).toEqual([
+      { type: "max-length", field: "prompt", max: 500 },
+    ]);
     expect(def.maxRuntimeMs).toBe(120_000);
   });
 
@@ -999,13 +1507,15 @@ describe("CustomActionDefinitionSchema", () => {
         id: "gpt-image-1",
         secretId: "OPENAI_API_KEY",
       },
-      secrets: [
-        { id: "OPENAI_API_KEY", label: "OpenAI key from manifest" },
-      ],
+      secrets: [{ id: "OPENAI_API_KEY", label: "OpenAI key from manifest" }],
     });
 
     expect(def.secrets).toEqual([
-      { id: "OPENAI_API_KEY", label: "OpenAI key from manifest", required: true },
+      {
+        id: "OPENAI_API_KEY",
+        label: "OpenAI key from manifest",
+        required: true,
+      },
     ]);
   });
 
@@ -1043,12 +1553,24 @@ describe("CustomActionDefinitionSchema", () => {
   it("exposes built-in provider presets for key configuration UI", () => {
     expect(normalizeActionProviderId("fal.ai")).toBe("fal");
     expect(ACTION_PROVIDER_PRESETS.fal.defaultSecretId).toBe("FAL_API_KEY");
-    expect(ACTION_PROVIDER_PRESETS.replicate.defaultSecretId).toBe("REPLICATE_API_TOKEN");
-    expect(ACTION_PROVIDER_PRESETS.official.defaultSecretId).toBe("OFFICIAL_API_KEY");
+    expect(ACTION_PROVIDER_PRESETS.replicate.defaultSecretId).toBe(
+      "REPLICATE_API_TOKEN",
+    );
+    expect(ACTION_PROVIDER_PRESETS.official.defaultSecretId).toBe(
+      "OFFICIAL_API_KEY",
+    );
     expect(normalizeActionProviderId("google")).toBeNull();
-    expect(normalizeActionProviderId("google-ai-studio")).toBe("google-ai-studio");
-    expect(normalizeActionProviderId("google-agent-platform")).toBe("google-agent-platform");
-    expect(ACTION_PROVIDER_PRESETS["google-ai-studio"].defaultSecretId).toBe("GOOGLE_AI_STUDIO_API_KEY");
-    expect(ACTION_PROVIDER_PRESETS["google-agent-platform"].defaultSecretId).toBe("GOOGLE_CLOUD_SERVICE_ACCOUNT_JSON");
+    expect(normalizeActionProviderId("google-ai-studio")).toBe(
+      "google-ai-studio",
+    );
+    expect(normalizeActionProviderId("google-agent-platform")).toBe(
+      "google-agent-platform",
+    );
+    expect(ACTION_PROVIDER_PRESETS["google-ai-studio"].defaultSecretId).toBe(
+      "GOOGLE_AI_STUDIO_API_KEY",
+    );
+    expect(
+      ACTION_PROVIDER_PRESETS["google-agent-platform"].defaultSecretId,
+    ).toBe("GOOGLE_CLOUD_SERVICE_ACCOUNT_JSON");
   });
 });

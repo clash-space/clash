@@ -29,7 +29,7 @@ export function normalizeEditorAsset(asset: EditorAssetInput): Asset {
     createdAt: asset.createdAt ?? Date.now(),
     readOnly: asset.readOnly ?? true,
     sourceNodeId: asset.sourceNodeId,
-    backingAssetId: asset.backingAssetId,
+    projectAssetId: asset.projectAssetId,
   };
 }
 

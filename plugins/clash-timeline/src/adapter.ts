@@ -254,7 +254,7 @@ export function createTimelineAdapter(options: {
         target: submitted.target,
       };
       if (input.wait === false) return { ...base, completed: false, status: "pending" };
-      const deadline = Date.now() + (input.timeoutMs ?? 600_000);
+      const deadline = Date.now() + (input.timeoutMs ?? 1_800_000);
       while (true) {
         const polled = await request(input, {
           action: "get",

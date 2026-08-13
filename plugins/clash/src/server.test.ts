@@ -79,12 +79,13 @@ test("one Clash plugin server quarantines every MCP App while keeping headless t
   );
   const fixedToolNames = [
     "clash",
+    "clash_assets",
     "clash_canvas",
     "clash_composition",
     "clash_workspace_init",
   ];
   assert.deepEqual(rootTools.map(({ name }) => name).sort(), fixedToolNames);
-  assert.equal(rootTools.length, 4);
+  assert.equal(rootTools.length, 5);
   const operations: Array<any> = [];
   for (const command of ["canvas", "timeline", "director"] as const) {
     const selected = await client.callTool({ name: "clash", arguments: { command } });

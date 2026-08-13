@@ -33,19 +33,19 @@ const VideoClipperNode = ({ id, data }: NodeProps<Node<Record<string, any>>>) =>
         if (upstreamNode?.type !== 'video') return undefined;
         return (upstreamNode.data as Record<string, unknown> | undefined)?.assetId as string | undefined;
     }, [upstreamVideoNodeId]));
-    const upstreamAsset = useAsset(upstreamAssetId);
-    const previewR2Key = upstreamAsset?.coverR2Key ?? undefined;
+    const upstreamAsset = useAsset(projectId, upstreamAssetId);
+    const previewUrl = upstreamAsset?.thumbnailUrl ?? upstreamAsset?.url;
 
     const editParams: VideoClipParams | undefined = data.editParams as VideoClipParams | undefined;
 
     const handleOpen = useCallback(() => {
-        if (!upstreamAsset || !upstreamAssetId) return;
+        if (!upstreamAsset?.url || !upstreamAssetId) return;
         const durationSec = (upstreamAsset.metadata?.durationMs ?? 0) / 1000;
         openEditor({
             editorNodeId: id,
             projectId,
             sourceAssetId: upstreamAssetId,
-            sourceR2Key: upstreamAsset.srcR2Key,
+            sourceUrl: upstreamAsset.url,
             durationSec: durationSec || 1,
             initialParams: editParams,
             nodes: reactFlow.getNodes() as Node[],
@@ -73,8 +73,8 @@ const VideoClipperNode = ({ id, data }: NodeProps<Node<Record<string, any>>>) =>
                 </div>
 
                 <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden border-b border-warm-border bg-warm-muted">
-                    {previewR2Key ? (
-                        <SignedImg src={previewR2Key} alt="Source poster" className="w-full h-full object-cover pointer-events-none" />
+                    {previewUrl ? (
+                        <SignedImg src={previewUrl} alt="Source poster" className="w-full h-full object-cover pointer-events-none" />
                     ) : (
                         <div className="flex flex-col items-center gap-2 p-6 text-center">
                             <div className="rounded-2xl w-14 h-14 flex items-center justify-center bg-warm-surface shadow-sm border border-warm-border">

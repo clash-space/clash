@@ -26,7 +26,12 @@ import {
 export type Modality = "text" | "image" | "video" | "audio";
 
 export function isReferenceModality(value: unknown): value is Modality {
-  return value === "text" || value === "image" || value === "video" || value === "audio";
+  return (
+    value === "text" ||
+    value === "image" ||
+    value === "video" ||
+    value === "audio"
+  );
 }
 
 export interface RefBound {
@@ -96,13 +101,21 @@ const NO_BOUND: RefBound = { accepts: false, min: 0, max: 0 };
 export function capability(card: ModelCard): Capability {
   const im = card.input.inputMode;
   const requiresPrompt = card.input.requiresPrompt ?? true;
-  const promptModalities = (card.input.promptModalities ?? ["text"]) as Capability["promptModalities"];
+  const promptModalities = (card.input.promptModalities ?? [
+    "text",
+  ]) as Capability["promptModalities"];
 
   // Image bucket: startEnd takes precedence (a real model would set one or
   // the other, never both — schema doesn't enforce, so we pick a winner).
   let image: RefBound;
   if (im.startEnd) {
-    image = { accepts: true, min: 1, max: 2, isStartEnd: true, constraints: im.startEnd.constraints };
+    image = {
+      accepts: true,
+      min: 1,
+      max: 2,
+      isStartEnd: true,
+      constraints: im.startEnd.constraints,
+    };
   } else if (im.images) {
     image = {
       accepts: true,
@@ -181,56 +194,120 @@ export function validateReferenceMedia(
     const constraints = cap.ref[reference.modality].constraints;
     if (!constraints) continue;
     const label = mediaLabel(reference.modality);
-    const contentType = reference.contentType?.toLowerCase().split(";", 1)[0]?.trim();
+    const contentType = reference.contentType
+      ?.toLowerCase()
+      .split(";", 1)[0]
+      ?.trim();
     const extension = normalizedExtension(reference.fileName);
     const hasFormatEvidence = !!contentType || !!extension;
-    const mimeMatches = !!contentType && !!constraints.mimeTypes?.includes(contentType);
-    const extensionMatches = !!extension && !!constraints.fileExtensions?.includes(extension);
-    if (hasFormatEvidence && (constraints.mimeTypes?.length || constraints.fileExtensions?.length) && !mimeMatches && !extensionMatches) {
+    const mimeMatches =
+      !!contentType && !!constraints.mimeTypes?.includes(contentType);
+    const extensionMatches =
+      !!extension && !!constraints.fileExtensions?.includes(extension);
+    if (
+      hasFormatEvidence &&
+      (constraints.mimeTypes?.length || constraints.fileExtensions?.length) &&
+      !mimeMatches &&
+      !extensionMatches
+    ) {
       return `${label} format is not supported by the selected model.`;
     }
-    if (reference.bytes != null && constraints.maxBytes != null && reference.bytes > constraints.maxBytes) {
+    if (
+      reference.bytes != null &&
+      constraints.maxBytes != null &&
+      reference.bytes > constraints.maxBytes
+    ) {
       return `${label} must be no larger than ${megabytes(constraints.maxBytes)}.`;
     }
-    if (reference.width != null && constraints.minWidth != null && reference.width < constraints.minWidth) {
+    if (
+      reference.width != null &&
+      constraints.minWidth != null &&
+      reference.width < constraints.minWidth
+    ) {
       return `${label} width must be at least ${constraints.minWidth}px.`;
     }
-    if (reference.width != null && constraints.maxWidth != null && reference.width > constraints.maxWidth) {
+    if (
+      reference.width != null &&
+      constraints.maxWidth != null &&
+      reference.width > constraints.maxWidth
+    ) {
       return `${label} width must be at most ${constraints.maxWidth}px.`;
     }
-    if (reference.height != null && constraints.minHeight != null && reference.height < constraints.minHeight) {
+    if (
+      reference.height != null &&
+      constraints.minHeight != null &&
+      reference.height < constraints.minHeight
+    ) {
       return `${label} height must be at least ${constraints.minHeight}px.`;
     }
-    if (reference.height != null && constraints.maxHeight != null && reference.height > constraints.maxHeight) {
+    if (
+      reference.height != null &&
+      constraints.maxHeight != null &&
+      reference.height > constraints.maxHeight
+    ) {
       return `${label} height must be at most ${constraints.maxHeight}px.`;
     }
-    if (reference.width != null && reference.height != null && reference.height > 0) {
+    if (
+      reference.width != null &&
+      reference.height != null &&
+      reference.height > 0
+    ) {
       const ratio = reference.width / reference.height;
-      if (constraints.minAspectRatio != null && ratio < constraints.minAspectRatio) {
+      if (
+        constraints.minAspectRatio != null &&
+        ratio < constraints.minAspectRatio
+      ) {
         return `${label} aspect ratio must be at least ${constraints.minAspectRatio}.`;
       }
-      if (constraints.maxAspectRatio != null && ratio > constraints.maxAspectRatio) {
+      if (
+        constraints.maxAspectRatio != null &&
+        ratio > constraints.maxAspectRatio
+      ) {
         return `${label} aspect ratio must be at most ${constraints.maxAspectRatio}.`;
       }
     }
-    if (reference.durationMs != null && constraints.minDurationMs != null && reference.durationMs < constraints.minDurationMs) {
+    if (
+      reference.durationMs != null &&
+      constraints.minDurationMs != null &&
+      reference.durationMs < constraints.minDurationMs
+    ) {
       return `${label} duration must be at least ${constraints.minDurationMs / 1000} seconds.`;
     }
-    if (reference.durationMs != null && constraints.maxDurationMs != null && reference.durationMs > constraints.maxDurationMs) {
+    if (
+      reference.durationMs != null &&
+      constraints.maxDurationMs != null &&
+      reference.durationMs > constraints.maxDurationMs
+    ) {
       return `${label} duration must be at most ${constraints.maxDurationMs / 1000} seconds.`;
     }
-    if (reference.frameRate != null && constraints.minFrameRate != null && reference.frameRate < constraints.minFrameRate) {
+    if (
+      reference.frameRate != null &&
+      constraints.minFrameRate != null &&
+      reference.frameRate < constraints.minFrameRate
+    ) {
       return `${label} frame rate must be at least ${constraints.minFrameRate} fps.`;
     }
-    if (reference.frameRate != null && constraints.maxFrameRate != null && reference.frameRate > constraints.maxFrameRate) {
+    if (
+      reference.frameRate != null &&
+      constraints.maxFrameRate != null &&
+      reference.frameRate > constraints.maxFrameRate
+    ) {
       return `${label} frame rate must be at most ${constraints.maxFrameRate} fps.`;
     }
     const videoCodec = reference.videoCodec?.toLowerCase();
-    if (videoCodec && constraints.videoCodecs?.length && !constraints.videoCodecs.includes(videoCodec)) {
+    if (
+      videoCodec &&
+      constraints.videoCodecs?.length &&
+      !constraints.videoCodecs.includes(videoCodec)
+    ) {
       return `${label} video codec is not supported by the selected model.`;
     }
     const audioCodec = reference.audioCodec?.toLowerCase();
-    if (audioCodec && constraints.audioCodecs?.length && !constraints.audioCodecs.includes(audioCodec)) {
+    if (
+      audioCodec &&
+      constraints.audioCodecs?.length &&
+      !constraints.audioCodecs.includes(audioCodec)
+    ) {
       return `${label} audio codec is not supported by the selected model.`;
     }
   }
@@ -268,14 +345,19 @@ export function capabilityFromCustom(def: CustomActionDefinition): Capability {
   // input contract can still contain the legacy promptModalities-only shape.
   // Normalize it at the read boundary so old projects keep executing while
   // newly installed actions retain their exact declared bounds.
-  const promptModalities = def.input?.promptModalities ?? def.promptModalities ?? ["text"];
+  const promptModalities = def.input?.promptModalities ??
+    def.promptModalities ?? ["text"];
   const input = def.input ?? {
     requiresPrompt: promptModalities.includes("text"),
     inputMode: Object.fromEntries(
       (["image", "video", "audio"] as const)
         .filter((modality) => promptModalities.includes(modality))
         .map((modality) => [
-          modality === "image" ? "images" : modality === "video" ? "videos" : "audios",
+          modality === "image"
+            ? "images"
+            : modality === "video"
+              ? "videos"
+              : "audios",
           { max: Number.MAX_SAFE_INTEGER },
         ]),
     ),
@@ -320,16 +402,24 @@ export function validateRefs(
   };
 
   const totalMediaReferences = imgCount + vidCount + audCount;
-  if (cap.maxTotalReferences != null && totalMediaReferences > cap.maxTotalReferences) {
+  if (
+    cap.maxTotalReferences != null &&
+    totalMediaReferences > cap.maxTotalReferences
+  ) {
     return `Selected model accepts at most ${cap.maxTotalReferences} total references (got ${totalMediaReferences}).`;
   }
 
   const requiredReferenceModalities = cap.requiresAnyReferenceOf;
-  if (requiredReferenceModalities?.length &&
-      !requiredReferenceModalities.some((modality) => countsByModality[modality] > 0)) {
-    const requirement = requiredReferenceModalities.length === 1
-      ? `reference ${requiredReferenceModalities[0]}`
-      : `reference ${requiredReferenceModalities.slice(0, -1).join(", ")} or ${requiredReferenceModalities[requiredReferenceModalities.length - 1]}`;
+  if (
+    requiredReferenceModalities?.length &&
+    !requiredReferenceModalities.some(
+      (modality) => countsByModality[modality] > 0,
+    )
+  ) {
+    const requirement =
+      requiredReferenceModalities.length === 1
+        ? `reference ${requiredReferenceModalities[0]}`
+        : `reference ${requiredReferenceModalities.slice(0, -1).join(", ")} or ${requiredReferenceModalities[requiredReferenceModalities.length - 1]}`;
     return `Selected model requires at least one ${requirement}.`;
   }
 
@@ -350,9 +440,10 @@ export function validateRefs(
     const required = cap.ref[modality].requiresAnyOf;
     if (countsByModality[modality] === 0 || !required?.length) continue;
     if (!required.some((companion) => countsByModality[companion] > 0)) {
-      const requirement = required.length === 1
-        ? `reference ${required[0]}`
-        : `reference ${required.slice(0, -1).join(", ")} or ${required[required.length - 1]}`;
+      const requirement =
+        required.length === 1
+          ? `reference ${required[0]}`
+          : `reference ${required.slice(0, -1).join(", ")} or ${required[required.length - 1]}`;
       return `Selected model requires at least one ${requirement} when reference ${modality} is attached.`;
     }
   }
@@ -380,21 +471,24 @@ export function validateRefs(
 
   if (cap.ref.video.accepts) {
     const { min, max } = cap.ref.video;
-    if (enforceMinimums && vidCount < min) return `Selected model requires at least ${min} reference video(s).`;
+    if (enforceMinimums && vidCount < min)
+      return `Selected model requires at least ${min} reference video(s).`;
     if (vidCount > max) {
       return `Selected model accepts at most ${max} reference video(s) (got ${vidCount}).`;
     }
   }
   if (cap.ref.audio.accepts) {
     const { min, max } = cap.ref.audio;
-    if (enforceMinimums && audCount < min) return `Selected model requires at least ${min} reference audio clip(s).`;
+    if (enforceMinimums && audCount < min)
+      return `Selected model requires at least ${min} reference audio clip(s).`;
     if (audCount > max) {
       return `Selected model accepts at most ${max} reference audio clip(s) (got ${audCount}).`;
     }
   }
   if (cap.ref.text.accepts) {
     const { min, max } = cap.ref.text;
-    if (enforceMinimums && textCount < min) return `Selected model requires at least ${min} reference text node(s).`;
+    if (enforceMinimums && textCount < min)
+      return `Selected model requires at least ${min} reference text node(s).`;
     if (textCount > max) {
       return `Selected model accepts at most ${max} reference text node(s) (got ${textCount}).`;
     }
@@ -405,9 +499,9 @@ export function validateRefs(
 
 /**
  * Canvas node shape consumed by partitionRefs. Image / video / audio refs
- * are identified by `data.assetId` (the D1 asset row); text refs read
+ * are identified by `data.assetId` (the stable Project Asset id); text refs read
  * inlined content. Note: `data.src` is intentionally NOT in this contract —
- * the asset row is the source of truth and the server resolves R2 keys.
+ * Project Asset identity is the source of truth and the Host resolves Resources.
  */
 export interface RefNodeLike {
   type?: string;
@@ -418,18 +512,20 @@ export interface RefNodeLike {
     assetId?: string;
     outputVideoAssetId?: string;
     directorReferencePacket?: DirectorReferencePacket | unknown;
-    directorShotReferencePackets?: ReadonlyArray<DirectorReferencePacket | unknown>;
+    directorShotReferencePackets?: ReadonlyArray<
+      DirectorReferencePacket | unknown
+    >;
   } & Record<string, unknown>;
 }
 
 export interface RefPartition {
   /** Text refs: full content strings, inlined into the prompt. */
   texts: string[];
-  /** Image refs: D1 asset IDs. Server resolves to R2 keys. */
+  /** Image refs: stable Project Asset ids. The Host resolves Resource projections. */
   imageAssetIds: string[];
-  /** Video refs: D1 asset IDs. */
+  /** Video refs: stable Project Asset ids. */
   videoAssetIds: string[];
-  /** Audio refs: D1 asset IDs. */
+  /** Audio refs: stable Project Asset ids. */
   audioAssetIds: string[];
 }
 
@@ -443,10 +539,10 @@ export interface RefPartition {
  */
 export function referenceModality(node: RefNodeLike): Modality | undefined {
   if (
-    node.type === "text"
-    || node.type === "image"
-    || node.type === "video"
-    || node.type === "audio"
+    node.type === "text" ||
+    node.type === "image" ||
+    node.type === "video" ||
+    node.type === "audio"
   ) {
     return node.type;
   }
@@ -456,12 +552,14 @@ export function referenceModality(node: RefNodeLike): Modality | undefined {
 
 /** Return the registered project asset carried by a reference node. */
 export function referenceAssetId(node: RefNodeLike): string | undefined {
-  const packet = node.type === "director-stage"
-    ? directorReferencePackets(node)[0]
-    : undefined;
-  const value = node.type === "director-stage"
-    ? packet?.referenceVideo.assetId ?? node.data?.outputVideoAssetId
-    : node.data?.assetId;
+  const packet =
+    node.type === "director-stage"
+      ? directorReferencePackets(node)[0]
+      : undefined;
+  const value =
+    node.type === "director-stage"
+      ? (packet?.referenceVideo.assetId ?? node.data?.outputVideoAssetId)
+      : node.data?.assetId;
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
@@ -493,8 +591,8 @@ export function hasDirectorReferenceOutput(node: RefNodeLike): boolean {
   const packet = directorReferencePacket(node);
   if (packet?.referenceVideo.assetId) return true;
   return Boolean(
-    typeof node.data?.outputVideoAssetId === "string"
-    && node.data.outputVideoAssetId.trim(),
+    typeof node.data?.outputVideoAssetId === "string" &&
+    node.data.outputVideoAssetId.trim(),
   );
 }
 
@@ -504,14 +602,14 @@ function selectDirectorReferenceStillAssetIds(
 ): string[] {
   const stills = [...packet.referenceStills].sort(
     (left, right) =>
-      (left.timeSeconds ?? 0) - (right.timeSeconds ?? 0)
-      || left.assetId.localeCompare(right.assetId),
+      (left.timeSeconds ?? 0) - (right.timeSeconds ?? 0) ||
+      left.assetId.localeCompare(right.assetId),
   );
   if (stills.length <= maximum) return stills.map((still) => still.assetId);
   if (maximum <= 0) return [];
   if (maximum === 1) return [stills[0]!.assetId];
   const indexes = Array.from({ length: maximum }, (_, index) =>
-    Math.round(index * (stills.length - 1) / (maximum - 1)),
+    Math.round((index * (stills.length - 1)) / (maximum - 1)),
   );
   return [...new Set(indexes.map((index) => stills[index]!.assetId))];
 }
@@ -554,7 +652,9 @@ export function partitionRefs(
     }
     const modality = referenceModality(n);
     if (modality === "text" && cap.ref.text.accepts) {
-      const text = normalizePromptInput(n.data?.content ?? n.data?.prompt ?? n.data?.label).trim();
+      const text = normalizePromptInput(
+        n.data?.content ?? n.data?.prompt ?? n.data?.label,
+      ).trim();
       if (text) out.texts.push(text);
       continue;
     }
@@ -589,9 +689,12 @@ export function findCompatibleModels(opts: {
 }): ModelCard[] {
   const sameKind = opts.cards.filter((card) => card.kind === opts.outputKind);
   if (opts.referenceCounts) {
-    return sameKind.filter((card) => validateRefs(card, opts.referenceCounts!, {
-      enforceMinimums: opts.enforceMinimums,
-    }) === null);
+    return sameKind.filter(
+      (card) =>
+        validateRefs(card, opts.referenceCounts!, {
+          enforceMinimums: opts.enforceMinimums,
+        }) === null,
+    );
   }
   if (!opts.sourceKind) return sameKind;
   const sourceKind = opts.sourceKind;
@@ -616,5 +719,8 @@ export function pickDefaultModel(opts: {
   // difference between speaking and composing is parameters -- so the filter went, and what it was
   // really expressing, a preference for a provider we run ourselves, stayed and now applies
   // everywhere rather than to audio alone.
-  return compatible.find((card) => card.availableProviders?.includes("official")) ?? compatible[0];
+  return (
+    compatible.find((card) => card.availableProviders?.includes("official")) ??
+    compatible[0]
+  );
 }

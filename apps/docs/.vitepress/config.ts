@@ -20,6 +20,10 @@ export default defineConfig({
           items: [
             { text: "Getting Started", link: "/guide/getting-started" },
             { text: "Architecture", link: "/guide/architecture" },
+            {
+              text: "Durable Run Protocol",
+              link: "/guide/durable-run-protocol",
+            },
             { text: "Asset System", link: "/guide/asset-system" },
             { text: "Build Architecture", link: "/guide/build-architecture" },
             {

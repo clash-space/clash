@@ -33,7 +33,7 @@ function actionPackage(version: string, prefix = ""): HostExecutablePluginPackag
       runtime: { kind: "local", transport: "stdio", language: "node", entrypoint },
       contributes: {
         cards: [{ id, kind: "action-card", path: cardPath }],
-        functions: [{ id, kind: "action", handler: "run" }],
+        functions: [{ id, kind: "action" }],
       },
       contractTests: [contractPath],
     },

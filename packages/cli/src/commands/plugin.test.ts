@@ -7,7 +7,6 @@ import { join } from "node:path";
 import {
   activateDownloadedActionPackage,
   checkoutExecutablePluginDraft,
-  customActionSecretHint,
   pluginCommand,
   rollbackDownloadedActionPackage,
   scaffoldExecutablePluginDraft,
@@ -38,11 +37,6 @@ function executablePackage(version = "1.0.0") {
   };
 }
 
-test("custom action hints describe the supported credential surfaces", () => {
-  assert.match(customActionSecretHint("local"), /local runtime environment/);
-  assert.match(customActionSecretHint("worker"), /hosted\/remote Settings/);
-});
-
 test("plugin CLI exposes draft and lifecycle commands", () => {
   const commandNames = pluginCommand.commands.map((command) => command.name());
   for (const name of [
@@ -56,7 +50,7 @@ test("plugin CLI exposes draft and lifecycle commands", () => {
   }
 });
 
-test("registry install can fall back to the local marketplace endpoint", async () => {
+test("plugin install delegates to the local marketplace endpoint", async () => {
   const calls: string[] = [];
   const result = await tryInstallLocalMarketplaceAction({
     packageId: "clash.codex-imagegen",
@@ -90,6 +84,20 @@ test("downloaded executable packages are validated before reaching the host", ()
     () =>
       validateDownloadedActionPackage({ ...executablePackage(), files: {} }),
     /entrypoint .* is missing/i,
+  );
+  assert.throws(
+    () =>
+      validateDownloadedActionPackage({
+        id: "legacy-action",
+        manifest: {
+          id: "legacy-action",
+          name: "Legacy Action",
+          runtime: "local",
+          outputType: "text",
+        },
+        files: {},
+      }),
+    /expected a clash\.plugin\/v1 executable plugin/i,
   );
 });
 

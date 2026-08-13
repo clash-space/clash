@@ -15,7 +15,6 @@ import { sunoAudioAdapter } from "./adapters/suno-audio";
 import { klingVideoAdapter } from "./adapters/kling-video";
 import { volcengineVideoAdapter } from "./adapters/modelark-video";
 import { videoRenderAdapter } from "./adapters/render";
-import { customActionAdapter } from "./adapters/custom-action";
 import { textGenAdapter } from "./adapters/text-gen";
 import { googleAgentPlatformTextAdapter } from "./adapters/google-agent-platform-text";
 import { understandAdapter } from "./adapters/understand";
@@ -91,8 +90,6 @@ export function resolveAdapter(params: GenerationParams): GenerationAdapter {
     }
     case "video_render":
       return videoRenderAdapter;
-    case "custom_action":
-      return customActionAdapter;
     case "text_gen":
       return selectedRoute(params).upstreamId === "google-agent-platform"
         ? googleAgentPlatformTextAdapter

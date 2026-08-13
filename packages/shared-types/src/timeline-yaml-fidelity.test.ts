@@ -19,18 +19,19 @@ describe("Timeline YAML full-state fidelity", () => {
           words: [{ id: "w1", text: "hello", startMs: 0, endMs: 500 }],
         },
       },
-      mediaAssetRefs: [{ assetId: "speech" }],
       "x-project-extension": { keep: true },
-      tracks: [{
-        id: "voice",
-        name: "Voice",
-        role: "narration",
-        category: "audio" as const,
-        hidden: false,
-        locked: false,
-        "x-track-extension": { keep: true },
-        items: [],
-      }],
+      tracks: [
+        {
+          id: "voice",
+          name: "Voice",
+          role: "narration",
+          category: "audio" as const,
+          hidden: false,
+          locked: false,
+          "x-track-extension": { keep: true },
+          items: [],
+        },
+      ],
     };
 
     const parsed = timelineDslFromYaml(timelineDslToYaml(state as any));

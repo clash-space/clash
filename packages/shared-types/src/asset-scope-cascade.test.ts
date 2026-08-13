@@ -80,17 +80,7 @@ describe("asset scope cascade", () => {
         },
         target,
       }),
-    ).toEqual([
-      {
-        kind: "ensure-timeline-input",
-        timelineId: "cut",
-        assetId: "asset-1",
-        via: "canvas-edge",
-        canvasId: "main",
-        actionNodeId: "editor",
-        sourceNodeId: "image-node",
-      },
-    ]);
+    ).toEqual([]);
     expect(() =>
       planAssetScopeCascade({
         source: {
@@ -123,20 +113,11 @@ describe("asset scope cascade", () => {
       {
         kind: "ensure-canvas-placement",
         canvasId: "main",
-        assetId: "asset-global",
-      },
-      {
-        kind: "ensure-timeline-input",
-        timelineId: "cut",
-        assetId: "asset-global",
-        via: "canvas-edge",
-        canvasId: "main",
-        actionNodeId: "editor",
       },
     ]);
   });
 
-  it("uses a direct Timeline reference when the Timeline is Project-owned", () => {
+  it("leaves the Timeline binding to the item insertion mutation", () => {
     const target = {
       kind: "timeline" as const,
       timelineId: "standalone",
@@ -148,14 +129,7 @@ describe("asset scope cascade", () => {
         source: { kind: "project", assetId: "asset-1" },
         target,
       }),
-    ).toEqual([
-      {
-        kind: "ensure-timeline-input",
-        timelineId: "standalone",
-        assetId: "asset-1",
-        via: "timeline-reference",
-      },
-    ]);
+    ).toEqual([]);
   });
 
   it("never promotes a local upload into the global library", () => {

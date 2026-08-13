@@ -2,7 +2,7 @@
   "name": "@clash/mcp-server",
   "version": "0.1.0",
   "private": true,
-  "description": "Canvas peer capability surface for the bundled Clash plugin MCP",
+  "description": "Project Asset and Canvas peer capability surface for the bundled Clash plugin MCP",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -25,8 +25,8 @@
   "scripts": {
     "build": "tsup && esbuild src/canvas-app-client.ts --bundle --minify --format=esm --target=es2022 --outfile=dist/canvas-app-client.js && esbuild src/studio-app-client.ts --bundle --minify --format=esm --target=es2022 --outfile=dist/studio-app-client.js",
     "lint": "tsc --noEmit",
-    "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test src/*.test.ts",
+    "typecheck": "tsc --noEmit --project tsconfig.dev.json",
+    "test": "TSX_TSCONFIG_PATH=tsconfig.dev.json node --import tsx --test src/*.test.ts",
     "clean": "rm -rf dist"
   },
   "dependencies": {

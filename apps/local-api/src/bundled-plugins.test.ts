@@ -125,7 +125,7 @@ it("installs and recoverably uninstalls Codex ImageGen from the local marketplac
     '  const message = JSON.parse(line);',
     '  process.stdout.write(JSON.stringify({ protocol: "clash.plugin.result/v1",',
     '    invocationId: message.invocationId, status: "failed",',
-    '    error: { code: "contract-placeholder", message: "placeholder", retryable: false } }) + "\\n");',
+    '    error: { code: "contract_violation", message: "placeholder", retryable: false, requestState: "rejected" } }) + "\\n");',
     '});',
   ].join("\n"));
   await writeFile(join(source, "contract-tests", "generate-image.json"), JSON.stringify({
@@ -136,9 +136,10 @@ it("installs and recoverably uninstalls Codex ImageGen from the local marketplac
     expect: {
       status: "failed",
       error: {
-        code: "contract-placeholder",
+        code: "contract_violation",
         message: "placeholder",
         retryable: false,
+        requestState: "rejected",
       },
     },
   }));

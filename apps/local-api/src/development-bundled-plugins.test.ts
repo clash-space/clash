@@ -47,6 +47,9 @@ it("prepares every bundled plugin from workspace source without a manual dist bu
   expect(first.watchRoots["clash.minimax"]).toContain(
     join(workspaceRoot, "packages", "action-sdk", "src"),
   );
+  expect(first.watchRoots["clash.minimax"]).toContain(
+    join(workspaceRoot, "packages", "shared-runtime", "src"),
+  );
   expect(first.watchRoots["clash.volcengine"]).toContain(
     join(workspaceRoot, "packages", "action-sdk", "src"),
   );

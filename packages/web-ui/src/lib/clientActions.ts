@@ -18,7 +18,8 @@ import type {
 
 // ───────── Types (mirror server-side shapes) ─────────
 
-export type CommandType = "ADD_NODE" | "ADD_EDGE" | "UPDATE_NODE" | "DELETE_NODE";
+export type CommandType =
+  "ADD_NODE" | "ADD_EDGE" | "UPDATE_NODE" | "DELETE_NODE";
 export interface Command {
   type: CommandType;
   payload: unknown;
@@ -134,10 +135,7 @@ export interface RegistryItem {
 
 // ───────── Helpers ─────────
 
-async function jsonFetch<T>(
-  input: string,
-  init: RequestInit = {},
-): Promise<T> {
+async function jsonFetch<T>(input: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(runtimeApiUrl(input), {
     credentials: "include",
     headers: { "content-type": "application/json", ...(init.headers ?? {}) },
@@ -167,32 +165,53 @@ export async function persistRuntimeRunPreferences(
   runtimeId: string,
   update: RuntimeRunPreferenceUpdate,
 ): Promise<void> {
-  await jsonFetch(`/api/v1/runtimes/${encodeURIComponent(runtimeId)}/preferences`, {
-    method: "PUT",
-    body: JSON.stringify({
-      agent_id: update.agentId,
-      ...(update.configValues ? { config_values: update.configValues } : {}),
-      ...(update.modeId ? { mode_id: update.modeId } : {}),
-    }),
-  });
+  await jsonFetch(
+    `/api/v1/runtimes/${encodeURIComponent(runtimeId)}/preferences`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        agent_id: update.agentId,
+        ...(update.configValues ? { config_values: update.configValues } : {}),
+        ...(update.modeId ? { mode_id: update.modeId } : {}),
+      }),
+    },
+  );
 }
 
-export async function createProject(prompt: string, options: CreateProjectOptions = {}): Promise<void> {
+export async function createProject(
+  prompt: string,
+  options: CreateProjectOptions = {},
+): Promise<void> {
   const { id } = await jsonFetch<{ id: string }>("/api/v1/projects", {
     method: "POST",
     body: JSON.stringify({ name: prompt }),
   });
   if (typeof window !== "undefined") {
     const shouldStartFromPrompt = options.startFromPrompt ?? true;
-    const suffix = shouldStartFromPrompt ? `?prompt=${encodeURIComponent(prompt)}` : "";
+    const suffix = shouldStartFromPrompt
+      ? `?prompt=${encodeURIComponent(prompt)}`
+      : "";
     window.location.assign(`/projects/${id}${suffix}`);
   }
 }
 
-export async function updateProjectName(id: string, name: string): Promise<void> {
+export async function updateProjectName(
+  id: string,
+  name: string,
+): Promise<void> {
   await jsonFetch(`/api/v1/projects/${id}`, {
     method: "PATCH",
     body: JSON.stringify({ name }),
+  });
+}
+
+export async function updateProjectCover(
+  id: string,
+  coverAssetId: string | null,
+): Promise<void> {
+  await jsonFetch(`/api/v1/projects/${encodeURIComponent(id)}/cover`, {
+    method: "PUT",
+    body: JSON.stringify({ coverAssetId }),
   });
 }
 
@@ -241,18 +260,25 @@ export async function deleteVariable(id: string): Promise<void> {
 
 // ───────── Settings: Model providers ─────────
 
-export async function listModelProviders(): Promise<ModelProviderAccountInfo[]> {
-  const data = await jsonFetch<{ providers: ModelProviderAccountInfo[] }>("/api/v1/model-providers");
+export async function listModelProviders(): Promise<
+  ModelProviderAccountInfo[]
+> {
+  const data = await jsonFetch<{ providers: ModelProviderAccountInfo[] }>(
+    "/api/v1/model-providers",
+  );
   return data.providers;
 }
 
 export async function updateModelProviders(
   providers: ModelProviderAccountInfo[],
 ): Promise<ModelProviderAccountInfo[]> {
-  const data = await jsonFetch<{ providers: ModelProviderAccountInfo[] }>("/api/v1/model-providers", {
-    method: "PATCH",
-    body: JSON.stringify({ providers }),
-  });
+  const data = await jsonFetch<{ providers: ModelProviderAccountInfo[] }>(
+    "/api/v1/model-providers",
+    {
+      method: "PATCH",
+      body: JSON.stringify({ providers }),
+    },
+  );
   return data.providers;
 }
 
@@ -263,7 +289,9 @@ export async function deleteModelProvider(accountId: string): Promise<void> {
 }
 
 export async function listModelCatalog(): Promise<ModelCatalogEntryInfo[]> {
-  const data = await jsonFetch<{ models: ModelCatalogEntryInfo[] }>("/api/v1/models/catalog");
+  const data = await jsonFetch<{ models: ModelCatalogEntryInfo[] }>(
+    "/api/v1/models/catalog",
+  );
   return data.models;
 }
 
@@ -318,20 +346,31 @@ export async function testModelProvider(input: {
 }
 
 export async function listProviderOAuth(): Promise<ProviderOAuthInfo[]> {
-  const data = await jsonFetch<{ providers: ProviderOAuthInfo[] }>("/api/v1/provider-oauth");
+  const data = await jsonFetch<{ providers: ProviderOAuthInfo[] }>(
+    "/api/v1/provider-oauth",
+  );
   return data.providers;
 }
 
 export async function listPluginProviders(): Promise<PluginProviderInfo[]> {
-  const data = await jsonFetch<{ providers: PluginProviderInfo[] }>("/api/v1/plugin-providers");
+  const data = await jsonFetch<{ providers: PluginProviderInfo[] }>(
+    "/api/v1/plugin-providers",
+  );
   return data.providers;
 }
 
-export async function startProviderOAuth(providerId: string, accountId?: string, accountLabel?: string): Promise<ProviderOAuthInfo> {
-  return jsonFetch(`/api/v1/provider-oauth/${encodeURIComponent(providerId)}/start`, {
-    method: "POST",
-    body: JSON.stringify({ accountId, accountLabel }),
-  });
+export async function startProviderOAuth(
+  providerId: string,
+  accountId?: string,
+  accountLabel?: string,
+): Promise<ProviderOAuthInfo> {
+  return jsonFetch(
+    `/api/v1/provider-oauth/${encodeURIComponent(providerId)}/start`,
+    {
+      method: "POST",
+      body: JSON.stringify({ accountId, accountLabel }),
+    },
+  );
 }
 
 export async function completeProviderOAuth(
@@ -340,10 +379,13 @@ export async function completeProviderOAuth(
   accountId?: string,
   callbackUrl?: string,
 ): Promise<ProviderOAuthInfo> {
-  return jsonFetch(`/api/v1/provider-oauth/${encodeURIComponent(providerId)}/complete`, {
-    method: "POST",
-    body: JSON.stringify({ accountId, deviceCode, callbackUrl }),
-  });
+  return jsonFetch(
+    `/api/v1/provider-oauth/${encodeURIComponent(providerId)}/complete`,
+    {
+      method: "POST",
+      body: JSON.stringify({ accountId, deviceCode, callbackUrl }),
+    },
+  );
 }
 
 export async function importLocalProviderToken(
@@ -351,10 +393,13 @@ export async function importLocalProviderToken(
   accountId?: string,
   accountLabel?: string,
 ): Promise<ProviderOAuthInfo> {
-  return jsonFetch(`/api/v1/provider-oauth/${encodeURIComponent(providerId)}/import-local`, {
-    method: "POST",
-    body: JSON.stringify({ accountId, accountLabel }),
-  });
+  return jsonFetch(
+    `/api/v1/provider-oauth/${encodeURIComponent(providerId)}/import-local`,
+    {
+      method: "POST",
+      body: JSON.stringify({ accountId, accountLabel }),
+    },
+  );
 }
 
 // ───────── Settings: Installed actions ─────────
@@ -411,11 +456,16 @@ export async function fetchRegistry(): Promise<RegistryData> {
   return jsonFetch("/api/marketplace/registry");
 }
 
-export async function marketplaceInstallAction(item: RegistryItem): Promise<void> {
+export async function marketplaceInstallAction(
+  item: RegistryItem,
+): Promise<void> {
   if (item.packageId) {
-    await jsonFetch(`/api/marketplace/actions/${encodeURIComponent(item.packageId)}/install`, {
-      method: "POST",
-    });
+    await jsonFetch(
+      `/api/marketplace/actions/${encodeURIComponent(item.packageId)}/install`,
+      {
+        method: "POST",
+      },
+    );
     return;
   }
   await installAction({
@@ -438,24 +488,39 @@ export async function marketplaceInstallAction(item: RegistryItem): Promise<void
   });
 }
 
-export async function marketplaceUninstallAction(item: RegistryItem): Promise<void> {
+export async function marketplaceUninstallAction(
+  item: RegistryItem,
+): Promise<void> {
   if (item.packageId) {
-    await jsonFetch(`/api/marketplace/actions/${encodeURIComponent(item.packageId)}/install`, {
-      method: "DELETE",
-    });
+    await jsonFetch(
+      `/api/marketplace/actions/${encodeURIComponent(item.packageId)}/install`,
+      {
+        method: "DELETE",
+      },
+    );
     return;
   }
   await uninstallAction(item.id);
 }
 
-export async function marketplaceInstallSkill(item: RegistryItem): Promise<void> {
-  await jsonFetch(`/api/marketplace/skills/${encodeURIComponent(item.id)}/install`, {
-    method: "POST",
-  });
+export async function marketplaceInstallSkill(
+  item: RegistryItem,
+): Promise<void> {
+  await jsonFetch(
+    `/api/marketplace/skills/${encodeURIComponent(item.id)}/install`,
+    {
+      method: "POST",
+    },
+  );
 }
 
-export async function marketplaceUninstallSkill(skillId: string): Promise<void> {
-  await jsonFetch(`/api/marketplace/skills/${encodeURIComponent(skillId)}/install`, {
-    method: "DELETE",
-  });
+export async function marketplaceUninstallSkill(
+  skillId: string,
+): Promise<void> {
+  await jsonFetch(
+    `/api/marketplace/skills/${encodeURIComponent(skillId)}/install`,
+    {
+      method: "DELETE",
+    },
+  );
 }

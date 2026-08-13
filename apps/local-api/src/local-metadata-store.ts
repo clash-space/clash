@@ -1,7 +1,11 @@
 import { createRequire } from "node:module";
 import { chmod, mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { TextAppliedRevision } from "@clash/shared-types";
+import {
+  GlobalAssetEntrySchema,
+  type GlobalAssetEntry,
+  type TextAppliedRevision,
+} from "@clash/shared-types";
 import type { Asset, AssetKind, AssetRefRow } from "@clash/shared-types/assets";
 
 type SqlitePrimitive = string | number | null;
@@ -148,6 +152,17 @@ export interface LocalMetadataDb {
   sessionMessages: LocalMetadataSessionMessage[];
 }
 
+export interface LocalMetadataSaveOptions {
+  /**
+   * Explicit one-way migration/import boundary for pre-authority Asset rows.
+   *
+   * Product writes must leave this unset. Legacy Asset rows are read-only input after the
+   * Project Asset authority cutover; the opt-in exists only so an importer (and its fixtures) can
+   * install an old snapshot before materialization.
+   */
+  replaceLegacyAssetMigrationInput?: boolean;
+}
+
 const EMPTY_METADATA_DB: LocalMetadataDb = {
   projects: [],
   assets: [],
@@ -276,6 +291,24 @@ function applySchema(db: SqliteDatabase): void {
       PRIMARY KEY (asset_id, user_id)
     );
 
+    CREATE TABLE IF NOT EXISTS global_asset_entry (
+      library_id TEXT NOT NULL,
+      id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      resource_id TEXT NOT NULL,
+      lifecycle_state TEXT NOT NULL,
+      delete_operation_id TEXT,
+      deleted_at TEXT,
+      purge_after TEXT,
+      purged_at TEXT,
+      name TEXT,
+      metadata_json TEXT NOT NULL,
+      provenance_json TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (library_id, id)
+    );
+
     CREATE TABLE IF NOT EXISTS asset_node_refs (
       asset_id TEXT NOT NULL,
       project_id TEXT NOT NULL,
@@ -374,6 +407,8 @@ function applySchema(db: SqliteDatabase): void {
     CREATE INDEX IF NOT EXISTS assets_task_idx ON assets(source_task_id);
     CREATE INDEX IF NOT EXISTS assets_project_idx ON assets(project_id, created_at);
     CREATE INDEX IF NOT EXISTS asset_refs_project_idx ON asset_refs(project_id, imported_at);
+    CREATE INDEX IF NOT EXISTS global_asset_entry_library_idx
+      ON global_asset_entry(library_id, updated_at DESC, id);
     CREATE INDEX IF NOT EXISTS asset_node_refs_asset_idx ON asset_node_refs(asset_id, project_id);
     CREATE INDEX IF NOT EXISTS asset_node_refs_project_idx ON asset_node_refs(project_id, node_id);
     CREATE INDEX IF NOT EXISTS text_revisions_project_node_idx ON text_revisions(project_id, node_id, created_at DESC);
@@ -644,6 +679,60 @@ function sameTextRevision(
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function globalAssetEntryFromRow(
+  row: Record<string, unknown>,
+): GlobalAssetEntry {
+  const lifecycleState = rowString(row, "lifecycle_state");
+  const deleteOperationId = rowOptionalString(row, "delete_operation_id");
+  const deletedAt = rowOptionalString(row, "deleted_at");
+  const purgeAfter = rowOptionalString(row, "purge_after");
+  const purgedAt = rowOptionalString(row, "purged_at");
+  const lifecycle =
+    lifecycleState === "active"
+      ? { state: "active" as const }
+      : lifecycleState === "trashed"
+        ? {
+            state: "trashed" as const,
+            deleteOperationId,
+            deletedAt,
+            purgeAfter,
+          }
+        : lifecycleState === "purged"
+          ? {
+              state: "purged" as const,
+              deleteOperationId,
+              deletedAt,
+              purgedAt,
+            }
+          : { state: lifecycleState };
+  const parsed = GlobalAssetEntrySchema.safeParse({
+    id: rowString(row, "id"),
+    kind: rowString(row, "kind"),
+    resourceId: rowString(row, "resource_id"),
+    lifecycle,
+    ...(rowOptionalString(row, "name")
+      ? { name: rowOptionalString(row, "name") }
+      : {}),
+    metadata: parseJson(row.metadata_json, null),
+    ...(rowOptionalString(row, "provenance_json")
+      ? { provenance: parseJson(row.provenance_json, null) }
+      : {}),
+  });
+  if (!parsed.success) {
+    throw new Error(
+      `Global Asset authority row is corrupt: ${parsed.error.issues[0]?.message ?? "invalid entry"}`,
+    );
+  }
+  return parsed.data;
+}
+
+function sameGlobalAssetEntry(
+  left: GlobalAssetEntry,
+  right: GlobalAssetEntry,
+): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 function hasRows(db: SqliteDatabase): boolean {
   const row = db
     .prepare(
@@ -653,6 +742,7 @@ function hasRows(db: SqliteDatabase): boolean {
       (SELECT COUNT(*) FROM assets) +
       (SELECT COUNT(*) FROM asset_refs) +
       (SELECT COUNT(*) FROM asset_node_refs) +
+      (SELECT COUNT(*) FROM global_asset_entry) +
       (SELECT COUNT(*) FROM text_revisions) +
       (SELECT COUNT(*) FROM runtime_session) +
       (SELECT COUNT(*) FROM agent_member) +
@@ -966,17 +1056,22 @@ export function createLocalMetadataStore(dataDir: string) {
     return loaded ?? structuredClone(EMPTY_METADATA_DB);
   }
 
-  async function save(metadata: LocalMetadataDb): Promise<void> {
+  async function save(
+    metadata: LocalMetadataDb,
+    options: LocalMetadataSaveOptions = {},
+  ): Promise<void> {
     await withDb((db) => {
       db.exec("BEGIN IMMEDIATE");
       try {
         db.prepare("DELETE FROM chat_message").run();
         db.prepare("DELETE FROM agent_member").run();
         db.prepare("DELETE FROM runtime_session").run();
-        db.prepare("DELETE FROM asset_node_refs").run();
-        db.prepare("DELETE FROM asset_refs").run();
-        db.prepare("DELETE FROM asset_library_refs").run();
-        db.prepare("DELETE FROM assets").run();
+        if (options.replaceLegacyAssetMigrationInput) {
+          db.prepare("DELETE FROM asset_node_refs").run();
+          db.prepare("DELETE FROM asset_refs").run();
+          db.prepare("DELETE FROM asset_library_refs").run();
+          db.prepare("DELETE FROM assets").run();
+        }
         db.prepare("DELETE FROM project_preview_asset").run();
         db.prepare("DELETE FROM project").run();
 
@@ -1011,64 +1106,66 @@ export function createLocalMetadataStore(dataDir: string) {
           });
         }
 
-        const insertAsset = db.prepare(`
-          INSERT INTO assets (
-            id, user_id, kind, src_r2_key, cover_r2_key, metadata,
-            source_model, source_prompt, source_task_id, sources, signed_url,
-            signed_url_exp, created_at, updated_at, project_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        for (const asset of metadata.assets) {
-          insertAsset.run(
-            asset.id,
-            asset.userId,
-            asset.kind,
-            asset.srcR2Key,
-            asset.coverR2Key ?? null,
-            jsonOrNull(asset.metadata),
-            asset.sourceModel ?? null,
-            asset.sourcePrompt ?? null,
-            asset.sourceTaskId ?? null,
-            jsonOrNull(asset.sources),
-            asset.signedUrl ?? null,
-            asset.signedUrlExp ?? null,
-            asset.createdAt,
-            asset.updatedAt,
-            asset.projectId ?? null,
-          );
-        }
+        if (options.replaceLegacyAssetMigrationInput) {
+          const insertAsset = db.prepare(`
+            INSERT INTO assets (
+              id, user_id, kind, src_r2_key, cover_r2_key, metadata,
+              source_model, source_prompt, source_task_id, sources, signed_url,
+              signed_url_exp, created_at, updated_at, project_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `);
+          for (const asset of metadata.assets) {
+            insertAsset.run(
+              asset.id,
+              asset.userId,
+              asset.kind,
+              asset.srcR2Key,
+              asset.coverR2Key ?? null,
+              jsonOrNull(asset.metadata),
+              asset.sourceModel ?? null,
+              asset.sourcePrompt ?? null,
+              asset.sourceTaskId ?? null,
+              jsonOrNull(asset.sources),
+              asset.signedUrl ?? null,
+              asset.signedUrlExp ?? null,
+              asset.createdAt,
+              asset.updatedAt,
+              asset.projectId ?? null,
+            );
+          }
 
-        const insertAssetRef = db.prepare(`
-          INSERT OR REPLACE INTO asset_refs (asset_id, project_id, imported_at)
-          VALUES (?, ?, ?)
-        `);
-        for (const ref of metadata.assetRefs) {
-          insertAssetRef.run(ref.assetId, ref.projectId, ref.importedAt);
-        }
+          const insertAssetRef = db.prepare(`
+            INSERT OR REPLACE INTO asset_refs (asset_id, project_id, imported_at)
+            VALUES (?, ?, ?)
+          `);
+          for (const ref of metadata.assetRefs) {
+            insertAssetRef.run(ref.assetId, ref.projectId, ref.importedAt);
+          }
 
-        const insertLibraryAssetRef = db.prepare(`
-          INSERT OR REPLACE INTO asset_library_refs (asset_id, user_id, added_at)
-          VALUES (?, ?, ?)
-        `);
-        for (const ref of metadata.libraryAssetRefs ?? []) {
-          insertLibraryAssetRef.run(ref.assetId, ref.userId, ref.addedAt);
-        }
+          const insertLibraryAssetRef = db.prepare(`
+            INSERT OR REPLACE INTO asset_library_refs (asset_id, user_id, added_at)
+            VALUES (?, ?, ?)
+          `);
+          for (const ref of metadata.libraryAssetRefs ?? []) {
+            insertLibraryAssetRef.run(ref.assetId, ref.userId, ref.addedAt);
+          }
 
-        const insertAssetNodeRef = db.prepare(`
-          INSERT OR REPLACE INTO asset_node_refs (
-            asset_id, project_id, node_id, node_type, field_path, reference_role, observed_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        `);
-        for (const ref of metadata.assetNodeRefs) {
-          insertAssetNodeRef.run(
-            ref.assetId,
-            ref.projectId,
-            ref.nodeId,
-            ref.nodeType,
-            ref.fieldPath,
-            ref.referenceRole,
-            ref.observedAt,
-          );
+          const insertAssetNodeRef = db.prepare(`
+            INSERT OR REPLACE INTO asset_node_refs (
+              asset_id, project_id, node_id, node_type, field_path, reference_role, observed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          `);
+          for (const ref of metadata.assetNodeRefs) {
+            insertAssetNodeRef.run(
+              ref.assetId,
+              ref.projectId,
+              ref.nodeId,
+              ref.nodeType,
+              ref.fieldPath,
+              ref.referenceRole,
+              ref.observedAt,
+            );
+          }
         }
 
         const insertSession = db.prepare(`
@@ -1135,48 +1232,108 @@ export function createLocalMetadataStore(dataDir: string) {
     });
   }
 
-  async function upsertAsset(
-    asset: Asset & { projectId?: string },
-    ref: AssetRefRow,
-    auditRecord?: LocalMutationAuditRecord,
-  ): Promise<void> {
-    await withDb((db) => {
+  function globalAssetRow(
+    db: SqliteDatabase,
+    libraryId: string,
+    id: string,
+  ): Record<string, unknown> | undefined {
+    return db
+      .prepare(
+        `
+      SELECT library_id, id, kind, resource_id, lifecycle_state,
+             delete_operation_id, deleted_at, purge_after, purged_at,
+             name, metadata_json, provenance_json
+        FROM global_asset_entry
+       WHERE library_id = ? AND id = ?
+    `,
+      )
+      .get(libraryId, id);
+  }
+
+  function normalizedGlobalIdentity(value: string, label: string): string {
+    const normalized = value.trim();
+    if (!normalized) throw new Error(`${label} must not be empty.`);
+    return normalized;
+  }
+
+  async function readGlobalAsset(
+    libraryIdInput: string,
+    idInput: string,
+  ): Promise<GlobalAssetEntry | null> {
+    const libraryId = normalizedGlobalIdentity(libraryIdInput, "libraryId");
+    const id = normalizedGlobalIdentity(idInput, "globalAssetId");
+    return withDb((db) => {
+      const row = globalAssetRow(db, libraryId, id);
+      return row ? globalAssetEntryFromRow(row) : null;
+    });
+  }
+
+  async function listGlobalAssets(
+    libraryIdInput: string,
+  ): Promise<GlobalAssetEntry[]> {
+    const libraryId = normalizedGlobalIdentity(libraryIdInput, "libraryId");
+    return withDb((db) =>
+      db
+        .prepare(
+          `
+      SELECT library_id, id, kind, resource_id, lifecycle_state,
+             delete_operation_id, deleted_at, purge_after, purged_at,
+             name, metadata_json, provenance_json
+        FROM global_asset_entry
+       WHERE library_id = ?
+       ORDER BY id
+    `,
+        )
+        .all(libraryId)
+        .map(globalAssetEntryFromRow),
+    );
+  }
+
+  async function createGlobalAsset(
+    libraryIdInput: string,
+    rawEntry: GlobalAssetEntry,
+  ): Promise<GlobalAssetEntry> {
+    const libraryId = normalizedGlobalIdentity(libraryIdInput, "libraryId");
+    const entry = GlobalAssetEntrySchema.parse(rawEntry);
+    if (entry.lifecycle.state !== "active") {
+      throw new Error("A new Global Asset must be active.");
+    }
+    return withDb((db) => {
       db.exec("BEGIN IMMEDIATE");
       try {
+        const existingRow = globalAssetRow(db, libraryId, entry.id);
+        if (existingRow) {
+          const existing = globalAssetEntryFromRow(existingRow);
+          if (!sameGlobalAssetEntry(existing, entry)) {
+            throw new Error(
+              `Global Asset ${entry.id} already exists with different facts in library ${libraryId}.`,
+            );
+          }
+          db.exec("COMMIT");
+          return existing;
+        }
+        const now = Date.now();
         db.prepare(
           `
-          INSERT OR REPLACE INTO assets (
-            id, user_id, kind, src_r2_key, cover_r2_key, metadata,
-            source_model, source_prompt, source_task_id, sources, signed_url,
-            signed_url_exp, created_at, updated_at, project_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO global_asset_entry (
+            library_id, id, kind, resource_id, lifecycle_state,
+            name, metadata_json, provenance_json, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
         `,
         ).run(
-          asset.id,
-          asset.userId,
-          asset.kind,
-          asset.srcR2Key,
-          asset.coverR2Key ?? null,
-          jsonOrNull(asset.metadata),
-          asset.sourceModel ?? null,
-          asset.sourcePrompt ?? null,
-          asset.sourceTaskId ?? null,
-          jsonOrNull(asset.sources),
-          asset.signedUrl ?? null,
-          asset.signedUrlExp ?? null,
-          asset.createdAt,
-          asset.updatedAt,
-          asset.projectId ?? null,
+          libraryId,
+          entry.id,
+          entry.kind,
+          entry.resourceId,
+          entry.name ?? null,
+          JSON.stringify(entry.metadata),
+          jsonOrNull(entry.provenance),
+          now,
+          now,
         );
-        db.prepare(
-          `
-          INSERT OR REPLACE INTO asset_refs (asset_id, project_id, imported_at)
-          VALUES (?, ?, ?)
-        `,
-        ).run(ref.assetId, ref.projectId, ref.importedAt);
-        if (auditRecord) insertMutationAudit(db, auditRecord);
         markMigration(db, dataDir, "");
         db.exec("COMMIT");
+        return entry;
       } catch (error) {
         db.exec("ROLLBACK");
         throw error;
@@ -1184,27 +1341,179 @@ export function createLocalMetadataStore(dataDir: string) {
     });
   }
 
-  async function resolveStorageKeys(
-    projectId: string,
-    assetIds: string[],
-  ): Promise<string[]> {
-    if (assetIds.length === 0) return [];
-    const metadata = await load();
-    const projectAssetRefs = new Set(
-      metadata.assetRefs
-        .filter((ref) => ref.projectId === projectId)
-        .map((ref) => ref.assetId),
+  async function trashGlobalAsset(
+    libraryIdInput: string,
+    input: {
+      id: string;
+      deleteOperationId: string;
+      deletedAt: string;
+      purgeAfter: string;
+    },
+  ): Promise<GlobalAssetEntry> {
+    const libraryId = normalizedGlobalIdentity(libraryIdInput, "libraryId");
+    const id = normalizedGlobalIdentity(input.id, "globalAssetId");
+    const deleteOperationId = normalizedGlobalIdentity(
+      input.deleteOperationId,
+      "deleteOperationId",
     );
-    const keys: string[] = [];
-    for (const id of assetIds) {
-      const asset = metadata.assets.find((item) => {
-        if (item.id !== id) return false;
-        if (item.projectId) return item.projectId === projectId;
-        return projectAssetRefs.has(item.id);
-      });
-      if (asset?.srcR2Key) keys.push(asset.srcR2Key);
-    }
-    return keys;
+    const deletedAt = normalizedGlobalIdentity(input.deletedAt, "deletedAt");
+    const purgeAfter = normalizedGlobalIdentity(input.purgeAfter, "purgeAfter");
+    return withDb((db) => {
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const row = globalAssetRow(db, libraryId, id);
+        if (!row)
+          throw new Error(
+            `Global Asset ${id} was not found in library ${libraryId}.`,
+          );
+        const current = globalAssetEntryFromRow(row);
+        if (current.lifecycle.state === "purged") {
+          throw new Error(`Global Asset ${id} has already been purged.`);
+        }
+        const lifecycle = {
+          state: "trashed" as const,
+          deleteOperationId,
+          deletedAt,
+          purgeAfter,
+        };
+        if (current.lifecycle.state === "trashed") {
+          if (JSON.stringify(current.lifecycle) !== JSON.stringify(lifecycle)) {
+            throw new Error(
+              `Global Asset ${id} is already trashed by another operation.`,
+            );
+          }
+          db.exec("COMMIT");
+          return current;
+        }
+        db.prepare(
+          `
+          UPDATE global_asset_entry
+             SET lifecycle_state = 'trashed', delete_operation_id = ?,
+                 deleted_at = ?, purge_after = ?, purged_at = NULL,
+                 updated_at = ?
+           WHERE library_id = ? AND id = ?
+        `,
+        ).run(
+          deleteOperationId,
+          deletedAt,
+          purgeAfter,
+          Date.now(),
+          libraryId,
+          id,
+        );
+        markMigration(db, dataDir, "");
+        db.exec("COMMIT");
+        return { ...current, lifecycle };
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    });
+  }
+
+  async function restoreGlobalAsset(
+    libraryIdInput: string,
+    idInput: string,
+  ): Promise<GlobalAssetEntry> {
+    const libraryId = normalizedGlobalIdentity(libraryIdInput, "libraryId");
+    const id = normalizedGlobalIdentity(idInput, "globalAssetId");
+    return withDb((db) => {
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const row = globalAssetRow(db, libraryId, id);
+        if (!row)
+          throw new Error(
+            `Global Asset ${id} was not found in library ${libraryId}.`,
+          );
+        const current = globalAssetEntryFromRow(row);
+        if (current.lifecycle.state === "purged") {
+          throw new Error(`Global Asset ${id} has already been purged.`);
+        }
+        if (current.lifecycle.state === "active") {
+          db.exec("COMMIT");
+          return current;
+        }
+        db.prepare(
+          `
+          UPDATE global_asset_entry
+             SET lifecycle_state = 'active', delete_operation_id = NULL,
+                 deleted_at = NULL, purge_after = NULL, purged_at = NULL,
+                 updated_at = ?
+           WHERE library_id = ? AND id = ?
+        `,
+        ).run(Date.now(), libraryId, id);
+        markMigration(db, dataDir, "");
+        db.exec("COMMIT");
+        return { ...current, lifecycle: { state: "active" } };
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    });
+  }
+
+  async function purgeGlobalAsset(
+    libraryIdInput: string,
+    input: { id: string; deleteOperationId: string; purgedAt: string },
+  ): Promise<GlobalAssetEntry> {
+    const libraryId = normalizedGlobalIdentity(libraryIdInput, "libraryId");
+    const id = normalizedGlobalIdentity(input.id, "globalAssetId");
+    const deleteOperationId = normalizedGlobalIdentity(
+      input.deleteOperationId,
+      "deleteOperationId",
+    );
+    const purgedAt = normalizedGlobalIdentity(input.purgedAt, "purgedAt");
+    return withDb((db) => {
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const row = globalAssetRow(db, libraryId, id);
+        if (!row)
+          throw new Error(
+            `Global Asset ${id} was not found in library ${libraryId}.`,
+          );
+        const current = globalAssetEntryFromRow(row);
+        if (current.lifecycle.state === "purged") {
+          if (
+            current.lifecycle.deleteOperationId !== deleteOperationId ||
+            current.lifecycle.purgedAt !== purgedAt
+          ) {
+            throw new Error(
+              `Global Asset ${id} was purged by another operation.`,
+            );
+          }
+          db.exec("COMMIT");
+          return current;
+        }
+        if (
+          current.lifecycle.state !== "trashed" ||
+          current.lifecycle.deleteOperationId !== deleteOperationId
+        ) {
+          throw new Error(
+            `Global Asset ${id} must be trashed by ${deleteOperationId} before purge.`,
+          );
+        }
+        const lifecycle = {
+          state: "purged" as const,
+          deleteOperationId,
+          deletedAt: current.lifecycle.deletedAt,
+          purgedAt,
+        };
+        db.prepare(
+          `
+          UPDATE global_asset_entry
+             SET lifecycle_state = 'purged', purge_after = NULL,
+                 purged_at = ?, updated_at = ?
+           WHERE library_id = ? AND id = ?
+        `,
+        ).run(purgedAt, Date.now(), libraryId, id);
+        markMigration(db, dataDir, "");
+        db.exec("COMMIT");
+        return { ...current, lifecycle };
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    });
   }
 
   async function appendMutationAudit(
@@ -1275,12 +1584,14 @@ export function createLocalMetadataStore(dataDir: string) {
     await withDb((db) => {
       db.exec("BEGIN IMMEDIATE");
       try {
-        db.prepare(`
+        db.prepare(
+          `
           INSERT INTO plugin_broker_audit (
             id, occurred_at, plugin_id, plugin_version, project_id,
             invocation_id, request_id, operation, target, status, error
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
+        `,
+        ).run(
           record.id,
           record.occurredAt,
           record.pluginId,
@@ -1317,26 +1628,36 @@ export function createLocalMetadataStore(dataDir: string) {
     }
     params.push(mutationAuditLimit(filter.limit));
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    return withDb((db) => db.prepare(`
+    return withDb((db) =>
+      db
+        .prepare(
+          `
       SELECT id, occurred_at, plugin_id, plugin_version, project_id,
              invocation_id, request_id, operation, target, status, error
         FROM plugin_broker_audit
         ${where}
        ORDER BY occurred_at DESC, id DESC
        LIMIT ?
-    `).all(...params).map((row) => ({
-      id: rowString(row, "id"),
-      occurredAt: rowString(row, "occurred_at"),
-      pluginId: rowString(row, "plugin_id"),
-      pluginVersion: rowString(row, "plugin_version"),
-      projectId: rowString(row, "project_id"),
-      invocationId: rowString(row, "invocation_id"),
-      requestId: rowString(row, "request_id"),
-      operation: rowString(row, "operation"),
-      target: rowString(row, "target"),
-      status: rowString(row, "status") === "ok" ? "ok" as const : "error" as const,
-      error: rowOptionalString(row, "error") ?? null,
-    })));
+    `,
+        )
+        .all(...params)
+        .map((row) => ({
+          id: rowString(row, "id"),
+          occurredAt: rowString(row, "occurred_at"),
+          pluginId: rowString(row, "plugin_id"),
+          pluginVersion: rowString(row, "plugin_version"),
+          projectId: rowString(row, "project_id"),
+          invocationId: rowString(row, "invocation_id"),
+          requestId: rowString(row, "request_id"),
+          operation: rowString(row, "operation"),
+          target: rowString(row, "target"),
+          status:
+            rowString(row, "status") === "ok"
+              ? ("ok" as const)
+              : ("error" as const),
+          error: rowOptionalString(row, "error") ?? null,
+        })),
+    );
   }
 
   async function upsertTextRevision(
@@ -1493,11 +1814,13 @@ export function createLocalMetadataStore(dataDir: string) {
     });
   }
 
-  async function listAssetMetadataIndex(filter: {
-    assetId?: string;
-    metadataKind?: string;
-    projectId?: string;
-  } = {}): Promise<Array<Record<string, unknown>>> {
+  async function listAssetMetadataIndex(
+    filter: {
+      assetId?: string;
+      metadataKind?: string;
+      projectId?: string;
+    } = {},
+  ): Promise<Array<Record<string, unknown>>> {
     return withDb((db) => {
       const conditions: string[] = [];
       const params: SqlitePrimitive[] = [];
@@ -1528,7 +1851,9 @@ export function createLocalMetadataStore(dataDir: string) {
         assetId: row.asset_id,
         metadataKind: row.metadata_kind,
         ...(row.project_id === null ? {} : { projectId: row.project_id }),
-        ...(row.schema_version === null ? {} : { schemaVersion: row.schema_version }),
+        ...(row.schema_version === null
+          ? {}
+          : { schemaVersion: row.schema_version }),
         ...(row.content_hash === null ? {} : { contentHash: row.content_hash }),
         ...(row.body_hash === null ? {} : { bodyHash: row.body_hash }),
         producer: row.producer,
@@ -1545,8 +1870,12 @@ export function createLocalMetadataStore(dataDir: string) {
     path,
     load,
     save,
-    upsertAsset,
-    resolveStorageKeys,
+    readGlobalAsset,
+    listGlobalAssets,
+    createGlobalAsset,
+    trashGlobalAsset,
+    restoreGlobalAsset,
+    purgeGlobalAsset,
     appendMutationAudit,
     listMutationAudit,
     appendPluginBrokerAudit,

@@ -5,7 +5,6 @@ import {
   readFile,
   rename,
   rm,
-  stat,
   writeFile,
 } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -15,7 +14,6 @@ import { fileURLToPath } from "node:url";
 
 import { Canvas } from "@clash/shared-types";
 
-import { assetPathForRead, assetPathForWrite } from "./local-asset-paths.js";
 import { createLocalMetadataStore } from "./local-metadata-store.js";
 import { FileReplicaStore } from "./loro/file-replica-store.js";
 import {
@@ -124,6 +122,14 @@ export interface ProviderLiveTestHarnessOptions extends ProviderTestHarnessCommo
 
 type JsonObject = Record<string, unknown>;
 
+interface PreparedProviderReferenceNode {
+  nodeId: string;
+  assetId: string;
+  kind: ProviderTestReference["kind"];
+  mediaType: string;
+  label: string;
+}
+
 export function normalizeProviderReplayText(value: string): string {
   return value
     .normalize("NFKC")
@@ -226,20 +232,6 @@ async function runProviderTestHarness(
       port: 0,
       dataDir,
       remotePersistence: null,
-      ...(options.traffic.mode === "replay"
-        ? {
-            // An empty explicit recording path masks a developer's shell setting;
-            // the checked-in replay is always the only provider transport here.
-            providerTrafficRecordingPath: "",
-            providerTrafficReplayPath: options.traffic.path,
-          }
-        : {
-            // The generic server recorder labels all executable-plugin calls as
-            // shape=image. The test harness owns the active case and therefore records
-            // submit, poll, and asset download traffic with the real model stub.
-            providerTrafficRecordingPath: "",
-            providerTrafficReplayPath: "",
-          }),
       providerHttpInstrumentation: {
         mode: options.traffic.mode === "live" ? "record" : "replay",
         trafficPath: options.traffic.path,
@@ -288,6 +280,29 @@ async function runProviderTestHarness(
     await command({ action: "create_canvas", canvasId: "main", name: "Main" });
     await configureProviderAccount(origin, options.account);
 
+    // Install every authored reference before any run can leave a polling timer behind. Reference
+    // imports commit through the live ProjectAsset room while Canvas commands commit through the
+    // host-command snapshot surface; interleaving a later case with an earlier run would let a room
+    // compaction race the test's reference-node authoring. The first execution refreshes the room
+    // from this complete committed Project state.
+    const referencesByCase = new Map<string, string[]>();
+    const preparedReferenceNodes: PreparedProviderReferenceNode[] = [];
+    for (const graderCase of options.cases) {
+      const prepared = await importReferenceNodes({
+          origin,
+          projectId,
+          caseId: graderCase.id,
+          refs: graderCase.refs ?? [],
+      });
+      preparedReferenceNodes.push(...prepared);
+      referencesByCase.set(graderCase.id, prepared.map(({ nodeId }) => nodeId));
+    }
+    await createReferenceNodes({
+      dataDir,
+      projectId,
+      references: preparedReferenceNodes,
+    });
+
     const results: ProviderReplayTestCaseResult[] = [];
     for (const graderCase of options.cases) {
       if (options.traffic.mode === "live") {
@@ -297,13 +312,7 @@ async function runProviderTestHarness(
         );
         await writeActiveProviderStub(activeStubPath, activeLiveStub);
       }
-      const refs = await createReferenceNodes({
-        origin,
-        dataDir,
-        projectId,
-        caseId: graderCase.id,
-        refs: graderCase.refs ?? [],
-      });
+      const refs = referencesByCase.get(graderCase.id) ?? [];
       const added = await command<{ node_id: string }>({
         action: "add",
         canvasId: "main",
@@ -317,10 +326,7 @@ async function runProviderTestHarness(
       const executed = await command<{ childNodeId: string }>({
         action: "execute",
         canvasId: "main",
-        nodeId: requiredString(
-          added.node_id,
-          `${graderCase.id} action node id`,
-        ),
+        nodeId: providerTestAddedNodeId(graderCase.id, added),
         providerAccountId: options.account.id,
       });
       const nodeId = providerTestExecutedNodeId(graderCase.id, executed);
@@ -395,61 +401,72 @@ async function configureProviderAccount(
   );
 }
 
-async function createReferenceNodes(options: {
+async function importReferenceNodes(options: {
   origin: string;
-  dataDir: string;
   projectId: string;
   caseId: string;
   refs: readonly ProviderTestReference[];
-}): Promise<string[]> {
-  const replicaStore = new FileReplicaStore(join(options.dataDir, "projects"));
-  const nodeIds: string[] = [];
+}): Promise<PreparedProviderReferenceNode[]> {
+  const references: PreparedProviderReferenceNode[] = [];
   for (const [index, ref] of options.refs.entries()) {
     const nodeId = ref.id ?? `${safeSegment(options.caseId)}-ref-${index}`;
     const originalName =
       ref.originalName ?? `reference-${index}${extensionForReference(ref)}`;
-    const storageKey = [
-      "projects",
-      safeSegment(options.projectId),
-      "provider-replay-test",
-      `${safeSegment(options.caseId)}-${safeSegment(originalName)}`,
-    ].join("/");
-    await writeFile(
-      await assetPathForWrite(options.dataDir, storageKey),
-      ref.bytes,
-    );
-    const asset = await jsonResponse<{ id: string }>(
-      await fetch(`${options.origin}/api/v1/assets`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          projectId: options.projectId,
-          kind: ref.kind,
-          srcR2Key: storageKey,
-          originalName,
-        }),
+    const form = new FormData();
+    form.set(
+      "file",
+      new File([Uint8Array.from(ref.bytes).buffer], originalName, {
+        type: ref.mediaType,
       }),
     );
-    const assetId = requiredString(asset.id, `${nodeId} reference asset id`);
-    await replicaStore.updateSnapshotAtomic(options.projectId, (doc) => {
-      const created = new Canvas(doc, () => {}, "main").createNode(
-        nodeId,
-        ref.kind,
+    form.set("kind", ref.kind);
+    const asset = await jsonResponse<{ id: string }>(
+      await fetch(
+        `${options.origin}/api/v1/projects/${encodeURIComponent(options.projectId)}/assets/import-file`,
         {
-          label: `Reference ${index + 1}`,
+        method: "POST",
+          body: form,
+        },
+      ),
+    );
+    const assetId = requiredString(asset.id, `${nodeId} reference asset id`);
+    references.push({
+      nodeId,
+      assetId,
+      kind: ref.kind,
+      mediaType: ref.mediaType,
+      label: `Reference ${index + 1}`,
+    });
+  }
+  return references;
+}
+
+async function createReferenceNodes(options: {
+  dataDir: string;
+  projectId: string;
+  references: readonly PreparedProviderReferenceNode[];
+}): Promise<void> {
+  if (options.references.length === 0) return;
+  const replicaStore = new FileReplicaStore(join(options.dataDir, "projects"));
+  await replicaStore.updateSnapshotAtomic(options.projectId, (doc) => {
+    const canvas = new Canvas(doc, () => {}, "main");
+    for (const reference of options.references) {
+      const created = canvas.createNode(
+        reference.nodeId,
+        reference.kind,
+        {
+          label: reference.label,
           status: "completed",
-          mediaType: ref.mediaType,
+          mediaType: reference.mediaType,
         },
         null,
         null,
-        assetId,
+        reference.assetId,
       );
       if (created.error) throw new Error(created.error);
-      return { value: undefined };
-    });
-    nodeIds.push(nodeId);
-  }
-  return nodeIds;
+    }
+    return { value: undefined };
+  });
 }
 
 async function waitForCompletedNode(options: {
@@ -555,7 +572,7 @@ async function gradeCompletedNode(options: {
   );
   const asset = await jsonResponse<JsonObject>(
     await fetch(
-      `${options.origin}/api/v1/assets/${encodeURIComponent(assetId)}`,
+      `${options.origin}/api/v1/projects/${encodeURIComponent(options.projectId)}/assets/${encodeURIComponent(assetId)}`,
     ),
   );
   if (asset.kind !== expectedKind) {
@@ -584,27 +601,42 @@ async function gradeCompletedNode(options: {
       `${options.graderCase.id} expected MIME ${options.graderCase.expect.mediaType}, got ${mediaType}`,
     );
   }
-  const storageKey = requiredString(
-    asset.srcR2Key,
-    `${options.graderCase.id} asset storage key`,
+  const mediaUrl = requiredString(
+    asset.url,
+    `${options.graderCase.id} asset media URL`,
   );
-  const filePath = await assetPathForRead(options.dataDir, storageKey);
-  const file = await stat(filePath);
-  if (!file.isFile() || file.size <= 0) {
+  const mediaResponse = await fetch(mediaUrl);
+  if (!mediaResponse.ok) {
+    throw new Error(
+      `${options.graderCase.id} media projection returned ${mediaResponse.status}`,
+    );
+  }
+  const bytes = new Uint8Array(await mediaResponse.arrayBuffer());
+  if (bytes.byteLength <= 0) {
     throw new Error(
       `${options.graderCase.id} did not persist non-empty asset bytes`,
     );
   }
-  const bytes = await readFile(filePath);
   assertProviderMediaFormat(mediaType, bytes);
-  const state = await createLocalMetadataStore(options.dataDir).load();
+  const referenceResult = await jsonResponse<{
+    projectAssetId: string;
+    references: unknown[];
+  }>(
+    await fetch(
+      `${options.origin}/api/v1/projects/${encodeURIComponent(options.projectId)}/assets/${encodeURIComponent(assetId)}/references`,
+    ),
+  );
   if (
-    !state.assetRefs.some(
-      (ref) => ref.assetId === assetId && ref.projectId === options.projectId,
+    referenceResult.projectAssetId !== assetId ||
+    !referenceResult.references.some(
+      (reference) =>
+        isObject(reference) &&
+        reference.projectAssetId === assetId &&
+        reference.direction === "output",
     )
   ) {
     throw new Error(
-      `${options.graderCase.id} asset is not bound to the graded Project`,
+      `${options.graderCase.id} asset has no output Action binding in the graded Project`,
     );
   }
   return {
@@ -612,7 +644,7 @@ async function gradeCompletedNode(options: {
     kind: expectedKind,
     assetId,
     mediaType,
-    byteLength: file.size,
+    byteLength: bytes.byteLength,
   };
 }
 
@@ -752,6 +784,16 @@ export function providerTestExecutedNodeId(
     throw new Error(`${caseId} execute failed: ${response.error}`);
   }
   return requiredString(response.childNodeId, `${caseId} output node id`);
+}
+
+export function providerTestAddedNodeId(
+  caseId: string,
+  response: JsonObject,
+): string {
+  if (typeof response.error === "string" && response.error.length > 0) {
+    throw new Error(`${caseId} add failed: ${response.error}`);
+  }
+  return requiredString(response.node_id, `${caseId} action node id`);
 }
 
 export function createProviderReplayOfflineFetch(

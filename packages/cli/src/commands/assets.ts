@@ -1,19 +1,37 @@
-import { createHash } from "node:crypto";
-import { chmodSync, existsSync, lstatSync, mkdirSync, symlinkSync, copyFileSync, readdirSync, statSync, createReadStream } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  symlinkSync,
+  copyFileSync,
+  statSync,
+  readFileSync,
+} from "node:fs";
 import { basename, extname, join, resolve } from "node:path";
 import { Command } from "commander";
+import type {
+  ActionAssetBinding,
+  AssetKind,
+  ResolvedAsset,
+} from "@clash/shared-types";
+import {
+  createProjectAssetHostClient,
+  type ProjectAssetHostClient,
+} from "@clash/shared-runtime/project-asset-client";
 import { downloadAssetById, replaceCanvasAssetNode } from "./canvas";
-import { apiFetch } from "../lib/api";
 import { requireDestructiveConfirmation } from "../lib/destructive-guardrails";
 import { isJsonMode, printJson } from "../lib/output";
 import { assetMetadataCommand } from "./asset-metadata";
 import { resolveProjectStatus } from "./projects";
 import {
-  forgetAgentObservation,
+  isAgentInvocation,
   publicAgentCommandResult,
   recordAgentObservation,
   requireAgentObservation,
 } from "../lib/agent-worktree-observation";
+import { resolveProjectContext } from "../lib/project-context";
+import { createCliProjectAssetHostClient } from "../lib/project-host-client";
 
 export type AssetLinkMethod = "symlink" | "copy";
 
@@ -28,43 +46,12 @@ export interface AssetLinkResult {
 export interface AssetImportResult {
   projectId: string;
   assetId: string;
-  kind?: string;
-  contentHash: string;
+  kind: AssetKind;
   sourcePath: string;
-  blobPath: string;
-  deduplicated: boolean;
   linkPath?: string;
   linkMethod?: AssetLinkMethod;
-  registered?: boolean;
-  registration?: ImportedAssetRegistrationResult;
-}
-
-export interface ImportedAssetRegistrationPayload {
-  projectId: string;
-  kind: "image" | "video" | "audio" | "model";
-  assetId: string;
-  contentHash: string;
-  localBlobKey: string;
-  bytes: number;
-  contentType: string;
-  originalName: string;
-}
-
-export interface ImportedAssetRegistrationResult {
-  id: string;
-  srcR2Key: string;
-  signedUrl?: string;
-  signedUrlExp?: number;
-}
-
-export interface AssetGarbageCollectionResult {
-  dryRun: boolean;
-  deletedAssets: Array<{ id: string; srcR2Key: string }>;
-  protectedAssets?: string[];
-  protectedProjectIds?: string[];
-  deletedBlobKeys: string[];
-  readToken?: string;
-  mutation?: unknown;
+  registered: true;
+  registration: ResolvedAsset;
 }
 
 export interface AssetFileReplaceResult {
@@ -73,56 +60,23 @@ export interface AssetFileReplaceResult {
   replaceResult: Record<string, unknown>;
 }
 
-export interface AssetNodeReference {
-  assetId: string;
-  projectId: string;
-  nodeId: string;
-  nodeType: string;
-  fieldPath: string;
-  referenceRole: string;
-}
-
 export interface AssetReferencesResult {
-  assetId: string;
-  references: AssetNodeReference[];
+  projectAssetId: string;
+  references: ActionAssetBinding[];
 }
 
-export interface AssetRecordResult extends Record<string, unknown> {
-  id: string;
-  readToken?: string;
-}
+export type AssetRecordResult = ResolvedAsset;
 
-export interface AssetCoverUpdateResult {
-  ok: boolean;
-  readToken?: string;
-  mutation?: unknown;
-}
-
-export interface AssetProjectRefResult {
-  assetId: string;
-  projectId: string;
-  importedAt: number;
-  readToken: string;
-}
-
-export interface AssetProjectRefDeleteResult {
-  deleted: boolean;
-  mutation?: unknown;
-}
-
-export function resolveAssetLinkName(assetId: string, sourcePath: string, requestedName?: string): string {
+export function resolveAssetLinkName(
+  assetId: string,
+  sourcePath: string,
+  requestedName?: string,
+): string {
   const raw = requestedName?.trim() || basename(sourcePath) || assetId;
   if (!raw || raw === "." || raw === ".." || /[/\\]/.test(raw)) {
     throw new Error("asset link name must be a single file name");
   }
   return raw.replace(/:/g, "_");
-}
-
-export function assetIdForContentHash(hash: string): string {
-  if (!/^[a-f0-9]{64}$/.test(hash)) {
-    throw new Error(`invalid sha256 content hash: ${hash}`);
-  }
-  return `local:sha256:${hash}`;
 }
 
 function createAssetLink(options: {
@@ -132,7 +86,11 @@ function createAssetLink(options: {
   name?: string;
   createSymlink?: (target: string, path: string) => void;
 }): { linkPath: string; method: AssetLinkMethod } {
-  const linkName = resolveAssetLinkName(options.assetId, options.sourcePath, options.name);
+  const linkName = resolveAssetLinkName(
+    options.assetId,
+    options.sourcePath,
+    options.name,
+  );
   const linkPath = join(options.assetLinksRoot, linkName);
 
   mkdirSync(options.assetLinksRoot, { recursive: true });
@@ -141,15 +99,21 @@ function createAssetLink(options: {
     if (existing.isDirectory() && !existing.isSymbolicLink()) {
       throw new Error(`asset link path is a directory: ${linkPath}`);
     }
-    throw new Error(`asset link already exists: ${linkPath}. Choose a different --name or remove the old link explicitly.`);
+    throw new Error(
+      `asset link already exists: ${linkPath}. Choose a different --name or remove the old link explicitly.`,
+    );
   }
 
   let method: AssetLinkMethod = "symlink";
   try {
     (options.createSymlink ?? symlinkSync)(options.sourcePath, linkPath);
   } catch (error) {
-    const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
-    if (!["EPERM", "EACCES", "ENOTSUP", "EOPNOTSUPP"].includes(code)) throw error;
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String(error.code)
+        : "";
+    if (!["EPERM", "EACCES", "ENOTSUP", "EOPNOTSUPP"].includes(code))
+      throw error;
     copyFileSync(options.sourcePath, linkPath);
     chmodSync(linkPath, 0o444);
     method = "copy";
@@ -165,20 +129,22 @@ export async function linkAssetIntoProject(options: {
   env?: Record<string, string | undefined>;
   homeDir?: string;
   name?: string;
-  download?: (assetId: string) => Promise<string | null>;
+  download?: (assetId: string, projectId: string) => Promise<string | null>;
   createSymlink?: (target: string, path: string) => void;
 }): Promise<AssetLinkResult> {
   const assetId = options.assetId.trim();
   if (!assetId) throw new Error("asset id is required");
-  const sourcePath = await (options.download ?? downloadAssetById)(assetId);
-  if (!sourcePath) throw new Error(`Unable to resolve asset ${assetId}`);
-
   const status = await resolveProjectStatus({
     project: options.project,
     cwd: options.cwd,
     env: options.env,
     homeDir: options.homeDir,
   });
+  const sourcePath = await (options.download ?? downloadAssetById)(
+    assetId,
+    status.projectId,
+  );
+  if (!sourcePath) throw new Error(`Unable to resolve asset ${assetId}`);
   const { linkPath, method } = createAssetLink({
     assetId,
     sourcePath,
@@ -205,12 +171,14 @@ export async function importAssetFile(options: {
   kind?: string;
   name?: string;
   link?: boolean;
-  registerImportedAsset?: (payload: ImportedAssetRegistrationPayload) => Promise<ImportedAssetRegistrationResult>;
+  client?: ProjectAssetHostClient;
+  download?: (assetId: string, projectId: string) => Promise<string | null>;
   createSymlink?: (target: string, path: string) => void;
 }): Promise<AssetImportResult> {
   const sourcePath = resolve(options.filePath);
   const info = statSync(sourcePath);
-  if (!info.isFile()) throw new Error(`asset import source is not a file: ${sourcePath}`);
+  if (!info.isFile())
+    throw new Error(`asset import source is not a file: ${sourcePath}`);
 
   const status = await resolveProjectStatus({
     project: options.project,
@@ -218,55 +186,47 @@ export async function importAssetFile(options: {
     env: options.env,
     homeDir: options.homeDir,
   });
-  const contentHash = await hashFileSha256(sourcePath);
-  const assetId = assetIdForContentHash(contentHash);
-  const blobDir = join(status.clashHome, "assets", "blobs", contentHash);
-  const existingBlobPath = findExistingOriginalBlob(blobDir);
-  let blobPath = existingBlobPath;
-  let deduplicated = true;
-  if (!blobPath) {
-    const extension = safeExtension(sourcePath);
-    blobPath = join(blobDir, `original${extension}`);
-    mkdirSync(blobDir, { recursive: true });
-    copyFileSync(sourcePath, blobPath);
-    deduplicated = false;
+  const kind = normalizeAssetKind(
+    options.kind ?? inferAssetKind(sourcePath) ?? undefined,
+  );
+  if (!kind) {
+    throw new Error(
+      "asset kind must be image, video, audio, or model to import through the Host",
+    );
   }
-  chmodSync(blobPath, 0o444);
+  const imported = await (
+    options.client ?? createCliProjectAssetHostClient()
+  ).importFile({
+    projectId: status.projectId,
+    bytes: new Uint8Array(readFileSync(sourcePath)),
+    fileName: basename(sourcePath),
+    contentType: contentTypeForPath(sourcePath),
+    kind,
+  });
+  const assetId = imported.value.id;
 
   const result: AssetImportResult = {
     projectId: status.projectId,
     assetId,
-    ...(options.kind?.trim() ? { kind: options.kind.trim() } : {}),
-    contentHash,
+    kind,
     sourcePath,
-    blobPath,
-    deduplicated,
+    registered: true,
+    registration: imported.value,
   };
 
-  if (options.registerImportedAsset) {
-    const kind = normalizeAssetKind(options.kind ?? inferAssetKind(blobPath) ?? undefined);
-    if (!kind) {
-      throw new Error("asset kind must be image, video, audio, or model to register local metadata");
-    }
-    result.registration = await options.registerImportedAsset({
-      projectId: status.projectId,
-      kind,
-      assetId,
-      contentHash,
-      localBlobKey: localBlobKeyForBlobPath(status.clashHome, blobPath),
-      bytes: info.size,
-      contentType: contentTypeForPath(blobPath),
-      originalName: basename(sourcePath),
-    });
-    result.registered = true;
-  }
-
   if (options.link !== false) {
-    const extension = extname(blobPath);
+    const projectionPath = await (options.download ?? downloadAssetById)(
+      assetId,
+      status.projectId,
+    );
+    if (!projectionPath) {
+      throw new Error(`Unable to resolve imported Project Asset ${assetId}`);
+    }
+    const extension = extname(sourcePath);
     const defaultName = `${assetId}${extension}`;
     const link = createAssetLink({
       assetId,
-      sourcePath: blobPath,
+      sourcePath: projectionPath,
       assetLinksRoot: status.assetLinksRoot,
       name: options.name ?? defaultName,
       createSymlink: options.createSymlink,
@@ -278,171 +238,124 @@ export async function importAssetFile(options: {
   return result;
 }
 
-export async function registerImportedAssetWithLocalApi(
-  payload: ImportedAssetRegistrationPayload,
-): Promise<ImportedAssetRegistrationResult> {
-  const response = await apiFetch("/api/v1/assets/import", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to register imported asset: ${response.status} ${await response.text()}`);
-  }
-  return response.json() as Promise<ImportedAssetRegistrationResult>;
-}
+type ProjectAssetObservationRecorder = (
+  receipt: string,
+) => void | Promise<void>;
 
-export async function runAssetGarbageCollection(options: {
-  dryRun?: boolean;
-  protectedAssetIds?: string[];
-  projectIds?: string[];
-  ifMatch?: string;
-  observedVersion?: string;
-  env?: Record<string, string | undefined>;
+function projectAssetClient(options: {
+  client?: ProjectAssetHostClient;
   request?: (path: string, init?: RequestInit) => Promise<Response>;
-} = {}): Promise<AssetGarbageCollectionResult> {
-  const response = await (options.request ?? apiFetch)("/api/v1/assets/gc", {
-    method: "POST",
-    headers: agentWriteHeaders({
-      observedVersion: options.observedVersion,
-      ifMatch: options.ifMatch,
-      env: options.env,
-    }),
-    body: JSON.stringify({
-      dryRun: options.dryRun !== false,
-      ...(options.protectedAssetIds?.length ? { protectedAssetIds: options.protectedAssetIds } : {}),
-      ...(options.projectIds?.length ? { projectIds: options.projectIds } : {}),
-    }),
+}): ProjectAssetHostClient {
+  if (options.client) return options.client;
+  if (!options.request) return createCliProjectAssetHostClient();
+  return createProjectAssetHostClient({
+    endpoint: "http://clash-cli.test",
+    env: {},
+    fetch: (input, init) => {
+      const url = new URL(String(input));
+      return options.request!(`${url.pathname}${url.search}`, init);
+    },
   });
-  if (!response.ok) {
-    throw new Error(`Failed to run asset garbage collection: ${response.status} ${await response.text()}`);
-  }
-  return response.json() as Promise<AssetGarbageCollectionResult>;
 }
 
-export async function fetchAssetReferences(options: {
+export async function listProjectAssetRecords(options: {
+  projectId: string;
+  request?: (path: string, init?: RequestInit) => Promise<Response>;
+  client?: ProjectAssetHostClient;
+}): Promise<ResolvedAsset[]> {
+  return (
+    await projectAssetClient(options).list({ projectId: options.projectId })
+  ).value;
+}
+
+export async function fetchProjectAssetReferences(options: {
   assetId: string;
-  projectId?: string;
-  refresh?: boolean;
-  ifMatch?: string;
-  observedVersion?: string;
-  env?: Record<string, string | undefined>;
+  projectId: string;
   request?: (path: string, init?: RequestInit) => Promise<Response>;
+  client?: ProjectAssetHostClient;
+  onObservation?: ProjectAssetObservationRecorder;
 }): Promise<AssetReferencesResult> {
-  const assetId = options.assetId.trim();
-  if (!assetId) throw new Error("asset id is required");
-  if (options.refresh) {
-    const response = await (options.request ?? apiFetch)(`/api/v1/assets/${encodeURIComponent(assetId)}/references/refresh`, {
-      method: "POST",
-      headers: agentWriteHeaders({
-        observedVersion: options.observedVersion,
-        ifMatch: options.ifMatch,
-        env: options.env,
-      }),
-      body: JSON.stringify({
-        ...(options.projectId?.trim() ? { projectIds: [options.projectId.trim()] } : {}),
-      }),
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to refresh asset references: ${response.status} ${await response.text()}`);
-    }
-    return response.json() as Promise<AssetReferencesResult>;
-  }
-  const query = options.projectId?.trim() ? `?projectId=${encodeURIComponent(options.projectId.trim())}` : "";
-  const response = await (options.request ?? apiFetch)(`/api/v1/assets/${encodeURIComponent(assetId)}/references${query}`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch asset references: ${response.status} ${await response.text()}`);
-  }
-  return response.json() as Promise<AssetReferencesResult>;
+  const observed = await projectAssetClient(options).references({
+    projectId: options.projectId,
+    assetId: options.assetId,
+  });
+  await options.onObservation?.(observed.receipt);
+  return {
+    projectAssetId: options.assetId,
+    references: observed.value,
+  };
 }
 
+export async function fetchProjectAssetRecord(options: {
+  assetId: string;
+  projectId: string;
+  request?: (path: string, init?: RequestInit) => Promise<Response>;
+  client?: ProjectAssetHostClient;
+  onObservation?: ProjectAssetObservationRecorder;
+}): Promise<AssetRecordResult> {
+  const observed = await projectAssetClient(options).get({
+    projectId: options.projectId,
+    assetId: options.assetId,
+  });
+  await options.onObservation?.(observed.receipt);
+  return observed.value;
+}
+
+/** Compatibility for Timeline readback; still resolves through the current Project endpoint. */
 export async function fetchAssetRecord(options: {
   assetId: string;
+  projectId?: string;
   request?: (path: string, init?: RequestInit) => Promise<Response>;
+  client?: ProjectAssetHostClient;
 }): Promise<AssetRecordResult> {
-  const assetId = options.assetId.trim();
-  if (!assetId) throw new Error("asset id is required");
-  const response = await (options.request ?? apiFetch)(`/api/v1/assets/${encodeURIComponent(assetId)}`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch asset: ${response.status} ${await response.text()}`);
-  }
-  return response.json() as Promise<AssetRecordResult>;
+  return fetchProjectAssetRecord({
+    assetId: options.assetId,
+    projectId: options.projectId ?? (await resolveAssetProjectId()),
+    ...(options.request ? { request: options.request } : {}),
+    ...(options.client ? { client: options.client } : {}),
+  });
 }
 
-export async function updateAssetCover(options: {
-  assetId: string;
-  coverR2Key: string;
-  ifMatch?: string;
-  observedVersion?: string;
-  env?: Record<string, string | undefined>;
-  request?: (path: string, init?: RequestInit) => Promise<Response>;
-}): Promise<AssetCoverUpdateResult> {
-  const assetId = options.assetId.trim();
-  const coverR2Key = options.coverR2Key.trim();
-  if (!assetId) throw new Error("asset id is required");
-  if (!coverR2Key) throw new Error("cover key is required");
-  const response = await (options.request ?? apiFetch)(
-    `/api/v1/assets/${encodeURIComponent(assetId)}/cover`,
-    {
-      method: "PATCH",
-      headers: agentWriteHeaders({
-        observedVersion: options.observedVersion,
-        ifMatch: options.ifMatch,
-        env: options.env,
-      }),
-      body: JSON.stringify({ coverR2Key }),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to update asset cover: ${response.status} ${await response.text()}`);
-  }
-  return response.json() as Promise<AssetCoverUpdateResult>;
-}
-
-export async function fetchAssetProjectRef(options: {
+export async function trashProjectAsset(options: {
   assetId: string;
   projectId: string;
   request?: (path: string, init?: RequestInit) => Promise<Response>;
-}): Promise<AssetProjectRefResult> {
-  const assetId = options.assetId.trim();
-  const projectId = options.projectId.trim();
-  if (!assetId) throw new Error("asset id is required");
-  if (!projectId) throw new Error("project id is required");
-  const response = await (options.request ?? apiFetch)(
-    `/api/v1/assets/${encodeURIComponent(assetId)}/ref?projectId=${encodeURIComponent(projectId)}`,
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to fetch asset project reference: ${response.status} ${await response.text()}`);
-  }
-  return response.json() as Promise<AssetProjectRefResult>;
+  client?: ProjectAssetHostClient;
+  actorClientType?: string;
+  observedVersion?: string;
+  onObservation?: ProjectAssetObservationRecorder;
+}): Promise<ResolvedAsset> {
+  const observed = await projectAssetClient(options).trash({
+    projectId: options.projectId,
+    assetId: options.assetId,
+    ...(options.actorClientType
+      ? { actorClientType: options.actorClientType }
+      : {}),
+    ...(options.observedVersion ? { receipt: options.observedVersion } : {}),
+  });
+  await options.onObservation?.(observed.receipt);
+  return observed.value;
 }
 
-export async function deleteAssetProjectRef(options: {
+export async function restoreProjectAsset(options: {
   assetId: string;
   projectId: string;
-  ifMatch?: string;
-  observedVersion?: string;
-  env?: Record<string, string | undefined>;
   request?: (path: string, init?: RequestInit) => Promise<Response>;
-}): Promise<AssetProjectRefDeleteResult> {
-  const assetId = options.assetId.trim();
-  const projectId = options.projectId.trim();
-  if (!assetId) throw new Error("asset id is required");
-  if (!projectId) throw new Error("project id is required");
-  const response = await (options.request ?? apiFetch)(
-    `/api/v1/assets/${encodeURIComponent(assetId)}/ref?projectId=${encodeURIComponent(projectId)}`,
-    {
-      method: "DELETE",
-      headers: agentWriteHeaders({
-        observedVersion: options.observedVersion,
-        ifMatch: options.ifMatch,
-        env: options.env,
-      }),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to delete asset project reference: ${response.status} ${await response.text()}`);
-  }
-  return response.json() as Promise<AssetProjectRefDeleteResult>;
+  client?: ProjectAssetHostClient;
+  actorClientType?: string;
+  observedVersion?: string;
+  onObservation?: ProjectAssetObservationRecorder;
+}): Promise<ResolvedAsset> {
+  const observed = await projectAssetClient(options).restore({
+    projectId: options.projectId,
+    assetId: options.assetId,
+    ...(options.actorClientType
+      ? { actorClientType: options.actorClientType }
+      : {}),
+    ...(options.observedVersion ? { receipt: options.observedVersion } : {}),
+  });
+  await options.onObservation?.(observed.receipt);
+  return observed.value;
 }
 
 export async function replaceAssetFile(options: {
@@ -465,7 +378,6 @@ export async function replaceAssetFile(options: {
     homeDir?: string;
     kind?: string;
     link?: boolean;
-    registerImportedAsset?: (payload: ImportedAssetRegistrationPayload) => Promise<ImportedAssetRegistrationResult>;
   }) => Promise<AssetImportResult>;
   replaceAsset?: (options: {
     project?: string;
@@ -484,7 +396,6 @@ export async function replaceAssetFile(options: {
     homeDir: options.homeDir,
     kind: options.kind,
     link: options.link ?? true,
-    registerImportedAsset: options.importFile ? undefined : registerImportedAssetWithLocalApi,
   });
   const replaceResult = await (options.replaceAsset ?? replaceCanvasAssetNode)({
     project: options.project,
@@ -501,68 +412,23 @@ export async function replaceAssetFile(options: {
   };
 }
 
-function agentWriteHeaders(options: {
-  ifMatch?: string;
-  observedVersion?: string;
-  env?: Record<string, string | undefined>;
-}): Record<string, string> {
-  const headers: Record<string, string> = {};
-  const env = options.env ?? process.env;
-  if (env.CLASH_AGENT_MEMBER_ID?.trim()) {
-    headers["x-clash-client-type"] = "agent";
-  }
-  if (options.observedVersion?.trim()) {
-    const observed = options.observedVersion.trim();
-    headers[observed.includes(":receipt:") ? "x-clash-if-match" : "x-clash-observed-version"] = observed;
-  } else if (options.ifMatch?.trim()) {
-    headers["x-clash-if-match"] = options.ifMatch.trim();
-  }
-  return headers;
-}
-
-async function hashFileSha256(path: string): Promise<string> {
-  const hash = createHash("sha256");
-  for await (const chunk of createReadStream(path)) {
-    hash.update(chunk);
-  }
-  return hash.digest("hex");
-}
-
-function findExistingOriginalBlob(blobDir: string): string | null {
-  if (!existsSync(blobDir)) return null;
-  const existing = readdirSync(blobDir)
-    .filter((name) => name === "original" || name.startsWith("original."))
-    .sort()[0];
-  return existing ? join(blobDir, existing) : null;
-}
-
-function safeExtension(path: string): string {
-  const extension = extname(path);
-  return /^[.][A-Za-z0-9_-]+$/.test(extension) ? extension : "";
-}
-
-function localBlobKeyForBlobPath(clashHome: string, blobPath: string): string {
-  const prefix = join(clashHome, "assets") + "/";
-  const normalized = blobPath.replace(/\\/g, "/");
-  const normalizedPrefix = prefix.replace(/\\/g, "/");
-  if (!normalized.startsWith(normalizedPrefix)) {
-    throw new Error(`asset blob path is outside Clash asset storage: ${blobPath}`);
-  }
-  return normalized.slice(normalizedPrefix.length);
-}
-
-function normalizeAssetKind(kind: string | undefined): ImportedAssetRegistrationPayload["kind"] | null {
+function normalizeAssetKind(kind: string | undefined): AssetKind | null {
   const normalized = kind?.trim().toLowerCase();
-  return normalized === "image" || normalized === "video" || normalized === "audio" || normalized === "model"
+  return normalized === "image" ||
+    normalized === "video" ||
+    normalized === "audio" ||
+    normalized === "model"
     ? normalized
     : null;
 }
 
-function inferAssetKind(path: string): ImportedAssetRegistrationPayload["kind"] | null {
+function inferAssetKind(path: string): AssetKind | null {
   const extension = extname(path).toLowerCase();
-  if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].includes(extension)) return "image";
+  if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].includes(extension))
+    return "image";
   if ([".mp4", ".mov", ".webm", ".m4v"].includes(extension)) return "video";
-  if ([".mp3", ".wav", ".m4a", ".aac", ".flac"].includes(extension)) return "audio";
+  if ([".mp3", ".wav", ".m4a", ".aac", ".flac"].includes(extension))
+    return "audio";
   if ([".glb", ".gltf"].includes(extension)) return "model";
   return null;
 }
@@ -591,279 +457,53 @@ export const assetsCommand = new Command("assets")
   .description("Inspect and link project assets");
 
 function publicAssetResult<T extends object>(result: T): Omit<T, "readToken"> {
-  return publicAgentCommandResult(result as T & Record<string, unknown>) as Omit<T, "readToken">;
+  return publicAgentCommandResult(
+    result as T & Record<string, unknown>,
+  ) as Omit<T, "readToken">;
 }
 
-function assetRefObservationId(assetId: string, projectId: string): string {
-  return `${assetId}:${projectId}`;
+async function resolveAssetProjectId(project?: string): Promise<string> {
+  return (await resolveProjectContext({ project })).projectId;
 }
 
-function assetGcObservationId(options: { protectedAssetIds?: string[]; projectIds?: string[] }): string {
-  const scope = JSON.stringify({
-    protectedAssetIds: [...(options.protectedAssetIds ?? [])].sort(),
-    projectIds: [...(options.projectIds ?? [])].sort(),
+function projectAssetObservation(projectId: string, assetId: string) {
+  return {
+    entityKind: "project-asset",
+    entityId: assetId,
+    project: projectId,
+  } as const;
+}
+
+async function recordProjectAssetObservation(
+  projectId: string,
+  assetId: string,
+  receipt: string,
+): Promise<void> {
+  await recordAgentObservation({
+    ...projectAssetObservation(projectId, assetId),
+    revision: receipt,
   });
-  return createHash("sha256").update(scope).digest("hex").slice(0, 16);
 }
 
 assetsCommand
-  .command("get")
-  .description("Read an asset row")
-  .requiredOption("--asset <id>", "Asset ID")
+  .command("list")
+  .description("List Project Assets resolved by the current Host")
+  .option(
+    "--project <id>",
+    "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)",
+  )
   .option("--json", "Output result as JSON")
-  .action(async (options: { asset: string; json?: boolean }) => {
+  .action(async (options: { project?: string; json?: boolean }) => {
     try {
-      const result = await fetchAssetRecord({ assetId: options.asset });
-      await recordAgentObservation({
-        entityKind: "asset",
-        entityId: options.asset,
-        revision: result.readToken,
-      });
+      const projectId = await resolveAssetProjectId(options.project);
+      const assets = await listProjectAssetRecords({ projectId });
       if (isJsonMode(options)) {
-        printJson(publicAssetResult(result));
+        printJson({ assets });
+      } else if (assets.length === 0) {
+        console.log("No Project Assets");
       } else {
-        console.log(`${result.id}`);
-      }
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-assetsCommand
-  .command("link")
-  .description("Create an agent-readable project link for an immutable asset")
-  .requiredOption("--asset <id>", "Asset ID")
-  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
-  .option("--name <file>", "Link file name under assets/links")
-  .option("--json", "Output as JSON")
-  .action(async (options: { asset: string; project?: string; name?: string; json?: boolean }) => {
-    try {
-      const result = await linkAssetIntoProject({
-        assetId: options.asset,
-        project: options.project,
-        name: options.name,
-      });
-      if (isJsonMode(options)) {
-        printJson(publicAssetResult(result));
-      } else {
-        console.log(`linked ${result.assetId} -> ${result.linkPath} (${result.method})`);
-      }
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-assetsCommand
-  .command("import")
-  .description("Import a local file into the immutable content-addressed asset store")
-  .requiredOption("--file <path>", "Local file to import")
-  .option("--kind <kind>", "Asset kind: image, video, audio, or model")
-  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
-  .option("--name <file>", "Link file name under assets/links")
-  .option("--no-link", "Do not create a project assets/links entry")
-  .option("--no-register", "Do not register the imported blob with local-api metadata")
-  .option("--json", "Output result as JSON")
-  .action(async (options: {
-    file: string;
-    kind?: string;
-    project?: string;
-    name?: string;
-    link?: boolean;
-    register?: boolean;
-    json?: boolean;
-  }) => {
-    try {
-      const result = await importAssetFile({
-        filePath: options.file,
-        kind: options.kind,
-        project: options.project,
-        name: options.name,
-        link: options.link,
-        registerImportedAsset: options.register === false ? undefined : registerImportedAssetWithLocalApi,
-      });
-      if (isJsonMode(options)) {
-        printJson(publicAssetResult(result));
-      } else {
-        const link = result.linkPath ? `, link ${result.linkPath}` : "";
-        console.log(`imported ${result.assetId} -> ${result.blobPath}${link}`);
-      }
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-assetsCommand
-  .command("replace")
-  .description("Import a local file and create a copy-on-write replacement media node")
-  .requiredOption("--file <path>", "Local file to import as the replacement asset")
-  .requiredOption("--node <id>", "Source image/video/audio node ID")
-  .option("--kind <kind>", "Asset kind, such as image, video, or audio")
-  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
-  .option("--new-node <id>", "Optional node ID for the copied media node")
-  .option("--label <label>", "Optional label for the copied media node")
-  .option("--no-link", "Do not create a project assets/links entry for the imported asset")
-  .option("--json", "Output result as JSON")
-  .action(async (options: {
-    file: string;
-    node: string;
-    kind?: string;
-    project?: string;
-    newNode?: string;
-    label?: string;
-    link?: boolean;
-    json?: boolean;
-  }) => {
-    try {
-      const result = await replaceAssetFile({
-        filePath: options.file,
-        nodeId: options.node,
-        project: options.project,
-        kind: options.kind,
-        newNode: options.newNode,
-        label: options.label,
-        link: options.link,
-      });
-      if (isJsonMode(options)) {
-        printJson(publicAssetResult(result));
-      } else {
-        const newNodeId = typeof result.replaceResult.newNodeId === "string" ? result.replaceResult.newNodeId : "(unknown)";
-        console.log(`Imported ${result.importedAssetId} and created copy-on-write media node: ${newNodeId}`);
-      }
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-const assetCoverCommand = assetsCommand
-  .command("cover")
-  .description("Read or update asset cover metadata");
-
-assetCoverCommand
-  .command("set")
-  .description("Set an asset cover storage key")
-  .requiredOption("--asset <id>", "Asset ID")
-  .requiredOption("--cover-key <key>", "Cover asset storage key")
-  .option("--json", "Output result as JSON")
-  .action(async (options: { asset: string; coverKey: string; json?: boolean }) => {
-    try {
-      const observedVersion = await requireAgentObservation({
-        entityKind: "asset",
-        entityId: options.asset,
-      });
-      const result = await updateAssetCover({
-        assetId: options.asset,
-        coverR2Key: options.coverKey,
-        observedVersion,
-      });
-      await recordAgentObservation({
-        entityKind: "asset",
-        entityId: options.asset,
-        revision: result.readToken,
-      });
-      if (isJsonMode(options)) {
-        printJson(publicAssetResult(result));
-      } else {
-        console.log(`updated asset cover ${options.asset} -> ${options.coverKey}`);
-      }
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-const assetRefCommand = assetsCommand
-  .command("ref")
-  .description("Read or delete a project asset membership reference");
-
-assetRefCommand
-  .command("get")
-  .description("Read a project asset membership reference")
-  .requiredOption("--asset <id>", "Asset ID")
-  .requiredOption("--project <id>", "Project ID")
-  .option("--json", "Output result as JSON")
-  .action(async (options: { asset: string; project: string; json?: boolean }) => {
-    try {
-      const result = await fetchAssetProjectRef({
-        assetId: options.asset,
-        projectId: options.project,
-      });
-      await recordAgentObservation({
-        entityKind: "asset-ref",
-        entityId: assetRefObservationId(options.asset, options.project),
-        revision: result.readToken,
-      });
-      if (isJsonMode(options)) {
-        printJson(publicAssetResult(result));
-      } else {
-        console.log(`${result.projectId} ${result.assetId} importedAt=${result.importedAt}`);
-      }
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-assetRefCommand
-  .command("delete")
-  .description("Delete a project asset membership reference")
-  .requiredOption("--asset <id>", "Asset ID")
-  .requiredOption("--project <id>", "Project ID")
-  .option("--yes", "Confirm deletion")
-  .option("--json", "Output result as JSON")
-  .action(async (options: { asset: string; project: string; yes?: boolean; json?: boolean }) => {
-    try {
-      const confirmation = requireDestructiveConfirmation(options, `${options.asset}:${options.project}`);
-      if (!confirmation.ok) {
-        throw new Error(confirmation.error);
-      }
-      const entityId = assetRefObservationId(options.asset, options.project);
-      const observedVersion = await requireAgentObservation({ entityKind: "asset-ref", entityId });
-      const result = await deleteAssetProjectRef({
-        assetId: options.asset,
-        projectId: options.project,
-        observedVersion,
-      });
-      await forgetAgentObservation({ entityKind: "asset-ref", entityId });
-      if (isJsonMode(options)) {
-        printJson(publicAssetResult(result));
-      } else {
-        console.log(`deleted project asset ref ${options.asset}:${options.project}`);
-      }
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-assetsCommand
-  .command("refs")
-  .description("Show node and field references for an asset")
-  .requiredOption("--asset <id>", "Asset ID")
-  .option("--project <id>", "Only show references in one project")
-  .option("--refresh", "Refresh indexed references from the local project replica before reading")
-  .option("--json", "Output result as JSON")
-  .action(async (options: { asset: string; project?: string; refresh?: boolean; json?: boolean }) => {
-    try {
-      const observedVersion = options.refresh === true
-        ? await requireAgentObservation({ entityKind: "asset", entityId: options.asset })
-        : undefined;
-      const result = await fetchAssetReferences({
-        assetId: options.asset,
-        projectId: options.project,
-        refresh: options.refresh === true,
-        observedVersion,
-      });
-      if (isJsonMode(options)) {
-        printJson(publicAssetResult(result));
-      } else if (result.references.length === 0) {
-        console.log(`No indexed references for ${result.assetId}`);
-      } else {
-        for (const ref of result.references) {
-          console.log(`${ref.projectId} ${ref.nodeId} (${ref.nodeType}) ${ref.referenceRole} ${ref.fieldPath}`);
+        for (const asset of assets) {
+          console.log(`${asset.id} ${asset.kind} ${asset.status}`);
         }
       }
     } catch (error) {
@@ -873,54 +513,296 @@ assetsCommand
   });
 
 assetsCommand
-  .command("gc")
-  .description("Garbage collect unreferenced local asset metadata and local blobs")
-  .option("--dry-run", "Preview unreferenced assets without deleting blobs", true)
-  .option("--delete", "Delete unreferenced local asset rows and local blobs")
-  .option("--protect-asset <id...>", "Asset ids currently referenced by live canvas/project state")
-  .option("--project <id...>", "Project ids whose canvas state should be scanned for asset references")
+  .command("get")
+  .description("Read a Project Asset resolved by the current Host")
+  .requiredOption("--asset <id>", "Asset ID")
+  .option(
+    "--project <id>",
+    "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)",
+  )
   .option("--json", "Output result as JSON")
-  .action(async (options: {
-    dryRun?: boolean;
-    delete?: boolean;
-    protectAsset?: string[];
-    project?: string[];
-    json?: boolean;
-  }) => {
-    try {
-      const scopeId = assetGcObservationId({
-        protectedAssetIds: options.protectAsset,
-        projectIds: options.project,
-      });
-      const deleting = options.delete === true;
-      const observedVersion = deleting
-        ? await requireAgentObservation({ entityKind: "asset-gc", entityId: scopeId })
-        : undefined;
-      const result = await runAssetGarbageCollection({
-        dryRun: deleting ? false : options.dryRun !== false,
-        protectedAssetIds: options.protectAsset,
-        projectIds: options.project,
-        observedVersion,
-      });
-      if (result.dryRun) {
-        await recordAgentObservation({
-          entityKind: "asset-gc",
-          entityId: scopeId,
-          revision: result.readToken,
+  .action(
+    async (options: { asset: string; project?: string; json?: boolean }) => {
+      try {
+        const projectId = await resolveAssetProjectId(options.project);
+        const result = await fetchProjectAssetRecord({
+          projectId,
+          assetId: options.asset,
+          onObservation: (receipt) =>
+            recordProjectAssetObservation(projectId, options.asset, receipt),
         });
-      } else {
-        await forgetAgentObservation({ entityKind: "asset-gc", entityId: scopeId });
+        if (isJsonMode(options)) {
+          printJson(publicAssetResult(result));
+        } else {
+          console.log(`${result.id} ${result.kind} ${result.status}`);
+        }
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exit(1);
       }
-      if (isJsonMode(options)) {
-        printJson(publicAssetResult(result));
-      } else {
-        const mode = result.dryRun ? "would delete" : "deleted";
-        console.log(`${mode} ${result.deletedAssets.length} assets and ${result.deletedBlobKeys.length} local blobs`);
+    },
+  );
+
+assetsCommand
+  .command("link")
+  .description("Create an agent-readable project link for an immutable asset")
+  .requiredOption("--asset <id>", "Asset ID")
+  .option(
+    "--project <id>",
+    "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)",
+  )
+  .option("--name <file>", "Link file name under assets/links")
+  .option("--json", "Output as JSON")
+  .action(
+    async (options: {
+      asset: string;
+      project?: string;
+      name?: string;
+      json?: boolean;
+    }) => {
+      try {
+        const result = await linkAssetIntoProject({
+          assetId: options.asset,
+          project: options.project,
+          name: options.name,
+        });
+        if (isJsonMode(options)) {
+          printJson(publicAssetResult(result));
+        } else {
+          console.log(
+            `linked ${result.assetId} -> ${result.linkPath} (${result.method})`,
+          );
+        }
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exit(1);
       }
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
+    },
+  );
+
+assetsCommand
+  .command("import")
+  .description(
+    "Import a local file into the immutable content-addressed asset store",
+  )
+  .requiredOption("--file <path>", "Local file to import")
+  .option("--kind <kind>", "Asset kind: image, video, audio, or model")
+  .option(
+    "--project <id>",
+    "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)",
+  )
+  .option("--name <file>", "Link file name under assets/links")
+  .option("--no-link", "Do not create a project assets/links entry")
+  .option("--json", "Output result as JSON")
+  .action(
+    async (options: {
+      file: string;
+      kind?: string;
+      project?: string;
+      name?: string;
+      link?: boolean;
+      json?: boolean;
+    }) => {
+      try {
+        const result = await importAssetFile({
+          filePath: options.file,
+          kind: options.kind,
+          project: options.project,
+          name: options.name,
+          link: options.link,
+        });
+        if (isJsonMode(options)) {
+          printJson(publicAssetResult(result));
+        } else {
+          const link = result.linkPath ? `, link ${result.linkPath}` : "";
+          console.log(`imported Project Asset ${result.assetId}${link}`);
+        }
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    },
+  );
+
+assetsCommand
+  .command("replace")
+  .description(
+    "Import a local file and create a copy-on-write replacement media node",
+  )
+  .requiredOption(
+    "--file <path>",
+    "Local file to import as the replacement asset",
+  )
+  .requiredOption("--node <id>", "Source image/video/audio node ID")
+  .option("--kind <kind>", "Asset kind, such as image, video, or audio")
+  .option(
+    "--project <id>",
+    "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)",
+  )
+  .option("--new-node <id>", "Optional node ID for the copied media node")
+  .option("--label <label>", "Optional label for the copied media node")
+  .option(
+    "--no-link",
+    "Do not create a project assets/links entry for the imported asset",
+  )
+  .option("--json", "Output result as JSON")
+  .action(
+    async (options: {
+      file: string;
+      node: string;
+      kind?: string;
+      project?: string;
+      newNode?: string;
+      label?: string;
+      link?: boolean;
+      json?: boolean;
+    }) => {
+      try {
+        const result = await replaceAssetFile({
+          filePath: options.file,
+          nodeId: options.node,
+          project: options.project,
+          kind: options.kind,
+          newNode: options.newNode,
+          label: options.label,
+          link: options.link,
+        });
+        if (isJsonMode(options)) {
+          printJson(publicAssetResult(result));
+        } else {
+          const newNodeId =
+            typeof result.replaceResult.newNodeId === "string"
+              ? result.replaceResult.newNodeId
+              : "(unknown)";
+          console.log(
+            `Imported ${result.importedAssetId} and created copy-on-write media node: ${newNodeId}`,
+          );
+        }
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    },
+  );
+
+assetsCommand
+  .command("refs")
+  .description("Show authoritative Action Asset bindings for a Project Asset")
+  .requiredOption("--asset <id>", "Asset ID")
+  .option(
+    "--project <id>",
+    "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)",
+  )
+  .option("--json", "Output result as JSON")
+  .action(
+    async (options: { asset: string; project?: string; json?: boolean }) => {
+      try {
+        const projectId = await resolveAssetProjectId(options.project);
+        const result = await fetchProjectAssetReferences({
+          assetId: options.asset,
+          projectId,
+          onObservation: (receipt) =>
+            recordProjectAssetObservation(projectId, options.asset, receipt),
+        });
+        if (isJsonMode(options)) {
+          printJson(publicAssetResult(result));
+        } else if (result.references.length === 0) {
+          console.log(`No Action Asset bindings for ${result.projectAssetId}`);
+        } else {
+          for (const ref of result.references) {
+            console.log(
+              `${ref.direction} ${ref.slot} ${ref.owner.kind}:${ref.owner.actionId}${ref.role ? ` ${ref.role}` : ""}`,
+            );
+          }
+        }
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    },
+  );
+
+assetsCommand
+  .command("delete")
+  .description("Move an unreferenced Project Asset to the recovery window")
+  .requiredOption("--asset <id>", "Asset ID")
+  .option(
+    "--project <id>",
+    "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)",
+  )
+  .option("--yes", "Confirm deletion")
+  .option("--json", "Output result as JSON")
+  .action(
+    async (options: {
+      asset: string;
+      project?: string;
+      yes?: boolean;
+      json?: boolean;
+    }) => {
+      try {
+        const projectId = await resolveAssetProjectId(options.project);
+        const confirmation = requireDestructiveConfirmation(
+          options,
+          `${projectId}:${options.asset}`,
+        );
+        if (!confirmation.ok) throw new Error(confirmation.error);
+        const observedVersion = await requireAgentObservation(
+          projectAssetObservation(projectId, options.asset),
+        );
+        const result = await trashProjectAsset({
+          assetId: options.asset,
+          projectId,
+          actorClientType: isAgentInvocation() ? "agent" : undefined,
+          observedVersion,
+          onObservation: (receipt) =>
+            recordProjectAssetObservation(projectId, options.asset, receipt),
+        });
+        if (isJsonMode(options)) {
+          printJson(publicAssetResult(result));
+        } else {
+          console.log(`trashed Project Asset ${result.id}`);
+        }
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    },
+  );
+
+assetsCommand
+  .command("restore")
+  .description("Restore a trashed Project Asset during its recovery window")
+  .requiredOption("--asset <id>", "Asset ID")
+  .option(
+    "--project <id>",
+    "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)",
+  )
+  .option("--json", "Output result as JSON")
+  .action(
+    async (options: { asset: string; project?: string; json?: boolean }) => {
+      try {
+        const projectId = await resolveAssetProjectId(options.project);
+        const observedVersion = await requireAgentObservation(
+          projectAssetObservation(projectId, options.asset),
+        );
+        const result = await restoreProjectAsset({
+          assetId: options.asset,
+          projectId,
+          actorClientType: isAgentInvocation() ? "agent" : undefined,
+          observedVersion,
+          onObservation: (receipt) =>
+            recordProjectAssetObservation(projectId, options.asset, receipt),
+        });
+        if (isJsonMode(options)) {
+          printJson(publicAssetResult(result));
+        } else {
+          console.log(`restored Project Asset ${result.id}`);
+        }
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    },
+  );
 
 assetsCommand.addCommand(assetMetadataCommand);

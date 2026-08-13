@@ -444,10 +444,10 @@ test("local-api host rejects an unknown Canvas scope without creating it", () =>
   });
   client.createNode("main-node", "text", { content: "Main" });
 
-  assert.throws(() => handleCommandForTest(client, {
+  assert.deepEqual(handleCommandForTest(client, {
     action: "list",
     canvasId: "typo",
-  }), /Canvas typo not found/);
+  }), { error: "Canvas typo not found" });
   assert.deepEqual(client.listCanvases().map((canvas) => canvas.id), ["main"]);
 });
 

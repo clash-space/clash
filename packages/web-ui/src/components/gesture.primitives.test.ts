@@ -6,7 +6,7 @@ const readSource = (path: string) => readFileSync(join(process.cwd(), path), "ut
 
 describe("Gesture primitives", () => {
   it("centralizes use-gesture behind shared gesture hooks", () => {
-    const gesturePath = join(process.cwd(), "packages/web-ui/src/components/ui/gesture.ts");
+    const gesturePath = join(process.cwd(), "packages/gui/src/components/ui/gesture.ts");
 
     expect(existsSync(gesturePath)).toBe(true);
 

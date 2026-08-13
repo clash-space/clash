@@ -30,10 +30,14 @@ const search = (pattern: string): string => {
   }
 };
 
+// These assertions intentionally scan the whole repository. Keep them stable when other package
+// tests, type-checkers, or plugin record/replay suites are reading the same worktree in parallel.
+const REPOSITORY_SCAN_TIMEOUT_MS = 30_000;
+
 describe('agent platform naming', () => {
   it('has no credential named after the retired product', () => {
     expect(search('\\bvertexCredentials\\b')).toBe('');
-  });
+  }, REPOSITORY_SCAN_TIMEOUT_MS);
 
   it('has no helper or type named after it', () => {
     // Matched against Google context rather than against a directory list. `vertexShader` and
@@ -45,10 +49,10 @@ describe('agent platform naming', () => {
         readFileSync(`${__dirname}/../../../${file}`, 'utf8'),
       ));
     expect(hits).toEqual([]);
-  });
+  }, REPOSITORY_SCAN_TIMEOUT_MS);
 
   it('keeps the endpoint, which is a protocol fact rather than a product name', () => {
     // aiplatform.googleapis.com did not change. Renaming it would break every request.
     expect(search('aiplatform\\.googleapis\\.com')).not.toBe('');
-  });
+  }, REPOSITORY_SCAN_TIMEOUT_MS);
 });

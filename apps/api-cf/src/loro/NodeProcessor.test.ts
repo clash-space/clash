@@ -266,13 +266,7 @@ describe("NodeProcessor - processPendingNodes", () => {
     }));
   });
 
-  it("submits installed worker custom actions with model and secret metadata", async () => {
-    const pluginBinding = {
-      pluginId: "acme.media",
-      version: "1.2.3",
-      exportId: "render",
-      schemaHash: `sha256:${"a".repeat(64)}`,
-    };
+  it("fails hosted custom actions without starting a second Cloud execution engine", async () => {
     const doc = makeDoc([
       {
         id: "custom-worker-node",
@@ -281,64 +275,25 @@ describe("NodeProcessor - processPendingNodes", () => {
           status: "pending",
           actionType: "custom:fal-render",
           customActionId: "fal-render",
-          customActionParams: { size: "1024x1024" },
-          prompt: "city at night",
-          pluginBinding,
           actorType: "user",
           actorUserId: "u-test",
         },
       },
     ]);
-    const first = vi.fn().mockResolvedValue({
-      manifest: JSON.stringify({
-        id: "fal-render",
-        name: "Fal Render",
-        runtime: "worker",
-        workerUrl: "https://action.example.com",
-        outputType: "image",
-        model: {
-          provider: "fal",
-          id: "fal-ai/flux-pro",
-        },
-        pluginBinding,
-      }),
-    });
-    const env = makeEnv({
-      DB: {
-        prepare: vi.fn().mockReturnValue({
-          bind: vi.fn().mockReturnValue({ first }),
-        }),
-      } as any,
-    });
+    const env = makeEnv();
 
     await processPendingNodes(doc, env, "proj-1", broadcast, triggerPolling);
 
-    expect(env.GENERATION_WORKFLOW.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-        params: expect.objectContaining({
-          type: "custom_action",
-          nodeId: "custom-worker-node",
-          customActionId: "fal-render",
-          customActionParams: { size: "1024x1024" },
-          workerUrl: "https://action.example.com",
-          customActionModel: {
-            provider: "fal",
-            id: "fal-ai/flux-pro",
-          },
-          customActionSecrets: [
-            expect.objectContaining({
-              id: "FAL_API_KEY",
-              required: true,
-            }),
-          ],
-          pluginBinding,
-        }),
-      }),
-    );
-    expect(triggerPolling).toHaveBeenCalled();
+    expect(env.GENERATION_WORKFLOW.create).not.toHaveBeenCalled();
+    expect(doc.getMap("nodes").get("custom-worker-node")).toMatchObject({
+      data: {
+        status: "failed",
+        error:
+          "Cloud executable-plugin execution is unavailable; run this Action through local-api.",
+      },
+    });
+    expect(triggerPolling).not.toHaveBeenCalled();
   });
-
   it("submits description task for completed asset without description", async () => {
     const doc = makeDoc([
       {

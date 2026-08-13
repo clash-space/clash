@@ -103,7 +103,7 @@ describe("marketplace registry", () => {
     );
   });
 
-  it("falls back to first-party registry when remote community registry is unavailable", async () => {
+  it("falls back to the bundled registry when the remote community registry is unavailable", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response("unavailable", { status: 503 })),
@@ -114,7 +114,7 @@ describe("marketplace registry", () => {
     expect(res.status).toBe(200);
     const body = await res.json() as {
       actions: Array<{ id: string }>;
-      skills: Array<{ id: string; source?: string }>;
+      skills: Array<{ id: string }>;
     };
 
     expect(body.actions).toEqual(
@@ -126,8 +126,13 @@ describe("marketplace registry", () => {
       ]),
     );
     expect(body.actions.filter((item) => item.id.startsWith("clash.action.production."))).toEqual([]);
-    expect(body.skills.length).toBeGreaterThan(0);
-    expect(body.skills.every((item) => item.source === "first-party")).toBe(true);
+    expect(body.skills).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "clash.video.agentic-video-architecture" }),
+      ]),
+    );
+    expect(body.actions.some((item) => item.id.startsWith("community."))).toBe(false);
+    expect(body.skills.some((item) => item.id.startsWith("community."))).toBe(false);
   });
 
   it("keeps first-party skill entries when remote registry repeats an id", async () => {

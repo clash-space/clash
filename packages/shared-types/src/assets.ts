@@ -1,11 +1,10 @@
 /**
- * Asset metadata — single source of truth for generated/uploaded media.
+ * Canonical product Asset contracts.
  *
- * - `assets` row = the asset itself (one per asset_id, immutable to user APIs).
- * - `asset_refs` row = M:N junction recording which projects use this asset.
- *
- * Cross-project reuse: insert an asset_refs row pointing at the same asset_id.
- * R2 blobs are content-shared via src_r2_key.
+ * `Resource`, `GlobalAssetEntry`, `ProjectAssetEntry`, `ActionAssetBinding`, and
+ * `ResolvedAsset` are the current authority and public read shapes. The row-oriented
+ * `Asset*` schemas later in this file are explicitly legacy Cloud/migration contracts;
+ * they must not be used for new Local product APIs or synchronized Project identity.
  */
 
 import { z } from 'zod';
@@ -14,8 +13,152 @@ import { agentReadToken } from './agent-read-proof.js';
 export const AssetKindSchema = z.enum(['image', 'video', 'audio', 'model']);
 export type AssetKind = z.infer<typeof AssetKindSchema>;
 
+/** Stable identity for immutable media bytes. It is never a path, URL, or object-store key. */
+export const ResourceIdSchema = z.string().trim().min(1);
+export type ResourceId = z.infer<typeof ResourceIdSchema>;
+
+/** Immutable content identity and verification facts, independent from every storage adapter. */
+export const ResourceSchema = z.object({
+  id: ResourceIdSchema,
+  kind: AssetKindSchema,
+  digest: z.object({
+    algorithm: z.literal('sha256'),
+    value: z.string().regex(/^[a-f0-9]{64}$/),
+  }).strict(),
+  byteLength: z.number().int().nonnegative(),
+  contentType: z.string().trim().min(1).optional(),
+}).strict();
+export type Resource = z.infer<typeof ResourceSchema>;
+
+/** Descriptive product metadata safe to replicate in Project Loro. */
+export const ProjectAssetMetadataSchema = z.object({
+  width: z.number().int().nonnegative().optional(),
+  height: z.number().int().nonnegative().optional(),
+  durationMs: z.number().int().nonnegative().optional(),
+  bytes: z.number().int().nonnegative().optional(),
+  waveform: z.array(z.number()).optional(),
+  contentType: z.string().trim().min(1).optional(),
+  frameRate: z.number().positive().optional(),
+  videoCodec: z.string().trim().min(1).optional(),
+  audioCodec: z.string().trim().min(1).optional(),
+  originalName: z.string().trim().min(1).optional(),
+}).strict();
+export type ProjectAssetMetadata = z.infer<typeof ProjectAssetMetadataSchema>;
+
+export const ProjectAssetProvenanceSchema = z.object({
+  kind: z.enum(['import', 'generation', 'edit', 'render', 'admission']),
+  actionRunId: z.string().trim().min(1).optional(),
+  model: z.string().trim().min(1).optional(),
+  prompt: z.string().optional(),
+}).strict();
+export type ProjectAssetProvenance = z.infer<typeof ProjectAssetProvenanceSchema>;
+
+export const ProjectAssetSourceSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('owned'),
+    resourceId: ResourceIdSchema,
+  }).strict(),
+  z.object({
+    kind: z.literal('linked'),
+    resourceId: ResourceIdSchema,
+    origin: z.object({
+      scope: z.enum(['global', 'catalog', 'project']),
+      entryId: z.string().trim().min(1),
+    }).strict(),
+  }).strict(),
+]);
+export type ProjectAssetSource = z.infer<typeof ProjectAssetSourceSchema>;
+
+export const ProjectAssetLifecycleSchema = z.discriminatedUnion('state', [
+  z.object({ state: z.literal('active') }).strict(),
+  z.object({
+    state: z.literal('trashed'),
+    deleteOperationId: z.string().trim().min(1),
+    deletedAt: z.string().trim().min(1),
+    purgeAfter: z.string().trim().min(1),
+  }).strict(),
+  z.object({
+    state: z.literal('purged'),
+    deleteOperationId: z.string().trim().min(1),
+    deletedAt: z.string().trim().min(1),
+    purgedAt: z.string().trim().min(1),
+  }).strict(),
+]);
+export type ProjectAssetLifecycle = z.infer<typeof ProjectAssetLifecycleSchema>;
+
+/** The only synchronized media identity inside a Project. */
+export const ProjectAssetEntrySchema = z.object({
+  id: z.string().trim().min(1),
+  kind: AssetKindSchema,
+  source: ProjectAssetSourceSchema,
+  lifecycle: ProjectAssetLifecycleSchema,
+  name: z.string().trim().min(1).optional(),
+  metadata: ProjectAssetMetadataSchema,
+  provenance: ProjectAssetProvenanceSchema.optional(),
+}).strict();
+export type ProjectAssetEntry = z.infer<typeof ProjectAssetEntrySchema>;
+
+/** Reusable library membership over an immutable Resource, independent from every Project. */
+export const GlobalAssetEntrySchema = z.object({
+  id: z.string().trim().min(1),
+  kind: AssetKindSchema,
+  resourceId: ResourceIdSchema,
+  lifecycle: ProjectAssetLifecycleSchema,
+  name: z.string().trim().min(1).optional(),
+  metadata: ProjectAssetMetadataSchema,
+  provenance: ProjectAssetProvenanceSchema.optional(),
+}).strict();
+export type GlobalAssetEntry = z.infer<typeof GlobalAssetEntrySchema>;
+
+export const ActionBindingOwnerSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('draft'),
+    actionId: z.string().trim().min(1),
+  }).strict(),
+  z.object({
+    kind: z.literal('revision'),
+    actionId: z.string().trim().min(1),
+    actionRevisionId: z.string().trim().min(1),
+  }).strict(),
+  z.object({
+    kind: z.literal('run'),
+    actionId: z.string().trim().min(1),
+    actionRevisionId: z.string().trim().min(1),
+    actionRunId: z.string().trim().min(1),
+  }).strict(),
+]);
+export type ActionBindingOwner = z.infer<typeof ActionBindingOwnerSchema>;
+
+/** The only authoritative media usage reference inside a Project. */
+export const ActionAssetBindingSchema = z.object({
+  id: z.string().trim().min(1),
+  owner: ActionBindingOwnerSchema,
+  direction: z.enum(['input', 'output']),
+  slot: z.string().trim().min(1),
+  projectAssetId: z.string().trim().min(1),
+  role: z.enum(['primary', 'reference', 'source']).optional(),
+}).strict();
+export type ActionAssetBinding = z.infer<typeof ActionAssetBindingSchema>;
+
+/** One read-only Asset view resolved by the current Host. URLs are projections, never identity. */
+export const ResolvedAssetSchema = z.object({
+  id: z.string().trim().min(1),
+  kind: AssetKindSchema,
+  name: z.string().trim().min(1).optional(),
+  metadata: ProjectAssetMetadataSchema,
+  provenance: ProjectAssetProvenanceSchema.optional(),
+  /** Synchronized logical lifecycle; independent from current-Host byte availability. */
+  lifecycle: ProjectAssetLifecycleSchema,
+  status: z.enum(['uploading', 'ready', 'downloading', 'unavailable', 'failed']),
+  url: z.string().url().optional(),
+  thumbnailUrl: z.string().url().optional(),
+  progress: z.number().min(0).max(1).optional(),
+  error: z.string().trim().min(1).optional(),
+}).strict();
+export type ResolvedAsset = z.infer<typeof ResolvedAssetSchema>;
+
 /**
- * Descriptive metadata persisted as a JSON blob on the asset row.
+ * Legacy row metadata retained for hosted migration compatibility.
  *
  * Rationale for collapsing into one object: none of these are query predicates
  * (we never WHERE/ORDER BY on width or duration), so there's no reason to
@@ -75,6 +218,7 @@ export const AssetSourceSchema = z.object({
 });
 export type AssetSource = z.infer<typeof AssetSourceSchema>;
 
+/** Legacy hosted/storage row. New product readers return `ResolvedAsset` instead. */
 export const AssetSchema = z.object({
   id: z.string(),
   userId: z.string(),
