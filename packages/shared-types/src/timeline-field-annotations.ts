@@ -490,7 +490,7 @@ const itemBaseFields = {
     editor: timelineControl,
     runtimeConsumers: ["editor", "preview", "render", "export"],
   }),
-  assetId: authored(NonEmptyStringSchema, "Stable D1 media asset row id.", {
+  assetId: authored(NonEmptyStringSchema, "Immutable Project Asset id referenced by this Timeline item.", {
     required: false,
     editor: noControl,
     runtimeConsumers: ["asset-loader", "preview", "render"],

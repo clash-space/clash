@@ -158,7 +158,42 @@ windowing, and local runtime wiring belong to Desktop controllers. Until the ext
 claim that every product view already lives in `@clash/gui`. Web must share Desktop's GUI, not
 Desktop business logic.
 
-## Asset system
+## Asset + Generator system
+
+The native semantic model has two first-class concepts: Assets are durable
+referenced facts, while a Generator is versioned Project state with one or more
+named Actions that materialize new Assets. Actions are methods of a Generator
+Definition, not independently mutable Project entities. Media uses the
+ProjectAsset/Resource authority below; typed structured content uses immutable
+[Document Asset revisions](/guide/document-assets). See
+[Asset + Generator Model](/guide/asset-generator-model) for the native
+Definition, revision, Action, Run, output, and migration contract.
+
+The Generator v2 schemas, Project Loro authority, Local Run bridge, plugin ABI,
+and first-party Codex ImageGen artifact are delivered. The Local Host HTTP
+surface now lists/resolves Definitions, creates/reads Project Generators,
+advances versioned heads by observed-head CAS, submits/reads Runs, and reads
+Output Commits. A materialized COW revision rejects head advancement with an
+explicit fork hint; the existing create route records `forkedFrom` lineage.
+There is no separate fork route or Project Generator collection listing, and
+CLI/MCP/GUI adapters are not yet wired. Canvas, Timeline, Director Stage, and
+inline edit remain on their existing product models. ASR additionally has a
+native first-party Generator path, while its existing Timeline and synchronous
+endpoint consumers remain on the legacy model.
+
+Typed Document contracts, the built-in registry, Project authority, Host body
+service, and Local list/create/read/history/CAS/attachment routes are also
+delivered. CLI/MCP/native file projection, standard-consumer wiring, and legacy
+metadata migration are not. Native ASR publication is delivered, but Timeline
+and other legacy ASR consumers are not migrated.
+
+ASR migration is split deliberately. The strict `speech.transcribe` Broker/SDK
+contract, reserved broker enforcement, `clash.asr` bundled package,
+Generator/executor, server/runtime injection, and native Run-to-Document path
+are delivered. Legacy route replacement, Timeline wiring, and consumer
+migration are not delivered.
+
+## Media Asset system
 
 The canonical Local Host authority, resolver, and consumer-CAS implementation
 described in this section is current. Every post-cutover Local publication that
@@ -248,29 +283,32 @@ The future Cloud adapter will record stable Resource-to-OSS bindings in the
 cloud Resource Registry; it must not introduce a second Project sync envelope
 or put OSS keys in Loro. Its target behavior allows local-origin structure to
 synchronize before silent OSS upload finishes, while other Hosts reject
-byte-dependent work until the Resource is ready. A cloud-origin ActionRun and
-placeholder may likewise synchronize early, but its output ProjectAsset and
-binding may appear only after verified OSS staging. Other devices will then
-download and verify ready Resources asynchronously.
+byte-dependent work until the Resource is ready. A future Web-submitted native
+Run and product projection may likewise synchronize early while its cloud owner
+remains a private Task fact, but its output ProjectAsset and Output Commit may
+appear only after verified OSS staging. Other devices will then download and
+verify ready Resources asynchronously.
 
-The target execution rule follows the initiating surface rather than a device
-that later observes synchronized state: Web will use the cloud task runtime,
-while Desktop, CLI, and MCP use the designated local-api Host. Only the Local
-adapter of this unified protocol is implemented today. It persists the shared
-Durable Run Engine and step graph through SQLite plus local CAS. The future Cloud adapter must reuse
-that graph with Workflow state plus OSS staging. In both adapters, an ambiguous
-interrupted submit may be attempted again as an explicit availability trade-off;
-once a Provider task token is checkpointed, recovery only polls that task, and
-publication remains idempotent. Attempt journals and Provider tokens stay
-owner-private and Project Loro never holds a transaction open across an
-external request. The current Local projection carries Canvas node outcome and
-`ActionAssetBinding` lineage, not a standalone `ActionRun`. The future unified
-Project entity may carry only the five coarse ActionRun states; it must never
-carry private submit/poll phases or become the execution journal.
+Execution follows the initiating surface rather than a device that later
+observes synchronized state: Web will use the future cloud task runtime, while
+Desktop, CLI, and MCP use the designated local-api Host. Only the Local adapter
+of the shared Durable Run Engine is implemented today. It persists its private
+six-phase Task through SQLite plus local CAS; the future Cloud adapter must
+reuse that graph with Workflow state plus OSS staging. Attempt journals and
+Provider tokens stay owner-private, and Project Loro never holds a transaction
+open across an external request.
+
+Native Generator execution does have a standalone Project Loro Action Run with
+the four public states `pending`, `running`, `succeeded`, and `failed`. It pins
+one Generator Revision, Action, semantic executor, invocation, and output
+contract. Legacy Canvas, Timeline, Director, and Provider paths still project
+through their existing node and `ActionAssetBinding` models even when they use
+the same private Durable Run Engine; they have not thereby become native
+Generator Runs.
 
 See [Durable Run Protocol](/guide/durable-run-protocol) for the shared step
-graph, checkpoint and idempotency rules, collaboration projection, owner-only
-recovery, and the future Cloud adapter ports.
+graph, checkpoint and idempotency rules, the native-Generator/legacy-product
+split, owner-only recovery, and the future Cloud adapter ports.
 
 Canonical Asset deletion is explicit and split into two lifecycles. The current
 Local Host atomically checks Action bindings and changes the ProjectAsset to
@@ -325,7 +363,8 @@ UI/CLI submits task to local-api
   → host resolves route (card × provider implementation)
   → host binds the selected Provider account to the invocation
   → Durable Run Engine claims and checkpoints one submit or poll step
-  → plugin host invokes the plugin's provider-executor once over stdio
+  → plugin host invokes the provider-executor endpoint once
+     (bundled first-party module or supervised process/stdio package)
   → plugin reads account-scoped state through context.store
   → plugin performs exactly one Provider operation with its own fetch/Axios/client
      (one submit, or one status poll plus completed-result conversion)
@@ -336,15 +375,19 @@ UI/CLI submits task to local-api
 ```
 
 The manifest declares only what the plugin contributes. Network and filesystem
-access are ordinary process capabilities; provider traffic recording and replay
-are test-runner instrumentation, not branches in plugin business code. Provider
-plugins never own retry loops, total task lifetime, restart recovery, or Project
-publication; those belong to the Host's durable step graph.
+access are ordinary runtime capabilities of the trusted plugin code; the
+process realm is fault isolation, not a security sandbox. Provider traffic
+recording and replay are test-runner instrumentation, not branches in plugin
+business code. Provider plugins never own retry loops, total task lifetime,
+restart recovery, or Project publication; those belong to the Host's durable
+step graph.
 
 ## Kinds
 
-`ModelKind = 'image' | 'video' | 'audio' | 'text' | 'asr'`. ASR is a
-first-class kind: the five local ASR cards sit in the same registry and route
-through the same composition as image/video/audio cards, with `providerId:
-"local"` implementations that run on-device (see
-[Local ASR](/guide/local-asr)).
+`ModelKind = 'image' | 'video' | 'audio' | 'text'`. Transcription cards are
+text-output cards identified by an exact audio input contract and an `asr_model`
+runtime parameter; `asr` is a workflow/capability, not a fifth output kind. The
+five local cards sit in the same registry and run on-device (see
+[Local ASR](/guide/local-asr)). The native `clash.asr` Generator publishes a
+`media.transcript@1` Document Asset; the existing endpoint and Timeline flow
+have not yet migrated to it.

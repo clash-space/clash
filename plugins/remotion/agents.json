@@ -1,0 +1,10 @@
+{
+  "name": "Clash Remotion execution plugin",
+  "purpose": "Owns the render-timeline Action and its immutable browser bundle resource.",
+  "entrypoints": ["src/stdio.ts", "manifest.json"],
+  "invariants": [
+    "Timeline media enters as frozen clash-asset handles and is resolved only through ExecutorContext.reference.",
+    "Only executor-url delivery is accepted; Host paths and Asset bytes never enter the Timeline invocation.",
+    "Rendered MP4 output is returned through the Action SDK media upload path."
+  ]
+}

@@ -5,6 +5,7 @@ import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
+  TIMELINE_DSL_DEFINITION,
   TIMELINE_DSL_FIELD_ANNOTATIONS,
   TIMELINE_OPERATION_CATALOG,
   TIMELINE_OPERATION_REGISTRY,
@@ -22,6 +23,31 @@ import {
   timelineCommand,
 } from "./timeline";
 import { canvasCommand } from "./canvas";
+
+async function captureTimelineSchema(args: string[]): Promise<any> {
+  const schema = timelineCommand.commands.find(
+    (command) => command.name() === "schema",
+  );
+  assert.ok(schema, "timeline schema must be registered");
+
+  const originalFetch = globalThis.fetch;
+  const originalLog = console.log;
+  const lines: string[] = [];
+  globalThis.fetch = (async () => {
+    throw new Error("timeline schema must not contact the Host");
+  }) as typeof fetch;
+  console.log = (...values: unknown[]) =>
+    lines.push(values.map(String).join(" "));
+
+  try {
+    await schema.parseAsync(args, { from: "user" });
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.log = originalLog;
+  }
+
+  return JSON.parse(lines.join("\n"));
+}
 
 test("registers only the Project Timeline command surface", () => {
   const programSource = readFileSync(
@@ -98,13 +124,57 @@ test("publishes the machine-readable Timeline DSL contract to agents", () => {
   );
 });
 
-test("exposes read-only Timeline DSL validation before apply", () => {
+test("Timeline schema defaults to the compact authoring discovery payload", async () => {
+  const payload = await captureTimelineSchema(["--json"]);
+
+  assert.equal(payload.view, "authoring");
+  assert.equal(payload.format, "clash.timeline.yaml");
+  assert.equal(payload.operationCatalog, undefined);
+  assert.equal(payload.jsonSchema, undefined);
+  assert.equal(
+    payload.examples.basic.state.tracks[1].items[0].assetId,
+    "project-asset-id",
+  );
+});
+
+test("Timeline schema preserves the complete legacy definition behind the full view", async () => {
+  assert.deepEqual(
+    await captureTimelineSchema(["--view", "full", "--json"]),
+    TIMELINE_DSL_DEFINITION,
+  );
+});
+
+test("presents Timeline validation as diagnostic-only rather than an apply preflight", () => {
   const validate = timelineCommand.commands.find(
     (command) => command.name() === "validate",
   );
+  const create = timelineCommand.commands.find(
+    (command) => command.name() === "create",
+  );
+  const apply = timelineCommand.commands.find(
+    (command) => command.name() === "apply",
+  );
 
   assert.ok(validate);
+  assert.ok(create);
+  assert.ok(apply);
   assert.match(validate.description(), /without applying/i);
+  assert.match(validate.description(), /diagnos/i);
+  assert.match(validate.description(), /only when no write is intended/i);
+  assert.match(
+    validate.description(),
+    /do not use (?:it )?as a preflight for create, save, or apply/i,
+  );
+  assert.match(create.description(), /automatically validate/i);
+  assert.match(
+    create.description(),
+    /invalid state leaves Project state unchanged/i,
+  );
+  assert.match(apply.description(), /automatically validate/i);
+  assert.match(
+    apply.description(),
+    /invalid input leaves the Timeline revision unchanged/i,
+  );
   assert.equal(
     validate.options.some(
       (option) => option.long === "--file" && option.required,

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "sourceType": "deterministic-synthetic",
+  "license": "CC0-1.0",
+  "createdBy": "Clash benchmark fixture generator",
+  "containsThirdPartyMedia": false,
+  "description": "A fixed 120 BPM beat map and integer-only PCM synthesizer authored for the Clash content-effect benchmark."
+}

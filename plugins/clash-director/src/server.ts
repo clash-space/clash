@@ -12,7 +12,7 @@ import {
 import {
   DirectorStageCameraSchema,
   DirectorStageObjectSchema,
-  DirectorStageStateSchema,
+  DirectorStageAuthoringStateSchema,
   directorStageJsonSchema,
 } from "@clash/shared-types";
 import {
@@ -65,9 +65,34 @@ function compactAuthoritativeSchema(
   );
 }
 
-const directorState = compactAuthoritativeSchema(DirectorStageStateSchema, "state");
+const directorState = compactAuthoritativeSchema(
+  DirectorStageAuthoringStateSchema,
+  "state",
+);
 const directorObject = compactAuthoritativeSchema(DirectorStageObjectSchema, "object");
 const directorCamera = compactAuthoritativeSchema(DirectorStageCameraSchema, "camera");
+const directorKeyframe = z.object({
+  durationSeconds: z.number().finite().positive(),
+  fps: z.number().int().positive(),
+  trackId: z.string().min(1),
+  targetId: z.string().min(1),
+  property: z.enum([
+    "position",
+    "rotation",
+    "scale",
+    "fov",
+    "focalLengthMm",
+    "focusDistanceM",
+    "fStop",
+  ]),
+  id: z.string().min(1),
+  time: z.number().finite().nonnegative(),
+  value: z.union([
+    z.number().finite(),
+    z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]),
+  ]),
+  interpolation: z.enum(["hold", "linear", "bezier"]).optional(),
+});
 
 const definitions: Record<DirectorPluginToolName, {
   title: string;
@@ -124,8 +149,8 @@ const definitions: Record<DirectorPluginToolName, {
     description: describeClashTool({
       useWhen: "the editable Stage must be proven with exact-time product-rendered PNG evidence",
       effect: "uses the daemon-owned DirectorViewport WebGL renderer and verifies the persisted Stage revision before and after capture",
-      returns: "absolute PNG paths, hashes, active cameras, the renderer identity, and a durable capture receipt",
-      next: "inspect the returned PNGs and map them into the artifact submission; do not substitute screenshots",
+      returns: "absolute PNG paths, hashes, active cameras, immutable Project Asset identities, the renderer identity, and a durable capture receipt",
+      next: "reuse the returned Project Asset identities in downstream Timeline items; capture does not mutate the Stage, so do not write its Action output back into Stage shots, re-import the PNGs, or substitute screenshots",
     }),
     inputSchema: {
       ...stageScope,
@@ -278,7 +303,7 @@ const definitions: Record<DirectorPluginToolName, {
       returns: "the Stage apply result",
       next: "read back timing and judge anticipation, action, and settle",
     }),
-    inputSchema: { ...stageScope, keyframe: record },
+    inputSchema: { ...stageScope, keyframe: directorKeyframe },
   },
   clash_director_keyframe_remove: {
     title: "Remove keyframe",

@@ -633,7 +633,7 @@ export function buildGenerationPayload(input: BuildGenerationPayloadInput): Buil
   // text-only TTS) while silently sending no image to the model.
   const attachedRefCounts = input.refNodes.reduce(
     (counts, node) => {
-      if (node.type === 'director-stage' && cap) {
+      if (directorReferencePacket(node) && cap) {
         const adapted = partitionRefs([node], cap);
         const adaptedCount =
           adapted.imageAssetIds.length

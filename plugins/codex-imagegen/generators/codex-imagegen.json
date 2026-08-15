@@ -1,0 +1,45 @@
+{
+  "apiVersion": "clash.generator/v1",
+  "kind": "generator",
+  "spec": {
+    "definitionId": "codex-imagegen",
+    "stateSchema": {
+      "type": "object",
+      "properties": {
+        "prompt": { "type": "string", "minLength": 1 },
+        "aspect_ratio": {
+          "type": "string",
+          "enum": ["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"]
+        }
+      },
+      "required": ["prompt"],
+      "additionalProperties": false
+    },
+    "editPolicy": "fork-when-materialized",
+    "persistentInputs": [
+      {
+        "slot": "image",
+        "accepts": [{ "kind": "media", "mediaKind": "image" }],
+        "cardinality": { "minItems": 0, "maxItems": 5 }
+      }
+    ],
+    "actions": [
+      {
+        "id": "generate",
+        "executorExportId": "generate-image",
+        "parametersSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "invocationInputs": [],
+        "outputs": [
+          {
+            "slot": "image",
+            "assetType": { "kind": "media", "mediaKind": "image" },
+            "cardinality": { "minItems": 1, "maxItems": 1 }
+          }
+        ]
+      }
+    ]
+  }
+}

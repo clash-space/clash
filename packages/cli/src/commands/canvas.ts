@@ -6,6 +6,7 @@ import {
   type ProjectHostCommand,
   type ResolvedAsset,
 } from "@clash/shared-types";
+import { resolveWorkspaceTextInput } from "@clash/shared-runtime";
 import type { ProjectAssetHostClient } from "@clash/shared-runtime/project-asset-client";
 import { getServerUrl } from "../lib/config";
 import { isJsonMode, printJson } from "../lib/output";
@@ -493,6 +494,7 @@ canvasCommand
   .requiredOption("--label <label>", "Node label")
   .option("--prompt <text>", "Generation prompt for *_gen nodes. May contain `@[Label](node:<id>)` mentions to reference canvas asset nodes; type partitioning is automatic from the referenced asset's kind.")
   .option("--content <content>", "Body content for text / group nodes or single-file Remotion TSX for remotion nodes. Ignored for *_gen nodes — use --prompt there.")
+  .option("--content-file <path>", "Workspace-relative UTF-8 file read once as exact content; the path is not persisted. Mutually exclusive with --content.")
   .option("--parent <id>", "Parent group ID")
   .option(
     "--model <id>",
@@ -520,14 +522,20 @@ canvasCommand
   )
   .option("--json", "Output as JSON")
   .action(async (options) => {
-    const projectId = await resolveCanvasProjectId(options);
+    const context = await resolveCanvasProjectContext(options);
+    const projectId = context.projectId;
+    const content = await resolveWorkspaceTextInput({
+      workspaceRoot: context.workspaceRoot ?? process.cwd(),
+      inline: options.content,
+      filePath: options.contentFile,
+    });
     const presence = resolveCanvasPresenceOptions();
     const params = Object.fromEntries(options.param ?? []) as Record<string, string>;
     const hostResult = await runCommand(projectId, {
       action: "add",
       type: options.type,
       label: options.label,
-      content: options.content,
+      content,
       prompt: options.prompt,
       parentId: options.parent,
       modelId: options.model,
@@ -602,6 +610,7 @@ canvasCommand
   .requiredOption("--node <id>", "Node ID")
   .option("--label <label>", "New label")
   .option("--content <content>", "New content")
+  .option("--content-file <path>", "Workspace-relative UTF-8 file read once as exact content; the path is not persisted. Mutually exclusive with --content.")
   .option("--asset-id <id>", "Bind an existing asset (image/video/audio) to this node — its preview will render")
   .option(
     "--data <key=value...>",
@@ -617,6 +626,11 @@ canvasCommand
   .action(async (options) => {
     const context = await resolveCanvasProjectContext(options);
     const projectId = context.projectId;
+    const content = await resolveWorkspaceTextInput({
+      workspaceRoot: context.workspaceRoot ?? process.cwd(),
+      inline: options.content,
+      filePath: options.contentFile,
+    });
     let observedVersion: string | undefined;
     try {
       observedVersion = await requireCanvasObservation({
@@ -639,9 +653,9 @@ canvasCommand
     if (
       Object.keys(extraData).length === 0 &&
       typeof options.label !== "string" &&
-      typeof options.content !== "string"
+      typeof content !== "string"
     ) {
-      console.error("Provide at least one field to update (--label, --content, --asset-id, --data k=v)");
+      console.error("Provide at least one field to update (--label, --content, --content-file, --asset-id, --data k=v)");
       process.exit(1);
     }
 
@@ -649,7 +663,7 @@ canvasCommand
       action: "update",
       nodeId: options.node,
       label: options.label,
-      content: options.content,
+      content,
       data: Object.keys(extraData).length ? extraData : undefined,
       actorClientType: agentClientType(),
       observedVersion,

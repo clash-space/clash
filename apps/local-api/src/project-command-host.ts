@@ -447,6 +447,7 @@ function handleCommand(
     action === "request_timeline_render" ||
     action === "list_director_stages" ||
     action === "capture_director_stage" ||
+    action === "ping" ||
     action === "create_director_stage" ||
     action === "update_director_stage_state" ||
     action === "attach_director_stage" ||
@@ -1020,8 +1021,6 @@ function handleCommand(
         client.doc.commit({ origin: "local-api:add-trusted-custom-action" });
       }
 
-      const generatedAssetId = isGenerationNode ? crypto.randomUUID().slice(0, 8) : null;
-      if (generatedAssetId) data.assetId = generatedAssetId;
       let result: {
         node_id: string | null;
         error: string | null;
@@ -1042,7 +1041,7 @@ function handleCommand(
         for (const sourceId of remainingSourceIds) {
           client.canvas.insertEdge(`ref-${sourceId}-${nodeId}`, sourceId, nodeId, "reference");
         }
-        result = { node_id: nodeId, error: null, proposal: null, asset_id: generatedAssetId };
+        result = { node_id: nodeId, error: null, proposal: null, asset_id: null };
       } else {
         result = client.createNode(
           nodeId,
@@ -1050,7 +1049,6 @@ function handleCommand(
           data,
           null,
           cmd.parentId ?? null,
-          generatedAssetId,
         );
       }
       if (result.error || !result.node_id) return result;

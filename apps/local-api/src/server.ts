@@ -11,20 +11,23 @@ import {
   startPluginHostIpcServer,
   type PluginHostIpcServer,
 } from "./runtime/host/lib/plugin-host-ipc.js";
-import {
-  ActionsHost,
-  pruneOrphanActivationReceipts,
-} from "./runtime/host/lib/actions-loader.js";
+import { ActionsHost } from "./runtime/host/lib/actions-loader.js";
 import {
   LOCAL_HOST_PROTOCOL_VERSION,
+  readMetadataBody,
   type HostLaunchMode,
   type HostStartedBy,
 } from "@clash/shared-runtime";
 import {
   buildEffectiveModelCards,
   composeExecutablePluginModelCards,
+  ExecutablePluginBindingSchema,
+  ExecutablePluginJsonValueSchema,
+  parseDocumentBody,
+  readDocumentAssetRevision,
   MODEL_CARDS,
   type ExecutablePluginCardRegistration,
+  type ExecutablePluginBinding,
   type ExecutablePluginModelBindingRegistration,
 } from "@clash/shared-types";
 import { createLocalApiApp, createLocalTtsGenerationHandler } from "./app.js";
@@ -38,11 +41,11 @@ import { createMockExternalAigcService } from "./local-aigc.js";
 import { createProviderPluginProjector } from "./provider-plugin-projector.js";
 import { createProviderPluginExecutor } from "./provider-plugin-executor.js";
 import { createExecutablePluginActionInvoker } from "./plugin-action-runtime.js";
+import { createCodexImagegenMarketplace } from "./bundled-plugins.js";
 import {
-  createCodexImagegenMarketplace,
-  BUNDLED_PLUGINS,
-  ensureBundledPlugin,
-} from "./bundled-plugins.js";
+  TRUSTED_BUNDLED_PLUGIN_MODULES,
+  loadTrustedBundledPluginModule,
+} from "./bundled-plugin-modules.js";
 import {
   activateOrUpdateHostExecutablePluginPackage,
   listHostExecutablePluginPackages,
@@ -64,10 +67,7 @@ import {
   type SessionSender,
 } from "./local-acp.js";
 import { createMockFalQueueService } from "./fal-mock.js";
-import {
-  createLocalWorkflowProcessor,
-  type LocalTimelineRenderer,
-} from "./local-processor.js";
+import { createLocalWorkflowProcessor } from "./local-processor.js";
 import { createSqliteDurableRunJournal } from "./durable-run-journal.js";
 import {
   providerAccountsForRuntime,
@@ -88,8 +88,15 @@ import {
 } from "./local-asset-inspections.js";
 import { createLocalPluginAssetStagingStore } from "./local-plugin-asset-staging.js";
 import type { LocalPluginAssetStagingStore } from "./local-plugin-asset-staging.js";
+import { createLocalExecutorAssetCapabilityIssuer } from "./executor-asset-capability.js";
 import { FileReplicaStore } from "./loro/file-replica-store.js";
-import { createLocalExecutablePluginBroker } from "./local-plugin-broker.js";
+import {
+  createLocalExecutablePluginBroker,
+  type LocalExecutablePluginBrokerOptions,
+} from "./local-plugin-broker.js";
+import { createLocalSpeechTranscriptionService } from "./local-speech-transcription.js";
+import type { LocalDocumentProjectAuthority } from "./local-document-product.js";
+import type { LocalGeneratorProjectAuthority } from "./local-generator-product.js";
 import {
   attachLocalSync,
   LocalLoroRoomHub,
@@ -114,7 +121,6 @@ import type { LocalDirectorStageRenderer } from "./director-stage-renderer.js";
 import { createNpxSkillsMarketplace } from "./marketplace-skills.js";
 import skillMarketplaceRegistry from "../../../skills/registry.json" with { type: "json" };
 
-export { createRemotionTimelineRenderer } from "./remotion-timeline-renderer.js";
 export { createHeadlessDirectorStageRenderer } from "./director-stage-renderer.js";
 export { prepareDevelopmentBundledPlugins } from "./development-bundled-plugins.js";
 
@@ -129,7 +135,6 @@ const dataDir = defaultLocalApiDataDir();
 export interface LocalApiServerOptions {
   port: number;
   dataDir: string;
-  timelineRenderer?: LocalTimelineRenderer;
   directorStageRenderer?: LocalDirectorStageRenderer;
   localAcp?: LocalAcpRuntimeAdapter;
   audioConfig?: LocalAudioConfigStore;
@@ -722,6 +727,11 @@ export function createLocalPluginBrokerServices(options: {
   dataDir: string;
   assetStaging?: LocalPluginAssetStagingStore;
   projectAssetReplica?: LocalProjectAssetReplica;
+  inspectProjectDocument?: <T>(
+    projectId: string,
+    read: (doc: import("loro-crdt").LoroDoc) => T | Promise<T>,
+  ) => Promise<T>;
+  audioConfig?: Pick<LocalAudioConfigStore, "transcribe">;
   /**
    * Where a plugin should PUT bytes it was given a slot for.
    *
@@ -755,6 +765,45 @@ export function createLocalPluginBrokerServices(options: {
       return origin || "http://127.0.0.1";
     },
   });
+  const executorAssets = createLocalExecutorAssetCapabilityIssuer();
+  const documentReplicaStore = new FileReplicaStore(
+    join(options.dataDir, "projects"),
+  );
+  const inspectProjectDocument = <T>(
+    projectId: string,
+    read: (doc: import("loro-crdt").LoroDoc) => T | Promise<T>,
+  ): Promise<T> =>
+    options.inspectProjectDocument
+      ? options.inspectProjectDocument(projectId, read)
+      : options.projectAssetReplica
+        ? options.projectAssetReplica.inspect(projectId, read)
+        : documentReplicaStore.recover(projectId).then(read);
+  const openProjectAssetProjection = (
+    projectId: string,
+    projectAssetId: string,
+  ) =>
+    inspectProjectDocument(projectId, (doc) =>
+      projectAssets.openProjectionFromDoc(doc, projectId, projectAssetId),
+    );
+  const transcribeSpeech: LocalExecutablePluginBrokerOptions["transcribeSpeech"] =
+    options.audioConfig
+      ? createLocalSpeechTranscriptionService({
+          audioConfig: options.audioConfig,
+          openAsset: async ({ projectId, projectAssetId }) => {
+            const projection = await openProjectAssetProjection(
+              projectId,
+              projectAssetId,
+            );
+            return {
+              kind: projection.resource.kind,
+              path: projection.path,
+              ...(projection.resource.contentType
+                ? { contentType: projection.resource.contentType }
+                : {}),
+            };
+          },
+        })
+      : undefined;
   async function writeAssetBytes({
     pluginId,
     pluginVersion,
@@ -802,7 +851,7 @@ export function createLocalPluginBrokerServices(options: {
   const pluginStore = () =>
     (storePromise ??= openPluginStore({ dataDir: options.dataDir }));
 
-  return createLocalExecutablePluginBroker({
+  const broker = createLocalExecutablePluginBroker({
     loadProviderAccounts: async () => {
       const [accounts, oauthRecords] = await Promise.all([
         providerStore.loadProviderAccounts(),
@@ -811,6 +860,37 @@ export function createLocalPluginBrokerServices(options: {
       return providerAccountsForRuntime(accounts, "local-user", oauthRecords);
     },
     generateCodexImage: createCodexImageGenerator(),
+    ...(transcribeSpeech ? { transcribeSpeech } : {}),
+    openExecutorAsset: async ({ projectId, invocationId, assetId, kind }) => {
+      const staged = await stagedAssets.resolve({
+        projectId,
+        projectAssetId: assetId,
+      });
+      if (staged) {
+        return await executorAssets.open({
+          invocationId,
+          path: staged.projection.path,
+          byteLength: staged.projection.byteLength,
+          kind: staged.kind,
+          ...(staged.mediaType ? { mediaType: staged.mediaType } : {}),
+        });
+      }
+      const projection = await openProjectAssetProjection(projectId, assetId);
+      if (projection.resource.kind !== kind) {
+        throw new Error(
+          `Asset ${assetId} kind ${projection.resource.kind} does not match ${kind}.`,
+        );
+      }
+      return await executorAssets.open({
+        invocationId,
+        path: projection.path,
+        byteLength: projection.resource.byteLength,
+        kind: projection.resource.kind,
+        ...(projection.resource.contentType
+          ? { mediaType: projection.resource.contentType }
+          : {}),
+      });
+    },
     readAsset: async ({ assetId, projectId }) => {
       // Inputs uploaded immediately before an invocation are already immutable Resources, but do
       // not become Project Assets merely because a Provider needs to read them. Resolve that
@@ -826,7 +906,7 @@ export function createLocalPluginBrokerServices(options: {
           bytes: new Uint8Array(await readFile(staged.projection.path)),
         };
       }
-      const projection = await projectAssets.openProjection(projectId, assetId);
+      const projection = await openProjectAssetProjection(projectId, assetId);
       return {
         kind: projection.resource.kind,
         ...(projection.resource.contentType
@@ -835,6 +915,38 @@ export function createLocalPluginBrokerServices(options: {
         bytes: new Uint8Array(await readFile(projection.path)),
       };
     },
+    readDocument: async ({ documentAssetId, revisionId, projectId }) =>
+      inspectProjectDocument(projectId, async (doc) => {
+        const revision = readDocumentAssetRevision(doc, {
+          documentAssetId,
+          revisionId,
+        });
+        if (!revision) {
+          throw new Error(
+            `Document revision ${documentAssetId}/${revisionId} is not found.`,
+          );
+        }
+        if (revision.body.contentType !== "application/json") {
+          throw new Error(
+            `Document revision ${documentAssetId}/${revisionId} is not a JSON body.`,
+          );
+        }
+        const body = ExecutablePluginJsonValueSchema.parse(
+          parseDocumentBody(
+            revision.documentKind,
+            revision.schemaVersion,
+            await readMetadataBody({
+              dataDir: options.dataDir,
+              contentHash: revision.body.digest,
+            }),
+          ),
+        );
+        return {
+          documentKind: revision.documentKind,
+          schemaVersion: revision.schemaVersion,
+          body,
+        };
+      }),
     ...(options.publicAssetStorage
       ? {
           publishAsset: async ({
@@ -977,9 +1089,46 @@ export function createLocalPluginBrokerServices(options: {
         ...record,
       }),
   });
+  broker.close = () => executorAssets.close();
+  return broker;
+}
+
+export function createWorkflowPluginBindingResolver(options: {
+  ensurePluginRuntime(): Promise<void>;
+  resolveBinding(
+    pluginId: string,
+    exportId: string,
+    kind: "action",
+  ): Promise<ExecutablePluginBinding>;
+}): (pluginId: string, exportId: string) => Promise<ExecutablePluginBinding> {
+  return async (pluginId, exportId) => {
+    await options.ensurePluginRuntime();
+    return ExecutablePluginBindingSchema.parse(
+      await options.resolveBinding(pluginId, exportId, "action"),
+    );
+  };
 }
 
 export function startLocalApiServer(options: LocalApiServerOptions) {
+  // The recorder/replayer is intentionally imported only for the explicit test harness option.
+  // Its module also supports child-process `--import` startup, so a production Host must not load
+  // it (and therefore must not install a process-wide HTTP interceptor) by default.
+  const processProviderHttpInstrumentationReady =
+    options.providerHttpInstrumentation === undefined
+      ? Promise.resolve(undefined)
+      : import("./provider-http-instrumentation.js").then(
+          ({ startProviderHttpInstrumentation }) =>
+            startProviderHttpInstrumentation({
+              mode: options.providerHttpInstrumentation!.mode,
+              trafficPath: options.providerHttpInstrumentation!.trafficPath,
+              ...(options.providerHttpInstrumentation!.activeStubPath
+                ? {
+                    activeStubPath:
+                      options.providerHttpInstrumentation!.activeStubPath,
+                  }
+                : {}),
+            }),
+        );
   const clashHome = clashHomeForLocalDataDir(options.dataDir);
   const actionsRoot = join(clashHome, "actions");
   const discoveryEnabled = options.discovery?.enabled !== false;
@@ -1005,6 +1154,16 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       return projectAssetFileReplica.updateSnapshotAtomic(projectId, mutation);
     },
   };
+  const checkpointedProjectAuthority: LocalDocumentProjectAuthority &
+    LocalGeneratorProjectAuthority = {
+    inspect: (projectId, read) => projectAssetReplica.inspect(projectId, read),
+    mutate: async (projectId, mutation) => {
+      if (!roomHub) {
+        throw new Error("Local project room hub is not ready.");
+      }
+      return roomHub.mutateProjectWithCheckpoint(projectId, mutation);
+    },
+  };
   let boundPort: number | undefined = options.port || undefined;
   const localOrigin = () => (boundPort ? `http://127.0.0.1:${boundPort}` : "");
   const pluginAssetStaging = createLocalPluginAssetStagingStore({
@@ -1014,85 +1173,114 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
   const publicAssetStorage =
     options.publicAssetStorage ??
     createPublicAssetStorageService({ dataDir: options.dataDir });
+  const audioConfig =
+    options.audioConfig ??
+    createLocalAudioConfigStore({
+      dataDir: options.dataDir,
+    });
+  void audioConfig.getVoiceInputConfig?.().catch((error) => {
+    console.error(
+      "[local-api] voice input startup probe degraded:",
+      error instanceof Error ? error.message : String(error),
+    );
+  });
   const pluginBroker = createLocalPluginBrokerServices({
     dataDir: options.dataDir,
     assetStaging: pluginAssetStaging,
+    audioConfig,
     // Provider execution runs while the Project room owns its serial mutation queue. Resolving a
     // reference through that same live-room adapter would enqueue a read behind the invocation
     // that is waiting for it. Provider inputs are immutable committed facts, so this broker reads
-    // the durable replica and Resource CAS instead of uncommitted in-memory room state.
+    // the last acknowledged room checkpoint and Resource CAS instead of uncommitted in-memory
+    // room state or an independently recovered file view.
+    inspectProjectDocument: async (projectId, read) => {
+      if (roomHub) {
+        return roomHub.inspectCheckpointedProject(projectId, read);
+      }
+      return read(await projectAssetFileReplica.recover(projectId));
+    },
     uploadOrigin: localOrigin,
     publicAssetStorage,
     ...(options.providerAssetFetch
       ? { assetFetch: options.providerAssetFetch }
       : {}),
   });
-  // Every first-party Provider, not one of them. Seeding a single plugin is what left clash.google
-  // and clash.minimax invisible after the split: they were activated into ~/.clash/actions by hand,
-  // and the host seeds this list rather than reading that directory.
-  //
-  // Sequential, because each seed runs the plugin's contract tests and a failure has to name which
-  // Provider failed. One failing Provider does not stop the others -- a host that refuses to start
-  // because one plugin is broken is worse than one that starts without it and says so.
-  const bundledPluginsReady = (async () => {
-    // Before seeding, drop receipts whose plugin is gone. A receipt attests a contentHash for an
-    // id, so one left behind by a rename hands an unrelated plugin an attestation nobody issued for
-    // it. Two were found on a development machine, from `clash-first-party-media` and
-    // `hilo-hub-media`.
-    try {
-      const pruned = await pruneOrphanActivationReceipts(
-        join(clashHome, "actions"),
-      );
-      if (pruned.length > 0) {
-        console.warn(
-          `[local-api] pruned orphaned activation receipts: ${pruned.join(", ")}`,
-        );
-      }
-    } catch (error) {
-      console.error(
-        "[local-api] could not prune activation receipts:",
-        error instanceof Error ? error.message : String(error),
-      );
-    }
-
-    for (const plugin of BUNDLED_PLUGINS) {
-      try {
-        await ensureBundledPlugin({
-          id: plugin.id,
-          actionsRoot: join(clashHome, "actions"),
-        });
-      } catch (error) {
-        console.error(
-          `[local-api] bundled plugin ${plugin.id} seed degraded:`,
-          error instanceof Error ? error.message : String(error),
-        );
-      }
-    }
-  })();
   const pluginHostClient = new PluginHostClient({
     socketPath: pluginHostSocketPath(process.env, clashHome),
   });
+  let directPluginHost: ActionsHost | null = null;
+  const pluginExecutionClient = {
+    async listCards() {
+      return directPluginHost
+        ? directPluginHost.listCards()
+        : pluginHostClient.listCards();
+    },
+    async listProviders() {
+      return directPluginHost
+        ? directPluginHost.listProviders()
+        : pluginHostClient.listProviders();
+    },
+    async listModelBindings() {
+      return directPluginHost
+        ? directPluginHost.listModelBindings()
+        : pluginHostClient.listModelBindings();
+    },
+    async listGenerators() {
+      return directPluginHost
+        ? directPluginHost.listGenerators()
+        : pluginHostClient.listGenerators();
+    },
+    async resolveGeneratorDefinition(pluginId: string, definitionId: string) {
+      return directPluginHost
+        ? directPluginHost.resolveGeneratorDefinition(pluginId, definitionId)
+        : pluginHostClient.resolveGeneratorDefinition(pluginId, definitionId);
+    },
+    async listFunctionExports(pluginId: string) {
+      return directPluginHost
+        ? directPluginHost.listFunctionExports(pluginId)
+        : pluginHostClient.listFunctionExports(pluginId);
+    },
+    async resolveBinding(
+      pluginId: string,
+      exportId: string,
+      kind: "action" | "provider-projector" | "provider-executor",
+    ) {
+      return directPluginHost
+        ? directPluginHost.resolveBinding(pluginId, exportId, kind)
+        : pluginHostClient.resolveBinding(pluginId, exportId, kind);
+    },
+    async invoke(
+      pluginId: string,
+      invocation: Parameters<PluginHostClient["invoke"]>[1],
+      invocationOptions?: Parameters<PluginHostClient["invoke"]>[2],
+    ) {
+      return directPluginHost
+        ? directPluginHost.invoke(pluginId, invocation, invocationOptions)
+        : pluginHostClient.invoke(pluginId, invocation, invocationOptions);
+    },
+  };
   const pluginHostProjector = createProviderPluginProjector({
-    client: pluginHostClient,
+    client: pluginExecutionClient,
   });
   const pluginHostProviderExecutor = createProviderPluginExecutor({
-    client: pluginHostClient,
+    client: pluginExecutionClient,
   });
   const pluginHostExecutableAction = createExecutablePluginActionInvoker({
-    client: pluginHostClient,
+    client: pluginExecutionClient,
   });
   let embeddedPluginHost: ActionsHost | null = null;
   let embeddedPluginIpc: PluginHostIpcServer | null = null;
   let pluginRuntimeReady: Promise<void> | null = null;
   const ensurePluginRuntime = () =>
-    (pluginRuntimeReady ??= bundledPluginsReady.then(async () => {
-      // A broken package degrades only that Provider. The host still starts every
-      // successfully activated plugin, so Google work is not blocked by a bad
-      // MiniMax payload (and vice versa). Resolving a binding for the failed
-      // plugin will surface the provider-specific error at the operation boundary.
+    (pluginRuntimeReady ??= (async () => {
+      // First-party payloads are loaded only from the Host's closed immutable registry. The
+      // actions directory remains the activation authority for third-party process/stdio plugins;
+      // a directory with a reserved first-party id is an untrusted shadow and is skipped.
       const host = new ActionsHost({
-        actionsRoot: join(clashHome, "actions"),
+        actionsRoot,
         pluginBroker,
+        trustedBundledPluginModules: TRUSTED_BUNDLED_PLUGIN_MODULES,
+        loadTrustedBundledPluginModule,
         ...(options.providerHttpInstrumentation
           ? { providerHttpInstrumentation: options.providerHttpInstrumentation }
           : {}),
@@ -1101,6 +1289,16 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
           : {}),
       });
       await host.start();
+      // The test-only process interceptor patches Node's low-level net.connect in addition to
+      // HTTP. Going out and back through the Host's Unix socket would therefore make its liveness
+      // probe look like a mocked connection. Replay runs against this already-embedded ActionsHost
+      // directly; third-party process/stdio endpoints inside it remain unchanged and keep their
+      // own child-process preload.
+      if (options.providerHttpInstrumentation) {
+        directPluginHost = host;
+        embeddedPluginHost = host;
+        return;
+      }
       try {
         embeddedPluginIpc = await startPluginHostIpcServer({
           host,
@@ -1119,7 +1317,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
         }
         // Another local-api host already owns the socket.
       }
-    }));
+    })());
   const providerPluginProjector = (async (request) => {
     await ensurePluginRuntime();
     return pluginHostProjector(request);
@@ -1134,23 +1332,42 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     kind: "provider-executor",
   ) => {
     await ensurePluginRuntime();
-    return pluginHostClient.resolveBinding(pluginId, exportId, kind);
+    return pluginExecutionClient.resolveBinding(pluginId, exportId, kind);
   };
   const executablePluginAction = (async (request) => {
     await ensurePluginRuntime();
     return pluginHostExecutableAction(request);
   }) satisfies import("./plugin-action-runtime.js").ExecutablePluginActionInvoker;
+  const workflowPluginBindingResolver = createWorkflowPluginBindingResolver({
+    ensurePluginRuntime,
+    resolveBinding: (pluginId, exportId, kind) =>
+      pluginExecutionClient.resolveBinding(pluginId, exportId, kind),
+  });
   const listPluginCards = async () => {
     await ensurePluginRuntime();
-    return pluginHostClient.listCards();
+    return pluginExecutionClient.listCards();
   };
   const listPluginProviders = async () => {
     await ensurePluginRuntime();
-    return pluginHostClient.listProviders();
+    return pluginExecutionClient.listProviders();
   };
   const listPluginModelBindings = async () => {
     await ensurePluginRuntime();
-    return pluginHostClient.listModelBindings();
+    return pluginExecutionClient.listModelBindings();
+  };
+  const listPluginGenerators = async () => {
+    await ensurePluginRuntime();
+    return pluginExecutionClient.listGenerators();
+  };
+  const resolvePluginGeneratorDefinition = async (
+    pluginId: string,
+    definitionId: string,
+  ) => {
+    await ensurePluginRuntime();
+    return pluginExecutionClient.resolveGeneratorDefinition(
+      pluginId,
+      definitionId,
+    );
   };
   const discoveryRunDir = options.discovery?.runDir ?? join(clashHome, "run");
   const localAcp =
@@ -1191,17 +1408,6 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
   const syncConfig = createLocalSyncConfigStore({
     dataDir: options.dataDir,
     env: process.env,
-  });
-  const audioConfig =
-    options.audioConfig ??
-    createLocalAudioConfigStore({
-      dataDir: options.dataDir,
-    });
-  void audioConfig.getVoiceInputConfig?.().catch((error) => {
-    console.error(
-      "[local-api] voice input startup probe degraded:",
-      error instanceof Error ? error.message : String(error),
-    );
   });
   const localTts = createLocalTtsGenerationHandler(audioConfig);
   const ffprobePath = localFfprobePath();
@@ -1245,6 +1451,37 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       }
       await roomHub.refresh(projectId);
     },
+    generatorProjectAuthority: checkpointedProjectAuthority,
+    documentProjectAuthority: checkpointedProjectAuthority,
+    workspaceProjectAuthority: checkpointedProjectAuthority,
+    workspaceImportAuthority: {
+      reconcileCommittedImport: (projectId, reservationId, snapshotSha256) => {
+        if (!roomHub) {
+          throw new Error("Local project room hub is not ready.");
+        }
+        return roomHub.reconcileCommittedImport(
+          projectId,
+          reservationId,
+          snapshotSha256,
+        );
+      },
+      install: (
+        projectId,
+        reservationId,
+        snapshot,
+        commitReceiverAuthority,
+      ) => {
+        if (!roomHub) {
+          throw new Error("Local project room hub is not ready.");
+        }
+        return roomHub.installImportedProject(
+          projectId,
+          reservationId,
+          snapshot,
+          commitReceiverAuthority,
+        );
+      },
+    },
     marketplaceActions: [...codexImagegenMarketplace.actions],
     listInstalledMarketplaceActions: () =>
       codexImagegenMarketplace.listInstalled(),
@@ -1275,9 +1512,11 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     },
     resolvePluginBinding: async (pluginId, exportId, kind) => {
       await ensurePluginRuntime();
-      return pluginHostClient.resolveBinding(pluginId, exportId, kind);
+      return pluginExecutionClient.resolveBinding(pluginId, exportId, kind);
     },
     listPluginCards,
+    listPluginGenerators,
+    resolveGeneratorDefinition: resolvePluginGeneratorDefinition,
     directorStageRenderer: options.directorStageRenderer,
     listPluginModelBindings,
     listPluginProviders,
@@ -1305,11 +1544,11 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
         await listPluginModelBindings(),
       ),
     executablePluginAction,
+    resolvePluginBinding: workflowPluginBindingResolver,
     durableProviderRuns: {
       ownerId: "local-api",
       providerPluginExecutor,
     },
-    timelineRenderer: options.timelineRenderer,
     textAgent: localAcp.runTextTask
       ? {
           generate: async (input) => {
@@ -1407,6 +1646,9 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
         }
       });
       void (async () => {
+        // Module-realm Providers use ordinary HTTP in this process. Install the same cassette
+        // boundary used by child stdio plugins before exposing the listening Host to the harness.
+        await processProviderHttpInstrumentationReady;
         if (pendingDiscoveryHostId) {
           publishedDiscoveryHostId = await writeServerDiscoveryRecord(
             info.port,
@@ -1444,8 +1686,12 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       await Promise.all([
         localAcp.disposeAll(),
         options.directorStageRenderer?.dispose(),
+        Promise.resolve(pluginBroker.close?.()),
         startupRecovery.catch(() => undefined).then(() => roomHub?.close()),
-        (pluginRuntimeReady ?? bundledPluginsReady)
+        processProviderHttpInstrumentationReady.then((instrumentation) =>
+          instrumentation?.dispose(),
+        ),
+        (pluginRuntimeReady ?? Promise.resolve())
           .catch(() => undefined)
           .then(async () => {
             await embeddedPluginIpc?.close().catch(() => undefined);

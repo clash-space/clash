@@ -7,8 +7,19 @@ import type {
   ExecutablePluginResult,
 } from "@clash/shared-types/executable-plugin";
 
-import { defineStdioExecutablePlugin, type StdioExecutablePluginOptions } from "./stdio-plugin.js";
-import { outputsFor, type Executor, type ExecutorContext , ExecutorStep, executorContextFrom} from "./define-plugin.js";
+import {
+  defineStdioExecutablePlugin,
+  type StdioExecutablePlugin,
+  type StdioExecutablePluginOptions,
+} from "./stdio-plugin.js";
+import {
+  outputsFor,
+  type Executor,
+  type ExecutorContext,
+  type ExecutorContextOverrides,
+  ExecutorStep,
+  executorContextFrom,
+} from "./define-plugin.js";
 import { unsupportedAcceptedOperation } from "./executable-failure.js";
 
 /**
@@ -25,6 +36,7 @@ import { unsupportedAcceptedOperation } from "./executable-failure.js";
  */
 
 const KIND = Symbol.for("clash.plugin.kind");
+const ACTION_MODE = Symbol.for("clash.plugin.action-mode");
 
 export type ProjectorFn = (
   invocation: ExecutablePluginInvocation,
@@ -41,7 +53,10 @@ export function defineExecutor(executor: Executor): Executor {
 }
 
 export interface Action {
-  run: (invocation: ExecutablePluginInvocation, context: ExecutorContext) => Promise<ExecutorStep>;
+  run: (
+    invocation: ExecutablePluginInvocation,
+    context: ExecutorContext,
+  ) => Promise<ExecutorStep>;
 }
 
 /**
@@ -56,15 +71,32 @@ export interface Action {
  * tags were executor and projector, so declaring an action and writing code for it failed assembly
  * with "declared action in the manifest but defined as provider-executor in code".
  *
- * `run` rather than `submit`/`poll`, because the split exists to model a vendor that answers later,
- * and an action the plugin performs itself has no such seam. It returns the same declarative media
- * an executor returns, so there is one idiom for handing back a file rather than one per kind.
+ * `run` is the legacy submit-only sugar for work that completes in one invocation. A Generator
+ * Action that may answer later uses `defineActionExecutor`, keeping submit/poll in the same Host
+ * durable loop without changing its semantic `kind: "action"` identity.
  */
 export function defineAction(action: Action): Action {
-  return Object.assign(action, { [KIND]: "action" as const });
+  return Object.assign(action, {
+    [KIND]: "action" as const,
+    [ACTION_MODE]: "run" as const,
+  });
 }
 
-interface ManifestFunction {
+/**
+ * A Generator Action executor that may hand durable work back to the Host.
+ *
+ * It shares the exact invocation/result/context ABI with Provider executors, but remains an
+ * `action` contribution: the Generator definition owns the operation, while submit/poll is only
+ * how the Host executes one ActionRun without blocking the GUI.
+ */
+export function defineActionExecutor(executor: Executor): Executor {
+  return Object.assign(executor, {
+    [KIND]: "action" as const,
+    [ACTION_MODE]: "executor" as const,
+  });
+}
+
+export interface ManifestFunction {
   id: string;
   kind: string;
   operations?: string[];
@@ -83,26 +115,72 @@ export interface AssembleOptions {
   contributes: Record<string, unknown>;
 }
 
-export interface AssembledPlugin {
+/** A plugin's executable contract without choosing how the Host reaches it. */
+export interface PluginModule {
   /**
    * @param hostContext dependencies scoped by the host for this invocation.
    */
   invoke(
     invocation: ExecutablePluginInvocation,
-    hostContext?: Partial<ExecutorContext>,
+    hostContext?: ExecutorContextOverrides,
   ): Promise<ExecutablePluginResult>;
   contributes: ManifestFunction[];
+}
+
+/** Compatibility authoring surface for packages that still serve themselves over stdio. */
+export interface AssembledPlugin extends PluginModule {
   /** Read invocations from stdin and write result frames to stdout until the stream ends. */
   start(options?: StdioExecutablePluginOptions): Promise<void>;
 }
 
+/**
+ * Assemble a transport-neutral module for an in-process Host.
+ *
+ * The compatibility `assemblePlugin()` API below also exposes `start()`. Returning only the module
+ * contract here makes importing first-party code inert: choosing stdio remains a Host/package
+ * concern rather than part of the executable definition.
+ */
+export function assemblePluginModule(options: AssembleOptions): PluginModule {
+  return assemblePluginDefinition(options);
+}
+
+/** Serve one already-assembled module through the stdio transport. */
+export function servePluginStdio(
+  module: PluginModule,
+  options?: StdioExecutablePluginOptions,
+): StdioExecutablePlugin {
+  return defineStdioExecutablePlugin(
+    Object.fromEntries(
+      module.contributes.map(({ id }) => [
+        id,
+        (
+          invocation: ExecutablePluginInvocation,
+          hostContext: ExecutorContext,
+        ) => module.invoke(invocation, hostContext),
+      ]),
+    ),
+    options,
+  );
+}
+
 export function assemblePlugin(options: AssembleOptions): AssembledPlugin {
+  const module = assemblePluginModule(options);
+  return {
+    ...module,
+    start: (stdioOptions) => servePluginStdio(module, stdioOptions).done,
+  };
+}
+
+function assemblePluginDefinition(options: AssembleOptions): PluginModule {
   const manifest = JSON.parse(
     readFileSync(join(options.manifestDir, "manifest.json"), "utf8"),
   ) as { contributes?: { functions?: ManifestFunction[] } };
   const declared = manifest.contributes?.functions ?? [];
 
-  const wired = new Map<string, { declaration: ManifestFunction; bean: unknown }>();
+  const wired = new Map<
+    string,
+    { declaration: ManifestFunction; bean: unknown }
+  >();
   for (const declaration of declared) {
     const bean = options.contributes[declaration.id];
     if (bean === undefined) {
@@ -117,9 +195,36 @@ export function assemblePlugin(options: AssembleOptions): AssembledPlugin {
       // A projector reached through the executor path would be handed credentials it never asked
       // for, and an executor reached as a projector would be called without any.
       throw new Error(
-        `${declaration.id} is declared ${declaration.kind} in the manifest `
-        + `but defined as ${definedKind} in code.`,
+        `${declaration.id} is declared ${declaration.kind} in the manifest ` +
+          `but defined as ${definedKind} in code.`,
       );
+    }
+    if (declaration.kind === "action") {
+      const mode = (bean as Record<symbol, string>)[ACTION_MODE];
+      if (
+        mode === "run" &&
+        declaration.operations?.some((op) => op !== "submit")
+      ) {
+        throw new Error(
+          `${declaration.id} is a run-only Action but declares a durable poll or callback operation.`,
+        );
+      }
+      if (mode === "executor") {
+        const executor = bean as Executor;
+        if (declaration.operations?.includes("poll") && !executor.poll) {
+          throw new Error(
+            `${declaration.id} declares poll but its Action executor implements no poll operation.`,
+          );
+        }
+        if (
+          declaration.operations?.includes("callback") &&
+          !executor.callback
+        ) {
+          throw new Error(
+            `${declaration.id} declares callback but its Action executor implements no callback operation.`,
+          );
+        }
+      }
     }
     wired.set(declaration.id, { declaration, bean });
   }
@@ -134,29 +239,14 @@ export function assemblePlugin(options: AssembleOptions): AssembledPlugin {
     }
   }
 
-  const plugin: AssembledPlugin = {
+  const plugin: PluginModule = {
     contributes: declared,
-    start: (stdioOptions) =>
-      defineStdioExecutablePlugin(
-        Object.fromEntries(
-          // The second argument is the typed Host context the stdio layer builds per invocation.
-          // Dropping it -- which this did, by taking only `invocation` -- meant every assembled
-          // executor ran with no Host dependencies, and hrhrng.hub then reported "This MiniMax Hub
-          // account has no accessToken stored" for an account that was configured and a host that
-          // was ready to answer. The frame was never sent.
-          [...wired.keys()].map((id) => [id, (
-            invocation: ExecutablePluginInvocation,
-            hostContext: unknown,
-          ) => plugin.invoke(invocation, hostContext as ExecutorContext)]),
-        ),
-        stdioOptions,
-      ).done,
     async invoke(invocation, hostContext) {
       const entry = wired.get(invocation.target.exportId);
       if (!entry) {
         throw new Error(
-          `No export ${invocation.target.exportId}. This plugin declares: `
-          + `${[...wired.keys()].join(", ") || "nothing"}.`,
+          `No export ${invocation.target.exportId}. This plugin declares: ` +
+            `${[...wired.keys()].join(", ") || "nothing"}.`,
         );
       }
 
@@ -167,7 +257,16 @@ export function assemblePlugin(options: AssembleOptions): AssembledPlugin {
       const context = executorContextFrom(hostContext);
 
       if (entry.declaration.kind === "action") {
-        const step = await (entry.bean as Action).run(invocation, context);
+        const actionMode = (entry.bean as Record<symbol, string>)[ACTION_MODE];
+        const step =
+          actionMode === "executor"
+            ? await actionExecutorStep(
+                entry.declaration,
+                entry.bean as Executor,
+                invocation,
+                context,
+              )
+            : await (entry.bean as Action).run(invocation, context);
         return normalise(invocation, step, context);
       }
 
@@ -176,30 +275,56 @@ export function assemblePlugin(options: AssembleOptions): AssembledPlugin {
           protocol: "clash.plugin.result/v1",
           invocationId: invocation.invocationId,
           status: "completed",
-          outputs: [{
-            slot: "projection",
-            kind: "value",
-            value: (entry.bean as ProjectorFn)(invocation),
-          }],
+          outputs: [
+            {
+              slot: "projection",
+              kind: "value",
+              value: (entry.bean as ProjectorFn)(invocation),
+            },
+          ],
         } satisfies ExecutablePluginResult;
       }
 
       const executor = entry.bean as Executor;
-      const step = invocation.operation === "poll"
-        ? await requirePoll(entry.declaration, executor)(invocation, context)
-        : invocation.operation === "callback"
-          ? executor.callback
-            ? await executor.callback(invocation, context)
-            : {
-                status: "failed" as const,
-                error: unsupportedAcceptedOperation(entry.declaration.id, "callback"),
-              }
-          : await executor.submit(invocation, context);
+      const step =
+        invocation.operation === "poll"
+          ? await requirePoll(entry.declaration, executor)(invocation, context)
+          : invocation.operation === "callback"
+            ? executor.callback
+              ? await executor.callback(invocation, context)
+              : {
+                  status: "failed" as const,
+                  error: unsupportedAcceptedOperation(
+                    entry.declaration.id,
+                    "callback",
+                  ),
+                }
+            : await executor.submit(invocation, context);
       return normalise(invocation, step, context);
     },
   };
 
   return plugin;
+}
+
+async function actionExecutorStep(
+  declaration: ManifestFunction,
+  executor: Executor,
+  invocation: ExecutablePluginInvocation,
+  context: ExecutorContext,
+): Promise<ExecutorStep> {
+  if (invocation.operation === "poll") {
+    return requirePoll(declaration, executor)(invocation, context);
+  }
+  if (invocation.operation === "callback") {
+    return executor.callback
+      ? executor.callback(invocation, context)
+      : {
+          status: "failed",
+          error: unsupportedAcceptedOperation(declaration.id, "callback"),
+        };
+  }
+  return executor.submit(invocation, context);
 }
 
 function requirePoll(declaration: ManifestFunction, executor: Executor) {
@@ -224,7 +349,9 @@ async function normalise(
       invocationId: invocation.invocationId,
       status: "accepted",
       pollState: step.pollState,
-      ...(step.retryAfterMs === undefined ? {} : { retryAfterMs: step.retryAfterMs }),
+      ...(step.retryAfterMs === undefined
+        ? {}
+        : { retryAfterMs: step.retryAfterMs }),
     } satisfies ExecutablePluginResult;
   }
   if (step.status === "failed") {
@@ -242,7 +369,8 @@ async function normalise(
     // A media step names its files and the SDK stores them. This used to read
     // `"outputs" in step ? step.outputs : []`, which answered `[]` for exactly that shape: the
     // frame said completed, carried nothing, and the upload never happened.
-    outputs: "media" in step ? await outputsFor(step.media, context) : step.outputs,
+    outputs:
+      "media" in step ? await outputsFor(step.media, context) : step.outputs,
   } satisfies ExecutablePluginResult;
 }
 

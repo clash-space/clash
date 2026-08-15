@@ -87,22 +87,30 @@ For CLI work, keep the TSX in the working tree while authoring it, then persist
 its contents in a distinct Canvas node:
 
 ```sh
-clash canvas add --type remotion --label "<character-name>" --content "$(cat <component.tsx>)" --json
+clash canvas add --type remotion --label "<character-name>" --content-file <component.tsx> --json
 clash canvas get --node <remotion-node-id> --json
 
 # After revising the TSX, read immediately before the guarded update.
 clash canvas get --node <remotion-node-id> --json
-clash canvas update --node <remotion-node-id> --content "$(cat <component.tsx>)" --json
+clash canvas update --node <remotion-node-id> --content-file <component.tsx> --json
 clash canvas get --node <remotion-node-id> --json
 ```
 
-Reuse the intended Timeline when one exists. The CLI's editable equivalent of
-Timeline get/save is pull, validate, and apply:
+`--content-file` reads one UTF-8 file inside the Workspace and persists only
+its exact contents; the path is not stored or watched. Use `--content` only for
+short literal source. The two options are mutually exclusive.
+
+Reuse the intended Timeline when one exists. Timeline create/save/apply run
+the authoritative validation before any mutation. Invalid submissions return
+the same structured issues and leave product state unchanged. When the next
+intended step is create, save, or apply, submit directly—do not call standalone
+validate first. After a rejected write, fix the draft and retry that same
+write. Reserve standalone validate for diagnostic-only workflows where no
+write is intended:
 
 ```sh
 clash timeline list --json
 clash timeline pull --timeline <timeline-id> --json
-clash timeline validate --file timelines/<timeline-id>.timeline.yaml --json
 clash timeline apply --timeline <timeline-id> --file timelines/<timeline-id>.timeline.yaml --json
 clash timeline pull --timeline <timeline-id> --json
 clash timeline render --timeline <timeline-id> --json
@@ -135,9 +143,12 @@ needed. Pixel-sized item properties create an enormous off-screen layer and
 can produce a valid but visually black render.
 
 For MCP work, reveal `canvas` through the root `clash` menu, then use
-`clash_canvas_add` with `type: "remotion"`, followed by `clash_canvas_get`.
-Before a revision, get the node again, update only its `content` through
-`clash_canvas_update`, and read it back. Reveal `timeline`, then use
+`clash_canvas_add` with `type: "remotion"` and workspace-relative
+`contentFile`, followed by `clash_canvas_get`. MCP strings are literal: never
+pass shell syntax such as `$(cat file)` as `content`. Before a revision, get
+the node again, update it through `clash_canvas_update` with `contentFile`, and
+read it back. The Host stores the resolved source text, not the path. Reveal
+`timeline`, then use
 `clash_timeline_get`, preserve the complete returned state, add or revise the
 live composition item, and submit it with `clash_timeline_save` using the
 returned `revisionId` as `baseRevisionId`. Read it back with

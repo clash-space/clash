@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { directorStageJsonSchema } from "@clash/shared-types";
 
 const emptyState = {
   schemaVersion: 1 as const,
@@ -16,6 +17,32 @@ const emptyState = {
   cameras: [],
   shots: [],
 };
+
+async function captureDirectorSchema(args: string[]): Promise<unknown> {
+  const { directorCommand } = await import("./director");
+  const schema = directorCommand.commands.find(
+    (command) => command.name() === "schema",
+  );
+  assert.ok(schema, "director schema must be registered");
+
+  const originalFetch = globalThis.fetch;
+  const originalLog = console.log;
+  const lines: string[] = [];
+  globalThis.fetch = (async () => {
+    throw new Error("director schema must not contact the Host");
+  }) as typeof fetch;
+  console.log = (...values: unknown[]) =>
+    lines.push(values.map(String).join(" "));
+
+  try {
+    await schema.parseAsync(args, { from: "user" });
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.log = originalLog;
+  }
+
+  return JSON.parse(lines.join("\n"));
+}
 
 test("registers an agent-first Director Stage command surface", async () => {
   const module = await import("./director").catch(() => ({})) as Record<string, unknown>;
@@ -32,15 +59,19 @@ test("registers an agent-first Director Stage command surface", async () => {
   // Stage content is authored through the projection loop, so the per-concept
   // mutation commands are retired: the JSON expresses strictly more than they
   // could (it accepts `creature`, which `object add --kind` never did).
-  assert.deepEqual(command.commands.map((candidate) => candidate.name()), [
-    "list",
-    "create",
-    "attach",
-    "detach",
-    "capture",
-    "pull",
-    "apply",
-  ]);
+  assert.deepEqual(
+    command.commands.map((candidate) => candidate.name()),
+    [
+      "schema",
+      "list",
+      "create",
+      "attach",
+      "detach",
+      "capture",
+      "pull",
+      "apply",
+    ],
+  );
   // Every retired group must stay absent.
   for (const retired of ["object", "camera", "scene", "keyframe", "action"]) {
     assert.equal(
@@ -49,8 +80,39 @@ test("registers an agent-first Director Stage command surface", async () => {
       `${retired} must stay retired in favour of the projection loop`,
     );
   }
-
 });
+
+test("Director schema returns the canonical authoring contract without a Host", async () => {
+  assert.deepEqual(await captureDirectorSchema(["--json"]), {
+    schemaVersion: 1,
+    contract: "state",
+    source: "@clash/shared-types",
+    jsonSchema: directorStageJsonSchema("state"),
+  });
+});
+
+for (const contract of ["object", "camera"] as const) {
+  test(`Director schema selects the canonical ${contract} contract`, async () => {
+    const { directorCommand } = await import("./director");
+    const schema = directorCommand.commands.find(
+      (command) => command.name() === "schema",
+    );
+    assert.ok(schema);
+    assert.ok(
+      schema.options.some((option) => option.long === "--contract"),
+      "director schema must expose contract selection",
+    );
+    assert.deepEqual(
+      await captureDirectorSchema(["--contract", contract, "--json"]),
+      {
+        schemaVersion: 1,
+        contract,
+        source: "@clash/shared-types",
+        jsonSchema: directorStageJsonSchema(contract),
+      },
+    );
+  });
+}
 
 test("Director Stage mutations use the shared command reducer and implicit read proof", async () => {
   const sourceUrl = new URL("./director.ts", import.meta.url);
@@ -117,4 +179,40 @@ test("resolves and validates Director Stage JSON projections inside cwd", async 
   })(canonical);
   assert.equal(parsed.ok, true);
   assert.deepEqual(parsed.state, emptyState);
+
+  const legacyOutputState = {
+    ...emptyState,
+    cameras: [{
+      id: "camera-a",
+      name: "Camera A",
+      position: [0, 1.6, 6],
+      rotation: [0, 0, 0],
+      fov: 42,
+    }],
+    shots: [{
+      id: "legacy-capture",
+      name: "Legacy capture",
+      cameraId: "camera-a",
+      assetId: "asset-capture",
+      aspectRatio: "16:9",
+      stageRevisionId: "legacy-revision",
+      createdAt: "2026-08-15T00:00:00.000Z",
+    }],
+  };
+  const migrated = JSON.parse(
+    (projection.directorStageCanonicalJson as (state: unknown) => string)(
+      legacyOutputState,
+    ),
+  );
+  assert.deepEqual(migrated.shots, []);
+
+  const rejected = (projection.parseDirectorStageFileForApply as (raw: string) => {
+    ok: boolean;
+    error?: string;
+  })(JSON.stringify(legacyOutputState));
+  assert.equal(rejected.ok, false);
+  assert.match(
+    rejected.error ?? "",
+    /cannot contain capture outputs.*capture receipts.*Project Asset references/i,
+  );
 });

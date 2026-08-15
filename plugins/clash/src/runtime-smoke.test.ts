@@ -89,6 +89,7 @@ test("bundled CLI and peer plugin MCP share one persistent Clash daemon", async 
         "clash_assets",
         "clash_canvas",
         "clash_composition",
+        "clash_plugin",
         "clash_workspace_init",
       ]);
       for (const name of [

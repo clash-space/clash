@@ -7,7 +7,10 @@ description: Operate a Clash video project through either the Clash CLI or its p
 
 Clash has two peer interfaces over the same product state: the `clash` CLI and
 the plugin stdio MCP surface. They expose the same capabilities and semantics,
-so choose whichever is available in the current agent session. Both call the
+so choose one interface from the capabilities already available in the current
+agent session. When a Clash MCP dispatcher is present, use it directly without
+probing the CLI first. Use CLI help when CLI is the selected interface, and
+switch interfaces only when the selected one is unavailable. Both call the
 discovered `local-api` host directly; do not invoke one through the other or
 recreate product behavior, Project state, or daemon ownership in either
 interface. Do not expect repository-level AGENTS instructions to provide the
@@ -45,15 +48,19 @@ Both entry points return the same initialization contract. Inspect the result:
 means the existing project binding was preserved. A conflicting requested
 project identity must fail rather than overwrite `.clash/project.toml`.
 
-Do not assume every working directory is new. If it is already bound, continue
-with the returned `projectId`; if it is unbound, let init generate a local ID or
-provide the explicitly intended ID. In a runner-managed headless workspace,
-init is infrastructure-owned and should already be complete before the task is
-handed to the agent.
+Do not assume every working directory is new or backed by Git. If it is already
+bound, continue with the returned `projectId`; if it is unbound, let init
+generate a local ID or provide the explicitly intended ID. In a runner-managed
+headless workspace, init is infrastructure-owned and should already be complete
+before the task is handed to the agent.
 
 ## Navigate progressively
 
-For CLI work, begin with the built-in command tree:
+For CLI work, navigate from the narrowest level already named by the task. If
+the task already names a command group, skip the root help. If it also names
+the needed operations, skip the group menu and read only unfamiliar leaf help
+for argument shapes. Use the built-in command tree when the group or operation
+is actually unknown:
 
 ```text
 clash --help
@@ -73,13 +80,25 @@ arguments for the menu, then with `command` to receive the stable dispatcher:
   `kind: "director-stage"` for Director Stage when revealing contracts or using
   a short operation.
 
-Call the selected dispatcher without `operation` to reveal live contracts, then
-call that dispatcher with `operation` and `arguments` to execute. Each contract
-includes `operation`, the command-local short name such as `get`, and `name`,
-the complete `clash_*` leaf name retained for compatibility. Prefer the short
-name on the appropriate dispatcher. The advertised tool list does not change.
-Use each operation's live description, schemas, structured result, and recovery
-guidance; there are no `clash_cli_*` MCP namespace wrappers.
+Call the selected dispatcher without `operation` to reveal its lightweight
+operation index when the needed operation names are not already known. Keep
+that index for the task; never request the same index twice. Before one
+unfamiliar call, request its full live contract with
+`contract: "<operation>"`. When the task needs several unfamiliar operations,
+request their contracts together in one ordered
+`contracts: ["<operation>", "<operation>"]` call. Then execute each operation
+with `operation` and `arguments`. Each index entry and contract includes
+`operation`, the command-local short name such as `get`, and `name`, the
+complete `clash_*` leaf name retained for compatibility. Prefer the short name
+on the appropriate dispatcher. The advertised tool list does not change. Use
+the selected operation's live description, schemas, structured result, and
+recovery guidance; there are no `clash_cli_*` MCP namespace wrappers.
+
+For the common Asset workflow, a task that already names Asset `import`,
+`list`, and `get` does not need the index first: use `clash_assets` and request
+the `import_file`, `list`, and `get` contracts together, then execute those
+short operations. Use the index when the required Asset operation is not
+already identified.
 
 ## Operate and verify
 
@@ -97,7 +116,12 @@ and read product state again before claiming a finished artifact.
 Files in the working tree are drafts and inputs. A claimed product outcome must
 be persisted through Clash and read back from the same project. If the product
 path is unavailable, report that limitation honestly instead of manufacturing
-a substitute artifact outside Clash.
+a substitute artifact outside Clash. When a headless runner announces that it
+will perform independent trusted byte readback, do not duplicate that check by
+calling internal Host HTTP routes or writing verification copies outside the
+workspace; use public Clash reads to confirm semantic state and let the runner
+verify delivered bytes. Do not run Git commands merely to check completion when
+the workspace has no `.git` repository.
 
 Use the specialist Director, Timeline, motion-graphics, or finishing skill for
 creative judgment. This skill owns transport navigation and product evidence,

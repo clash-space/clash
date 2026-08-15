@@ -45,16 +45,21 @@ async function hashFile(path: string): Promise<string> {
 
 function isInside(root: string, candidate: string): boolean {
   const pathFromRoot = relative(root, candidate);
-  return pathFromRoot === "" || (
-    pathFromRoot !== ".."
-    && !pathFromRoot.startsWith(`..${sep}`)
-    && !isAbsolute(pathFromRoot)
+  return (
+    pathFromRoot === "" ||
+    (pathFromRoot !== ".." &&
+      !pathFromRoot.startsWith(`..${sep}`) &&
+      !isAbsolute(pathFromRoot))
   );
 }
 
 function validateRelativeArtifactPath(path: string): string | null {
   if (path.includes("\0")) return "Artifact path must not contain null bytes";
-  if (isAbsolute(path) || path.startsWith("\\") || /^[A-Za-z]:[\\/]/.test(path)) {
+  if (
+    isAbsolute(path) ||
+    path.startsWith("\\") ||
+    /^[A-Za-z]:[\\/]/.test(path)
+  ) {
     return "Artifact path must stay inside the evaluation workspace";
   }
   const segments = path.split(/[\\/]+/);
@@ -85,20 +90,26 @@ async function resolveRegularFileInsideWorkspace(
       info = await lstat(cursor);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      if (code === "ENOENT") throw new Error(`Artifact file does not exist: ${relativePath}`);
+      if (code === "ENOENT")
+        throw new Error(`Artifact file does not exist: ${relativePath}`);
       throw error;
     }
     if (info.isSymbolicLink()) {
-      throw new Error(`Artifact path must not contain symlink components: ${relativePath}`);
+      throw new Error(
+        `Artifact path must not contain symlink components: ${relativePath}`,
+      );
     }
   }
 
   const canonicalCandidate = await realpath(candidate);
   if (!isInside(workspace, canonicalCandidate)) {
-    throw new Error("Artifact path must resolve inside the evaluation workspace");
+    throw new Error(
+      "Artifact path must resolve inside the evaluation workspace",
+    );
   }
   const info = await stat(canonicalCandidate);
-  if (!info.isFile()) throw new Error(`Artifact must be a regular file: ${relativePath}`);
+  if (!info.isFile())
+    throw new Error(`Artifact must be a regular file: ${relativePath}`);
   return canonicalCandidate;
 }
 
@@ -107,7 +118,10 @@ async function loadArtifact(
   descriptor: ArtifactDescriptor,
 ): Promise<LoadedArtifact> {
   try {
-    const absolutePath = await resolveRegularFileInsideWorkspace(workspace, descriptor.path);
+    const absolutePath = await resolveRegularFileInsideWorkspace(
+      workspace,
+      descriptor.path,
+    );
     const fileInfo = await stat(absolutePath);
     const evidence = {
       ...descriptor,
@@ -115,8 +129,8 @@ async function loadArtifact(
       sha256: await hashFile(absolutePath),
     };
     if (
-      IN_MEMORY_ARTIFACT_KINDS.has(descriptor.kind)
-      && fileInfo.size > MAX_STRUCTURED_ARTIFACT_BYTES
+      IN_MEMORY_ARTIFACT_KINDS.has(descriptor.kind) &&
+      fileInfo.size > MAX_STRUCTURED_ARTIFACT_BYTES
     ) {
       return {
         descriptor,
@@ -142,19 +156,30 @@ async function loadArtifact(
   }
 }
 
-function formatValidationError(error: { issues: Array<{ path: PropertyKey[]; message: string }> }): string {
+function formatValidationError(error: {
+  issues: Array<{ path: PropertyKey[]; message: string }>;
+}): string {
   return error.issues
-    .map((issue) => `${issue.path.length > 0 ? issue.path.join(".") : "submission"}: ${issue.message}`)
+    .map(
+      (issue) =>
+        `${issue.path.length > 0 ? issue.path.join(".") : "submission"}: ${issue.message}`,
+    )
     .join("; ");
 }
 
-export async function loadSubmission(workspacePath: string): Promise<LoadedSubmission> {
+export async function loadSubmission(
+  workspacePath: string,
+): Promise<LoadedSubmission> {
   let workspace: string;
   try {
     workspace = await realpath(workspacePath);
     const workspaceInfo = await stat(workspace);
     if (!workspaceInfo.isDirectory()) {
-      return { workspace, artifacts: [], error: "Evaluation workspace must be a directory" };
+      return {
+        workspace,
+        artifacts: [],
+        error: "Evaluation workspace must be a directory",
+      };
     }
   } catch (error) {
     return {
@@ -166,7 +191,10 @@ export async function loadSubmission(workspacePath: string): Promise<LoadedSubmi
 
   let submissionBytes: Buffer;
   try {
-    const submissionPath = await resolveRegularFileInsideWorkspace(workspace, "submission.json");
+    const submissionPath = await resolveRegularFileInsideWorkspace(
+      workspace,
+      "submission.json",
+    );
     submissionBytes = await readFile(submissionPath);
   } catch (error) {
     return {

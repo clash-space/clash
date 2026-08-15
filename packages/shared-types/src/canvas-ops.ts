@@ -176,6 +176,41 @@ export function projectVisibleNodeData(
   return visible;
 }
 
+function directorStageOutputField(
+  data: Record<string, unknown>,
+): string | undefined {
+  return Object.keys(data).find(
+    (field) =>
+      field.startsWith("outputVideo") ||
+      field === "assetId" ||
+      field === "outputAssetId" ||
+      field === "resultAssetId" ||
+      field === "contentFile" ||
+      field === "directorReferencePacket" ||
+      field === "directorShotReferencePackets",
+  );
+}
+
+function assertDirectorStageAuthoringPatch(input: {
+  currentNodeType?: string;
+  nextNodeType: string;
+  patchData: Record<string, unknown>;
+  nextData: Record<string, unknown>;
+}): void {
+  if (input.nextNodeType !== "director-stage") return;
+  const outputField =
+    directorStageOutputField(input.patchData) ??
+    (input.currentNodeType !== undefined &&
+    input.currentNodeType !== "director-stage"
+      ? directorStageOutputField(input.nextData)
+      : undefined);
+  if (outputField) {
+    throw new Error(
+      `Director Stage output field ${outputField} belongs on an independent output node`,
+    );
+  }
+}
+
 function randomIdPart(): string {
   const cryptoObject = (
     globalThis as unknown as {
@@ -344,11 +379,16 @@ export class Canvas {
    */
   insertNodeRecord(nodeId: string, input: Record<string, unknown>): void {
     const versionBefore = this.doc.version();
-    const visibleData = projectVisibleNodeData(
+    const inputData =
       input.data && typeof input.data === "object" && !Array.isArray(input.data)
         ? (input.data as Record<string, unknown>)
-        : {},
-    );
+        : {};
+    const visibleData = projectVisibleNodeData(inputData);
+    assertDirectorStageAuthoringPatch({
+      nextNodeType: typeof input.type === "string" ? input.type : "text",
+      patchData: inputData,
+      nextData: visibleData,
+    });
     const raw: Record<string, unknown> = {
       ...input,
       canvasId: this.canvasId,
@@ -542,9 +582,17 @@ export class Canvas {
       ...(raw.data ?? {}),
       ...patchData,
     });
+    const nextNodeType =
+      typeof patch.type === "string" ? patch.type : currentNode.type;
+    assertDirectorStageAuthoringPatch({
+      currentNodeType: currentNode.type,
+      nextNodeType,
+      patchData,
+      nextData,
+    });
     const nextNode: NodeInfo = {
       ...currentNode,
-      type: typeof patch.type === "string" ? patch.type : currentNode.type,
+      type: nextNodeType,
       data: nextData,
       parent_id:
         typeof patch.parentId === "string"
@@ -718,23 +766,26 @@ export class Canvas {
     const mapping =
       AGENT_NODE_TYPE_MAP[nodeType as keyof typeof AGENT_NODE_TYPE_MAP];
     const rfType = mapping?.rfType ?? nodeType;
-    let proposalType: string = ProposalType.Simple;
-    let resolvedAssetId = assetId ?? null;
-
-    if (
+    const isGenerationNode =
       nodeType === NodeType.ImageGen ||
       nodeType === NodeType.VideoGen ||
       nodeType === NodeType.AudioGen ||
-      nodeType === NodeType.TextGen
-    ) {
+      nodeType === NodeType.TextGen;
+    let proposalType: string = ProposalType.Simple;
+    const resolvedAssetId = isGenerationNode ? null : (assetId ?? null);
+
+    if (isGenerationNode) {
       proposalType = ProposalType.Generative;
-      resolvedAssetId = resolvedAssetId ?? randomIdPart();
     } else if (nodeType === NodeType.Group) {
       proposalType = ProposalType.Group;
     }
 
     const nodeData: Record<string, unknown> = { ...data };
-    if (resolvedAssetId) nodeData.assetId = resolvedAssetId;
+    if (isGenerationNode) {
+      delete nodeData.assetId;
+    } else if (resolvedAssetId) {
+      nodeData.assetId = resolvedAssetId;
+    }
     // Honor a caller-provided `custom:*` actionType — that's a custom
     // marketplace action and the type-map's built-in actionType would
     // overwrite our routing hint. Built-in types still get the
@@ -778,6 +829,7 @@ export class Canvas {
     const upstreamNodeIds = (data.upstreamNodeIds ?? data.upstreamIds) as
       string[] | undefined;
     const proposalNodeData: Record<string, unknown> = { id: nodeId, ...data };
+    if (isGenerationNode) delete proposalNodeData.assetId;
     const proposal: Record<string, unknown> = {
       id: `proposal-${randomIdPart()}`,
       type: proposalType,

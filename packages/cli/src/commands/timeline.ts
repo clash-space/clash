@@ -4,9 +4,10 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import {
   TIMELINE_DSL_DEFINITION,
-  TIMELINE_MASK_KEYFRAMES_DSL_EXAMPLE,
   TIMELINE_OPERATION_CATALOG,
+  TimelineDiscoveryViewSchema,
   projectTimelineReadToken,
+  timelineDslDiscovery,
   timelineDslToYaml,
   type TimelineAgentOperationId,
   type ProjectTimeline,
@@ -132,18 +133,18 @@ const defaultTimelineHostTransport: TimelineHostTransport = {
 timelineCommand
   .command("schema")
   .description(TIMELINE_OPERATION_CATALOG.agent["timeline.schema"].description)
+  .option(
+    "--view <view>",
+    "Discovery view: authoring or full",
+    "authoring",
+  )
   .option("--json", "Output the schema contract as JSON")
   .action((options) => {
-    const example = structuredClone(
-      TIMELINE_MASK_KEYFRAMES_DSL_EXAMPLE,
-    ) as unknown as ResolvedTimelineDsl;
-    const payload = {
-      ...TIMELINE_DSL_DEFINITION,
-      examples: {
-        ...TIMELINE_DSL_DEFINITION.examples,
-        maskKeyframesYaml: timelineDslToYaml(example),
-      },
-    };
+    const view = TimelineDiscoveryViewSchema.safeParse(options.view);
+    if (!view.success) {
+      throw new Error("--view must be authoring or full");
+    }
+    const payload = timelineDslDiscovery(view.data);
     if (isJsonMode(options)) printJson(payload);
     else console.log(JSON.stringify(payload, null, 2));
   });
@@ -533,16 +534,44 @@ timelineCommand
     const deadline = Date.now() + timeoutMs;
     let receipt: TimelineRenderReceipt = { ...base, completed: false, status: "pending" };
     while (true) {
-      const result = await sendProjectCommand<{
-        node?: { data?: Record<string, unknown> };
-        error?: string;
-      }>(context.projectId, {
-        action: "get",
-        canvasId: "__project_assets__",
-        nodeId: submitted.renderNodeId,
-      });
-      if (result.error) throw new Error(result.error);
-      const data = result.node?.data ?? {};
+      let data: Record<string, unknown>;
+      if (submitted.target.kind === "project-assets") {
+        const result = await sendProjectCommand<{
+          renders?: Array<{
+            node?: { id?: string; data?: Record<string, unknown> };
+          }>;
+          error?: string;
+        }>(context.projectId, {
+          action: "list_timeline_renders",
+          status: "all",
+        });
+        if (result.error) throw new Error(result.error);
+        const renderNode = result.renders
+          ?.map((entry) => entry.node)
+          .find((node) => node?.id === submitted.renderNodeId);
+        if (!renderNode) {
+          throw new Error(
+            `Timeline render node ${submitted.renderNodeId} was not returned by Host readback`,
+          );
+        }
+        data = renderNode.data ?? {};
+      } else {
+        const result: {
+          node?: { id?: string; data?: Record<string, unknown> };
+          error?: string;
+        } = await sendProjectCommand(context.projectId, {
+          action: "get",
+          canvasId: submitted.target.canvasId,
+          nodeId: submitted.renderNodeId,
+        });
+        if (result.error) throw new Error(result.error);
+        if (!result.node || result.node.id !== submitted.renderNodeId) {
+          throw new Error(
+            `Timeline render node ${submitted.renderNodeId} was not returned by Host readback`,
+          );
+        }
+        data = result.node.data ?? {};
+      }
       if (data.status === "completed") {
         if (typeof data.assetId !== "string" || !data.assetId.trim()) {
           receipt = { ...base, completed: false, status: "failed", error: "Timeline render completed without an immutable Asset id" };

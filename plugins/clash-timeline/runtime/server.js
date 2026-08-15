@@ -4,7 +4,7 @@ import process3 from 'process';
 import { CLASH_MCP_COMMAND_IDS, getClashMcpCommand, buildClashMcpCommandMenu, classifyClashMcpTool } from '@clash/shared-runtime';
 import { mkdir, writeFile } from 'fs/promises';
 import { isAbsolute, resolve, join, dirname } from 'path';
-import { parse as parse$1 } from 'yaml';
+import { stringify, parse as parse$1 } from 'yaml';
 import { createProjectHostClient, publicProjectHostValue } from '@clash/shared-runtime/project-host-client';
 
 var __create = Object.create;
@@ -15254,10 +15254,10 @@ var require_code = __commonJS({
     function interpolate(x) {
       return typeof x == "number" || typeof x == "boolean" || x === null ? x : safeStringify(Array.isArray(x) ? x.join(",") : x);
     }
-    function stringify(x) {
+    function stringify2(x) {
       return new _Code(safeStringify(x));
     }
-    exports.stringify = stringify;
+    exports.stringify = stringify2;
     function safeStringify(x) {
       return JSON.stringify(x).replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
     }
@@ -18707,21 +18707,21 @@ var require_fast_uri = __commonJS({
         normalizeString(uri, options);
       } else if (typeof uri === "object") {
         uri = /** @type {T} */
-        parse3(serialize(uri, options), options);
+        parse4(serialize(uri, options), options);
       }
       return uri;
     }
     function resolve2(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
-      const resolved = resolveComponent(parse3(baseURI, schemelessOptions), parse3(relativeURI, schemelessOptions), schemelessOptions, true);
+      const resolved = resolveComponent(parse4(baseURI, schemelessOptions), parse4(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
     function resolveComponent(base, relative, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
-        base = parse3(serialize(base, options), options);
-        relative = parse3(serialize(relative, options), options);
+        base = parse4(serialize(base, options), options);
+        relative = parse4(serialize(relative, options), options);
       }
       options = options || {};
       if (!options.tolerant && relative.scheme) {
@@ -18944,7 +18944,7 @@ var require_fast_uri = __commonJS({
       }
       return { parsed, malformedAuthorityOrPort };
     }
-    function parse3(uri, opts) {
+    function parse4(uri, opts) {
       return parseWithStatus(uri, opts).parsed;
     }
     function normalizeString(uri, opts) {
@@ -18973,7 +18973,7 @@ var require_fast_uri = __commonJS({
       resolveComponent,
       equal,
       serialize,
-      parse: parse3
+      parse: parse4
     };
     module.exports = fastUri;
     module.exports.default = fastUri;
@@ -31507,18 +31507,20 @@ function describeClashTool(guidance) {
 
 // ../../packages/shared-mcp/dist/server.js
 var CLASH_ROOT_TOOL_NAME = "clash";
+var CLASH_PLUGIN_TOOL_NAME = "clash_plugin";
 var CLASH_ASSETS_TOOL_NAME = "clash_assets";
 var CLASH_CANVAS_TOOL_NAME = "clash_canvas";
 var CLASH_COMPOSITION_TOOL_NAME = "clash_composition";
+var MAX_ASSET_CONTRACT_BATCH_SIZE = 8;
 var LEGACY_CLASH_GROUP_TOOL_NAMES = {
   director: "clash_director",
   timeline: "clash_timeline"
 };
 var CLASH_MCP_INSTRUCTIONS = [
   "Clash discloses product operations progressively.",
-  `Use the root ${CLASH_ROOT_TOOL_NAME} tool for command navigation, ${CLASH_ASSETS_TOOL_NAME} for Project and personal Global Assets, ${CLASH_CANVAS_TOOL_NAME} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME} for Timeline or Director Stage composition.`,
+  `Use the root ${CLASH_ROOT_TOOL_NAME} tool for command navigation, ${CLASH_PLUGIN_TOOL_NAME} for executable plugin lifecycle, ${CLASH_ASSETS_TOOL_NAME} for Project and personal Global Assets, ${CLASH_CANVAS_TOOL_NAME} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME} for Timeline or Director Stage composition.`,
   "Timeline is temporal composition; Director Stage is spatial composition.",
-  "Call a dispatcher without operation for live contracts, then pass its command-local operation and arguments to execute exactly once.",
+  "Call clash_assets without operation for its lightweight index, then pass contracts for the small set of live Asset contracts needed together; contract remains available for one. Other dispatchers reveal live contracts when operation is omitted.",
   "Composition disclosure and short operations require kind=timeline or kind=director-stage; a complete clash_* leaf name remains accepted for compatibility.",
   "The advertised tool list stays fixed and does not require a tools/list refresh.",
   "Within a selected command, tool descriptions, schemas, structured results, and recovery guidance are the operational source of truth."
@@ -31571,8 +31573,8 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       description: describeClashTool({
         useWhen: "you need the compact Clash command menu or the stable dispatcher for a product command",
         effect: "returns command counts and navigation without expanding leaf operations into the advertised tool list",
-        returns: "the command menu and selected Assets, Canvas, or composition dispatcher",
-        next: "call clash_assets for Project or personal Global Assets, clash_canvas for Canvas, or clash_composition with kind for Timeline or Director Stage; complete leaf execution remains compatibility-only"
+        returns: "the command menu and selected Plugin, Assets, Canvas, or composition dispatcher",
+        next: "call clash_plugin for executable plugin lifecycle, clash_assets for Project or personal Global Assets, clash_canvas for Canvas, or clash_composition with kind for Timeline or Director Stage; complete leaf execution remains compatibility-only"
       }),
       inputSchema: {
         command: external_exports.enum(CLASH_MCP_COMMAND_IDS).optional().describe("Root command to reveal; omit to show the root menu and fold leaf operations away"),
@@ -31618,17 +31620,17 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         structuredContent: view
       };
     });
-    const assetsDefinition = getClashMcpCommand("assets");
-    super.registerTool(CLASH_ASSETS_TOOL_NAME, {
-      title: assetsDefinition.title,
+    const pluginDefinition = getClashMcpCommand("plugin");
+    super.registerTool(CLASH_PLUGIN_TOOL_NAME, {
+      title: pluginDefinition.title,
       description: describeClashTool({
-        useWhen: "you need to inspect, import, admit, publish, trash, or restore Project and personal Global Assets",
-        effect: "returns live Asset contracts when operation is omitted, or validates and executes one Asset leaf exactly once",
-        returns: "typed Project or Global Asset operation contracts or the selected leaf operation's exact result",
-        next: "choose the smallest matching operation, then call clash_assets with operation and arguments"
+        useWhen: "the Agent needs to inspect or change executable Clash plugins during the current task",
+        effect: "returns live plugin lifecycle contracts when operation is omitted, or validates and executes one plugin operation exactly once",
+        returns: "typed plugin lifecycle contracts or the selected operation's exact result",
+        next: "choose the smallest matching operation, then call clash_plugin with operation and arguments"
       }),
       inputSchema: {
-        operation: external_exports.string().min(1).optional().describe("Omit this field entirely to reveal live contracts; otherwise pass a command-local Assets operation or complete clash_assets_* leaf name"),
+        operation: external_exports.string().min(1).optional().describe("Omit this field entirely to reveal live contracts; otherwise pass a command-local Plugin operation or complete clash_plugin_* leaf name"),
         arguments: external_exports.record(external_exports.string(), external_exports.unknown()).optional().describe("Arguments validated against the selected operation's live input schema")
       },
       _meta: { ui: { visibility: ["model"] } }
@@ -31637,11 +31639,45 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         return this.#dispatchOperation({
           operation,
           arguments: operationArguments ?? {},
+          selectedCommand: "plugin",
+          extra
+        });
+      }
+      return this.#commandResult("plugin");
+    });
+    const assetsDefinition = getClashMcpCommand("assets");
+    super.registerTool(CLASH_ASSETS_TOOL_NAME, {
+      title: assetsDefinition.title,
+      description: describeClashTool({
+        useWhen: "you need to inspect, import, admit, publish, trash, or restore Project and personal Global Assets",
+        effect: "returns a lightweight Asset operation index, reveals a requested bounded set of live contracts, or validates and executes one Asset leaf exactly once",
+        returns: "an operation index, the requested typed Project or Global Asset contracts, or the selected leaf operation's exact result",
+        next: "choose the smallest matching operations, request their contracts together, then call clash_assets with operation and arguments for each execution"
+      }),
+      inputSchema: {
+        operation: external_exports.string().min(1).optional().describe("Pass a command-local Assets operation or complete clash_assets_* leaf name to execute it; omit to inspect the lightweight index or requested contracts"),
+        contract: external_exports.string().min(1).optional().describe("Command-local Assets operation or complete clash_assets_* leaf name whose full live contract should be returned without execution"),
+        contracts: external_exports.array(external_exports.string().min(1)).min(1).max(MAX_ASSET_CONTRACT_BATCH_SIZE, `Asset contract batches accept at most ${MAX_ASSET_CONTRACT_BATCH_SIZE} operations`).optional().describe("Distinct ordered Assets operations whose full live contracts should be returned together without execution"),
+        arguments: external_exports.record(external_exports.string(), external_exports.unknown()).optional().describe("Arguments validated against the selected operation's live input schema")
+      },
+      _meta: { ui: { visibility: ["model"] } }
+    }, async ({ operation, contract, contracts, arguments: operationArguments }, extra) => {
+      if ([operation, contract, contracts].filter((value) => value !== void 0).length > 1) {
+        throw new Error("Clash Assets accepts one disclosure mode or operation execution, not a combination.");
+      }
+      if (contracts)
+        return this.#contractBatchResult("assets", contracts);
+      if (contract)
+        return this.#contractResult("assets", contract);
+      if (operation) {
+        return this.#dispatchOperation({
+          operation,
+          arguments: operationArguments ?? {},
           selectedCommand: "assets",
           extra
         });
       }
-      return this.#commandResult("assets");
+      return this.#commandResult("assets", { lightweight: true });
     });
     const canvasDefinition = getClashMcpCommand("canvas");
     super.registerTool(CLASH_CANVAS_TOOL_NAME, {
@@ -31731,7 +31767,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
     }
   }
   registerTool(name, config2, callback) {
-    if (name === CLASH_ROOT_TOOL_NAME || name === CLASH_ASSETS_TOOL_NAME || name === CLASH_CANVAS_TOOL_NAME || name === CLASH_COMPOSITION_TOOL_NAME || Object.values(LEGACY_CLASH_GROUP_TOOL_NAMES).includes(name)) {
+    if (name === CLASH_ROOT_TOOL_NAME || name === CLASH_PLUGIN_TOOL_NAME || name === CLASH_ASSETS_TOOL_NAME || name === CLASH_CANVAS_TOOL_NAME || name === CLASH_COMPOSITION_TOOL_NAME || Object.values(LEGACY_CLASH_GROUP_TOOL_NAMES).includes(name)) {
       throw new Error(`${name} is provided by ClashMcpServer`);
     }
     const handle = super.registerTool(name, config2, callback);
@@ -31777,7 +31813,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       belongsToCommand: (operation, command) => classifyClashMcpTool(operation.name) === command.id
     });
   }
-  #commandResult(command) {
+  #commandResult(command, options = {}) {
     const view = this.#commandView(command);
     const operationCount = view.operations?.length ?? 0;
     if (operationCount === 0) {
@@ -31792,14 +31828,68 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         isError: true
       };
     }
+    const operations = options.lightweight ? (view.operations ?? []).map(({ name, operation, title, readOnly, destructive }) => ({
+      name,
+      operation,
+      title,
+      readOnly,
+      destructive
+    })) : view.operations ?? [];
     return {
       content: [
         {
           type: "text",
-          text: `Revealed ${operationCount} ${command} operation${operationCount === 1 ? "" : "s"}.`
+          text: options.lightweight ? `Found ${operationCount} ${command} operation${operationCount === 1 ? "" : "s"}. Request only the needed full contracts together with contracts=["<operation>", ...] before execution; contract="<operation>" remains available for one.` : `Revealed ${operationCount} ${command} operation${operationCount === 1 ? "" : "s"}.`
         }
       ],
-      structuredContent: view
+      structuredContent: { ...view, operations }
+    };
+  }
+  #contractResult(command, requestedOperation) {
+    const operationName = this.#resolveOperationName(requestedOperation, command);
+    const contract = this.#commandView(command).operations?.find(({ name }) => name === operationName);
+    if (!contract) {
+      throw new Error(`Clash ${command} operation ${requestedOperation} has no live contract in this host.`);
+    }
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Revealed the live contract for ${contract.name}.`
+        }
+      ],
+      structuredContent: {
+        schemaVersion: 1,
+        selectedCommand: command,
+        contract
+      }
+    };
+  }
+  #contractBatchResult(command, requestedOperations) {
+    const liveContracts = this.#commandView(command).operations ?? [];
+    const operationNames = requestedOperations.map((requestedOperation) => this.#resolveOperationName(requestedOperation, command));
+    if (new Set(operationNames).size !== operationNames.length) {
+      throw new Error(`Clash ${command} contract batches require distinct operations.`);
+    }
+    const contracts = operationNames.map((operationName, index) => {
+      const contract = liveContracts.find(({ name }) => name === operationName);
+      if (!contract) {
+        throw new Error(`Clash ${command} operation ${requestedOperations[index]} has no live contract in this host.`);
+      }
+      return contract;
+    });
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Revealed ${contracts.length} live ${command} contracts.`
+        }
+      ],
+      structuredContent: {
+        schemaVersion: 1,
+        selectedCommand: command,
+        contracts
+      }
     };
   }
   #rootView(selectedCommand) {
@@ -31813,6 +31903,9 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       }
       if (command.id === "assets") {
         return { ...command, dispatcher: CLASH_ASSETS_TOOL_NAME };
+      }
+      if (command.id === "plugin") {
+        return { ...command, dispatcher: CLASH_PLUGIN_TOOL_NAME };
       }
       if (command.id === "canvas") {
         return { ...command, dispatcher: CLASH_CANVAS_TOOL_NAME };
@@ -31902,7 +31995,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         return false;
       if (Object.values(LEGACY_CLASH_GROUP_TOOL_NAMES).includes(tool.name))
         return false;
-      if (tool.name === CLASH_ROOT_TOOL_NAME || tool.name === CLASH_ASSETS_TOOL_NAME || tool.name === CLASH_CANVAS_TOOL_NAME || tool.name === CLASH_COMPOSITION_TOOL_NAME || tool.name === "clash_workspace_init")
+      if (tool.name === CLASH_ROOT_TOOL_NAME || tool.name === CLASH_PLUGIN_TOOL_NAME || tool.name === CLASH_ASSETS_TOOL_NAME || tool.name === CLASH_CANVAS_TOOL_NAME || tool.name === CLASH_COMPOSITION_TOOL_NAME || tool.name === "clash_workspace_init")
         return true;
       return classifyClashMcpTool(tool.name) === "other";
     });
@@ -37278,8 +37371,10 @@ var zodToJsonSchema2 = (schema, options) => {
   }
   return combined;
 };
-
-// ../../packages/shared-types/dist/chunk-F5H437YY.js
+var TIMELINE_DISCOVERY_VIEWS = ["authoring", "full"];
+var TimelineDiscoveryViewSchema = z2.enum(
+  TIMELINE_DISCOVERY_VIEWS
+);
 var TIMELINE_KEYFRAME_INTERPOLATIONS = ["hold", "linear"];
 var DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION = "linear";
 var TIMELINE_KEYFRAME_SAMPLING_POLICY = Object.freeze({
@@ -37975,7 +38070,7 @@ var itemBaseFields = {
     editor: timelineControl,
     runtimeConsumers: ["editor", "preview", "render", "export"]
   }),
-  assetId: authored(NonEmptyStringSchema, "Stable D1 media asset row id.", {
+  assetId: authored(NonEmptyStringSchema, "Immutable Project Asset id referenced by this Timeline item.", {
     required: false,
     editor: noControl,
     runtimeConsumers: ["asset-loader", "preview", "render"]
@@ -38436,736 +38531,6 @@ var TIMELINE_DSL_FIELD_CATALOG = {
     ])
   )
 };
-var IdentifierSchema = z2.string().trim().min(1);
-var FiniteNumberSchema2 = z2.number().finite();
-var FrameSchema = z2.number().finite().int().nonnegative();
-var PositiveFrameSchema2 = z2.number().finite().int().positive();
-var PositionSchema = z2.object({
-  x: FiniteNumberSchema2,
-  y: FiniteNumberSchema2
-}).strict();
-var TimelineDocumentEnvelopeSchema = z2.object({
-  tracks: z2.array(z2.unknown())
-}).passthrough();
-var TimelineOwnerSchema = z2.discriminatedUnion("kind", [
-  z2.object({ kind: z2.literal("project") }).strict(),
-  z2.object({
-    kind: z2.literal("canvas-action"),
-    canvasId: IdentifierSchema,
-    actionNodeId: IdentifierSchema
-  }).strict()
-]);
-var ProjectTimelineEntitySchema = z2.object({
-  id: IdentifierSchema,
-  name: IdentifierSchema,
-  owner: TimelineOwnerSchema,
-  revisionId: IdentifierSchema,
-  state: z2.unknown()
-}).passthrough();
-var TimelineIssueSchema = z2.object({
-  severity: z2.enum(["error", "warning"]).optional(),
-  code: IdentifierSchema,
-  message: z2.string().min(1),
-  path: z2.string()
-}).passthrough();
-var TimelineSchemaOutputSchema = z2.object({
-  schemaVersion: z2.union([z2.number().int().positive(), IdentifierSchema]),
-  contractFingerprint: IdentifierSchema,
-  jsonSchema: z2.record(z2.string(), z2.unknown())
-}).passthrough();
-var TimelineValidationOutputSchema = z2.object({
-  ok: z2.boolean(),
-  issues: z2.array(TimelineIssueSchema).default([]),
-  contractFingerprint: IdentifierSchema.optional(),
-  sources: z2.array(IdentifierSchema).optional()
-}).passthrough();
-var TimelineProjectionOutputSchema = z2.object({
-  pulled: z2.literal(true),
-  projectId: IdentifierSchema,
-  timelineId: IdentifierSchema,
-  revisionId: IdentifierSchema,
-  owner: TimelineOwnerSchema,
-  filePath: IdentifierSchema,
-  timelineHash: IdentifierSchema
-}).passthrough();
-var TimelineApplyOutputSchema = z2.object({
-  applied: z2.literal(true),
-  projectId: IdentifierSchema,
-  timelineId: IdentifierSchema,
-  revisionId: IdentifierSchema,
-  owner: TimelineOwnerSchema,
-  filePath: IdentifierSchema,
-  sources: z2.array(IdentifierSchema),
-  timelineHash: IdentifierSchema
-}).passthrough();
-var TimelineRenderTargetSchema = z2.discriminatedUnion("kind", [
-  z2.object({ kind: z2.literal("project-assets") }).strict(),
-  z2.object({
-    kind: z2.literal("canvas"),
-    canvasId: IdentifierSchema,
-    actionNodeId: IdentifierSchema
-  }).strict()
-]);
-var TimelineRenderReceiptSchema = z2.object({
-  submitted: z2.literal(true),
-  completed: z2.boolean(),
-  timelineId: IdentifierSchema,
-  sourceTimelineRevisionId: IdentifierSchema,
-  renderNodeId: IdentifierSchema,
-  target: TimelineRenderTargetSchema,
-  status: z2.enum(["pending", "completed", "failed"]),
-  asset: z2.object({ id: IdentifierSchema }).strict().optional(),
-  error: z2.string().min(1).optional()
-}).passthrough();
-var timelineEditorItemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => z2.object({
-  ...timelineDslAnnotatedObjectShape(
-    TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
-    {
-      requiredness: "runtime",
-      overrides: {
-        type: z2.literal(type),
-        from: FrameSchema
-      }
-    }
-  ),
-  ...timelineDslAnnotatedObjectShape(
-    TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type],
-    { requiredness: "runtime" }
-  )
-}).strict());
-var TimelineItemEnvelopeSchema = z2.discriminatedUnion(
-  "type",
-  timelineEditorItemVariantSchemas
-);
-var TimelineTrackEnvelopeSchema = z2.object(timelineDslAnnotatedObjectShape(
-  TIMELINE_DSL_FIELD_ANNOTATIONS.track,
-  {
-    requiredness: "runtime",
-    overrides: { items: z2.array(TimelineItemEnvelopeSchema) }
-  }
-)).strict();
-var TimelineAssetEnvelopeSchema = z2.object({
-  id: IdentifierSchema,
-  name: IdentifierSchema,
-  type: z2.enum(["video", "audio", "image"]),
-  src: IdentifierSchema,
-  createdAt: FiniteNumberSchema2
-}).passthrough();
-var TimelineTranscriptEnvelopeSchema = z2.object({
-  schemaVersion: z2.literal(1),
-  kind: z2.literal("clash.editor.asset-transcript"),
-  assetId: IdentifierSchema,
-  text: z2.string(),
-  durationMs: FrameSchema,
-  words: z2.array(z2.object({
-    id: IdentifierSchema,
-    text: z2.string(),
-    startMs: FrameSchema,
-    endMs: PositiveFrameSchema2
-  }).passthrough())
-}).passthrough();
-var TimelineEditorStateEnvelopeSchema = z2.object({
-  tracks: z2.array(TimelineTrackEnvelopeSchema)
-}).passthrough();
-var TimelineCommandOutputSchema = z2.object({
-  ok: z2.boolean(),
-  dsl: TimelineDocumentEnvelopeSchema,
-  issues: z2.array(TimelineIssueSchema)
-}).passthrough();
-function annotation(options) {
-  return Object.freeze({
-    ...options,
-    preconditions: Object.freeze([...options.preconditions]),
-    runtimeConsumers: Object.freeze([...options.runtimeConsumers]),
-    ...options.surfaceBindings ? { surfaceBindings: Object.freeze([...options.surfaceBindings]) } : {},
-    ...options.inputContractRefs ? { inputContractRefs: Object.freeze({ ...options.inputContractRefs }) } : {}
-  });
-}
-function agentOperation(options) {
-  return annotation({ ...options, public: true });
-}
-var agent = {
-  "timeline.open": agentOperation({
-    id: "timeline.open",
-    kind: "agent",
-    inputSchema: z2.object({ timelineId: IdentifierSchema.optional() }).strict(),
-    outputSchema: z2.object({
-      cwd: IdentifierSchema,
-      timelines: z2.array(ProjectTimelineEntitySchema),
-      selected: ProjectTimelineEntitySchema.optional()
-    }).passthrough(),
-    access: "read",
-    readOnly: true,
-    cas: "none",
-    readProof: "records-observation",
-    preconditions: ["The current cwd resolves to a Project replica."],
-    description: "Open the interactive Timeline app with an optionally selected Project Timeline.",
-    runtimeConsumers: ["mcp", "timeline-app", "agent-runtime"],
-    surfaceBindings: ["mcp:clash_timeline_open"],
-    agentCallable: true
-  }),
-  "timeline.schema": agentOperation({
-    id: "timeline.schema",
-    kind: "agent",
-    inputSchema: z2.object({}).strict(),
-    outputSchema: TimelineSchemaOutputSchema,
-    access: "read",
-    readOnly: true,
-    cas: "none",
-    readProof: "none",
-    preconditions: ["The installed Timeline contract is available."],
-    description: "Return the machine-readable Timeline DSL contract and its fingerprint.",
-    runtimeConsumers: ["cli", "mcp", "agent-runtime", "documentation-generator"],
-    surfaceBindings: ["cli:timeline schema", "mcp:clash_timeline_schema"],
-    agentCallable: true
-  }),
-  "timeline.validate": agentOperation({
-    id: "timeline.validate",
-    kind: "agent",
-    inputSchema: z2.object({
-      document: z2.union([z2.string(), TimelineDocumentEnvelopeSchema]),
-      format: z2.enum(["yaml", "json", "object"]).optional()
-    }).strict(),
-    outputSchema: TimelineValidationOutputSchema,
-    access: "read",
-    readOnly: true,
-    cas: "none",
-    readProof: "none",
-    preconditions: ["The authored document is syntactically readable as YAML, JSON, or an object."],
-    description: "Validate authored Timeline DSL without applying or mutating a Project Timeline.",
-    runtimeConsumers: ["cli", "mcp", "agent-runtime", "timeline-semantics"],
-    surfaceBindings: ["cli:timeline validate", "mcp:clash_timeline_validate"],
-    inputContractRefs: { document: "TIMELINE_DSL_DEFINITION.jsonSchema" },
-    agentCallable: true
-  }),
-  "timeline.list": agentOperation({
-    id: "timeline.list",
-    kind: "entity",
-    inputSchema: z2.object({ standalone: z2.boolean().optional() }).strict(),
-    outputSchema: z2.array(ProjectTimelineEntitySchema),
-    access: "read",
-    readOnly: true,
-    cas: "none",
-    readProof: "records-observation",
-    preconditions: ["The current cwd resolves to a Project replica."],
-    description: "List Project Timeline entities and record observations for later writes.",
-    runtimeConsumers: ["cli", "mcp", "local-host", "agent-runtime"],
-    surfaceBindings: ["cli:timeline list", "mcp:clash_timeline_list"],
-    agentCallable: true
-  }),
-  "timeline.get": agentOperation({
-    id: "timeline.get",
-    kind: "entity",
-    inputSchema: z2.object({ timelineId: IdentifierSchema }).strict(),
-    outputSchema: z2.object({ timeline: ProjectTimelineEntitySchema }).strict(),
-    access: "read",
-    readOnly: true,
-    cas: "none",
-    readProof: "records-observation",
-    preconditions: ["The requested Timeline exists in the current Project replica."],
-    description: "Read one complete Project Timeline state and its revision for a later typed save.",
-    runtimeConsumers: ["mcp", "local-host", "agent-runtime"],
-    surfaceBindings: ["mcp:clash_timeline_get"],
-    agentCallable: true
-  }),
-  "timeline.create": agentOperation({
-    id: "timeline.create",
-    kind: "entity",
-    inputSchema: z2.object({
-      id: IdentifierSchema,
-      name: IdentifierSchema,
-      state: TimelineDocumentEnvelopeSchema.optional()
-    }).strict(),
-    outputSchema: ProjectTimelineEntitySchema,
-    access: "write",
-    readOnly: false,
-    cas: "host-enforced",
-    readProof: "none",
-    preconditions: ["The Project-scoped Timeline id does not already exist."],
-    description: "Create a standalone Project Timeline through the authoritative local host.",
-    runtimeConsumers: ["cli", "mcp", "local-host", "project-workspace"],
-    surfaceBindings: ["cli:timeline create", "mcp:clash_timeline_create"],
-    inputContractRefs: { state: "TIMELINE_DSL_DEFINITION.jsonSchema" },
-    agentCallable: true
-  }),
-  "timeline.save": agentOperation({
-    id: "timeline.save",
-    kind: "entity",
-    inputSchema: z2.object({
-      timelineId: IdentifierSchema,
-      baseRevisionId: IdentifierSchema,
-      state: TimelineDocumentEnvelopeSchema
-    }).strict(),
-    outputSchema: TimelineApplyOutputSchema,
-    access: "write",
-    readOnly: false,
-    cas: "host-enforced",
-    readProof: "requires-observation",
-    preconditions: [
-      "The Timeline was read and baseRevisionId still matches its current revision.",
-      "The complete state passes the canonical structural and semantic contract."
-    ],
-    description: "Validate and save a complete typed Timeline state with an explicit base revision.",
-    runtimeConsumers: ["mcp", "local-host", "agent-runtime", "timeline-semantics"],
-    surfaceBindings: ["mcp:clash_timeline_save"],
-    inputContractRefs: { state: "TIMELINE_DSL_DEFINITION.jsonSchema" },
-    agentCallable: true
-  }),
-  "timeline.attach": agentOperation({
-    id: "timeline.attach",
-    kind: "entity",
-    inputSchema: z2.object({
-      timelineId: IdentifierSchema,
-      canvasId: IdentifierSchema,
-      actionNodeId: IdentifierSchema.optional(),
-      position: PositionSchema.optional()
-    }).strict(),
-    outputSchema: ProjectTimelineEntitySchema,
-    access: "write",
-    readOnly: false,
-    cas: "host-enforced",
-    readProof: "requires-observation",
-    preconditions: [
-      "The Timeline was observed through list or pull and remains at that revision.",
-      "The Timeline is standalone and the target Canvas exists.",
-      "The Timeline Action node id is unused."
-    ],
-    description: "Move a standalone Timeline into a Canvas as a Timeline Action.",
-    runtimeConsumers: ["cli", "mcp", "local-host", "project-workspace", "canvas"],
-    surfaceBindings: ["cli:timeline attach", "mcp:clash_timeline_attach"],
-    agentCallable: true
-  }),
-  "timeline.detach": agentOperation({
-    id: "timeline.detach",
-    kind: "entity",
-    inputSchema: z2.object({ timelineId: IdentifierSchema }).strict(),
-    outputSchema: ProjectTimelineEntitySchema,
-    access: "write",
-    readOnly: false,
-    cas: "host-enforced",
-    readProof: "requires-observation",
-    preconditions: [
-      "The Timeline was observed through list or pull and remains at that revision.",
-      "The Timeline is currently owned by a Canvas Timeline Action."
-    ],
-    description: "Detach a Canvas-owned Timeline back to the Project root.",
-    runtimeConsumers: ["cli", "mcp", "local-host", "project-workspace", "canvas"],
-    surfaceBindings: ["cli:timeline detach", "mcp:clash_timeline_detach"],
-    agentCallable: true
-  }),
-  "timeline.copy": agentOperation({
-    id: "timeline.copy",
-    kind: "entity",
-    inputSchema: z2.object({
-      sourceTimelineId: IdentifierSchema,
-      targetCanvasId: IdentifierSchema,
-      newTimelineId: IdentifierSchema.optional(),
-      newActionNodeId: IdentifierSchema.optional(),
-      position: PositionSchema.optional()
-    }).strict(),
-    outputSchema: ProjectTimelineEntitySchema,
-    access: "write",
-    readOnly: false,
-    cas: "host-enforced",
-    readProof: "requires-observation",
-    preconditions: [
-      "The source Timeline was observed and remains at that revision.",
-      "The source is a Canvas-owned Timeline Action and the target Canvas exists.",
-      "The new Timeline and Action node ids are unused."
-    ],
-    description: "Copy a Timeline Action into another Canvas using copy-on-write identity.",
-    runtimeConsumers: ["cli", "mcp", "local-host", "project-workspace", "canvas"],
-    surfaceBindings: ["cli:timeline copy", "mcp:clash_timeline_copy"],
-    agentCallable: true
-  }),
-  "timeline.render": agentOperation({
-    id: "timeline.render",
-    kind: "agent",
-    inputSchema: z2.object({
-      timelineId: IdentifierSchema,
-      wait: z2.boolean().optional(),
-      timeoutMs: z2.number().int().min(1e3).optional()
-    }).strict(),
-    outputSchema: TimelineRenderReceiptSchema,
-    access: "write",
-    readOnly: false,
-    cas: "none",
-    readProof: "records-observation",
-    preconditions: [
-      "The Timeline exists and contains at least one renderable item.",
-      "The local daemon has a healthy packaged Remotion rendering backend."
-    ],
-    description: "Submit the current Timeline revision to the daemon renderer and optionally wait for persisted Asset readback.",
-    runtimeConsumers: ["cli", "mcp", "local-host", "remotion-renderer", "agent-runtime"],
-    surfaceBindings: ["cli:timeline render", "mcp:clash_timeline_render"],
-    agentCallable: true
-  }),
-  "timeline.pull": agentOperation({
-    id: "timeline.pull",
-    kind: "projection",
-    inputSchema: z2.object({ timelineId: IdentifierSchema }).strict(),
-    outputSchema: TimelineProjectionOutputSchema,
-    access: "read",
-    readOnly: true,
-    cas: "none",
-    readProof: "records-observation",
-    preconditions: ["The Timeline exists in the current Project replica."],
-    description: "Project the current Timeline revision to agent-editable YAML and record its observation.",
-    runtimeConsumers: ["cli", "local-host", "yaml-projection", "agent-runtime"],
-    surfaceBindings: ["cli:timeline pull"],
-    agentCallable: true
-  }),
-  "timeline.apply": agentOperation({
-    id: "timeline.apply",
-    kind: "projection",
-    inputSchema: z2.object({
-      timelineId: IdentifierSchema,
-      document: z2.union([z2.string(), TimelineDocumentEnvelopeSchema]),
-      format: z2.enum(["yaml", "json", "object"]).optional()
-    }).strict(),
-    outputSchema: TimelineApplyOutputSchema,
-    access: "write",
-    readOnly: false,
-    cas: "host-enforced",
-    readProof: "requires-observation",
-    preconditions: [
-      "The Timeline was pulled or listed and remains at that revision.",
-      "The complete authored document passes structural and semantic validation.",
-      "Any immutable downstream dependency guard permits the revision advance."
-    ],
-    description: "Validate an authored projection and atomically advance the Project Timeline revision.",
-    runtimeConsumers: ["cli", "local-host", "yaml-projection", "timeline-semantics"],
-    surfaceBindings: ["cli:timeline apply"],
-    inputContractRefs: { document: "TIMELINE_DSL_DEFINITION.jsonSchema" },
-    agentCallable: true
-  })
-};
-var editorCommandDefaults = {
-  kind: "editor-command",
-  outputSchema: TimelineCommandOutputSchema,
-  access: "write",
-  readOnly: false,
-  cas: "none",
-  readProof: "none",
-  runtimeConsumers: ["remotion-core", "editor", "agent-runtime"],
-  public: true,
-  agentCallable: true
-};
-var editorCommands = {
-  "timeline.command.add_clip": annotation({
-    ...editorCommandDefaults,
-    id: "timeline.command.add_clip",
-    inputSchema: z2.object({
-      type: z2.literal("add_clip"),
-      trackId: IdentifierSchema,
-      sourceNodeId: IdentifierSchema,
-      assetId: IdentifierSchema.optional(),
-      itemType: z2.enum(["video", "audio", "image", "text"]),
-      from: FrameSchema,
-      durationInFrames: PositiveFrameSchema2,
-      id: IdentifierSchema.optional(),
-      text: z2.string().optional()
-    }).strict(),
-    preconditions: [
-      "The target track exists and accepts the requested item type.",
-      "The source node resolves for media clips."
-    ],
-    description: "Add one validated clip to a Timeline draft."
-  }),
-  "timeline.command.trim_clip": annotation({
-    ...editorCommandDefaults,
-    id: "timeline.command.trim_clip",
-    inputSchema: z2.object({
-      type: z2.literal("trim_clip"),
-      trackId: IdentifierSchema,
-      itemId: IdentifierSchema,
-      from: FrameSchema,
-      durationInFrames: PositiveFrameSchema2
-    }).strict(),
-    preconditions: ["The target track and item exist and the requested duration is positive."],
-    description: "Trim and reposition one clip in a Timeline draft."
-  }),
-  "timeline.command.split_clip": annotation({
-    ...editorCommandDefaults,
-    id: "timeline.command.split_clip",
-    inputSchema: z2.object({
-      type: z2.literal("split_clip"),
-      trackId: IdentifierSchema,
-      itemId: IdentifierSchema,
-      splitFrame: FrameSchema
-    }).strict(),
-    preconditions: ["The target item exists and the split frame lies strictly inside its bounds."],
-    description: "Split one clip at an absolute Timeline frame."
-  })
-};
-var itemUpdateFields = {
-  ...TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
-  ...Object.assign({}, ...Object.values(TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes))
-};
-var ItemUpdatesSchema = z2.object(timelineDslAnnotatedObjectShape(
-  itemUpdateFields,
-  {
-    requiredness: "partial",
-    overrides: { from: FrameSchema }
-  }
-)).strict().refine(
-  (updates) => Object.keys(updates).length > 0,
-  "At least one item field must be updated."
-);
-var TrackUpdatesSchema = z2.object(timelineDslAnnotatedObjectShape(
-  TIMELINE_DSL_FIELD_ANNOTATIONS.track,
-  {
-    requiredness: "partial",
-    overrides: { items: z2.array(TimelineItemEnvelopeSchema) }
-  }
-)).strict().refine(
-  (updates) => Object.keys(updates).length > 0,
-  "At least one track field must be updated."
-);
-function editorAction(id, inputSchema, description, preconditions = ["A Timeline editor draft is loaded."]) {
-  return annotation({
-    id,
-    kind: "editor-action",
-    inputSchema,
-    outputSchema: TimelineEditorStateEnvelopeSchema,
-    access: "write",
-    readOnly: false,
-    cas: "none",
-    readProof: "none",
-    preconditions,
-    description,
-    runtimeConsumers: ["remotion-core", "remotion-ui", "editor-history"],
-    public: true,
-    agentCallable: false
-  });
-}
-function actionWithPayload(type, payload) {
-  return z2.object({ type: z2.literal(type), payload }).strict();
-}
-function actionWithoutPayload(type) {
-  return z2.object({ type: z2.literal(type) }).strict();
-}
-var editorActions = {
-  "timeline.action.ADD_TRACK": editorAction(
-    "timeline.action.ADD_TRACK",
-    actionWithPayload("ADD_TRACK", TimelineTrackEnvelopeSchema),
-    "Append a compatible track to the local Timeline draft."
-  ),
-  "timeline.action.INSERT_TRACK": editorAction(
-    "timeline.action.INSERT_TRACK",
-    actionWithPayload("INSERT_TRACK", z2.object({
-      track: TimelineTrackEnvelopeSchema,
-      index: FrameSchema
-    }).strict()),
-    "Insert a compatible track at a requested editor index."
-  ),
-  "timeline.action.REMOVE_TRACK": editorAction(
-    "timeline.action.REMOVE_TRACK",
-    actionWithPayload("REMOVE_TRACK", IdentifierSchema),
-    "Remove a track from the local Timeline draft.",
-    ["The target track exists and editor primary-track invariants can be preserved."]
-  ),
-  "timeline.action.SET_PRIMARY_TRACK": editorAction(
-    "timeline.action.SET_PRIMARY_TRACK",
-    actionWithPayload("SET_PRIMARY_TRACK", IdentifierSchema),
-    "Choose the Timeline track that anchors semantic edits.",
-    ["The target track exists and is eligible to be primary."]
-  ),
-  "timeline.action.UPDATE_TRACK": editorAction(
-    "timeline.action.UPDATE_TRACK",
-    actionWithPayload("UPDATE_TRACK", z2.object({
-      id: IdentifierSchema,
-      updates: TrackUpdatesSchema
-    }).strict()),
-    "Update authored properties of one Timeline track.",
-    ["The target track exists and the update preserves category and primary-track invariants."]
-  ),
-  "timeline.action.REORDER_TRACKS": editorAction(
-    "timeline.action.REORDER_TRACKS",
-    actionWithPayload("REORDER_TRACKS", z2.array(TimelineTrackEnvelopeSchema)),
-    "Replace the local track ordering with a complete ordered track list.",
-    ["Every current track is represented exactly once and category ordering remains valid."]
-  ),
-  "timeline.action.ADD_ITEM": editorAction(
-    "timeline.action.ADD_ITEM",
-    actionWithPayload("ADD_ITEM", z2.object({
-      trackId: IdentifierSchema,
-      item: TimelineItemEnvelopeSchema
-    }).strict()),
-    "Append one item to a compatible Timeline track.",
-    ["The target track exists, accepts the item type, and the item id is unique."]
-  ),
-  "timeline.action.MOVE_ITEM": editorAction(
-    "timeline.action.MOVE_ITEM",
-    actionWithPayload("MOVE_ITEM", z2.object({
-      sourceTrackId: IdentifierSchema,
-      targetTrackId: IdentifierSchema,
-      itemId: IdentifierSchema,
-      from: FrameSchema
-    }).strict()),
-    "Move an item between compatible tracks at an absolute frame.",
-    ["Both tracks and the item exist, and the target track accepts the item type."]
-  ),
-  "timeline.action.REMOVE_ITEM": editorAction(
-    "timeline.action.REMOVE_ITEM",
-    actionWithPayload("REMOVE_ITEM", z2.object({
-      trackId: IdentifierSchema,
-      itemId: IdentifierSchema
-    }).strict()),
-    "Remove an item and reconcile its parent track.",
-    ["The target track and item exist."]
-  ),
-  "timeline.action.UPDATE_ITEM": editorAction(
-    "timeline.action.UPDATE_ITEM",
-    actionWithPayload("UPDATE_ITEM", z2.object({
-      trackId: IdentifierSchema,
-      itemId: IdentifierSchema,
-      updates: ItemUpdatesSchema
-    }).strict()),
-    "Update authored fields on one Timeline item.",
-    ["The target item exists and the update remains valid for its discriminated item type."]
-  ),
-  "timeline.action.SPLIT_ITEM": editorAction(
-    "timeline.action.SPLIT_ITEM",
-    actionWithPayload("SPLIT_ITEM", z2.object({
-      trackId: IdentifierSchema,
-      itemId: IdentifierSchema,
-      splitFrame: FrameSchema
-    }).strict()),
-    "Split an item at an absolute Timeline frame and slice its keyframes.",
-    ["The split frame lies strictly inside the target item bounds."]
-  ),
-  "timeline.action.RIPPLE_DELETE_RANGE": editorAction(
-    "timeline.action.RIPPLE_DELETE_RANGE",
-    actionWithPayload("RIPPLE_DELETE_RANGE", z2.object({
-      startFrame: FrameSchema,
-      endFrame: PositiveFrameSchema2
-    }).strict().refine(
-      ({ startFrame, endFrame }) => endFrame > startFrame,
-      "endFrame must be greater than startFrame."
-    )),
-    "Delete an absolute frame range and close the resulting gap.",
-    ["The requested range is non-empty and lies within the editable Timeline."]
-  ),
-  "timeline.action.RESTORE_TIMELINE_SNAPSHOT": editorAction(
-    "timeline.action.RESTORE_TIMELINE_SNAPSHOT",
-    actionWithPayload("RESTORE_TIMELINE_SNAPSHOT", z2.object({
-      tracks: z2.array(TimelineTrackEnvelopeSchema),
-      durationInFrames: PositiveFrameSchema2
-    }).strict()),
-    "Restore persistent Timeline fields from an editor history snapshot.",
-    ["The snapshot was produced by the current editor history contract."]
-  ),
-  "timeline.action.SELECT_ITEM": editorAction(
-    "timeline.action.SELECT_ITEM",
-    actionWithPayload("SELECT_ITEM", IdentifierSchema.nullable()),
-    "Select or clear one Timeline item in the editor session."
-  ),
-  "timeline.action.SELECT_TRACK": editorAction(
-    "timeline.action.SELECT_TRACK",
-    actionWithPayload("SELECT_TRACK", IdentifierSchema.nullable()),
-    "Select or clear one Timeline track in the editor session."
-  ),
-  "timeline.action.SET_CURRENT_FRAME": editorAction(
-    "timeline.action.SET_CURRENT_FRAME",
-    actionWithPayload("SET_CURRENT_FRAME", FrameSchema),
-    "Seek the editor playhead to an absolute Timeline frame."
-  ),
-  "timeline.action.SET_PLAYING": editorAction(
-    "timeline.action.SET_PLAYING",
-    actionWithPayload("SET_PLAYING", z2.boolean()),
-    "Start or stop editor preview playback."
-  ),
-  "timeline.action.SET_ZOOM": editorAction(
-    "timeline.action.SET_ZOOM",
-    actionWithPayload("SET_ZOOM", z2.number().finite().positive()),
-    "Set the Timeline viewport zoom level."
-  ),
-  "timeline.action.ADD_ASSET": editorAction(
-    "timeline.action.ADD_ASSET",
-    actionWithPayload("ADD_ASSET", TimelineAssetEnvelopeSchema),
-    "Add a media asset to the local editor asset collection.",
-    ["The asset id is not already present in the editor collection."]
-  ),
-  "timeline.action.UPSERT_ASSET": editorAction(
-    "timeline.action.UPSERT_ASSET",
-    actionWithPayload("UPSERT_ASSET", TimelineAssetEnvelopeSchema),
-    "Insert or replace a media asset in the local editor collection."
-  ),
-  "timeline.action.SET_ASSET_TRANSCRIPT": editorAction(
-    "timeline.action.SET_ASSET_TRANSCRIPT",
-    actionWithPayload("SET_ASSET_TRANSCRIPT", TimelineTranscriptEnvelopeSchema),
-    "Store an asset transcript and synchronize linked subtitle text.",
-    ["The transcript word timings are expressed in the referenced immutable asset."]
-  ),
-  "timeline.action.REMOVE_ASSET": editorAction(
-    "timeline.action.REMOVE_ASSET",
-    actionWithPayload("REMOVE_ASSET", IdentifierSchema),
-    "Remove a media asset from the local editor asset collection."
-  ),
-  "timeline.action.SET_COMPOSITION_SIZE": editorAction(
-    "timeline.action.SET_COMPOSITION_SIZE",
-    actionWithPayload("SET_COMPOSITION_SIZE", z2.object({
-      width: z2.number().finite().int().positive(),
-      height: z2.number().finite().int().positive()
-    }).strict()),
-    "Set positive pixel dimensions for the Timeline composition."
-  ),
-  "timeline.action.SET_DURATION": editorAction(
-    "timeline.action.SET_DURATION",
-    actionWithPayload("SET_DURATION", PositiveFrameSchema2),
-    "Set the Timeline composition duration in frames."
-  ),
-  "timeline.action.UNDO": editorAction(
-    "timeline.action.UNDO",
-    actionWithoutPayload("UNDO"),
-    "Restore the previous persistent Timeline history snapshot.",
-    ["The editor history has at least one past snapshot or an active changed group."]
-  ),
-  "timeline.action.REDO": editorAction(
-    "timeline.action.REDO",
-    actionWithoutPayload("REDO"),
-    "Restore the next persistent Timeline history snapshot.",
-    ["The editor history has at least one future snapshot."]
-  ),
-  "timeline.action.BEGIN_HISTORY_GROUP": editorAction(
-    "timeline.action.BEGIN_HISTORY_GROUP",
-    actionWithoutPayload("BEGIN_HISTORY_GROUP"),
-    "Begin grouping related editor mutations into one undo step."
-  ),
-  "timeline.action.END_HISTORY_GROUP": editorAction(
-    "timeline.action.END_HISTORY_GROUP",
-    actionWithoutPayload("END_HISTORY_GROUP"),
-    "Commit the active editor mutation group as one undo step.",
-    ["A Timeline editor history group is active."]
-  )
-};
-var TIMELINE_OPERATION_REGISTRY = Object.freeze({
-  agent: Object.freeze(agent),
-  editorCommands: Object.freeze(editorCommands),
-  editorActions: Object.freeze(editorActions)
-});
-function catalogGroup(group) {
-  return Object.fromEntries(
-    Object.entries(group).map(([id, value]) => {
-      const { inputSchema: _inputSchema, outputSchema: _outputSchema, ...metadata } = value;
-      return [id, {
-        ...metadata,
-        inputJsonSchema: zodToJsonSchema2(value.inputSchema, {
-          target: "jsonSchema7"
-        }),
-        outputJsonSchema: zodToJsonSchema2(value.outputSchema, {
-          target: "jsonSchema7"
-        })
-      }];
-    })
-  );
-}
-var TIMELINE_OPERATION_CATALOG = Object.freeze({
-  agent: Object.freeze(catalogGroup(agent)),
-  editorCommands: Object.freeze(catalogGroup(editorCommands)),
-  editorActions: Object.freeze(catalogGroup(editorActions))
-});
 var OFFSET_RE = /^(.+?)\s*([+-])\s*([0-9]+(?:\.[0-9]+)?)$/;
 var BARE_ID_RE = /^[A-Za-z0-9_.:-]+$/;
 function parseFromExpression(raw) {
@@ -39880,6 +39245,858 @@ function timelineDslSemanticIssues(input) {
     issues.push(...evaluator(context));
   return issues;
 }
+var IdentifierSchema = z2.string().trim().min(1);
+var FiniteNumberSchema2 = z2.number().finite();
+var FrameSchema = z2.number().finite().int().nonnegative();
+var PositiveFrameSchema2 = z2.number().finite().int().positive();
+var PositionSchema = z2.object({
+  x: FiniteNumberSchema2,
+  y: FiniteNumberSchema2
+}).strict();
+var TimelineDocumentEnvelopeSchema = z2.object({
+  tracks: z2.array(z2.unknown())
+}).passthrough();
+var TimelineOwnerSchema = z2.discriminatedUnion("kind", [
+  z2.object({ kind: z2.literal("project") }).strict(),
+  z2.object({
+    kind: z2.literal("canvas-action"),
+    canvasId: IdentifierSchema,
+    actionNodeId: IdentifierSchema
+  }).strict()
+]);
+var ProjectTimelineEntitySchema = z2.object({
+  id: IdentifierSchema,
+  name: IdentifierSchema,
+  owner: TimelineOwnerSchema,
+  revisionId: IdentifierSchema,
+  state: z2.unknown()
+}).passthrough();
+var TimelineIssueSchema = z2.object({
+  severity: z2.enum(["error", "warning"]).optional(),
+  code: IdentifierSchema,
+  message: z2.string().min(1),
+  path: z2.string()
+}).passthrough();
+var TimelineFullSchemaOutputSchema = z2.object({
+  schemaVersion: z2.union([z2.number().int().positive(), IdentifierSchema]),
+  contractFingerprint: IdentifierSchema,
+  jsonSchema: z2.record(z2.string(), z2.unknown())
+}).passthrough();
+var TimelineAuthoringSchemaOutputSchema = z2.object({
+  view: z2.literal("authoring"),
+  schemaVersion: z2.number().int().positive(),
+  contractFingerprint: IdentifierSchema,
+  format: z2.literal("clash.timeline.yaml"),
+  fields: z2.record(z2.string(), z2.unknown()),
+  taxonomy: z2.record(z2.string(), z2.unknown()),
+  semanticRules: z2.record(z2.string(), z2.unknown()),
+  references: z2.record(z2.string(), z2.unknown()),
+  examples: z2.record(z2.string(), z2.unknown()),
+  submission: z2.record(z2.string(), z2.unknown())
+}).passthrough();
+var TimelineSchemaOutputSchema = z2.union([
+  TimelineAuthoringSchemaOutputSchema,
+  TimelineFullSchemaOutputSchema
+]);
+var TimelineValidationOutputSchema = z2.object({
+  ok: z2.boolean(),
+  issues: z2.array(TimelineIssueSchema).default([]),
+  contractFingerprint: IdentifierSchema.optional(),
+  sources: z2.array(IdentifierSchema).optional()
+}).passthrough();
+var TimelineProjectionOutputSchema = z2.object({
+  pulled: z2.literal(true),
+  projectId: IdentifierSchema,
+  timelineId: IdentifierSchema,
+  revisionId: IdentifierSchema,
+  owner: TimelineOwnerSchema,
+  filePath: IdentifierSchema,
+  timelineHash: IdentifierSchema
+}).passthrough();
+var TimelineApplyOutputSchema = z2.object({
+  applied: z2.literal(true),
+  projectId: IdentifierSchema,
+  timelineId: IdentifierSchema,
+  revisionId: IdentifierSchema,
+  owner: TimelineOwnerSchema,
+  filePath: IdentifierSchema,
+  sources: z2.array(IdentifierSchema),
+  timelineHash: IdentifierSchema
+}).passthrough();
+var TimelineRenderTargetSchema = z2.discriminatedUnion("kind", [
+  z2.object({ kind: z2.literal("project-assets") }).strict(),
+  z2.object({
+    kind: z2.literal("canvas"),
+    canvasId: IdentifierSchema,
+    actionNodeId: IdentifierSchema
+  }).strict()
+]);
+var TimelineRenderReceiptSchema = z2.object({
+  submitted: z2.literal(true),
+  completed: z2.boolean(),
+  timelineId: IdentifierSchema,
+  sourceTimelineRevisionId: IdentifierSchema,
+  renderNodeId: IdentifierSchema,
+  target: TimelineRenderTargetSchema,
+  status: z2.enum(["pending", "completed", "failed"]),
+  asset: z2.object({ id: IdentifierSchema }).strict().optional(),
+  error: z2.string().min(1).optional()
+}).passthrough();
+var timelineEditorItemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map(
+  (type) => z2.object({
+    ...timelineDslAnnotatedObjectShape(
+      TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
+      {
+        requiredness: "runtime",
+        overrides: {
+          type: z2.literal(type),
+          from: FrameSchema
+        }
+      }
+    ),
+    ...timelineDslAnnotatedObjectShape(
+      TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type],
+      { requiredness: "runtime" }
+    )
+  }).strict()
+);
+var TimelineItemEnvelopeSchema = z2.discriminatedUnion(
+  "type",
+  timelineEditorItemVariantSchemas
+);
+var TimelineTrackEnvelopeSchema = z2.object(
+  timelineDslAnnotatedObjectShape(TIMELINE_DSL_FIELD_ANNOTATIONS.track, {
+    requiredness: "runtime",
+    overrides: { items: z2.array(TimelineItemEnvelopeSchema) }
+  })
+).strict();
+var TimelineAssetEnvelopeSchema = z2.object({
+  id: IdentifierSchema,
+  name: IdentifierSchema,
+  type: z2.enum(["video", "audio", "image"]),
+  src: IdentifierSchema,
+  createdAt: FiniteNumberSchema2
+}).passthrough();
+var TimelineTranscriptEnvelopeSchema = z2.object({
+  schemaVersion: z2.literal(1),
+  kind: z2.literal("clash.editor.asset-transcript"),
+  assetId: IdentifierSchema,
+  text: z2.string(),
+  durationMs: FrameSchema,
+  words: z2.array(
+    z2.object({
+      id: IdentifierSchema,
+      text: z2.string(),
+      startMs: FrameSchema,
+      endMs: PositiveFrameSchema2
+    }).passthrough()
+  )
+}).passthrough();
+var TimelineEditorStateEnvelopeSchema = z2.object({
+  tracks: z2.array(TimelineTrackEnvelopeSchema)
+}).passthrough();
+var TimelineCommandOutputSchema = z2.object({
+  ok: z2.boolean(),
+  dsl: TimelineDocumentEnvelopeSchema,
+  issues: z2.array(TimelineIssueSchema)
+}).passthrough();
+function annotation(options) {
+  return Object.freeze({
+    ...options,
+    preconditions: Object.freeze([...options.preconditions]),
+    runtimeConsumers: Object.freeze([...options.runtimeConsumers]),
+    ...options.surfaceBindings ? { surfaceBindings: Object.freeze([...options.surfaceBindings]) } : {},
+    ...options.inputContractRefs ? { inputContractRefs: Object.freeze({ ...options.inputContractRefs }) } : {}
+  });
+}
+function agentOperation(options) {
+  return annotation({ ...options, public: true });
+}
+var agent = {
+  "timeline.open": agentOperation({
+    id: "timeline.open",
+    kind: "agent",
+    inputSchema: z2.object({ timelineId: IdentifierSchema.optional() }).strict(),
+    outputSchema: z2.object({
+      cwd: IdentifierSchema,
+      timelines: z2.array(ProjectTimelineEntitySchema),
+      selected: ProjectTimelineEntitySchema.optional()
+    }).passthrough(),
+    access: "read",
+    readOnly: true,
+    cas: "none",
+    readProof: "records-observation",
+    preconditions: ["The current cwd resolves to a Project replica."],
+    description: "Open the interactive Timeline app with an optionally selected Project Timeline.",
+    runtimeConsumers: ["mcp", "timeline-app", "agent-runtime"],
+    surfaceBindings: ["mcp:clash_timeline_open"],
+    agentCallable: true
+  }),
+  "timeline.schema": agentOperation({
+    id: "timeline.schema",
+    kind: "agent",
+    inputSchema: z2.object({
+      view: TimelineDiscoveryViewSchema.optional()
+    }).strict(),
+    outputSchema: TimelineSchemaOutputSchema,
+    access: "read",
+    readOnly: true,
+    cas: "none",
+    readProof: "none",
+    preconditions: ["The installed Timeline contract is available."],
+    description: "Return compact Timeline authoring discovery by default, or the complete machine-readable contract on request.",
+    runtimeConsumers: [
+      "cli",
+      "mcp",
+      "agent-runtime",
+      "documentation-generator"
+    ],
+    surfaceBindings: ["cli:timeline schema", "mcp:clash_timeline_schema"],
+    agentCallable: true
+  }),
+  "timeline.validate": agentOperation({
+    id: "timeline.validate",
+    kind: "agent",
+    inputSchema: z2.object({
+      document: z2.union([z2.string(), TimelineDocumentEnvelopeSchema]),
+      format: z2.enum(["yaml", "json", "object"]).optional()
+    }).strict(),
+    outputSchema: TimelineValidationOutputSchema,
+    access: "read",
+    readOnly: true,
+    cas: "none",
+    readProof: "none",
+    preconditions: [
+      "The authored document is syntactically readable as YAML, JSON, or an object."
+    ],
+    description: "Diagnose authored Timeline DSL without applying or mutating a Project Timeline, only when no write is intended. Do not use it as a preflight for create, save, or apply; those writes run the same validation automatically.",
+    runtimeConsumers: ["cli", "mcp", "agent-runtime", "timeline-semantics"],
+    surfaceBindings: ["cli:timeline validate", "mcp:clash_timeline_validate"],
+    inputContractRefs: { document: "TIMELINE_DSL_DEFINITION.jsonSchema" },
+    agentCallable: true
+  }),
+  "timeline.list": agentOperation({
+    id: "timeline.list",
+    kind: "entity",
+    inputSchema: z2.object({ standalone: z2.boolean().optional() }).strict(),
+    outputSchema: z2.array(ProjectTimelineEntitySchema),
+    access: "read",
+    readOnly: true,
+    cas: "none",
+    readProof: "records-observation",
+    preconditions: ["The current cwd resolves to a Project replica."],
+    description: "List Project Timeline entities and record observations for later writes.",
+    runtimeConsumers: ["cli", "mcp", "local-host", "agent-runtime"],
+    surfaceBindings: ["cli:timeline list", "mcp:clash_timeline_list"],
+    agentCallable: true
+  }),
+  "timeline.get": agentOperation({
+    id: "timeline.get",
+    kind: "entity",
+    inputSchema: z2.object({ timelineId: IdentifierSchema }).strict(),
+    outputSchema: z2.object({ timeline: ProjectTimelineEntitySchema }).strict(),
+    access: "read",
+    readOnly: true,
+    cas: "none",
+    readProof: "records-observation",
+    preconditions: [
+      "The requested Timeline exists in the current Project replica."
+    ],
+    description: "Read one complete Project Timeline state and its revision for a later typed save.",
+    runtimeConsumers: ["mcp", "local-host", "agent-runtime"],
+    surfaceBindings: ["mcp:clash_timeline_get"],
+    agentCallable: true
+  }),
+  "timeline.create": agentOperation({
+    id: "timeline.create",
+    kind: "entity",
+    inputSchema: z2.object({
+      id: IdentifierSchema,
+      name: IdentifierSchema,
+      state: TimelineDocumentEnvelopeSchema.optional()
+    }).strict(),
+    outputSchema: ProjectTimelineEntitySchema,
+    access: "write",
+    readOnly: false,
+    cas: "host-enforced",
+    readProof: "none",
+    preconditions: ["The Project-scoped Timeline id does not already exist."],
+    description: "Automatically validate and create a standalone Project Timeline through the authoritative local host; invalid state leaves Project state unchanged.",
+    runtimeConsumers: ["cli", "mcp", "local-host", "project-workspace"],
+    surfaceBindings: ["cli:timeline create", "mcp:clash_timeline_create"],
+    inputContractRefs: { state: "TIMELINE_DSL_DEFINITION.jsonSchema" },
+    agentCallable: true
+  }),
+  "timeline.save": agentOperation({
+    id: "timeline.save",
+    kind: "entity",
+    inputSchema: z2.object({
+      timelineId: IdentifierSchema,
+      baseRevisionId: IdentifierSchema,
+      state: TimelineDocumentEnvelopeSchema
+    }).strict(),
+    outputSchema: TimelineApplyOutputSchema,
+    access: "write",
+    readOnly: false,
+    cas: "host-enforced",
+    readProof: "requires-observation",
+    preconditions: [
+      "The Timeline was read and baseRevisionId still matches its current revision.",
+      "The complete state passes the canonical structural and semantic contract."
+    ],
+    description: "Automatically validate and atomically save a complete typed Timeline state with an explicit base revision; invalid state leaves the Timeline revision unchanged.",
+    runtimeConsumers: [
+      "mcp",
+      "local-host",
+      "agent-runtime",
+      "timeline-semantics"
+    ],
+    surfaceBindings: ["mcp:clash_timeline_save"],
+    inputContractRefs: { state: "TIMELINE_DSL_DEFINITION.jsonSchema" },
+    agentCallable: true
+  }),
+  "timeline.attach": agentOperation({
+    id: "timeline.attach",
+    kind: "entity",
+    inputSchema: z2.object({
+      timelineId: IdentifierSchema,
+      canvasId: IdentifierSchema,
+      actionNodeId: IdentifierSchema.optional(),
+      position: PositionSchema.optional()
+    }).strict(),
+    outputSchema: ProjectTimelineEntitySchema,
+    access: "write",
+    readOnly: false,
+    cas: "host-enforced",
+    readProof: "requires-observation",
+    preconditions: [
+      "The Timeline was observed through list or pull and remains at that revision.",
+      "The Timeline is standalone and the target Canvas exists.",
+      "The Timeline Action node id is unused."
+    ],
+    description: "Move a standalone Timeline into a Canvas as a Timeline Action.",
+    runtimeConsumers: [
+      "cli",
+      "mcp",
+      "local-host",
+      "project-workspace",
+      "canvas"
+    ],
+    surfaceBindings: ["cli:timeline attach", "mcp:clash_timeline_attach"],
+    agentCallable: true
+  }),
+  "timeline.detach": agentOperation({
+    id: "timeline.detach",
+    kind: "entity",
+    inputSchema: z2.object({ timelineId: IdentifierSchema }).strict(),
+    outputSchema: ProjectTimelineEntitySchema,
+    access: "write",
+    readOnly: false,
+    cas: "host-enforced",
+    readProof: "requires-observation",
+    preconditions: [
+      "The Timeline was observed through list or pull and remains at that revision.",
+      "The Timeline is currently owned by a Canvas Timeline Action."
+    ],
+    description: "Detach a Canvas-owned Timeline back to the Project root.",
+    runtimeConsumers: [
+      "cli",
+      "mcp",
+      "local-host",
+      "project-workspace",
+      "canvas"
+    ],
+    surfaceBindings: ["cli:timeline detach", "mcp:clash_timeline_detach"],
+    agentCallable: true
+  }),
+  "timeline.copy": agentOperation({
+    id: "timeline.copy",
+    kind: "entity",
+    inputSchema: z2.object({
+      sourceTimelineId: IdentifierSchema,
+      targetCanvasId: IdentifierSchema,
+      newTimelineId: IdentifierSchema.optional(),
+      newActionNodeId: IdentifierSchema.optional(),
+      position: PositionSchema.optional()
+    }).strict(),
+    outputSchema: ProjectTimelineEntitySchema,
+    access: "write",
+    readOnly: false,
+    cas: "host-enforced",
+    readProof: "requires-observation",
+    preconditions: [
+      "The source Timeline was observed and remains at that revision.",
+      "The source is a Canvas-owned Timeline Action and the target Canvas exists.",
+      "The new Timeline and Action node ids are unused."
+    ],
+    description: "Copy a Timeline Action into another Canvas using copy-on-write identity.",
+    runtimeConsumers: [
+      "cli",
+      "mcp",
+      "local-host",
+      "project-workspace",
+      "canvas"
+    ],
+    surfaceBindings: ["cli:timeline copy", "mcp:clash_timeline_copy"],
+    agentCallable: true
+  }),
+  "timeline.render": agentOperation({
+    id: "timeline.render",
+    kind: "agent",
+    inputSchema: z2.object({
+      timelineId: IdentifierSchema,
+      wait: z2.boolean().optional(),
+      timeoutMs: z2.number().int().min(1e3).optional()
+    }).strict(),
+    outputSchema: TimelineRenderReceiptSchema,
+    access: "write",
+    readOnly: false,
+    cas: "none",
+    readProof: "records-observation",
+    preconditions: [
+      "The Timeline exists and contains at least one renderable item.",
+      "The local daemon has a healthy packaged Remotion rendering backend."
+    ],
+    description: "Submit the current Timeline revision to the daemon renderer and optionally wait for persisted Asset readback.",
+    runtimeConsumers: [
+      "cli",
+      "mcp",
+      "local-host",
+      "remotion-renderer",
+      "agent-runtime"
+    ],
+    surfaceBindings: ["cli:timeline render", "mcp:clash_timeline_render"],
+    agentCallable: true
+  }),
+  "timeline.pull": agentOperation({
+    id: "timeline.pull",
+    kind: "projection",
+    inputSchema: z2.object({ timelineId: IdentifierSchema }).strict(),
+    outputSchema: TimelineProjectionOutputSchema,
+    access: "read",
+    readOnly: true,
+    cas: "none",
+    readProof: "records-observation",
+    preconditions: ["The Timeline exists in the current Project replica."],
+    description: "Project the current Timeline revision to agent-editable YAML and record its observation.",
+    runtimeConsumers: ["cli", "local-host", "yaml-projection", "agent-runtime"],
+    surfaceBindings: ["cli:timeline pull"],
+    agentCallable: true
+  }),
+  "timeline.apply": agentOperation({
+    id: "timeline.apply",
+    kind: "projection",
+    inputSchema: z2.object({
+      timelineId: IdentifierSchema,
+      document: z2.union([z2.string(), TimelineDocumentEnvelopeSchema]),
+      format: z2.enum(["yaml", "json", "object"]).optional()
+    }).strict(),
+    outputSchema: TimelineApplyOutputSchema,
+    access: "write",
+    readOnly: false,
+    cas: "host-enforced",
+    readProof: "requires-observation",
+    preconditions: [
+      "The Timeline was pulled or listed and remains at that revision.",
+      "The complete authored document passes structural and semantic validation.",
+      "Any immutable downstream dependency guard permits the revision advance."
+    ],
+    description: "Automatically validate an authored projection and atomically advance the Project Timeline revision; invalid input leaves the Timeline revision unchanged.",
+    runtimeConsumers: [
+      "cli",
+      "local-host",
+      "yaml-projection",
+      "timeline-semantics"
+    ],
+    surfaceBindings: ["cli:timeline apply"],
+    inputContractRefs: { document: "TIMELINE_DSL_DEFINITION.jsonSchema" },
+    agentCallable: true
+  })
+};
+var editorCommandDefaults = {
+  kind: "editor-command",
+  outputSchema: TimelineCommandOutputSchema,
+  access: "write",
+  readOnly: false,
+  cas: "none",
+  readProof: "none",
+  runtimeConsumers: ["remotion-core", "editor", "agent-runtime"],
+  public: true,
+  agentCallable: true
+};
+var editorCommands = {
+  "timeline.command.add_clip": annotation({
+    ...editorCommandDefaults,
+    id: "timeline.command.add_clip",
+    inputSchema: z2.object({
+      type: z2.literal("add_clip"),
+      trackId: IdentifierSchema,
+      sourceNodeId: IdentifierSchema,
+      assetId: IdentifierSchema.optional(),
+      itemType: z2.enum(["video", "audio", "image", "text"]),
+      from: FrameSchema,
+      durationInFrames: PositiveFrameSchema2,
+      id: IdentifierSchema.optional(),
+      text: z2.string().optional()
+    }).strict(),
+    preconditions: [
+      "The target track exists and accepts the requested item type.",
+      "The source node resolves for media clips."
+    ],
+    description: "Add one validated clip to a Timeline draft."
+  }),
+  "timeline.command.trim_clip": annotation({
+    ...editorCommandDefaults,
+    id: "timeline.command.trim_clip",
+    inputSchema: z2.object({
+      type: z2.literal("trim_clip"),
+      trackId: IdentifierSchema,
+      itemId: IdentifierSchema,
+      from: FrameSchema,
+      durationInFrames: PositiveFrameSchema2
+    }).strict(),
+    preconditions: [
+      "The target track and item exist and the requested duration is positive."
+    ],
+    description: "Trim and reposition one clip in a Timeline draft."
+  }),
+  "timeline.command.split_clip": annotation({
+    ...editorCommandDefaults,
+    id: "timeline.command.split_clip",
+    inputSchema: z2.object({
+      type: z2.literal("split_clip"),
+      trackId: IdentifierSchema,
+      itemId: IdentifierSchema,
+      splitFrame: FrameSchema
+    }).strict(),
+    preconditions: [
+      "The target item exists and the split frame lies strictly inside its bounds."
+    ],
+    description: "Split one clip at an absolute Timeline frame."
+  })
+};
+var itemUpdateFields = {
+  ...TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
+  ...Object.assign(
+    {},
+    ...Object.values(TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes)
+  )
+};
+var ItemUpdatesSchema = z2.object(
+  timelineDslAnnotatedObjectShape(itemUpdateFields, {
+    requiredness: "partial",
+    overrides: { from: FrameSchema }
+  })
+).strict().refine(
+  (updates) => Object.keys(updates).length > 0,
+  "At least one item field must be updated."
+);
+var TrackUpdatesSchema = z2.object(
+  timelineDslAnnotatedObjectShape(TIMELINE_DSL_FIELD_ANNOTATIONS.track, {
+    requiredness: "partial",
+    overrides: { items: z2.array(TimelineItemEnvelopeSchema) }
+  })
+).strict().refine(
+  (updates) => Object.keys(updates).length > 0,
+  "At least one track field must be updated."
+);
+function editorAction(id, inputSchema, description, preconditions = ["A Timeline editor draft is loaded."]) {
+  return annotation({
+    id,
+    kind: "editor-action",
+    inputSchema,
+    outputSchema: TimelineEditorStateEnvelopeSchema,
+    access: "write",
+    readOnly: false,
+    cas: "none",
+    readProof: "none",
+    preconditions,
+    description,
+    runtimeConsumers: ["remotion-core", "remotion-ui", "editor-history"],
+    public: true,
+    agentCallable: false
+  });
+}
+function actionWithPayload(type, payload) {
+  return z2.object({ type: z2.literal(type), payload }).strict();
+}
+function actionWithoutPayload(type) {
+  return z2.object({ type: z2.literal(type) }).strict();
+}
+var editorActions = {
+  "timeline.action.ADD_TRACK": editorAction(
+    "timeline.action.ADD_TRACK",
+    actionWithPayload("ADD_TRACK", TimelineTrackEnvelopeSchema),
+    "Append a compatible track to the local Timeline draft."
+  ),
+  "timeline.action.INSERT_TRACK": editorAction(
+    "timeline.action.INSERT_TRACK",
+    actionWithPayload(
+      "INSERT_TRACK",
+      z2.object({
+        track: TimelineTrackEnvelopeSchema,
+        index: FrameSchema
+      }).strict()
+    ),
+    "Insert a compatible track at a requested editor index."
+  ),
+  "timeline.action.REMOVE_TRACK": editorAction(
+    "timeline.action.REMOVE_TRACK",
+    actionWithPayload("REMOVE_TRACK", IdentifierSchema),
+    "Remove a track from the local Timeline draft.",
+    [
+      "The target track exists and editor primary-track invariants can be preserved."
+    ]
+  ),
+  "timeline.action.SET_PRIMARY_TRACK": editorAction(
+    "timeline.action.SET_PRIMARY_TRACK",
+    actionWithPayload("SET_PRIMARY_TRACK", IdentifierSchema),
+    "Choose the Timeline track that anchors semantic edits.",
+    ["The target track exists and is eligible to be primary."]
+  ),
+  "timeline.action.UPDATE_TRACK": editorAction(
+    "timeline.action.UPDATE_TRACK",
+    actionWithPayload(
+      "UPDATE_TRACK",
+      z2.object({
+        id: IdentifierSchema,
+        updates: TrackUpdatesSchema
+      }).strict()
+    ),
+    "Update authored properties of one Timeline track.",
+    [
+      "The target track exists and the update preserves category and primary-track invariants."
+    ]
+  ),
+  "timeline.action.REORDER_TRACKS": editorAction(
+    "timeline.action.REORDER_TRACKS",
+    actionWithPayload("REORDER_TRACKS", z2.array(TimelineTrackEnvelopeSchema)),
+    "Replace the local track ordering with a complete ordered track list.",
+    [
+      "Every current track is represented exactly once and category ordering remains valid."
+    ]
+  ),
+  "timeline.action.ADD_ITEM": editorAction(
+    "timeline.action.ADD_ITEM",
+    actionWithPayload(
+      "ADD_ITEM",
+      z2.object({
+        trackId: IdentifierSchema,
+        item: TimelineItemEnvelopeSchema
+      }).strict()
+    ),
+    "Append one item to a compatible Timeline track.",
+    [
+      "The target track exists, accepts the item type, and the item id is unique."
+    ]
+  ),
+  "timeline.action.MOVE_ITEM": editorAction(
+    "timeline.action.MOVE_ITEM",
+    actionWithPayload(
+      "MOVE_ITEM",
+      z2.object({
+        sourceTrackId: IdentifierSchema,
+        targetTrackId: IdentifierSchema,
+        itemId: IdentifierSchema,
+        from: FrameSchema
+      }).strict()
+    ),
+    "Move an item between compatible tracks at an absolute frame.",
+    [
+      "Both tracks and the item exist, and the target track accepts the item type."
+    ]
+  ),
+  "timeline.action.REMOVE_ITEM": editorAction(
+    "timeline.action.REMOVE_ITEM",
+    actionWithPayload(
+      "REMOVE_ITEM",
+      z2.object({
+        trackId: IdentifierSchema,
+        itemId: IdentifierSchema
+      }).strict()
+    ),
+    "Remove an item and reconcile its parent track.",
+    ["The target track and item exist."]
+  ),
+  "timeline.action.UPDATE_ITEM": editorAction(
+    "timeline.action.UPDATE_ITEM",
+    actionWithPayload(
+      "UPDATE_ITEM",
+      z2.object({
+        trackId: IdentifierSchema,
+        itemId: IdentifierSchema,
+        updates: ItemUpdatesSchema
+      }).strict()
+    ),
+    "Update authored fields on one Timeline item.",
+    [
+      "The target item exists and the update remains valid for its discriminated item type."
+    ]
+  ),
+  "timeline.action.SPLIT_ITEM": editorAction(
+    "timeline.action.SPLIT_ITEM",
+    actionWithPayload(
+      "SPLIT_ITEM",
+      z2.object({
+        trackId: IdentifierSchema,
+        itemId: IdentifierSchema,
+        splitFrame: FrameSchema
+      }).strict()
+    ),
+    "Split an item at an absolute Timeline frame and slice its keyframes.",
+    ["The split frame lies strictly inside the target item bounds."]
+  ),
+  "timeline.action.RIPPLE_DELETE_RANGE": editorAction(
+    "timeline.action.RIPPLE_DELETE_RANGE",
+    actionWithPayload(
+      "RIPPLE_DELETE_RANGE",
+      z2.object({
+        startFrame: FrameSchema,
+        endFrame: PositiveFrameSchema2
+      }).strict().refine(
+        ({ startFrame, endFrame }) => endFrame > startFrame,
+        "endFrame must be greater than startFrame."
+      )
+    ),
+    "Delete an absolute frame range and close the resulting gap.",
+    ["The requested range is non-empty and lies within the editable Timeline."]
+  ),
+  "timeline.action.RESTORE_TIMELINE_SNAPSHOT": editorAction(
+    "timeline.action.RESTORE_TIMELINE_SNAPSHOT",
+    actionWithPayload(
+      "RESTORE_TIMELINE_SNAPSHOT",
+      z2.object({
+        tracks: z2.array(TimelineTrackEnvelopeSchema),
+        durationInFrames: PositiveFrameSchema2
+      }).strict()
+    ),
+    "Restore persistent Timeline fields from an editor history snapshot.",
+    ["The snapshot was produced by the current editor history contract."]
+  ),
+  "timeline.action.SELECT_ITEM": editorAction(
+    "timeline.action.SELECT_ITEM",
+    actionWithPayload("SELECT_ITEM", IdentifierSchema.nullable()),
+    "Select or clear one Timeline item in the editor session."
+  ),
+  "timeline.action.SELECT_TRACK": editorAction(
+    "timeline.action.SELECT_TRACK",
+    actionWithPayload("SELECT_TRACK", IdentifierSchema.nullable()),
+    "Select or clear one Timeline track in the editor session."
+  ),
+  "timeline.action.SET_CURRENT_FRAME": editorAction(
+    "timeline.action.SET_CURRENT_FRAME",
+    actionWithPayload("SET_CURRENT_FRAME", FrameSchema),
+    "Seek the editor playhead to an absolute Timeline frame."
+  ),
+  "timeline.action.SET_PLAYING": editorAction(
+    "timeline.action.SET_PLAYING",
+    actionWithPayload("SET_PLAYING", z2.boolean()),
+    "Start or stop editor preview playback."
+  ),
+  "timeline.action.SET_ZOOM": editorAction(
+    "timeline.action.SET_ZOOM",
+    actionWithPayload("SET_ZOOM", z2.number().finite().positive()),
+    "Set the Timeline viewport zoom level."
+  ),
+  "timeline.action.ADD_ASSET": editorAction(
+    "timeline.action.ADD_ASSET",
+    actionWithPayload("ADD_ASSET", TimelineAssetEnvelopeSchema),
+    "Add a media asset to the local editor asset collection.",
+    ["The asset id is not already present in the editor collection."]
+  ),
+  "timeline.action.UPSERT_ASSET": editorAction(
+    "timeline.action.UPSERT_ASSET",
+    actionWithPayload("UPSERT_ASSET", TimelineAssetEnvelopeSchema),
+    "Insert or replace a media asset in the local editor collection."
+  ),
+  "timeline.action.SET_ASSET_TRANSCRIPT": editorAction(
+    "timeline.action.SET_ASSET_TRANSCRIPT",
+    actionWithPayload("SET_ASSET_TRANSCRIPT", TimelineTranscriptEnvelopeSchema),
+    "Store an asset transcript and synchronize linked subtitle text.",
+    [
+      "The transcript word timings are expressed in the referenced immutable asset."
+    ]
+  ),
+  "timeline.action.REMOVE_ASSET": editorAction(
+    "timeline.action.REMOVE_ASSET",
+    actionWithPayload("REMOVE_ASSET", IdentifierSchema),
+    "Remove a media asset from the local editor asset collection."
+  ),
+  "timeline.action.SET_COMPOSITION_SIZE": editorAction(
+    "timeline.action.SET_COMPOSITION_SIZE",
+    actionWithPayload(
+      "SET_COMPOSITION_SIZE",
+      z2.object({
+        width: z2.number().finite().int().positive(),
+        height: z2.number().finite().int().positive()
+      }).strict()
+    ),
+    "Set positive pixel dimensions for the Timeline composition."
+  ),
+  "timeline.action.SET_DURATION": editorAction(
+    "timeline.action.SET_DURATION",
+    actionWithPayload("SET_DURATION", PositiveFrameSchema2),
+    "Set the Timeline composition duration in frames."
+  ),
+  "timeline.action.UNDO": editorAction(
+    "timeline.action.UNDO",
+    actionWithoutPayload("UNDO"),
+    "Restore the previous persistent Timeline history snapshot.",
+    [
+      "The editor history has at least one past snapshot or an active changed group."
+    ]
+  ),
+  "timeline.action.REDO": editorAction(
+    "timeline.action.REDO",
+    actionWithoutPayload("REDO"),
+    "Restore the next persistent Timeline history snapshot.",
+    ["The editor history has at least one future snapshot."]
+  ),
+  "timeline.action.BEGIN_HISTORY_GROUP": editorAction(
+    "timeline.action.BEGIN_HISTORY_GROUP",
+    actionWithoutPayload("BEGIN_HISTORY_GROUP"),
+    "Begin grouping related editor mutations into one undo step."
+  ),
+  "timeline.action.END_HISTORY_GROUP": editorAction(
+    "timeline.action.END_HISTORY_GROUP",
+    actionWithoutPayload("END_HISTORY_GROUP"),
+    "Commit the active editor mutation group as one undo step.",
+    ["A Timeline editor history group is active."]
+  )
+};
+var TIMELINE_OPERATION_REGISTRY = Object.freeze({
+  agent: Object.freeze(agent),
+  editorCommands: Object.freeze(editorCommands),
+  editorActions: Object.freeze(editorActions)
+});
+function catalogGroup(group) {
+  return Object.fromEntries(
+    Object.entries(group).map(([id, value]) => {
+      const {
+        inputSchema: _inputSchema,
+        outputSchema: _outputSchema,
+        ...metadata
+      } = value;
+      return [
+        id,
+        {
+          ...metadata,
+          inputJsonSchema: zodToJsonSchema2(value.inputSchema, {
+            target: "jsonSchema7"
+          }),
+          outputJsonSchema: zodToJsonSchema2(value.outputSchema, {
+            target: "jsonSchema7"
+          })
+        }
+      ];
+    })
+  );
+}
+var TIMELINE_OPERATION_CATALOG = Object.freeze({
+  agent: Object.freeze(catalogGroup(agent)),
+  editorCommands: Object.freeze(catalogGroup(editorCommands)),
+  editorActions: Object.freeze(catalogGroup(editorActions))
+});
 var itemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => {
   const baseShape = timelineDslAnnotatedObjectShape(
     TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
@@ -40251,7 +40468,7 @@ function timelineDslContractFingerprint(value) {
   return `fnv1a32:${(hash2 >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition = {
-  schemaVersion: 11,
+  schemaVersion: 13,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,
@@ -40304,6 +40521,240 @@ var TIMELINE_DSL_DEFINITION = {
     timelineDslSerializableDefinition
   )
 };
+Object.fromEntries(
+  Object.entries(TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES).map(([category, itemTypes]) => [
+    category,
+    new Set(itemTypes)
+  ])
+);
+new Set(TIMELINE_CLIP_ANIMATION_TYPES);
+var ITEM_KEY_ORDER = ["id", "type", "from", "durationInFrames"];
+function annotatedYamlFields(source, annotations, options = {}) {
+  const projected = {};
+  for (const [fieldName, annotation2] of Object.entries(annotations)) {
+    if (annotation2.relation || options.exclude?.has(fieldName)) continue;
+    const value = source[fieldName];
+    if (value === void 0) continue;
+    if (options.validate && !annotation2.schema.safeParse(value).success) continue;
+    projected[fieldName] = value;
+  }
+  return projected;
+}
+function extraYamlFields(source, annotations) {
+  const annotatedNames = new Set(Object.keys(annotations));
+  return Object.fromEntries(
+    Object.entries(source).filter(([fieldName, value]) => !annotatedNames.has(fieldName) && value !== void 0)
+  );
+}
+function itemToYamlObject(item) {
+  const out = {};
+  if (item.id !== void 0) out.id = item.id;
+  if (item.type !== void 0) out.type = item.type;
+  if (typeof item.fromExpr === "string" && item.fromExpr.length > 0) {
+    out.from = item.fromExpr;
+  } else if (item.from !== void 0) {
+    out.from = item.from;
+  }
+  if (item.durationInFrames !== void 0) out.durationInFrames = item.durationInFrames;
+  for (const [k2, v2] of Object.entries(item)) {
+    if (ITEM_KEY_ORDER.includes(k2) || k2 === "fromExpr") continue;
+    if (v2 === void 0) continue;
+    out[k2] = v2;
+  }
+  return out;
+}
+function timelineDslToYaml(dsl) {
+  const projected = {
+    ...annotatedYamlFields(dsl, TIMELINE_DSL_FIELD_ANNOTATIONS.root),
+    ...extraYamlFields(dsl, TIMELINE_DSL_FIELD_ANNOTATIONS.root)
+  };
+  projected.tracks = (dsl.tracks ?? []).map((track) => {
+    const projectedTrack = {
+      ...annotatedYamlFields(track, TIMELINE_DSL_FIELD_ANNOTATIONS.track),
+      ...extraYamlFields(track, TIMELINE_DSL_FIELD_ANNOTATIONS.track)
+    };
+    projectedTrack.items = (track.items ?? []).map((item) => itemToYamlObject(item));
+    return projectedTrack;
+  });
+  return stringify(projected, { lineWidth: 0 });
+}
+function timelineDslCanonicalJson(value) {
+  if (Array.isArray(value)) return "[" + value.map(timelineDslCanonicalJson).join(",") + "]";
+  if (value && typeof value === "object") {
+    const keys = Object.keys(value).filter(
+      (k2) => k2 !== "fromExpr" && value[k2] !== void 0
+    ).sort();
+    return "{" + keys.map((k2) => JSON.stringify(k2) + ":" + timelineDslCanonicalJson(value[k2])).join(",") + "}";
+  }
+  return JSON.stringify(value);
+}
+async function timelineDslHash(dsl) {
+  const stable = timelineDslCanonicalJson({
+    ...dsl,
+    tracks: Array.isArray(dsl.tracks) ? dsl.tracks : [],
+    compositionWidth: typeof dsl.compositionWidth === "number" ? dsl.compositionWidth : 1920,
+    compositionHeight: typeof dsl.compositionHeight === "number" ? dsl.compositionHeight : 1080,
+    fps: typeof dsl.fps === "number" ? dsl.fps : 30,
+    durationInFrames: typeof dsl.durationInFrames === "number" ? dsl.durationInFrames : 300
+  });
+  const Encoder = globalThis.TextEncoder;
+  const webCrypto = globalThis.crypto;
+  if (!Encoder || !webCrypto?.subtle) {
+    throw new Error("timelineDslHash requires Web Crypto and TextEncoder support");
+  }
+  const bytes = new Encoder().encode(stable);
+  const digest = await webCrypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest)).slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function authoringFields(fields) {
+  return Object.fromEntries(
+    Object.entries(fields).filter(
+      ([, field2]) => field2.authored !== false && field2.persistence !== "discard"
+    ).map(([name, field2]) => [
+      name,
+      {
+        description: field2.description,
+        required: field2.authoredRequired === true,
+        ...Object.prototype.hasOwnProperty.call(field2, "defaultValue") ? { defaultValue: field2.defaultValue } : {},
+        ...field2.deprecated ? { deprecated: field2.deprecated } : {},
+        ...field2.appliesToItemTypes ? { appliesToItemTypes: field2.appliesToItemTypes } : {}
+      }
+    ])
+  );
+}
+var baseAuthoringTrackFields = authoringFields(
+  TIMELINE_DSL_FIELD_CATALOG.track.fields
+);
+var authoringTrackFields = {
+  ...baseAuthoringTrackFields,
+  role: {
+    ...baseAuthoringTrackFields.role,
+    description: "Semantic purpose of the track. Use subtitle only for structured captions: each text item requires non-empty cues, wordRefs, and sourceToOutputMap. For a plain title, omit role."
+  },
+  category: {
+    ...baseAuthoringTrackFields.category,
+    description: "Structural lane category controlling order and allowed item types. Track categories must follow the canonical effect, text, visual, primary, audio order; supplied order is preserved and never automatically sorted."
+  }
+};
+var basicAuthoringState = {
+  compositionWidth: 1080,
+  compositionHeight: 1080,
+  fps: 30,
+  durationInFrames: 180,
+  tracks: [
+    {
+      id: "titles",
+      name: "Titles",
+      category: "text",
+      items: [
+        {
+          id: "title",
+          type: "text",
+          from: 0,
+          durationInFrames: 60,
+          text: "Opening title",
+          color: "#ffffff"
+        }
+      ]
+    },
+    {
+      id: "visuals",
+      name: "Visuals",
+      category: "visual",
+      items: [
+        {
+          id: "still",
+          type: "image",
+          from: 0,
+          durationInFrames: 90,
+          assetId: "project-asset-id"
+        },
+        {
+          id: "motion",
+          type: "composition",
+          from: 90,
+          durationInFrames: 90,
+          runtime: "remotion",
+          compositionKind: "custom",
+          compositionId: "mascot",
+          sourceNodeId: "canvas-component-node-id",
+          sourcePath: "components/mascot.tsx"
+        }
+      ]
+    }
+  ]
+};
+var authoringDiscovery = {
+  view: "authoring",
+  schemaVersion: TIMELINE_DSL_DEFINITION.schemaVersion,
+  contractFingerprint: TIMELINE_DSL_DEFINITION.contractFingerprint,
+  format: TIMELINE_DSL_DEFINITION.format,
+  fields: {
+    version: TIMELINE_DSL_FIELD_CATALOG.version,
+    root: authoringFields(TIMELINE_DSL_FIELD_CATALOG.root.fields),
+    track: authoringTrackFields,
+    itemBase: authoringFields(TIMELINE_DSL_FIELD_CATALOG.itemBase.fields),
+    itemTypes: Object.fromEntries(
+      Object.entries(TIMELINE_DSL_FIELD_CATALOG.itemTypes).map(
+        ([itemType, descriptor]) => [
+          itemType,
+          authoringFields(descriptor.fields)
+        ]
+      )
+    )
+  },
+  taxonomy: {
+    itemTypes: TIMELINE_DSL_DEFINITION.taxonomy.itemTypes,
+    trackCategoryOrder: TIMELINE_DSL_DEFINITION.taxonomy.trackCategories,
+    trackRoles: TIMELINE_DSL_DEFINITION.taxonomy.trackRoles,
+    categoryAllowedItemTypes: TIMELINE_DSL_DEFINITION.taxonomy.categoryAllowedItemTypes,
+    roleAllowedItemTypes: TIMELINE_DSL_DEFINITION.taxonomy.roleAllowedItemTypes,
+    roleCategories: TIMELINE_DSL_DEFINITION.taxonomy.roleCategories,
+    mediaFits: TIMELINE_DSL_DEFINITION.taxonomy.mediaFits,
+    clipAnimationTypes: TIMELINE_DSL_DEFINITION.taxonomy.clipAnimationTypes,
+    textAlignments: TIMELINE_DSL_DEFINITION.taxonomy.textAlignments,
+    captionPositions: TIMELINE_DSL_DEFINITION.taxonomy.captionPositions,
+    compositionKinds: TIMELINE_DSL_DEFINITION.taxonomy.compositionKinds,
+    compositionRuntimes: TIMELINE_DSL_DEFINITION.taxonomy.compositionRuntimes,
+    derivedMediaTypes: TIMELINE_DSL_DEFINITION.taxonomy.derivedMediaTypes,
+    derivationKinds: TIMELINE_DSL_DEFINITION.taxonomy.derivationKinds,
+    transitionTypes: TIMELINE_DSL_DEFINITION.taxonomy.transitionTypes
+  },
+  semanticRules: TIMELINE_DSL_SEMANTIC_RULES,
+  references: {
+    assetId: {
+      target: "project-asset",
+      description: "For a Stage capture, follow Stage revision -> capture receipt -> immutable Project Asset -> downstream Timeline item.assetId. The producer Stage or Action is not mutated."
+    },
+    sourceNodeId: {
+      target: "canvas-node",
+      description: "Reference a Canvas-owned Remotion component through Timeline item.sourceNodeId; resolve it for rendering without copying component source into persisted Timeline state."
+    }
+  },
+  examples: {
+    basic: {
+      description: "Plain text, a Project Asset image, and a Canvas-owned Remotion component in canonical track order.",
+      state: basicAuthoringState,
+      yaml: timelineDslToYaml(basicAuthoringState)
+    }
+  },
+  submission: {
+    validation: "automatic",
+    operations: ["timeline.create", "timeline.save", "timeline.apply"],
+    diagnosticOperation: "timeline.validate",
+    diagnosticRequired: false
+  },
+  nextView: "full"
+};
+function timelineDslDiscovery(view = "authoring") {
+  if (view === "full") {
+    return structuredClone(TIMELINE_DSL_DEFINITION);
+  }
+  if (view !== "authoring") {
+    throw new Error(`Unsupported Timeline discovery view: ${String(view)}`);
+  }
+  return structuredClone(authoringDiscovery);
+}
 
 // src/timeline-contract-adapter.ts
 function mcpSurfaceBindings() {
@@ -40651,9 +41102,26 @@ function timelineWorkspaceCwd(input) {
 function projectionSegment(timelineId) {
   return timelineId.trim().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^\.+/, "") || "timeline";
 }
+function timelineSourceNodeIds(state) {
+  const sources = /* @__PURE__ */ new Set();
+  const tracks = Array.isArray(state.tracks) ? state.tracks : [];
+  for (const track of tracks) {
+    if (!track || typeof track !== "object") continue;
+    const items = Array.isArray(track.items) ? track.items : [];
+    for (const item of items) {
+      if (!item || typeof item !== "object") continue;
+      const sourceNodeId = item.sourceNodeId;
+      if (typeof sourceNodeId === "string" && sourceNodeId.trim()) {
+        sources.add(sourceNodeId);
+      }
+    }
+  }
+  return [...sources];
+}
 function required2(input, key) {
   const value = input[key];
-  if (typeof value !== "string" || !value.trim()) throw new Error(`${String(key)} is required`);
+  if (typeof value !== "string" || !value.trim())
+    throw new Error(`${String(key)} is required`);
   return value.trim();
 }
 function hostValue(value) {
@@ -40684,7 +41152,9 @@ function createTimelineAdapter(options = {}) {
   };
   const requireObservation = async (input, timelineId) => {
     const resolved = await context(input);
-    const observation = observations.get(observationKey(resolved.projectId, timelineId));
+    const observation = observations.get(
+      observationKey(resolved.projectId, timelineId)
+    );
     if (!observation) {
       throw new Error(
         `READ_REQUIRED: Read Timeline ${timelineId} with clash_timeline_get before mutating it.`
@@ -40693,10 +41163,14 @@ function createTimelineAdapter(options = {}) {
     return observation;
   };
   const list = async (input) => {
-    const { projectId, value } = await request(input, { action: "list_timelines" });
-    const timelines = Array.isArray(value.timelines) ? value.timelines.filter((entry) => Boolean(
-      entry && typeof entry === "object" && typeof entry.id === "string"
-    )) : [];
+    const { projectId, value } = await request(input, {
+      action: "list_timelines"
+    });
+    const timelines = Array.isArray(value.timelines) ? value.timelines.filter(
+      (entry) => Boolean(
+        entry && typeof entry === "object" && typeof entry.id === "string"
+      )
+    ) : [];
     const versions = value.versions && typeof value.versions === "object" ? value.versions : {};
     for (const timeline of timelines) {
       const receipt = versions[timeline.id];
@@ -40711,7 +41185,9 @@ function createTimelineAdapter(options = {}) {
   };
   const get = async (input) => {
     const timelineId = required2(input, "timelineId");
-    const timeline = (await list(input)).find((candidate) => candidate.id === timelineId);
+    const timeline = (await list(input)).find(
+      (candidate) => candidate.id === timelineId
+    );
     if (!timeline) throw new Error(`Timeline ${timelineId} not found`);
     return timeline;
   };
@@ -40734,7 +41210,7 @@ function createTimelineAdapter(options = {}) {
     return publicProjectHostValue(result.value);
   };
   return {
-    schema: async () => structuredClone(TIMELINE_DSL_DEFINITION),
+    schema: async (input) => timelineDslDiscovery(input.view ?? "authoring"),
     async validate(input) {
       const document2 = input.document ?? input.state;
       let state = document2;
@@ -40756,7 +41232,9 @@ function createTimelineAdapter(options = {}) {
       assertTimelineState(state);
       const validation = validateTimelineDsl(state);
       if (!validation.ok) {
-        throw new Error(`TIMELINE_DSL_INVALID: ${validation.issues[0]?.message ?? "invalid Timeline"}`);
+        throw new Error(
+          `TIMELINE_DSL_INVALID: ${validation.issues[0]?.message ?? "invalid Timeline"}`
+        );
       }
       return publicProjectHostValue(
         (await request(input, { action: "validate_timeline", document: state })).value
@@ -40788,20 +41266,47 @@ function createTimelineAdapter(options = {}) {
       assertTimelineState(input.state);
       const observed = await requireObservation(input, timelineId);
       if (observed.revisionId && observed.revisionId !== baseRevisionId) {
-        throw new Error(`STALE_READ: Timeline ${timelineId} was read at ${observed.revisionId}, not ${baseRevisionId}`);
+        throw new Error(
+          `STALE_READ: Timeline ${timelineId} was read at ${observed.revisionId}, not ${baseRevisionId}`
+        );
       }
       const filePath = join(
         timelineWorkspaceCwd(input),
         "timelines",
         `${projectionSegment(timelineId)}.timeline.yaml`
       );
-      await writeProjection(filePath, `${JSON.stringify(input.state, null, 2)}
-`);
-      return mutation(input, timelineId, {
+      await writeProjection(
+        filePath,
+        `${JSON.stringify(input.state, null, 2)}
+`
+      );
+      const saved = await mutation(input, timelineId, {
         action: "update_timeline_state",
         timelineId,
         state: input.state
       });
+      const timeline = saved.timeline;
+      if (!timeline || typeof timeline !== "object") {
+        throw new Error("Timeline save did not return the persisted Timeline");
+      }
+      const revisionId = timeline.revisionId;
+      const owner = timeline.owner;
+      if (typeof revisionId !== "string" || !owner || typeof owner !== "object") {
+        throw new Error("Timeline save returned an invalid persisted Timeline");
+      }
+      const resolved = await context(input);
+      return {
+        applied: true,
+        projectId: resolved.projectId,
+        timelineId,
+        revisionId,
+        owner,
+        filePath,
+        sources: timelineSourceNodeIds(input.state),
+        timelineHash: await timelineDslHash(
+          input.state
+        )
+      };
     },
     attach(input) {
       const timelineId = required2(input, "timelineId");
@@ -40815,7 +41320,10 @@ function createTimelineAdapter(options = {}) {
     },
     detach(input) {
       const timelineId = required2(input, "timelineId");
-      return mutation(input, timelineId, { action: "detach_timeline", timelineId });
+      return mutation(input, timelineId, {
+        action: "detach_timeline",
+        timelineId
+      });
     },
     copy(input) {
       const timelineId = required2(input, "timelineId");
@@ -40834,25 +41342,49 @@ function createTimelineAdapter(options = {}) {
         action: "request_timeline_render",
         timelineId
       });
-      if (typeof submitted.renderNodeId !== "string" || typeof submitted.sourceTimelineRevisionId !== "string" || !submitted.target) throw new Error("Timeline render request failed");
+      if (typeof submitted.renderNodeId !== "string" || typeof submitted.sourceTimelineRevisionId !== "string" || !submitted.target)
+        throw new Error("Timeline render request failed");
+      const target = submitted.target;
+      if (target.kind !== "project-assets" && !(target.kind === "canvas" && typeof target.canvasId === "string" && typeof target.actionNodeId === "string")) {
+        throw new Error("Timeline render request returned an invalid target");
+      }
       const base = {
         submitted: true,
         timelineId,
         sourceTimelineRevisionId: submitted.sourceTimelineRevisionId,
         renderNodeId: submitted.renderNodeId,
-        target: submitted.target
+        target
       };
-      if (input.wait === false) return { ...base, completed: false, status: "pending" };
+      if (input.wait === false)
+        return { ...base, completed: false, status: "pending" };
       const deadline = Date.now() + (input.timeoutMs ?? 18e5);
       while (true) {
-        const polled = await request(input, {
+        const polled = target.kind === "project-assets" ? await request(input, {
+          action: "list_timeline_renders",
+          status: "all"
+        }) : await request(input, {
           action: "get",
-          canvasId: "__project_assets__",
+          canvasId: target.canvasId,
           nodeId: submitted.renderNodeId
         });
-        const data = polled.value.node && typeof polled.value.node === "object" ? polled.value.node.data ?? {} : {};
+        const renderNode = target.kind === "project-assets" ? Array.isArray(polled.value.renders) ? polled.value.renders.map(
+          (entry) => entry && typeof entry === "object" ? entry.node : void 0
+        ).find(
+          (node) => node && typeof node === "object" && node.id === submitted.renderNodeId
+        ) : void 0 : polled.value.node;
+        if (!renderNode || typeof renderNode !== "object") {
+          throw new Error(
+            `Timeline render node ${submitted.renderNodeId} was not returned by Host readback`
+          );
+        }
+        const data = renderNode.data ?? {};
         if (data.status === "completed" && typeof data.assetId === "string") {
-          return { ...base, completed: true, status: "completed", asset: { id: data.assetId } };
+          return {
+            ...base,
+            completed: true,
+            status: "completed",
+            asset: { id: data.assetId }
+          };
         }
         if (data.status === "failed") {
           return {
@@ -40862,8 +41394,11 @@ function createTimelineAdapter(options = {}) {
             ...typeof data.error === "string" ? { error: data.error } : {}
           };
         }
-        if (Date.now() >= deadline) return { ...base, completed: false, status: "pending" };
-        await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+        if (Date.now() >= deadline)
+          return { ...base, completed: false, status: "pending" };
+        await new Promise(
+          (resolveDelay) => setTimeout(resolveDelay, 100)
+        );
       }
     }
   };
@@ -41241,7 +41776,7 @@ var TIMELINE_MCP_EXECUTORS = {
     inputSchema: timelineOperationInputSchema("timeline.schema"),
     outputSchema: timelineOperationOutputSchema("timeline.schema"),
     execute: (input, adapter) => adapter.schema(input),
-    summary: () => "Returned the machine-readable Timeline YAML DSL contract."
+    summary: (value) => value?.view === "authoring" ? "Returned compact Timeline authoring discovery." : "Returned the complete machine-readable Timeline YAML DSL contract."
   },
   "timeline.validate": {
     title: "Validate Timeline DSL",
@@ -41403,15 +41938,15 @@ var TIMELINE_TOOL_GUIDANCE = {
   },
   "timeline.schema": {
     useWhen: "authoring a Timeline document or recovering from a Timeline DSL validation error",
-    effect: "reads the complete authoritative Timeline DSL contract without mutating product state",
-    returns: "schema version, fields, features, semantic rules, and machine-readable JSON Schema",
-    next: "build a complete state that satisfies the contract, then validate it before creating or saving"
+    effect: "reads compact authoring discovery by default, or the complete authoritative Timeline DSL contract with view full, without mutating product state",
+    returns: "schema identity, authored fields, reference semantics, stable rules, and an executable example; full view also includes the machine-readable JSON Schema",
+    next: "build a complete state that satisfies the contract, then create or save it; submission validates automatically"
   },
   "timeline.validate": {
-    useWhen: "checking a complete Timeline object, JSON document, or YAML document before mutation",
-    effect: "validates structure and semantic rules without changing the Timeline",
+    useWhen: "diagnosing a complete Timeline draft only when no create or save write is intended",
+    effect: "runs the same structure and semantic validation as create and save without changing the Timeline",
     returns: "validation success or stable issues with paths and rule identifiers",
-    next: "resolve every issue; then read the target Timeline for its current revision before saving"
+    next: "if a write is intended, skip this diagnostic and call create or save directly; invalid writes return the same issues without changing product state"
   },
   "timeline.list": {
     useWhen: "discovering Timeline identifiers or choosing among existing Timelines",
@@ -41427,13 +41962,13 @@ var TIMELINE_TOOL_GUIDANCE = {
   },
   "timeline.create": {
     useWhen: "a genuinely new Timeline is required rather than a revision of an existing one",
-    effect: "creates a Timeline and optionally applies a complete typed Timeline state",
+    effect: "automatically validates the optional complete typed state; invalid state leaves Project state unchanged, while valid state creates the Timeline. Track categories must already follow effect, text, visual, primary, audio order; supplied tracks are never automatically sorted",
     returns: "the persisted Timeline entity and its current state",
-    next: "read back the new Timeline before making another revision or attaching it to Canvas"
+    next: "use role subtitle only for structured captions whose text items include cues, wordRefs, and sourceToOutputMap; for a plain title, omit role. Read back the new Timeline before making another revision or attaching it to Canvas"
   },
   "timeline.save": {
     useWhen: "a complete typed Timeline state is ready after reading the current revision",
-    effect: "atomically replaces the entire Timeline state under baseRevisionId; it never applies a partial patch",
+    effect: "automatically validates; invalid state leaves the Timeline revision unchanged, while valid state atomically replaces the entire Timeline state under baseRevisionId; it never applies a partial patch",
     returns: "whether the replacement was applied and the resulting revision identifier",
     next: "read back the persisted Timeline; on a stale response, use the automatically pulled latest projection and structured paths to merge, then resubmit"
   },
@@ -41456,7 +41991,7 @@ var TIMELINE_TOOL_GUIDANCE = {
     next: "read the copy before editing it and leave source references on the original until explicitly rewired"
   },
   "timeline.render": {
-    useWhen: "a validated editable Timeline must become real playable media through the Clash product renderer",
+    useWhen: "a persisted editable Timeline must become real playable media through the Clash product renderer",
     effect: "submits the current persisted Timeline revision to the daemon-owned Remotion renderer, resolving every runtime: remotion item from the latest TSX on its stable Canvas sourceNodeId, and waits by default",
     returns: "a render node receipt, source revision, completion status, and immutable Asset readback including its download URL",
     next: "only claim completion when status is completed; link or download the returned Asset for review, and inspect error when failed"
@@ -41464,12 +41999,14 @@ var TIMELINE_TOOL_GUIDANCE = {
 };
 function timelineToolDescription(operationId) {
   const guidance = TIMELINE_TOOL_GUIDANCE[operationId];
-  if (!guidance) throw new Error(`Missing Timeline MCP guidance for ${operationId}`);
+  if (!guidance)
+    throw new Error(`Missing Timeline MCP guidance for ${operationId}`);
   return describeClashTool(guidance);
 }
 function structured(value) {
   if (Array.isArray(value)) return { items: value };
-  if (value && typeof value === "object") return value;
+  if (value && typeof value === "object")
+    return value;
   return { value };
 }
 function timelineToolErrorPayload(error51) {
@@ -41479,9 +42016,7 @@ function timelineToolErrorPayload(error51) {
   const explicitCode = message.match(/^([A-Z][A-Z0-9_]+):/)?.[1];
   const code = explicitCode ?? (/baseRevisionId is required|read .* before saving/i.test(message) ? "READ_REQUIRED" : /not found/i.test(message) ? "TIMELINE_NOT_FOUND" : /validation|Timeline item|\berror:/i.test(message) ? "TIMELINE_DSL_INVALID" : "TIMELINE_OPERATION_FAILED");
   const retryTool = !parsedRecovery.recovery && (code === "STALE_TIMELINE" || code === "STALE_READ" || code === "READ_REQUIRED") ? "clash_timeline_get" : code === "TIMELINE_DSL_INVALID" ? "clash_timeline_schema" : code === "TIMELINE_NOT_FOUND" ? "clash_timeline_list" : void 0;
-  const issues = error51 && typeof error51 === "object" && Array.isArray(
-    error51.issues
-  ) ? error51.issues : void 0;
+  const issues = error51 && typeof error51 === "object" && Array.isArray(error51.issues) ? error51.issues : void 0;
   return {
     code,
     message,
@@ -41497,53 +42032,70 @@ function registerTimelinePluginMcp(server, adapter, bundledAppJavascript, option
     const binding = TIMELINE_PLUGIN_SURFACE_BINDINGS[name];
     const executor = timelineMcpExecutor(binding.operationId);
     const operation = timelineOperationMetadata(name);
-    K3(server, name, {
-      title: executor.title,
-      description: timelineToolDescription(binding.operationId),
-      inputSchema: executor.inputSchema,
-      outputSchema: executor.outputSchema,
-      annotations: { readOnlyHint: operation.readOnly },
-      _meta: {
-        "clash/timelineOperation": operation,
-        ui: {
-          ...name === "clash_timeline_open" ? { resourceUri: TIMELINE_APP_RESOURCE_URI } : {},
-          visibility: ["model", "app"]
+    K3(
+      server,
+      name,
+      {
+        title: executor.title,
+        description: timelineToolDescription(binding.operationId),
+        inputSchema: executor.inputSchema,
+        outputSchema: executor.outputSchema,
+        annotations: { readOnlyHint: operation.readOnly },
+        _meta: {
+          "clash/timelineOperation": operation,
+          ui: {
+            ...name === "clash_timeline_open" ? { resourceUri: TIMELINE_APP_RESOURCE_URI } : {},
+            visibility: ["model", "app"]
+          }
+        }
+      },
+      async (input) => {
+        try {
+          const value = await executor.execute(
+            input,
+            adapter
+          );
+          return {
+            content: [{ type: "text", text: executor.summary(value) }],
+            structuredContent: structured(value)
+          };
+        } catch (error51) {
+          const structuredError = timelineToolErrorPayload(error51);
+          return {
+            content: [{ type: "text", text: structuredError.message }],
+            structuredContent: { error: structuredError },
+            isError: true
+          };
         }
       }
-    }, async (input) => {
-      try {
-        const value = await executor.execute(input, adapter);
-        return {
-          content: [{ type: "text", text: executor.summary(value) }],
-          structuredContent: structured(value)
-        };
-      } catch (error51) {
-        const structuredError = timelineToolErrorPayload(error51);
-        return {
-          content: [{ type: "text", text: structuredError.message }],
-          structuredContent: { error: structuredError },
-          isError: true
-        };
-      }
-    });
+    );
   }
-  if (appSurfaces) N3(server, "Clash Timeline", TIMELINE_APP_RESOURCE_URI, {
-    description: "Interactive Timeline editor backed by Clash read-proof and apply behavior"
-  }, async () => ({
-    contents: [{
-      uri: TIMELINE_APP_RESOURCE_URI,
-      mimeType: TIMELINE_APP_MIME_TYPE,
-      text: createTimelineAppHtml(bundledAppJavascript),
-      _meta: { ui: { csp: {} } }
-    }]
-  }));
+  if (appSurfaces)
+    N3(
+      server,
+      "Clash Timeline",
+      TIMELINE_APP_RESOURCE_URI,
+      {
+        description: "Interactive Timeline editor backed by Clash read-proof and apply behavior"
+      },
+      async () => ({
+        contents: [
+          {
+            uri: TIMELINE_APP_RESOURCE_URI,
+            mimeType: TIMELINE_APP_MIME_TYPE,
+            text: createTimelineAppHtml(bundledAppJavascript),
+            _meta: { ui: { csp: {} } }
+          }
+        ]
+      })
+    );
 }
 function createTimelinePluginServer(options = {}) {
-  const server = new ClashMcpServer({ name: "clash-timeline", version: "0.1.0" });
-  const bundledAppJavascript = options.bundledAppJavascript ?? readFileSync(
-    new URL("./app-client.js", import.meta.url),
-    "utf8"
-  );
+  const server = new ClashMcpServer({
+    name: "clash-timeline",
+    version: "0.1.0"
+  });
+  const bundledAppJavascript = options.bundledAppJavascript ?? readFileSync(new URL("./app-client.js", import.meta.url), "utf8");
   registerTimelinePluginMcp(
     server,
     options.adapter ?? createTimelineAdapter(),

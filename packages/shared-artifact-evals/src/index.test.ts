@@ -99,31 +99,37 @@ const directorStage = {
 };
 
 const timelineYaml = `
-compositionWidth: 1080
-compositionHeight: 1920
-fps: 30
-durationInFrames: 90
-tracks:
-  - id: overlay
-    category: effect
-    items:
-      - id: character-overlay
-        type: composition
-        compositionKind: custom
-        runtime: remotion
-        compositionId: character-wave
-        sourcePath: components/character-wave.tsx
-        sourceNodeId: remotion-character-wave
-        from: 0
-        durationInFrames: 90
-  - id: primary
-    category: primary
-    items:
-      - id: director-shot
-        type: video
-        assetId: director-shot-a
-        from: 0
-        durationInFrames: 90
+id: mixed-timeline
+name: Mixed Timeline
+revisionId: timeline-revision-v1:mixed
+owner:
+  kind: project
+state:
+  compositionWidth: 1080
+  compositionHeight: 1920
+  fps: 30
+  durationInFrames: 90
+  tracks:
+    - id: overlay
+      category: effect
+      items:
+        - id: character-overlay
+          type: composition
+          compositionKind: custom
+          runtime: remotion
+          compositionId: character-wave
+          sourcePath: components/character-wave.tsx
+          sourceNodeId: remotion-character-wave
+          from: 0
+          durationInFrames: 90
+    - id: primary
+      category: primary
+      items:
+        - id: director-shot
+          type: video
+          assetId: capture-output-a
+          from: 0
+          durationInFrames: 90
 `;
 
 const mgCharacter = `import React from "react";
@@ -143,12 +149,15 @@ export default function CharacterWave() {
 `;
 
 describe("artifact-first evaluation", () => {
-  it("scores a mixed Director, Timeline, and MG submission from real product artifacts", async () => {
+  it("scores mixed lineage without writing capture outputs into the source Director Stage", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "clash-artifact-eval-"));
-    await writeJson(
-      join(workspace, "artifacts", "director.json"),
-      directorStage,
-    );
+    await writeJson(join(workspace, "artifacts", "director.json"), {
+      id: "mixed-stage",
+      name: "Mixed Stage",
+      owner: { kind: "project" },
+      revisionId: "director-stage-revision-v1:mixed",
+      state: { ...directorStage, shots: [] },
+    });
     await writeFile(
       join(workspace, "artifacts", "timeline.yaml"),
       timelineYaml,
@@ -184,7 +193,7 @@ describe("artifact-first evaluation", () => {
     };
     await writeJson(join(workspace, "submission.json"), submission);
 
-    const benchmark: ArtifactBenchmarkCase = {
+    const benchmark = ArtifactBenchmarkCaseSchema.parse({
       id: "mixed-scene-v1",
       title: "Mixed scene",
       category: "mixed",
@@ -229,7 +238,7 @@ describe("artifact-first evaluation", () => {
           required: true,
           minObjects: 1,
           minCameras: 1,
-          minCapturedShots: 1,
+          minCapturedShots: 3,
           minAnimatedTracks: 1,
           requireMannequin: true,
         },
@@ -280,13 +289,16 @@ describe("artifact-first evaluation", () => {
           minBytes: 1024,
         },
       ],
-    };
+    });
 
     const report = await evaluateSubmission({ benchmark, workspace });
 
     expect(report.status).toBe("pass");
     expect(report.score).toBe(100);
     expect(report.checks).toHaveLength(5);
+    const directorCheck = report.checks.find(({ id }) => id === "director");
+    expect(directorCheck).toMatchObject({ status: "pass" });
+    expect(directorCheck?.metrics).not.toHaveProperty("capturedShots");
     expect(
       report.artifacts.every((artifact) => artifact.sha256.length === 64),
     ).toBe(true);
@@ -709,7 +721,7 @@ describe("headless benchmark runner", () => {
     expect(parsed.success).toBe(false);
   });
 
-  it("loads a diverse 20-case v2 suite with artifact-first execution contracts", async () => {
+  it("loads a diverse 21-case v2 suite with artifact-first execution contracts", async () => {
     const suitePath = fileURLToPath(
       new URL(
         "../../../benchmarks/creative-artifacts/v2/suite.json",
@@ -728,11 +740,11 @@ describe("headless benchmark runner", () => {
     );
 
     expect(suite.id).toBe("clash-creative-artifacts-v2");
-    expect(suite.cases).toHaveLength(20);
+    expect(suite.cases).toHaveLength(21);
     expect(categoryCounts).toEqual({
       director: 5,
       timeline: 5,
-      "mg-character": 5,
+      "mg-character": 6,
       mixed: 5,
     });
 
@@ -1270,7 +1282,7 @@ describe("headless benchmark runner", () => {
     });
   });
 
-  it("binds a fresh workspace and verifies the Project Host before launching Codex", async () => {
+  it("does not treat agent-authored MCP stdout as product-operation evidence", async () => {
     const root = await mkdtemp(join(tmpdir(), "clash-host-runner-"));
     const suiteRoot = join(root, "suite");
     const outputRoot = join(root, "runs");
@@ -1345,12 +1357,11 @@ describe("headless benchmark runner", () => {
         'const path = require("node:path")',
         "const workspace = process.env.CLASH_BENCH_WORKSPACE",
         ";(async () => {",
-        "if (!process.env.CLASH_API_URL) process.exit(12)",
-        "if (!process.env.CLASH_HOME) process.exit(13)",
-        "if (process.env.CLASH_WORKSPACE_ROOT !== workspace) process.exit(14)",
+        'const privateHostKeys = ["CLASH_PROFILE","CLASH_HOME","CLASH_LOCAL_DATA_DIR","CLASH_API_URL","CLASH_NODE_EXEC_PATH","CLASH_WORKSPACE_ROOT","CLASH_AGENT_MEMBER_ID","CLASH_AGENT_NAME","CLASH_PLUGIN_HOST_SOCKET"]',
+        "if (privateHostKeys.some((key) => process.env[key] !== undefined)) process.exit(12)",
         'if (!(process.env.PATH || "").split(path.delimiter).includes(path.dirname(process.env.CLASH_CLI_ENTRY_PATH || ""))) process.exit(15)',
-        'if (!process.env.CLASH_CLI_ENTRY_PATH.endsWith(path.join("runtime", "clash-cli.cjs"))) process.exit(16)',
-        'if (process.env.CLASH_CLI_TRACE_PATH !== path.join(workspace, ".clash", "evidence", "clash-cli-events.jsonl")) process.exit(17)',
+        'if (path.basename(process.env.CLASH_CLI_ENTRY_PATH) !== "clash") process.exit(16)',
+        "if (process.env.CLASH_CLI_TRACE_PATH) process.exit(17)",
         'if (fs.existsSync(path.join(workspace, "AGENTS.md"))) process.exit(10)',
         "if (process.env.CLASH_BENCH_PROJECT_HOST_PATH) process.exit(11)",
         'const marker = path.join(workspace, ".clash", "project.toml")',
@@ -1358,10 +1369,13 @@ describe("headless benchmark runner", () => {
         'const ready = JSON.parse(fs.readFileSync(path.join(workspace, ".clash", "headless-host-ready.json"), "utf8"))',
         'const projectId = /project_id\\s*=\\s*"([^"]+)"/.exec(fs.readFileSync(marker, "utf8"))?.[1]',
         'if (ready.status !== "ready" || ready.projectId !== projectId || ready.initDisposition !== "created") process.exit(8)',
-        'require("node:child_process").execFileSync(process.env.CLASH_CLI_ENTRY_PATH, ["init", "--project", projectId, "--json"], {stdio:"ignore"})',
         'require("node:child_process").execFileSync(process.env.CLASH_CLI_ENTRY_PATH, ["timeline", "render", "--timeline", "smoke", "--json"], {stdio:"ignore"})',
         'fs.writeFileSync(path.join(workspace, "argv.json"), JSON.stringify(process.argv.slice(2)))',
-        'fs.writeFileSync(path.join(workspace, "sandbox-topology.json"), JSON.stringify({runtimeClashHome:process.env.CLASH_HOME,runtimeRoot:path.dirname(process.env.CLASH_HOME),realClashHome:fs.realpathSync(process.env.CLASH_HOME),runtimeClashHomeIsSymbolicLink:fs.lstatSync(process.env.CLASH_HOME).isSymbolicLink()}))',
+        "const rawHostEnvironment = {}",
+        "for (const key of privateHostKeys) if (process.env[key] !== undefined) rawHostEnvironment[key] = process.env[key]",
+        'const trustedCliInPath = (process.env.PATH || "").split(path.delimiter).includes(path.dirname(process.env.CLASH_CLI_ENTRY_PATH))',
+        "const sandboxTopology = {rawHostEnvironment,trustedCliInPath}",
+        'fs.writeFileSync(path.join(workspace, "sandbox-topology.json"), JSON.stringify(sandboxTopology))',
         `fs.writeFileSync(path.join(workspace, "stage.json"), ${JSON.stringify(JSON.stringify(directorStage))})`,
         'fs.writeFileSync(path.join(workspace, "submission.json"), JSON.stringify({schemaVersion:1,taskId:"clash-host",artifacts:[{id:"stage",kind:"director-stage",path:"stage.json"}]}))',
         'process.stdout.write(JSON.stringify({type:"thread.started",thread_id:"test"}) + "\\n")',
@@ -1425,25 +1439,20 @@ describe("headless benchmark runner", () => {
       },
     });
 
-    expect(report.status).toBe("pass");
+    expect(report.status).toBe("fail");
     expect(report.cases[0]?.execution).toMatchObject({
       profile: "clash-host",
-      status: "pass",
+      status: "fail",
       requiredProductOperations: ["director.create", "timeline.render"],
       observedProductOperations: [
-        {
-          operation: "director.create",
-          transport: "mcp",
-          invocation: "clash_director_create",
-        },
         {
           operation: "timeline.render",
           transport: "cli",
           invocation: "timeline render --timeline smoke --json",
         },
       ],
-      missingProductOperations: [],
-      observedMcpTools: ["clash_director_create"],
+      missingProductOperations: ["director.create"],
+      observedMcpTools: [],
       missingMcpTools: [],
       observedCliCommands: ["timeline render --timeline smoke --json"],
       missingCliCommands: [],
@@ -1486,11 +1495,19 @@ describe("headless benchmark runner", () => {
         status: "succeeded",
       },
     ]);
+    expect(
+      trajectory.actions.filter((action) => action.kind === "mcp"),
+    ).toMatchObject([
+      {
+        source: "codex",
+        operation: "clash/clash_director_create",
+        status: "succeeded",
+      },
+    ]);
     expect(trajectory.actions.map((action) => action.sequence)).toEqual(
       trajectory.actions.map((_action, index) => index + 1),
     );
     const resolvedOutputRoot = await realpath(outputRoot);
-    const resolvedPluginRoot = await realpath(pluginRoot);
     const caseRoot = join(resolvedOutputRoot, "host-run-001", "clash-host");
     const workspace = join(caseRoot, "workspace");
     const hostManifest = JSON.parse(
@@ -1510,10 +1527,8 @@ describe("headless benchmark runner", () => {
     const sandboxTopology = JSON.parse(
       await readFile(join(workspace, "sandbox-topology.json"), "utf8"),
     ) as {
-      runtimeClashHome: string;
-      runtimeRoot: string;
-      realClashHome: string;
-      runtimeClashHomeIsSymbolicLink: boolean;
+      rawHostEnvironment: Record<string, string>;
+      trustedCliInPath: boolean;
     };
     const config = new Map<string, string>();
     for (let index = 0; index < args.length; index += 1) {
@@ -1523,42 +1538,39 @@ describe("headless benchmark runner", () => {
       config.set(entry.slice(0, separator), entry.slice(separator + 1));
     }
     expect(args).toContain("--ignore-user-config");
-    const addDirs = args.flatMap((argument, index) => (
-      argument === "--add-dir" ? [args[index + 1]] : []
-    ));
+    expect(
+      args.flatMap((argument, index) =>
+        argument === "--disable" ? [args[index + 1]] : [],
+      ),
+    ).toEqual(["plugins", "remote_plugin", "recommended_plugins"]);
+    const addDirs = args.flatMap((argument, index) =>
+      argument === "--add-dir" ? [args[index + 1]] : [],
+    );
     expect(addDirs).toEqual([
-      sandboxTopology.runtimeRoot,
-      sandboxTopology.realClashHome,
+      join(dirname(hostManifest.runtimeClashHome), "trusted-mcp-relay"),
+      join(dirname(hostManifest.runtimeClashHome), "trusted-agent-cli"),
     ]);
     expect(sandboxTopology).toEqual({
-      runtimeClashHome: hostManifest.runtimeClashHome,
-      runtimeRoot: dirname(hostManifest.runtimeClashHome),
-      realClashHome: hostManifest.persistedClashHome,
-      runtimeClashHomeIsSymbolicLink: true,
+      rawHostEnvironment: {},
+      trustedCliInPath: true,
     });
     expect(config.get("mcp_servers.clash.required")).toBe("true");
     expect(config.get("mcp_servers.clash.command")).toBe(
       JSON.stringify(process.execPath),
     );
-    expect(config.get("mcp_servers.clash.args")).toBe(
-      JSON.stringify([join(resolvedPluginRoot, "runtime", "index.js")]),
+    const mcpArgs = JSON.parse(
+      config.get("mcp_servers.clash.args") ?? "null",
+    ) as unknown;
+    expect(mcpArgs).toEqual([
+      expect.stringMatching(/trusted-mcp-relay[/\\]relay\.cjs$/u),
+    ]);
+    expect(config.has("mcp_servers.clash.env.CLASH_PROFILE")).toBe(false);
+    expect(config.has("mcp_servers.clash.env.CLASH_WORKSPACE_ROOT")).toBe(
+      false,
     );
-    expect(config.get("mcp_servers.clash.env.CLASH_PROFILE")).toBe('"dev"');
-    expect(config.get("mcp_servers.clash.env.CLASH_WORKSPACE_ROOT")).toBe(
-      JSON.stringify(hostManifest.executionWorkspace),
-    );
-    expect(config.get("mcp_servers.clash.env.CLASH_HOME")).toBe(
-      JSON.stringify(hostManifest.runtimeClashHome),
-    );
-    expect(config.get("mcp_servers.clash.env.CLASH_CLI_TRACE_PATH")).toBe(
-      JSON.stringify(
-        join(
-          hostManifest.executionWorkspace,
-          ".clash",
-          "evidence",
-          "clash-cli-events.jsonl",
-        ),
-      ),
+    expect(config.has("mcp_servers.clash.env.CLASH_HOME")).toBe(false);
+    expect(config.has("mcp_servers.clash.env.CLASH_CLI_TRACE_PATH")).toBe(
+      false,
     );
     expect(config.get("sandbox_workspace_write.network_access")).toBe("true");
     expect(hostManifest.persistedClashHome).toBe(join(caseRoot, "clash-home"));

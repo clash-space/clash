@@ -1,0 +1,26 @@
+{
+  "summary": "First-party speech-analysis Generator that delegates ASR execution to a narrow Host tool and returns a typed transcript Document.",
+  "context_hints": [
+    "Keep provider credentials, local paths, Local API URLs, and runtime model spellings in the Host; plugin code calls context.hostTools.speechTranscribe",
+    "Generator state stores only a canonical model Card id; language is an Action parameter frozen into the ActionRun fingerprint",
+    "Never synthesize word timings: media.transcript@1 must pass AsrTimedTranscriptSchema with real non-zero ranges",
+    "The exported plugin is an inert PluginModule; stdio starts only when dist/stdio.mjs is executed directly"
+  ],
+  "subdirectories": {
+    "generators": "Native clash.generator/v1 speech-analysis Definition.",
+    "src": "Transport-neutral PluginModule plus direct-execution stdio compatibility entrypoint.",
+    "contract-tests": "Declarative activation fixture for a completed typed transcript.",
+    "dist": "Generated standalone compatibility artifact; never hand-edit."
+  },
+  "key_files": {
+    "manifest.json": "Versioned clash.asr package, Generator, Action, and speech.transcribe Host-tool declarations.",
+    "generators/speech-analysis.json": "Mutable Generator state and exact transcribe input/output contract.",
+    "src/stdio.ts": "Inert PluginModule with durable submit/poll mapping; direct execution alone enables stdio.",
+    "contract-tests/transcribe.json": "Completed ASR Host-tool and typed Document ABI fixture."
+  },
+  "verification": [
+    "pnpm test:package @clash-plugin/asr",
+    "pnpm typecheck:package @clash-plugin/asr",
+    "pnpm build:package @clash-plugin/asr"
+  ]
+}

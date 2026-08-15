@@ -57,7 +57,9 @@ describe("clash plugin", () => {
     //
     // Checking the strings against the command's own subcommand list means the two cannot drift
     // apart silently again -- the message is only as good as the command it names.
-    const declared = new Set(pluginCommand.commands.map((command) => command.name()));
+    const declared = new Set(
+      pluginCommand.commands.map((command) => command.name()),
+    );
     const sources = [
       managedStorageDraftHint(),
       readFileSync(join(__dirname, "plugin.ts"), "utf8"),
@@ -65,12 +67,16 @@ describe("clash plugin", () => {
 
     const referenced = new Set<string>();
     for (const source of sources) {
-      for (const [, sub] of source.matchAll(/clash plugin ([a-z-]+)/g)) referenced.add(sub);
+      for (const [, sub] of source.matchAll(/clash plugin ([a-z-]+)/g))
+        referenced.add(sub);
     }
 
     expect(referenced.size).toBeGreaterThan(0);
     for (const sub of referenced) {
-      expect(declared, `\`clash plugin ${sub}\` is advertised but not defined`).toContain(sub);
+      expect(
+        declared,
+        `\`clash plugin ${sub}\` is advertised but not defined`,
+      ).toContain(sub);
     }
   });
 
@@ -78,7 +84,9 @@ describe("clash plugin", () => {
     // `clash action ...` in a message is a dead end now: the command is gone, so a user who copies
     // it gets "unknown command". Past-tense narrative in comments is fine; an emitted string is not.
     const source = readFileSync(join(__dirname, "plugin.ts"), "utf8");
-    const emitted = [...source.matchAll(/["`][^"`\n]*clash action [^"`\n]*["`]/g)].map((m) => m[0]);
+    const emitted = [
+      ...source.matchAll(/["`][^"`\n]*clash action [^"`\n]*["`]/g),
+    ].map((m) => m[0]);
     expect(emitted).toEqual([]);
   });
 });

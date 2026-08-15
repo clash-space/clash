@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "bpm": 120,
+  "durationSeconds": 8,
+  "sampleRate": 48000,
+  "beats": [
+    { "index": 0, "timeSeconds": 0, "kind": "downbeat" },
+    { "index": 1, "timeSeconds": 0.5, "kind": "beat" },
+    { "index": 2, "timeSeconds": 1, "kind": "beat" },
+    { "index": 3, "timeSeconds": 1.5, "kind": "beat" },
+    { "index": 4, "timeSeconds": 2, "kind": "downbeat" },
+    { "index": 5, "timeSeconds": 2.5, "kind": "beat" },
+    { "index": 6, "timeSeconds": 3, "kind": "beat" },
+    { "index": 7, "timeSeconds": 3.5, "kind": "beat" },
+    { "index": 8, "timeSeconds": 4, "kind": "downbeat" },
+    { "index": 9, "timeSeconds": 4.5, "kind": "beat" },
+    { "index": 10, "timeSeconds": 5, "kind": "beat" },
+    { "index": 11, "timeSeconds": 5.5, "kind": "beat" },
+    { "index": 12, "timeSeconds": 6, "kind": "downbeat" },
+    { "index": 13, "timeSeconds": 6.5, "kind": "beat" },
+    { "index": 14, "timeSeconds": 7, "kind": "beat" },
+    { "index": 15, "timeSeconds": 7.5, "kind": "beat" }
+  ],
+  "chapterBeats": [0, 4, 8, 12]
+}

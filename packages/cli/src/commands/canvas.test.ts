@@ -5,6 +5,7 @@ import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
+  canvasCommand,
   downloadAssetById,
   resolveAssetDownloadUrl,
   resolveCanvasActor,
@@ -171,6 +172,16 @@ test("canvas add exposes the distinct Remotion component node type", () => {
   assert.match(source, /Body content.*Remotion TSX/);
   assert.match(source, /action: "add",[\s\S]*type: options\.type/);
   assert.match(canvasContractSource, /remotion:\s*\{ rfType: RF_NODE_TYPE\.RemotionComponent \}/);
+});
+
+test("canvas add and update expose exact workspace file content ingestion", () => {
+  for (const commandName of ["add", "update"]) {
+    const command = canvasCommand.commands.find((candidate) => candidate.name() === commandName);
+    assert.ok(command, `missing canvas ${commandName} command`);
+    const contentFile = command.options.find((option) => option.long === "--content-file");
+    assert.ok(contentFile, `canvas ${commandName} must accept --content-file`);
+    assert.match(contentFile.description, /workspace.*UTF-8.*not.*persist/i);
+  }
 });
 
 test("asset downloader accepts absolute and relative signed URLs", () => {

@@ -1,12 +1,25 @@
 {
   "schemaVersion": 1,
   "id": "clash-creative-artifacts-v2",
-  "title": "Clash creative artifact benchmark v2 — 20 product-rendered cases",
+  "title": "Clash content-effect benchmark v2 — multi-category product-rendered cases",
   "cases": [
     {
       "id": "director-street-vlog-cold-open-v2",
       "title": "Director street-vlog cold open",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The ordered coverage visibly progresses from an occluded arrival to a prop reveal and then a close reaction, with distinct shot scales and readable screen direction.",
+          "weight": 1,
+          "evidenceArtifactIds": [
+            "frame-opening",
+            "frame-action",
+            "frame-closing"
+          ]
+        }
+      ],
       "category": "director",
+      "tags": ["content-effect", "content-narrative-cinematic"],
       "outcome": {
         "objective": "Block a 6-second 9:16 street-vlog cold open using Casey Neistat only as editorial-format shorthand. Use two mannequins, foreground occlusion, a host entering toward camera, a moving medium shot, a sharp but readable screen-direction change that reveals a key prop, and a close reaction. Capture opening, reveal, and reaction PNGs from the real Director product surface. Preserve the editable Stage and submit the three PNGs as visual evidence; screenshots or synthetic stand-ins do not satisfy the product-render requirement. Do not imitate any real face, voice, logo, or proprietary brand package; evaluation concerns only the stated framing, blocking, and progression traits.",
         "acceptanceCriteria": [
@@ -92,7 +105,26 @@
           "director.mutate",
           "director.get",
           "director.capture"
-        ]
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
       },
       "rubric": [
         {
@@ -129,7 +161,20 @@
     {
       "id": "director-challenge-arena-countdown-v2",
       "title": "Director challenge-arena countdown",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The arena geometry makes the contestants, obstacle path, and prize target immediately legible, while the shot order progresses from rules to start, action, and finish reaction.",
+          "weight": 1,
+          "evidenceArtifactIds": [
+            "frame-opening",
+            "frame-action",
+            "frame-closing"
+          ]
+        }
+      ],
       "category": "director",
+      "tags": ["content-effect", "content-narrative-cinematic"],
       "outcome": {
         "objective": "Stage an 8-second 16:9 high-stakes challenge countdown using MrBeast only as editorial-format shorthand. Arrange two contestants, a visually legible obstacle lane, a prize target, and a clear start-to-finish axis. Progress through a wide rules view, an over-shoulder start, an obstacle action beat, and a finish reaction, then capture three real Director PNGs that prove the escalation. Preserve the editable Stage and submit the three PNGs as visual evidence; screenshots or synthetic stand-ins do not satisfy the product-render requirement. Do not imitate any real face, voice, logo, or proprietary brand package; evaluation concerns only clarity, stakes, scale, and reaction coverage.",
         "acceptanceCriteria": [
@@ -215,7 +260,26 @@
           "director.mutate",
           "director.get",
           "director.capture"
-        ]
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
       },
       "rubric": [
         {
@@ -252,7 +316,20 @@
     {
       "id": "director-premium-gadget-hero-v2",
       "title": "Director premium gadget hero",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The three beats visibly progress from silhouette to material detail to frontal hero lockup, with a dark field, one accent color, edge separation, and usable negative space.",
+          "weight": 1,
+          "evidenceArtifactIds": [
+            "frame-opening",
+            "frame-action",
+            "frame-closing"
+          ]
+        }
+      ],
       "category": "director",
+      "tags": ["content-effect", "content-ad-product-showcase"],
       "outcome": {
         "objective": "Build a 6-second 1:1 premium gadget reveal using MKBHD only as editorial-format shorthand. Stage a hero object on a pedestal against a dark studio field, use one saturated accent color, motivated key and rim-light proxies, a macro-like detail angle, a low orbit, and a clean frontal hero lockup with deliberate title negative space. Capture real product PNGs for the opening silhouette, detail-orbit midpoint, and final lockup. Preserve the editable Stage and submit the three PNGs as visual evidence; screenshots or synthetic stand-ins do not satisfy the product-render requirement. Do not reproduce any real logo, product trade dress, face, voice, or proprietary brand package; evaluation concerns only the specified premium-tech visual traits.",
         "acceptanceCriteria": [
@@ -338,7 +415,26 @@
           "director.mutate",
           "director.get",
           "director.capture"
-        ]
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
       },
       "rubric": [
         {
@@ -375,7 +471,20 @@
     {
       "id": "director-future-lab-walkthrough-v2",
       "title": "Director future-lab walkthrough",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The blocking progresses from walking introduction to a synchronized mechanism point and then a wide scale reveal, using distinct camera distances that preserve spatial comprehension.",
+          "weight": 1,
+          "evidenceArtifactIds": [
+            "frame-opening",
+            "frame-action",
+            "frame-closing"
+          ]
+        }
+      ],
       "category": "director",
+      "tags": ["content-effect", "content-tutorial-explainer"],
       "outcome": {
         "objective": "Block a 10-second 16:9 optimistic future-lab walkthrough using Cleo Abram only as editorial-format shorthand. A host and expert or robot enter through the lab, reveal a central device, synchronize a pointing beat toward its key mechanism, and finish in a wide scale-reveal composition. Use at least four ordered camera shots and capture three real Director PNGs at arrival, mechanism reveal, and scale reveal. Preserve the editable Stage and submit the PNGs as visual evidence; screenshots or synthetic stand-ins do not satisfy the product-render requirement. Do not imitate any real face, voice, logo, or proprietary brand package; evaluation concerns only energetic curiosity, spatial explanation, and scale progression.",
         "acceptanceCriteria": [
@@ -461,7 +570,26 @@
           "director.mutate",
           "director.get",
           "director.capture"
-        ]
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
       },
       "rubric": [
         {
@@ -498,7 +626,20 @@
     {
       "id": "director-investigation-evidence-wall-v2",
       "title": "Director investigation evidence wall",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The shot sequence visibly builds a question-to-clue-to-finding arc across the desk, map, and evidence wall, with foreground depth and a decisive push-in or overhead inspection.",
+          "weight": 1,
+          "evidenceArtifactIds": [
+            "frame-opening",
+            "frame-action",
+            "frame-closing"
+          ]
+        }
+      ],
       "category": "director",
+      "tags": ["content-effect", "content-tutorial-explainer"],
       "outcome": {
         "objective": "Stage an 8-second 9:16 investigation at a desk, map, and evidence wall using Johnny Harris only as editorial-format shorthand. Move a presenter and collaborator through a question beat, an over-shoulder or top-down clue inspection, a push-in on the decisive connection, and a final reframing, using foreground papers or pins to create depth. Capture three real Director PNGs showing question, clue, and finding. Preserve the editable Stage and submit the PNGs as visual evidence; screenshots or synthetic stand-ins do not satisfy the product-render requirement. Do not imitate any real face, voice, logo, map artwork, or proprietary brand package; evaluation concerns only spatial evidence-building and explanatory coverage.",
         "acceptanceCriteria": [
@@ -584,7 +725,26 @@
           "director.mutate",
           "director.get",
           "director.capture"
-        ]
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
       },
       "rubric": [
         {
@@ -621,7 +781,16 @@
     {
       "id": "timeline-vertical-retention-hook-v2",
       "title": "Timeline vertical retention hook",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The edit presents a readable promise or conflict within the first second, escalates through at least two materially different numeric or scale beats, and closes on a visually distinct payoff tease.",
+          "weight": 1,
+          "evidenceArtifactIds": ["frame-start", "frame-middle", "frame-end"]
+        }
+      ],
       "category": "timeline",
+      "tags": ["content-effect", "content-ad-product-showcase"],
       "outcome": {
         "objective": "Edit a 6-second 9:16 high-retention cold-open graphic using MrBeast only as editorial-format shorthand. Deliver the promise or conflict in the first second with oversized text, escalate through changing numbers or scale comparisons, keep a continuous visual bed, and end on a payoff tease using text plus an editable Timeline composition. Preserve the editable Timeline, render a real decodable MP4, and extract start, middle, and end frames from that final media. Do not imitate any real face, voice, logo, thumbnail, or proprietary brand package; evaluation concerns only hook speed, visual hierarchy, escalating stakes, and payoff structure.",
         "acceptanceCriteria": [
@@ -715,7 +884,26 @@
           "timeline.validate",
           "timeline.save",
           "timeline.render"
-        ]
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
       },
       "rubric": [
         {
@@ -774,7 +962,16 @@
     {
       "id": "timeline-talking-head-tech-review-v2",
       "title": "Timeline talking-head tech review",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The cut contains at least two motivated reframing or jump-cut beats, one product B-roll cover, a restrained lower third, and selective keyword typography while preserving audible continuity.",
+          "weight": 1,
+          "evidenceArtifactIds": ["frame-start", "frame-middle", "frame-end"]
+        }
+      ],
       "category": "timeline",
+      "tags": ["content-effect", "content-talking-head-interview"],
       "outcome": {
         "objective": "Turn the supplied 43.633-second synthetic talking-head fixture into a coherent 12-second 16:9 productivity-tech口播 using text-based editing. Use transcript/source-voice.words.json to remove the false start, filler words, repeated words, and dead air while retaining a complete hook, one supporting claim, and one actionable takeaway. Use MKBHD only as editorial-format shorthand: add at least two motivated jump cuts or punch-ins, cover one cut with a restrained graphic or fixture-derived detail crop, add a restrained lower third and selective keyword typography, and maintain dialogue continuity. Preserve the immutable source inputs and editable Timeline, render a real decodable MP4, and extract start, middle, and end frames from that final media. Do not imitate any real face, voice, logo, product trade dress, or proprietary brand package; evaluation concerns only text-cut judgment, pacing, visual restraint, cut motivation, and information hierarchy.",
         "acceptanceCriteria": [
@@ -874,7 +1071,26 @@
           "timeline.validate",
           "timeline.save",
           "timeline.render"
-        ]
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
       },
       "rubric": [
         {
@@ -934,7 +1150,16 @@
     {
       "id": "timeline-productivity-tip-cutdown-v2",
       "title": "Timeline productivity-tip cutdown",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The edit visibly progresses from a problem question through three ordered checklist steps to one concise takeaway, supported by presenter or desk B-roll and a readable progress cue.",
+          "weight": 1,
+          "evidenceArtifactIds": ["frame-start", "frame-middle", "frame-end"]
+        }
+      ],
       "category": "timeline",
+      "tags": ["content-effect", "content-tutorial-explainer"],
       "outcome": {
         "objective": "Create an 8-second 1:1 productivity-tip cutdown using Ali Abdaal only as editorial-format shorthand. Open with a friendly problem question, move through a three-step checklist with presenter or desk B-roll, show a gentle progress cue, and finish on one concise actionable takeaway using an editable Timeline composition. Preserve the editable Timeline, render a real decodable MP4, and extract start, middle, and end frames from that final media. Do not imitate any real face, voice, logo, workspace, or proprietary brand package; evaluation concerns only approachable pacing, checklist clarity, supportive B-roll, and a useful takeaway.",
         "acceptanceCriteria": [
@@ -1028,7 +1253,26 @@
           "timeline.validate",
           "timeline.save",
           "timeline.render"
-        ]
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
       },
       "rubric": [
         {
@@ -1087,7 +1331,16 @@
     {
       "id": "timeline-map-investigation-explainer-v2",
       "title": "Timeline map-investigation explainer",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The visual argument adds readable place labels, a route, and a highlighted clue in sequence, varies the presenter-evidence layout, and resolves to a full-frame conclusion.",
+          "weight": 1,
+          "evidenceArtifactIds": ["frame-start", "frame-middle", "frame-end"]
+        }
+      ],
       "category": "timeline",
+      "tags": ["content-effect", "content-tutorial-explainer"],
       "outcome": {
         "objective": "Create a 10-second 16:9 map-investigation explainer using Johnny Harris only as editorial-format shorthand. Place a presenter and map or archival evidence in complementary regions, progressively introduce place labels, a route line, and one highlighted clue, then return to a clear full-frame conclusion rather than holding a static split screen throughout. Preserve the editable Timeline, render a real decodable MP4, and extract start, middle, and end frames from that final media. Do not imitate any real face, voice, logo, map artwork, or proprietary brand package; evaluation concerns only evidence sequencing, geographic clarity, and the final explanatory reframe.",
         "acceptanceCriteria": [
@@ -1181,7 +1434,26 @@
           "timeline.validate",
           "timeline.save",
           "timeline.render"
-        ]
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
       },
       "rubric": [
         {
@@ -1240,7 +1512,16 @@
     {
       "id": "timeline-street-vlog-mini-story-v2",
       "title": "Timeline street-vlog mini story",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The three frames visibly progress through location setup, movement or obstacle, and an arrival payoff, with readable location or time typography.",
+          "weight": 1,
+          "evidenceArtifactIds": ["frame-start", "frame-middle", "frame-end"]
+        }
+      ],
       "category": "timeline",
+      "tags": ["content-effect", "content-narrative-cinematic"],
       "outcome": {
         "objective": "Cut a 9-second 9:16 street-vlog mini story using Casey Neistat only as editorial-format shorthand. Build four legible beats—location setup, movement, an unexpected obstacle, and arrival payoff—using hard cuts, motivated speed changes, location or timestamp typography, and an audible music or environmental-sound bed while preserving spatial orientation. Preserve the editable Timeline, render a real decodable MP4, and extract start, middle, and end frames from that final media. Do not imitate any real face, voice, logo, handwriting, or proprietary brand package; evaluation concerns only momentum, geographic readability, and micro-story progression.",
         "acceptanceCriteria": [
@@ -1334,7 +1615,26 @@
           "timeline.validate",
           "timeline.save",
           "timeline.render"
-        ]
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
       },
       "rubric": [
         {
@@ -1394,7 +1694,16 @@
     {
       "id": "remotion-character-cosmic-question-host-v2",
       "title": "Remotion character cosmic-question host",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The visible action progresses from thought to question to a gesture-launched orbit and settle, with a limited palette, readable silhouette, and materially distinct anticipation, overshoot, and settle poses.",
+          "weight": 1,
+          "evidenceArtifactIds": ["pose-start", "pose-action", "pose-settle"]
+        }
+      ],
       "category": "mg-character",
+      "tags": ["content-effect", "content-tutorial-explainer"],
       "outcome": {
         "objective": "Create a flat-geometric cosmic-question host using Kurzgesagt only as editorial-format shorthand, as an editable Remotion TSX component in a 4-second 720x1280 composition at 24fps. Animate one character from thought to a clearly posed question, then use its gesture to launch orbiting science icons with a limited palette, readable silhouette, anticipation, overshoot, and settle. Persist the exact TSX as a Canvas remotion-component, reuse the returned stable Canvas node ID unchanged as the Timeline composition sourceNodeId with runtime remotion, render the persisted Timeline through clash_timeline_render, and extract start, action, and settle PNGs from the real video. Do not imitate any existing mascot, illustration, voice, logo, or proprietary brand package; evaluation concerns only the stated geometric science-explainer and motion traits.",
         "acceptanceCriteria": [
@@ -1504,7 +1813,26 @@
           "timeline.validate",
           "timeline.save",
           "timeline.render"
-        ]
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
       },
       "rubric": [
         {
@@ -1590,7 +1918,16 @@
     {
       "id": "remotion-character-task-juggler-v2",
       "title": "Remotion character task juggler",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The visible loop gives the clock, notebook, and parcel separate readable handling beats, keeps foot contacts planted, uses opposing limb motion, and shows secondary prop follow-through.",
+          "weight": 1,
+          "evidenceArtifactIds": ["pose-start", "pose-action", "pose-settle"]
+        }
+      ],
       "category": "mg-character",
+      "tags": ["content-effect", "content-motion-graphics-brand"],
       "outcome": {
         "objective": "Create a one-person productivity task-juggler as an editable Remotion TSX component in a 6-second 1080x1080 composition at 30fps. Animate the character through a looping walk while it successively handles a clock, notebook, and parcel; use opposing limbs, planted contacts, readable handoffs, and secondary follow-through on every prop. Persist the exact TSX as a Canvas remotion-component, reuse the returned stable Canvas node ID unchanged as the Timeline composition sourceNodeId with runtime remotion, render the persisted Timeline through clash_timeline_render, and extract start, action, and settle PNGs from the real video. This is an original creator-overlay format: do not imitate any real face, voice, mascot, logo, or proprietary brand package; evaluation concerns only task readability, contact stability, rhythm, and follow-through.",
         "acceptanceCriteria": [
@@ -1703,7 +2040,26 @@
           "timeline.validate",
           "timeline.save",
           "timeline.render"
-        ]
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
       },
       "rubric": [
         {
@@ -1789,7 +2145,16 @@
     {
       "id": "remotion-character-hot-take-reaction-v2",
       "title": "Remotion character hot-take reaction",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The visible performance has four legible emotional beats—neutral, disbelief, insight, and relief—expressed through face, shoulders, arms, and center of mass while preserving adjacent negative space.",
+          "weight": 1,
+          "evidenceArtifactIds": ["pose-start", "pose-action", "pose-settle"]
+        }
+      ],
       "category": "mg-character",
+      "tags": ["content-effect", "content-talking-head-interview"],
       "outcome": {
         "objective": "Create an expressive hot-take reaction overlay as an editable Remotion TSX component in a 5-second 1080x1920 composition at 30fps. Animate one character through neutral, disbelief, insight, and relieved acceptance using face, shoulder line, arm pose, and center-of-mass changes; keep intentional negative space so the character can sit beside talking-head footage. Persist the exact TSX as a Canvas remotion-component, reuse the returned stable Canvas node ID unchanged as the Timeline composition sourceNodeId with runtime remotion, render the persisted Timeline through clash_timeline_render, and extract start, action, and settle PNGs from the real video. This is an original creator reaction format: do not imitate any real face, voice, mascot, logo, emoji set, or proprietary brand package; evaluation concerns only emotional legibility, pose contrast, timing, and overlay usability.",
         "acceptanceCriteria": [
@@ -1902,7 +2267,26 @@
           "timeline.validate",
           "timeline.save",
           "timeline.render"
-        ]
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
       },
       "rubric": [
         {
@@ -1993,7 +2377,16 @@
     {
       "id": "remotion-character-claim-evidence-synthesis-v2",
       "title": "Remotion character claim-evidence synthesis",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The two characters and their claim/evidence pieces remain visually distinct through questioning, alignment, continuous contact, and a resolved combined conclusion.",
+          "weight": 1,
+          "evidenceArtifactIds": ["pose-start", "pose-action", "pose-settle"]
+        }
+      ],
       "category": "mg-character",
+      "tags": ["content-effect", "content-tutorial-explainer"],
       "outcome": {
         "objective": "Create a claim-versus-evidence synthesis as an editable Remotion TSX component in a 6-second 1920x1080 composition at 30fps. Give two visually contrasting characters separate claim and evidence puzzle pieces, then animate questioning, alignment, a continuous handshake or piece connection, and a resolved combined conclusion with readable anticipation, contact, and settle poses. Persist the exact TSX as a Canvas remotion-component, reuse the returned stable Canvas node ID unchanged as the Timeline composition sourceNodeId with runtime remotion, render the persisted Timeline through clash_timeline_render, and extract start, action, and settle PNGs from the real video. This is an original explainer format: do not imitate any real face, voice, mascot, logo, or proprietary brand package; evaluation concerns only contrast, contact continuity, synthesis, and pose readability.",
         "acceptanceCriteria": [
@@ -2106,7 +2499,26 @@
           "timeline.validate",
           "timeline.save",
           "timeline.render"
-        ]
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
       },
       "rubric": [
         {
@@ -2197,7 +2609,16 @@
     {
       "id": "remotion-character-channel-sting-v2",
       "title": "Remotion character channel sting",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The visible action shows a weighted panel impact, recovery, a clear pointing pose, and a stable end card with one concise readable channel promise.",
+          "weight": 1,
+          "evidenceArtifactIds": ["pose-start", "pose-action", "pose-settle"]
+        }
+      ],
       "category": "mg-character",
+      "tags": ["content-effect", "content-motion-graphics-brand"],
       "outcome": {
         "objective": "Create an original creator-channel sting as an editable Remotion TSX component in a 5-second 1920x1080 composition at 30fps. Animate a character breaking through or displacing a foreground panel with a weighted impact, recovering, pointing to one concise channel promise, and holding a clean readable end card. Persist the exact TSX as a Canvas remotion-component, reuse the returned stable Canvas node ID unchanged as the Timeline composition sourceNodeId with runtime remotion, render the persisted Timeline through clash_timeline_render, and extract start, action, and settle PNGs from the real video. Do not imitate any real face, voice, mascot, logo, slogan, or proprietary brand package; evaluation concerns only impact weight, recovery, pointing clarity, and end-card readability.",
         "acceptanceCriteria": [
@@ -2310,7 +2731,26 @@
           "timeline.validate",
           "timeline.save",
           "timeline.render"
-        ]
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
       },
       "rubric": [
         {
@@ -2401,7 +2841,21 @@
     {
       "id": "mixed-productivity-mythbust-short-v2",
       "title": "Mixed productivity myth-bust short",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The final edit visibly progresses from a stated productivity myth through one evidence beat to an actionable tip, using motivated presenter reframing, selective captions, desk B-roll, and a visible original character reaction or checklist beat.",
+          "weight": 1,
+          "evidenceArtifactIds": [
+            "director-capture-frame",
+            "frame-opening",
+            "frame-mg-action",
+            "frame-closing"
+          ]
+        }
+      ],
       "category": "mixed",
+      "tags": ["content-effect", "content-tutorial-explainer"],
       "outcome": {
         "objective": "Assemble an 8-second 9:16 productivity myth-bust short using Ali Abdaal only as editorial-format shorthand. Combine a Director desk-and-presenter setup, an original Remotion TSX reaction or checklist character, and an editable Timeline whose jump cuts, selective dynamic captions, and supporting desk B-roll progress from myth to evidence to one actionable tip. Preserve the Director Stage, Remotion TSX character source, and canonical Timeline; persist the TSX as a Canvas remotion-component, bind its stable node ID as the Timeline composition sourceNodeId with runtime remotion, capture Director visual evidence, render through clash_timeline_render, and sample three PNGs from the final product video. Do not imitate any real face, voice, logo, workspace, mascot, or proprietary brand package; evaluation concerns only approachable pacing, evidence clarity, and usefulness.",
         "acceptanceCriteria": [
@@ -2555,7 +3009,26 @@
           "timeline.validate",
           "timeline.save",
           "timeline.render"
-        ]
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
       },
       "rubric": [
         {
@@ -2566,7 +3039,7 @@
           "required": true,
           "minObjects": 3,
           "minCameras": 2,
-          "minCapturedShots": 2,
+          "minSequenceShots": 2,
           "minAnimatedTracks": 1
         },
         {
@@ -2657,7 +3130,21 @@
     {
       "id": "mixed-challenge-cold-open-v2",
       "title": "Mixed challenge cold open",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The final edit makes the prize and obstacle legible, compresses the rule into a readable beat, visibly uses the original countdown or referee character, escalates through action and reaction, and ends on unresolved suspense.",
+          "weight": 1,
+          "evidenceArtifactIds": [
+            "director-capture-frame",
+            "frame-opening",
+            "frame-mg-action",
+            "frame-closing"
+          ]
+        }
+      ],
       "category": "mixed",
+      "tags": ["content-effect", "content-narrative-cinematic"],
       "outcome": {
         "objective": "Assemble a 10-second 16:9 high-stakes challenge cold open using MrBeast only as editorial-format shorthand. Combine a Director obstacle arena, an original Remotion TSX countdown or referee character, and a paced Timeline that reveals the prize, compresses the rules, shows an action and reaction escalation, and cuts out on unresolved suspense. Preserve the Director Stage, Remotion TSX character source, and canonical Timeline; persist the TSX as a Canvas remotion-component, bind its stable node ID as the Timeline composition sourceNodeId with runtime remotion, capture Director visual evidence, render through clash_timeline_render, and sample three PNGs from the final product video. Do not imitate any real face, voice, logo, thumbnail, mascot, or proprietary brand package; evaluation concerns only stakes clarity, escalation, scale contrast, and reaction timing.",
         "acceptanceCriteria": [
@@ -2811,7 +3298,26 @@
           "timeline.validate",
           "timeline.save",
           "timeline.render"
-        ]
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
       },
       "rubric": [
         {
@@ -2822,7 +3328,7 @@
           "required": true,
           "minObjects": 5,
           "minCameras": 2,
-          "minCapturedShots": 3,
+          "minSequenceShots": 3,
           "minAnimatedTracks": 1
         },
         {
@@ -2918,13 +3424,30 @@
     {
       "id": "mixed-premium-gadget-mini-review-v2",
       "title": "Mixed premium gadget mini review",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The final edit alternates review copy and product detail coverage, presents three readable comparison metrics through the original character, maintains a dark field with one accent color, and resolves to a clean hero lockup.",
+          "weight": 1,
+          "evidenceArtifactIds": [
+            "director-capture-frame",
+            "frame-opening",
+            "frame-mg-action",
+            "frame-closing"
+          ]
+        }
+      ],
       "category": "mixed",
+      "tags": ["content-effect", "content-ad-product-showcase"],
       "outcome": {
         "objective": "Assemble a 9-second 1:1 premium gadget mini review using MKBHD only as editorial-format shorthand. Combine a dark-studio Director product orbit, an original Remotion TSX metric-presenter character, and a Timeline that alternates concise review copy with product B-roll, compares three readable metrics, and resolves to a clean hero lockup using one saturated accent color. Preserve the Director Stage, Remotion TSX character source, and canonical Timeline; persist the TSX as a Canvas remotion-component, bind its stable node ID as the Timeline composition sourceNodeId with runtime remotion, capture Director visual evidence, render through clash_timeline_render, and sample three PNGs from the final product video. Do not imitate any real face, voice, logo, product trade dress, mascot, or proprietary brand package; evaluation concerns only premium visual restraint, comparison clarity, and B-roll motivation.",
         "acceptanceCriteria": [
           "The final composition is 1080x1080 at 30fps and approximately 9 seconds.",
           "The editable character source is a self-contained Remotion TSX component at components/mixed-premium-gadget-mini-review-v2-character.tsx, and clash_canvas_add persists that exact source as a remotion-component Canvas node.",
-          "The stable Canvas node ID returned by Clash is reused unchanged as sourceNodeId on a composition item with compositionKind custom and runtime remotion; the Director-derived asset lineage remains referenced by the same canonical Timeline.",
+          "The persisted Director Stage contains at least four objects, two cameras, three ordered sequence shots, and one animated track.",
+          "The canonical Timeline contains at least three tracks and five items across at least 270 frames, including image, composition, and text item types; every media item must preserve the actual kind of its referenced Project Asset.",
+          "The stable Canvas node ID returned by Clash is reused unchanged as sourceNodeId on a composition item with compositionKind custom and runtime remotion.",
+          "For exact lineage, a Director capture receipt binds its projectAssetId output to the final Stage revision, and a canonical Timeline media item references that same projectAssetId; the Stage is not mutated to store its own Action output.",
           "The final edit alternates review copy and product detail coverage, presents three readable comparison metrics through the original character, maintains a dark field with one accent color, and resolves to a clean hero lockup.",
           "clash_director_capture supplies at least one exact-time product-rendered Stage PNG, and clash_timeline_render completes with a decodable final video plus three sampled PNGs.",
           "No real creator face, voice, logo, product trade dress, mascot, or proprietary brand package is imitated; MKBHD is only shorthand for the stated premium technology-review grammar.",
@@ -3072,7 +3595,26 @@
           "timeline.validate",
           "timeline.save",
           "timeline.render"
-        ]
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
       },
       "rubric": [
         {
@@ -3083,7 +3625,7 @@
           "required": true,
           "minObjects": 4,
           "minCameras": 2,
-          "minCapturedShots": 3,
+          "minSequenceShots": 3,
           "minAnimatedTracks": 1
         },
         {
@@ -3095,7 +3637,7 @@
           "minTracks": 3,
           "minItems": 5,
           "minDurationInFrames": 270,
-          "requiredItemTypes": ["video", "composition", "text"]
+          "requiredItemTypes": ["image", "composition", "text"]
         },
         {
           "id": "mg-source",
@@ -3179,7 +3721,21 @@
     {
       "id": "mixed-map-investigation-story-v2",
       "title": "Mixed map-investigation story",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The final edit progresses from a big question through labeled geography, route and clue evidence to a causal reframe, visibly uses the original guide character, varies the presenter-evidence layout, and keeps source labels readable.",
+          "weight": 1,
+          "evidenceArtifactIds": [
+            "director-capture-frame",
+            "frame-opening",
+            "frame-mg-action",
+            "frame-closing"
+          ]
+        }
+      ],
       "category": "mixed",
+      "tags": ["content-effect", "content-tutorial-explainer"],
       "outcome": {
         "objective": "Assemble a 12-second 16:9 map-investigation story using Johnny Harris only as editorial-format shorthand. Combine a Director evidence-wall or map-table Stage, an original Remotion TSX guide character, and a Timeline that moves from a big question through labeled places, a route, sourced clue callouts, and a causal reframe rather than holding one static split screen. Preserve the Director Stage, Remotion TSX character source, and canonical Timeline; persist the TSX as a Canvas remotion-component, bind its stable node ID as the Timeline composition sourceNodeId with runtime remotion, capture Director visual evidence, render through clash_timeline_render, and sample three PNGs from the final product video. Do not imitate any real face, voice, logo, map artwork, mascot, or proprietary brand package; evaluation concerns only evidence sequencing, geographic clarity, source visibility, and explanatory payoff.",
         "acceptanceCriteria": [
@@ -3333,7 +3889,26 @@
           "timeline.validate",
           "timeline.save",
           "timeline.render"
-        ]
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
       },
       "rubric": [
         {
@@ -3344,7 +3919,7 @@
           "required": true,
           "minObjects": 3,
           "minCameras": 2,
-          "minCapturedShots": 3,
+          "minSequenceShots": 3,
           "minAnimatedTracks": 1
         },
         {
@@ -3440,7 +4015,21 @@
     {
       "id": "mixed-future-tech-optimist-short-v2",
       "title": "Mixed future-tech optimist short",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The final edit visibly progresses through big question, mechanism explanation, and why-it-matters chapters, uses the original science-guide character, expands from detail to scale, and ends on a constructive payoff.",
+          "weight": 1,
+          "evidenceArtifactIds": [
+            "director-capture-frame",
+            "frame-opening",
+            "frame-mg-action",
+            "frame-closing"
+          ]
+        }
+      ],
       "category": "mixed",
+      "tags": ["content-effect", "content-tutorial-explainer"],
       "outcome": {
         "objective": "Assemble a 10-second 9:16 optimistic future-tech short using Cleo Abram only as editorial-format shorthand. Combine a Director lab and device scale reveal, an original Remotion TSX science-guide character, and an energetic Timeline whose three clear chapters ask a big question, show how the mechanism works, and explain why it matters before an uplifting final beat. Preserve the Director Stage, Remotion TSX character source, and canonical Timeline; persist the TSX as a Canvas remotion-component, bind its stable node ID as the Timeline composition sourceNodeId with runtime remotion, capture Director visual evidence, render through clash_timeline_render, and sample three PNGs from the final product video. Do not imitate any real face, voice, logo, mascot, or proprietary brand package; evaluation concerns only curiosity, mechanism clarity, scale progression, and constructive payoff.",
         "acceptanceCriteria": [
@@ -3594,7 +4183,26 @@
           "timeline.validate",
           "timeline.save",
           "timeline.render"
-        ]
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
       },
       "rubric": [
         {
@@ -3605,7 +4213,7 @@
           "required": true,
           "minObjects": 4,
           "minCameras": 2,
-          "minCapturedShots": 4,
+          "minSequenceShots": 4,
           "minAnimatedTracks": 1
         },
         {
@@ -3692,6 +4300,277 @@
           "id": "lineage-report",
           "type": "artifact-exists",
           "artifactId": "lineage-report",
+          "minBytes": 128,
+          "weight": 5,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "remotion-rhythm-mascot-mv-v2",
+      "title": "Remotion rhythm-mascot micro MV",
+      "qualityCriteria": [
+        {
+          "id": "visual-effect-001",
+          "description": "The 0s, 2s, 4s, and 6s chapter downbeats form a legible four-part phrase with anticipation, impact, recovery, and a final hold rather than sixteen interchangeable flashes.",
+          "weight": 1,
+          "evidenceArtifactIds": [
+            "frame-establish",
+            "frame-peak",
+            "frame-resolve"
+          ]
+        },
+        {
+          "id": "audio-visual-synchrony",
+          "description": "Impacts, chapter transitions, and the final hold feel synchronized to the supplied rhythm bed.",
+          "weight": 1,
+          "evidenceArtifactIds": ["rhythm-audio"]
+        }
+      ],
+      "category": "mg-character",
+      "tags": ["content-effect", "content-music-rhythm-mv"],
+      "outcome": {
+        "objective": "Create an original 8-second 9:16 micro music video around the supplied deterministic 120 BPM rhythm fixture. Generate the public synthetic WAV from inputs/generate-beat.ts without changing any fixture file, import it as a Project Asset, and use it as the Timeline audio bed. Author an editable Remotion TSX pulse-mascot whose choreography develops across the four documented chapter downbeats: establish the visual rule, introduce a contrasting move, peak with the widest or most energetic pose, then resolve into a readable original end mark. Persist the exact TSX as a Canvas remotion-component, bind its stable node ID to the Timeline composition, render through clash_timeline_render with audible rhythm, and sample three PNGs from musically distinct beats. Beat synchronization alone is insufficient: evaluation concerns phrasing, anticipation and recovery, contrast between sections, visual hierarchy, color continuity, and the final hold. Do not use third-party music, samples, logos, mascots, slogans, or recognizable trade dress.",
+        "acceptanceCriteria": [
+          "The fixed beat map and generator remain byte-for-byte unchanged; the derived WAV is generated outside inputs, imported through the Project Asset surface, and retained as a submitted audio artifact.",
+          "The editable source is a self-contained Remotion TSX component at components/remotion-rhythm-mascot-mv-v2.tsx with semantically named head, torso, left/right arms, and left/right legs and deterministic frame-driven motion.",
+          "The stable Canvas node ID returned by Clash is reused unchanged as sourceNodeId on a Timeline composition item with compositionKind custom and runtime remotion; a separate audio item references the imported rhythm Asset.",
+          "The 0s, 2s, 4s, and 6s chapter downbeats form a legible four-part phrase with anticipation, impact, recovery, and a final hold rather than sixteen interchangeable flashes.",
+          "The canonical Timeline is valid at 1080x1920, 30fps, and 240 frames; the final MP4 is decodable with both video and audible audio, and the three sampled PNGs show materially distinct musical sections.",
+          "The palette, mascot, wordmark, and motion language are original and contain no third-party recording, sample, logo, mascot, slogan, or recognizable trade dress.",
+          "The submission, full product trajectory, imported rhythm Asset operation, Canvas source readback, Timeline revision, and final render receipt are persisted for external effect evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "component-source",
+            "kind": "remotion-component",
+            "description": "Editable Remotion TSX pulse-mascot source"
+          },
+          {
+            "artifactId": "timeline",
+            "kind": "timeline",
+            "description": "Editable canonical Timeline YAML with live Remotion composition and rhythm Asset"
+          },
+          {
+            "artifactId": "rhythm-audio",
+            "kind": "audio",
+            "description": "Deterministically generated WAV derived from the public beat map"
+          },
+          {
+            "artifactId": "final-video",
+            "kind": "video",
+            "description": "Product-rendered micro MV with audible rhythm"
+          },
+          {
+            "artifactId": "frame-establish",
+            "kind": "image",
+            "description": "PNG sampled from the establish phrase"
+          },
+          {
+            "artifactId": "frame-peak",
+            "kind": "image",
+            "description": "PNG sampled from the peak phrase"
+          },
+          {
+            "artifactId": "frame-resolve",
+            "kind": "image",
+            "description": "PNG sampled from the resolved end hold"
+          },
+          {
+            "artifactId": "mv-review",
+            "kind": "report",
+            "description": "Beat-to-frame, motion-phrase, audio, render, and readback review"
+          }
+        ]
+      },
+      "passScore": 85,
+      "timeoutMs": 1200000,
+      "inputFixture": {
+        "path": "fixtures/rhythm-bed-v1",
+        "manifestSha256": "bf7e10885652564cf761bc6b3dbdf3e42cf37037a0ab2cfc35cfd5988c8e70fa"
+      },
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-mg-character",
+        "../../../plugins/clash/skills/clash-timeline-production",
+        "../../../plugins/clash/skills/clash-video-finishing"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "project-asset-import",
+          "canvas-remotion-component",
+          "remotion-component-readback",
+          "timeline-state-readback",
+          "timeline-headless-render",
+          "timeline-render-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "project-asset-import",
+              "status": "available",
+              "detail": "The Asset surface imports the generated local WAV into the isolated Project."
+            },
+            {
+              "capability": "canvas-remotion-component",
+              "status": "available",
+              "detail": "clash_canvas_add persists executable TSX as a remotion-component Canvas node with a stable node ID."
+            },
+            {
+              "capability": "remotion-component-readback",
+              "status": "available",
+              "detail": "The Canvas node content, Timeline sourceNodeId, and delivered TSX source can be matched during product readback."
+            },
+            {
+              "capability": "timeline-state-readback",
+              "status": "available",
+              "detail": "The typed Timeline service creates, saves, and reads back canonical Timeline state."
+            },
+            {
+              "capability": "timeline-headless-render",
+              "status": "available",
+              "detail": "clash_timeline_render submits the persisted Timeline revision to the daemon-owned Remotion renderer."
+            },
+            {
+              "capability": "timeline-render-readback",
+              "status": "available",
+              "detail": "A completed Timeline render returns an immutable Asset and receipt linked to the source Timeline revision."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "remotion-component-and-render-receipt",
+          "artifactIds": ["component-source", "timeline", "final-video"],
+          "description": "Match the delivered TSX to the persisted Canvas node, verify the Timeline binds that node and imported audio, and read back the completed audiovisual render Asset."
+        },
+        "requiredProductOperations": [
+          "asset.import",
+          "asset.get",
+          "canvas.add",
+          "canvas.get",
+          "timeline.create",
+          "timeline.get",
+          "timeline.validate",
+          "timeline.save",
+          "timeline.render"
+        ],
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "content-effect",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
+      },
+      "rubric": [
+        {
+          "id": "mv-source",
+          "type": "mg-character",
+          "profile": "remotion-tsx",
+          "artifactId": "component-source",
+          "weight": 20,
+          "required": true,
+          "requiredBodyParts": [
+            "head",
+            "torso",
+            "arm-left",
+            "arm-right",
+            "leg-left",
+            "leg-right"
+          ],
+          "requiredRemotionApis": [
+            "useCurrentFrame",
+            "interpolate",
+            "spring",
+            "Sequence"
+          ]
+        },
+        {
+          "id": "mv-timeline",
+          "type": "timeline",
+          "artifactId": "timeline",
+          "weight": 10,
+          "required": true,
+          "minTracks": 2,
+          "minItems": 2,
+          "minDurationInFrames": 240,
+          "requiredItemTypes": ["composition", "audio"]
+        },
+        {
+          "id": "mv-rhythm-audio",
+          "type": "media",
+          "artifactId": "rhythm-audio",
+          "weight": 10,
+          "required": true,
+          "minDurationSeconds": 7.8,
+          "maxDurationSeconds": 8.2,
+          "requireAudio": true
+        },
+        {
+          "id": "mv-render",
+          "type": "media",
+          "artifactId": "final-video",
+          "weight": 25,
+          "required": true,
+          "width": 1080,
+          "height": 1920,
+          "minDurationSeconds": 7.8,
+          "maxDurationSeconds": 8.2,
+          "requireVideo": true,
+          "requireAudio": true
+        },
+        {
+          "id": "mv-frames",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 3,
+          "minBytes": 1024,
+          "weight": 10,
+          "required": true
+        },
+        {
+          "id": "mv-visual-frames",
+          "type": "visual-frames",
+          "artifactIds": ["frame-establish", "frame-peak", "frame-resolve"],
+          "width": 1080,
+          "height": 1920,
+          "minDistinctPairs": 2,
+          "minMeanAbsoluteDifference": 0.005,
+          "foregroundCoverage": {
+            "backgroundTolerance": 24,
+            "minRatio": 0.05
+          },
+          "safeArea": {
+            "marginPercent": 0.03,
+            "backgroundTolerance": 24,
+            "maxForegroundEdgeRatio": 0.01
+          },
+          "weight": 20,
+          "required": true
+        },
+        {
+          "id": "mv-review",
+          "type": "artifact-exists",
+          "artifactId": "mv-review",
           "minBytes": 128,
           "weight": 5,
           "required": true

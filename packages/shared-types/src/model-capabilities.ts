@@ -655,7 +655,7 @@ export function directorReferencePacket(
 export function directorReferencePackets(
   node: RefNodeLike,
 ): DirectorReferencePacket[] {
-  if (node.type !== "director-stage") return [];
+  if (node.type !== "director-stage" && node.type !== "video") return [];
   const shotPackets = Array.isArray(node.data?.directorShotReferencePackets)
     ? node.data.directorShotReferencePackets.flatMap((packet) => {
         const parsed = DirectorReferencePacketSchema.safeParse(packet);
@@ -720,18 +720,16 @@ export function partitionRefs(
     audioAssetIds: [],
   };
   for (const n of refs) {
-    if (n.type === "director-stage") {
-      const packet = directorReferencePacket(n);
-      if (packet) {
-        if (cap.ref.video.accepts) {
-          out.videoAssetIds.push(packet.referenceVideo.assetId);
-        } else if (cap.ref.image.accepts) {
-          out.imageAssetIds.push(
-            ...selectDirectorReferenceStillAssetIds(packet, cap.ref.image.max),
-          );
-        }
-        continue;
+    const packet = directorReferencePacket(n);
+    if (packet) {
+      if (cap.ref.video.accepts) {
+        out.videoAssetIds.push(packet.referenceVideo.assetId);
+      } else if (cap.ref.image.accepts) {
+        out.imageAssetIds.push(
+          ...selectDirectorReferenceStillAssetIds(packet, cap.ref.image.max),
+        );
       }
+      continue;
     }
     const modality = referenceModality(n);
     if (modality === "text" && cap.ref.text.accepts) {

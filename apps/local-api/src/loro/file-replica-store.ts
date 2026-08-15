@@ -1,7 +1,32 @@
-import { appendFile, mkdir, open, readFile, rename, rm, truncate, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  link,
+  mkdir,
+  open,
+  readFile,
+  rename,
+  rm,
+  truncate,
+  writeFile,
+} from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { LoroDoc } from "loro-crdt";
+
+export interface FileReplicaStoreOptions {
+  publishImportedSnapshot?: (
+    temporaryPath: string,
+    finalPath: string,
+  ) => Promise<void>;
+  syncDirectory?: (path: string) => Promise<void>;
+}
+
+export interface ImportedProjectReservation {
+  schemaVersion: 1;
+  kind: "clash.workspace.import-reservation";
+  reservationId: string;
+  snapshotSha256: string;
+}
 
 function exactBytes(view: Uint8Array): Uint8Array {
   return view.byteOffset === 0 && view.byteLength === view.buffer.byteLength
@@ -10,16 +35,148 @@ function exactBytes(view: Uint8Array): Uint8Array {
 }
 
 function isMissingFile(error: unknown): boolean {
-  return typeof error === "object"
-    && error !== null
-    && "code" in error
-    && (error as NodeJS.ErrnoException).code === "ENOENT";
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as NodeJS.ErrnoException).code === "ENOENT"
+  );
 }
 
 export class FileReplicaStore {
   private readonly writeQueues = new Map<string, Promise<unknown>>();
+  private readonly publishImportedSnapshot: (
+    temporaryPath: string,
+    finalPath: string,
+  ) => Promise<void>;
+  private readonly syncDirectory: (path: string) => Promise<void>;
 
-  constructor(private readonly rootDir: string) {}
+  constructor(
+    private readonly rootDir: string,
+    options: FileReplicaStoreOptions = {},
+  ) {
+    this.publishImportedSnapshot =
+      options.publishImportedSnapshot ??
+      (async (temporaryPath, finalPath) => {
+        await link(temporaryPath, finalPath);
+      });
+    this.syncDirectory =
+      options.syncDirectory ??
+      (async (path) => {
+        const handle = await open(path, "r");
+        try {
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+      });
+  }
+
+  async readImportReservation(
+    projectId: string,
+  ): Promise<ImportedProjectReservation | null> {
+    let raw: string;
+    try {
+      raw = await readFile(this.importReservationPath(projectId), "utf8");
+    } catch (error) {
+      if (isMissingFile(error)) return null;
+      throw error;
+    }
+    const value = JSON.parse(raw) as Partial<ImportedProjectReservation>;
+    if (
+      value.schemaVersion !== 1 ||
+      value.kind !== "clash.workspace.import-reservation" ||
+      typeof value.reservationId !== "string" ||
+      !value.reservationId.trim() ||
+      value.reservationId.length > 500 ||
+      typeof value.snapshotSha256 !== "string" ||
+      !/^[a-f0-9]{64}$/u.test(value.snapshotSha256)
+    ) {
+      throw new Error(
+        `Project ${projectId} has a corrupt Workspace import reservation.`,
+      );
+    }
+    return {
+      schemaVersion: 1,
+      kind: "clash.workspace.import-reservation",
+      reservationId: value.reservationId,
+      snapshotSha256: value.snapshotSha256,
+    };
+  }
+
+  async reserveImportedProject(
+    projectId: string,
+    reservation: ImportedProjectReservation,
+  ): Promise<void> {
+    await this.enqueueProjectWrite(projectId, async () => {
+      const normalized = this.validateImportReservation(reservation);
+      const existing = await this.readImportReservation(projectId);
+      if (existing) {
+        if (JSON.stringify(existing) === JSON.stringify(normalized)) return;
+        throw new Error(
+          `Project ${projectId} is reserved by another Workspace import.`,
+        );
+      }
+      const dir = this.loroDir(projectId);
+      await mkdir(dir, { recursive: true });
+      const temporaryPath = join(
+        dir,
+        `import-reservation.${process.pid}.${randomUUID()}.tmp`,
+      );
+      try {
+        const handle = await open(temporaryPath, "wx", 0o600);
+        try {
+          await handle.writeFile(`${JSON.stringify(normalized)}\n`, {
+            encoding: "utf8",
+          });
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+        try {
+          await link(temporaryPath, this.importReservationPath(projectId));
+          await this.syncDirectory(dir);
+        } catch (error) {
+          if (
+            typeof error !== "object" ||
+            error === null ||
+            !("code" in error) ||
+            (error as NodeJS.ErrnoException).code !== "EEXIST"
+          ) {
+            throw error;
+          }
+          const raced = await this.readImportReservation(projectId);
+          if (JSON.stringify(raced) !== JSON.stringify(normalized)) {
+            throw new Error(
+              `Project ${projectId} is reserved by another Workspace import.`,
+            );
+          }
+        }
+      } finally {
+        await rm(temporaryPath, { force: true }).catch(() => undefined);
+        await this.syncDirectory(dir).catch(() => undefined);
+      }
+    });
+  }
+
+  async clearImportedProjectReservation(
+    projectId: string,
+    reservation: ImportedProjectReservation,
+  ): Promise<void> {
+    await this.enqueueProjectWrite(projectId, async () => {
+      const normalized = this.validateImportReservation(reservation);
+      const existing = await this.readImportReservation(projectId);
+      if (!existing) return;
+      if (JSON.stringify(existing) !== JSON.stringify(normalized)) {
+        throw new Error(
+          `Project ${projectId} is reserved by another Workspace import.`,
+        );
+      }
+      const dir = this.loroDir(projectId);
+      await rm(this.importReservationPath(projectId));
+      await this.syncDirectory(dir);
+    });
+  }
 
   async loadSnapshot(projectId: string): Promise<Uint8Array | null> {
     try {
@@ -36,13 +193,19 @@ export class FileReplicaStore {
     });
   }
 
-  private async appendUpdateUnsafe(projectId: string, update: Uint8Array): Promise<void> {
+  private async appendUpdateUnsafe(
+    projectId: string,
+    update: Uint8Array,
+  ): Promise<void> {
     const logPath = this.updateLogPath(projectId);
     await mkdir(this.loroDir(projectId), { recursive: true });
     const updateBytes = exactBytes(update);
     const header = Buffer.alloc(4);
     header.writeUInt32BE(updateBytes.byteLength, 0);
-    await appendFile(logPath, Buffer.concat([header, Buffer.from(updateBytes)]));
+    await appendFile(
+      logPath,
+      Buffer.concat([header, Buffer.from(updateBytes)]),
+    );
   }
 
   async loadUpdateLog(projectId: string): Promise<Uint8Array[]> {
@@ -78,13 +241,82 @@ export class FileReplicaStore {
     return updates;
   }
 
-  async saveSnapshotAtomic(projectId: string, snapshot: Uint8Array, _version?: unknown): Promise<void> {
+  async saveSnapshotAtomic(
+    projectId: string,
+    snapshot: Uint8Array,
+    _version?: unknown,
+  ): Promise<void> {
     await this.enqueueProjectWrite(projectId, async () => {
       await this.saveSnapshotAtomicUnsafe(projectId, snapshot);
     });
   }
 
-  async compactSnapshot(projectId: string, snapshot: Uint8Array, _version?: unknown): Promise<void> {
+  /**
+   * Installs an imported Project replica without replacing local authority.
+   * Exact replay is idempotent; any pre-existing snapshot or update history
+   * with different bytes is a hard identity collision.
+   */
+  async installSnapshotIfAbsent(
+    projectId: string,
+    snapshot: Uint8Array,
+  ): Promise<{ installed: boolean }> {
+    return this.enqueueProjectWrite(projectId, async () => {
+      const snapshotBytes = exactBytes(snapshot);
+      const [existing, updates] = await Promise.all([
+        this.loadSnapshot(projectId),
+        this.loadUpdateLog(projectId),
+      ]);
+      if (updates.some((update) => update.byteLength > 0)) {
+        throw new Error(
+          `Project ${projectId} already has local replica update history.`,
+        );
+      }
+      if (existing) {
+        if (Buffer.from(existing).equals(Buffer.from(snapshotBytes))) {
+          return { installed: false };
+        }
+        throw new Error(
+          `Project ${projectId} already has a different local replica snapshot.`,
+        );
+      }
+      const doc = new LoroDoc();
+      if (snapshotBytes.byteLength === 0) {
+        throw new Error("An imported Project snapshot cannot be empty.");
+      }
+      doc.import(snapshotBytes);
+      const dir = this.loroDir(projectId);
+      await mkdir(dir, { recursive: true });
+      const finalPath = this.snapshotPath(projectId);
+      const temporaryPath = join(
+        dir,
+        `snapshot.import.${process.pid}.${randomUUID()}.tmp`,
+      );
+      try {
+        const handle = await open(temporaryPath, "wx", 0o600);
+        try {
+          await handle.writeFile(snapshotBytes);
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+        // A hard link publishes the fully-synced inode only if the final name
+        // is absent. Unlike rename, it cannot overwrite a Project snapshot
+        // that appeared after the read-side emptiness check.
+        await this.publishImportedSnapshot(temporaryPath, finalPath);
+        await this.syncDirectory(dir);
+        return { installed: true };
+      } finally {
+        await rm(temporaryPath, { force: true }).catch(() => undefined);
+        await this.syncDirectory(dir).catch(() => undefined);
+      }
+    });
+  }
+
+  async compactSnapshot(
+    projectId: string,
+    snapshot: Uint8Array,
+    _version?: unknown,
+  ): Promise<void> {
     await this.enqueueProjectWrite(projectId, async () => {
       await this.saveSnapshotAtomicUnsafe(projectId, snapshot);
       await this.truncateUpdateLog(projectId);
@@ -93,23 +325,34 @@ export class FileReplicaStore {
 
   async updateSnapshotAtomic<T>(
     projectId: string,
-    mutate: (doc: LoroDoc) => Promise<{ value: T; save?: boolean }> | { value: T; save?: boolean },
+    mutate: (
+      doc: LoroDoc,
+    ) => Promise<{ value: T; save?: boolean }> | { value: T; save?: boolean },
   ): Promise<T> {
     return this.enqueueProjectWrite(projectId, async () => {
       const doc = await this.recoverUnsafe(projectId);
       const result = await mutate(doc);
       if (result.save !== false) {
-        await this.saveSnapshotAtomicUnsafe(projectId, doc.export({ mode: "snapshot" }));
+        await this.saveSnapshotAtomicUnsafe(
+          projectId,
+          doc.export({ mode: "snapshot" }),
+        );
       }
       return result.value;
     });
   }
 
-  private async saveSnapshotAtomicUnsafe(projectId: string, snapshot: Uint8Array): Promise<void> {
+  private async saveSnapshotAtomicUnsafe(
+    projectId: string,
+    snapshot: Uint8Array,
+  ): Promise<void> {
     const dir = this.loroDir(projectId);
     await mkdir(dir, { recursive: true });
     const finalPath = this.snapshotPath(projectId);
-    const tempPath = join(dir, `snapshot.bin.${process.pid}.${randomUUID()}.tmp`);
+    const tempPath = join(
+      dir,
+      `snapshot.bin.${process.pid}.${randomUUID()}.tmp`,
+    );
     const snapshotBytes = exactBytes(snapshot);
 
     try {
@@ -176,11 +419,42 @@ export class FileReplicaStore {
     return join(this.loroDir(projectId), "updates.log");
   }
 
-  private async enqueueProjectWrite<T>(projectId: string, task: () => Promise<T>): Promise<T> {
+  private importReservationPath(projectId: string): string {
+    return join(this.loroDir(projectId), "import-reservation.json");
+  }
+
+  private validateImportReservation(
+    reservation: ImportedProjectReservation,
+  ): ImportedProjectReservation {
+    if (
+      reservation.schemaVersion !== 1 ||
+      reservation.kind !== "clash.workspace.import-reservation" ||
+      !reservation.reservationId.trim() ||
+      reservation.reservationId.length > 500 ||
+      !/^[a-f0-9]{64}$/u.test(reservation.snapshotSha256)
+    ) {
+      throw new TypeError("Workspace import reservation is invalid.");
+    }
+    return {
+      schemaVersion: 1,
+      kind: "clash.workspace.import-reservation",
+      reservationId: reservation.reservationId,
+      snapshotSha256: reservation.snapshotSha256,
+    };
+  }
+
+  private async enqueueProjectWrite<T>(
+    projectId: string,
+    task: () => Promise<T>,
+  ): Promise<T> {
     const key = encodeURIComponent(projectId);
-    const previous = this.writeQueues.get(key)?.catch(() => undefined) ?? Promise.resolve();
+    const previous =
+      this.writeQueues.get(key)?.catch(() => undefined) ?? Promise.resolve();
     const next = previous.then(task);
-    const queued = next.then(() => undefined, () => undefined);
+    const queued = next.then(
+      () => undefined,
+      () => undefined,
+    );
     this.writeQueues.set(key, queued);
     try {
       return await next;

@@ -16,6 +16,7 @@ import { initCommand, projectsCommand } from "./commands/projects";
 import { registerProviderCommands } from "./commands/providers";
 import { textCommand } from "./commands/text";
 import { timelineCommand } from "./commands/timeline";
+import { workspaceCommand } from "./commands/workspace";
 import { installCliTrace } from "./lib/cli-trace";
 
 const DESCRIPTION = `Clash CLI — AI video production from your terminal
@@ -83,6 +84,7 @@ export function createCliProgram(options: CliProgramOptions = {}): Command {
   program.addCommand(auditCommand);
   program.addCommand(effectCommand);
   program.addCommand(directorCommand);
+  program.addCommand(workspaceCommand);
 
   return program;
 }

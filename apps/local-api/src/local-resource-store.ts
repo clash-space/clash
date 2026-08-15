@@ -1,16 +1,20 @@
 import { createHash, randomUUID } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { createRequire } from "node:module";
 import {
   chmod,
   link,
   mkdir,
+  open,
   readFile,
   rename,
   stat,
   unlink,
   writeFile,
+  type FileHandle,
 } from "node:fs/promises";
 import { extname } from "node:path";
+import { Readable } from "node:stream";
 
 import {
   AssetKindSchema,
@@ -79,9 +83,27 @@ export interface LocalResourceStagingProjection {
   path: string;
 }
 
+export type LocalResourceByteSource = AsyncIterable<Uint8Array> | Readable;
+
+/** Host-private immutable read handle. Storage paths and keys stay inside the Resource store. */
+export interface LocalResourceStreamProjection {
+  resource: Resource;
+  stream: Readable;
+}
+
 export interface LocalResourceStore {
   stage(input: {
     bytes: Uint8Array;
+    originalName?: string;
+  }): Promise<LocalResourceStagingProjection>;
+  stageStream(input: {
+    source: LocalResourceByteSource;
+    /** Exact Content-Length when the transport declared one. */
+    declaredByteLength?: number;
+    /** Hard Host limit, enforced while consuming the source. */
+    maxByteLength: number;
+    /** Optional lowercase SHA-256 claimed by the transport. */
+    expectedDigest?: string;
     originalName?: string;
   }): Promise<LocalResourceStagingProjection>;
   resolveStaged(
@@ -112,6 +134,9 @@ export interface LocalResourceStore {
     localBlobKey: string;
   }): Promise<LocalResourceProjection>;
   resolve(resourceId: string): Promise<LocalResourceProjection | undefined>;
+  resolveStream(
+    resourceId: string,
+  ): Promise<LocalResourceStreamProjection | undefined>;
 }
 
 type LocalResourceSealInput = Parameters<LocalResourceStore["seal"]>[0];
@@ -257,6 +282,49 @@ function resourceFromRow(row: LocalResourceRow): Resource {
 
 function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+function boundedByteLength(value: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative safe integer.`);
+  }
+  return value;
+}
+
+async function writeAll(handle: FileHandle, chunk: Uint8Array): Promise<void> {
+  let offset = 0;
+  while (offset < chunk.byteLength) {
+    const { bytesWritten } = await handle.write(
+      chunk,
+      offset,
+      chunk.byteLength - offset,
+      null,
+    );
+    if (bytesWritten <= 0) {
+      throw new Error("Local Resource stream stopped making write progress.");
+    }
+    offset += bytesWritten;
+  }
+}
+
+function pathlessReadStream(path: string): Readable {
+  return Readable.from(
+    (async function* () {
+      const source = createReadStream(path);
+      try {
+        for await (const chunk of source) {
+          if (!(chunk instanceof Uint8Array)) {
+            throw new Error(
+              "Local Resource read stream returned a non-byte chunk.",
+            );
+          }
+          yield chunk;
+        }
+      } finally {
+        source.destroy();
+      }
+    })(),
+  );
 }
 
 function normalizedContentType(value: string | undefined): string | undefined {
@@ -487,13 +555,23 @@ export function createLocalResourceStore(options: {
     digest: string;
     byteLength: number;
   }): Promise<void> {
-    const bytes = new Uint8Array(await readFile(input.path));
-    if (bytes.byteLength !== input.byteLength) {
+    const digest = createHash("sha256");
+    let byteLength = 0;
+    for await (const chunk of createReadStream(input.path)) {
+      if (!(chunk instanceof Uint8Array)) {
+        throw new Error(
+          "Local Resource read stream returned a non-byte chunk.",
+        );
+      }
+      byteLength += chunk.byteLength;
+      digest.update(chunk);
+    }
+    if (byteLength !== input.byteLength) {
       throw new Error(
         "Local Resource byte length does not match the claimed immutable facts.",
       );
     }
-    if (sha256(bytes) !== input.digest) {
+    if (digest.digest("hex") !== input.digest) {
       throw new Error(
         "Local Resource digest does not match the claimed immutable facts.",
       );
@@ -716,6 +794,138 @@ export function createLocalResourceStore(options: {
       return stagingProjection(stored);
     },
 
+    async stageStream(input) {
+      const maxByteLength = boundedByteLength(
+        input.maxByteLength,
+        "Local Resource stream maximum byte length",
+      );
+      const declaredByteLength =
+        input.declaredByteLength === undefined
+          ? undefined
+          : boundedByteLength(
+              input.declaredByteLength,
+              "Local Resource stream declared byte length",
+            );
+      if (
+        declaredByteLength !== undefined &&
+        declaredByteLength > maxByteLength
+      ) {
+        throw new Error(
+          "Local Resource stream declared byte length exceeds its maximum byte length.",
+        );
+      }
+      if (input.expectedDigest !== undefined) {
+        resourceIdForSha256(input.expectedDigest);
+      }
+
+      const temporaryStorageKey = `local-blobs/stream-staging/${randomUUID()}.tmp`;
+      const temporaryPath = await assetPathForWrite(
+        options.dataDir,
+        temporaryStorageKey,
+        options.clashRoot,
+      );
+      const handle = await open(temporaryPath, "wx", 0o600);
+      let handleOpen = true;
+      try {
+        const digestState = createHash("sha256");
+        let byteLength = 0;
+        for await (const chunk of input.source) {
+          if (!(chunk instanceof Uint8Array)) {
+            throw new Error(
+              "Local Resource stream must yield Uint8Array chunks.",
+            );
+          }
+          const nextByteLength = byteLength + chunk.byteLength;
+          if (
+            !Number.isSafeInteger(nextByteLength) ||
+            nextByteLength > maxByteLength
+          ) {
+            throw new Error(
+              "Local Resource stream exceeds its maximum byte length.",
+            );
+          }
+          if (
+            declaredByteLength !== undefined &&
+            nextByteLength > declaredByteLength
+          ) {
+            throw new Error(
+              "Local Resource stream exceeds its declared byte length.",
+            );
+          }
+          await writeAll(handle, chunk);
+          digestState.update(chunk);
+          byteLength = nextByteLength;
+        }
+        if (
+          declaredByteLength !== undefined &&
+          byteLength !== declaredByteLength
+        ) {
+          throw new Error(
+            `Local Resource stream byte length ${byteLength} does not match its declared byte length ${declaredByteLength}.`,
+          );
+        }
+        const digest = digestState.digest("hex");
+        if (
+          input.expectedDigest !== undefined &&
+          digest !== input.expectedDigest
+        ) {
+          throw new Error(
+            `Local Resource stream digest mismatch: expected ${input.expectedDigest}, got ${digest}.`,
+          );
+        }
+        await handle.sync();
+        await handle.close();
+        handleOpen = false;
+        await chmod(temporaryPath, 0o444);
+
+        const resourceId = resourceIdForSha256(digest);
+        const storageKey = `local-blobs/${digest}/staging`;
+        const path = await assetPathForWrite(
+          options.dataDir,
+          storageKey,
+          options.clashRoot,
+        );
+        try {
+          await link(temporaryPath, path);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+          try {
+            await verifyBytes({ path, digest, byteLength });
+          } catch {
+            await rename(temporaryPath, path);
+          }
+        }
+        await chmod(path, 0o444);
+        await verifyBytes({ path, digest, byteLength });
+        await withDatabase((database) => {
+          database
+            .prepare(
+              `
+              INSERT OR IGNORE INTO local_resource_staging (
+                resource_id, digest_sha256, byte_length, storage_key, created_at
+              ) VALUES (?, ?, ?, ?, ?)
+            `,
+            )
+            .run(resourceId, digest, byteLength, storageKey, Date.now());
+        });
+        const stored = await stagingRowFor(resourceId);
+        if (
+          !stored ||
+          stored.digest !== digest ||
+          stored.byteLength !== byteLength ||
+          stored.storageKey !== storageKey
+        ) {
+          throw new Error(
+            `Local Resource staging receipt ${resourceId} was not indexed with the streamed facts.`,
+          );
+        }
+        return stagingProjection(stored);
+      } finally {
+        if (handleOpen) await handle.close().catch(() => undefined);
+        await unlink(temporaryPath).catch(() => undefined);
+      }
+    },
+
     async resolveStaged(resourceId) {
       const normalized = resourceId.trim();
       if (!normalized) return undefined;
@@ -781,6 +991,18 @@ export function createLocalResourceStore(options: {
       if (!normalized) return undefined;
       const row = await rowFor(normalized);
       return row ? projection(row) : undefined;
+    },
+
+    async resolveStream(resourceId) {
+      const normalized = resourceId.trim();
+      if (!normalized) return undefined;
+      const row = await rowFor(normalized);
+      if (!row) return undefined;
+      const resolved = await projection(row);
+      return {
+        resource: resolved.resource,
+        stream: pathlessReadStream(resolved.path),
+      };
     },
   };
   return store;

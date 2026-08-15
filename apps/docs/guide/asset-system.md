@@ -7,6 +7,13 @@
 > representations are deferred. Physical purge, Cloud replication, and hosted
 > storage remain design-only in the current work.
 
+This guide is the authority for **Media Asset and Resource** identity,
+publication, binding, and lifecycle. Native Generator semantics live in
+[Asset + Generator Model](/guide/asset-generator-model); typed structured
+content lives in [Document Assets](/guide/document-assets). Legacy products
+continue to use the `ActionAssetBinding` model documented here until their
+explicit Generator migration.
+
 The Local product now has one authority and one public read shape.
 `@clash/shared-types` defines the storage-free `ProjectAssetEntry`, immutable
 `Resource`, `GlobalAssetEntry`, `ActionAssetBinding`, and read-only
@@ -120,14 +127,14 @@ flowchart LR
     room["ProjectRoom\nLoro metadata"]
     registry["Resource Registry\nstatus + claims"]
     oss["OSS\nimmutable bytes"]
-    cloudRun["Cloud Action runtime<br/>future design"]
+    cloudRun["Cloud private-Task runtime<br/>future design"]
   end
 
   web["Any member · Web"] --> cloudRun
   hostA <-->|"ProjectAsset / Action / node"| room
   hostA2 <-->|"ProjectAsset / Action / node"| room
   hostB <-->|"ProjectAsset / Action / node"| room
-  cloudRun <-->|"ActionRun / node / binding"| room
+  cloudRun <-->|"public Run / product projection / Output Commit"| room
 
   hostA -. "silent upload" .-> oss
   oss -. "async verified download" .-> casA2
@@ -204,12 +211,12 @@ sequenceDiagram
 
   rect rgb(250, 247, 242)
     Note over C,RH: Future Cloud/Web-origin output (design only)
-    C->>P: Sync ActionRun + output placeholder node
+    C->>P: Sync public Run + product projection
     P-->>RH: Show running/pending structure
     C->>O: Persist bytes with runId + outputSlot
     O-->>C: Verify durable object
     C->>R: Register staging Resource
-    C->>P: Publish ProjectAsset + output binding
+    C->>P: Publish ProjectAsset + Output Commit
     P-->>R: Reconcile Project claim and promote staging
     R-->>RH: Resource ready(resourceId)
   end
@@ -217,9 +224,10 @@ sequenceDiagram
 
 This is an intentional availability trade-off. A local Host may use its CAS
 copy immediately while collaborators wait for OSS readiness. A cloud runtime
-has no durable local-only phase: it may synchronize the ActionRun and
-placeholder node early, but it publishes a usable output Asset only after the
-bytes are verified in OSS.
+has no durable local-only phase: it may synchronize the public Run and
+product projection early, while ownership stays in its private Task. It
+publishes a usable output Asset and Output Commit only after the bytes are
+verified in OSS.
 
 ### Remove usage, Asset, and bytes
 
@@ -472,11 +480,14 @@ publication contract and cannot pass `ProjectAssetEntrySchema` or the Asset SDK
 write boundary. Current Local Global admission always persists the explicit
 `libraryId: "personal"` identity.
 
-### ActionAssetBinding
+### Legacy product ActionAssetBinding
 
-Actions own all media usage references. Editable Actions, frozen revisions,
-and concrete runs are distinct owners so a synchronized Action is never
-mistaken for a command that every device should execute:
+Current Canvas, Timeline, Director, edit, and provider products own media usage
+through `ActionAssetBinding`. This is the delivered compatibility authority for
+those unmigrated surfaces, not the native Generator object model. Editable
+legacy Actions, frozen revisions, and concrete execution identities are
+distinct owners so synchronized state is never mistaken for a command that
+every device should execute:
 
 ```ts
 type ActionBindingOwner =
@@ -508,12 +519,14 @@ The slot is semantic and stable. Examples include `reference:0`,
 Framework-specific locations can be derived from the owning Action and slot;
 they are not separate authoritative references.
 
-An editable Action owns its current input bindings. Submission freezes an
-ActionRevision and its exact input bindings. One ActionRun executes that
-revision on one designated execution Host and owns the resulting output
-bindings. Rendered and generated outputs therefore remain reproducible after
-the editable Action changes, and synchronization cannot cause another Host to
-execute the run again.
+An editable legacy Action owns its current input bindings. Submission freezes
+an ActionRevision and its exact input bindings. One owner-private execution
+identity runs that revision on one designated Host and owns the resulting
+output bindings. Rendered and generated outputs therefore remain reproducible
+after the editable Action changes, and synchronization cannot cause another
+Host to execute it again. Native Generator Actions instead pin a Generator
+Revision in a four-state public Run and publish an Output Commit; see
+[Asset + Generator Model](/guide/asset-generator-model).
 
 The Local WebSocket mutation boundary treats Project Asset entries, binding
 authority markers, immutable run/revision lineage, and output bindings as
@@ -616,41 +629,26 @@ ProjectAssetEntry at first use, then binds that Project Asset to the Action.
 
 ### Text and production metadata
 
-Text revisions are not media Assets. They retain their own immutable revision
-model and Action bindings where media is referenced.
+Descriptive media facts such as dimensions, duration, codecs, content type, and
+display name belong to the Media Asset read model. Structured content such as a
+timed transcript, description, or render-lineage record is a first-class typed
+[Document Asset](/guide/document-assets), not another field on the media
+Resource. A Document has a stable head over immutable, content-addressed
+revisions, exact producer/source lineage, and revision-pinned attachment
+relations to Project Assets, Generator Revisions, or Action Runs.
 
-Descriptive Asset metadata such as dimensions, duration, codecs, content type,
-and a display name belongs to the Asset read model. Extensible production
-metadata such as transcripts, word grids, render lineage documents, or
-analysis bodies is a separate typed attachment system. An attachment can be
-addressed from an Asset or Action revision without being confused with the
-Resource's media bytes or URL.
-
-The shared attachment target is a strict storage-free union:
-
-```ts
-type MetadataAttachmentTarget =
-  | { kind: "project-asset"; projectId: string; assetId: string }
-  | {
-      kind: "action-revision";
-      projectId: string;
-      actionId: string;
-      actionRevisionId: string;
-    };
-```
-
-New fill envelopes use this target and validate the complete declared metadata
-schema; the former unscoped `targetAssetId` write shape is rejected. Local
-SQLite keeps a rebuildable query projection keyed by the canonical complete
-target plus `metadataKind`, so equal literal Asset and Action ids cannot
-collide. That index explicitly reports `authority: "projection-index"`; it is
-not a second Project or attachment authority and carries no storage locator.
-The former `(asset_id, metadata_kind)` index remains a private read-only
-migration input. Current CLI authoring persists Project-Asset attachment
-identity and out-of-line body hashes in its observed workspace manifest/CAS
-loop. The ActionRevision target is implemented in the shared address and Local
-query projection, but a synchronized ActionRevision attachment collection is
-not claimed by this delivery.
+The native Document contracts, Project Loro authority, built-in kind registry,
+attachment target/policy admission, plugin reference/output ABI, and native
+Generator publication path are delivered. Local HTTP can list, create, read,
+version, and attach Documents through the live Project authority. CLI/MCP/native
+file projection and declared-consumer wiring are not. The native `clash.asr`
+bundled Generator publishes timed transcripts through this Document authority;
+the legacy transcription route, Timeline, and other ASR consumers are not yet
+migrated. The
+older `clash assets metadata` manifest/CAS flow and Local typed-metadata query
+projection remain transitional compatibility systems; their Project
+Asset/Action Revision address is not a native Document Asset identity and must
+not be described as one.
 
 ## Exactly when a link is created
 
@@ -1180,11 +1178,12 @@ Project state and media bytes use different replication planes.
 > Delivery status: Local execution is implemented. Every Cloud/Web execution,
 > Workflow, OSS-staging, and hosted publication flow in this section is target
 > design only; there is no Cloud Durable Run adapter in the current product.
-> Local currently has no standalone Project Loro `ActionRun` entity. The
-> five-state coarse model below is the unified public design contract; current
-> Local execution projects progress/outcome onto the Canvas node and records
-> immutable input/output lineage in `ActionAssetBinding`. A synchronized Cloud
-> `ActionRun` entity is design only.
+> Native Generator v2 has a delivered standalone Project Loro Action Run with
+> the four public states `pending`, `running`, `succeeded`, and `failed`. Legacy
+> Canvas, Timeline, Director, and Provider execution still projects through its
+> existing node/endpoint state and `ActionAssetBinding`; those product surfaces
+> have not been migrated to native Generator Runs. A Cloud owner/adapter remains
+> design only.
 
 Project synchronization does not move task execution between machines. The
 surface that submits a run fixes its execution realm:
@@ -1196,22 +1195,28 @@ surface that submits a run fixes its execution realm:
 | CLI                | The discovered local `local-api` Host |
 | MCP                | The discovered local `local-api` Host |
 
-An Action is shared editable Project state. An ActionRevision is an immutable
-snapshot of its parameters and input bindings. The unified public design models
-an ActionRun as a one-time execution owned by exactly one cloud or local
-runtime:
+In the native model a Generator is shared, versioned Project state. Each
+immutable Generator Revision pins state and persistent inputs, and its
+Definition exposes one or more named Actions. An Action is a materialization
+method, not shared mutable Project state. A native Action Run pins one Generator
+Revision, Action, semantic executor, invocation, and output contract:
 
 ```ts
 type ActionRun = Readonly<{
-  id: string;
+  actionRunId: string;
+  generatorRevision: {
+    generatorId: string;
+    generatorRevisionId: string;
+  };
   actionId: string;
-  actionRevisionId: string;
-  execution:
-    Readonly<{ realm: "cloud" }> | Readonly<{ realm: "local"; hostId: string }>;
-  requestedBy: string;
-  status: "queued" | "running" | "finalizing" | "succeeded" | "failed";
+  status: "pending" | "running" | "succeeded" | "failed";
 }>;
 ```
+
+Runtime realm and owner are intentionally absent from this semantic shape.
+They live in the owner-private Durable Task. See
+[Asset + Generator Model](/guide/asset-generator-model) for the exact contract
+and product migration status.
 
 For every new Local Canvas execution, `actionRunId` is scoped to that immutable
 revision rather than to the mutable node:
@@ -1240,12 +1245,13 @@ without waiting for the old run to become terminal. Pre-cutover base-key runs
 only: Local recovery advances and consumer-publishes them, but they lack enough
 frozen evidence to project any current Canvas outcome or reserve the node.
 
-Only the designated execution owner may advance the run or attach output
-bindings. In the future entity design, receiving an ActionRun through Project
-sync is never an instruction to execute it. Current Local sync carries the
-Canvas node and `ActionAssetBinding`, not that standalone entity. There is no
-automatic cloud fallback for a local run and no automatic local takeover of a
-cloud run. A deliberate retry creates a new owner-private run identity.
+Only the designated execution owner may advance a private Task or attach output
+commits. Receiving a native Generator Run through Project sync is never an
+instruction to execute it. Native Generator Runs synchronize their coarse
+four-state projection; legacy Canvas execution still synchronizes only its node
+and `ActionAssetBinding`. There is no automatic cloud fallback for a local run
+and no automatic local takeover of a future cloud run. A deliberate
+regeneration creates a new Run identity.
 
 The executing Host selects the Provider account from its own account scope and
 available plugin set. Credentials, private account identifiers, process state,
@@ -1260,47 +1266,43 @@ Before execution, the owner resolves every frozen Action input:
   input admission, then uses its CAS and downloads any missing admitted Resource.
 
 Input admission has no separate synchronized `preparing` state. Its detailed
-steps remain in the owner-private journal. Current collaborators see the Canvas
-node's `generating` projection; a future standalone `ActionRun` entity would
-use coarse `running`.
+steps remain in the owner-private journal. Current collaborators see a native
+Generator Run as `running`; legacy Canvas collaborators see the node's
+`generating` projection.
 
-A cloud run may publish its ActionRun and output placeholder node immediately,
-then writes the output to an idempotent staging Resource keyed by
+A future cloud run may publish its native Generator Run and product projection,
+then write the output to an idempotent staging Resource keyed by
 `actionRunId + outputSlot`. After verification it publishes the owned
-ProjectAsset entry and run output binding. The Registry derives the Project
+ProjectAsset entry and output commit. The Registry derives the Project
 claim from that Loro state and promotes the staging Resource. A local run writes
 outputs to local CAS immediately, publishes the stable ProjectAsset identity
 and output binding through the metadata-first sequence below, then uploads
 silently. Other devices never poll or resume a run they do not own; today they
-observe synchronized Canvas node status and `ActionAssetBinding` outputs. A
-future Cloud path may additionally synchronize the standalone coarse run
-entity. The owning local Host persists Provider task state so restart recovery
-and polling remain local to that Host.
+observe either the native Generator Run and Output Commit or a legacy Canvas
+node and `ActionAssetBinding`, according to the initiating product surface. The
+owning local Host persists Provider task state so restart recovery and polling
+remain local to that Host.
 
 ### Restart and finalization recovery
 
-The unified public `ActionRun` design contract has one coarse Project status
-model:
+Native Generator Runs expose exactly four Project states:
 
 ```text
-queued -> running -> finalizing -> succeeded
-   \         \          \----------> failed
-    \---------\--------------------> failed
+pending -> running -> succeeded
+   \          \----> failed
+    \--------------> failed
 ```
 
-This is not a standalone Local collaboration entity yet. Current Local code
-projects the corresponding product outcome through Canvas node
-`pending/generating/completed/failed` plus `ActionAssetBinding`. The shared
-Durable Run Engine uses
-`queued -> submitting -> polling -> finalizing -> succeeded|failed`; `running`
-is the coarse product status that covers input admission and multiple private
-Provider attempts. `finalizing` means the Provider result is checkpointed, but
-every required output has not yet been durably installed and published. The
-Local adapter uses that shared engine now; a future Cloud adapter must reuse the
-same graph and change only the step storage ports. local-api persists steps in
-SQLite and local CAS, while the future Cloud adapter uses Workflow state and
-OSS staging. Provider task tokens, polling cursors, local paths, and staging
-details remain owner-private and never enter Project Loro.
+The private Durable Task uses exactly
+`queued -> submitting -> polling -> finalizing -> succeeded|failed`.
+`finalizing` is intentionally private: it means the executor result is
+checkpointed but required output publication is incomplete. The Local adapter
+uses that graph now; a future Cloud adapter must reuse it and replace only the
+durability ports. local-api persists Tasks in SQLite and local CAS, while the
+future Cloud adapter would use Workflow state and OSS staging. Provider task
+tokens, polling cursors, local paths, staging details, retries, and raw failures
+remain owner-private and never enter Project Loro. Legacy products continue to
+map the same private phases onto their existing public node/endpoint states.
 
 The shared runner applies normal durable-step retry semantics. One attempt calls
 the Provider submit operation once. A network error, timeout, or process crash
@@ -1311,7 +1313,7 @@ work. The product deliberately accepts that availability-versus-duplication
 trade-off. Providers do not own this retry policy. When an upstream supports an
 idempotency key, every attempt reuses the stable `actionRunId + outputSlot`
 identity to reduce duplication, but Provider support is not required by the
-ActionRun contract.
+private Durable Task contract.
 
 The ambiguity boundary is narrow and explicit:
 
@@ -1323,14 +1325,14 @@ durably start attempt
 ```
 
 No transaction remains open across the Provider request, and Project Loro is
-not a transaction coordinator. Current Local Project Loro synchronizes Canvas
-node status and published `ActionAssetBinding` lineage; the binding carries the
-run and Action revision identities. It does not yet carry an execution owner or
-the standalone coarse `queued/running/finalizing/succeeded/failed` entity. Those
-fields belong to the future public `ActionRun` design. Attempt numbers, retry
-scheduling, transport errors, Provider task tokens, and polling cursors live
-only in the owner's durable step journal. Therefore a slow or retried Provider
-request never blocks CRDT merge or requires a compensating Project mutation.
+not a transaction coordinator. Native Generator Project Loro synchronizes the
+four-state Run and immutable Output Commits. Legacy Canvas state synchronizes
+node status and published `ActionAssetBinding` lineage. Neither carries an
+execution owner, private Task phases, or raw diagnostics. Attempt numbers,
+retry scheduling, transport errors, Provider task tokens, and polling cursors
+live only in the owner's durable step journal. Therefore a slow or retried
+Provider request never blocks CRDT merge or requires a compensating Project
+mutation.
 
 Before the request is sent, retry is unambiguous. After the task token or result
 is checkpointed, recovery is also unambiguous and never submits again. Only an
@@ -1357,17 +1359,18 @@ On restart, the owner resumes rather than repeats work:
   more than one upstream task;
 - only an unrecoverable missing result or an exhausted configurable recovery
   lifetime changes the run to `failed`. “Continue finalizing” retries persistence
-  and publication; an intentional regeneration creates a new ActionRun.
+  and publication; an intentional regeneration creates a new native Run or
+  legacy execution identity.
 
 The product may show “retrying”, “saving output”, or “recovering” while a run is
 active, and a separate pending/unavailable projection while Resource replication
 catches up. A final failure means the configured durable-step attempts or total
 run lifetime were exhausted, not merely that one network call failed.
 
-Concurrent cloud and local submissions of the same Action create different
-ActionRuns and immutable outputs. They do not overwrite one another. Product
-state may explicitly select a preferred run/output; "latest response wins" is
-not an Asset identity rule.
+Concurrent future cloud and local submissions of the same native Action create
+different Runs, private Tasks, and immutable outputs. They do not overwrite one
+another. Product state may explicitly select a preferred run/output; "latest
+response wins" is not an Asset identity rule.
 
 ### Creator device
 
@@ -1411,13 +1414,15 @@ than silently pretending that the Asset is ready.
 
 ### Cloud-origin output (future design)
 
-A Web-submitted ActionRun executes in the cloud, where OSS is the only durable
-media store. The Action, node, frozen revision, and running status may
-synchronize immediately, but the cloud runtime does not publish an output
-ProjectAssetEntry or output binding until it has written and verified the
-Resource in OSS staging. It uses `actionRunId + outputSlot` as the idempotency
-identity, so retry finds the same logical output rather than creating another
-one. There is no usable local-only output to justify an earlier Asset reference.
+A future Web submission may create a native Generator Run and a cloud-owned
+private Task; legacy products may retain their own product projection during
+migration. The semantic Run does not store the cloud realm. Its public
+`pending`/`running` state may synchronize immediately, but the cloud runtime
+does not publish an output ProjectAssetEntry and Output Commit until it has
+written and verified the Resource in OSS staging. It uses
+`actionRunId + outputSlot` as the idempotency identity, so retry finds the same
+logical output rather than creating another one. There is no usable local-only
+output to justify an earlier Asset reference.
 
 Publishing the ProjectAsset and creating its storage claim are not a distributed
 transaction. Project Loro remains authoritative: the Resource reconciler derives
@@ -1465,23 +1470,24 @@ This table is target design, not a statement that the Cloud adapter exists. It
 makes the owner, synchronized fact, private state, failure projection, and
 authorization boundary explicit for every cross-device media transition.
 
-| Transition                           | Responsible component                       | Synchronized product fact                                                              | Private/replaceable state                                     | Failure and recovery                                                                                                                                   | Authorization                                                            |
-| ------------------------------------ | ------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| Local-origin create                  | Creating Local Host                         | `ProjectAssetEntry`, optional Action binding/node                                      | Local CAS installation                                        | Local use continues; remote projection stays `uploading`/`unavailable`                                                                                 | Project edit permission on the local mutation                            |
-| Local-origin upload                  | Resource replicator on the creating Host    | No second Loro mutation; Registry later emits readiness                                | Multipart/upload cursor, OSS object key, retries              | Resume by `resourceId`; verify an already-written object after restart                                                                                 | Project claim candidate plus scoped upload lease                         |
-| Cloud/Web Action output              | Cloud Durable Run owner                     | Placeholder may appear early; Project Asset/output binding only after OSS verification | Workflow journal, Provider state, staging key                 | Resume staging/publication by `actionRunId + outputSlot`; unpublished staging expires by TTL                                                           | Project execute permission, Provider account grant, declared output slot |
-| Deferred Cloud poster representation | Future representation Workflow owner        | No Project mutation; Asset identity and readiness stay unchanged                       | Recipe claim, OSS staging receipt, attempts                   | Generate at least once; CAS-publish one verified `(sourceResourceId, recipeVersion)` mapping; retry missing/corrupt mappings and expire losing staging | Readable source claim plus permission for the entry-scoped resolver      |
-| Project claim reconciliation         | Resource Registry reconciler                | ProjectAsset lifecycle remains authoritative                                           | Claim cursor and staging lease                                | Retry reconciliation; published Asset may remain pending, but is never duplicated                                                                      | Admitted Project state from `ProjectRoom`                                |
-| Peer/other-device download           | Receiving Local Host replicator             | No Loro mutation                                                                       | Signed read projection, download cursor, local progress/cache | Retry and verify before atomic CAS install; report `downloading`, `unavailable`, or `failed` locally                                                   | Current Project membership plus active Project claim                     |
-| Logical Trash/Restore                | Project authority through `ProjectRoom`     | `active <-> trashed` lifecycle                                                         | UI/transport receipts only                                    | CRDT synchronization/Undo; Registry and bytes remain unchanged                                                                                         | Project Asset mutation permission and reference/CAS checks               |
-| Terminal purge                       | Project authority, then Registry reconciler | Terminal `purged` tombstone                                                            | Claim-release work item                                       | Retry release without changing the tombstone                                                                                                           | Authorized purge after the recovery window                               |
-| Physical byte deletion               | Resource deletion worker                    | Resource tombstone/readiness only; never Project state                                 | Delete queue and object key                                   | Retry indefinitely or retain extra bytes; never resurrect or alter Assets                                                                              | Current zero-claim proof plus authorized delete item                     |
+| Transition                           | Responsible component                       | Synchronized product fact                                                                               | Private/replaceable state                                     | Failure and recovery                                                                                                                                   | Authorization                                                            |
+| ------------------------------------ | ------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| Local-origin create                  | Creating Local Host                         | `ProjectAssetEntry`, optional Action binding/node                                                       | Local CAS installation                                        | Local use continues; remote projection stays `uploading`/`unavailable`                                                                                 | Project edit permission on the local mutation                            |
+| Local-origin upload                  | Resource replicator on the creating Host    | No second Loro mutation; Registry later emits readiness                                                 | Multipart/upload cursor, OSS object key, retries              | Resume by `resourceId`; verify an already-written object after restart                                                                                 | Project claim candidate plus scoped upload lease                         |
+| Cloud/Web Action output              | Cloud private Task owner                    | Public Run/product projection may appear early; Project Asset/Output Commit only after OSS verification | Workflow journal, Provider state, staging key                 | Resume staging/publication by `actionRunId + outputSlot`; unpublished staging expires by TTL                                                           | Project execute permission, Provider account grant, declared output slot |
+| Deferred Cloud poster representation | Future representation Workflow owner        | No Project mutation; Asset identity and readiness stay unchanged                                        | Recipe claim, OSS staging receipt, attempts                   | Generate at least once; CAS-publish one verified `(sourceResourceId, recipeVersion)` mapping; retry missing/corrupt mappings and expire losing staging | Readable source claim plus permission for the entry-scoped resolver      |
+| Project claim reconciliation         | Resource Registry reconciler                | ProjectAsset lifecycle remains authoritative                                                            | Claim cursor and staging lease                                | Retry reconciliation; published Asset may remain pending, but is never duplicated                                                                      | Admitted Project state from `ProjectRoom`                                |
+| Peer/other-device download           | Receiving Local Host replicator             | No Loro mutation                                                                                        | Signed read projection, download cursor, local progress/cache | Retry and verify before atomic CAS install; report `downloading`, `unavailable`, or `failed` locally                                                   | Current Project membership plus active Project claim                     |
+| Logical Trash/Restore                | Project authority through `ProjectRoom`     | `active <-> trashed` lifecycle                                                                          | UI/transport receipts only                                    | CRDT synchronization/Undo; Registry and bytes remain unchanged                                                                                         | Project Asset mutation permission and reference/CAS checks               |
+| Terminal purge                       | Project authority, then Registry reconciler | Terminal `purged` tombstone                                                                             | Claim-release work item                                       | Retry release without changing the tombstone                                                                                                           | Authorized purge after the recovery window                               |
+| Physical byte deletion               | Resource deletion worker                    | Resource tombstone/readiness only; never Project state                                                  | Delete queue and object key                                   | Retry indefinitely or retain extra bytes; never resurrect or alter Assets                                                                              | Current zero-claim proof plus authorized delete item                     |
 
 The Web client never uploads into a Local Host or appoints one by observing
 sync. A Web-submitted generation is owned by the future Cloud runtime; a
 Desktop/CLI/MCP generation is owned by its selected Local Host. Likewise, an
 offline peer may download a ready Resource later, but it cannot resume the
-creator's upload or either realm's ActionRun from synchronized Project state.
+creator's upload or either realm's private Task from synchronized Project
+state.
 
 In this future Cloud design, the representation registry is private
 infrastructure, not another Asset collection. A recipe claim is valid only
@@ -1627,22 +1633,25 @@ it does not spawn the CLI.
 
 ### Executable plugins
 
-Plugins declare contributions only. The Host freezes an Action revision and
-injects capability handles for its input bindings. `context.reference` resolves
-those handles and `context.upload` turns plugin outputs into owned Project
-Assets plus Action output bindings.
+Plugins declare contributions only. The Host freezes either a native Generator
+Run or a legacy Action revision and injects capabilities for its exact input
+references. `context.reference` resolves Media, text, or Document references;
+`context.upload` and `context.document` return typed outputs for Host-owned
+publication.
 
-The capability handle is a security and process-boundary adapter, not a second
+The capability handle is a security and Host-endpoint adapter, not a second
 business Asset model. Provider code never receives storage keys or selects an
-account scope. Traffic recording remains process instrumentation outside
-plugin business logic.
+account scope. Traffic recording remains endpoint instrumentation outside
+plugin business logic. The same ABI is used by bundled modules and process/stdio
+packages; the latter is fault isolation, not a security sandbox.
 
 Local and future Cloud Hosts expose that adapter through the permanently named
 Asset delivery `v0` contract. Upload returns only
-`{ assetId, uri, kind, mediaType? }`; reference resolution returns `bytes`,
-`provider-url`, or `text`. Cloud storage changes how the Host satisfies one of
-those forms, not the handle shape or protocol name. There is no `v1` alias and
-the retired `url + reach` dialect is never a compatibility path. See
+`{ assetId, uri, kind, mediaType? }` for Media; a Document pins its exact Asset,
+revision, kind, and schema version. Reference resolution returns `bytes`,
+`provider-url`, `text`, or `document`. Cloud storage changes how the Host
+satisfies one of those forms, not the handle shape or protocol name. There is no
+`v1` alias and the retired `url + reach` dialect is never a compatibility path. See
 [SDK Context: Typed references](/plugins/sdk-context#typed-references-asset-delivery-v0).
 
 ### Renderers
@@ -1851,10 +1860,17 @@ The Local authority foundation is implemented; the product cutover status is:
   they are never rescanned as a live index after cutover. Timeline and Director
   mutations now update their draft input bindings directly in the same Loro
   transaction, including owner attach/detach and terminal unbind semantics;
-- Local durable execution state lives in the owner-private SQLite journal. No
-  standalone Project Loro `ActionRun` entity is delivered; Local currently
-  projects product-visible status through Canvas nodes and lineage through
-  `ActionAssetBinding`;
+- Local durable Task state lives in the owner-private SQLite journal. Native
+  Generator execution additionally publishes a standalone four-state Project
+  Loro Run and Output Commits. Legacy Canvas, Timeline, Director, and Provider
+  products still project status and lineage through their existing nodes,
+  endpoints, and `ActionAssetBinding`;
+- the Local Generator HTTP surface lists/resolves Definitions, creates/reads
+  Project Generators, advances a versioned head by CAS, returns an explicit COW
+  hint for a materialized revision, submits/reads Runs, and reads Output
+  Commits. Explicit COW uses the existing create route with `forkedFrom`;
+  Project Generator collection listing, a standalone fork route, and
+  CLI/MCP/GUI clients remain deferred;
 - imports, generation, edits, Director output, Timeline/render output, covers,
   GUI, CLI, MCP, and executable-plugin Asset capabilities resolve through the
   same Project Asset service and `ResolvedAsset` shape;
@@ -1886,8 +1902,10 @@ The following are intentionally **not implemented** in this work:
 - OSS upload/finalization and the Cloud Resource Registry;
 - ProjectRoom claim reconciliation and Resource readiness events;
 - verified multi-device download and per-device availability projection;
-- the standalone Project Loro `ActionRun` entity and its five-state coarse
-  collaboration projection; this remains a unified Local/Cloud design contract;
+- migration of legacy Canvas, Timeline, Director Stage, inline-edit, and ASR
+  product surfaces to native Generator revisions, four-state Runs, and Output
+  Commits;
+- native Generator CLI/MCP/GUI adapters and working-tree projection;
 - Cloud/Web Durable Run staging and publication; and
 - asynchronous physical deletion after every Project/library claim and undo
   window has expired.
@@ -2006,8 +2024,9 @@ conflict may invent a Resource or silently fall back to `asset_refs` after cutov
   must be fetched, verified, and imported as a Project Asset before it can become an Action input;
   execution must not fall back to storage-shaped node fields after cutover.
 - Give every standalone Timeline a persistent Timeline Action.
-- Separate editable Actions, immutable ActionRevisions, and single-owner
-  ActionRuns.
+- Preserve the delivered editable Action/immutable ActionRevision/single-owner
+  execution split for legacy products until each is explicitly migrated to a
+  native Generator Revision, Run, and Output Commit.
 - Move Canvas Action inputs, Timeline items, prompt mentions, Director inputs,
   generation references, edits, and renders to Action bindings.
 - **Complete for Local Timeline:** items persist one Project Asset identity in
@@ -2069,17 +2088,19 @@ conflict may invent a Resource or silently fall back to `asset_refs` after cutov
   Resource registry.
 - Keep byte-dependent operations on other Hosts disabled until the Resource is
   ready, and surface persistent upload failure explicitly.
-- For cloud-origin output, synchronize ActionRun and placeholder-node state
-  immediately, but publish ProjectAsset entries and output bindings only after
-  an idempotent OSS staging write and verification. Promote staging through
-  ProjectAsset-to-Registry reconciliation; expire unpublished staging by TTL.
+- For cloud-origin native Generator output, synchronize the four-state Run and
+  any product projection immediately, but publish ProjectAsset entries and
+  Output Commits only after an idempotent OSS staging write and verification.
+  Promote staging through ProjectAsset-to-Registry reconciliation; expire
+  unpublished staging by TTL.
 - Keep OSS object references in the cloud Resource registry, never Project
   Loro; do not introduce a second Project sync envelope.
 - Add asynchronous verified download and local availability projection.
 - Resolve collaborators through Project permission rather than creator
   ownership.
-- Route Web-submitted ActionRuns only to the cloud runtime and
-  Desktop/CLI/MCP-submitted ActionRuns only to the discovered local Host.
+- Select a cloud-owned private Task for Web submissions and a discovered
+  local-Host Task for Desktop/CLI/MCP submissions, without persisting realm in
+  the semantic Run.
 - Implement one shared Durable Run Engine and step graph with a local
   SQLite/CAS adapter and a cloud Workflow/OSS adapter. Keep retry policy in the
   runner, checkpoint accepted task tokens, resume polling and finalization, and
@@ -2157,22 +2178,22 @@ do not claim deployed Cloud behavior.
     render must use the same contract.
 13. **Local:** Global and Project entries have independent logical lifecycles while their
     immutable Resources remain physically deduplicated.
-14. **Cloud design:** A Web submission has one cloud execution owner; a Desktop, CLI, or MCP
-    submission has one designated local Host owner. Project sync never appoints
-    a second owner.
+14. **Cloud design:** A Web submission has one cloud private-Task owner; a Desktop, CLI, or MCP
+    submission has one designated local Host Task owner. Project sync never
+    appoints a second owner, and realm is absent from the semantic Run.
 15. **Local + Cloud design:** Local and cloud use the same durable step graph and retry policy. An
     ambiguous interrupted submit may be attempted again as an explicit product
     trade-off; once a task token is checkpointed, recovery only polls that task,
     and output finalization remains idempotent.
 16. **Cloud design:** Local-origin nodes and Asset metadata may synchronize before OSS readiness;
-    cloud-origin ActionRun and placeholder-node state may also synchronize
-    early, while its ProjectAsset and output binding appear only after OSS
-    verification. Both realms converge to the same ProjectAsset contract
-    without synchronizing OSS keys.
+    a Web-submitted native Run and product projection may also synchronize
+    early while cloud ownership stays private Task state. Its ProjectAsset and
+    Output Commit appear only after OSS verification. Both realms converge to
+    the same ProjectAsset contract without synchronizing OSS keys.
 17. **Local + Cloud design:** Plugin Asset delivery is always `v0`: one
-    `{ assetId, uri, kind, mediaType? }` handle and `bytes | provider-url | text`
-    resolution. Cloud must not add a `v1` alias, `url + reach` fallback, or
-    storage-specific handle.
+    Media handle `{ assetId, uri, kind, mediaType? }`, exact Document reference,
+    and `bytes | provider-url | text | document` resolution. Cloud must not add
+    a `v1` alias, `url + reach` fallback, or storage-specific handle.
 18. **Local:** Every post-cutover Project or Global publication that introduces
     new bytes starts from unsealed staging, derives canonical media facts from
     bytes under the required `asset-inspection/v4` receipt, and seals the

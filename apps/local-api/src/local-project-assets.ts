@@ -131,6 +131,8 @@ export interface LocalProjectAssetService {
     metadata: ProjectAssetMetadata;
     provenance?: ProjectAssetProvenance;
     bindings: readonly ActionAssetBinding[];
+    /** Host-private invariant checked inside the same serialized Project mutation. */
+    assertProjectState?: (doc: import("loro-crdt").LoroDoc) => void;
   }): Promise<ResolvedAsset>;
   installOwned(input: {
     projectId: string;
@@ -1228,6 +1230,7 @@ export function createLocalProjectAssetService(options: {
       const entry = await prepareStagedOwnedEntry(input);
       await materialize(projectId);
       const published = await replica.mutate(projectId, (doc) => {
+        input.assertProjectState?.(doc);
         const result = publishLocalProjectAssetWithBindings(
           doc,
           entry,

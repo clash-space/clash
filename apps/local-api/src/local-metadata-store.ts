@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   GlobalAssetEntrySchema,
   MetadataAttachmentTargetSchema,
+  TextAppliedRevisionSchema,
   metadataAttachmentTargetKey,
   type GlobalAssetEntry,
   type MetadataAttachmentTarget,
@@ -138,6 +139,13 @@ export interface LocalTextRevisionFilter {
   projectId: string;
   nodeId?: string;
   limit?: number;
+}
+
+export interface LocalWorkspaceImportCommit {
+  bundleDigest: string;
+  project: LocalMetadataProject;
+  textRevisions: TextAppliedRevision[];
+  importedAt: string;
 }
 
 export interface LocalMetadataDb {
@@ -355,6 +363,12 @@ function applySchema(db: SqliteDatabase): void {
       source_file_path TEXT NOT NULL,
       source_file_hash TEXT NOT NULL,
       actor_json TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS workspace_import_receipt (
+      bundle_digest TEXT PRIMARY KEY NOT NULL,
+      project_id TEXT NOT NULL UNIQUE,
+      imported_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS runtime_session (
@@ -578,6 +592,11 @@ function ensureLocalMetadataColumns(db: SqliteDatabase): void {
     ensureSqliteColumn(db, "mutation_audit", column);
   }
   dropSqliteColumnIfPresent(db, "mutation_audit", "forced");
+  dropSqliteColumnIfPresent(
+    db,
+    "workspace_import_receipt",
+    "source_workspace_id",
+  );
 }
 
 function ensureSqliteColumn(
@@ -693,6 +712,81 @@ function textRevisionFromRow(
         }
       : {}),
   };
+}
+
+function workspaceTextRevisionFromRow(
+  row: Record<string, unknown>,
+  expectedProjectId: string,
+): TextAppliedRevision {
+  const rowIdentity = rowOptionalString(row, "revision_id") ?? "<unknown>";
+  try {
+    const requiredString = (key: string): string => {
+      const value = row[key];
+      if (typeof value !== "string" || value.trim().length === 0) {
+        throw new Error(`invalid ${key}`);
+      }
+      return value;
+    };
+    const optionalIdentity = (key: string): string | undefined => {
+      const value = row[key];
+      if (value === null || value === undefined) return undefined;
+      if (typeof value !== "string" || value.trim().length === 0) {
+        throw new Error(`invalid ${key}`);
+      }
+      return value;
+    };
+    const actorJson = row.actor_json;
+    let actor: unknown;
+    if (actorJson !== null && actorJson !== undefined) {
+      if (typeof actorJson !== "string" || actorJson.length === 0) {
+        throw new Error("invalid actor_json");
+      }
+      actor = JSON.parse(actorJson) as unknown;
+    }
+    const parentRevisionId = optionalIdentity("parent_revision_id");
+    const parsed = TextAppliedRevisionSchema.safeParse({
+      schemaVersion: 1,
+      kind: "clash.text.revision",
+      textId: requiredString("text_id"),
+      revisionId: requiredString("revision_id"),
+      ...(parentRevisionId ? { parentRevisionId } : {}),
+      projectId: requiredString("project_id"),
+      nodeId: requiredString("node_id"),
+      createdAt: requiredString("created_at"),
+      contentHash: requiredString("content_hash"),
+      hashAlgorithm: requiredString("hash_algorithm"),
+      sourceFilePath: requiredString("source_file_path"),
+      sourceFileHash: requiredString("source_file_hash"),
+      ...(actor === undefined ? {} : { actor }),
+    });
+    if (!parsed.success) throw new Error("invalid revision schema");
+    const revision = parsed.data;
+    if (revision.projectId !== expectedProjectId) {
+      throw new Error("project identity mismatch");
+    }
+    if (
+      !/^[a-f0-9]{16}$/u.test(revision.contentHash) ||
+      !/^[a-f0-9]{16}$/u.test(revision.sourceFileHash) ||
+      revision.contentHash !== revision.sourceFileHash
+    ) {
+      throw new Error("invalid content identity");
+    }
+    if (
+      revision.sourceFilePath.startsWith("/") ||
+      /^[A-Za-z]:/u.test(revision.sourceFilePath) ||
+      revision.sourceFilePath.includes("\\") ||
+      revision.sourceFilePath
+        .split("/")
+        .some((segment) => !segment || segment === "." || segment === "..")
+    ) {
+      throw new Error("invalid source file path");
+    }
+    return revision;
+  } catch (error) {
+    throw new Error(`Corrupt text revision row ${rowIdentity}`, {
+      cause: error,
+    });
+  }
 }
 
 function sameTextRevision(
@@ -1862,6 +1956,207 @@ export function createLocalMetadataStore(dataDir: string) {
     );
   }
 
+  /**
+   * Host-private full-history read used only by scoped Workspace export.
+   *
+   * The public history endpoint remains deliberately bounded. A portable
+   * Workspace cannot apply that presentation limit: omitting an old immutable
+   * revision would produce a snapshot whose text authority cannot be rebuilt
+   * on the receiving Host.
+   */
+  async function listWorkspaceTextRevisions(
+    projectIdInput: string,
+  ): Promise<TextAppliedRevision[]> {
+    const projectId = projectIdInput.trim();
+    if (!projectId)
+      throw new Error("Workspace text export requires a Project id");
+    return withDb((db) =>
+      db
+        .prepare(
+          `
+      SELECT revision_id, text_id, parent_revision_id, project_id, node_id,
+             created_at, content_hash, hash_algorithm, source_file_path,
+             source_file_hash, actor_json
+       FROM text_revisions
+       WHERE project_id = ?
+       ORDER BY revision_id COLLATE BINARY ASC
+    `,
+        )
+        .all(projectId)
+        .map((row) => workspaceTextRevisionFromRow(row, projectId)),
+    );
+  }
+
+  /**
+   * Final visibility switch for a staged Workspace import. Resource and body
+   * CAS objects may already exist, but the Project is not listed until this
+   * one SQLite transaction installs its receiver-owned row, complete text
+   * authority, and durable idempotency receipt.
+   */
+  async function commitWorkspaceImport(
+    input: LocalWorkspaceImportCommit,
+  ): Promise<{ projectId: string; bundleDigest: string; committed: boolean }> {
+    const digest = input.bundleDigest.trim();
+    if (!/^[a-f0-9]{64}$/u.test(digest)) {
+      throw new Error("Workspace import requires a SHA-256 bundle digest");
+    }
+    const project = input.project;
+    if (
+      !project.id.trim() ||
+      !project.ownerId.trim() ||
+      !project.name.trim() ||
+      project.deletedAt
+    ) {
+      throw new Error("Workspace import Project metadata is invalid");
+    }
+    const revisions = input.textRevisions.map((raw) => {
+      const revision = TextAppliedRevisionSchema.parse(raw);
+      if (revision.projectId !== project.id) {
+        throw new Error(
+          `Text revision ${revision.revisionId} belongs to another Project`,
+        );
+      }
+      // Reuse the strict export/import row validator rather than accepting a
+      // shape the next fresh Host would reject on readback.
+      return workspaceTextRevisionFromRow(
+        {
+          revision_id: revision.revisionId,
+          text_id: revision.textId,
+          parent_revision_id: revision.parentRevisionId ?? null,
+          project_id: revision.projectId,
+          node_id: revision.nodeId,
+          created_at: revision.createdAt,
+          content_hash: revision.contentHash,
+          hash_algorithm: revision.hashAlgorithm,
+          source_file_path: revision.sourceFilePath,
+          source_file_hash: revision.sourceFileHash,
+          actor_json:
+            revision.actor === undefined
+              ? null
+              : JSON.stringify(revision.actor),
+        },
+        project.id,
+      );
+    });
+    return withDb((db) => {
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const receipt = db
+          .prepare(
+            `SELECT bundle_digest, project_id
+               FROM workspace_import_receipt
+              WHERE bundle_digest = ?`,
+          )
+          .get(digest);
+        if (receipt) {
+          if (receipt.project_id !== project.id) {
+            throw new Error(
+              "Workspace bundle digest is already committed to another Project",
+            );
+          }
+          db.exec("COMMIT");
+          return {
+            projectId: project.id,
+            bundleDigest: digest,
+            committed: false,
+          };
+        }
+        if (db.prepare("SELECT id FROM project WHERE id = ?").get(project.id)) {
+          throw new Error(`Project ${project.id} already exists on this Host`);
+        }
+        for (const revision of revisions) {
+          if (
+            db
+              .prepare(
+                "SELECT revision_id FROM text_revisions WHERE revision_id = ?",
+              )
+              .get(revision.revisionId)
+          ) {
+            throw new Error(
+              `Text revision ${revision.revisionId} already exists on this Host`,
+            );
+          }
+        }
+        db.prepare(
+          `INSERT INTO project (
+             id, owner_id, name, description, created_at, updated_at, deleted_at
+           ) VALUES (?, ?, ?, ?, ?, ?, NULL)`,
+        ).run(
+          project.id,
+          project.ownerId,
+          project.name,
+          project.description ?? null,
+          project.createdAt,
+          project.updatedAt,
+        );
+        const insertRevision = db.prepare(
+          `INSERT INTO text_revisions (
+             revision_id, text_id, parent_revision_id, project_id, node_id,
+             created_at, content_hash, hash_algorithm, source_file_path,
+             source_file_hash, actor_json
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        );
+        for (const revision of revisions) {
+          insertRevision.run(
+            revision.revisionId,
+            revision.textId,
+            revision.parentRevisionId ?? null,
+            revision.projectId,
+            revision.nodeId,
+            revision.createdAt,
+            revision.contentHash,
+            revision.hashAlgorithm,
+            revision.sourceFilePath,
+            revision.sourceFileHash,
+            jsonOrNull(revision.actor),
+          );
+        }
+        db.prepare(
+          `INSERT INTO workspace_import_receipt (
+             bundle_digest, project_id, imported_at
+           ) VALUES (?, ?, ?)`,
+        ).run(digest, project.id, input.importedAt);
+        markMigration(db, dataDir, "");
+        db.exec("COMMIT");
+        return {
+          projectId: project.id,
+          bundleDigest: digest,
+          committed: true,
+        };
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    });
+  }
+
+  async function readWorkspaceImportReceipt(bundleDigestInput: string): Promise<
+    | {
+        bundleDigest: string;
+        projectId: string;
+        importedAt: string;
+      }
+    | undefined
+  > {
+    const bundleDigest = bundleDigestInput.trim();
+    if (!/^[a-f0-9]{64}$/u.test(bundleDigest)) return undefined;
+    return withDb((db) => {
+      const row = db
+        .prepare(
+          `SELECT bundle_digest, project_id, imported_at
+             FROM workspace_import_receipt
+            WHERE bundle_digest = ?`,
+        )
+        .get(bundleDigest);
+      if (!row) return undefined;
+      return {
+        bundleDigest: rowString(row, "bundle_digest"),
+        projectId: rowString(row, "project_id"),
+        importedAt: rowString(row, "imported_at"),
+      };
+    });
+  }
+
   async function getTextRevision(
     projectId: string,
     revisionId: string,
@@ -2047,6 +2342,9 @@ export function createLocalMetadataStore(dataDir: string) {
     listPluginBrokerAudit,
     upsertTextRevision,
     listTextRevisions,
+    listWorkspaceTextRevisions,
+    commitWorkspaceImport,
+    readWorkspaceImportReceipt,
     getTextRevision,
     upsertMetadataAttachmentIndex,
     listMetadataAttachmentIndex,

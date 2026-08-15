@@ -10,10 +10,14 @@ import { loadSubmission } from "./artifacts";
 const workspaces: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(workspaces.splice(0).map((workspace) => rm(workspace, {
-    recursive: true,
-    force: true,
-  })));
+  await Promise.all(
+    workspaces.splice(0).map((workspace) =>
+      rm(workspace, {
+        recursive: true,
+        force: true,
+      }),
+    ),
+  );
 });
 
 describe("artifact loading", () => {
@@ -22,11 +26,14 @@ describe("artifact loading", () => {
     workspaces.push(workspace);
     const video = Buffer.alloc(2 * 1024 * 1024, 0x5a);
     await writeFile(join(workspace, "video.mp4"), video);
-    await writeFile(join(workspace, "submission.json"), JSON.stringify({
-      schemaVersion: 1,
-      taskId: "streaming-media",
-      artifacts: [{ id: "final-video", kind: "video", path: "video.mp4" }],
-    }));
+    await writeFile(
+      join(workspace, "submission.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        taskId: "streaming-media",
+        artifacts: [{ id: "final-video", kind: "video", path: "video.mp4" }],
+      }),
+    );
 
     const loaded = await loadSubmission(workspace);
 
@@ -43,11 +50,16 @@ describe("artifact loading", () => {
     workspaces.push(workspace);
     const timeline = Buffer.from("schemaVersion: 1\ntracks: []\n", "utf8");
     await writeFile(join(workspace, "timeline.yaml"), timeline);
-    await writeFile(join(workspace, "submission.json"), JSON.stringify({
-      schemaVersion: 1,
-      taskId: "structured-artifact",
-      artifacts: [{ id: "timeline", kind: "timeline", path: "timeline.yaml" }],
-    }));
+    await writeFile(
+      join(workspace, "submission.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        taskId: "structured-artifact",
+        artifacts: [
+          { id: "timeline", kind: "timeline", path: "timeline.yaml" },
+        ],
+      }),
+    );
 
     const loaded = await loadSubmission(workspace);
 

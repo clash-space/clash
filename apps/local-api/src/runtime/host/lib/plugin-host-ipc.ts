@@ -1,6 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, unlink } from "node:fs/promises";
-import { createConnection, createServer, type Server, type Socket } from "node:net";
+import {
+  createConnection,
+  createServer,
+  type Server,
+  type Socket,
+} from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -8,17 +13,21 @@ import {
   ExecutablePluginBindingSchema,
   ExecutablePluginCardRegistrationSchema,
   ExecutablePluginFunctionExportSchema,
+  ExecutablePluginGeneratorRegistrationSchema,
   ExecutablePluginModelBindingRegistrationSchema,
   ExecutablePluginProviderRegistrationSchema,
   ExecutablePluginInvocationSchema,
   ExecutablePluginResultSchema,
+  GeneratorDefinitionSchema,
   type ExecutablePluginBinding,
   type ExecutablePluginCardRegistration,
   type ExecutablePluginFunctionExport,
+  type ExecutablePluginGeneratorRegistration,
   type ExecutablePluginModelBindingRegistration,
   type ExecutablePluginProviderRegistration,
   type ExecutablePluginInvocation,
   type ExecutablePluginResult,
+  type GeneratorDefinition,
 } from "@clash/shared-types";
 
 import { paths } from "./platform.js";
@@ -27,6 +36,11 @@ export interface PluginInvocationHost {
   listCards(): ExecutablePluginCardRegistration[];
   listProviders?(): ExecutablePluginProviderRegistration[];
   listModelBindings?(): ExecutablePluginModelBindingRegistration[];
+  listGenerators?(): ExecutablePluginGeneratorRegistration[];
+  resolveGeneratorDefinition?(
+    pluginId: string,
+    definitionId: string,
+  ): GeneratorDefinition;
   listFunctionExports?(pluginId: string): ExecutablePluginFunctionExport[];
   resolveBinding(
     pluginId: string,
@@ -45,39 +59,57 @@ interface PluginHostRequestBase {
   requestId: string;
 }
 
-type PluginHostRequest = PluginHostRequestBase & ({
-  operation: "list-cards";
-} | {
-  operation: "list-providers";
-} | {
-  operation: "list-model-bindings";
-} | {
-  operation: "list-function-exports";
-  pluginId: string;
-} | {
-  operation: "resolve";
-  pluginId: string;
-  exportId: string;
-  kind: PluginFunctionKind;
-} | {
-  operation: "invoke";
-  pluginId: string;
-  invocation: ExecutablePluginInvocation;
-  timeoutMs?: number;
-  accountId?: string;
-});
+type PluginHostRequest = PluginHostRequestBase &
+  (
+    | {
+        operation: "list-cards";
+      }
+    | {
+        operation: "list-providers";
+      }
+    | {
+        operation: "list-model-bindings";
+      }
+    | {
+        operation: "list-generators";
+      }
+    | {
+        operation: "list-function-exports";
+        pluginId: string;
+      }
+    | {
+        operation: "resolve";
+        pluginId: string;
+        exportId: string;
+        kind: PluginFunctionKind;
+      }
+    | {
+        operation: "resolve-generator";
+        pluginId: string;
+        definitionId: string;
+      }
+    | {
+        operation: "invoke";
+        pluginId: string;
+        invocation: ExecutablePluginInvocation;
+        timeoutMs?: number;
+        accountId?: string;
+      }
+  );
 
-type PluginHostResponse = {
-  protocol: "clash.plugin-host/v1";
-  requestId: string;
-  status: "ok";
-  result: unknown;
-} | {
-  protocol: "clash.plugin-host/v1";
-  requestId: string;
-  status: "error";
-  error: { code: string; message: string };
-};
+type PluginHostResponse =
+  | {
+      protocol: "clash.plugin-host/v1";
+      requestId: string;
+      status: "ok";
+      result: unknown;
+    }
+  | {
+      protocol: "clash.plugin-host/v1";
+      requestId: string;
+      status: "error";
+      error: { code: string; message: string };
+    };
 
 /**
  * The largest IPC frame the plugin host will accept.
@@ -98,7 +130,11 @@ type PluginHostResponse = {
  * along, so a generation served by a plugin provider failed with "Invalid plugin function kind" --
  * the protocol rejecting the only kind that does the work.
  */
-export const PLUGIN_FUNCTION_KINDS = ["action", "provider-projector", "provider-executor"] as const;
+export const PLUGIN_FUNCTION_KINDS = [
+  "action",
+  "provider-projector",
+  "provider-executor",
+] as const;
 
 /**
  * Derived from the runtime list so the two cannot disagree.
@@ -151,13 +187,20 @@ export function pluginHostSocketPath(
   const explicit = env.CLASH_PLUGIN_HOST_SOCKET?.trim();
   if (explicit) return explicit;
   if (process.platform === "win32") {
-    const suffix = createHash("sha256").update(configDir).digest("hex").slice(0, 16);
+    const suffix = createHash("sha256")
+      .update(configDir)
+      .digest("hex")
+      .slice(0, 16);
     return `\\\\.\\pipe\\clash-plugin-host-${suffix}`;
   }
   const preferred = join(configDir, "sockets", "plugin-host.sock");
-  if (Buffer.byteLength(preferred) <= UNIX_SOCKET_PATH_BUDGET_BYTES) return preferred;
+  if (Buffer.byteLength(preferred) <= UNIX_SOCKET_PATH_BUDGET_BYTES)
+    return preferred;
 
-  const suffix = createHash("sha256").update(configDir).digest("hex").slice(0, 16);
+  const suffix = createHash("sha256")
+    .update(configDir)
+    .digest("hex")
+    .slice(0, 16);
   const basename = `clash-plugin-host-${suffix}.sock`;
   const temporary = join(tmpdir(), basename);
   return Buffer.byteLength(temporary) <= UNIX_SOCKET_PATH_BUDGET_BYTES
@@ -166,14 +209,17 @@ export function pluginHostSocketPath(
 }
 
 function nonEmptyString(value: unknown, field: string): string {
-  if (typeof value !== "string" || !value.trim()) throw new Error(`${field} must be a non-empty string.`);
+  if (typeof value !== "string" || !value.trim())
+    throw new Error(`${field} must be a non-empty string.`);
   return value;
 }
 
 function parseRequest(value: unknown): PluginHostRequest {
-  if (!value || typeof value !== "object") throw new Error("Plugin host request must be an object.");
+  if (!value || typeof value !== "object")
+    throw new Error("Plugin host request must be an object.");
   const request = value as Record<string, unknown>;
-  if (request.protocol !== "clash.plugin-host/v1") throw new Error("Unsupported plugin host protocol.");
+  if (request.protocol !== "clash.plugin-host/v1")
+    throw new Error("Unsupported plugin host protocol.");
   const requestId = nonEmptyString(request.requestId, "requestId");
   if (request.operation === "list-function-exports") {
     return {
@@ -183,8 +229,16 @@ function parseRequest(value: unknown): PluginHostRequest {
       pluginId: nonEmptyString(request.pluginId, "pluginId"),
     };
   }
-  if (request.operation === "list-providers" || request.operation === "list-model-bindings") {
-    return { protocol: "clash.plugin-host/v1", requestId, operation: request.operation };
+  if (
+    request.operation === "list-providers" ||
+    request.operation === "list-model-bindings" ||
+    request.operation === "list-generators"
+  ) {
+    return {
+      protocol: "clash.plugin-host/v1",
+      requestId,
+      operation: request.operation,
+    };
   }
   if (request.operation === "list-cards") {
     return {
@@ -194,6 +248,15 @@ function parseRequest(value: unknown): PluginHostRequest {
     };
   }
   const pluginId = nonEmptyString(request.pluginId, "pluginId");
+  if (request.operation === "resolve-generator") {
+    return {
+      protocol: "clash.plugin-host/v1",
+      requestId,
+      operation: "resolve-generator",
+      pluginId,
+      definitionId: nonEmptyString(request.definitionId, "definitionId"),
+    };
+  }
   if (request.operation === "resolve") {
     if (!PLUGIN_FUNCTION_KINDS.includes(request.kind as PluginFunctionKind)) {
       throw new Error(
@@ -210,15 +273,18 @@ function parseRequest(value: unknown): PluginHostRequest {
     };
   }
   if (request.operation === "invoke") {
-    const timeoutMs = request.timeoutMs === undefined
-      ? undefined
-      : Number(request.timeoutMs);
-    if (timeoutMs !== undefined && (!Number.isFinite(timeoutMs) || timeoutMs <= 0)) {
+    const timeoutMs =
+      request.timeoutMs === undefined ? undefined : Number(request.timeoutMs);
+    if (
+      timeoutMs !== undefined &&
+      (!Number.isFinite(timeoutMs) || timeoutMs <= 0)
+    ) {
       throw new Error("timeoutMs must be positive.");
     }
-    const accountId = request.accountId === undefined
-      ? undefined
-      : nonEmptyString(request.accountId, "accountId");
+    const accountId =
+      request.accountId === undefined
+        ? undefined
+        : nonEmptyString(request.accountId, "accountId");
     return {
       protocol: "clash.plugin-host/v1",
       requestId,
@@ -252,16 +318,24 @@ export function requestIdFromPartialFrame(partial: string): string {
  * generations were queued. An undeliverable response is the client's problem: the host logs it and
  * stays up.
  */
-export function writePluginHostResponse(socket: Socket, response: PluginHostResponse): void {
+export function writePluginHostResponse(
+  socket: Socket,
+  response: PluginHostResponse,
+): void {
   if (socket.writableEnded || socket.destroyed) return;
   try {
     socket.end(`${JSON.stringify(response)}\n`);
   } catch (error) {
-    console.warn(`[plugin-host] dropping response ${response.requestId}: ${(error as Error).message}`);
+    console.warn(
+      `[plugin-host] dropping response ${response.requestId}: ${(error as Error).message}`,
+    );
   }
 }
 
-async function handleRequest(host: PluginInvocationHost, input: unknown): Promise<PluginHostResponse> {
+async function handleRequest(
+  host: PluginInvocationHost,
+  input: unknown,
+): Promise<PluginHostResponse> {
   let requestId = "unknown";
   try {
     if (input && typeof input === "object" && "requestId" in input) {
@@ -299,12 +373,24 @@ async function handleRequest(host: PluginInvocationHost, input: unknown): Promis
         ),
       };
     }
+    if (request.operation === "list-generators") {
+      return {
+        protocol: "clash.plugin-host/v1",
+        requestId,
+        status: "ok",
+        result: ExecutablePluginGeneratorRegistrationSchema.array().parse(
+          host.listGenerators?.() ?? [],
+        ),
+      };
+    }
     if (request.operation === "list-cards") {
       return {
         protocol: "clash.plugin-host/v1",
         requestId,
         status: "ok",
-        result: ExecutablePluginCardRegistrationSchema.array().parse(host.listCards()),
+        result: ExecutablePluginCardRegistrationSchema.array().parse(
+          host.listCards(),
+        ),
       };
     }
     if (request.operation === "resolve") {
@@ -312,25 +398,41 @@ async function handleRequest(host: PluginInvocationHost, input: unknown): Promis
         protocol: "clash.plugin-host/v1",
         requestId,
         status: "ok",
-        result: ExecutablePluginBindingSchema.parse(host.resolveBinding(
-          request.pluginId,
-          request.exportId,
-          request.kind,
-        )),
+        result: ExecutablePluginBindingSchema.parse(
+          host.resolveBinding(request.pluginId, request.exportId, request.kind),
+        ),
+      };
+    }
+    if (request.operation === "resolve-generator") {
+      if (!host.resolveGeneratorDefinition) {
+        throw new Error("Generator definition resolution is unavailable.");
+      }
+      return {
+        protocol: "clash.plugin-host/v1",
+        requestId,
+        status: "ok",
+        result: GeneratorDefinitionSchema.parse(
+          host.resolveGeneratorDefinition(
+            request.pluginId,
+            request.definitionId,
+          ),
+        ),
       };
     }
     return {
       protocol: "clash.plugin-host/v1",
       requestId,
       status: "ok",
-      result: ExecutablePluginResultSchema.parse(await host.invoke(
-        request.pluginId,
-        request.invocation,
-        {
-          ...(request.timeoutMs === undefined ? {} : { timeoutMs: request.timeoutMs }),
-          ...(request.accountId === undefined ? {} : { accountId: request.accountId }),
-        },
-      )),
+      result: ExecutablePluginResultSchema.parse(
+        await host.invoke(request.pluginId, request.invocation, {
+          ...(request.timeoutMs === undefined
+            ? {}
+            : { timeoutMs: request.timeoutMs }),
+          ...(request.accountId === undefined
+            ? {}
+            : { accountId: request.accountId }),
+        }),
+      ),
     };
   } catch (error) {
     return {
@@ -376,7 +478,9 @@ export async function startPluginHostIpcServer(options: {
     if (process.platform !== "win32") {
       await mkdir(dirname(socketPath), { recursive: true, mode: 0o700 });
       if (await socketIsActive(socketPath)) {
-        const error = new Error(`Clash plugin host is already listening at ${socketPath}.`) as NodeJS.ErrnoException;
+        const error = new Error(
+          `Clash plugin host is already listening at ${socketPath}.`,
+        ) as NodeJS.ErrnoException;
         error.code = "EADDRINUSE";
         throw error;
       }
@@ -412,7 +516,9 @@ export async function startPluginHostIpcServer(options: {
         void handleRequest(options.host, message)
           .then((response) => writePluginHostResponse(socket, response))
           .catch((error: unknown) => {
-            console.warn(`[plugin-host] request failed after reply: ${(error as Error).message}`);
+            console.warn(
+              `[plugin-host] request failed after reply: ${(error as Error).message}`,
+            );
           });
       });
     });
@@ -429,7 +535,7 @@ export async function startPluginHostIpcServer(options: {
       socketPath,
       close: async () => {
         await new Promise<void>((resolve, reject) => {
-          server.close((error) => error ? reject(error) : resolve());
+          server.close((error) => (error ? reject(error) : resolve()));
         });
         if (process.platform !== "win32") {
           await unlink(socketPath).catch((error: NodeJS.ErrnoException) => {
@@ -451,11 +557,13 @@ export class PluginHostClient {
   }
 
   async listCards(): Promise<ExecutablePluginCardRegistration[]> {
-    return ExecutablePluginCardRegistrationSchema.array().parse(await this.request({
-      protocol: "clash.plugin-host/v1",
-      requestId: randomUUID(),
-      operation: "list-cards",
-    }));
+    return ExecutablePluginCardRegistrationSchema.array().parse(
+      await this.request({
+        protocol: "clash.plugin-host/v1",
+        requestId: randomUUID(),
+        operation: "list-cards",
+      }),
+    );
   }
 
   /**
@@ -466,19 +574,35 @@ export class PluginHostClient {
    * listing. Declared here so the source is the definition.
    */
   async listProviders(): Promise<ExecutablePluginProviderRegistration[]> {
-    return ExecutablePluginProviderRegistrationSchema.array().parse(await this.request({
-      protocol: "clash.plugin-host/v1",
-      requestId: randomUUID(),
-      operation: "list-providers",
-    }));
+    return ExecutablePluginProviderRegistrationSchema.array().parse(
+      await this.request({
+        protocol: "clash.plugin-host/v1",
+        requestId: randomUUID(),
+        operation: "list-providers",
+      }),
+    );
   }
 
-  async listModelBindings(): Promise<ExecutablePluginModelBindingRegistration[]> {
-    return ExecutablePluginModelBindingRegistrationSchema.array().parse(await this.request({
-      protocol: "clash.plugin-host/v1",
-      requestId: randomUUID(),
-      operation: "list-model-bindings",
-    }));
+  async listModelBindings(): Promise<
+    ExecutablePluginModelBindingRegistration[]
+  > {
+    return ExecutablePluginModelBindingRegistrationSchema.array().parse(
+      await this.request({
+        protocol: "clash.plugin-host/v1",
+        requestId: randomUUID(),
+        operation: "list-model-bindings",
+      }),
+    );
+  }
+
+  async listGenerators(): Promise<ExecutablePluginGeneratorRegistration[]> {
+    return ExecutablePluginGeneratorRegistrationSchema.array().parse(
+      await this.request({
+        protocol: "clash.plugin-host/v1",
+        requestId: randomUUID(),
+        operation: "list-generators",
+      }),
+    );
   }
 
   /**
@@ -488,13 +612,17 @@ export class PluginHostClient {
    * about again has spent money nobody can collect. Declaring this method without implementing it
    * made every acceptance fail closed, which is the safe direction but not a working one.
    */
-  async listFunctionExports(pluginId: string): Promise<ExecutablePluginFunctionExport[]> {
-    return ExecutablePluginFunctionExportSchema.array().parse(await this.request({
-      protocol: "clash.plugin-host/v1",
-      requestId: randomUUID(),
-      operation: "list-function-exports",
-      pluginId,
-    }));
+  async listFunctionExports(
+    pluginId: string,
+  ): Promise<ExecutablePluginFunctionExport[]> {
+    return ExecutablePluginFunctionExportSchema.array().parse(
+      await this.request({
+        protocol: "clash.plugin-host/v1",
+        requestId: randomUUID(),
+        operation: "list-function-exports",
+        pluginId,
+      }),
+    );
   }
 
   async resolveBinding(
@@ -502,14 +630,31 @@ export class PluginHostClient {
     exportId: string,
     kind: PluginFunctionKind,
   ): Promise<ExecutablePluginBinding> {
-    return ExecutablePluginBindingSchema.parse(await this.request({
-      protocol: "clash.plugin-host/v1",
-      requestId: randomUUID(),
-      operation: "resolve",
-      pluginId,
-      exportId,
-      kind,
-    }));
+    return ExecutablePluginBindingSchema.parse(
+      await this.request({
+        protocol: "clash.plugin-host/v1",
+        requestId: randomUUID(),
+        operation: "resolve",
+        pluginId,
+        exportId,
+        kind,
+      }),
+    );
+  }
+
+  async resolveGeneratorDefinition(
+    pluginId: string,
+    definitionId: string,
+  ): Promise<GeneratorDefinition> {
+    return GeneratorDefinitionSchema.parse(
+      await this.request({
+        protocol: "clash.plugin-host/v1",
+        requestId: randomUUID(),
+        operation: "resolve-generator",
+        pluginId,
+        definitionId,
+      }),
+    );
   }
 
   async invoke(
@@ -517,15 +662,17 @@ export class PluginHostClient {
     invocation: ExecutablePluginInvocation,
     options: { timeoutMs?: number; accountId?: string } = {},
   ): Promise<ExecutablePluginResult> {
-    return ExecutablePluginResultSchema.parse(await this.request({
-      protocol: "clash.plugin-host/v1",
-      requestId: randomUUID(),
-      operation: "invoke",
-      pluginId,
-      invocation: ExecutablePluginInvocationSchema.parse(invocation),
-      ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
-      ...(options.accountId ? { accountId: options.accountId } : {}),
-    }));
+    return ExecutablePluginResultSchema.parse(
+      await this.request({
+        protocol: "clash.plugin-host/v1",
+        requestId: randomUUID(),
+        operation: "invoke",
+        pluginId,
+        invocation: ExecutablePluginInvocationSchema.parse(invocation),
+        ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
+        ...(options.accountId ? { accountId: options.accountId } : {}),
+      }),
+    );
   }
 
   private request(request: PluginHostRequest): Promise<unknown> {
@@ -541,24 +688,35 @@ export class PluginHostClient {
         if (error) reject(error);
         else resolve(value);
       };
-      const requestTimeoutMs = request.operation === "invoke" && request.timeoutMs
-        ? Math.max(this.timeoutMs, request.timeoutMs + 1_000)
-        : this.timeoutMs;
+      const requestTimeoutMs =
+        request.operation === "invoke" && request.timeoutMs
+          ? Math.max(this.timeoutMs, request.timeoutMs + 1_000)
+          : this.timeoutMs;
       const timer = setTimeout(
         () => finish(new Error("Clash plugin host IPC timed out.")),
         requestTimeoutMs,
       );
-      socket.once("connect", () => socket.write(`${JSON.stringify(request)}\n`));
+      socket.once("connect", () =>
+        socket.write(`${JSON.stringify(request)}\n`),
+      );
       socket.on("data", (chunk) => {
         buffer += chunk.toString("utf8");
         const newline = buffer.indexOf("\n");
         if (newline < 0) return;
         try {
-          const response = JSON.parse(buffer.slice(0, newline)) as PluginHostResponse;
-          if (response.protocol !== "clash.plugin-host/v1" || response.requestId !== request.requestId) {
-            throw new Error("Clash plugin host returned a mismatched response.");
+          const response = JSON.parse(
+            buffer.slice(0, newline),
+          ) as PluginHostResponse;
+          if (
+            response.protocol !== "clash.plugin-host/v1" ||
+            response.requestId !== request.requestId
+          ) {
+            throw new Error(
+              "Clash plugin host returned a mismatched response.",
+            );
           }
-          if (response.status === "error") finish(new Error(response.error.message));
+          if (response.status === "error")
+            finish(new Error(response.error.message));
           else finish(undefined, response.result);
         } catch (error) {
           finish(error as Error);
@@ -566,7 +724,8 @@ export class PluginHostClient {
       });
       socket.once("error", (error) => finish(error));
       socket.once("close", () => {
-        if (!settled) finish(new Error("Clash plugin host closed without a response."));
+        if (!settled)
+          finish(new Error("Clash plugin host closed without a response."));
       });
     });
   }

@@ -9,7 +9,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import type {
   BenchmarkFixtureFile,
@@ -87,6 +87,97 @@ function manifestSha256(files: BenchmarkFixtureFile[]): string {
   return createHash("sha256")
     .update(JSON.stringify({ schemaVersion: 1, files }))
     .digest("hex");
+}
+
+export type BenchmarkFixtureIntegrityReport = {
+  status: "pass" | "fail";
+  changedFiles: string[];
+  missingFiles: string[];
+  detail: string;
+};
+
+function missingPath(error: unknown): boolean {
+  return Boolean(
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    error.code === "ENOENT",
+  );
+}
+
+/**
+ * Rechecks the immutable public inputs after the agent exits. Agent-created
+ * outputs elsewhere in the workspace are intentionally ignored.
+ */
+export async function verifyBenchmarkInputFixture(
+  workspace: string,
+  installed: BenchmarkFixtureManifest,
+): Promise<BenchmarkFixtureIntegrityReport> {
+  const changedFiles: string[] = [];
+  const missingFiles: string[] = [];
+  for (const expected of installed.files) {
+    if (
+      !FIXTURE_PATH_PATTERN.test(expected.path) ||
+      expected.path
+        .split("/")
+        .some((segment) => segment === "." || segment === "..")
+    ) {
+      throw new Error(
+        `Installed benchmark fixture contains an unsafe file path: ${expected.path}`,
+      );
+    }
+    const segments = expected.path.split("/");
+    let current = workspace;
+    let metadata: Awaited<ReturnType<typeof lstat>> | undefined;
+    let invalid = false;
+    for (let index = 0; index < segments.length; index += 1) {
+      current = join(current, segments[index]!);
+      try {
+        metadata = await lstat(current);
+      } catch (error) {
+        if (missingPath(error)) {
+          missingFiles.push(expected.path);
+          invalid = true;
+          break;
+        }
+        throw error;
+      }
+      const isFile = index === segments.length - 1;
+      if (
+        metadata.isSymbolicLink() ||
+        (isFile ? !metadata.isFile() : !metadata.isDirectory())
+      ) {
+        changedFiles.push(expected.path);
+        invalid = true;
+        break;
+      }
+    }
+    if (invalid || !metadata) continue;
+    if (
+      metadata.size !== expected.bytes ||
+      (await sha256File(current)) !== expected.sha256
+    ) {
+      changedFiles.push(expected.path);
+    }
+  }
+  const status =
+    changedFiles.length === 0 && missingFiles.length === 0 ? "pass" : "fail";
+  return {
+    status,
+    changedFiles,
+    missingFiles,
+    detail:
+      status === "pass"
+        ? `Verified ${installed.files.length} benchmark input fixture file(s) match the installed manifest at this check.`
+        : `Benchmark input fixture changed after installation: ${[
+            ...(changedFiles.length > 0
+              ? [`changed ${changedFiles.join(", ")}`]
+              : []),
+            ...(missingFiles.length > 0
+              ? [`missing ${missingFiles.join(", ")}`]
+              : []),
+          ].join("; ")}.`,
+  };
 }
 
 export async function createBenchmarkFixtureManifest(
@@ -176,13 +267,13 @@ async function assertNoRunnerOwnedTopLevelEntries(
 async function copyFixtureContents(
   source: string,
   workspace: string,
+  manifest: BenchmarkFixtureManifest,
 ): Promise<void> {
-  const entries = (await readdir(source, { withFileTypes: true })).sort(
-    (left, right) => compareNames(left.name, right.name),
-  );
-  for (const entry of entries) {
-    await cp(join(source, entry.name), join(workspace, entry.name), {
-      recursive: true,
+  for (const file of manifest.files) {
+    const destination = join(workspace, file.path);
+    await mkdir(dirname(destination), { recursive: true });
+    await cp(join(source, file.path), destination, {
+      recursive: false,
       dereference: false,
       errorOnExist: true,
       force: false,
@@ -207,6 +298,8 @@ export async function installBenchmarkInputFixture(input: {
   suiteRoot: string;
   workspace: string;
   fixture: BenchmarkInputFixture;
+  /** The product Workspace was imported first; fixture paths must still be new. */
+  allowExistingWorkspace?: true;
 }): Promise<BenchmarkInputFixtureProvenance> {
   assertSafeFixturePath(input.fixture.path);
   if (!SHA256_PATTERN.test(input.fixture.manifestSha256)) {
@@ -215,7 +308,7 @@ export async function installBenchmarkInputFixture(input: {
     );
   }
   const workspaceEntries = await readdir(input.workspace);
-  if (workspaceEntries.length > 0) {
+  if (!input.allowExistingWorkspace && workspaceEntries.length > 0) {
     throw new Error(
       "Benchmark input fixture must be installed into a fresh empty workspace",
     );
@@ -238,11 +331,29 @@ export async function installBenchmarkInputFixture(input: {
   }
   assertNoRunnerOwnedPaths(sourceManifest);
 
-  await copyFixtureContents(source, input.workspace);
-  const copiedManifest = await createBenchmarkFixtureManifest(input.workspace);
-  if (copiedManifest.manifestSha256 !== input.fixture.manifestSha256) {
+  await copyFixtureContents(source, input.workspace, sourceManifest);
+  const copiedManifest = input.allowExistingWorkspace
+    ? sourceManifest
+    : await createBenchmarkFixtureManifest(input.workspace);
+  if (input.allowExistingWorkspace) {
+    const integrity = await verifyBenchmarkInputFixture(
+      input.workspace,
+      sourceManifest,
+    );
+    if (integrity.status !== "pass") {
+      throw new Error(
+        `Copied benchmark input fixture failed verification: ${integrity.detail}`,
+      );
+    }
+  } else if (copiedManifest.manifestSha256 !== input.fixture.manifestSha256) {
     throw new Error(
       `Copied benchmark input fixture manifest sha256 mismatch: expected ${input.fixture.manifestSha256}, received ${copiedManifest.manifestSha256}`,
+    );
+  }
+  const sourceAfterCopy = await createBenchmarkFixtureManifest(source);
+  if (sourceAfterCopy.manifestSha256 !== sourceManifest.manifestSha256) {
+    throw new Error(
+      `Benchmark input fixture source changed during installation: expected ${sourceManifest.manifestSha256}, received ${sourceAfterCopy.manifestSha256}`,
     );
   }
 

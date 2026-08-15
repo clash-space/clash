@@ -3,6 +3,8 @@ import type { Readable, Writable } from "node:stream";
 import {
   ExecutablePluginBrokerResolvedReferenceSchema,
   ExecutablePluginAssetHandleSchema,
+  ExecutablePluginOutputSchema,
+  ExecutableSpeechTranscriptionResultSchema,
   type ExecutablePluginBrokerResolvedReference,
   type ExecutablePluginReference,
   type ExecutablePluginAssetHandle,
@@ -11,6 +13,8 @@ import {
   type ExecutablePluginJsonValue,
   type ExecutablePluginOutput,
   type ExecutablePluginResult,
+  type ExecutableSpeechTranscriptionOperation,
+  type ExecutableSpeechTranscriptionResult,
 } from "@clash/shared-types/executable-plugin";
 
 import {
@@ -47,15 +51,15 @@ export type MediaData =
 export type AssetKindName = "image" | "video" | "audio" | "model";
 
 /**
- * One reference, resolved into the same three forms an output takes.
+ * One reference resolved into the delivery form declared by its exact execution contract.
  *
  * A reference used to arrive as a handle the plugin resolved itself by sending a raw frame, so
  * one plugin had two idioms: return data, but fetch data. An executor that forgot to resolve
  * produced a request carrying `clash-asset://...` where a vendor expected an image.
  *
- * `url` is only handed back when the address is one the vendor can actually fetch. A private
- * asset's URL answers 403, and the generation then fails for a reason naming the vendor rather
- * than the reach.
+ * `provider-url` is handed back only when the upstream Provider can fetch it. `executor-url` is a
+ * short-lived Host capability reachable by the current executor, such as a bundled renderer; it
+ * must not be substituted for a Provider URL or persisted as Asset identity.
  */
 export type ResolvedReference =
   | {
@@ -66,12 +70,25 @@ export type ResolvedReference =
       kind?: AssetKindName;
     }
   | {
+      form: "executor-url";
+      executorUrl: string;
+      expiresAt: string;
+      mediaType?: string;
+      kind?: AssetKindName;
+    }
+  | {
       form: "bytes";
       bytes: Uint8Array;
       mediaType?: string;
       kind?: AssetKindName;
     }
-  | { form: "text"; text: string };
+  | { form: "text"; text: string }
+  | {
+      form: "document";
+      documentKind: string;
+      schemaVersion: number;
+      body: ExecutablePluginJsonValue;
+    };
 
 /**
  * One step of work, as an executor reports it.
@@ -136,6 +153,13 @@ export interface AssetUploadRequest {
   url?: string;
 }
 
+export interface DocumentOutputRequest {
+  slot: string;
+  documentKind: string;
+  schemaVersion: number;
+  body: ExecutablePluginJsonValue;
+}
+
 export interface CodexImageGenerateRequest {
   prompt: string;
   aspectRatio: "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "21:9";
@@ -143,12 +167,21 @@ export interface CodexImageGenerateRequest {
   references?: ExecutablePluginAssetHandle[];
 }
 
+export type SpeechTranscribeRequest = Omit<
+  ExecutableSpeechTranscriptionOperation,
+  "kind"
+>;
+export type SpeechTranscribeResult = ExecutableSpeechTranscriptionResult;
+
 export interface PluginHostTools {
   codexImagegen: {
     generate(
       request: CodexImageGenerateRequest,
     ): Promise<ExecutablePluginAssetHandle>;
   };
+  speechTranscribe(
+    request: SpeechTranscribeRequest,
+  ): Promise<SpeechTranscribeResult>;
 }
 
 /**
@@ -177,6 +210,8 @@ export interface ExecutorContext {
    * because the plugin had declared a looser contract of its own.
    */
   asset(request: AssetWriteRequest): Promise<ExecutablePluginOutput>;
+  /** Build one typed Document result. Publication and revision authority remain Host-owned. */
+  document(request: DocumentOutputRequest): Promise<ExecutablePluginOutput>;
   /** Credentials and settings this account stored. Bound; see PluginStoreHandle. */
   store: PluginStoreHandle;
   /** Resolve one invocation reference using the pinned Provider binding's delivery declaration. */
@@ -184,6 +219,14 @@ export interface ExecutorContext {
   /** Host tools named by the plugin's contributions. */
   hostTools: PluginHostTools;
 }
+
+/** Invocation-scoped Host implementations may override only the tools they exercise. */
+export type ExecutorContextOverrides = Omit<
+  Partial<ExecutorContext>,
+  "hostTools"
+> & {
+  hostTools?: Partial<PluginHostTools>;
+};
 
 export interface Executor {
   submit(
@@ -310,7 +353,7 @@ async function resultFor(
  * straight through and dropped the transport, leaving assembled executors with no `context.store` at
  * all, which surfaced as a message about an unconfigured account.
  */
-type HostDependencyRequest = (
+export type HostDependencyRequest = (
   operation: ExecutablePluginBrokerOperation,
 ) => Promise<ExecutablePluginJsonValue>;
 
@@ -324,8 +367,8 @@ function assetHandleFromHost(input: unknown): ExecutablePluginAssetHandle {
   }
 }
 
-export function executorContextFrom(
-  merged: Partial<ExecutorContext> = {},
+export function createExecutorContext(
+  merged: ExecutorContextOverrides = {},
   requestHost?: HostDependencyRequest,
 ): ExecutorContext {
   const host =
@@ -338,6 +381,18 @@ export function executorContextFrom(
 
   return {
     ...merged,
+    document:
+      merged.document ??
+      (async (request) =>
+        ExecutablePluginOutputSchema.parse({
+          slot: request.slot,
+          kind: "document",
+          document: {
+            documentKind: request.documentKind,
+            schemaVersion: request.schemaVersion,
+            body: request.body,
+          },
+        })),
     reference:
       merged.reference ??
       (async (reference) => {
@@ -351,7 +406,12 @@ export function executorContextFrom(
             cause: error,
           });
         }
-        if (resolved.form === "provider-url" || resolved.form === "text") {
+        if (
+          resolved.form === "provider-url" ||
+          resolved.form === "executor-url" ||
+          resolved.form === "text" ||
+          resolved.form === "document"
+        ) {
           return resolved;
         }
         return {
@@ -493,9 +553,26 @@ export function executorContextFrom(
             } as never),
           ),
       },
+      speechTranscribe:
+        merged.hostTools?.speechTranscribe ??
+        (async (request) => {
+          try {
+            return ExecutableSpeechTranscriptionResultSchema.parse(
+              await host({ kind: "speech.transcribe", ...request }),
+            );
+          } catch (error) {
+            throw new Error(
+              "The Host returned an invalid speech transcription result.",
+              { cause: error },
+            );
+          }
+        }),
     },
   };
 }
+
+/** @deprecated Prefer the public `createExecutorContext` name. */
+export const executorContextFrom = createExecutorContext;
 
 export function definePlugin(definition: PluginDefinition): DefinedPlugin {
   const handlers: Record<

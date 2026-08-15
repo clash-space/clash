@@ -46,6 +46,12 @@ import {
   STUDIO_APP_MIME_TYPE,
   STUDIO_APP_RESOURCE_URI,
 } from "./studio-app";
+import {
+  PLUGIN_MCP_TOOL_NAMES,
+  type PluginMcpGateway,
+  type PluginMcpToolName,
+  type PluginToolInput,
+} from "./plugin-contract";
 
 const scope = {
   cwd: z
@@ -68,6 +74,133 @@ const scope = {
 const assetScope = {
   cwd: scope.cwd,
   projectId: scope.projectId,
+};
+
+const pluginDraftScope = {
+  cwd: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Absolute workspace used to resolve a relative draft directory"),
+  directory: z
+    .string()
+    .min(1)
+    .describe("Absolute plugin draft path or a path relative to cwd"),
+};
+
+const pluginIdInput = {
+  id: z.string().trim().min(1).describe("Stable executable plugin id"),
+};
+
+const pluginToolDefinitions: Record<
+  PluginMcpToolName,
+  {
+    title: string;
+    description: string;
+    inputSchema: Record<string, z.ZodTypeAny>;
+    annotations?: Record<string, boolean>;
+  }
+> = {
+  clash_plugin_activate: {
+    title: "Activate plugin draft",
+    description: describeClashTool({
+      useWhen: "a validated local plugin draft should become active",
+      effect:
+        "builds, contract-tests, attests, and atomically activates the draft while retaining rollback",
+      returns:
+        "the activated plugin identity, version, path, and contract results",
+      next: "use the plugin through its Action, Card, Provider, or Generator contribution",
+    }),
+    inputSchema: pluginDraftScope,
+  },
+  clash_plugin_checkout: {
+    title: "Checkout active plugin",
+    description: describeClashTool({
+      useWhen: "an active plugin needs an editable working-tree draft",
+      effect:
+        "copies the attested package to a new external draft directory without changing the active plugin",
+      returns: "the draft path, plugin id, and checked-out version",
+      next: "edit the draft, validate it, then activate the new version",
+    }),
+    inputSchema: { ...pluginIdInput, ...pluginDraftScope },
+  },
+  clash_plugin_create: {
+    title: "Create plugin draft",
+    description: describeClashTool({
+      useWhen: "the Agent needs a new executable Clash capability",
+      effect:
+        "creates a complete TypeScript or Python plugin draft with manifest, Card, handler, and contract in a new directory",
+      returns: "the created draft paths and initial contract results",
+      next: "edit the generated Card and handler, then validate and activate the draft",
+    }),
+    inputSchema: {
+      ...pluginDraftScope,
+      ...pluginIdInput,
+      name: z.string().trim().min(1).optional(),
+      kind: z
+        .enum(["action", "provider-projector", "provider-executor"])
+        .optional(),
+      language: z.enum(["ts", "python"]).optional(),
+    },
+  },
+  clash_plugin_install: {
+    title: "Install marketplace plugin",
+    description: describeClashTool({
+      useWhen:
+        "an existing local marketplace plugin matches the needed capability",
+      effect: "installs and attests the selected executable plugin package",
+      returns: "the installed package and Action identities and managed path",
+      next: "use the installed contribution or list active plugins to verify it",
+    }),
+    inputSchema: pluginIdInput,
+  },
+  clash_plugin_list: {
+    title: "List active plugins",
+    description: describeClashTool({
+      useWhen: "the Agent needs the current executable plugin inventory",
+      effect: "reads active local Host plugins and their drift status",
+      returns: "active plugin ids, versions, managed paths, and drift status",
+      next: "use, checkout, install, roll back, or remove the selected plugin",
+    }),
+    inputSchema: {},
+    annotations: { readOnlyHint: true },
+  },
+  clash_plugin_rollback: {
+    title: "Roll back plugin",
+    description: describeClashTool({
+      useWhen:
+        "the active plugin version is unsuitable and a retained version should return",
+      effect:
+        "replaces the active package with its newest retained rollback version",
+      returns: "the restored plugin id, version, and managed path",
+      next: "verify the restored contribution before continuing production work",
+    }),
+    inputSchema: pluginIdInput,
+    annotations: { destructiveHint: true },
+  },
+  clash_plugin_uninstall: {
+    title: "Uninstall plugin",
+    description: describeClashTool({
+      useWhen: "the user authorized removal of an active executable plugin",
+      effect: "stops the plugin and moves its managed package to local trash",
+      returns: "whether the plugin was removed and its recoverable trash path",
+      next: "list active plugins to confirm removal",
+    }),
+    inputSchema: pluginIdInput,
+    annotations: { destructiveHint: true },
+  },
+  clash_plugin_validate: {
+    title: "Validate plugin draft",
+    description: describeClashTool({
+      useWhen: "an edited plugin draft must be checked before activation",
+      effect:
+        "builds the declared entrypoint, validates the package schemas, and runs every declared contract without changing active plugin state",
+      returns:
+        "the validated plugin identity, version, path, and contract results",
+      next: "fix any failure or activate the validated draft",
+    }),
+    inputSchema: pluginDraftScope,
+  },
 };
 
 const assetToolDefinitions: Record<
@@ -406,6 +539,13 @@ const toolDefinitions: Record<
         .describe(
           "Text content, or for type 'remotion', a single-file default-exported Remotion TSX component",
         ),
+      contentFile: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          "Workspace-relative UTF-8 file read once as exact content; mutually exclusive with content and never persisted as a path",
+        ),
       prompt: z.string().optional(),
       parentId: z.string().optional(),
       modelId: z.string().optional(),
@@ -443,6 +583,13 @@ const toolDefinitions: Record<
       nodeId: z.string().min(1),
       label: z.string().optional(),
       content: z.string().optional(),
+      contentFile: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          "Workspace-relative UTF-8 file read once as exact content; mutually exclusive with content and never persisted as a path",
+        ),
       assetId: z.string().optional(),
       data: z
         .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
@@ -656,6 +803,60 @@ export function registerClashAssetMcp(
           };
         } catch (error) {
           return assetErrorResult(name, input as AssetToolInput, error);
+        }
+      },
+    );
+  }
+}
+
+export function registerClashPluginMcp(
+  server: Pick<McpServer, "registerTool">,
+  gateway: PluginMcpGateway,
+): void {
+  for (const name of PLUGIN_MCP_TOOL_NAMES) {
+    const definition = pluginToolDefinitions[name];
+    registerAppTool(
+      server,
+      name,
+      {
+        title: definition.title,
+        description: definition.description,
+        inputSchema: definition.inputSchema,
+        annotations: definition.annotations,
+        _meta: { ui: { visibility: ["model"] } },
+      },
+      async (input) => {
+        try {
+          const value = await gateway.invoke(name, input as PluginToolInput);
+          const structuredContent = Array.isArray(value)
+            ? { plugins: value }
+            : (value as Record<string, unknown>);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text:
+                  name === "clash_plugin_list"
+                    ? `Found ${Array.isArray(value) ? value.length : 0} active plugin${Array.isArray(value) && value.length === 1 ? "" : "s"}.`
+                    : `${definition.title} completed.`,
+              },
+            ],
+            structuredContent,
+          };
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          return {
+            content: [{ type: "text" as const, text: message }],
+            structuredContent: {
+              error: {
+                code: "PLUGIN_OPERATION_FAILED",
+                message,
+                operation: name,
+              },
+            },
+            isError: true,
+          };
         }
       },
     );
@@ -887,6 +1088,7 @@ export function createClashMcpServer(
     bundledAppJavascript?: string;
     bundledStudioAppJavascript?: string;
     appSurfaces?: boolean;
+    pluginGateway?: PluginMcpGateway;
   } = {},
 ): McpServer {
   const server = new ClashMcpServer({
@@ -914,6 +1116,9 @@ export function createClashMcpServer(
           }),
       ),
   );
+  if (options.pluginGateway) {
+    registerClashPluginMcp(server, options.pluginGateway);
+  }
   registerClashCanvasMcp(
     server,
     options.gateway ??

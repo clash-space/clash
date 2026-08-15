@@ -1,0 +1,1909 @@
+{
+  "schemaVersion": 1,
+  "id": "clash-agent-product-v1",
+  "title": "Clash agent product benchmark v1 — runnable surfaces and explicit contract gaps",
+  "cases": [
+    {
+      "id": "asset-image-exact-import-v1",
+      "title": "Import an exact Project image Asset",
+      "category": "asset",
+      "tags": ["agent-product", "asset", "image", "exact-bytes"],
+      "outcome": {
+        "objective": "Import inputs/exact-source.svg through Clash as the immutable Project image Asset `benchmark-asset-exact-import-v1`; preassign that exact identity in the import call. Preserve the fixture byte-for-byte, list the Project Assets, read that same Asset back, and submit the original SVG as the exact media evidence plus a short review containing the returned Project Asset identity.",
+        "acceptanceCriteria": [
+          "The SVG is imported through the real Clash Asset surface rather than represented by a handwritten record.",
+          "The imported Project Asset is active, resolves as image media, and its Host-delivered bytes exactly match inputs/exact-source.svg.",
+          "A successful import, list, and get are present in the Agent trajectory.",
+          "The immutable fixture remains a normal workspace file and the submission paths stay inside the isolated workspace."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "imported-image",
+            "kind": "image",
+            "description": "The exact SVG file imported as the Project Asset"
+          },
+          {
+            "artifactId": "asset-review",
+            "kind": "report",
+            "description": "Project Asset identity and semantic readback notes; the runner owns exact-byte verification"
+          }
+        ]
+      },
+      "passScore": 100,
+      "timeoutMs": 300000,
+      "skills": ["../../../plugins/clash/skills/clash"],
+      "inputFixture": {
+        "path": "fixtures/asset-svg-v1",
+        "manifestSha256": "82632b7f39230e30bfc9e6a4c586e54072f512c055ca7c85f46ea028a79209bb"
+      },
+      "execution": {
+        "profile": "clash-host",
+        "lane": "agent-product",
+        "transport": "auto",
+        "requiredProductOperations": [
+          "asset.import",
+          "asset.list",
+          "asset.get"
+        ],
+        "requiredCapabilities": [
+          "project-asset-file-import",
+          "project-asset-byte-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "project-asset-file-import",
+              "status": "available",
+              "detail": "The packaged Clash CLI and MCP Asset dispatcher import a workspace file into the selected Project."
+            },
+            {
+              "capability": "project-asset-byte-readback",
+              "status": "available",
+              "detail": "The benchmark runner independently lists and reads Project Assets, retains the opaque Host receipt, and hashes Host-delivered bytes."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "asset-bytes-and-host-receipt",
+          "artifactIds": ["imported-image"],
+          "expectedProjectAssetId": "benchmark-asset-exact-import-v1",
+          "description": "Match one active Project image Asset to the submitted SVG by exact SHA-256 and retain its opaque Host receipt."
+        },
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "functional",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "fcf7930a6620b00bcaf566cf4e0193bf8f15607962f1d2133ffba5d12f071007"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
+      },
+      "rubric": [
+        {
+          "id": "exact-image",
+          "type": "artifact-exists",
+          "artifactId": "imported-image",
+          "kind": "image",
+          "minBytes": 100,
+          "weight": 80,
+          "required": true
+        },
+        {
+          "id": "asset-review",
+          "type": "artifact-exists",
+          "artifactId": "asset-review",
+          "kind": "report",
+          "minBytes": 80,
+          "weight": 20,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "asset-image-exact-import-mcp-v1",
+      "title": "Import an exact Project image Asset through MCP",
+      "category": "asset",
+      "tags": ["agent-product", "asset", "image", "exact-bytes", "mcp"],
+      "outcome": {
+        "objective": "Import inputs/exact-source.svg through Clash as the immutable Project image Asset `benchmark-asset-exact-import-mcp-v1`; preassign that exact identity in the import call. Preserve the fixture byte-for-byte, list the Project Assets, read that same Asset back, and submit the original SVG as the exact media evidence plus a short review containing the returned Project Asset identity.",
+        "acceptanceCriteria": [
+          "The SVG is imported through the real Clash Asset surface rather than represented by a handwritten record.",
+          "The imported Project Asset is active, resolves as image media, and its Host-delivered bytes exactly match inputs/exact-source.svg.",
+          "A successful import, list, and get are present in the Agent trajectory.",
+          "The immutable fixture remains a normal workspace file and the submission paths stay inside the isolated workspace."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "imported-image-mcp",
+            "kind": "image",
+            "description": "The exact SVG file imported as the Project Asset"
+          },
+          {
+            "artifactId": "asset-review-mcp",
+            "kind": "report",
+            "description": "Project Asset identity and semantic readback notes; the runner owns exact-byte verification"
+          }
+        ]
+      },
+      "passScore": 100,
+      "timeoutMs": 300000,
+      "skills": ["../../../plugins/clash/skills/clash"],
+      "inputFixture": {
+        "path": "fixtures/asset-svg-v1",
+        "manifestSha256": "82632b7f39230e30bfc9e6a4c586e54072f512c055ca7c85f46ea028a79209bb"
+      },
+      "execution": {
+        "profile": "clash-host",
+        "lane": "agent-product",
+        "transport": "mcp",
+        "requiredProductOperations": [
+          "asset.import",
+          "asset.list",
+          "asset.get"
+        ],
+        "requiredCapabilities": [
+          "project-asset-file-import",
+          "project-asset-byte-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "project-asset-file-import",
+              "status": "available",
+              "detail": "The packaged Clash CLI and MCP Asset dispatcher import a workspace file into the selected Project."
+            },
+            {
+              "capability": "project-asset-byte-readback",
+              "status": "available",
+              "detail": "The benchmark runner independently lists and reads Project Assets, retains the opaque Host receipt, and hashes Host-delivered bytes."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "asset-bytes-and-host-receipt",
+          "artifactIds": ["imported-image-mcp"],
+          "expectedProjectAssetId": "benchmark-asset-exact-import-mcp-v1",
+          "description": "Match one active Project image Asset to the submitted SVG by exact SHA-256 and retain its opaque Host receipt."
+        },
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "functional",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "fcf7930a6620b00bcaf566cf4e0193bf8f15607962f1d2133ffba5d12f071007"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
+      },
+      "rubric": [
+        {
+          "id": "exact-image",
+          "type": "artifact-exists",
+          "artifactId": "imported-image-mcp",
+          "kind": "image",
+          "minBytes": 100,
+          "weight": 80,
+          "required": true
+        },
+        {
+          "id": "asset-review",
+          "type": "artifact-exists",
+          "artifactId": "asset-review-mcp",
+          "kind": "report",
+          "minBytes": 80,
+          "weight": 20,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "asset-image-exact-import-cli-v1",
+      "title": "Import an exact Project image Asset through CLI",
+      "category": "asset",
+      "tags": ["agent-product", "asset", "image", "exact-bytes", "cli"],
+      "outcome": {
+        "objective": "Import inputs/exact-source.svg through Clash as the immutable Project image Asset `benchmark-asset-exact-import-cli-v1`; preassign that exact identity in the import call. Preserve the fixture byte-for-byte, list the Project Assets, read that same Asset back, and submit the original SVG as the exact media evidence plus a short review containing the returned Project Asset identity.",
+        "acceptanceCriteria": [
+          "The SVG is imported through the real Clash Asset surface rather than represented by a handwritten record.",
+          "The imported Project Asset is active, resolves as image media, and its Host-delivered bytes exactly match inputs/exact-source.svg.",
+          "A successful import, list, and get are present in the Agent trajectory.",
+          "The immutable fixture remains a normal workspace file and the submission paths stay inside the isolated workspace."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "imported-image-cli",
+            "kind": "image",
+            "description": "The exact SVG file imported as the Project Asset"
+          },
+          {
+            "artifactId": "asset-review-cli",
+            "kind": "report",
+            "description": "Project Asset identity and semantic readback notes; the runner owns exact-byte verification"
+          }
+        ]
+      },
+      "passScore": 100,
+      "timeoutMs": 300000,
+      "skills": ["../../../plugins/clash/skills/clash"],
+      "inputFixture": {
+        "path": "fixtures/asset-svg-v1",
+        "manifestSha256": "82632b7f39230e30bfc9e6a4c586e54072f512c055ca7c85f46ea028a79209bb"
+      },
+      "execution": {
+        "profile": "clash-host",
+        "lane": "agent-product",
+        "transport": "cli",
+        "requiredProductOperations": [
+          "asset.import",
+          "asset.list",
+          "asset.get"
+        ],
+        "requiredCapabilities": [
+          "project-asset-file-import",
+          "project-asset-byte-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "project-asset-file-import",
+              "status": "available",
+              "detail": "The packaged Clash CLI and MCP Asset dispatcher import a workspace file into the selected Project."
+            },
+            {
+              "capability": "project-asset-byte-readback",
+              "status": "available",
+              "detail": "The benchmark runner independently lists and reads Project Assets, retains the opaque Host receipt, and hashes Host-delivered bytes."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "asset-bytes-and-host-receipt",
+          "artifactIds": ["imported-image-cli"],
+          "expectedProjectAssetId": "benchmark-asset-exact-import-cli-v1",
+          "description": "Match one active Project image Asset to the submitted SVG by exact SHA-256 and retain its opaque Host receipt."
+        },
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "functional",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "fcf7930a6620b00bcaf566cf4e0193bf8f15607962f1d2133ffba5d12f071007"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
+      },
+      "rubric": [
+        {
+          "id": "exact-image",
+          "type": "artifact-exists",
+          "artifactId": "imported-image-cli",
+          "kind": "image",
+          "minBytes": 100,
+          "weight": 80,
+          "required": true
+        },
+        {
+          "id": "asset-review",
+          "type": "artifact-exists",
+          "artifactId": "asset-review-cli",
+          "kind": "report",
+          "minBytes": 80,
+          "weight": 20,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "asset-trash-restore-v1",
+      "title": "Trash and restore a Project Asset safely",
+      "category": "asset",
+      "tags": ["agent-product", "asset", "lifecycle", "read-before-write"],
+      "outcome": {
+        "objective": "Import inputs/exact-source.svg as Project image Asset `benchmark-asset-trash-restore-v1`; preassign that exact identity in the import call, read it before mutation, trash it, read the trashed state, restore it through Clash, and read the final active state. Submit the unchanged SVG as media evidence and a lifecycle review containing the stable Project Asset identity.",
+        "acceptanceCriteria": [
+          "The same Project Asset identity is used for import, trash, restore, and final readback.",
+          "Both guarded lifecycle mutations occur through Clash after the required reads; no force or fabricated receipt is used.",
+          "Trusted Host readback finds one final active image Asset whose bytes exactly match the fixture.",
+          "The trajectory contains successful import, list, get, trash, and restore product operations."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "restored-image",
+            "kind": "image",
+            "description": "The exact SVG bytes of the final restored Project Asset"
+          },
+          {
+            "artifactId": "lifecycle-review",
+            "kind": "report",
+            "description": "Stable identity and observed active-to-trashed-to-active lifecycle"
+          }
+        ]
+      },
+      "passScore": 100,
+      "timeoutMs": 300000,
+      "skills": ["../../../plugins/clash/skills/clash"],
+      "inputFixture": {
+        "path": "fixtures/asset-svg-v1",
+        "manifestSha256": "82632b7f39230e30bfc9e6a4c586e54072f512c055ca7c85f46ea028a79209bb"
+      },
+      "execution": {
+        "profile": "clash-host",
+        "lane": "agent-product",
+        "requiredProductOperations": [
+          "asset.import",
+          "asset.list",
+          "asset.get",
+          "asset.trash",
+          "asset.restore"
+        ],
+        "requiredCapabilities": [
+          "project-asset-lifecycle",
+          "project-asset-byte-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "project-asset-lifecycle",
+              "status": "available",
+              "detail": "The packaged Asset CLI and MCP dispatcher expose read-before-write trash and restore with no force bypass."
+            },
+            {
+              "capability": "project-asset-byte-readback",
+              "status": "available",
+              "detail": "The runner independently confirms final active state, media kind, exact delivered bytes, and the opaque Host receipt."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "asset-bytes-and-host-receipt",
+          "artifactIds": ["restored-image"],
+          "expectedProjectAssetId": "benchmark-asset-trash-restore-v1",
+          "description": "Match the final active Project image Asset to the submitted SVG by exact SHA-256 after the traced trash and restore operations."
+        },
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "functional",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "fcf7930a6620b00bcaf566cf4e0193bf8f15607962f1d2133ffba5d12f071007"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
+      },
+      "rubric": [
+        {
+          "id": "restored-image",
+          "type": "artifact-exists",
+          "artifactId": "restored-image",
+          "kind": "image",
+          "minBytes": 100,
+          "weight": 75,
+          "required": true
+        },
+        {
+          "id": "lifecycle-review",
+          "type": "artifact-exists",
+          "artifactId": "lifecycle-review",
+          "kind": "report",
+          "minBytes": 120,
+          "weight": 25,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "director-three-beat-v1",
+      "title": "Director three-beat blocking and capture",
+      "category": "director",
+      "tags": ["agent-product", "director", "stage", "capture"],
+      "outcome": {
+        "objective": "Create a compact editable Director Stage with an establishing beat, a motivated action beat, and a close reaction beat. Use at least three objects, three cameras, three ordered shots, and one changing animation track, then capture one real Director PNG at each beat and preserve the Stage plus a short review.",
+        "acceptanceCriteria": [
+          "The Stage is schema-valid and every object, camera, shot, active-camera, and animation reference resolves.",
+          "Three ordered shots visibly cover establishing, action, and reaction beats with distinct cameras.",
+          "Exactly three submitted evidence images are real Director capture outputs associated with the persisted Stage revision.",
+          "The Stage mutation, readback, and captures are present in the Agent trajectory."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "stage",
+            "kind": "director-stage",
+            "description": "Editable Director Stage JSON"
+          },
+          {
+            "artifactId": "frame-establishing",
+            "kind": "image",
+            "description": "Product-rendered establishing PNG"
+          },
+          {
+            "artifactId": "frame-action",
+            "kind": "image",
+            "description": "Product-rendered action PNG"
+          },
+          {
+            "artifactId": "frame-reaction",
+            "kind": "image",
+            "description": "Product-rendered reaction PNG"
+          },
+          {
+            "artifactId": "director-review",
+            "kind": "report",
+            "description": "Three-beat blocking and capture review"
+          }
+        ]
+      },
+      "passScore": 100,
+      "timeoutMs": 900000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-director-production"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "lane": "agent-product",
+        "requiredProductOperations": [
+          "director.create",
+          "director.mutate",
+          "director.get",
+          "director.capture"
+        ],
+        "requiredCapabilities": [
+          "director-stage-readback",
+          "director-headless-png-capture"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "director-stage-readback",
+              "status": "available",
+              "detail": "The Project Host returns the persisted Director Stage and signed revision receipt."
+            },
+            {
+              "capability": "director-headless-png-capture",
+              "status": "available",
+              "detail": "The Director product renderer produces exact-time PNGs with Stage revision verification."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "director-stage-and-render-receipt",
+          "artifactIds": [
+            "stage",
+            "frame-establishing",
+            "frame-action",
+            "frame-reaction"
+          ],
+          "description": "Read back the persisted Stage and three Director capture receipts from distinct creative beats."
+        },
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "functional",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "fcf7930a6620b00bcaf566cf4e0193bf8f15607962f1d2133ffba5d12f071007"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
+      },
+      "rubric": [
+        {
+          "id": "director-stage",
+          "type": "director-stage",
+          "artifactId": "stage",
+          "minObjects": 3,
+          "minCameras": 3,
+          "minSequenceShots": 3,
+          "minAnimatedTracks": 1,
+          "weight": 65,
+          "required": true
+        },
+        {
+          "id": "director-frames",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 3,
+          "minBytes": 1024,
+          "weight": 25,
+          "required": true
+        },
+        {
+          "id": "director-review",
+          "type": "artifact-exists",
+          "artifactId": "director-review",
+          "kind": "report",
+          "minBytes": 120,
+          "weight": 10,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "timeline-multitrack-render-v1",
+      "title": "Timeline multitrack product render",
+      "category": "timeline",
+      "tags": ["agent-product", "timeline", "multitrack", "render"],
+      "outcome": {
+        "objective": "Build an editable 4-second 720x1280 Timeline at 24fps with at least three tracks and four items, including solid, text, and composition items. Validate and save it through Clash, render a real MP4, sample opening, middle, and closing PNGs, and submit the Timeline plus a short render review.",
+        "acceptanceCriteria": [
+          "The canonical Timeline is 720x1280 at 24fps for 96 frames and has no invalid or out-of-bounds items.",
+          "At least three tracks and four items provide solid, text, and composition content.",
+          "The submitted MP4 is a real product render tied to the persisted Timeline revision.",
+          "Create, get, validate, save, and render operations are present in the Agent trajectory."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "timeline",
+            "kind": "timeline",
+            "description": "Editable canonical Timeline YAML"
+          },
+          {
+            "artifactId": "final-video",
+            "kind": "video",
+            "description": "Product-rendered Timeline MP4"
+          },
+          {
+            "artifactId": "frame-opening",
+            "kind": "image",
+            "description": "Opening frame sampled from the final video"
+          },
+          {
+            "artifactId": "frame-middle",
+            "kind": "image",
+            "description": "Middle frame sampled from the final video"
+          },
+          {
+            "artifactId": "frame-closing",
+            "kind": "image",
+            "description": "Closing frame sampled from the final video"
+          },
+          {
+            "artifactId": "timeline-review",
+            "kind": "report",
+            "description": "Timeline structure and render review"
+          }
+        ]
+      },
+      "passScore": 100,
+      "timeoutMs": 1200000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-timeline-production",
+        "../../../plugins/clash/skills/clash-video-finishing"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "lane": "agent-product",
+        "requiredProductOperations": [
+          "timeline.create",
+          "timeline.get",
+          "timeline.save",
+          "timeline.render"
+        ],
+        "requiredCapabilities": [
+          "timeline-state-readback",
+          "timeline-headless-render",
+          "timeline-render-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "timeline-state-readback",
+              "status": "available",
+              "detail": "The typed Timeline service creates, saves, validates, and reads canonical Timeline state."
+            },
+            {
+              "capability": "timeline-headless-render",
+              "status": "available",
+              "detail": "The Timeline render operation submits the persisted revision to the daemon-owned renderer."
+            },
+            {
+              "capability": "timeline-render-readback",
+              "status": "available",
+              "detail": "A completed render exposes an immutable Asset and receipt linked to the source Timeline revision."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "timeline-state-and-render-receipt",
+          "artifactIds": ["timeline", "final-video"],
+          "description": "Read back the canonical Timeline revision and completed render Asset receipt."
+        },
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "functional",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "fcf7930a6620b00bcaf566cf4e0193bf8f15607962f1d2133ffba5d12f071007"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
+      },
+      "rubric": [
+        {
+          "id": "timeline-source",
+          "type": "timeline",
+          "artifactId": "timeline",
+          "minTracks": 3,
+          "minItems": 4,
+          "minDurationInFrames": 96,
+          "requiredItemTypes": ["solid", "text", "composition"],
+          "weight": 45,
+          "required": true
+        },
+        {
+          "id": "timeline-render",
+          "type": "media",
+          "artifactId": "final-video",
+          "width": 720,
+          "height": 1280,
+          "minDurationSeconds": 3.8,
+          "maxDurationSeconds": 4.2,
+          "requireVideo": true,
+          "weight": 35,
+          "required": true
+        },
+        {
+          "id": "timeline-frames",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 3,
+          "minBytes": 1024,
+          "weight": 15,
+          "required": true
+        },
+        {
+          "id": "timeline-review",
+          "type": "artifact-exists",
+          "artifactId": "timeline-review",
+          "kind": "report",
+          "minBytes": 120,
+          "weight": 5,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "remotion-character-render-v1",
+      "title": "Editable Remotion character product render",
+      "category": "mg-character",
+      "tags": ["agent-product", "remotion", "character", "render"],
+      "outcome": {
+        "objective": "Author an original self-contained Remotion TSX character with named head, torso, left arm, right arm, left leg, and right leg layers. Animate a readable anticipation, action, and settle over 4 seconds at 720x1280 and 24fps, persist the exact TSX as a Canvas remotion-component, bind its stable node ID into an editable Timeline, render through Clash, and sample three poses.",
+        "acceptanceCriteria": [
+          "The exact submitted TSX is persisted in one Canvas remotion-component node with the six required named body layers.",
+          "The Timeline reuses the stable Canvas node ID as a Remotion composition source and spans 96 frames.",
+          "The source uses frame-driven Remotion APIs and the three sampled poses visibly represent different beats.",
+          "The final MP4 and source revision are independently matched to live product state."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "component-source",
+            "kind": "remotion-component",
+            "description": "Editable self-contained Remotion TSX character"
+          },
+          {
+            "artifactId": "timeline",
+            "kind": "timeline",
+            "description": "Editable Timeline using the stable component node ID"
+          },
+          {
+            "artifactId": "character-video",
+            "kind": "video",
+            "description": "Product-rendered character MP4"
+          },
+          {
+            "artifactId": "pose-start",
+            "kind": "image",
+            "description": "Opening character pose"
+          },
+          {
+            "artifactId": "pose-action",
+            "kind": "image",
+            "description": "Peak action character pose"
+          },
+          {
+            "artifactId": "pose-settle",
+            "kind": "image",
+            "description": "Settled character pose"
+          },
+          {
+            "artifactId": "character-review",
+            "kind": "report",
+            "description": "Component, Timeline, and render lineage review"
+          }
+        ]
+      },
+      "passScore": 100,
+      "timeoutMs": 1200000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-mg-character",
+        "../../../plugins/clash/skills/clash-timeline-production",
+        "../../../plugins/clash/skills/clash-video-finishing"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "lane": "agent-product",
+        "requiredProductOperations": [
+          "canvas.add",
+          "canvas.get",
+          "timeline.create",
+          "timeline.get",
+          "timeline.save",
+          "timeline.render"
+        ],
+        "requiredCapabilities": [
+          "canvas-remotion-component",
+          "remotion-component-readback",
+          "timeline-state-readback",
+          "timeline-headless-render",
+          "timeline-render-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "canvas-remotion-component",
+              "status": "available",
+              "detail": "Canvas persists executable TSX in a remotion-component node with a stable node ID."
+            },
+            {
+              "capability": "remotion-component-readback",
+              "status": "available",
+              "detail": "Trusted readback matches Canvas content, submitted TSX, and the Timeline sourceNodeId."
+            },
+            {
+              "capability": "timeline-state-readback",
+              "status": "available",
+              "detail": "The Project Host returns the persisted Timeline revision."
+            },
+            {
+              "capability": "timeline-headless-render",
+              "status": "available",
+              "detail": "The Timeline operation renders the persisted Remotion composition."
+            },
+            {
+              "capability": "timeline-render-readback",
+              "status": "available",
+              "detail": "The completed render Asset is matched to its source Timeline revision."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "remotion-component-and-render-receipt",
+          "artifactIds": ["component-source", "timeline", "character-video"],
+          "description": "Match TSX source to the Canvas node, Timeline sourceNodeId, and completed product render."
+        },
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "functional",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "fcf7930a6620b00bcaf566cf4e0193bf8f15607962f1d2133ffba5d12f071007"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
+      },
+      "rubric": [
+        {
+          "id": "character-source",
+          "type": "mg-character",
+          "artifactId": "component-source",
+          "profile": "remotion-tsx",
+          "minSourceBytes": 1000,
+          "requiredBodyParts": [
+            "head",
+            "torso",
+            "arm-left",
+            "arm-right",
+            "leg-left",
+            "leg-right"
+          ],
+          "requiredRemotionApis": ["useCurrentFrame", "interpolate", "spring"],
+          "weight": 30,
+          "required": true
+        },
+        {
+          "id": "character-timeline",
+          "type": "timeline",
+          "artifactId": "timeline",
+          "minTracks": 1,
+          "minItems": 1,
+          "minDurationInFrames": 96,
+          "requiredItemTypes": ["composition"],
+          "weight": 15,
+          "required": true
+        },
+        {
+          "id": "character-render",
+          "type": "media",
+          "artifactId": "character-video",
+          "width": 720,
+          "height": 1280,
+          "minDurationSeconds": 3.8,
+          "maxDurationSeconds": 4.2,
+          "requireVideo": true,
+          "weight": 35,
+          "required": true
+        },
+        {
+          "id": "character-poses",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 3,
+          "minBytes": 1024,
+          "weight": 15,
+          "required": true
+        },
+        {
+          "id": "character-review",
+          "type": "artifact-exists",
+          "artifactId": "character-review",
+          "kind": "report",
+          "minBytes": 120,
+          "weight": 5,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "mixed-director-remotion-timeline-v1",
+      "title": "Medium Director, Remotion, and Timeline functional regression",
+      "category": "mixed",
+      "tags": [
+        "agent-product",
+        "functional-regression",
+        "medium-complexity",
+        "director",
+        "remotion",
+        "timeline",
+        "lineage"
+      ],
+      "outcome": {
+        "objective": "Create a 9-second 1080x1080 functional integration composition that combines one editable Director Stage, exact-time Director captures, one original editable Remotion TSX character persisted through Canvas, and one canonical Timeline that uses both product sources. Persist every source through Clash, render the final Timeline, sample three frames, and document the Stage-to-Canvas-to-Timeline lineage. This case evaluates functional correctness and lineage only; it does not require a content-quality review.",
+        "acceptanceCriteria": [
+          "The persisted Director Stage contains at least four objects, two cameras, three ordered sequence shots, and one animated track whose values change.",
+          "The exact self-contained Remotion TSX is persisted as a Canvas remotion-component, and its stable node ID is reused unchanged as the sourceNodeId of a custom remotion Timeline composition item.",
+          "After persisting the Remotion component, read it through the public `canvas.get` operation and use that read-back stable node ID unchanged as the Timeline composition item's sourceNodeId.",
+          "The canonical Timeline contains at least three tracks and five items across at least 270 frames, including image, composition, and text item types; every media item preserves the actual kind of its referenced Project Asset.",
+          "After creating the Timeline, read it through the public `timeline.get` operation, make a real subsequent edit by adding the closing title, and persist that new revision through `timeline.save`; the save must not be a no-op.",
+          "For exact lineage, a Director capture receipt binds its projectAssetId output to the final Stage revision, and a canonical Timeline media item references that same projectAssetId; the Stage is not mutated to store its own Action output.",
+          "The product renderer completes a decodable 1080x1080 video of approximately 9 seconds, and three frames are sampled from that final video.",
+          "The completed render Project Asset is retrieved through the public Asset read surface to produce the final-video deliverable; internal Host HTTP endpoints are not part of the agent workflow.",
+          "Trusted readback matches the final Stage revision and capture receipt, exact Canvas component source, Timeline revision and sourceNodeId, and completed final render Asset."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "stage",
+            "kind": "director-stage",
+            "description": "Editable Director Stage JSON"
+          },
+          {
+            "artifactId": "director-frame",
+            "kind": "image",
+            "description": "Exact-time PNG captured from the Director Stage"
+          },
+          {
+            "artifactId": "component-source",
+            "kind": "remotion-component",
+            "description": "Editable Remotion TSX character source"
+          },
+          {
+            "artifactId": "timeline",
+            "kind": "timeline",
+            "description": "Editable canonical mixed Timeline"
+          },
+          {
+            "artifactId": "final-video",
+            "kind": "video",
+            "description": "Final product-rendered mixed MP4"
+          },
+          {
+            "artifactId": "frame-opening",
+            "kind": "image",
+            "description": "Opening frame sampled from the final video"
+          },
+          {
+            "artifactId": "frame-action",
+            "kind": "image",
+            "description": "Action frame sampled from the final video"
+          },
+          {
+            "artifactId": "frame-closing",
+            "kind": "image",
+            "description": "Closing frame sampled from the final video"
+          },
+          {
+            "artifactId": "lineage-review",
+            "kind": "report",
+            "description": "Stage, component, Timeline, and render lineage review"
+          }
+        ]
+      },
+      "passScore": 100,
+      "timeoutMs": 1500000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-director-production",
+        "../../../plugins/clash/skills/clash-mg-character",
+        "../../../plugins/clash/skills/clash-timeline-production",
+        "../../../plugins/clash/skills/clash-video-finishing"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "lane": "agent-product",
+        "requiredProductOperations": [
+          "director.create",
+          "director.mutate",
+          "director.get",
+          "director.capture",
+          "canvas.add",
+          "canvas.get",
+          "timeline.create",
+          "timeline.get",
+          "timeline.save",
+          "timeline.render",
+          "asset.get"
+        ],
+        "forbiddenProductOperations": [
+          "timeline.validate"
+        ],
+        "requiredCapabilities": [
+          "director-stage-readback",
+          "director-headless-png-capture",
+          "canvas-remotion-component",
+          "remotion-component-readback",
+          "timeline-state-readback",
+          "timeline-headless-render",
+          "timeline-render-readback",
+          "mixed-product-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "director-stage-readback",
+              "status": "available",
+              "detail": "The Project Host reads the persisted Stage and signed revision receipt."
+            },
+            {
+              "capability": "director-headless-png-capture",
+              "status": "available",
+              "detail": "Director capture produces revision-verified PNG output."
+            },
+            {
+              "capability": "canvas-remotion-component",
+              "status": "available",
+              "detail": "Canvas persists exact Remotion TSX in a stable component node."
+            },
+            {
+              "capability": "remotion-component-readback",
+              "status": "available",
+              "detail": "Trusted readback matches TSX content and Timeline sourceNodeId."
+            },
+            {
+              "capability": "timeline-state-readback",
+              "status": "available",
+              "detail": "The Project Host reads the canonical Timeline revision."
+            },
+            {
+              "capability": "timeline-headless-render",
+              "status": "available",
+              "detail": "The persisted Timeline is rendered by the product renderer."
+            },
+            {
+              "capability": "timeline-render-readback",
+              "status": "available",
+              "detail": "The completed render Asset retains its source Timeline revision."
+            },
+            {
+              "capability": "mixed-product-readback",
+              "status": "available",
+              "detail": "Stage, component, Timeline, and render receipts can be checked as one product lineage chain."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "mixed-remotion-lineage-and-render-receipt",
+          "artifactIds": [
+            "stage",
+            "director-frame",
+            "timeline",
+            "component-source",
+            "final-video"
+          ],
+          "description": "Match the Stage and capture, Canvas component, Timeline source linkage, and completed final render."
+        },
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "functional",
+          "initialState": {
+            "workspace": {
+              "format": "clash-workspace-v1",
+              "path": "environments/base-workspace-v1",
+              "bundleDigest": "fcf7930a6620b00bcaf566cf4e0193bf8f15607962f1d2133ffba5d12f071007"
+            }
+          },
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
+      },
+      "rubric": [
+        {
+          "id": "mixed-stage",
+          "type": "director-stage",
+          "artifactId": "stage",
+          "minObjects": 4,
+          "minCameras": 2,
+          "minSequenceShots": 3,
+          "minAnimatedTracks": 1,
+          "weight": 15,
+          "required": true
+        },
+        {
+          "id": "mixed-component",
+          "type": "mg-character",
+          "artifactId": "component-source",
+          "profile": "remotion-tsx",
+          "minSourceBytes": 1800,
+          "requiredBodyParts": [
+            "head",
+            "torso",
+            "arm-left",
+            "arm-right",
+            "leg-left",
+            "leg-right"
+          ],
+          "requiredRemotionApis": [
+            "useCurrentFrame",
+            "interpolate",
+            "spring",
+            "Sequence"
+          ],
+          "weight": 15,
+          "required": true
+        },
+        {
+          "id": "mixed-timeline",
+          "type": "timeline",
+          "artifactId": "timeline",
+          "minTracks": 3,
+          "minItems": 5,
+          "minDurationInFrames": 270,
+          "requiredItemTypes": ["image", "composition", "text"],
+          "weight": 15,
+          "required": true
+        },
+        {
+          "id": "mixed-lineage",
+          "type": "mixed-lineage",
+          "directorArtifactId": "stage",
+          "timelineArtifactId": "timeline",
+          "componentArtifactId": "component-source",
+          "weight": 20,
+          "required": true
+        },
+        {
+          "id": "mixed-render",
+          "type": "media",
+          "artifactId": "final-video",
+          "width": 1080,
+          "height": 1080,
+          "minDurationSeconds": 8.8,
+          "maxDurationSeconds": 9.2,
+          "requireVideo": true,
+          "weight": 20,
+          "required": true
+        },
+        {
+          "id": "mixed-frames",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 4,
+          "minBytes": 1024,
+          "weight": 10,
+          "required": true
+        },
+        {
+          "id": "mixed-review",
+          "type": "artifact-exists",
+          "artifactId": "lineage-review",
+          "kind": "report",
+          "minBytes": 120,
+          "weight": 5,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "generator-multi-action-v1",
+      "title": "Native Generator multi-Action selection contract",
+      "category": "generator",
+      "tags": ["blocked-contract", "generator", "multi-action"],
+      "outcome": {
+        "objective": "Discover one native GeneratorDefinition that registers multiple Actions, create a Project Generator revision, invoke two distinct Actions from that same frozen revision, and preserve each ActionRun and exact single OutputCommit.",
+        "acceptanceCriteria": [
+          "The Agent selects Actions through a native Generator CLI or MCP contract rather than a legacy Canvas badge.",
+          "Both Runs pin the same Generator revision while retaining distinct actionId, actionRunId, and invocation fingerprint identities.",
+          "Each successful Run has exactly one independently readable OutputCommit.",
+          "Trusted readback verifies the Definition, Generator revision, Runs, and outputs."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "generator",
+            "kind": "generator",
+            "description": "Native Project Generator projection"
+          },
+          {
+            "artifactId": "first-run",
+            "kind": "action-run",
+            "description": "First ActionRun projection"
+          },
+          {
+            "artifactId": "second-run",
+            "kind": "action-run",
+            "description": "Second ActionRun projection"
+          },
+          {
+            "artifactId": "first-output",
+            "kind": "output-commit",
+            "description": "First exact OutputCommit projection"
+          },
+          {
+            "artifactId": "second-output",
+            "kind": "output-commit",
+            "description": "Second exact OutputCommit projection"
+          }
+        ]
+      },
+      "passScore": 100,
+      "timeoutMs": 300000,
+      "skills": ["../../../plugins/clash/skills/clash"],
+      "execution": {
+        "profile": "clash-host",
+        "lane": "blocked-contract",
+        "requiredMcpTools": ["clash_generators"],
+        "requiredCapabilities": [
+          "native-generator-agent-surface",
+          "generator-run-readback"
+        ],
+        "preflight": {
+          "status": "blocked",
+          "checks": [
+            {
+              "capability": "native-generator-agent-surface",
+              "status": "missing",
+              "detail": "No native Generator CLI or MCP dispatcher is exposed to the Agent yet."
+            },
+            {
+              "capability": "generator-run-readback",
+              "status": "missing",
+              "detail": "The benchmark runner has no trusted Generator revision, ActionRun, and OutputCommit readback yet."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "generator-runs-and-output-commits",
+          "artifactIds": [
+            "generator",
+            "first-run",
+            "second-run",
+            "first-output",
+            "second-output"
+          ],
+          "description": "Future trusted readback for one frozen Generator revision, two ActionRuns, and their exact OutputCommits."
+        },
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "functional",
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
+      },
+      "rubric": [
+        {
+          "id": "generator",
+          "type": "artifact-exists",
+          "artifactId": "generator",
+          "kind": "generator",
+          "weight": 20,
+          "required": true
+        },
+        {
+          "id": "runs",
+          "type": "artifact-set",
+          "kind": "action-run",
+          "minCount": 2,
+          "weight": 40,
+          "required": true
+        },
+        {
+          "id": "outputs",
+          "type": "artifact-set",
+          "kind": "output-commit",
+          "minCount": 2,
+          "weight": 40,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "generator-cow-replay-v1",
+      "title": "Generator copy-on-write and replay contract",
+      "category": "generator",
+      "tags": ["blocked-contract", "generator", "cow", "replay"],
+      "outcome": {
+        "objective": "Create a mutable Project Generator head, materialize one output, attempt an incompatible in-place revision, fork it through copy-on-write, and replay the original invocation without duplicating its public ActionRun or OutputCommit.",
+        "acceptanceCriteria": [
+          "The materialized Generator rejects the incompatible in-place change and preserves its original revision.",
+          "The fork remains in the same Definition family and records forkedFrom without rewriting old downstream references.",
+          "Exact replay returns the original terminal ActionRun and OutputCommit instead of creating a private task again.",
+          "Trusted readback proves both Generator heads and the stable replay lineage."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "source-generator",
+            "kind": "generator",
+            "description": "Materialized source Generator projection"
+          },
+          {
+            "artifactId": "forked-generator",
+            "kind": "generator",
+            "description": "Copy-on-write Generator projection"
+          },
+          {
+            "artifactId": "replayed-run",
+            "kind": "action-run",
+            "description": "Stable replayed ActionRun projection"
+          },
+          {
+            "artifactId": "stable-output",
+            "kind": "output-commit",
+            "description": "Non-duplicated OutputCommit projection"
+          }
+        ]
+      },
+      "passScore": 100,
+      "timeoutMs": 300000,
+      "skills": ["../../../plugins/clash/skills/clash"],
+      "execution": {
+        "profile": "clash-host",
+        "lane": "blocked-contract",
+        "requiredMcpTools": ["clash_generators"],
+        "requiredCapabilities": [
+          "generator-cow-agent-surface",
+          "generator-replay-readback"
+        ],
+        "preflight": {
+          "status": "blocked",
+          "checks": [
+            {
+              "capability": "generator-cow-agent-surface",
+              "status": "missing",
+              "detail": "No Generator CLI or MCP contract exposes head advance, COW fork, and exact replay to an Agent."
+            },
+            {
+              "capability": "generator-replay-readback",
+              "status": "missing",
+              "detail": "No trusted benchmark readback can yet verify Generator heads, forkedFrom, replayed Run identity, and OutputCommit uniqueness."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "generator-cow-and-replay-lineage",
+          "artifactIds": [
+            "source-generator",
+            "forked-generator",
+            "replayed-run",
+            "stable-output"
+          ],
+          "description": "Future trusted readback for source and forked Generator heads plus one idempotently replayed Run and OutputCommit."
+        },
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "functional",
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
+      },
+      "rubric": [
+        {
+          "id": "generators",
+          "type": "artifact-set",
+          "kind": "generator",
+          "minCount": 2,
+          "weight": 50,
+          "required": true
+        },
+        {
+          "id": "run",
+          "type": "artifact-exists",
+          "artifactId": "replayed-run",
+          "kind": "action-run",
+          "weight": 25,
+          "required": true
+        },
+        {
+          "id": "output",
+          "type": "artifact-exists",
+          "artifactId": "stable-output",
+          "kind": "output-commit",
+          "weight": 25,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "document-version-attachment-v1",
+      "title": "Document revision and attachment contract",
+      "category": "document",
+      "tags": ["blocked-contract", "document", "versioning", "attachment"],
+      "outcome": {
+        "objective": "Create a standard mutable Document Asset, advance its head through CAS while preserving the first immutable revision, attach the Document to a Project Asset, and advance the attachment to the new exact revision.",
+        "acceptanceCriteria": [
+          "Both immutable Document revisions remain independently readable with one stable Document identity.",
+          "The head advances only through the expected revision CAS and no force bypass exists.",
+          "The attachment pins an exact Document revision before being explicitly advanced.",
+          "Trusted readback verifies the revision chain, body references, and attachment history."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "document-v1",
+            "kind": "document",
+            "description": "Initial immutable Document revision"
+          },
+          {
+            "artifactId": "document-v2",
+            "kind": "document",
+            "description": "CAS-advanced Document revision"
+          },
+          {
+            "artifactId": "attachment-review",
+            "kind": "report",
+            "description": "Exact attachment and revision history review"
+          }
+        ]
+      },
+      "passScore": 100,
+      "timeoutMs": 300000,
+      "skills": ["../../../plugins/clash/skills/clash"],
+      "execution": {
+        "profile": "clash-host",
+        "lane": "blocked-contract",
+        "requiredMcpTools": ["clash_documents"],
+        "requiredCapabilities": [
+          "document-agent-surface",
+          "document-revision-readback"
+        ],
+        "preflight": {
+          "status": "blocked",
+          "checks": [
+            {
+              "capability": "document-agent-surface",
+              "status": "missing",
+              "detail": "No Document Asset CLI or MCP dispatcher exposes create, CAS advance, history, and attachment operations."
+            },
+            {
+              "capability": "document-revision-readback",
+              "status": "missing",
+              "detail": "The benchmark runner has no trusted Document revision, body, and attachment readback."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "document-revisions-and-attachment",
+          "artifactIds": ["document-v1", "document-v2", "attachment-review"],
+          "description": "Future trusted readback for immutable Document revisions, head CAS, and exact attachment history."
+        },
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "functional",
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
+      },
+      "rubric": [
+        {
+          "id": "documents",
+          "type": "artifact-set",
+          "kind": "document",
+          "minCount": 2,
+          "weight": 80,
+          "required": true
+        },
+        {
+          "id": "attachment-review",
+          "type": "artifact-exists",
+          "artifactId": "attachment-review",
+          "kind": "report",
+          "minBytes": 120,
+          "weight": 20,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "asr-generator-transcript-document-v1",
+      "title": "ASR Generator to transcript Document contract",
+      "category": "workflow",
+      "tags": ["blocked-contract", "generator", "asr", "document", "lineage"],
+      "outcome": {
+        "objective": "Import one audio source, invoke the native clash.asr Generator transcribe Action, wait for its public ActionRun to finish, and preserve the exact timed-transcript Document output with producer and source references.",
+        "acceptanceCriteria": [
+          "The ASR operation is invoked through the native Generator Agent surface with one frozen audio Asset reference.",
+          "The public Run progresses asynchronously and publishes exactly one media.transcript Document OutputCommit.",
+          "The Document contains timed words and pins the ActionRun producer plus exact source Asset revision.",
+          "Trusted readback verifies the Run, OutputCommit, Document body, and lineage."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "asr-run",
+            "kind": "action-run",
+            "description": "Native ASR ActionRun projection"
+          },
+          {
+            "artifactId": "transcript-output",
+            "kind": "output-commit",
+            "description": "Exact transcript OutputCommit projection"
+          },
+          {
+            "artifactId": "transcript-document",
+            "kind": "document",
+            "description": "Timed transcript Document revision"
+          }
+        ]
+      },
+      "passScore": 100,
+      "timeoutMs": 600000,
+      "skills": ["../../../plugins/clash/skills/clash"],
+      "execution": {
+        "profile": "clash-host",
+        "lane": "blocked-contract",
+        "requiredMcpTools": ["clash_generators", "clash_documents"],
+        "requiredCapabilities": [
+          "asr-generator-agent-surface",
+          "transcript-document-readback"
+        ],
+        "preflight": {
+          "status": "blocked",
+          "checks": [
+            {
+              "capability": "asr-generator-agent-surface",
+              "status": "missing",
+              "detail": "clash.asr is registered internally, but no native Generator CLI or MCP dispatcher lets an Agent create and follow its Run."
+            },
+            {
+              "capability": "transcript-document-readback",
+              "status": "missing",
+              "detail": "The benchmark runner cannot yet independently read back the ASR ActionRun, OutputCommit, and timed-transcript Document lineage."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "asr-generator-transcript-document-lineage",
+          "artifactIds": [
+            "asr-run",
+            "transcript-output",
+            "transcript-document"
+          ],
+          "description": "Future trusted readback for native ASR Run, exact OutputCommit, timed transcript body, producer, and source references."
+        },
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "functional",
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
+      },
+      "rubric": [
+        {
+          "id": "asr-run",
+          "type": "artifact-exists",
+          "artifactId": "asr-run",
+          "kind": "action-run",
+          "weight": 30,
+          "required": true
+        },
+        {
+          "id": "transcript-output",
+          "type": "artifact-exists",
+          "artifactId": "transcript-output",
+          "kind": "output-commit",
+          "weight": 30,
+          "required": true
+        },
+        {
+          "id": "transcript-document",
+          "type": "artifact-exists",
+          "artifactId": "transcript-document",
+          "kind": "document",
+          "weight": 40,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "stage-generator-multi-action-v1",
+      "title": "Director Stage as a multi-Action Generator contract",
+      "category": "director",
+      "tags": ["blocked-contract", "director", "generator", "multi-action"],
+      "outcome": {
+        "objective": "Treat one mutable Director Stage revision as a native Generator state and invoke two different registered Actions from that same revision to produce two independently pinned downstream outputs.",
+        "acceptanceCriteria": [
+          "The Stage has one stable Generator identity and an immutable revision used by both Runs.",
+          "Two distinct Action registrations are selected without copying the Stage merely to choose another output.",
+          "Each downstream OutputCommit pins the exact Stage Generator revision and ActionRun.",
+          "Trusted readback verifies the Stage state and both native Generator lineage branches."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "stage-generator",
+            "kind": "generator",
+            "description": "Director Stage Generator projection"
+          },
+          {
+            "artifactId": "first-stage-output",
+            "kind": "output-commit",
+            "description": "First Action output from the frozen Stage revision"
+          },
+          {
+            "artifactId": "second-stage-output",
+            "kind": "output-commit",
+            "description": "Second Action output from the same Stage revision"
+          }
+        ]
+      },
+      "passScore": 100,
+      "timeoutMs": 600000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-director-production"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "lane": "blocked-contract",
+        "requiredMcpTools": ["clash_generators"],
+        "requiredCapabilities": [
+          "stage-generator-agent-surface",
+          "stage-generator-readback"
+        ],
+        "preflight": {
+          "status": "blocked",
+          "checks": [
+            {
+              "capability": "stage-generator-agent-surface",
+              "status": "missing",
+              "detail": "The current Director CLI and MCP surface persists Stage state but does not expose Stage as a native multi-Action Generator."
+            },
+            {
+              "capability": "stage-generator-readback",
+              "status": "missing",
+              "detail": "Trusted benchmark readback cannot yet bind native Generator Runs and OutputCommits to an exact Stage revision."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "stage-generator-actions-and-outputs",
+          "artifactIds": [
+            "stage-generator",
+            "first-stage-output",
+            "second-stage-output"
+          ],
+          "description": "Future readback for one frozen Stage Generator revision and two distinct native Action output branches."
+        },
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "functional",
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
+      },
+      "rubric": [
+        {
+          "id": "stage-generator",
+          "type": "artifact-exists",
+          "artifactId": "stage-generator",
+          "kind": "generator",
+          "weight": 40,
+          "required": true
+        },
+        {
+          "id": "stage-outputs",
+          "type": "artifact-set",
+          "kind": "output-commit",
+          "minCount": 2,
+          "weight": 60,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "timeline-generator-render-v1",
+      "title": "Timeline Generator render contract",
+      "category": "timeline",
+      "tags": ["blocked-contract", "timeline", "generator", "render"],
+      "outcome": {
+        "objective": "Treat one mutable Timeline revision as native Generator state, invoke its render Action, follow the public asynchronous ActionRun, and publish exactly one video OutputCommit that pins the frozen Timeline Generator revision.",
+        "acceptanceCriteria": [
+          "The Timeline revision is addressed through a stable native Generator identity rather than only a legacy render command.",
+          "The render request creates one public ActionRun and a pending output without blocking the Agent interface.",
+          "Completion publishes exactly one immutable video OutputCommit pinned to the Timeline revision.",
+          "Trusted readback verifies the Timeline Generator, Run, output media, and lineage."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "timeline-generator",
+            "kind": "generator",
+            "description": "Timeline Generator projection"
+          },
+          {
+            "artifactId": "render-run",
+            "kind": "action-run",
+            "description": "Timeline render ActionRun projection"
+          },
+          {
+            "artifactId": "render-output",
+            "kind": "output-commit",
+            "description": "Exact rendered video OutputCommit projection"
+          }
+        ]
+      },
+      "passScore": 100,
+      "timeoutMs": 1200000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-timeline-production"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "lane": "blocked-contract",
+        "requiredMcpTools": ["clash_generators"],
+        "requiredCapabilities": [
+          "timeline-generator-agent-surface",
+          "timeline-generator-readback"
+        ],
+        "preflight": {
+          "status": "blocked",
+          "checks": [
+            {
+              "capability": "timeline-generator-agent-surface",
+              "status": "missing",
+              "detail": "The current Timeline CLI and MCP render path is not exposed as a native Timeline Generator Action contract."
+            },
+            {
+              "capability": "timeline-generator-readback",
+              "status": "missing",
+              "detail": "Trusted benchmark readback cannot yet verify a Timeline GeneratorRevision, public ActionRun, and exact video OutputCommit."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "timeline-generator-render-and-output",
+          "artifactIds": ["timeline-generator", "render-run", "render-output"],
+          "description": "Future trusted readback for the frozen Timeline Generator revision, public render Run, and exact video output."
+        },
+        "environment": {
+          "profile": "clash-agent-environment-v1",
+          "track": "functional",
+          "outputs": {
+            "modifiedWorkspace": true,
+            "rawTrajectory": true,
+            "normalizedTrajectory": "clash-normalized-v1",
+            "atifTrajectory": "ATIF-v1.7-when-supported",
+            "otlpTrace": "otlp-json",
+            "attempt": "clash-attempt-v1"
+          }
+        }
+      },
+      "rubric": [
+        {
+          "id": "timeline-generator",
+          "type": "artifact-exists",
+          "artifactId": "timeline-generator",
+          "kind": "generator",
+          "weight": 35,
+          "required": true
+        },
+        {
+          "id": "render-run",
+          "type": "artifact-exists",
+          "artifactId": "render-run",
+          "kind": "action-run",
+          "weight": 30,
+          "required": true
+        },
+        {
+          "id": "render-output",
+          "type": "artifact-exists",
+          "artifactId": "render-output",
+          "kind": "output-commit",
+          "weight": 35,
+          "required": true
+        }
+      ]
+    }
+  ]
+}

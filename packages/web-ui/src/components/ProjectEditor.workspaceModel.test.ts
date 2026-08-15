@@ -9,21 +9,62 @@ const source = readFileSync(
 
 describe("ProjectEditor workspace model", () => {
   it("projects one Project Loro replica into a selected concrete Canvas", () => {
-    expect(sourceMatches(source, /useState\(['"]main['"]\)/), "mechanism missing").toBe(true);
-    expect(sourceMatches(source, /useLoroSync\(\{[\s\S]*canvasId: activeCanvasId/), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "<ProjectWorkspaceNavigator"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "<EditableProjectAssetSurface"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "<ProjectTimelineEditorSurface"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "<ProjectDirectorStageSurface"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "<StandaloneTimelineSurface"), "must not reappear").toBe(false);
-    expect(sourceContains(source, 'id="project-workspace-shell"'), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "grid-cols-[12rem_minmax(0,1fr)]"), "mechanism missing").toBe(true);
+    expect(
+      sourceMatches(source, /useState\(['"]main['"]\)/),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceMatches(source, /useLoroSync\(\{[\s\S]*canvasId: activeCanvasId/),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "<ProjectWorkspaceNavigator"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "<EditableProjectAssetSurface"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "<ProjectTimelineEditorSurface"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "<ProjectDirectorStageSurface"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "<StandaloneTimelineSurface"),
+      "must not reappear",
+    ).toBe(false);
+    expect(
+      sourceContains(source, 'id="project-workspace-shell"'),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "grid-cols-[12rem_minmax(0,1fr)]"),
+      "mechanism missing",
+    ).toBe(true);
     expect(sourceContains(source, "header={"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "footer={<UserControls compact />}"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, 'id="project-top-actions"'), "must not reappear").toBe(false);
-    expect(sourceContains(source, "topActionsRight"), "must not reappear").toBe(false);
-    expect(sourceContains(source, "clash-project-sidebar-header"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "className={`absolute bottom-0 left-52"), "must not reappear").toBe(false);
+    expect(
+      sourceContains(source, "footer={<UserControls compact />}"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, 'id="project-top-actions"'),
+      "must not reappear",
+    ).toBe(false);
+    expect(sourceContains(source, "topActionsRight"), "must not reappear").toBe(
+      false,
+    );
+    expect(
+      sourceContains(source, "clash-project-sidebar-header"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "className={`absolute bottom-0 left-52"),
+      "must not reappear",
+    ).toBe(false);
   });
 
   it("persists a fully collapsible project navigator with one workspace-owned toggle", () => {
@@ -36,24 +77,54 @@ describe("ProjectEditor workspace model", () => {
     expect(source).toMatch(
       /data-project-navigator-collapsed=\{\s*isProjectNavigatorCollapsed\s*\}/,
     );
-    expect(sourceContains(source, 
-      "data-[project-navigator-collapsed=true]:grid-cols-[0_minmax(0,1fr)]",
-    ), "mechanism missing").toBe(true);
-    expect(sourceMatches(source, /collapsed=\{\s*isProjectNavigatorCollapsed\s*\}/), "mechanism missing").toBe(true);
-    expect(sourceContains(source, 
-      "onCollapsedChange={setIsProjectNavigatorCollapsed}",
-    ), "must not reappear").toBe(false);
-    expect(sourceContains(source, "clash-project-sidebar-toggle-button"), "must not reappear").toBe(false);
-    expect(sourceContains(source, "PROJECT_NAVIGATOR_VISIBILITY_EVENT"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, 
-      "setIsProjectNavigatorCollapsed(detail.collapsed)",
-    ), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "data-project-workspace-toolbar"), "mechanism missing").toBe(true);
+    expect(
+      sourceContains(
+        source,
+        "data-[project-navigator-collapsed=true]:grid-cols-[0_minmax(0,1fr)]",
+      ),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceMatches(source, /collapsed=\{\s*isProjectNavigatorCollapsed\s*\}/),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(
+        source,
+        "onCollapsedChange={setIsProjectNavigatorCollapsed}",
+      ),
+      "must not reappear",
+    ).toBe(false);
+    expect(
+      sourceContains(source, "clash-project-sidebar-toggle-button"),
+      "must not reappear",
+    ).toBe(false);
+    expect(
+      sourceContains(source, "PROJECT_NAVIGATOR_VISIBILITY_EVENT"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(
+        source,
+        "setIsProjectNavigatorCollapsed(detail.collapsed)",
+      ),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "data-project-workspace-toolbar"),
+      "mechanism missing",
+    ).toBe(true);
   });
 
   it("does not reconstruct Canvas ownership from the Project asset list", () => {
-    expect(sourceContains(source, "buildFallbackCanvasFromAssets"), "must not reappear").toBe(false);
-    expect(sourceContains(source, "recoveredFromAssetRef"), "must not reappear").toBe(false);
+    expect(
+      sourceContains(source, "buildFallbackCanvasFromAssets"),
+      "must not reappear",
+    ).toBe(false);
+    expect(
+      sourceContains(source, "recoveredFromAssetRef"),
+      "must not reappear",
+    ).toBe(false);
   });
 
   it("creates Timeline Actions through Timeline ownership primitives", () => {
@@ -66,52 +137,180 @@ describe("ProjectEditor workspace model", () => {
     expect(source).toMatch(
       /type === ["']director-stage["'][\s\S]*createDirectorStage\([\s\S]*attachDirectorStage\(/,
     );
-    expect(sourceContains(source, 'onDoubleClick={createDirectorStageFromPane}'), `mechanism missing`).toBe(true);
-    expect(sourceContains(source, 'classList.contains("react-flow__pane")'), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "directorStages={loroSync.directorStages}"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "onOpenDirectorStage={openDirectorStageFromCanvasAction}"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "onCaptureShot={captureDirectorStageShot}"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "onUploadModel={uploadDirectorModel}"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "DIRECTOR_BUILTIN_MODEL_ASSET_URLS"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "!DIRECTOR_BUILTIN_MODEL_ASSET_URLS[object.model.assetId]"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "onGeneratePanorama={generateDirectorPanorama}"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "normalizeDirectorPanorama(file"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, 'panoramaProjection: "equirectangular"'), "mechanism missing").toBe(true);
+    expect(
+      sourceContains(source, "onDoubleClick={createDirectorStageFromPane}"),
+      `mechanism missing`,
+    ).toBe(true);
+    expect(
+      sourceContains(source, 'classList.contains("react-flow__pane")'),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "directorStages={loroSync.directorStages}"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(
+        source,
+        "onOpenDirectorStage={openDirectorStageFromCanvasAction}",
+      ),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "onCaptureShot={captureDirectorStageShot}"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "onUploadModel={uploadDirectorModel}"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "DIRECTOR_BUILTIN_MODEL_ASSET_URLS"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(
+        source,
+        "!DIRECTOR_BUILTIN_MODEL_ASSET_URLS[object.model.assetId]",
+      ),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "onGeneratePanorama={generateDirectorPanorama}"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "normalizeDirectorPanorama(file"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, 'panoramaProjection: "equirectangular"'),
+      "mechanism missing",
+    ).toBe(true);
     // The panorama is 2:1 equirectangular, which is what this test's own title
     // states and what the generator sends. `21:9` was never in the product and
     // is a cinematic crop, not an equirectangular projection.
-    expect(sourceContains(source, 'aspect_ratio: "2:1"'), "mechanism missing").toBe(true);
-    expect(sourceContains(source, 'kind: "model"'), "mechanism missing").toBe(true);
+    expect(
+      sourceContains(source, 'aspect_ratio: "2:1"'),
+      "mechanism missing",
+    ).toBe(true);
+    expect(sourceContains(source, 'kind: "model"'), "mechanism missing").toBe(
+      true,
+    );
   });
 
   it("inspects uploaded Director models and persists discovered animation metadata", () => {
-    expect(sourceContains(source, "inspectDirectorModelFile"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "animation: animationMetadata"), "mechanism missing").toBe(true);
+    expect(
+      sourceContains(source, "inspectDirectorModelFile"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "animation: animationMetadata"),
+      "mechanism missing",
+    ).toBe(true);
   });
 
   it("routes Director text-to-3D through the local runtime and stage callback", () => {
-    expect(sourceContains(source, "onGenerateModel={generateDirectorModel}"), `mechanism missing`).toBe(true);
-    expect(sourceContains(source, 'runtimeApiUrl("/api/v1/director-model-generations")'), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "body: JSON.stringify({ actionRunId, projectId: project.id, ...input })"), "mechanism missing").toBe(true);
+    expect(
+      sourceContains(source, "onGenerateModel={generateDirectorModel}"),
+      `mechanism missing`,
+    ).toBe(true);
+    expect(
+      sourceContains(
+        source,
+        'runtimeApiUrl("/api/v1/director-model-generations")',
+      ),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(
+        source,
+        "body: JSON.stringify({ actionRunId, projectId: project.id, ...input })",
+      ),
+      "mechanism missing",
+    ).toBe(true);
   });
 
   it("sizes Director Stage shot nodes to the captured aspect ratio", () => {
-    expect(sourceContains(source, "calculateDimensionsFromAspectRatio"), "mechanism missing").toBe(true);
+    const captureCallback =
+      source.match(
+        /const captureDirectorStageShot = useCallback\([\s\S]*?\n {2}\);/,
+      )?.[0] ?? "";
+
+    expect(
+      sourceContains(source, "calculateDimensionsFromAspectRatio"),
+      "mechanism missing",
+    ).toBe(true);
     expect(source).toMatch(
       /const shotNodeSize = calculateDimensionsFromAspectRatio\(\s*input\.aspectRatio,?\s*\)/,
     );
-    expect(sourceContains(source, "width: shotNodeSize.width"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "height: shotNodeSize.height"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "aspectRatio: input.aspectRatio"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "timeSeconds: input.timeSeconds"), "mechanism missing").toBe(true);
+    expect(
+      sourceContains(source, "width: shotNodeSize.width"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "height: shotNodeSize.height"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "aspectRatio: input.aspectRatio"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(
+        source,
+        "sourceDirectorStageTimeSeconds: input.timeSeconds",
+      ),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(captureCallback, 'op: "shot.register"'),
+      "must not reappear",
+    ).toBe(false);
+    expect(
+      sourceContains(captureCallback, "applyDirectorStageState"),
+      "must not reappear",
+    ).toBe(false);
+    expect(
+      sourceContains(captureCallback, "sourceDirectorStageRevisionId"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(captureCallback, "publishDirectorStageOutputFile"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(captureCallback, "importProjectAssetFile"),
+      "must not reappear",
+    ).toBe(false);
+    expect(
+      sourceContains(captureCallback, "addNodeToCanvas"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(captureCallback, "addEdge"),
+      "mechanism missing",
+    ).toBe(true);
   });
 
-  it("publishes Director video exports back to the Stage node for downstream generation", () => {
+  it("publishes Director video exports as independent referenced output nodes", () => {
     const exportCallback =
-      source.match(/const exportDirectorStageVideo = useCallback\([\s\S]*?\n {2}\);/)?.[0] ?? "";
+      source.match(
+        /const exportDirectorStageVideo = useCallback\([\s\S]*?\n {2}\);/,
+      )?.[0] ?? "";
 
-    expect(exportCallback).toContain("importProjectAssetFile");
-    expect(exportCallback).toContain("outputVideoAssetId");
+    expect(exportCallback).toContain("publishDirectorStageOutputFile");
+    expect(exportCallback).not.toContain("importProjectAssetFile");
+    expect(exportCallback).toContain('type: "video"');
+    expect(exportCallback).toContain("assetId");
+    expect(exportCallback).toContain("addNodeToCanvas");
+    expect(exportCallback).toContain("addEdge");
+    expect(exportCallback).toContain("updateEdge");
+    expect(exportCallback).not.toContain("outputPatch");
+    expect(exportCallback).not.toContain(
+      "loroSync.updateNode(owner.actionNodeId",
+    );
+    expect(exportCallback).not.toContain("outputVideoAssetId");
     expect(exportCallback).not.toContain("outputVideoSrc");
     expect(exportCallback).not.toContain("outputVideoPreviewUrl");
     expect(exportCallback).toContain("createDirectorReferencePacket");
@@ -121,8 +320,9 @@ describe("ProjectEditor workspace model", () => {
     expect(exportCallback).toContain("sourceDirectorStageShotId");
     expect(exportCallback).toContain("autoRun: true");
     expect(exportCallback).toContain("render.referenceFrames");
-    expect(exportCallback).toContain('op: "shot.register"');
-    expect(exportCallback).toContain("loroSync.applyDirectorStageState");
+    expect(exportCallback).toContain("referenceStills");
+    expect(exportCallback).not.toContain('op: "shot.register"');
+    expect(exportCallback).not.toContain("loroSync.applyDirectorStageState");
     expect(exportCallback).toContain("loroSync.updateNode");
     expect(exportCallback).not.toContain("createTimeline");
     expect(exportCallback).not.toContain("attachTimeline");
@@ -131,15 +331,37 @@ describe("ProjectEditor workspace model", () => {
   });
 
   it("opens a Timeline as an editor document instead of an information surface", () => {
-    expect(sourceContains(source, "timelines={loroSync.timelines}"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "applyTimelineState"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "onOpenTimeline={openTimelineFromCanvasAction}"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "onOpenCanvas={selectCanvasFromNavigator}"), `mechanism missing`).toBe(true);
-    expect(sourceContains(source, "onExit={exitTimelineEditor}"), "must not reappear").toBe(false);
-    expect(sourceContains(source, 
-      "standaloneTimelines={loroSync.standaloneTimelines}",
-    ), "must not reappear").toBe(false);
-    expect(sourceContains(source, "selectTimelineMediaInputs({"), "mechanism missing").toBe(true);
+    expect(
+      sourceContains(source, "timelines={loroSync.timelines}"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "applyTimelineState"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "onOpenTimeline={openTimelineFromCanvasAction}"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "onOpenCanvas={selectCanvasFromNavigator}"),
+      `mechanism missing`,
+    ).toBe(true);
+    expect(
+      sourceContains(source, "onExit={exitTimelineEditor}"),
+      "must not reappear",
+    ).toBe(false);
+    expect(
+      sourceContains(
+        source,
+        "standaloneTimelines={loroSync.standaloneTimelines}",
+      ),
+      "must not reappear",
+    ).toBe(false);
+    expect(
+      sourceContains(source, "selectTimelineMediaInputs({"),
+      "mechanism missing",
+    ).toBe(true);
     const timelineSurface =
       source.match(/<ProjectTimelineEditorSurface[\s\S]*?\/>/)?.[0] ?? "";
     expect(timelineSurface).toContain("mediaInputs={timelineMediaInputs}");
@@ -149,20 +371,43 @@ describe("ProjectEditor workspace model", () => {
   });
 
   it("attributes Timeline exports to the signed-in user with a local owner fallback", () => {
-    expect(sourceContains(source, "betterAuthClient.useSession()"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "session.data?.user?.id || project.ownerId"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "actorUserId: timelineExportActorUserId"), "mechanism missing").toBe(true);
+    expect(
+      sourceContains(source, "betterAuthClient.useSession()"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "session.data?.user?.id || project.ownerId"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "actorUserId: timelineExportActorUserId"),
+      "mechanism missing",
+    ).toBe(true);
   });
 
   it("uses one scope-aware picker for Canvas and Timeline media acquisition", () => {
-    expect(sourceContains(source, "<ScopedAssetPicker"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "buildScopedAssetSections({"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, 
-      "planAssetScopeCascade({ source: option.source, target })",
-    ), "mechanism missing").toBe(true);
-    expect(sourceContains(source, 
-      'setAssetPickerTarget({ kind: "canvas", canvasId: activeCanvasId })',
-    ), "mechanism missing").toBe(true);
+    expect(
+      sourceContains(source, "<ScopedAssetPicker"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "buildScopedAssetSections({"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(
+        source,
+        "planAssetScopeCascade({ source: option.source, target })",
+      ),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(
+        source,
+        'setAssetPickerTarget({ kind: "canvas", canvasId: activeCanvasId })',
+      ),
+      "mechanism missing",
+    ).toBe(true);
   });
 
   it("keeps collapsed editors full-width and reserves padding for the rounded floating Copilot", () => {
@@ -172,38 +417,88 @@ describe("ProjectEditor workspace model", () => {
     expect(source).toMatch(
       /const copilotWorkspaceRight\s*=\s*shouldReserveCopilotSpace[\s\S]*?sidebarWidth \+ COPILOT_PANEL_GUTTER_PX \* 2[\s\S]*?: 0/,
     );
-    expect(sourceContains(source, 
-      'collapsedLauncherPlacement={workspaceSurface.kind === "canvas" ? "canvas" : "header"}',
-    ), `mechanism missing`).toBe(true);
-    expect(sourceContains(source, "headerEndInset={copilotHeaderInset}"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "COPILOT_COLLAPSED_RAIL_WIDTH_PX"), "must not reappear").toBe(false);
+    expect(
+      sourceContains(
+        source,
+        'collapsedLauncherPlacement={workspaceSurface.kind === "canvas" ? "canvas" : "header"}',
+      ),
+      `mechanism missing`,
+    ).toBe(true);
+    expect(
+      sourceContains(source, "headerEndInset={copilotHeaderInset}"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "COPILOT_COLLAPSED_RAIL_WIDTH_PX"),
+      "must not reappear",
+    ).toBe(false);
     expect(source).toMatch(
       /data-copilot-layout=\{\s*shouldReserveCopilotSpace\s*\?\s*"reserved-floating"\s*:\s*"overlay"\s*\}/,
     );
     expect(source).toMatch(
       /id="project-workspace-shell"[\s\S]*?style=\{\{[\s\S]*?right: copilotWorkspaceRight/,
     );
-    expect(sourceContains(source, "data-copilot-resizing={isCopilotResizing}"), "must not reappear").toBe(false);
-    expect(sourceContains(source, 
-      "onResizeStateChange={handleCopilotResizeStateChange}",
-    ), "mechanism missing").toBe(true);
-    expect(sourceContains(source, 
-      "onWidthPreview={handleCopilotWidthPreview}",
-    ), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "onWidthChange={handleCopilotWidthChange}"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, 
-      'shell.style.right = `${nextWidth + COPILOT_PANEL_GUTTER_PX * 2}px`',
-    ), "mechanism missing").toBe(true);
-    expect(sourceContains(source, 
-      'shell.dataset.copilotResizing = resizing ? "true" : "false"',
-    ), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "[data-copilot-width-constraint]"), "must not reappear").toBe(false);
-    expect(sourceContains(source, "measureMinContentWidth"), "must not reappear").toBe(false);
-    expect(sourceContains(source, "copilotWorkspaceMinWidthRef"), "must not reappear").toBe(false);
-    expect(sourceContains(source, "STRUCTURED_WORKSPACE_MIN_WIDTH"), "must not reappear").toBe(false);
-    expect(sourceContains(source, "rightInset={copilotWorkspaceInset}"), "must not reappear").toBe(false);
-    expect(sourceContains(source, 'layoutMode="floating"'), "mechanism missing").toBe(true);
-    expect(sourceContains(source, 'layoutMode="docked"'), "must not reappear").toBe(false);
+    expect(
+      sourceContains(source, "data-copilot-resizing={isCopilotResizing}"),
+      "must not reappear",
+    ).toBe(false);
+    expect(
+      sourceContains(
+        source,
+        "onResizeStateChange={handleCopilotResizeStateChange}",
+      ),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "onWidthPreview={handleCopilotWidthPreview}"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "onWidthChange={handleCopilotWidthChange}"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(
+        source,
+        "shell.style.right = `${nextWidth + COPILOT_PANEL_GUTTER_PX * 2}px`",
+      ),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(
+        source,
+        'shell.dataset.copilotResizing = resizing ? "true" : "false"',
+      ),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "[data-copilot-width-constraint]"),
+      "must not reappear",
+    ).toBe(false);
+    expect(
+      sourceContains(source, "measureMinContentWidth"),
+      "must not reappear",
+    ).toBe(false);
+    expect(
+      sourceContains(source, "copilotWorkspaceMinWidthRef"),
+      "must not reappear",
+    ).toBe(false);
+    expect(
+      sourceContains(source, "STRUCTURED_WORKSPACE_MIN_WIDTH"),
+      "must not reappear",
+    ).toBe(false);
+    expect(
+      sourceContains(source, "rightInset={copilotWorkspaceInset}"),
+      "must not reappear",
+    ).toBe(false);
+    expect(
+      sourceContains(source, 'layoutMode="floating"'),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, 'layoutMode="docked"'),
+      "must not reappear",
+    ).toBe(false);
     expect(source.match(/<ChatbotCopilot/g)).toHaveLength(1);
 
     const copilotKey =
@@ -212,19 +507,40 @@ describe("ProjectEditor workspace model", () => {
   });
 
   it("delegates the Home composer prompt to the Project composer without creating a cloud session", () => {
-    expect(sourceContains(source, "initialPrompt={chatInitialPrompt}"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "handleCreateSession(initialPrompt)"), "must not reappear").toBe(false);
+    expect(
+      sourceContains(source, "initialPrompt={chatInitialPrompt}"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "handleCreateSession(initialPrompt)"),
+      "must not reappear",
+    ).toBe(false);
   });
 
   it("warms the Timeline editor bundle after project data becomes available", () => {
-    expect(sourceContains(source, "preloadTimelineEditor"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "requestIdleCallback"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "cancelIdleCallback"), "mechanism missing").toBe(true);
+    expect(
+      sourceContains(source, "preloadTimelineEditor"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "requestIdleCallback"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "cancelIdleCallback"),
+      "mechanism missing",
+    ).toBe(true);
   });
 
   it("selects one project asset at a time and accepts sidebar asset drops on Canvas", () => {
-    expect(sourceContains(source, "onSelectAsset={(assetId) =>"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, 'workspaceSurface.kind === "asset"'), "mechanism missing").toBe(true);
+    expect(
+      sourceContains(source, "onSelectAsset={(assetId) =>"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, 'workspaceSurface.kind === "asset"'),
+      "mechanism missing",
+    ).toBe(true);
     expect(source).toMatch(
       /onDragEnterCapture=\{\s*handleCanvasAssetDragEnter\s*\}/,
     );
@@ -234,21 +550,57 @@ describe("ProjectEditor workspace model", () => {
     expect(source).toMatch(
       /onDragLeaveCapture=\{\s*handleCanvasAssetDragLeave\s*\}/,
     );
-    expect(sourceMatches(source, /onDropCapture=\{\s*handleCanvasAssetDrop\s*\}/), "mechanism missing").toBe(true);
-    expect(sourceContains(source, 'data-testid="canvas-asset-drop-target"'), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "onDragEndCapture={clearCanvasAssetDropTarget}"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "<ProjectAssetsSurface"), "must not reappear").toBe(false);
+    expect(
+      sourceMatches(source, /onDropCapture=\{\s*handleCanvasAssetDrop\s*\}/),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, 'data-testid="canvas-asset-drop-target"'),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "onDragEndCapture={clearCanvasAssetDropTarget}"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "<ProjectAssetsSurface"),
+      "must not reappear",
+    ).toBe(false);
   });
 
   it("feeds asset Preview a project-wide relation graph and real workspace navigation", () => {
-    expect(sourceContains(source, "readAssetRelationGraph("), "mechanism missing").toBe(true);
-    expect(sourceContains(source, 'loroSync.doc.getMap("nodes").entries()'), "mechanism missing").toBe(true);
-    expect(sourceContains(source, 'loroSync.doc.getMap("edges").entries()'), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "relationNodes={assetRelationGraph.nodes}"), `mechanism missing`).toBe(true);
-    expect(sourceContains(source, "relationEdges={assetRelationGraph.edges}"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "onOpenCanvas={openAssetRelationCanvas}"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "onOpenTimeline={openAssetRelationTimeline}"), "mechanism missing").toBe(true);
-    expect(sourceContains(source, "onOpenAsset={openRelatedAsset}"), "mechanism missing").toBe(true);
+    expect(
+      sourceContains(source, "readAssetRelationGraph("),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, 'loroSync.doc.getMap("nodes").entries()'),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, 'loroSync.doc.getMap("edges").entries()'),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "relationNodes={assetRelationGraph.nodes}"),
+      `mechanism missing`,
+    ).toBe(true);
+    expect(
+      sourceContains(source, "relationEdges={assetRelationGraph.edges}"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "onOpenCanvas={openAssetRelationCanvas}"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "onOpenTimeline={openAssetRelationTimeline}"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "onOpenAsset={openRelatedAsset}"),
+      "mechanism missing",
+    ).toBe(true);
   });
 
   it("does not clear the live projection when returning to the already-active Canvas", () => {
@@ -263,15 +615,21 @@ describe("ProjectEditor workspace model", () => {
     const activateSource = source.slice(start, end);
 
     // Re-selecting the current Canvas must not blank the live graph.
-    expect(sourceMatches(
-      activateSource,
-      /if \(activeCanvasIdRef\.current !== canvasId\) \{ setNodes\(\[\]\); setEdges\(\[\]\); setActiveCanvasId\(canvasId\); \}/,
-    ), "mechanism missing").toBe(true);
+    expect(
+      sourceMatches(
+        activateSource,
+        /if \(activeCanvasIdRef\.current !== canvasId\) \{ setNodes\(\[\]\); setEdges\(\[\]\); setActiveCanvasId\(canvasId\); \}/,
+      ),
+      "mechanism missing",
+    ).toBe(true);
     // And `selectCanvas` must go through it rather than clearing state itself.
     const selectStart = end;
     const selectEnd = source.indexOf("useCallback", selectStart + 40);
     const selectSource = source.slice(selectStart, selectEnd);
-    expect(sourceContains(selectSource, "activateCanvasData(canvasId)"), "mechanism missing").toBe(true);
+    expect(
+      sourceContains(selectSource, "activateCanvasData(canvasId)"),
+      "mechanism missing",
+    ).toBe(true);
     expect(sourceContains(selectSource, "setNodes([])")).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 export const CLASH_MCP_COMMAND_IDS = [
   "workspace",
+  "plugin",
   "assets",
   "canvas",
   "director",
@@ -21,6 +22,12 @@ export const CLASH_MCP_COMMANDS: readonly ClashMcpCommand[] = [
     id: "workspace",
     title: "Workspace",
     useWhen: "binding or inspecting the local Clash project workspace",
+  },
+  {
+    id: "plugin",
+    title: "Plugins",
+    useWhen:
+      "discovering, creating, validating, activating, installing, rolling back, or removing executable Clash plugins",
   },
   {
     id: "assets",
@@ -63,6 +70,7 @@ export type ClashMcpCommandMenu<T> = {
 export function classifyClashMcpTool(name: string): ClashMcpToolFamily {
   if (name.startsWith("clash_workspace_") || name.startsWith("clash_studio_"))
     return "workspace";
+  if (name.startsWith("clash_plugin_")) return "plugin";
   if (name.startsWith("clash_assets_")) return "assets";
   if (name.startsWith("clash_canvas_")) return "canvas";
   if (name.startsWith("clash_director_")) return "director";

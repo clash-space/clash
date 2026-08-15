@@ -28,9 +28,20 @@ describe("artifact gallery", () => {
       writeFile(join(caseRoot, "workspace", "poses", "start.png"), "png"),
       writeFile(join(caseRoot, "workspace", "character.json"), "{}"),
       writeFile(join(caseRoot, "logs", "events.jsonl"), "{}\n"),
+      writeFile(join(caseRoot, "attempt.json"), "{}\n"),
+      writeFile(join(caseRoot, "result-bundle.json"), "{}\n"),
       writeFile(
         join(caseRoot, "logs", "trajectory.json"),
         `${JSON.stringify({
+          summary: {
+            actionCount: 20,
+            lifecycleEventCount: 20,
+            invocationCount: 10,
+            failedActionCount: 2,
+            failedInvocationCount: 2,
+            repairCount: 1,
+            turnCount: 1,
+          },
           usability: {
             successfulClashActionCount: 8,
             failedClashActionCount: 2,
@@ -52,14 +63,14 @@ describe("artifact gallery", () => {
       schemaVersion: 1,
       suiteId: "creative-v2",
       runId: "run-1",
-      status: "pass",
+      status: "pending-review",
       startedAt: "2026-08-07T00:00:00.000Z",
       finishedAt: "2026-08-07T00:01:00.000Z",
       cases: [
         {
           id: "mg-wave",
           workspace: join(caseRoot, "workspace"),
-          status: "pass",
+          status: "pending-review",
           attempt: 2,
           forcePending: true,
           failure: {
@@ -83,6 +94,8 @@ describe("artifact gallery", () => {
             requiredProductOperations: [],
             observedProductOperations: [],
             missingProductOperations: [],
+            forbiddenProductOperations: [],
+            observedForbiddenProductOperations: [],
             requiredMcpTools: [],
             observedMcpTools: [],
             missingMcpTools: [],
@@ -151,16 +164,23 @@ describe("artifact gallery", () => {
               invalidArtifactIds: [],
             },
           },
+          qualityReview: {
+            required: true,
+            status: "pending",
+            detail:
+              "Technical evidence passed; independent content-effect review is still required.",
+          },
           outcome: {
             schemaVersion: 1,
             caseId: "mg-wave",
             objective: "wave",
-            status: "achieved",
+            status: "pending-review",
             score: 100,
             passScore: 80,
             agentStatus: "completed",
             evaluationStatus: "pass",
             executionStatus: "pass",
+            qualityReviewStatus: "pending",
             completedAt: "2026-08-07T00:01:00.000Z",
           },
         },
@@ -181,6 +201,14 @@ describe("artifact gallery", () => {
     expect(html).toContain("codex-command line 17");
     expect(html).toContain("Automated evidence score");
     expect(html).toContain("not an aesthetic score");
+    expect(html).toContain("Attempt is immutable and score-free");
+    expect(html).toContain("Current selected aggregate view · 100/100");
+    expect(html).toContain("Attempt JSON");
+    expect(html).toContain("Result Bundle");
+    expect(html).toContain("PENDING REVIEW");
+    expect(html).toContain(
+      "independent content-effect review is still required",
+    );
     expect(html).toContain("pose-coverage");
     expect(html).toContain("foreground coverage 0.02/0.05");
     expect(html).toContain("Attempt 2");
@@ -188,6 +216,8 @@ describe("artifact gallery", () => {
     expect(html).toContain("evaluation failure");
     expect(html).toContain("Tool usability diagnostics");
     expect(html).toContain("Non-gating");
+    expect(html).toContain("10 tool invocations");
+    expect(html).toContain("2 failed tool invocations");
     expect(html).toContain("2 failed Clash actions");
     expect(html).toContain("READ_REQUIRED");
     expect(html).toContain("2.40 MB contract responses");

@@ -6,6 +6,7 @@ import {
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { parse as parseYaml } from "yaml";
+import { timelineDslDocumentFromArtifact } from "./timeline-artifact";
 
 import {
   loadSubmission,
@@ -119,7 +120,9 @@ function parseDirector(
     context.directorCache.set(artifactId, json);
     return json;
   }
-  const parsed = DirectorStageStateSchema.safeParse(json.value);
+  const parsed = DirectorStageStateSchema.safeParse(
+    directorStageArtifactState(json.value),
+  );
   let result: ParsedArtifact<DirectorStageState>;
   if (!parsed.success) {
     result = {
@@ -138,6 +141,43 @@ function parseDirector(
   }
   context.directorCache.set(artifactId, result);
   return result;
+}
+
+export function directorStageArtifactState(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  if (
+    Object.keys(record).length === 1 &&
+    record.stage &&
+    typeof record.stage === "object" &&
+    !Array.isArray(record.stage)
+  ) {
+    const stage = record.stage as Record<string, unknown>;
+    const owner =
+      stage.owner &&
+      typeof stage.owner === "object" &&
+      !Array.isArray(stage.owner)
+        ? (stage.owner as Record<string, unknown>)
+        : undefined;
+    if (
+      typeof stage.id === "string" &&
+      typeof stage.name === "string" &&
+      typeof stage.revisionId === "string" &&
+      (owner?.kind === "project" ||
+        (owner?.kind === "canvas-action" &&
+          typeof owner.canvasId === "string" &&
+          typeof owner.actionNodeId === "string")) &&
+      stage.state !== undefined
+    ) {
+      return stage.state;
+    }
+  }
+  return typeof record.id === "string" &&
+    typeof record.name === "string" &&
+    typeof record.revisionId === "string" &&
+    record.state !== undefined
+    ? record.state
+    : value;
 }
 
 function directorStageSemanticIssues(stage: DirectorStageState): string[] {
@@ -395,7 +435,9 @@ function parseTimeline(
 
   let raw: unknown;
   try {
-    raw = parseYaml(artifact.value.content!.toString("utf8"));
+    raw = timelineDslDocumentFromArtifact(
+      parseYaml(artifact.value.content!.toString("utf8")),
+    );
   } catch (error) {
     const result = {
       ok: false as const,
@@ -574,11 +616,9 @@ function evaluateDirectorStage(
     failures.push(`objects ${stage.objects.length}/${rubric.minObjects}`);
   if (stage.cameras.length < (rubric.minCameras ?? 0))
     failures.push(`cameras ${stage.cameras.length}/${rubric.minCameras}`);
-  if (stage.shots.length < (rubric.minCapturedShots ?? 0)) {
-    failures.push(
-      `captured shots ${stage.shots.length}/${rubric.minCapturedShots}`,
-    );
-  }
+  // `minCapturedShots` remains parseable only for sealed Attempt compatibility.
+  // Action capture evidence lives in submitted artifacts and trusted readback,
+  // never in the mutable source Stage's legacy `shots` collection.
   const sequenceShots = stage.shotSequence?.length ?? 0;
   if (sequenceShots < (rubric.minSequenceShots ?? 0)) {
     failures.push(`sequence shots ${sequenceShots}/${rubric.minSequenceShots}`);
@@ -603,7 +643,6 @@ function evaluateDirectorStage(
   const metrics = {
     objects: stage.objects.length,
     cameras: stage.cameras.length,
-    capturedShots: stage.shots.length,
     sequenceShots,
     animatedTracks,
     actionClips: actionClips.length,
@@ -1163,12 +1202,6 @@ function evaluateMixedLineage(
     "sourceAssetId",
     "derivedAssetId",
   ]);
-  const directorAssetIds = new Set(
-    director.value.shots.map((shot) => shot.assetId),
-  );
-  const linkedDirectorAssets = [...directorAssetIds].filter((id) =>
-    timelineAssetIds.has(id),
-  );
   const remotionItems = items.filter(
     (item) =>
       item.type === "composition" &&
@@ -1178,8 +1211,8 @@ function evaluateMixedLineage(
   );
   const componentLinked = remotionItems.length > 0;
   const failures: string[] = [];
-  if (linkedDirectorAssets.length === 0)
-    failures.push("no Director shot asset is referenced by the Timeline");
+  if (timelineAssetIds.size === 0)
+    failures.push("Timeline does not reference a Project Asset output");
   if (!componentLinked)
     failures.push(
       "Timeline does not contain a live Remotion sourceNodeId reference",
@@ -1188,10 +1221,10 @@ function evaluateMixedLineage(
     rubric,
     failures.length === 0,
     failures.length === 0
-      ? "Director, Timeline, and Remotion MG lineage is connected"
+      ? "Timeline Project Asset and Remotion source references are connected"
       : failures.join("; "),
     {
-      directorLinks: linkedDirectorAssets.length,
+      timelineAssetRefs: timelineAssetIds.size,
       componentLinked,
       remotionItems: remotionItems.length,
     },

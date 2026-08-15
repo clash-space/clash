@@ -1,28 +1,129 @@
-import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { LoroDoc } from "loro-crdt";
+import {
+  createProjectDirectorStage,
+  type ResolvedAsset,
+} from "@clash/shared-types";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { DirectorStageProvider } from "../DirectorStageContext";
+import { ProjectProvider } from "../ProjectContext";
+import DirectorStageNode from "./DirectorStageNode";
+
+const mocks = vi.hoisted(() => ({
+  doc: null as LoroDoc | null,
+  resolvedLegacyVideo: {
+    id: "asset-video",
+    kind: "video",
+    metadata: {},
+    lifecycle: { state: "active" },
+    status: "ready",
+    url: "https://host.example/assets/asset-video",
+  } satisfies ResolvedAsset,
+}));
+
+vi.mock("@xyflow/react", () => ({
+  Handle: () => null,
+  Position: { Right: "right" },
+}));
+
+vi.mock("../LoroSyncContext", () => ({
+  useOptionalLoroSyncContext: () => (mocks.doc ? { doc: mocks.doc } : null),
+}));
+
+vi.mock("../../lib/hooks/useAsset", () => ({
+  useAsset: () => mocks.resolvedLegacyVideo,
+}));
+
+const baseProps = {
+  id: "director-stage-node",
+  selected: false,
+  type: "director-stage",
+  dragging: false,
+  draggable: true,
+  selectable: true,
+  deletable: true,
+  zIndex: 1,
+  isConnectable: true,
+  positionAbsoluteX: 0,
+  positionAbsoluteY: 0,
+  data: {
+    stageId: "stage-1",
+    outputVideoAssetId: "asset-video",
+    directorReferencePacket: {
+      schemaVersion: 1,
+      stageId: "stage-1",
+      stageRevisionId: "stage-revision-1",
+      exportedAt: "2026-08-15T00:00:00.000Z",
+      aspectRatio: "16:9",
+      durationSeconds: 6,
+      fps: 30,
+      cameraIds: ["camera-1"],
+      referenceVideo: {
+        assetId: "asset-video",
+        mimeType: "video/webm",
+      },
+      referenceStills: [],
+      shotSpec: { shots: [] },
+    },
+  },
+} as const;
+
+function renderDirectorStage(onOpenDirectorStage = vi.fn()) {
+  return {
+    onOpenDirectorStage,
+    ...render(
+      <ProjectProvider projectId="project-1" initialModelCatalog={[]}>
+        <DirectorStageProvider onOpenDirectorStage={onOpenDirectorStage}>
+          <DirectorStageNode {...baseProps} />
+        </DirectorStageProvider>
+      </ProjectProvider>,
+    ),
+  };
+}
 
 describe("DirectorStageNode", () => {
-  const source = readFileSync(
-    new URL("./DirectorStageNode.tsx", import.meta.url),
-    "utf8",
-  );
-
-  it("opens its independently stored Stage through project context", () => {
-    expect(source).toContain("readProjectDirectorStage");
-    expect(source).toContain("openDirectorStage(stage.id)");
-    expect(source).toContain("Open Director Stage");
-    expect(source).not.toContain("objects:");
+  beforeEach(() => {
+    mocks.doc = new LoroDoc();
+    const created = createProjectDirectorStage(mocks.doc, {
+      id: "stage-1",
+      name: "Courtyard blocking",
+      state: {
+        schemaVersion: 1,
+        scene: {
+          backgroundColor: "#171816",
+          grid: { visible: true, snap: false, size: 1 },
+        },
+        objects: [],
+        cameras: [],
+        shots: [],
+      },
+    });
+    if (!created.ok) throw new Error(created.error);
   });
 
-  it("exposes the latest exported reference video on its Canvas output", () => {
-    expect(source).toContain("DirectorReferencePacketSchema.safeParse");
-    expect(source).toContain("referencePacket?.referenceVideo.assetId");
-    expect(source).toContain("useAsset(projectId, outputVideoAssetId)");
-    expect(source).toContain("outputVideo?.url");
-    expect(source).not.toContain("referencePacket?.referenceVideo.src");
-    expect(source).not.toContain("referencePacket?.referenceVideo.previewUrl");
-    expect(source).toContain("outputVideoAssetId");
-    expect(source).toContain("outputVideoSrc");
-    expect(source).toContain("Reference video ready");
+  afterEach(() => {
+    cleanup();
+    mocks.doc = null;
+  });
+
+  it("renders Stage authoring state without treating legacy output fields as its preview", () => {
+    const { container } = renderDirectorStage();
+
+    expect(screen.getByText("Courtyard blocking")).toBeTruthy();
+    expect(screen.getByText("0 objects")).toBeTruthy();
+    expect(screen.getByText("0 cameras")).toBeTruthy();
+    expect(screen.queryByText("Reference video ready")).toBeNull();
+    expect(container.querySelector("video")).toBeNull();
+  });
+
+  it("opens the independently stored Stage", () => {
+    const { onOpenDirectorStage } = renderDirectorStage();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open Director Stage" }),
+    );
+    expect(onOpenDirectorStage).toHaveBeenCalledWith("stage-1");
   });
 });

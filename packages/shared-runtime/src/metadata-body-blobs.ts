@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
+import { publishContentAddressedFile } from "./content-addressed-file.js";
 
 /**
  * Content-addressed bodies for asset metadata, mirroring the text revision blob
@@ -19,10 +21,19 @@ export function metadataBodyContentHash(body: string): string {
   return `sha256:${createHash("sha256").update(body, "utf8").digest("hex")}`;
 }
 
-export function metadataBodyBlobPath(dataDir: string, contentHash: string): string {
+export function metadataBodyBlobPath(
+  dataDir: string,
+  contentHash: string,
+): string {
   const digest = /^sha256:([a-f0-9]{64})$/u.exec(contentHash)?.[1];
-  if (!digest) throw new Error(`Invalid metadata body content hash: ${contentHash}`);
-  return join(dataDir, METADATA_BODY_BLOB_DIRNAME, digest.slice(0, 2), `${digest}.json`);
+  if (!digest)
+    throw new Error(`Invalid metadata body content hash: ${contentHash}`);
+  return join(
+    dataDir,
+    METADATA_BODY_BLOB_DIRNAME,
+    digest.slice(0, 2),
+    `${digest}.json`,
+  );
 }
 
 /**
@@ -61,30 +72,31 @@ export async function storeMetadataBody(options: {
 }): Promise<StoredMetadataBody> {
   const serialized = canonicalMetadataBody(options.body);
   const contentHash = metadataBodyContentHash(serialized);
-  if (options.expectedContentHash && options.expectedContentHash !== contentHash) {
+  if (
+    options.expectedContentHash &&
+    options.expectedContentHash !== contentHash
+  ) {
     throw new Error(
       `metadata body content hash mismatch: expected ${options.expectedContentHash}, got ${contentHash}`,
     );
   }
   const path = metadataBodyBlobPath(options.dataDir, contentHash);
   const bytes = Buffer.byteLength(serialized);
-  const existing = await readFile(path, "utf8").catch((error: unknown) => {
-    if (error && typeof error === "object" && (error as { code?: unknown }).code === "ENOENT") {
-      return null;
-    }
-    throw error;
-  });
-  if (existing !== null) {
-    // A hash collision is not survivable silently, so verify rather than assume.
-    if (existing !== serialized) {
-      throw new Error(`metadata body blob ${contentHash} already exists with different content`);
-    }
-    return { contentHash, path, bytes, deduplicated: true };
-  }
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, serialized, { encoding: "utf8", mode: 0o444 });
-  await chmod(path, 0o444).catch(() => undefined);
-  return { contentHash, path, bytes, deduplicated: false };
+  const publication = await publishContentAddressedFile(
+    path,
+    new TextEncoder().encode(serialized),
+    {
+      isValidForIdentity: (candidate) =>
+        metadataBodyContentHash(Buffer.from(candidate).toString("utf8")) ===
+        contentHash,
+    },
+  );
+  return {
+    contentHash,
+    path,
+    bytes,
+    deduplicated: publication === "existing",
+  };
 }
 
 export async function readMetadataBody(options: {
@@ -93,7 +105,11 @@ export async function readMetadataBody(options: {
 }): Promise<unknown> {
   const path = metadataBodyBlobPath(options.dataDir, options.contentHash);
   const serialized = await readFile(path, "utf8").catch((error: unknown) => {
-    if (error && typeof error === "object" && (error as { code?: unknown }).code === "ENOENT") {
+    if (
+      error &&
+      typeof error === "object" &&
+      (error as { code?: unknown }).code === "ENOENT"
+    ) {
       throw new Error(`metadata body ${options.contentHash} is not stored`);
     }
     throw error;

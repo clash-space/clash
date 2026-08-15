@@ -11,6 +11,8 @@
     ".": "./dist/index.js",
     "./plugin": {
       "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.mjs",
+      "require": "./dist/plugin.js",
       "default": "./dist/plugin.js"
     }
   },
@@ -18,7 +20,7 @@
     "node": ">=24.18.0 <25"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && tsup --config tsup.plugin-esm.config.ts",
     "bundle:agents": "node scripts/bundle-agents.mjs",
     "dev": "tsx --tsconfig tsconfig.dev.json src/index.ts",
     "typecheck": "tsc --noEmit",

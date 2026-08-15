@@ -496,10 +496,22 @@ export const DirectorStageStateSchema = z.object({
   }).optional(),
 });
 
+const DIRECTOR_STAGE_CAPTURE_OUTPUT_ERROR =
+  "Director Stage authoring state cannot contain capture outputs; use capture receipts and Project Asset references";
+
+/**
+ * Write contract for editable Stage state. `DirectorStageStateSchema` remains
+ * the legacy read contract so projects created before capture receipts can be
+ * opened and migrated without making Action outputs part of new revisions.
+ */
+export const DirectorStageAuthoringStateSchema = DirectorStageStateSchema.extend({
+  shots: z.array(DirectorStageShotSchema).max(0, DIRECTOR_STAGE_CAPTURE_OUTPUT_ERROR),
+});
+
 export type DirectorStageSchemaContract = "state" | "object" | "camera";
 
 const directorStageContractSchemas = {
-  state: { schema: DirectorStageStateSchema, name: "DirectorStageState" },
+  state: { schema: DirectorStageAuthoringStateSchema, name: "DirectorStageState" },
   object: { schema: DirectorStageObjectSchema, name: "DirectorStageObject" },
   camera: { schema: DirectorStageCameraSchema, name: "DirectorStageCamera" },
 } as const;
@@ -648,7 +660,6 @@ export type DirectorStageCommand =
   | { op: "camera.add"; camera: DirectorStageCamera }
   | { op: "camera.update"; cameraId: string; patch: DirectorStageCameraPatch }
   | { op: "camera.remove"; cameraId: string }
-  | { op: "shot.register"; shot: DirectorStageShot }
   | {
       op: "sequence-shot.upsert";
       durationSeconds: number;
@@ -908,7 +919,7 @@ export function createProjectDirectorStage(
   const name = input.name.trim();
   if (!id) return { ok: false, error: "Director Stage id is required" };
   if (!name) return { ok: false, error: "Director Stage name is required" };
-  const parsedState = DirectorStageStateSchema.safeParse(input.state);
+  const parsedState = DirectorStageAuthoringStateSchema.safeParse(input.state);
   if (!parsedState.success) {
     return { ok: false, error: parsedState.error.issues[0]?.message ?? "Invalid Director Stage state" };
   }
@@ -934,7 +945,7 @@ export function updateProjectDirectorStageState(
 ): ProjectDirectorStageMutationResult {
   const stage = readProjectDirectorStage(doc, stageId);
   if (!stage) return { ok: false, error: `Director Stage ${stageId} not found` };
-  const parsedState = DirectorStageStateSchema.safeParse(state);
+  const parsedState = DirectorStageAuthoringStateSchema.safeParse(state);
   if (!parsedState.success) {
     return { ok: false, error: parsedState.error.issues[0]?.message ?? "Invalid Director Stage state" };
   }
@@ -1078,11 +1089,21 @@ export function applyDirectorStageCommand(
   state: unknown,
   command: DirectorStageCommand,
 ): ApplyDirectorStageCommandResult {
+  if ((command as { op?: unknown }).op === "shot.register") {
+    return {
+      ok: false,
+      error:
+        "Director Stage capture outputs are external references and cannot be registered in Stage state",
+    };
+  }
   const parsedState = DirectorStageStateSchema.safeParse(state);
   if (!parsedState.success) {
     return { ok: false, error: parsedState.error.issues[0]?.message ?? "Invalid Director Stage state" };
   }
-  const next = structuredClone(parsedState.data);
+  const next = {
+    ...structuredClone(parsedState.data),
+    shots: [],
+  };
 
   if (command.op === "object.add") {
     const object = DirectorStageObjectSchema.safeParse(command.object);
@@ -1371,9 +1392,6 @@ export function applyDirectorStageCommand(
     if (!next.cameras.some((camera) => camera.id === command.cameraId)) {
       return { ok: false, error: `Camera ${command.cameraId} not found` };
     }
-    if (next.shots.some((shot) => shot.cameraId === command.cameraId)) {
-      return { ok: false, error: `Camera ${command.cameraId} has captured shots` };
-    }
     if (next.shotSequence?.some((shot) => shot.cameraId === command.cameraId)) {
       return { ok: false, error: `Camera ${command.cameraId} is used by the shot sequence` };
     }
@@ -1387,20 +1405,6 @@ export function applyDirectorStageCommand(
         (cue) => cue.cameraId !== command.cameraId,
       );
     }
-  }
-
-  if (command.op === "shot.register") {
-    const shot = DirectorStageShotSchema.safeParse(command.shot);
-    if (!shot.success) {
-      return { ok: false, error: shot.error.issues[0]?.message ?? "Invalid Director Stage shot" };
-    }
-    if (next.shots.some((candidate) => candidate.id === shot.data.id)) {
-      return { ok: false, error: `Shot ${shot.data.id} already exists` };
-    }
-    if (!next.cameras.some((camera) => camera.id === shot.data.cameraId)) {
-      return { ok: false, error: `Shot ${shot.data.id} uses missing camera ${shot.data.cameraId}` };
-    }
-    next.shots.push(shot.data);
   }
 
   if (command.op === "sequence-shot.upsert") {
@@ -1596,7 +1600,7 @@ export function applyDirectorStageCommand(
     );
   }
 
-  const validated = DirectorStageStateSchema.safeParse(next);
+  const validated = DirectorStageAuthoringStateSchema.safeParse(next);
   if (!validated.success) {
     return { ok: false, error: validated.error.issues[0]?.message ?? "Invalid Director Stage command result" };
   }

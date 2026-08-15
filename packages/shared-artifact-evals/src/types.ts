@@ -6,6 +6,12 @@ export const ARTIFACT_KINDS = [
   "audio",
   "image",
   "report",
+  "project-asset",
+  "canvas-state",
+  "generator",
+  "action-run",
+  "output-commit",
+  "document",
 ] as const;
 
 export type ArtifactKind = (typeof ARTIFACT_KINDS)[number];
@@ -34,8 +40,43 @@ export type BenchmarkOutcome = {
   deliverables: OutcomeDeliverable[];
 };
 
-export type BenchmarkCategory =
-  "director" | "timeline" | "mg-character" | "mixed";
+export type BenchmarkQualityCriterion = {
+  id: string;
+  description: string;
+  weight: number;
+  /** Exact deliverables whose evidence a reviewer may use. */
+  evidenceArtifactIds?: string[];
+  /** Resolve all submitted deliverables of these kinds into exact evidence. */
+  evidenceKinds?: ArtifactKind[];
+};
+
+export const BENCHMARK_CATEGORIES = [
+  "director",
+  "timeline",
+  "mg-character",
+  "mixed",
+  "asset",
+  "canvas",
+  "generator",
+  "document",
+  "workflow",
+  "plugin",
+  "text",
+] as const;
+
+export type BenchmarkCategory = (typeof BENCHMARK_CATEGORIES)[number];
+
+export const BENCHMARK_EXECUTION_LANES = [
+  "agent-product",
+  "blocked-contract",
+] as const;
+
+export type BenchmarkExecutionLane = (typeof BENCHMARK_EXECUTION_LANES)[number];
+
+export const BENCHMARK_EXECUTION_TRANSPORTS = ["auto", "mcp", "cli"] as const;
+
+export type BenchmarkExecutionTransport =
+  (typeof BENCHMARK_EXECUTION_TRANSPORTS)[number];
 
 export type BenchmarkInputFixture = {
   /** Directory relative to the benchmark suite root. */
@@ -63,10 +104,80 @@ export type BenchmarkInputFixtureProvenance = BenchmarkFixtureManifest & {
   receiptPath: ".clash/benchmark-input-fixture.json";
 };
 
+export type BenchmarkEnvironmentTrack = "functional" | "content-effect";
+
+export type BenchmarkEnvironmentWorkspace = {
+  format: "clash-workspace-v1";
+  /** Product Workspace bundle directory relative to the suite root. */
+  path: string;
+  bundleDigest: string;
+};
+
+type BenchmarkEnvironmentContractBase = {
+  track: BenchmarkEnvironmentTrack;
+  /** Public, credential-free execution requirements needed to reproduce the case. */
+  requirements?: {
+    plugins?: string[];
+    models?: string[];
+    providers?: string[];
+  };
+};
+
+type BenchmarkEnvironmentOutputs = {
+  modifiedWorkspace: true;
+  /** Adapter-native retained events; private reasoning is not implied. */
+  rawTrajectory: true;
+  normalizedTrajectory: "clash-normalized-v1";
+  atifTrajectory: "ATIF-v1.7-when-supported";
+  otlpTrace: "otlp-json";
+  /** Immutable, score-free record of one Agent rollout and its evidence. */
+  attempt: "clash-attempt-v1";
+};
+
+type LegacyBenchmarkEnvironmentOutputs = Omit<
+  BenchmarkEnvironmentOutputs,
+  "attempt"
+> & {
+  attemptManifest: "clash-attempt-result-bundle-v1";
+};
+
+/** Canonical benchmark Environment input. Workspace remains a product format. */
+export type BenchmarkAgentEnvironmentContract =
+  BenchmarkEnvironmentContractBase & {
+    profile: "clash-agent-environment-v1";
+    outputs: BenchmarkEnvironmentOutputs;
+    initialState?: {
+      workspace: BenchmarkEnvironmentWorkspace;
+    };
+    /**
+     * Runtime-only compatibility accessor installed by the schema parser.
+     * It is inherited and therefore never serialized into task or suite JSON.
+     * @deprecated Read `initialState.workspace`; remove with the runner migration.
+     */
+    inputWorkspace?: Omit<BenchmarkEnvironmentWorkspace, "format">;
+  };
+
+/** @deprecated Accepted as an input migration shape; never emitted by schemas. */
+export type LegacyBenchmarkEnvironmentContract =
+  BenchmarkEnvironmentContractBase & {
+    profile: "clash-workspace-v1";
+    outputs: BenchmarkEnvironmentOutputs | LegacyBenchmarkEnvironmentOutputs;
+    initialState?: never;
+    inputWorkspace?: Omit<BenchmarkEnvironmentWorkspace, "format">;
+  };
+
+export type BenchmarkEnvironmentContract =
+  BenchmarkAgentEnvironmentContract | LegacyBenchmarkEnvironmentContract;
+
 export type BenchmarkExecution = {
   profile: "clash-host";
+  lane?: BenchmarkExecutionLane;
+  /** Agent-facing Clash transport. Suite parsing canonicalizes omission to auto. */
+  transport?: BenchmarkExecutionTransport;
   /** Transport-neutral product mutations and reads, for example timeline.render. */
   requiredProductOperations?: string[];
+  /** Product operations whose trusted invocation is itself an execution failure. */
+  forbiddenProductOperations?: string[];
   /** Legacy transport-specific gate. Prefer requiredProductOperations. */
   requiredMcpTools?: string[];
   /** Legacy transport-specific gate. Prefer requiredProductOperations. */
@@ -88,8 +199,11 @@ export type BenchmarkExecution = {
     required: true;
     mechanism: string;
     artifactIds: string[];
+    /** Benchmark-owned Project Asset identity; never sourced from submission. */
+    expectedProjectAssetId?: string;
     description: string;
   };
+  environment?: BenchmarkEnvironmentContract;
 };
 
 type RubricBase<Type extends string> = {
@@ -115,6 +229,7 @@ export type DirectorStageRubric = RubricBase<"director-stage"> & {
   artifactId: string;
   minObjects?: number;
   minCameras?: number;
+  /** @deprecated Legacy no-op; capture evidence belongs to artifacts and trusted receipts. */
   minCapturedShots?: number;
   minSequenceShots?: number;
   minAnimatedTracks?: number;
@@ -187,7 +302,10 @@ export type ArtifactBenchmarkCase = {
   id: string;
   title: string;
   category: BenchmarkCategory;
+  tags?: string[];
   outcome: BenchmarkOutcome;
+  /** Semantic/creative criteria, distinct from technical acceptance gates. */
+  qualityCriteria?: BenchmarkQualityCriterion[];
   /** Legacy context appended after the outcome contract when present. */
   prompt?: string;
   passScore: number;
@@ -209,6 +327,93 @@ export type ArtifactEvidence = ArtifactDescriptor & {
   bytes: number;
   sha256: string;
 };
+
+export type QualityReviewStatus = "pending" | "pass" | "fail";
+
+export type QualityReviewArtifactBinding = {
+  id: string;
+  kind: ArtifactKind;
+  bytes: number;
+  sha256: string;
+};
+
+export type QualityReviewCriterion = {
+  id: string;
+  description: string;
+  weight: number;
+  evidenceArtifactIds: string[];
+};
+
+export type QualityReviewRequest = {
+  schemaVersion: 1;
+  kind: "clash.benchmark.quality-review-request";
+  benchmarkId: string;
+  objective: string;
+  criteriaSource: "quality-criteria";
+  criteria: QualityReviewCriterion[];
+  artifacts: QualityReviewArtifactBinding[];
+  passThreshold: number;
+  requestSha256: string;
+};
+
+export type QualityJudgeResponse = {
+  schemaVersion: 1;
+  criteria: Array<{
+    id: string;
+    score: number;
+    rationale: string;
+  }>;
+  overallRationale: string;
+};
+
+export type QualityReviewerProvenance = {
+  kind: "codex" | "human";
+  provider: string;
+  model: string;
+  adapterVersion: string;
+};
+
+export type QualityReviewResult = {
+  schemaVersion: 1;
+  kind: "clash.benchmark.quality-review-result";
+  benchmarkId: string;
+  requestSha256: string;
+  artifacts: QualityReviewArtifactBinding[];
+  reviewer: QualityReviewerProvenance;
+  provenance: {
+    promptSha256: string;
+    rubricSha256: string;
+    rawResponseSha256: string;
+  };
+  criteria: QualityJudgeResponse["criteria"];
+  aggregate: {
+    score: number;
+    threshold: number;
+    status: "pass" | "fail";
+  };
+  overallRationale: string;
+};
+
+export type QualityReviewReport = {
+  required: boolean;
+  status: QualityReviewStatus;
+  detail: string;
+  request?: QualityReviewRequest;
+  result?: QualityReviewResult;
+};
+
+export type CodexQualityReviewer = {
+  adapter: "codex";
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  inheritEnv?: boolean;
+  provider: "openai";
+  model: string;
+  timeoutMs?: number;
+};
+
+export type BenchmarkQualityReviewer = CodexQualityReviewer;
 
 export type EvaluationCheck = {
   id: string;
@@ -281,6 +486,8 @@ export type PiAgent = {
   skills?: string[];
   env?: Record<string, string>;
   inheritEnv?: boolean;
+  /** Explicit provider bound into the reproducible benchmark Environment. */
+  provider?: string;
   model?: string;
   clashHost?: {
     pluginRoot: string;
@@ -294,12 +501,13 @@ export type OutcomeResult = {
   schemaVersion: 1;
   caseId: string;
   objective: string;
-  status: "achieved" | "failed" | "blocked";
+  status: "achieved" | "failed" | "blocked" | "pending-review";
   score: number;
   passScore: number;
   agentStatus: AgentRunReport["status"];
   evaluationStatus: ArtifactEvaluationReport["status"];
   executionStatus: ProductExecutionReport["status"];
+  qualityReviewStatus?: QualityReviewStatus;
   completedAt: string;
 };
 
@@ -309,6 +517,8 @@ export type ProductExecutionReport = {
   requiredProductOperations: string[];
   observedProductOperations: ProductOperationObservation[];
   missingProductOperations: string[];
+  forbiddenProductOperations: string[];
+  observedForbiddenProductOperations: ProductOperationObservation[];
   requiredMcpTools: string[];
   observedMcpTools: string[];
   missingMcpTools: string[];
@@ -365,7 +575,7 @@ export type BenchmarkCaseReport = {
   id: string;
   workspace: string;
   inputFixture?: BenchmarkInputFixtureProvenance;
-  status: "pass" | "fail" | "blocked";
+  status: "pass" | "fail" | "blocked" | "pending-review";
   attempt?: number;
   /** A failed forced attempt is waiting for another explicit --force. */
   forcePending?: boolean;
@@ -373,6 +583,7 @@ export type BenchmarkCaseReport = {
   agent: AgentRunReport;
   execution: ProductExecutionReport;
   evaluation: ArtifactEvaluationReport;
+  qualityReview?: QualityReviewReport;
   outcome: OutcomeResult;
 };
 
@@ -380,10 +591,16 @@ export type BenchmarkSuiteReport = {
   schemaVersion: 1;
   suiteId: string;
   runId: string;
-  status: "pass" | "fail" | "blocked";
+  status: "pass" | "fail" | "blocked" | "pending-review";
   startedAt: string;
   finishedAt: string;
   resumed?: boolean;
+  qualityReview?: {
+    status: QualityReviewStatus;
+    pending: number;
+    passed: number;
+    failed: number;
+  };
   cases: BenchmarkCaseReport[];
 };
 
@@ -411,6 +628,9 @@ export type BenchmarkAttemptLedgerEntry = {
   status?: BenchmarkCaseReport["status"];
   failure?: BenchmarkCaseFailure;
   reportPath?: string;
+  attemptPath?: string;
+  attemptSha256?: string;
+  attemptDigest?: string;
 };
 
 export type EvaluateSubmissionInput = {
@@ -424,6 +644,8 @@ export type RunBenchmarkSuiteInput = {
   outputRoot: string;
   runId: string;
   agent: BenchmarkAgent;
+  /** Optional independent content-effect reviewer. Provider and model are explicit. */
+  qualityReviewer?: BenchmarkQualityReviewer;
   /** Continue a compatible existing run directory instead of replacing it. */
   resume?: boolean;
   /** Run one explicit retry for eligible failed cases in a resumed run. */

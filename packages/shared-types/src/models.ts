@@ -592,8 +592,8 @@ export const ProviderInputAdaptationSchema = z.object({
 });
 export type ProviderInputAdaptation = z.infer<typeof ProviderInputAdaptationSchema>;
 
-/** How a Provider binding can receive one Asset input from the Host. */
-export const ProviderAssetRepresentationSchema = z.enum(['provider-url', 'bytes']);
+/** How an exact Provider binding or Action executor can receive one Asset input from the Host. */
+export const ProviderAssetRepresentationSchema = z.enum(['provider-url', 'executor-url', 'bytes']);
 export type ProviderAssetRepresentation = z.infer<typeof ProviderAssetRepresentationSchema>;
 
 export const ProviderAssetInputSchema = z.object({

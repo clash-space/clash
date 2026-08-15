@@ -948,7 +948,13 @@ describe("Local Project Asset service", () => {
           tracks: [
             {
               id: "track-1",
-              items: [{ id: "clip-1", assetId: "timeline-source" }],
+              items: [{
+                id: "clip-1",
+                type: "video",
+                assetId: "timeline-source",
+                from: 0,
+                durationInFrames: 30,
+              }],
             },
           ],
         },

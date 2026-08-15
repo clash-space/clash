@@ -1,0 +1,23 @@
+{
+  "name": "Clash Action SDK",
+  "purpose": "Define and assemble executable Plugin contributions against the shared invocation, Host-context, and result ABI.",
+  "runtimeBoundary": "PluginModule is transport-neutral. A trusted Host may invoke it in-process; servePluginStdio adapts the same module to the process/stdio realm. Transport choice is not part of Plugin invocation semantics.",
+  "entrypoints": [
+    "src/index.ts",
+    "src/assemble.ts",
+    "src/define-plugin.ts",
+    "src/stdio-plugin.ts"
+  ],
+  "invariants": [
+    "Manifest declarations and implementation contributions must match exactly before invocation.",
+    "Every invocation receives Host-scoped capabilities; Plugin code never chooses another Plugin or account scope.",
+    "Module and stdio execution share one dispatch and result-normalization path.",
+    "Generator Actions use kind=action in both realms: defineAction is submit-only compatibility sugar, while defineActionExecutor exposes durable submit/poll/callback through the same ABI.",
+    "Importing or invoking a PluginModule does not start or access a transport."
+  ],
+  "verification": [
+    "pnpm --dir packages/action-sdk test",
+    "pnpm --dir packages/action-sdk build",
+    "pnpm prettier --check packages/action-sdk/src packages/action-sdk/agents.json"
+  ]
+}

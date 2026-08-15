@@ -63,16 +63,16 @@ function explicitlyUnsets(command: string, variable: string): boolean {
 
 function compactCommand(command: string): string {
   const compacted = command.replace(/\s+/gu, " ").trim();
-  return compacted.length <= 500
-    ? compacted
-    : `${compacted.slice(0, 497)}...`;
+  return compacted.length <= 500 ? compacted : `${compacted.slice(0, 497)}...`;
 }
 
 function containsClashInvocation(command: string): boolean {
-  return new RegExp(
-    String.raw`(^|${SHELL_BOUNDARY})(?:(?:[^\s;&|)"'\x60]+/)*)?(?:clash|clash-cli(?:\.cjs)?|clash-session)${SHELL_END_BOUNDARY}`,
-    "u",
-  ).test(command) || /\$\{?CLASH_CLI_ENTRY_PATH\}?/u.test(command);
+  return (
+    new RegExp(
+      String.raw`(^|${SHELL_BOUNDARY})(?:(?:[^\s;&|)"'\x60]+/)*)?(?:clash|clash-cli(?:\.cjs)?|clash-session)${SHELL_END_BOUNDARY}`,
+      "u",
+    ).test(command) || /\$\{?CLASH_CLI_ENTRY_PATH\}?/u.test(command)
+  );
 }
 
 function violationsInCommand(
@@ -102,7 +102,9 @@ function violationsInCommand(
   }
 
   for (const variable of IDENTITY_VARIABLES) {
-    if (assignmentValues(payload, variable.name).some((value) => value === "")) {
+    if (
+      assignmentValues(payload, variable.name).some((value) => value === "")
+    ) {
       violations.push({
         code: variable.clearedCode,
         source,
@@ -159,7 +161,10 @@ export function inspectBenchmarkIdentityIntegrity(input: {
   const agentEventsText = input.agentEventsText ?? input.codexEventsText ?? "";
   for (const { line, value: envelope } of jsonLines(agentEventsText)) {
     const item = asRecord(envelope.item);
-    if (item?.type === "command_execution" && typeof item.command === "string") {
+    if (
+      item?.type === "command_execution" &&
+      typeof item.command === "string"
+    ) {
       record(item.command, "codex-command", line);
     }
     const message = asRecord(envelope.message);

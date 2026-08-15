@@ -6,8 +6,13 @@
   ],
   "subdirectories": {},
   "key_files": {
+    "../apps/docs/guide/asset-generator-model.md": "Authoritative native Asset + Generator model, including Action purity, public Run/private Task split, plugin realms, and honest product migration status.",
+    "../apps/docs/guide/document-assets.md": "Authoritative typed Document Asset identity, registry, versioning/COW, attachment admission, plugin ABI, and legacy metadata boundary.",
+    "../apps/docs/guide/asset-system.md": "Authoritative Media Asset, Resource, publication, binding, collaboration, and lifecycle model.",
+    "../apps/docs/guide/durable-run-protocol.md": "Authoritative owner-private Durable Task graph, recovery, and publication protocol with native Generator versus legacy product projections kept distinct.",
+    "../apps/docs/guide/workspace-sharing.md": "Authoritative portable Workspace v1 bundle, security, identity, checkpoint, import reconstruction, and CLI contract; bundles never expose SQLite or Host storage topology.",
     "AGENTS_JSON_SPEC.md": "Specification for this documentation system (agents.json and file headers).",
-    "agents.md": "Historical Python task/agent architecture snapshot; current Asset and execution authority lives in the two guide documents.",
+    "agents.md": "Historical Python task/agent architecture snapshot; current Asset, Generator, Document, and execution authority lives in the four apps/docs guide documents listed above.",
     "agent-first-local-v1-api-surface-inventory.md": "Historical Local v1 CLI/API snapshot; use live CLI help and the current Asset and Durable Run guides.",
     "agent-first-local-v1-remote-compatibility-boundary.md": "Historical analysis of surfaces preserved during Local v1 convergence; not proof of current Cloud delivery.",
     "agent-file-projection-cas-spec.md": "Current agent working-tree, implicit observation, and COW contract; defers Asset identity and execution semantics to the authoritative guides.",
@@ -20,12 +25,12 @@
     "local-loro-host-architecture.md": "Local-first Loro architecture: Local Host, actors, persistent replicas, cloud alignment, and presence boundaries.",
     "local-host-cli-implementation-plan.md": "Implementation plan for project context, Local Host persistence, CLI commands, actor presence, and cloud code reuse.",
     "official-custom-views-action-runtime-plan.md": "Superseded proposal for Official/Custom Views; its AssetRevision and ActionRun model is historical, not an implementation contract.",
-    "action-spec-system.md": "Historical ActionSpec/UI-intent design; current execution and Asset persistence authority is durable-run-protocol.md plus asset-system.md.",
+    "action-spec-system.md": "Historical ActionSpec/UI-intent design; current native Generator authority is apps/docs/guide/asset-generator-model.md and durable execution authority is durable-run-protocol.md.",
     "asset-workspace-spec.md": "Historical Preview/Edit product proposal; current Project/Global Asset identity and lifecycle authority is apps/docs/guide/asset-system.md.",
-    "project-canvas-timeline-asset-model.md": "Historical ownership proposal superseded for Asset identity and execution by asset-system.md and durable-run-protocol.md.",
+    "project-canvas-timeline-asset-model.md": "Historical ownership proposal superseded by the current Media Asset, Generator, Document, and Durable Task guide authorities.",
     "model-provider-architecture.md": "Current model-card/provider composition and Host-owned account-routing contract; runtime semantics defer to durable-run-protocol.md.",
     "group-logic-7ef9.md": "Explanation of the complex grouping logic for canvas nodes.",
     "loro-sync-python-improvements.md": "Notes on Python integration with Loro Sync."
   },
-  "architecture_notes": "Current Asset and execution authority lives in apps/docs/guide/asset-system.md and apps/docs/guide/durable-run-protocol.md. Files explicitly marked historical or superseded are context only, not implementation contracts."
+  "architecture_notes": "Current authority is split intentionally: apps/docs/guide/asset-system.md owns Media Asset/Resource rules, asset-generator-model.md owns native Generator semantics and product migration status, document-assets.md owns typed Document identity/versioning, and durable-run-protocol.md owns the private execution graph. Files explicitly marked historical or superseded are context only, not implementation contracts."
 }

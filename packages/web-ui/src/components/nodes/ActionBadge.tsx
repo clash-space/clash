@@ -2386,7 +2386,7 @@ const PromptActionNode = ({
         actionType === "video-gen"
           ? refNodeIds.flatMap((nodeId) => {
               const node = getNode(nodeId);
-              if (!node || node.type !== "director-stage") return [];
+              if (!node) return [];
               return directorReferencePackets(node)
                 .filter(
                   (
@@ -2402,7 +2402,6 @@ const PromptActionNode = ({
                 )
                 .map((packet) => ({
                   packet,
-                  sourceNodeId: node.id,
                   shotId: packet.scope.selectedShotIds[0],
                   shotName: packet.shotSpec.shots[0]?.name,
                 }));
@@ -2448,7 +2447,7 @@ const PromptActionNode = ({
             groupIndex: i,
             labelOverride: item.shotName || `${baseLabel} · ${item.shotId}`,
             parentGroupId: groupId,
-            sourceDirectorStageId: item.sourceNodeId,
+            sourceDirectorStageId: item.packet.stageId,
             sourceDirectorStageRevisionId: item.packet.stageRevisionId,
             sourceDirectorStageShotId: item.shotId,
           });

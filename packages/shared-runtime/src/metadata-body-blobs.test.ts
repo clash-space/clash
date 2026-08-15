@@ -1,4 +1,11 @@
-import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -40,7 +47,12 @@ describe("metadata body blobs", () => {
     expect(stored.deduplicated).toBe(false);
     expect(stored.path).toBe(metadataBodyBlobPath(root, stored.contentHash));
     expect((await stat(stored.path)).mode & 0o222).toBe(0);
-    expect(await readMetadataBody({ dataDir: root, contentHash: stored.contentHash })).toEqual({
+    expect(
+      await readMetadataBody({
+        dataDir: root,
+        contentHash: stored.contentHash,
+      }),
+    ).toEqual({
       words,
     });
   });
@@ -52,6 +64,25 @@ describe("metadata body blobs", () => {
 
     expect(second.contentHash).toBe(first.contentHash);
     expect(second.deduplicated).toBe(true);
+  });
+
+  it("atomically repairs a truncated writer-owned final after a crash", async () => {
+    const root = await dataDir();
+    const serialized = canonicalMetadataBody({ words });
+    const contentHash = metadataBodyContentHash(serialized);
+    const path = metadataBodyBlobPath(root, contentHash);
+    await storeMetadataBody({ dataDir: root, body: { words } });
+    await chmod(path, 0o644);
+    await writeFile(path, serialized.slice(0, 7), "utf8");
+
+    const repaired = await storeMetadataBody({
+      dataDir: root,
+      body: { words },
+    });
+
+    expect(repaired.deduplicated).toBe(false);
+    expect(await readFile(path, "utf8")).toBe(serialized);
+    expect((await stat(path)).mode & 0o222).toBe(0);
   });
 
   it("gives key order and spacing no say in a body's identity", async () => {
@@ -96,7 +127,10 @@ describe("metadata body blobs", () => {
   it("reports a body that was never stored rather than returning nothing", async () => {
     const root = await dataDir();
     await expect(
-      readMetadataBody({ dataDir: root, contentHash: `sha256:${"c".repeat(64)}` }),
+      readMetadataBody({
+        dataDir: root,
+        contentHash: `sha256:${"c".repeat(64)}`,
+      }),
     ).rejects.toThrow(/is not stored/u);
   });
 
@@ -115,6 +149,8 @@ describe("metadata body blobs", () => {
     expect(stored.path).toBe(
       join(root, "metadata-blobs", digest.slice(0, 2), `${digest}.json`),
     );
-    expect(await readFile(stored.path, "utf8")).toBe(canonicalMetadataBody({ words }));
+    expect(await readFile(stored.path, "utf8")).toBe(
+      canonicalMetadataBody({ words }),
+    );
   });
 });

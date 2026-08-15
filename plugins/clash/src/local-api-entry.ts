@@ -4,7 +4,6 @@ import { join } from "node:path";
 import {
   clashHomeForLocalDataDir,
   createHeadlessDirectorStageRenderer,
-  createRemotionTimelineRenderer,
   defaultLocalApiDataDir,
   prepareDevelopmentBundledPlugins,
   startLocalApiServer,
@@ -29,64 +28,49 @@ async function closeServer(exitCode: number): Promise<void> {
   process.exit(exitCode);
 }
 
-process.once("SIGINT", () => { void closeServer(0); });
-process.once("SIGTERM", () => { void closeServer(0); });
+process.once("SIGINT", () => {
+  void closeServer(0);
+});
+process.once("SIGTERM", () => {
+  void closeServer(0);
+});
 
 async function main(): Promise<void> {
-  const startedBy = process.env.CLASH_DAEMON_STARTED_BY === "desktop"
-    ? "desktop"
-    : process.env.CLASH_DAEMON_STARTED_BY === "cli"
-      ? "cli"
-      : "plugin";
+  const startedBy =
+    process.env.CLASH_DAEMON_STARTED_BY === "desktop"
+      ? "desktop"
+      : process.env.CLASH_DAEMON_STARTED_BY === "cli"
+        ? "cli"
+        : "plugin";
   const dataDir = defaultLocalApiDataDir(process.env);
   const sourceRuntime = process.env.CLASH_SOURCE_RUNTIME === "1";
   const pluginDevelopment = sourceRuntime
     ? await prepareDevelopmentBundledPlugins({
         actionsRoot: join(clashHomeForLocalDataDir(dataDir), "actions"),
-        tsconfigPath: fileURLToPath(
-          new URL("../../../apps/local-api/tsconfig.dev.json", import.meta.url),
-        ),
       })
     : undefined;
-  if (pluginDevelopment && pluginDevelopment.refreshed.length > 0) {
+  if (pluginDevelopment && pluginDevelopment.rebuilt.length > 0) {
     process.stderr.write(
-      `[local-api] refreshed source-backed plugins: ${pluginDevelopment.refreshed.join(", ")}\n`,
+      `[local-api] rebuilt first-party module payloads: ${pluginDevelopment.rebuilt.join(", ")}\n`,
     );
   }
-  const configuredRemotionBundle =
-    process.env.CLASH_REMOTION_BUNDLE_PATH?.trim();
   const configuredDirectorBundle =
     process.env.CLASH_DIRECTOR_BUNDLE_PATH?.trim();
-  const developmentAssets = sourceRuntime &&
-      (!configuredRemotionBundle || !configuredDirectorBundle)
-    ? createDevelopmentBrowserAssets({
-        repoRoot: fileURLToPath(new URL("../../..", import.meta.url)),
-      })
-    : undefined;
-  const remotionBundle = configuredRemotionBundle ||
-    (sourceRuntime
-      ? undefined
-      : fileURLToPath(new URL("./remotion-bundle", import.meta.url)));
-  if (remotionBundle && !existsSync(remotionBundle)) {
-    throw new Error(`Remotion bundle is missing: ${remotionBundle}`);
-  }
-  const timelineRenderer = createRemotionTimelineRenderer({
-    resolveServeUrl: remotionBundle
-      ? async () => remotionBundle
-      : () => developmentAssets!.resolveRemotionServeUrl(),
-    loadRenderer: async () => {
-      const renderer = await import("@remotion/renderer");
-      return {
-        selectComposition: (options) => renderer.selectComposition(options as never),
-        renderMedia: (options) => renderer.renderMedia(options as never),
-      };
-    },
-  });
-  const directorBundle = configuredDirectorBundle ||
+  const developmentAssets =
+    sourceRuntime && !configuredDirectorBundle
+      ? createDevelopmentBrowserAssets({
+          repoRoot: fileURLToPath(new URL("../../..", import.meta.url)),
+        })
+      : undefined;
+  const directorBundle =
+    configuredDirectorBundle ||
     (sourceRuntime
       ? developmentAssets!.directorBundleDir
       : fileURLToPath(new URL("./director-bundle", import.meta.url)));
-  if ((configuredDirectorBundle || !sourceRuntime) && !existsSync(directorBundle)) {
+  if (
+    (configuredDirectorBundle || !sourceRuntime) &&
+    !existsSync(directorBundle)
+  ) {
     throw new Error(`Director bundle is missing: ${directorBundle}`);
   }
   const directorStageRenderer = createHeadlessDirectorStageRenderer({
@@ -108,11 +92,7 @@ async function main(): Promise<void> {
   server = await startLocalApiServer({
     port: Number(process.env.PORT ?? 0),
     dataDir,
-    timelineRenderer,
     directorStageRenderer,
-    ...(pluginDevelopment
-      ? { developmentPluginWatchRoots: pluginDevelopment.watchRoots }
-      : {}),
     discovery: {
       enabled: true,
       runDir,
@@ -123,6 +103,8 @@ async function main(): Promise<void> {
 }
 
 void main().catch((error) => {
-  console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+  console.error(
+    error instanceof Error ? (error.stack ?? error.message) : String(error),
+  );
   process.exit(1);
 });

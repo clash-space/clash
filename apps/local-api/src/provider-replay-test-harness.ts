@@ -182,18 +182,10 @@ async function runProviderTestHarness(
   let server: Awaited<ReturnType<typeof startLocalApiServer>> | undefined;
   let projectId = "";
   let activeLiveStub: ProviderConformanceStub | undefined;
-  const originalFetch = globalThis.fetch;
-  const guardGlobalFetch = options.traffic.mode === "replay";
 
   try {
-    if (guardGlobalFetch) {
-      globalThis.fetch = createProviderReplayOfflineFetch(originalFetch);
-    }
     await prepareDevelopmentBundledPlugins({
       actionsRoot,
-      tsconfigPath: fileURLToPath(
-        new URL("../tsconfig.dev.json", import.meta.url),
-      ),
       pluginIds: options.bundledPluginIds,
     });
     await options.preparePlugins?.({ actionsRoot, dataDir });
@@ -283,34 +275,40 @@ async function runProviderTestHarness(
       name: `Provider replay test: ${options.account.providerId}`,
     });
     projectId = requiredString(project.id, "project id");
-    await command({ action: "create_canvas", canvasId: "main", name: "Main" });
-    await configureProviderAccount(origin, options.account);
 
-    // Install every authored reference before any run can leave a polling timer behind. Reference
-    // imports commit through the live ProjectAsset room while Canvas commands commit through the
-    // host-command snapshot surface; interleaving a later case with an earlier run would let a room
-    // compaction race the test's reference-node authoring. The first execution refreshes the room
-    // from this complete committed Project state.
+    // Seed authored Canvas references before the first Project-room operation opens the live
+    // replica. Asset imports below then publish through that same room, so generation add can
+    // resolve every reference without an out-of-band snapshot refresh.
     const referencesByCase = new Map<string, string[]>();
-    const preparedReferenceNodes: PreparedProviderReferenceNode[] = [];
-    for (const graderCase of options.cases) {
-      const prepared = await importReferenceNodes({
-        origin,
-        projectId,
+    const preparedReferenceNodes = options.cases.flatMap((graderCase) => {
+      const prepared = prepareReferenceNodes({
         caseId: graderCase.id,
         refs: graderCase.refs ?? [],
       });
-      preparedReferenceNodes.push(...prepared);
       referencesByCase.set(
         graderCase.id,
         prepared.map(({ nodeId }) => nodeId),
       );
-    }
+      return prepared;
+    });
     await createReferenceNodes({
       dataDir,
       projectId,
       references: preparedReferenceNodes,
     });
+
+    await command({ action: "create_canvas", canvasId: "main", name: "Main" });
+    await configureProviderAccount(origin, options.account);
+
+    // Publish every authored Asset before any run can leave a polling timer behind.
+    for (const graderCase of options.cases) {
+      await importReferenceNodes({
+        origin,
+        projectId,
+        caseId: graderCase.id,
+        refs: graderCase.refs ?? [],
+      });
+    }
 
     const results: ProviderReplayTestCaseResult[] = [];
     for (const graderCase of options.cases) {
@@ -365,7 +363,6 @@ async function runProviderTestHarness(
         server!.close(() => resolveClose());
       });
     }
-    if (guardGlobalFetch) globalThis.fetch = originalFetch;
     await rm(root, { recursive: true, force: true });
   }
 }
@@ -416,9 +413,9 @@ async function importReferenceNodes(options: {
   caseId: string;
   refs: readonly ProviderTestReference[];
 }): Promise<PreparedProviderReferenceNode[]> {
-  const references: PreparedProviderReferenceNode[] = [];
+  const references = prepareReferenceNodes(options);
   for (const [index, ref] of options.refs.entries()) {
-    const nodeId = ref.id ?? `${safeSegment(options.caseId)}-ref-${index}`;
+    const reference = references[index]!;
     const originalName =
       ref.originalName ?? `reference-${index}${extensionForReference(ref)}`;
     const form = new FormData();
@@ -429,10 +426,7 @@ async function importReferenceNodes(options: {
       }),
     );
     form.set("kind", ref.kind);
-    form.set(
-      "projectAssetId",
-      providerTestReferenceAssetId(options.caseId, index),
-    );
+    form.set("projectAssetId", reference.assetId);
     const asset = await jsonResponse<{ id: string }>(
       await fetch(
         `${options.origin}/api/v1/projects/${encodeURIComponent(options.projectId)}/assets/import-file`,
@@ -442,16 +436,30 @@ async function importReferenceNodes(options: {
         },
       ),
     );
-    const assetId = requiredString(asset.id, `${nodeId} reference asset id`);
-    references.push({
-      nodeId,
-      assetId,
-      kind: ref.kind,
-      mediaType: ref.mediaType,
-      label: `Reference ${index + 1}`,
-    });
+    const assetId = requiredString(
+      asset.id,
+      `${reference.nodeId} reference asset id`,
+    );
+    if (assetId !== reference.assetId) {
+      throw new Error(
+        `${reference.nodeId} imported as unexpected Project Asset ${assetId}`,
+      );
+    }
   }
   return references;
+}
+
+function prepareReferenceNodes(options: {
+  caseId: string;
+  refs: readonly ProviderTestReference[];
+}): PreparedProviderReferenceNode[] {
+  return options.refs.map((ref, index) => ({
+    nodeId: ref.id ?? `${safeSegment(options.caseId)}-ref-${index}`,
+    assetId: providerTestReferenceAssetId(options.caseId, index),
+    kind: ref.kind,
+    mediaType: ref.mediaType,
+    label: `Reference ${index + 1}`,
+  }));
 }
 
 async function createReferenceNodes(options: {

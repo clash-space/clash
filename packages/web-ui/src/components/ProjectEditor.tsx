@@ -128,7 +128,6 @@ import {
 import { LoroSyncProvider } from "./LoroSyncContext";
 import {
   planAssetScopeCascade,
-  applyDirectorStageCommand,
   createDirectorReferencePacket,
   createDefaultDirectorStageState,
   listActionAssetBindings,
@@ -170,6 +169,7 @@ import {
   getAsset,
   importProjectAssetFile as importProjectAssetBytes,
   listPersonalGlobalAssets,
+  publishDirectorStageOutputFile as publishDirectorStageOutputBytes,
   publishProjectAssetToPersonalLibrary,
   watchAssetProjection,
   restoreProjectAsset as restoreProjectAssetThroughHost,
@@ -3093,6 +3093,27 @@ export default function ProjectEditor({
     [project.id],
   );
 
+  const publishDirectorStageOutputFile = useCallback(
+    async (input: {
+      stageId: string;
+      sourceStageRevisionId: string;
+      artifactId: string;
+      kind: "image" | "video";
+      file: File;
+    }): Promise<ResolvedAsset> => {
+      const asset = await publishDirectorStageOutputBytes({
+        projectId: project.id,
+        ...input,
+      });
+      setLocallyAddedProjectAssets((current) => [
+        asset,
+        ...current.filter((candidate) => candidate.id !== asset.id),
+      ]);
+      return asset;
+    },
+    [project.id],
+  );
+
   const admitTimelineLibraryMedia = useCallback(
     async (
       input: EditorAssetInput & { catalogId: string },
@@ -3983,10 +4004,7 @@ export default function ProjectEditor({
                     label: option.name,
                     status: "completed",
                   },
-                } satisfies Pick<
-                  AppNode,
-                  "id" | "type" | "position" | "data"
-                >;
+                } satisfies Pick<AppNode, "id" | "type" | "position" | "data">;
                 if (!loroSync.addNodeToCanvas(canvasId, nodeId, node)) {
                   throw new Error("Failed to add the asset to the Canvas");
                 }
@@ -4227,9 +4245,7 @@ export default function ProjectEditor({
           src: projectAssetPlaybackUrl(asset) ?? "",
           thumbnail: asset.thumbnailUrl,
           status: asset.status,
-          ...(asset.progress === undefined
-            ? {}
-            : { progress: asset.progress }),
+          ...(asset.progress === undefined ? {} : { progress: asset.progress }),
           ...(asset.error === undefined ? {} : { error: asset.error }),
           source: { kind: "project", assetId },
         },
@@ -4976,31 +4992,20 @@ export default function ProjectEditor({
         `${stage.name.replace(/[^a-zA-Z0-9_-]+/g, "-") || "director-stage"}-${Date.now()}.png`,
         { type: "image/png" },
       );
-      const asset = await importProjectAssetFile(file);
-      const assetId = asset.id;
-      const shotId = `director-shot-${Date.now().toString(36)}`;
-      const applied = applyDirectorStageCommand(input.state, {
-        op: "shot.register",
-        shot: {
-          id: shotId,
-          name: `Shot ${input.state.shots.length + 1}`,
-          cameraId: input.cameraId,
-          sequenceShotId: input.state.shotSequence?.find(
-            (shot) =>
-              input.timeSeconds >= shot.startTime &&
-              input.timeSeconds < shot.startTime + shot.durationSeconds,
-          )?.id,
-          assetId,
-          aspectRatio: input.aspectRatio,
-          stageRevisionId: captureRevisionId,
-          createdAt: new Date().toISOString(),
-          timeSeconds: input.timeSeconds,
-        },
+      const artifactId = `shot-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
+      const asset = await publishDirectorStageOutputFile({
+        stageId: input.stageId,
+        sourceStageRevisionId: captureRevisionId,
+        artifactId,
+        kind: "image",
+        file,
       });
-      if (!applied.ok) throw new Error(applied.error);
-      if (!loroSync.applyDirectorStageState(input.stageId, applied.state)) {
-        throw new Error("Failed to register the Director Stage shot");
-      }
+      const assetId = asset.id;
+      const sequenceShot = input.state.shotSequence?.find(
+        (shot) =>
+          input.timeSeconds >= shot.startTime &&
+          input.timeSeconds < shot.startTime + shot.durationSeconds,
+      );
 
       const targetCanvasId =
         stage.owner.kind === "canvas-action"
@@ -5037,14 +5042,19 @@ export default function ProjectEditor({
           height: shotNodeSize.height,
         },
         data: {
-          label: `${stage.name} · Shot ${input.state.shots.length + 1}`,
+          label: sequenceShot
+            ? `${stage.name} · ${sequenceShot.name}`
+            : `${stage.name} · ${input.timeSeconds.toFixed(2)}s`,
           assetId,
           status: "completed",
           aspectRatio: input.aspectRatio,
           sourceDirectorStageId: input.stageId,
           sourceDirectorStageRevisionId: captureRevisionId,
+          sourceDirectorStageTimeSeconds: input.timeSeconds,
           sourceDirectorStageCameraId: input.cameraId,
-          sourceDirectorStageShotId: shotId,
+          ...(sequenceShot
+            ? { sourceDirectorStageShotId: sequenceShot.id }
+            : {}),
         },
       } satisfies Pick<
         AppNode,
@@ -5081,7 +5091,13 @@ export default function ProjectEditor({
         }
       }
     },
-    [activeCanvasId, importProjectAssetFile, loroSync, setEdges, setNodes],
+    [
+      activeCanvasId,
+      loroSync,
+      publishDirectorStageOutputFile,
+      setEdges,
+      setNodes,
+    ],
   );
 
   const exportDirectorStageVideo = useCallback(
@@ -5096,12 +5112,19 @@ export default function ProjectEditor({
         input.stageId,
         input.state,
       );
-      let packetState = input.state;
+      const outputBatchId = `${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
       const renderedAssets: Array<{
         render: DirectorStageVideoExportInput["renders"][number];
         camera: DirectorStageVideoExportInput["state"]["cameras"][number];
-        asset: Awaited<ReturnType<typeof importProjectAssetFile>>;
         assetId: string;
+        referenceStills: Array<{
+          assetId: string;
+          cameraId: string;
+          shotId: string;
+          aspectRatio: DirectorStageVideoExportInput["renders"][number]["aspectRatio"];
+          stageRevisionId: string;
+          timeSeconds: number;
+        }>;
       }> = [];
 
       for (const [renderIndex, render] of input.renders.entries()) {
@@ -5118,13 +5141,21 @@ export default function ProjectEditor({
           `${safeStage}-${safeCamera}-${Date.now()}-${renderIndex + 1}.webm`,
           { type: render.blob.type || "video/webm" },
         );
-        const asset = await importProjectAssetFile(videoFile);
-        renderedAssets.push({
-          render,
-          camera,
-          asset,
-          assetId: asset.id,
+        const asset = await publishDirectorStageOutputFile({
+          stageId: input.stageId,
+          sourceStageRevisionId: stageRevisionId,
+          artifactId: `video-${outputBatchId}-${renderIndex + 1}`,
+          kind: "video",
+          file: videoFile,
         });
+        const referenceStills: Array<{
+          assetId: string;
+          cameraId: string;
+          shotId: string;
+          aspectRatio: typeof render.aspectRatio;
+          stageRevisionId: string;
+          timeSeconds: number;
+        }> = [];
 
         for (const [
           frameIndex,
@@ -5135,39 +5166,36 @@ export default function ProjectEditor({
             `${safeStage}-${render.shotId ?? "sequence"}-reference-${String(frameIndex + 1).padStart(2, "0")}.png`,
             { type: referenceFrame.blob.type || "image/png" },
           );
-          const referenceAsset = await importProjectAssetFile(referenceFile);
-          const referenceAssetId = referenceAsset.id;
-          const registered = applyDirectorStageCommand(packetState, {
-            op: "shot.register",
-            shot: {
-              id: `director-reference-still-${Date.now().toString(36)}-${renderIndex}-${frameIndex}`,
-              name: referenceFrame.name,
-              cameraId: referenceFrame.cameraId,
-              sequenceShotId: referenceFrame.shotId,
-              assetId: referenceAssetId,
-              aspectRatio: referenceFrame.aspectRatio,
-              stageRevisionId,
-              createdAt: new Date().toISOString(),
-              timeSeconds: referenceFrame.timeSeconds,
-            },
+          const referenceAsset = await publishDirectorStageOutputFile({
+            stageId: input.stageId,
+            sourceStageRevisionId: stageRevisionId,
+            artifactId: `video-${outputBatchId}-${renderIndex + 1}-reference-${frameIndex + 1}`,
+            kind: "image",
+            file: referenceFile,
           });
-          if (!registered.ok) throw new Error(registered.error);
-          packetState = registered.state;
+          referenceStills.push({
+            assetId: referenceAsset.id,
+            cameraId: referenceFrame.cameraId,
+            shotId: referenceFrame.shotId,
+            aspectRatio: referenceFrame.aspectRatio,
+            stageRevisionId,
+            timeSeconds: referenceFrame.timeSeconds,
+          });
         }
-      }
-      if (
-        input.renders.some((render) => render.referenceFrames.length > 0) &&
-        !loroSync.applyDirectorStageState(input.stageId, packetState)
-      ) {
-        throw new Error("Failed to persist Director reference keyframes");
+        renderedAssets.push({
+          render,
+          camera,
+          assetId: asset.id,
+          referenceStills,
+        });
       }
 
       const directorShotReferencePackets = renderedAssets.map(
-        ({ render, asset, assetId }) =>
+        ({ render, assetId, referenceStills }) =>
           createDirectorReferencePacket({
             stageId: input.stageId,
             stageRevisionId,
-            state: packetState,
+            state: input.state,
             exportedAt: new Date().toISOString(),
             aspectRatio: render.aspectRatio,
             durationSeconds: render.durationSeconds,
@@ -5182,6 +5210,7 @@ export default function ProjectEditor({
               assetId,
               mimeType: render.blob.type || "video/webm",
             },
+            referenceStills,
           }),
       );
       const directorReferencePacket = directorShotReferencePackets[0];
@@ -5191,68 +5220,143 @@ export default function ProjectEditor({
 
       if (stage.owner.kind === "canvas-action") {
         const owner = stage.owner;
-        const selectedShotIds = renderedAssets.flatMap(({ render }) =>
-          render.shotId ? [render.shotId] : [],
+        const rawSourceNode = loroSync.doc
+          ?.getMap("nodes")
+          .get(owner.actionNodeId) as
+          | {
+              position?: { x?: number; y?: number };
+            }
+          | undefined;
+        const downstreamGeneratorEdges = edgesRef.current.filter((edge) => {
+          if (edge.source !== owner.actionNodeId) return false;
+          const target = nodesRef.current.find(
+            (candidate) => candidate.id === edge.target,
+          );
+          return (
+            target?.type === "action-badge" &&
+            target.data.actionType === "video-gen"
+          );
+        });
+        const outputNodes = renderedAssets.map(
+          ({ render, camera, assetId }, index) => {
+            const nodeId = `director-video-output-${outputBatchId}-${index + 1}`;
+            const packet = directorShotReferencePackets[index]!;
+            const outputSize = calculateDimensionsFromAspectRatio(
+              render.aspectRatio,
+            );
+            return {
+              id: nodeId,
+              type: "video",
+              position: {
+                x: Number(rawSourceNode?.position?.x ?? 100) + 460,
+                y:
+                  Number(rawSourceNode?.position?.y ?? 100) +
+                  index * (outputSize.height + 40),
+              },
+              width: outputSize.width,
+              height: outputSize.height,
+              style: {
+                width: outputSize.width,
+                height: outputSize.height,
+              },
+              data: {
+                label:
+                  packet.shotSpec.shots[0]?.name ??
+                  `${stage.name} · ${camera.name}`,
+                assetId,
+                status: "completed",
+                aspectRatio: render.aspectRatio,
+                durationSeconds: render.durationSeconds,
+                fps: input.fps,
+                sourceDirectorStageId: input.stageId,
+                sourceDirectorStageRevisionId: stageRevisionId,
+                sourceDirectorStageCameraId: render.cameraId,
+                ...(render.shotId
+                  ? { sourceDirectorStageShotId: render.shotId }
+                  : {}),
+                directorReferencePacket: packet,
+              },
+            } satisfies Pick<
+              AppNode,
+              "id" | "type" | "position" | "width" | "height" | "style" | "data"
+            >;
+          },
         );
-        const firstAsset = renderedAssets[0]!;
-        const outputPatch =
-          input.mode === "selected-shots"
-            ? {
-                directorShotReferencePackets,
-                selectedDirectorShotIds: selectedShotIds,
-                directorShotReferenceOutputs: renderedAssets.map(
-                  ({ render, assetId }) => ({
-                    sourceDirectorStageShotId: render.shotId,
-                    assetId,
-                    durationSeconds: render.durationSeconds,
-                  }),
-                ),
-                outputVideoStageRevisionId: stageRevisionId,
-              }
-            : {
-                outputVideoAssetId: firstAsset.assetId,
-                outputVideoDurationSeconds: firstAsset.render.durationSeconds,
-                outputVideoFps: input.fps,
-                outputVideoStageRevisionId: stageRevisionId,
-                directorReferencePacket,
-              };
-        if (!loroSync.updateNode(owner.actionNodeId, { data: outputPatch })) {
-          throw new Error(
-            "Failed to publish the Director Stage reference video",
-          );
+
+        const lineageEdges = outputNodes.map((outputNode) => ({
+          id: `${owner.actionNodeId}-${outputNode.id}`,
+          source: owner.actionNodeId,
+          target: outputNode.id,
+          type: "default",
+          canvasId: owner.canvasId,
+        }));
+        for (const outputNode of outputNodes) {
+          if (
+            !loroSync.addNodeToCanvas(owner.canvasId, outputNode.id, outputNode)
+          ) {
+            throw new Error("Failed to publish a Director video output node");
+          }
         }
+        for (const edge of lineageEdges) {
+          if (!loroSync.addEdge(edge.id, edge)) {
+            throw new Error("Failed to connect Director output lineage");
+          }
+        }
+
+        const addedConsumerEdges: Edge[] = [];
+        const primaryOutput = outputNodes[0]!;
+        for (const edge of downstreamGeneratorEdges) {
+          if (!loroSync.updateEdge(edge.id, { source: primaryOutput.id })) {
+            throw new Error(
+              `Failed to rewire downstream Video Gen edge ${edge.id}`,
+            );
+          }
+          for (const outputNode of outputNodes.slice(1)) {
+            const addedEdge = {
+              ...edge,
+              id: `${edge.id}-${outputNode.id}`,
+              source: outputNode.id,
+              canvasId: owner.canvasId,
+            };
+            if (!loroSync.addEdge(addedEdge.id, addedEdge)) {
+              throw new Error(
+                `Failed to connect Director output ${outputNode.id}`,
+              );
+            }
+            addedConsumerEdges.push(addedEdge);
+          }
+        }
+
         if (owner.canvasId === activeCanvasId) {
-          setNodes((current) =>
-            current.map((node) =>
-              node.id === owner.actionNodeId
-                ? { ...node, data: { ...node.data, ...outputPatch } }
-                : node,
+          setNodes((current) => [
+            ...current,
+            ...outputNodes.filter(
+              (outputNode) =>
+                !current.some((node) => node.id === outputNode.id),
             ),
-          );
+          ]);
+          setEdges((current) => [
+            ...current.map((edge) => {
+              const rewired = downstreamGeneratorEdges.find(
+                (candidate) => candidate.id === edge.id,
+              );
+              return rewired ? { ...edge, source: primaryOutput.id } : edge;
+            }),
+            ...lineageEdges.filter(
+              (edge) => !current.some((candidate) => candidate.id === edge.id),
+            ),
+            ...addedConsumerEdges,
+          ]);
         }
 
         if (input.mode === "selected-shots") {
-          const downstreamGeneratorIds = edgesRef.current
-            .filter((edge) => edge.source === owner.actionNodeId)
-            .map((edge) => edge.target)
-            .filter((nodeId) => {
-              const node = nodesRef.current.find(
-                (candidate) => candidate.id === nodeId,
-              );
-              return (
-                node?.type === "action-badge" &&
-                node.data.actionType === "video-gen"
-              );
-            });
+          const downstreamGeneratorIds = [
+            ...new Set(downstreamGeneratorEdges.map((edge) => edge.target)),
+          ];
           for (const nodeId of downstreamGeneratorIds) {
             if (
               !loroSync.updateNode(nodeId, {
-                data: {
-                  autoRun: true,
-                  sourceDirectorStageId: input.stageId,
-                  sourceDirectorStageRevisionId: stageRevisionId,
-                  sourceDirectorStageShotIds: selectedShotIds,
-                },
+                data: { autoRun: true },
               })
             ) {
               throw new Error(
@@ -5268,19 +5372,11 @@ export default function ProjectEditor({
                     data: {
                       ...node.data,
                       autoRun: true,
-                      sourceDirectorStageId: input.stageId,
-                      sourceDirectorStageRevisionId: stageRevisionId,
-                      sourceDirectorStageShotIds: selectedShotIds,
                     },
                   }
                 : node,
             ),
           );
-          if (downstreamGeneratorIds.length === 0) {
-            throw new Error(
-              "Connect the Director Stage to a Video Gen node before generating selected shots.",
-            );
-          }
           return;
         }
       }
@@ -5306,7 +5402,13 @@ export default function ProjectEditor({
       anchor.click();
       URL.revokeObjectURL(url);
     },
-    [activeCanvasId, importProjectAssetFile, loroSync, setNodes],
+    [
+      activeCanvasId,
+      loroSync,
+      publishDirectorStageOutputFile,
+      setEdges,
+      setNodes,
+    ],
   );
 
   const directorPanoramaOptions = useMemo(

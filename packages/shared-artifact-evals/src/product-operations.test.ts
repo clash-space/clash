@@ -2,10 +2,102 @@ import { describe, expect, it } from "vitest";
 
 import {
   effectiveMcpToolName,
+  extractTrustedAssetOperationEvidence,
   matchRequiredProductOperations,
 } from "./product-operations";
 
 describe("transport-neutral product operation evidence", () => {
+  it("retains the Project Asset identity from successful MCP and CLI operations", () => {
+    expect(
+      extractTrustedAssetOperationEvidence({
+        successfulMcpCalls: [
+          {
+            tool: "clash_assets_import_file",
+            arguments: {
+              filePath: "inputs/source.svg",
+              projectAssetId: "asset-benchmark-a",
+            },
+            result: {
+              structured_content: {
+                id: "asset-benchmark-a",
+                kind: "image",
+                status: "ready",
+              },
+            },
+          },
+          {
+            tool: "clash_assets",
+            arguments: {
+              operation: "get",
+              arguments: { assetId: "asset-benchmark-a" },
+            },
+            result: {
+              structuredContent: {
+                id: "asset-benchmark-a",
+                kind: "image",
+                status: "ready",
+              },
+            },
+          },
+        ],
+        successfulCliArgv: [
+          [
+            "assets",
+            "delete",
+            "--asset",
+            "asset-benchmark-a",
+            "--yes",
+            "--json",
+          ],
+          ["assets", "restore", "--asset=asset-benchmark-a", "--json"],
+        ],
+      }),
+    ).toEqual([
+      {
+        operation: "asset.import",
+        transport: "mcp",
+        invocation: "clash_assets_import_file",
+        projectAssetId: "asset-benchmark-a",
+        sourcePath: "inputs/source.svg",
+      },
+      {
+        operation: "asset.get",
+        transport: "mcp",
+        invocation: "clash_assets_get",
+        projectAssetId: "asset-benchmark-a",
+      },
+      {
+        operation: "asset.trash",
+        transport: "cli",
+        invocation: "assets delete --asset asset-benchmark-a --yes --json",
+        projectAssetId: "asset-benchmark-a",
+      },
+      {
+        operation: "asset.restore",
+        transport: "cli",
+        invocation: "assets restore --asset=asset-benchmark-a --json",
+        projectAssetId: "asset-benchmark-a",
+      },
+    ]);
+  });
+
+  it("fails closed when MCP result identity disagrees or CLI import has no preassigned identity", () => {
+    expect(
+      extractTrustedAssetOperationEvidence({
+        successfulMcpCalls: [
+          {
+            tool: "clash_assets_trash",
+            arguments: { assetId: "asset-a" },
+            result: { structured_content: { id: "asset-b" } },
+          },
+        ],
+        successfulCliArgv: [
+          ["assets", "import", "--file", "inputs/source.svg", "--json"],
+        ],
+      }),
+    ).toEqual([]);
+  });
+
   it("attributes root-dispatched MCP calls to the selected leaf operation", () => {
     expect(
       effectiveMcpToolName({
@@ -18,7 +110,10 @@ describe("transport-neutral product operation evidence", () => {
       }),
     ).toBe("clash_timeline_render");
     expect(
-      effectiveMcpToolName({ tool: "clash", arguments: { command: "timeline" } }),
+      effectiveMcpToolName({
+        tool: "clash",
+        arguments: { command: "timeline" },
+      }),
     ).toBe("clash");
     expect(
       effectiveMcpToolName({
@@ -99,6 +194,135 @@ describe("transport-neutral product operation evidence", () => {
     ).toBe("clash_composition");
   });
 
+  it("attributes the fixed Assets dispatcher only to Assets leaves", () => {
+    expect(
+      effectiveMcpToolName({
+        tool: "clash_assets",
+        arguments: {
+          operation: "import_file",
+          arguments: { path: "frame.png", kind: "image" },
+        },
+      }),
+    ).toBe("clash_assets_import_file");
+    expect(
+      effectiveMcpToolName({
+        tool: "clash_assets",
+        arguments: {
+          operation: "clash_assets_restore",
+          arguments: { assetId: "asset-1" },
+        },
+      }),
+    ).toBe("clash_assets_restore");
+    expect(
+      effectiveMcpToolName({
+        tool: "clash_assets",
+        arguments: { operation: "clash_timeline_render" },
+      }),
+    ).toBe("clash_assets");
+    expect(
+      effectiveMcpToolName({
+        tool: "clash_timeline",
+        arguments: { operation: "clash_assets_get" },
+      }),
+    ).toBe("clash_timeline");
+  });
+
+  it("recognizes Project Asset operations over MCP and CLI peer transports", () => {
+    expect(
+      matchRequiredProductOperations({
+        requiredProductOperations: [
+          "asset.import",
+          "asset.list",
+          "asset.get",
+          "asset.trash",
+          "asset.restore",
+        ],
+        successfulMcpTools: [
+          "clash_assets_import_file",
+          "clash_assets_get",
+          "clash_assets_restore",
+        ],
+        successfulCliArgv: [
+          ["assets", "list", "--json"],
+          ["assets", "delete", "--asset", "asset-1", "--yes", "--json"],
+        ],
+      }),
+    ).toEqual({
+      observedProductOperations: [
+        {
+          operation: "asset.import",
+          transport: "mcp",
+          invocation: "clash_assets_import_file",
+        },
+        {
+          operation: "asset.list",
+          transport: "cli",
+          invocation: "assets list --json",
+        },
+        {
+          operation: "asset.get",
+          transport: "mcp",
+          invocation: "clash_assets_get",
+        },
+        {
+          operation: "asset.trash",
+          transport: "cli",
+          invocation: "assets delete --asset asset-1 --yes --json",
+        },
+        {
+          operation: "asset.restore",
+          transport: "mcp",
+          invocation: "clash_assets_restore",
+        },
+      ],
+      missingProductOperations: [],
+    });
+  });
+
+  it("treats the CLI-advertised asset alias as the same trusted product surface", () => {
+    const successfulCliArgv = [
+      [
+        "asset",
+        "import",
+        "--file",
+        "inputs/source.svg",
+        "--asset-id",
+        "asset-1",
+        "--json",
+      ],
+      ["asset", "list", "--json"],
+      ["asset", "get", "--asset", "asset-1", "--json"],
+    ];
+
+    expect(
+      matchRequiredProductOperations({
+        requiredProductOperations: ["asset.import", "asset.list", "asset.get"],
+        successfulMcpTools: [],
+        successfulCliArgv,
+      }),
+    ).toMatchObject({
+      missingProductOperations: [],
+      observedProductOperations: [
+        { operation: "asset.import", transport: "cli" },
+        { operation: "asset.list", transport: "cli" },
+        { operation: "asset.get", transport: "cli" },
+      ],
+    });
+    expect(
+      extractTrustedAssetOperationEvidence({
+        successfulMcpCalls: [],
+        successfulCliArgv,
+      }),
+    ).toContainEqual({
+      operation: "asset.import",
+      transport: "cli",
+      invocation:
+        "asset import --file inputs/source.svg --asset-id asset-1 --json",
+      projectAssetId: "asset-1",
+      sourcePath: "inputs/source.svg",
+    });
+  });
+
   it("accepts successful MCP and CLI invocations as peer transports", () => {
     expect(
       matchRequiredProductOperations({
@@ -146,7 +370,7 @@ describe("transport-neutral product operation evidence", () => {
     ]);
   });
 
-  it("treats Timeline creation as the initial persisted state without requiring a redundant save", () => {
+  it("does not report Timeline save when only creation was exercised", () => {
     expect(
       matchRequiredProductOperations({
         requiredProductOperations: ["timeline.create", "timeline.save"],
@@ -160,13 +384,8 @@ describe("transport-neutral product operation evidence", () => {
           transport: "mcp",
           invocation: "clash_timeline_create",
         },
-        {
-          operation: "timeline.save",
-          transport: "mcp",
-          invocation: "clash_timeline_create",
-        },
       ],
-      missingProductOperations: [],
+      missingProductOperations: ["timeline.save"],
     });
   });
 

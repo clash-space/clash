@@ -2,6 +2,7 @@ import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
+import type { TextAppliedRevision } from "@clash/shared-types";
 import { describe, expect, it } from "vitest";
 import { createLocalMetadataStore } from "./local-metadata-store";
 
@@ -125,6 +126,92 @@ function createPartialCoreMetadataSqlite(dataDir: string): void {
       );
       CREATE TABLE mutation_audit (id TEXT PRIMARY KEY NOT NULL);
     `);
+  } finally {
+    db.close();
+  }
+}
+
+function textRevisionFixture(input: {
+  revisionId: string;
+  projectId: string;
+  createdAt?: string;
+  actor?: TextAppliedRevision["actor"];
+}): TextAppliedRevision {
+  return {
+    schemaVersion: 1,
+    kind: "clash.text.revision",
+    textId: `text:${input.projectId}:script`,
+    revisionId: input.revisionId,
+    projectId: input.projectId,
+    nodeId: "script",
+    createdAt: input.createdAt ?? "2026-08-14T00:00:00.000Z",
+    contentHash: "0123456789abcdef",
+    hashAlgorithm: "sha256-64",
+    sourceFilePath: "projections/text/script.md",
+    sourceFileHash: "0123456789abcdef",
+    ...(input.actor ? { actor: input.actor } : {}),
+  };
+}
+
+function insertTextRevisionRows(
+  dataDir: string,
+  revisions: readonly TextAppliedRevision[],
+): void {
+  const { DatabaseSync } = require("node:sqlite") as {
+    DatabaseSync: new (path: string) => {
+      exec(sql: string): void;
+      prepare(sql: string): { run(...params: unknown[]): unknown };
+      close(): void;
+    };
+  };
+  const db = new DatabaseSync(join(dataDir, "local.sqlite"));
+  try {
+    const insert = db.prepare(`
+      INSERT INTO text_revisions (
+        revision_id, text_id, parent_revision_id, project_id, node_id,
+        created_at, content_hash, hash_algorithm, source_file_path,
+        source_file_hash, actor_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      for (const revision of revisions) {
+        insert.run(
+          revision.revisionId,
+          revision.textId,
+          revision.parentRevisionId ?? null,
+          revision.projectId,
+          revision.nodeId,
+          revision.createdAt,
+          revision.contentHash,
+          revision.hashAlgorithm,
+          revision.sourceFilePath,
+          revision.sourceFileHash,
+          revision.actor ? JSON.stringify(revision.actor) : null,
+        );
+      }
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  } finally {
+    db.close();
+  }
+}
+
+function corruptTextRevisionActor(dataDir: string, revisionId: string): void {
+  const { DatabaseSync } = require("node:sqlite") as {
+    DatabaseSync: new (path: string) => {
+      prepare(sql: string): { run(...params: unknown[]): unknown };
+      close(): void;
+    };
+  };
+  const db = new DatabaseSync(join(dataDir, "local.sqlite"));
+  try {
+    db.prepare(
+      "UPDATE text_revisions SET actor_json = ? WHERE revision_id = ?",
+    ).run("{not-json", revisionId);
   } finally {
     db.close();
   }
@@ -443,6 +530,147 @@ describe("local metadata store", () => {
       },
     ]);
     expect(JSON.stringify(records)).not.toContain("super-secret");
+  });
+});
+
+describe("Workspace text revision inventory", () => {
+  it("returns every Project row in stable revision-identity order across Host restart", async () => {
+    const dataDir = await tempDir();
+    const store = createLocalMetadataStore(dataDir);
+    const projectId = "project-workspace-export";
+
+    // Initialize the authority before bulk-seeding more history than either a
+    // public page (200) or the former export ceiling (1,000) can represent.
+    await store.listTextRevisions({ projectId });
+    const targetRows = Array.from({ length: 1_005 }, (_, index) =>
+      textRevisionFixture({
+        revisionId: `revision-${String(index).padStart(4, "0")}`,
+        projectId,
+        createdAt:
+          index % 2 === 0
+            ? "2026-08-15T00:00:00.000Z"
+            : "2026-08-13T00:00:00.000Z",
+      }),
+    );
+    insertTextRevisionRows(dataDir, [
+      ...[...targetRows].reverse(),
+      textRevisionFixture({
+        revisionId: "revision-other-project",
+        projectId: "project-not-exported",
+      }),
+    ]);
+
+    const publicHistory = await store.listTextRevisions({
+      projectId,
+      limit: 1_000,
+    });
+    expect(publicHistory).toHaveLength(200);
+
+    const expectedRevisionIds = targetRows
+      .map((revision) => revision.revisionId)
+      .sort();
+    const all = await store.listWorkspaceTextRevisions(projectId);
+    expect(all.map((revision) => revision.revisionId)).toEqual(
+      expectedRevisionIds,
+    );
+    expect(all).toHaveLength(targetRows.length);
+    expect(all.every((revision) => revision.projectId === projectId)).toBe(
+      true,
+    );
+
+    const restartedStore = createLocalMetadataStore(dataDir);
+    await expect(
+      restartedStore.listWorkspaceTextRevisions(projectId),
+    ).resolves.toEqual(all);
+  });
+
+  it("fails closed instead of returning a partial export when a row is corrupt", async () => {
+    const dataDir = await tempDir();
+    const store = createLocalMetadataStore(dataDir);
+    const projectId = "project-corrupt-text-history";
+    const valid = textRevisionFixture({
+      revisionId: "revision-valid",
+      projectId,
+    });
+    const corrupt = textRevisionFixture({
+      revisionId: "revision-corrupt",
+      projectId,
+      actor: {
+        actorType: "agent",
+        actorUserId: "user-1",
+        actorAgentId: "agent-1",
+      },
+    });
+    await store.upsertTextRevision(valid);
+    await store.upsertTextRevision(corrupt);
+    corruptTextRevisionActor(dataDir, corrupt.revisionId);
+
+    await expect(store.listWorkspaceTextRevisions(projectId)).rejects.toThrow(
+      /revision-corrupt/u,
+    );
+  });
+});
+
+describe("Workspace import receipts", () => {
+  it("stores only portable bundle and receiver Project provenance", async () => {
+    const dataDir = await tempDir();
+    const store = createLocalMetadataStore(dataDir);
+    const bundleDigest = "a".repeat(64);
+
+    await store.commitWorkspaceImport({
+      bundleDigest,
+      importedAt: "2026-08-14T00:00:00.000Z",
+      project: {
+        id: "project-imported",
+        ownerId: "receiver-owner",
+        name: "Imported",
+        description: null,
+        createdAt: "2026-08-14T00:00:00.000Z",
+        updatedAt: "2026-08-14T00:00:00.000Z",
+        deletedAt: null,
+        assets: [],
+      },
+      textRevisions: [],
+    });
+
+    const { DatabaseSync } = require("node:sqlite") as {
+      DatabaseSync: new (path: string) => {
+        prepare(sql: string): {
+          all(): Array<Record<string, unknown>>;
+        };
+        exec(sql: string): void;
+        close(): void;
+      };
+    };
+    const legacyDb = new DatabaseSync(join(dataDir, "local.sqlite"));
+    try {
+      legacyDb.exec(
+        "ALTER TABLE workspace_import_receipt ADD COLUMN source_workspace_id TEXT NOT NULL DEFAULT 'legacy-machine'",
+      );
+    } finally {
+      legacyDb.close();
+    }
+
+    const restarted = createLocalMetadataStore(dataDir);
+    await expect(
+      restarted.readWorkspaceImportReceipt(bundleDigest),
+    ).resolves.toEqual({
+      bundleDigest,
+      projectId: "project-imported",
+      importedAt: "2026-08-14T00:00:00.000Z",
+    });
+
+    const db = new DatabaseSync(join(dataDir, "local.sqlite"));
+    try {
+      expect(
+        db
+          .prepare("PRAGMA table_info(workspace_import_receipt)")
+          .all()
+          .map((row) => row.name),
+      ).toEqual(["bundle_digest", "project_id", "imported_at"]);
+    } finally {
+      db.close();
+    }
   });
 });
 

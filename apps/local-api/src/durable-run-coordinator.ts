@@ -17,6 +17,7 @@ import {
 } from "@clash/shared-runtime";
 import {
   ExecutablePluginBindingSchema,
+  GeneratorActionOutputContractSchema,
   ExecutablePluginJsonValueSchema,
   ExecutablePluginOutputSchema,
   ExecutablePluginReferenceSchema,
@@ -26,6 +27,7 @@ import {
   type ExecutablePluginJsonValue,
   type ExecutablePluginReference,
   type ExecutablePluginResult,
+  type GeneratorActionOutputContract,
   type ProviderAssetInput,
 } from "@clash/shared-types";
 
@@ -59,10 +61,13 @@ export interface FrozenProjectAssetDelivery {
 export interface FrozenLocalProviderExecutorInput {
   schemaVersion: 1;
   /** Omitted by records created before custom Actions joined the shared durable graph. */
-  targetKind?: "provider-executor" | "action" | "local-executor";
+  targetKind?:
+    "provider-executor" | "action" | "generator-action" | "local-executor";
   binding: ExecutablePluginBinding;
   /** Product Action definition identity; execution ownership remains the Canvas node/run. */
   actionId?: string;
+  /** Exact public ActionRun output contract, frozen only for native Generator Actions. */
+  generatorOutputContract?: GeneratorActionOutputContract;
   /** User/agent attribution is frozen with a custom Action revision. */
   actor?: ExecutablePluginInvocation["actor"];
   /** Exact synchronized Action owner used by non-Canvas products such as Timeline render. */
@@ -70,6 +75,8 @@ export interface FrozenLocalProviderExecutorInput {
     actionId: string;
     actionRevisionId: string;
   };
+  /** Exact output slot the Action plugin must emit before durable publication remaps nothing. */
+  pluginOutputSlot?: string;
   /** Frozen optimistic guard for projecting this immutable run onto a mutable Canvas node. */
   nodeProjectionRevisionId?: string;
   accountId?: string;
@@ -168,6 +175,7 @@ function parseFrozenExecutorInputUnchecked(
   if (
     targetKind !== "provider-executor" &&
     targetKind !== "action" &&
+    targetKind !== "generator-action" &&
     targetKind !== "local-executor"
   ) {
     throw new FrozenExecutorInputError(
@@ -206,8 +214,10 @@ function parseFrozenExecutorInputUnchecked(
   const accountId = json.accountId;
   const nodeId = json.nodeId;
   const actionId = json.actionId;
+  const generatorOutputContract = json.generatorOutputContract;
   const actor = json.actor;
   const publicOwner = json.publicOwner;
+  const pluginOutputSlot = json.pluginOutputSlot;
   const nodeProjectionRevisionId = json.nodeProjectionRevisionId;
   const assetInputs =
     json.assetInputs === undefined
@@ -290,7 +300,11 @@ function parseFrozenExecutorInputUnchecked(
       ),
     };
   }
-  if (targetKind === "action" || targetKind === "local-executor") {
+  if (
+    targetKind === "action" ||
+    targetKind === "generator-action" ||
+    targetKind === "local-executor"
+  ) {
     if (actionId === undefined) {
       throw new FrozenExecutorInputError(
         "Frozen Action executor actionId is missing.",
@@ -301,11 +315,37 @@ function parseFrozenExecutorInputUnchecked(
         "Frozen Action executor actor is missing.",
       );
     }
-    if (!nodeId) {
+    if (targetKind !== "generator-action" && !nodeId) {
       throw new FrozenExecutorInputError(
         "Frozen Action executor nodeId is missing.",
       );
     }
+  }
+  const parsedGeneratorOutputContract =
+    generatorOutputContract === undefined
+      ? undefined
+      : GeneratorActionOutputContractSchema.parse(generatorOutputContract);
+  if (
+    (targetKind === "generator-action") !==
+    (parsedGeneratorOutputContract !== undefined)
+  ) {
+    throw new FrozenExecutorInputError(
+      "A native Generator Action requires exactly its frozen output contract.",
+    );
+  }
+  const generatorOutput = parsedGeneratorOutputContract?.[0];
+  if (
+    generatorOutput?.assetType.kind === "media" &&
+    generatorOutput.assetType.mediaKind !== json.kind
+  ) {
+    throw new FrozenExecutorInputError(
+      "Frozen Generator Action kind does not match its media output contract.",
+    );
+  }
+  if (generatorOutput?.assetType.kind === "document" && json.kind !== "text") {
+    throw new FrozenExecutorInputError(
+      "Frozen Generator document Actions must use the text durable staging path.",
+    );
   }
   return {
     schemaVersion: 1,
@@ -314,8 +354,19 @@ function parseFrozenExecutorInputUnchecked(
     ...(actionId === undefined
       ? {}
       : { actionId: nonEmptyString(actionId, "actionId") }),
+    ...(parsedGeneratorOutputContract
+      ? { generatorOutputContract: parsedGeneratorOutputContract }
+      : {}),
     ...(parsedActor ? { actor: parsedActor } : {}),
     ...(parsedPublicOwner ? { publicOwner: parsedPublicOwner } : {}),
+    ...(pluginOutputSlot === undefined
+      ? {}
+      : {
+          pluginOutputSlot: nonEmptyString(
+            pluginOutputSlot,
+            "pluginOutputSlot",
+          ),
+        }),
     ...(nodeProjectionRevisionId === undefined
       ? {}
       : {
@@ -452,18 +503,51 @@ function customActionStep(
       },
     };
   }
+  if (result.outputs.length !== 1) {
+    return {
+      status: "failed",
+      error: {
+        code: "contract_violation",
+        message:
+          `Action plugin ${frozen.binding.pluginId}/${frozen.binding.exportId} returned ` +
+          `${result.outputs.length} outputs for one legacy Action output; expected exactly one.`,
+        retryable: false,
+        requestState: "accepted",
+      },
+    };
+  }
+
+  // v1 adapter rule, not a general multi-output contract: Action Cards declare one outputType
+  // but no output ports. Shipped custom Actions use value/result for text and asset/media for
+  // media. Host-local executors freeze their exact durable slot instead.
+  const output = result.outputs[0]!;
+  const expectedSlot =
+    frozen.targetKind === "action"
+      ? (frozen.pluginOutputSlot ??
+        (frozen.kind === "text" ? "result" : "media"))
+      : run.outputSlot;
+  if (output.slot !== expectedSlot) {
+    return {
+      status: "failed",
+      error: {
+        code: "contract_violation",
+        message:
+          `Action plugin ${frozen.binding.pluginId}/${frozen.binding.exportId} returned ` +
+          `output slot ${output.slot}; expected ${expectedSlot}.`,
+        retryable: false,
+        requestState: "accepted",
+      },
+    };
+  }
   if (frozen.kind === "text") {
-    const output = result.outputs.find(
-      (candidate) => candidate.kind === "value",
-    );
-    if (!output || output.kind !== "value") {
+    if (output.kind !== "value") {
       return {
         status: "failed",
         error: {
           code: "contract_violation",
           message:
-            `Action plugin ${frozen.binding.pluginId}/${frozen.binding.exportId} ` +
-            "returned no text value output.",
+            `Action plugin ${frozen.binding.pluginId}/${frozen.binding.exportId} returned ` +
+            `${output.kind} output for a text Action; expected value.`,
           retryable: false,
           requestState: "accepted",
         },
@@ -483,15 +567,14 @@ function customActionStep(
       ],
     };
   }
-  const output = result.outputs.find((candidate) => candidate.kind === "asset");
-  if (!output || output.kind !== "asset") {
+  if (output.kind !== "asset") {
     return {
       status: "failed",
       error: {
         code: "contract_violation",
         message:
-          `Action plugin ${frozen.binding.pluginId}/${frozen.binding.exportId} ` +
-          `returned no ${frozen.kind} Asset output.`,
+          `Action plugin ${frozen.binding.pluginId}/${frozen.binding.exportId} returned ` +
+          `${output.kind} output for a ${frozen.kind} Action; expected asset.`,
         retryable: false,
         requestState: "accepted",
       },
@@ -514,6 +597,99 @@ function customActionStep(
     status: "completed",
     outputs: [{ ...output, slot: run.outputSlot }],
   };
+}
+
+function generatorActionStep(
+  run: DurableRunRecord,
+  result: ExecutablePluginResult,
+): DurableProviderStep {
+  const frozen = parseFrozenExecutorInput(run.executorInput);
+  if (
+    frozen.targetKind !== "generator-action" ||
+    !frozen.generatorOutputContract
+  ) {
+    throw new FrozenExecutorInputError(
+      "A Generator Action result requires a frozen output contract.",
+    );
+  }
+  if (result.status === "failed") {
+    return { status: "failed", error: result.error };
+  }
+  if (result.status === "accepted") {
+    return {
+      status: "accepted",
+      pollState: ExecutablePluginJsonValueSchema.parse(result.pollState),
+      ...(result.retryAfterMs === undefined
+        ? {}
+        : { retryAfterMs: result.retryAfterMs }),
+    };
+  }
+  const port = frozen.generatorOutputContract.find(
+    (candidate) => candidate.slot === run.outputSlot,
+  );
+  const output = result.outputs[0];
+  if (!port || result.outputs.length !== 1 || !output) {
+    return {
+      status: "failed",
+      error: {
+        code: "contract_violation",
+        message:
+          `Generator Action ${frozen.binding.pluginId}/${frozen.binding.exportId} returned ` +
+          `${result.outputs.length} outputs; the frozen Run requires exactly one ${run.outputSlot} output.`,
+        retryable: false,
+        requestState: "accepted",
+      },
+    };
+  }
+  if (output.slot !== port.slot) {
+    return {
+      status: "failed",
+      error: {
+        code: "contract_violation",
+        message:
+          `Generator Action ${frozen.binding.pluginId}/${frozen.binding.exportId} returned ` +
+          `output slot ${output.slot}; the frozen Run requires ${port.slot}.`,
+        retryable: false,
+        requestState: "accepted",
+      },
+    };
+  }
+  if (
+    port.assetType.kind === "media" &&
+    (output.kind !== "asset" || output.asset.kind !== port.assetType.mediaKind)
+  ) {
+    return {
+      status: "failed",
+      error: {
+        code: "contract_violation",
+        message:
+          `Generator Action ${frozen.binding.pluginId}/${frozen.binding.exportId} returned ` +
+          `the wrong output type for ${port.assetType.mediaKind} slot ${port.slot}.`,
+        retryable: false,
+        requestState: "accepted",
+      },
+    };
+  }
+  if (port.assetType.kind === "document") {
+    if (
+      output.kind !== "document" ||
+      output.document.documentKind !== port.assetType.documentKind ||
+      output.document.schemaVersion !== port.assetType.schemaVersion
+    ) {
+      return {
+        status: "failed",
+        error: {
+          code: "contract_violation",
+          message:
+            `Generator Action ${frozen.binding.pluginId}/${frozen.binding.exportId} returned ` +
+            `the wrong Document contract for ${port.assetType.documentKind}@${port.assetType.schemaVersion} slot ${port.slot}.`,
+          retryable: false,
+          requestState: "accepted",
+        },
+      };
+    }
+  }
+  return { status: "completed", outputs: [output] };
 }
 
 function remainingAttemptTimeoutMs(run: DurableRunRecord, now: number): number {
@@ -564,10 +740,13 @@ function providerRequest(
 function customActionRequest(
   run: DurableRunRecord,
   now: number,
+  operation: "submit" | "poll" = "submit",
+  pollState?: ExecutablePluginJsonValue,
 ): ExecutablePluginActionRequest {
   const frozen = parseFrozenExecutorInput(run.executorInput);
   if (
     (frozen.targetKind !== "action" &&
+      frozen.targetKind !== "generator-action" &&
       frozen.targetKind !== "local-executor") ||
     !frozen.actor
   ) {
@@ -582,6 +761,8 @@ function customActionRequest(
     ...(frozen.nodeId ? { nodeId: frozen.nodeId } : {}),
     input: frozen.input,
     actor: frozen.actor,
+    operation,
+    ...(pollState === undefined ? {} : { pollState }),
     timeoutMs: remainingAttemptTimeoutMs(run, now),
   };
 }
@@ -747,6 +928,19 @@ export function createLocalDurableRunCoordinator(
             ),
           );
         }
+        if (frozen.targetKind === "generator-action") {
+          if (!options.executablePluginAction) {
+            throw new ProviderPluginHostUnavailableError(
+              "Executable Generator Action runtime is unavailable.",
+            );
+          }
+          return generatorActionStep(
+            run,
+            await options.executablePluginAction(
+              customActionRequest(run, clock.now(), "submit"),
+            ),
+          );
+        }
         const response = await options.providerPluginExecutor(
           providerRequest(run, idempotencyKey, clock.now()),
         );
@@ -754,6 +948,19 @@ export function createLocalDurableRunCoordinator(
       },
       async poll({ run, pollState }) {
         const frozen = parseFrozenExecutorInput(run.executorInput);
+        if (frozen.targetKind === "generator-action") {
+          if (!options.executablePluginAction) {
+            throw new ProviderPluginHostUnavailableError(
+              "Executable Generator Action runtime is unavailable.",
+            );
+          }
+          return generatorActionStep(
+            run,
+            await options.executablePluginAction(
+              customActionRequest(run, clock.now(), "poll", pollState),
+            ),
+          );
+        }
         if (
           frozen.targetKind === "action" ||
           frozen.targetKind === "local-executor"

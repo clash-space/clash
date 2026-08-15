@@ -16,6 +16,10 @@ export default defineConfig({
         ),
       },
       {
+        find: /^@clash\/shared-runtime$/,
+        replacement: resolve(__dirname, "../shared-runtime/src/index.ts"),
+      },
+      {
         find: /^@clash\/shared-types\/(.+)$/,
         replacement: resolve(__dirname, "../shared-types/src/$1.ts"),
       },

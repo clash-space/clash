@@ -1,0 +1,471 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-08-14",
+  "scope": "instruction-following non-linear video editing, adjacent generative-edit evaluation, and agent-evaluation infrastructure",
+  "notes": [
+    "Release status is time-sensitive and must be rechecked before taking a dependency.",
+    "The entries classify what each work evaluates; shared words such as video editing do not imply equivalent tasks.",
+    "No public acronym is proposed for the Clash benchmark in this research record."
+  ],
+  "works": [
+    {
+      "id": "medit-bench-2026",
+      "title": "MEDit-Bench: A Dataset for Evaluating Message-Driven Narrative Video Editing",
+      "year": 2026,
+      "layer": "narrative-selection",
+      "input": "long-form source video and natural-language narrative message",
+      "output": "ordered temporal cuts for a 1-3 minute cut-only edit",
+      "oracle": "three professional edits per video-message pair; temporal recall, cut F1, mIoU, human preference",
+      "publicArtifacts": {
+        "paper": true,
+        "code": null,
+        "data": true,
+        "evaluatorCheckpoint": false
+      },
+      "relevance": "closest precedent for natural-language narrative briefs, multiple valid references, and programmatic temporal scoring",
+      "urls": {
+        "paper": "https://arxiv.org/abs/2607.25300",
+        "project": "https://ogatakatsuya.github.io/medit-bench/",
+        "data": "https://huggingface.co/datasets/kattyan/MEDit-Bench"
+      }
+    },
+    {
+      "id": "editduet-2025",
+      "title": "EditDuet: A Multi-Agent System for Video Non-Linear Editing",
+      "year": 2025,
+      "layer": "nle-execution",
+      "input": "user request, A-roll, transcript, and a searchable B-roll collection",
+      "output": "mutated NLE timeline and rendered video",
+      "oracle": "failure rate, duration coverage, repeated footage, pairwise VLM judge, and a 35-person human study",
+      "publicArtifacts": {
+        "paper": true,
+        "code": null,
+        "data": false,
+        "evaluatorCheckpoint": false
+      },
+      "relevance": "closest published agent and tool environment for actual NLE",
+      "urls": {
+        "paper": "https://arxiv.org/abs/2509.10761"
+      }
+    },
+    {
+      "id": "ellmpeg-2026",
+      "title": "ELLMPEG: An Edge-based Agentic LLM Video Processing Tool",
+      "year": 2026,
+      "layer": "nle-execution",
+      "input": "natural-language FFmpeg or VVenC request",
+      "output": "generated and locally executed command",
+      "oracle": "command accuracy, validity, runtime correctness, throughput, latency, and energy",
+      "publicArtifacts": {
+        "paper": true,
+        "code": null,
+        "data": null,
+        "evaluatorCheckpoint": false
+      },
+      "relevance": "direct FFmpeg agent baseline over 480 queries",
+      "urls": {
+        "paper": "https://arxiv.org/abs/2602.00028"
+      }
+    },
+    {
+      "id": "glance-mvebench-2026",
+      "title": "GLANCE: A Global-Local Coordination Multi-Agent Framework for Music-Grounded Non-Linear Video Editing",
+      "year": 2026,
+      "layer": "nle-execution",
+      "input": "music, footage, and an editing prompt",
+      "output": "music-grounded nonlinear edit",
+      "oracle": "agent judge over rhythm, emotion, instruction following, story completeness, continuity, and quality",
+      "publicArtifacts": {
+        "paper": true,
+        "code": false,
+        "data": null,
+        "evaluatorCheckpoint": false
+      },
+      "relevance": "music-editing taxonomy and task difficulty axes",
+      "releaseNote": "official repository said code will be released soon on 2026-08-14",
+      "urls": {
+        "paper": "https://arxiv.org/abs/2604.05076",
+        "code": "https://github.com/ZihaoLinQZ/GLANCE-Video-Editing-Agent"
+      }
+    },
+    {
+      "id": "videoagent-videoedit-2026",
+      "title": "VideoAgent: All-in-One Framework for Video Understanding and Editing",
+      "year": 2026,
+      "layer": "nle-execution",
+      "input": "high-level multimodal editing or remaking request",
+      "output": "agent-composed workflow and produced video",
+      "oracle": "workflow success, retrieval ordering/IoU/alignment, and human ratings",
+      "publicArtifacts": {
+        "paper": true,
+        "code": true,
+        "data": true,
+        "evaluatorCheckpoint": false
+      },
+      "relevance": "broad operation taxonomy and complex orchestration baseline",
+      "urls": {
+        "paper": "https://arxiv.org/abs/2606.23327",
+        "code": "https://github.com/HKUDS/VideoAgent"
+      }
+    },
+    {
+      "id": "crayotter-2026",
+      "title": "Crayotter: Traceable Multi-Agent Workflows for Long-Form Video Editing",
+      "year": 2026,
+      "layer": "nle-execution",
+      "input": "one natural-language long-form production request and heterogeneous media",
+      "output": "artifacts, timeline execution, intermediate renders, and final video",
+      "oracle": "human evaluation over 23 themes",
+      "publicArtifacts": {
+        "paper": true,
+        "code": true,
+        "data": null,
+        "evaluatorCheckpoint": false
+      },
+      "relevance": "strong precedent for first-class traces, artifacts, checkpoints, and recovery",
+      "urls": {
+        "paper": "https://arxiv.org/abs/2606.07636",
+        "code": "https://github.com/idwts/Crayotter"
+      }
+    },
+    {
+      "id": "video-ad-agent-bench-v1",
+      "title": "VideoAdAgent Bench v1",
+      "year": 2026,
+      "layer": "end-to-end-content-production",
+      "input": "structured fictional-brand advertising brief and reference assets",
+      "output": "finished video advertisement",
+      "oracle": "position-swapped pairwise judges, deterministic duration/aspect/audio/OCR checks, defect judge, cost, and latency",
+      "publicArtifacts": {
+        "paper": true,
+        "code": true,
+        "data": true,
+        "evaluatorCheckpoint": false
+      },
+      "relevance": "pre-registered detailed briefs plus deterministic production checks",
+      "caveat": "vendor-authored and led by the evaluated product; not independent validation",
+      "urls": {
+        "leaderboard": "https://d35ghwdno3nak3.cloudfront.net/videoadagent_bench/v1/leaderboard.html",
+        "code": "https://github.com/creatify-ai/VABench"
+      }
+    },
+    {
+      "id": "vebench-real-world-2026",
+      "title": "VEBench: Benchmarking Large Multimodal Models for Real-World Video Editing",
+      "year": 2026,
+      "layer": "editing-understanding",
+      "input": "edited video for technique QA, or one reference clip plus candidate videos for operation-simulation QA",
+      "output": "editing-technique answer, or candidate index plus temporal segment and placement",
+      "oracle": "multiple-choice accuracy and candidate-conditional temporal IoU",
+      "publicArtifacts": {
+        "paper": true,
+        "code": false,
+        "data": false,
+        "evaluatorCheckpoint": false
+      },
+      "relevance": "editing-technique taxonomy, multi-video footage choice, and temporal localization",
+      "releaseNote": "paper-linked project page returned HTTP 404 on 2026-08-14",
+      "urls": {
+        "paper": "https://arxiv.org/abs/2605.03276",
+        "project": "https://vebench.github.io/"
+      }
+    },
+    {
+      "id": "ve-bench-aaai-2025",
+      "title": "VE-Bench: Subjective-Aligned Benchmark Suite for Text-Driven Video Editing Quality Assessment",
+      "year": 2025,
+      "layer": "generative-edit-quality",
+      "input": "instruction, source video, and generatively edited video",
+      "output": "quality score",
+      "oracle": "human MOS from 24 participants and a trained QA model",
+      "publicArtifacts": {
+        "paper": true,
+        "code": true,
+        "data": true,
+        "evaluatorCheckpoint": true
+      },
+      "relevance": "released human-aligned evaluator baseline",
+      "urls": {
+        "paper": "https://arxiv.org/abs/2408.11481",
+        "code": "https://github.com/littlespray/VE-Bench"
+      }
+    },
+    {
+      "id": "vebench-vescore-2024",
+      "title": "VEBench: Towards Comprehensive and Automatic Evaluation for Text-guided Video Editing",
+      "year": 2024,
+      "layer": "metric-meta-evaluation",
+      "input": "source, edit instruction, and edited output",
+      "output": "metric or judge score",
+      "oracle": "human ratings for textual faithfulness, frame consistency, and video fidelity",
+      "publicArtifacts": {
+        "paper": true,
+        "code": false,
+        "data": false,
+        "evaluatorCheckpoint": false
+      },
+      "relevance": "meta-evaluation protocol for editing metrics and VEScore proposal",
+      "releaseNote": "reviewed OpenReview version said code and data would be released upon acceptance",
+      "urls": {
+        "paper": "https://openreview.net/forum?id=nZNWrzDBHG"
+      }
+    },
+    {
+      "id": "ivebench-2026",
+      "title": "IVEBench: Modern Benchmark Suite for Instruction-Guided Video Editing Assessment",
+      "year": 2026,
+      "layer": "generative-edit-quality",
+      "input": "source video and instruction",
+      "output": "generatively edited video",
+      "oracle": "traditional and MLLM metrics for video quality, instruction compliance, and video fidelity",
+      "publicArtifacts": {
+        "paper": true,
+        "code": true,
+        "data": true,
+        "evaluatorCheckpoint": false
+      },
+      "relevance": "broad task taxonomy and three-dimensional assessment",
+      "urls": {
+        "paper": "https://arxiv.org/abs/2510.11647",
+        "code": "https://github.com/RyanChenYN/IVEBench"
+      }
+    },
+    {
+      "id": "vefx-bench-2026",
+      "title": "VEFX-Bench: A Holistic Benchmark for Generic Video Editing and Visual Effects",
+      "year": 2026,
+      "layer": "generative-edit-quality",
+      "input": "instruction, original video, and edited video",
+      "output": "instruction following, render quality, and edit exclusivity scores",
+      "oracle": "5,049 annotated examples and released 4B/32B reward models",
+      "publicArtifacts": {
+        "paper": true,
+        "code": true,
+        "data": true,
+        "evaluatorCheckpoint": true
+      },
+      "relevance": "best released external evaluator baseline reviewed; edit-exclusivity dimension maps to preservation",
+      "urls": {
+        "paper": "https://arxiv.org/abs/2604.16272",
+        "code": "https://github.com/Visko-Platform/VEFX-Bench"
+      }
+    },
+    {
+      "id": "tdve-assessor-2025",
+      "title": "TDVE-Assessor: Benchmarking and Evaluating the Quality of Text-Driven Video Editing with LMMs",
+      "year": 2025,
+      "layer": "generative-edit-quality",
+      "input": "source video, edit instruction, and edited video",
+      "output": "quality, alignment, and structural-consistency scores",
+      "oracle": "3,857 edited videos and 173,565 human ratings",
+      "publicArtifacts": {
+        "paper": true,
+        "code": true,
+        "data": true,
+        "evaluatorCheckpoint": true
+      },
+      "relevance": "large human-rating corpus and secondary evaluator baseline",
+      "urls": {
+        "code": "https://github.com/JuntongWang/TDVE-Assessor"
+      }
+    },
+    {
+      "id": "five-bench-2025",
+      "title": "FiVE-Bench: A Fine-grained Video Editing Benchmark for Evaluating Emerging Diffusion and Rectified Flow Models",
+      "year": 2025,
+      "layer": "generative-edit-quality",
+      "input": "source video, object-level instruction, and masks",
+      "output": "generatively edited video",
+      "oracle": "15 metrics covering preservation, alignment, consistency, quality, and VLM-based edit success",
+      "publicArtifacts": {
+        "paper": true,
+        "code": true,
+        "data": true,
+        "evaluatorCheckpoint": false
+      },
+      "relevance": "fine-grained object-level edit and preservation taxonomy",
+      "urls": {
+        "paper": "https://openaccess.thecvf.com/content/ICCV2025/html/Li_FiVE-Bench_A_Fine-grained_Video_Editing_Benchmark_for_Evaluating_Emerging_Diffusion_ICCV_2025_paper.html",
+        "code": "https://github.com/MinghanLi/FiVE-Bench"
+      }
+    },
+    {
+      "id": "covebench-2026",
+      "title": "CoVEBench: Can Video Editing Models Handle Complex Instructions?",
+      "year": 2026,
+      "layer": "generative-edit-quality",
+      "input": "source video and compositional multi-point editing instruction",
+      "output": "generatively edited video",
+      "oracle": "9,990 fine-grained checklist items plus MLLM and automatic metrics",
+      "publicArtifacts": {
+        "paper": true,
+        "code": true,
+        "data": true,
+        "evaluatorCheckpoint": false
+      },
+      "relevance": "per-requirement checklist scoring and preservation failures under compositional requests",
+      "urls": {
+        "paper": "https://arxiv.org/abs/2606.08415",
+        "code": "https://github.com/NJU-LINK/CoVEBench"
+      }
+    },
+    {
+      "id": "omniedit-bench-2026",
+      "title": "OmniEdit-Bench: A Comprehensive Benchmark for Instruction-based Video Editing",
+      "year": 2026,
+      "layer": "generative-edit-quality",
+      "input": "source video, instruction, and optional reference image/video",
+      "output": "edited video",
+      "oracle": "Gemini rubric for accuracy, preservation, realism, and consistency with an accuracy-aware penalty",
+      "publicArtifacts": {
+        "paper": true,
+        "code": true,
+        "data": true,
+        "evaluatorCheckpoint": false
+      },
+      "relevance": "spatial/temporal/reasoning/audio/reference taxonomy and accuracy-gated quality aggregation",
+      "urls": {
+        "paper": "https://arxiv.org/abs/2608.05049",
+        "data": "https://huggingface.co/datasets/OmniEdit-Bench/OmniEdit-Bench"
+      }
+    },
+    {
+      "id": "aurora-agentedit-2026",
+      "title": "Aurora: Unified Video Editing with a Tool-Using Agent",
+      "year": 2026,
+      "layer": "generative-edit-agent",
+      "input": "instruction plus optional tool-retrieved reference",
+      "output": "generatively edited video",
+      "oracle": "multi-axis VLM rubric over retrieval-conditioned and reasoning edits",
+      "publicArtifacts": {
+        "paper": true,
+        "code": true,
+        "data": false,
+        "evaluatorCheckpoint": true
+      },
+      "relevance": "agent path and retrieval-conditioned generative edits",
+      "releaseNote": "AgentEdit-Bench data was still marked TODO on 2026-08-14",
+      "urls": {
+        "paper": "https://arxiv.org/abs/2605.18748",
+        "code": "https://github.com/yeates/Aurora"
+      }
+    },
+    {
+      "id": "veu-bench-2025",
+      "title": "VEU-Bench: Towards Comprehensive Understanding of Video Editing",
+      "year": 2025,
+      "layer": "editing-understanding",
+      "input": "edited video and recognition/reasoning/judging question",
+      "output": "editing-understanding answer",
+      "oracle": "19 fine-grained tasks across recognition, reasoning, and judging",
+      "publicArtifacts": {
+        "paper": true,
+        "code": true,
+        "data": true,
+        "evaluatorCheckpoint": true
+      },
+      "relevance": "editing-technique and cinematography taxonomy",
+      "urls": {
+        "paper": "https://arxiv.org/abs/2504.17828",
+        "project": "https://labazh.github.io/VEU-Bench.github.io/"
+      }
+    },
+    {
+      "id": "guide-2026",
+      "title": "GUIDE: A Benchmark for Understanding and Assisting Users in Open-Ended GUI Tasks",
+      "year": 2026,
+      "layer": "gui-understanding",
+      "input": "screen recording and user context from open-ended application use",
+      "output": "behavior state, intent, and help prediction",
+      "oracle": "67.5 hours from 120 novice demonstrations across 10 applications",
+      "publicArtifacts": {
+        "paper": true,
+        "code": null,
+        "data": true,
+        "evaluatorCheckpoint": false
+      },
+      "relevance": "human Premiere Pro and CapCut workflow and assistance taxonomy",
+      "urls": {
+        "project": "https://guide-bench.github.io/"
+      }
+    },
+    {
+      "id": "osworld-2024",
+      "title": "OSWorld: Benchmarking Multimodal Agents for Open-Ended Tasks in Real Computer Environments",
+      "year": 2024,
+      "layer": "agent-infrastructure",
+      "input": "natural-language task and initialized real desktop environment",
+      "output": "modified application and operating-system state",
+      "oracle": "execution-based postcondition scripts",
+      "publicArtifacts": {
+        "paper": true,
+        "code": true,
+        "data": true,
+        "evaluatorCheckpoint": false
+      },
+      "relevance": "environment reset, task execution, postcondition evaluation, trajectories, and verified public runs",
+      "urls": {
+        "paper": "https://arxiv.org/abs/2404.07972",
+        "code": "https://github.com/xlang-ai/OSWorld"
+      }
+    },
+    {
+      "id": "swe-bench-verified-2024",
+      "title": "SWE-bench Verified",
+      "year": 2024,
+      "layer": "benchmark-process",
+      "input": "real GitHub issue and repository",
+      "output": "code patch",
+      "oracle": "human-validated issue/test quality and containerized executable tests",
+      "publicArtifacts": {
+        "paper": true,
+        "code": true,
+        "data": true,
+        "evaluatorCheckpoint": false
+      },
+      "relevance": "analogy for brief verification, hidden edit-to-pass and pass-to-pass checks, and reproducible execution",
+      "urls": {
+        "announcement": "https://openai.com/index/introducing-swe-bench-verified/"
+      }
+    },
+    {
+      "id": "inspect-ai",
+      "title": "Inspect AI",
+      "year": 2024,
+      "layer": "agent-infrastructure",
+      "input": "dataset sample and task configuration",
+      "output": "solver/agent trajectory and scored result",
+      "oracle": "composable custom or model scorers",
+      "publicArtifacts": {
+        "paper": true,
+        "code": true,
+        "data": null,
+        "evaluatorCheckpoint": false
+      },
+      "relevance": "mature Task/Dataset/Solver/Scorer/Sandbox architecture and external-agent support",
+      "urls": {
+        "docs": "https://inspect.aisi.org.uk/",
+        "code": "https://github.com/UKGovernmentBEIS/inspect_ai"
+      }
+    },
+    {
+      "id": "opentelemetry-semconv",
+      "title": "OpenTelemetry Semantic Conventions",
+      "year": 2026,
+      "layer": "observability-standard",
+      "input": "runtime operations and telemetry events",
+      "output": "standard resources, spans, events, metrics, and logs",
+      "oracle": "not applicable",
+      "publicArtifacts": {
+        "paper": false,
+        "code": true,
+        "data": false,
+        "evaluatorCheckpoint": false
+      },
+      "relevance": "standard trace envelope; benchmark-specific attributes must remain namespaced and version-pinned",
+      "urls": {
+        "spec": "https://opentelemetry.io/docs/specs/semconv/"
+      }
+    }
+  ]
+}

@@ -39,6 +39,7 @@
     "test:startup:real-codex": "pnpm build:package @clash/desktop && pnpm --filter @clash/desktop test:startup:real-codex",
     "test:startup:real-codex-resume": "pnpm build:package @clash/desktop && pnpm --filter @clash/desktop test:startup:real-codex-resume",
     "benchmark:artifacts": "pnpm --dir packages/shared-artifact-evals exec tsx src/cli.ts",
+    "benchmark:agent-product": "pnpm --dir packages/shared-artifact-evals exec tsx src/cli.ts --suite benchmarks/agent-product/v1/suite.json",
     "assets:director:anny": "tsx scripts/generate-director-anny-assets.ts",
     "lint": "turbo run lint",
     "lint:package": "turbo run lint --filter",

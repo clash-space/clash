@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import {
+  DirectorStageAuthoringStateSchema,
   DirectorStageStateSchema,
   type DirectorStageState,
 } from "@clash/shared-types";
@@ -36,7 +37,7 @@ export function resolveDirectorStageFilePath(options: {
 
 export function directorStageCanonicalJson(state: unknown): string {
   const parsed = DirectorStageStateSchema.parse(state);
-  return `${JSON.stringify(parsed, null, 2)}\n`;
+  return `${JSON.stringify({ ...parsed, shots: [] }, null, 2)}\n`;
 }
 
 export function parseDirectorStageFileForApply(raw: string): ParseDirectorStageApplyResult {
@@ -49,7 +50,7 @@ export function parseDirectorStageFileForApply(raw: string): ParseDirectorStageA
       error: error instanceof Error ? `Invalid JSON: ${error.message}` : "Invalid JSON",
     };
   }
-  const parsed = DirectorStageStateSchema.safeParse(value);
+  const parsed = DirectorStageAuthoringStateSchema.safeParse(value);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     const path = issue?.path.length ? `${issue.path.join(".")}: ` : "";

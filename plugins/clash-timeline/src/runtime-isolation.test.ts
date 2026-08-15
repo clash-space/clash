@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { TIMELINE_DSL_DEFINITION } from "@clash/shared-types/timeline-contract";
 
 test("built standalone runtime serves its schema without a global Clash CLI", async () => {
   const { CLASH_CLI_BIN: _ignoredCliOverride, ...isolatedEnv } = process.env;
@@ -28,7 +29,13 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
     const rootTools = await client.listTools();
     assert.deepEqual(
       rootTools.tools.map((tool) => tool.name),
-      ["clash", "clash_assets", "clash_canvas", "clash_composition"],
+      [
+        "clash",
+        "clash_plugin",
+        "clash_assets",
+        "clash_canvas",
+        "clash_composition",
+      ],
     );
     const menu = await client.callTool({
       name: "clash",
@@ -130,31 +137,56 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
     const structured = result.structuredContent as any;
 
     assert.notEqual(result.isError, true, JSON.stringify(result));
-    assert.equal(structured?.schemaVersion, 9);
+    assert.equal(
+      structured?.schemaVersion,
+      TIMELINE_DSL_DEFINITION.schemaVersion,
+    );
     assert.equal(
       validateSchema?.["x-clash-contract-fingerprint"],
       structured?.contractFingerprint,
     );
+    assert.equal(structured?.view, "authoring");
+    assert.equal(structured?.operationCatalog, undefined);
+    assert.equal(structured?.jsonSchema, undefined);
+    assert.equal(structured?.fields?.root?.assetTranscripts, undefined);
+    assert.ok(structured?.fields?.itemTypes?.transition?.fromItemId);
     assert.equal(
-      structured?.operationCatalog?.agent?.["timeline.save"]
+      structured?.references?.assetId?.target,
+      "project-asset",
+    );
+    assert.equal(
+      structured?.references?.sourceNodeId?.target,
+      "canvas-node",
+    );
+    assert.equal(
+      structured?.examples?.basic?.state?.tracks?.[1]?.items?.[1]
+        ?.sourceNodeId,
+      "canvas-component-node-id",
+    );
+
+    const fullResult = await callTimeline("schema", { view: "full" });
+    const full = fullResult.structuredContent as any;
+    assert.notEqual(fullResult.isError, true, JSON.stringify(fullResult));
+    assert.equal(
+      full?.operationCatalog?.agent?.["timeline.save"]
         ?.surfaceBindings?.[0],
       "mcp:clash_timeline_save",
     );
-    assert.ok(structured?.fieldCatalog?.root?.fields?.assetTranscripts);
+    assert.ok(full?.fieldCatalog?.root?.fields?.assetTranscripts);
     assert.ok(
-      structured?.fieldCatalog?.itemTypes?.transition?.fields?.fromItemId,
+      full?.fieldCatalog?.itemTypes?.transition?.fields?.fromItemId,
     );
     assert.ok(
-      structured?.jsonSchema?.definitions?.TimelineDsl?.properties
+      full?.jsonSchema?.definitions?.TimelineDsl?.properties
         ?.assetTranscripts,
     );
     assert.equal(
-      structured?.jsonSchema?.definitions?.TimelineDsl?.properties
+      full?.jsonSchema?.definitions?.TimelineDsl?.properties
         ?.mediaAssetRefs,
       undefined,
     );
     assert.deepEqual(
-      structured?.jsonSchema?.["x-clash-semantic-rules"]?.rules?.find(
+      full?.jsonSchema?.["x-clash-semantic-rules"]?.rules?.find(
         (rule: { id?: unknown }) => rule.id === "timeline.asset.retired-field",
       ),
       {
@@ -164,7 +196,7 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
       },
     );
     const authoritativeItemVariants =
-      structured?.jsonSchema?.definitions?.TimelineDsl?.properties?.tracks
+      full?.jsonSchema?.definitions?.TimelineDsl?.properties?.tracks
         ?.items?.properties?.items?.items?.anyOf ?? [];
     assert.deepEqual(
       new Set(
@@ -184,7 +216,7 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
         "transition",
       ]),
     );
-    assert.deepEqual(structured?.features?.clipMask?.animatedChannels, [
+    assert.deepEqual(full?.features?.clipMask?.animatedChannels, [
       "maskPosition",
       "maskSize",
       "maskRotation",

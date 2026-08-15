@@ -13,7 +13,9 @@ describe("local executable plugin action invoker", () => {
       protocol: "clash.plugin.result/v1" as const,
       invocationId: invocation.invocationId,
       status: "completed" as const,
-      outputs: [{ slot: "result", kind: "value" as const, value: { text: "Done" } }],
+      outputs: [
+        { slot: "result", kind: "value" as const, value: { text: "Done" } },
+      ],
     }));
     const invoker = createExecutablePluginActionInvoker({
       client: { invoke },
@@ -26,11 +28,17 @@ describe("local executable plugin action invoker", () => {
       nodeId: "node-action-1",
       input: {
         values: { prompt: "Caption this", tone: "concise" },
-        references: [{
-          slot: "image",
-          index: 0,
-          asset: { assetId: "asset-1", uri: "clash-asset://asset-1", kind: "image" },
-        }],
+        references: [
+          {
+            slot: "image",
+            index: 0,
+            asset: {
+              assetId: "asset-1",
+              uri: "clash-asset://asset-1",
+              kind: "image",
+            },
+          },
+        ],
       },
       actor: { kind: "agent", id: "agent-1" },
     });
@@ -46,5 +54,45 @@ describe("local executable plugin action invoker", () => {
       }),
       { timeoutMs: 1_800_000 },
     );
+  });
+
+  it("carries an accepted Generator Action poll operation and opaque state over the Action ABI", async () => {
+    const binding = {
+      pluginId: "test.generator-actions",
+      version: "1.2.0",
+      exportId: "render",
+      schemaHash: `sha256:${"d".repeat(64)}`,
+    } as const;
+    const invoker = createExecutablePluginActionInvoker({
+      client: {
+        async invoke(_pluginId, invocation) {
+          if (
+            invocation.operation !== "poll" ||
+            JSON.stringify(invocation.pollState) !==
+              JSON.stringify({ upstreamTaskId: "vendor-1" })
+          ) {
+            throw new Error("Generator Action poll identity was lost");
+          }
+          return {
+            protocol: "clash.plugin.result/v1",
+            invocationId: invocation.invocationId,
+            status: "completed",
+            outputs: [],
+          };
+        },
+      },
+    });
+
+    await expect(
+      invoker({
+        binding,
+        taskId: "run-1",
+        projectId: "project-1",
+        input: { values: {}, references: [] },
+        actor: { kind: "system", id: "local-api" },
+        operation: "poll",
+        pollState: { upstreamTaskId: "vendor-1" },
+      }),
+    ).resolves.toMatchObject({ status: "completed" });
   });
 });

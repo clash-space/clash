@@ -141,6 +141,7 @@ describe("executable plugin contributions contract", () => {
     expect(ExecutablePluginManifestSchema.parse(input).contributes).toEqual({
       ...contributes,
       functions: [{ ...contributes.functions[0], operations: ["submit"] }],
+      generators: [],
       hostTools: ["codex.imagegen"],
     });
     expect(ExecutablePluginManifestSchema.safeParse({

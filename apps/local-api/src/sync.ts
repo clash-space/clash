@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { LoroDoc } from "loro-crdt";
@@ -7,8 +7,17 @@ import {
   ACTION_ASSET_BINDING_SCHEMA_CONTAINER,
   ActionAssetBindingSchema,
   DEFAULT_CANVAS_ID,
+  DOCUMENT_ASSET_REVISIONS_CONTAINER,
+  DOCUMENT_ASSET_SCHEMA_CONTAINER,
+  DOCUMENT_ATTACHMENTS_CONTAINER,
+  GENERATOR_ACTION_RUNS_CONTAINER,
+  GENERATOR_OUTPUT_COMMITS_CONTAINER,
+  GENERATOR_REVISIONS_CONTAINER,
+  GENERATOR_SCHEMA_CONTAINER,
   PROJECT_ASSETS_CONTAINER,
   PROJECT_ASSET_SCHEMA_CONTAINER,
+  PROJECT_DOCUMENT_ASSETS_CONTAINER,
+  PROJECT_GENERATORS_CONTAINER,
   canonicalTimelineRenderDsl,
   canvasGraphReconciliationChanged,
   reconcileCanvasGraph,
@@ -65,6 +74,19 @@ type SendPeerJson = (msg: Record<string, unknown>) => void;
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 const LOCAL_LORO_COMPACT_UPDATE_THRESHOLD = 16;
 const LOCAL_LORO_COMPACT_BYTES_THRESHOLD = 1024 * 1024;
+const HOST_OWNED_GENERATOR_AUTHORITY_CONTAINERS = [
+  GENERATOR_SCHEMA_CONTAINER,
+  PROJECT_GENERATORS_CONTAINER,
+  GENERATOR_REVISIONS_CONTAINER,
+  GENERATOR_ACTION_RUNS_CONTAINER,
+  GENERATOR_OUTPUT_COMMITS_CONTAINER,
+] as const;
+const HOST_OWNED_DOCUMENT_ASSET_AUTHORITY_CONTAINERS = [
+  DOCUMENT_ASSET_SCHEMA_CONTAINER,
+  PROJECT_DOCUMENT_ASSETS_CONTAINER,
+  DOCUMENT_ASSET_REVISIONS_CONTAINER,
+  DOCUMENT_ATTACHMENTS_CONTAINER,
+] as const;
 
 interface LocalPeer {
   sendUpdate: SendPeerUpdate;
@@ -88,6 +110,26 @@ function exactBytes(view: Uint8Array): Uint8Array {
   return view.byteOffset === 0 && view.byteLength === view.buffer.byteLength
     ? view
     : view.slice();
+}
+
+function assertLocalPeerHostOwnedAuthorityMutation(
+  current: LoroDoc,
+  candidate: LoroDoc,
+  authorityName: "Generator" | "Document Asset",
+  containers: readonly string[],
+): void {
+  for (const container of containers) {
+    if (
+      !isDeepStrictEqual(
+        candidate.getMap(container).toJSON(),
+        current.getMap(container).toJSON(),
+      )
+    ) {
+      throw new Error(
+        `Local peers cannot mutate Host-owned ${authorityName} authority.`,
+      );
+    }
+  }
 }
 
 function isPeerEditableActionAssetBinding(
@@ -394,6 +436,7 @@ async function loadDoc(options: LocalSyncOptions): Promise<{
 export class LocalLoroRoom {
   private peers = new Map<PeerId, LocalPeer>();
   private projectOperations: Promise<void> = Promise.resolve();
+  private checkpointedDoc: LoroDoc;
   private updatesSinceSnapshot = 0;
   private updateBytesSinceSnapshot = 0;
   private activityThrottle = new Map<string, number>();
@@ -405,13 +448,20 @@ export class LocalLoroRoom {
 
   private constructor(
     private readonly projectId: string,
-    private readonly doc: LoroDoc,
+    private doc: LoroDoc,
     private readonly store: FileReplicaStore,
     private readonly remotePersistence?: RemoteLoroPersistenceSource,
     private readonly workflowProcessor?: LocalWorkflowProcessor,
-  ) {}
+  ) {
+    this.checkpointedDoc = LoroDoc.fromSnapshot(
+      this.doc.export({ mode: "snapshot" }),
+    );
+  }
 
-  static async open(options: LocalSyncOptions): Promise<LocalLoroRoom> {
+  static async open(
+    options: LocalSyncOptions,
+    onCheckpointReadable?: (room: LocalLoroRoom) => void | Promise<void>,
+  ): Promise<LocalLoroRoom> {
     const loaded = await loadDoc(options);
     const room = new LocalLoroRoom(
       options.projectId,
@@ -422,6 +472,7 @@ export class LocalLoroRoom {
     );
     if (loaded.importedRemoteSnapshot || loaded.workspaceRepaired)
       await room.saveSnapshot();
+    await onCheckpointReadable?.(room);
     await room.processPendingWork();
     return room;
   }
@@ -442,7 +493,24 @@ export class LocalLoroRoom {
   }
 
   inspectProject<T>(read: (doc: LoroDoc) => T | Promise<T>): Promise<T> {
-    return this.enqueueProjectOperation(() => read(this.doc));
+    return this.enqueueProjectOperation(() =>
+      read(LoroDoc.fromSnapshot(this.doc.export({ mode: "snapshot" }))),
+    );
+  }
+
+  /**
+   * Reads the last durability-acknowledged Project state without joining the room queue.
+   *
+   * A Provider invocation runs while its workflow owns that queue, so an ordinary inspect would
+   * wait behind the invocation that is waiting for the inspect. The callback receives a clone so
+   * it can neither observe later uncheckpointed work nor mutate the room's committed read view.
+   */
+  async inspectCheckpointedProject<T>(
+    read: (doc: LoroDoc) => T | Promise<T>,
+  ): Promise<T> {
+    return await read(
+      LoroDoc.fromSnapshot(this.checkpointedDoc.export({ mode: "snapshot" })),
+    );
   }
 
   mutateProject<T>(
@@ -451,20 +519,59 @@ export class LocalLoroRoom {
     ) => { value: T; save?: boolean } | Promise<{ value: T; save?: boolean }>,
   ): Promise<T> {
     return this.enqueueProjectOperation(async () => {
-      const versionBefore = this.doc.version();
-      const result = await mutation(this.doc);
-      const update = exactBytes(
-        this.doc.export({ mode: "update", from: versionBefore }),
-      );
-      // `save` is an optimization hint for the file-backed adapter. The live room trusts the
-      // actual CRDT delta: if a callback changed the Project, leaving it only in memory would make
-      // the next compaction erase the HTTP mutation.
-      if (update.byteLength > 0) {
-        await this.persistUpdate(update);
-        for (const peer of this.peers.values()) peer.sendUpdate(update);
-        this.mirrorRemoteUpdate(update);
+      try {
+        const versionBefore = this.doc.version();
+        const result = await mutation(this.doc);
+        const update = exactBytes(
+          this.doc.export({ mode: "update", from: versionBefore }),
+        );
+        // `save` is an optimization hint for the file-backed adapter. The live room trusts the
+        // actual CRDT delta: if a callback changed the Project, leaving it only in memory would make
+        // the next compaction erase the HTTP mutation.
+        if (update.byteLength > 0) {
+          await this.persistUpdate(update);
+          for (const peer of this.peers.values()) peer.sendUpdate(update);
+          this.mirrorRemoteUpdate(update);
+        }
+        return result.value;
+      } catch (error) {
+        this.restoreLiveProjectFromCheckpoint();
+        throw error;
       }
-      return result.value;
+    });
+  }
+
+  /**
+   * Serial Host mutation with an explicit durability acknowledgement.
+   *
+   * Generator submission uses the acknowledgement to persist its public Run
+   * request before creating the owner-private durable task. The callback and
+   * all checkpoints stay on the same live Project document and operation
+   * queue, so no file snapshot can race an open room.
+   */
+  mutateProjectWithCheckpoint<T>(
+    mutation: (doc: LoroDoc, checkpoint: () => Promise<void>) => T | Promise<T>,
+  ): Promise<T> {
+    return this.enqueueProjectOperation(async () => {
+      try {
+        let versionBefore = this.doc.version();
+        const checkpoint = async (): Promise<void> => {
+          const update = exactBytes(
+            this.doc.export({ mode: "update", from: versionBefore }),
+          );
+          if (update.byteLength === 0) return;
+          await this.persistUpdate(update);
+          versionBefore = this.doc.version();
+          for (const peer of this.peers.values()) peer.sendUpdate(update);
+          this.mirrorRemoteUpdate(update);
+        };
+        const value = await mutation(this.doc, checkpoint);
+        await checkpoint();
+        return value;
+      } catch (error) {
+        this.restoreLiveProjectFromCheckpoint();
+        throw error;
+      }
     });
   }
 
@@ -480,6 +587,7 @@ export class LocalLoroRoom {
 
   private async refreshFromStoreUnsafe(): Promise<void> {
     const persisted = await this.store.recover(this.projectId);
+    this.checkpointedDoc.import(persisted.export({ mode: "snapshot" }));
     const versionBefore = this.doc.version();
     this.doc.import(persisted.export({ mode: "snapshot" }));
     const repairVersion = this.doc.version();
@@ -546,6 +654,18 @@ export class LocalLoroRoom {
     }
     const candidate = this.doc.fork();
     candidate.import(updateBytes);
+    assertLocalPeerHostOwnedAuthorityMutation(
+      this.doc,
+      candidate,
+      "Generator",
+      HOST_OWNED_GENERATOR_AUTHORITY_CONTAINERS,
+    );
+    assertLocalPeerHostOwnedAuthorityMutation(
+      this.doc,
+      candidate,
+      "Document Asset",
+      HOST_OWNED_DOCUMENT_ASSET_AUTHORITY_CONTAINERS,
+    );
     if (
       !isDeepStrictEqual(
         candidate.getMap(PROJECT_ASSETS_CONTAINER).toJSON(),
@@ -686,23 +806,41 @@ export class LocalLoroRoom {
   private async saveSnapshot(): Promise<void> {
     await this.store.compactSnapshot(
       this.projectId,
-      this.snapshot(),
-      this.doc.version(),
+      this.checkpointedDoc.export({ mode: "snapshot" }),
+      this.checkpointedDoc.version(),
     );
     this.updatesSinceSnapshot = 0;
     this.updateBytesSinceSnapshot = 0;
   }
 
   private async persistUpdate(update: Uint8Array): Promise<void> {
+    const nextCheckpoint = LoroDoc.fromSnapshot(
+      this.checkpointedDoc.export({ mode: "snapshot" }),
+    );
+    nextCheckpoint.import(update);
     await this.store.appendUpdate(this.projectId, update);
+    this.checkpointedDoc = nextCheckpoint;
     this.updatesSinceSnapshot += 1;
     this.updateBytesSinceSnapshot += update.byteLength;
     if (
       this.updatesSinceSnapshot >= LOCAL_LORO_COMPACT_UPDATE_THRESHOLD ||
       this.updateBytesSinceSnapshot >= LOCAL_LORO_COMPACT_BYTES_THRESHOLD
     ) {
-      await this.saveSnapshot();
+      try {
+        await this.saveSnapshot();
+      } catch (error) {
+        console.error(
+          "[local-sync] failed to compact committed Project checkpoint",
+          error,
+        );
+      }
     }
+  }
+
+  private restoreLiveProjectFromCheckpoint(): void {
+    this.doc = LoroDoc.fromSnapshot(
+      this.checkpointedDoc.export({ mode: "snapshot" }),
+    );
   }
 
   private processPendingWork(): Promise<void> {
@@ -770,29 +908,34 @@ export class LocalLoroRoom {
 
   private async processPendingWorkOnce(): Promise<void> {
     if (!this.workflowProcessor) return;
-    let versionBefore = this.doc.version();
-    const sideband: Record<string, unknown>[] = [];
-    const checkpoint = async (): Promise<void> => {
-      const update = exactBytes(
-        this.doc.export({ mode: "update", from: versionBefore }),
-      );
-      if (update.byteLength === 0) return;
-      await this.persistUpdate(update);
-      versionBefore = this.doc.version();
-      for (const peer of this.peers.values()) peer.sendUpdate(update);
-      this.mirrorRemoteUpdate(update);
-    };
-    let changed = await this.workflowProcessor.process({
-      doc: this.doc,
-      projectId: this.projectId,
-      broadcastJson: (msg) => sideband.push(msg),
-      checkpoint,
-    });
-    const projectCoverRepair = reconcileProjectCoverBindings(this.doc);
-    changed = projectCoverRepair.changed || changed;
-    if (!changed) return;
-    await checkpoint();
-    for (const msg of sideband) this.broadcastJson(msg);
+    try {
+      let versionBefore = this.doc.version();
+      const sideband: Record<string, unknown>[] = [];
+      const checkpoint = async (): Promise<void> => {
+        const update = exactBytes(
+          this.doc.export({ mode: "update", from: versionBefore }),
+        );
+        if (update.byteLength === 0) return;
+        await this.persistUpdate(update);
+        versionBefore = this.doc.version();
+        for (const peer of this.peers.values()) peer.sendUpdate(update);
+        this.mirrorRemoteUpdate(update);
+      };
+      let changed = await this.workflowProcessor.process({
+        doc: this.doc,
+        projectId: this.projectId,
+        broadcastJson: (msg) => sideband.push(msg),
+        checkpoint,
+      });
+      const projectCoverRepair = reconcileProjectCoverBindings(this.doc);
+      changed = projectCoverRepair.changed || changed;
+      if (!changed) return;
+      await checkpoint();
+      for (const msg of sideband) this.broadcastJson(msg);
+    } catch (error) {
+      this.restoreLiveProjectFromCheckpoint();
+      throw error;
+    }
   }
 
   private broadcastJson(msg: Record<string, unknown>): void {
@@ -825,8 +968,21 @@ export class LocalLoroRoom {
   }
 }
 
+export class LocalProjectRoomBusyError extends Error {
+  override name = "LocalProjectRoomBusyError";
+  readonly code = "PROJECT_BUSY" as const;
+
+  constructor(readonly projectId: string) {
+    super(`Project ${projectId} is reserved by an authority operation.`);
+  }
+}
+
 export class LocalLoroRoomHub {
   private rooms = new Map<string, Promise<LocalLoroRoom>>();
+  private checkpointReadableRooms = new Map<string, LocalLoroRoom>();
+  private readonly importReservations = new Set<string>();
+  private readonly activeImports = new Set<Promise<unknown>>();
+  private readonly replicaStore: FileReplicaStore;
   private closed = false;
   private closePromise: Promise<void> | undefined;
 
@@ -834,23 +990,149 @@ export class LocalLoroRoomHub {
     private readonly dataDir: string,
     private readonly remotePersistence?: RemoteLoroPersistenceSource,
     private readonly workflowProcessor?: LocalWorkflowProcessor | null,
-  ) {}
+  ) {
+    this.replicaStore = new FileReplicaStore(join(dataDir, "projects"));
+  }
 
   room(projectId: string): Promise<LocalLoroRoom> {
     if (this.closed) {
       return Promise.reject(new Error("Local Project room hub is closed."));
     }
+    if (this.importReservations.has(projectId)) {
+      return Promise.reject(new LocalProjectRoomBusyError(projectId));
+    }
     let room = this.rooms.get(projectId);
     if (!room) {
-      room = LocalLoroRoom.open({
-        dataDir: this.dataDir,
-        projectId,
-        remotePersistence: this.remotePersistence,
-        workflowProcessor: this.workflowProcessor,
-      });
+      room = (async () => {
+        let durableReservation = false;
+        try {
+          durableReservation =
+            (await this.replicaStore.readImportReservation(projectId)) !== null;
+        } catch {
+          // A corrupt or unreadable reservation is still an authority barrier.
+          durableReservation = true;
+        }
+        if (this.importReservations.has(projectId) || durableReservation) {
+          throw new LocalProjectRoomBusyError(projectId);
+        }
+        return LocalLoroRoom.open(
+          {
+            dataDir: this.dataDir,
+            projectId,
+            remotePersistence: this.remotePersistence,
+            workflowProcessor: this.workflowProcessor,
+          },
+          (opened) => {
+            this.checkpointReadableRooms.set(projectId, opened);
+          },
+        );
+      })();
       this.rooms.set(projectId, room);
+      void room.catch(() => {
+        if (this.rooms.get(projectId) === room) {
+          this.rooms.delete(projectId);
+          this.checkpointReadableRooms.delete(projectId);
+        }
+      });
     }
     return room;
+  }
+
+  /**
+   * Publishes an imported Project snapshot while keeping every ordinary room
+   * access outside the installation/receiver-metadata visibility gap.
+   *
+   * The callback is the receiver-local commit (Project display row, imported
+   * indexes and receipt). The reservation is released only after that commit
+   * resolves, so no workflow processor or peer can open the imported replica
+   * while its receiver authority is still incomplete.
+   */
+  installImportedProject<T>(
+    projectId: string,
+    reservationId: string,
+    snapshot: Uint8Array,
+    commitReceiverAuthority: () => Promise<T>,
+  ): Promise<T> {
+    if (this.closed) {
+      return Promise.reject(new Error("Local Project room hub is closed."));
+    }
+    if (this.importReservations.has(projectId) || this.rooms.has(projectId)) {
+      return Promise.reject(new LocalProjectRoomBusyError(projectId));
+    }
+    const snapshotDoc = new LoroDoc();
+    snapshotDoc.import(snapshot);
+    const reservation = {
+      schemaVersion: 1 as const,
+      kind: "clash.workspace.import-reservation" as const,
+      reservationId,
+      snapshotSha256: createHash("sha256").update(snapshot).digest("hex"),
+    };
+    this.importReservations.add(projectId);
+    const operation = (async () => {
+      try {
+        await this.replicaStore.reserveImportedProject(projectId, reservation);
+        await this.replicaStore.installSnapshotIfAbsent(projectId, snapshot);
+        const committed = await commitReceiverAuthority();
+        await this.replicaStore.clearImportedProjectReservation(
+          projectId,
+          reservation,
+        );
+        return committed;
+      } finally {
+        this.importReservations.delete(projectId);
+      }
+    })();
+    this.activeImports.add(operation);
+    void operation
+      .finally(() => this.activeImports.delete(operation))
+      .catch(() => undefined);
+    return operation;
+  }
+
+  async reconcileCommittedImport(
+    projectId: string,
+    reservationId: string,
+    snapshotSha256: string,
+  ): Promise<void> {
+    if (this.closed) {
+      throw new Error("Local Project room hub is closed.");
+    }
+    if (
+      !projectId.trim() ||
+      !reservationId.trim() ||
+      !/^[a-f0-9]{64}$/u.test(snapshotSha256)
+    ) {
+      throw new Error("Committed Workspace import identity is invalid.");
+    }
+    if (this.importReservations.has(projectId) || this.rooms.has(projectId)) {
+      throw new LocalProjectRoomBusyError(projectId);
+    }
+    const snapshot = await this.replicaStore.loadSnapshot(projectId);
+    if (
+      !snapshot ||
+      createHash("sha256").update(snapshot).digest("hex") !== snapshotSha256
+    ) {
+      throw new Error(
+        `Project ${projectId} installed snapshot does not match its committed Workspace import.`,
+      );
+    }
+    const expected = {
+      schemaVersion: 1 as const,
+      kind: "clash.workspace.import-reservation" as const,
+      reservationId,
+      snapshotSha256,
+    };
+    const existing = await this.replicaStore.readImportReservation(projectId);
+    if (!existing) return;
+    if (JSON.stringify(existing) !== JSON.stringify(expected)) {
+      throw new Error(
+        `Project ${projectId} is reserved by another Workspace import.`,
+      );
+    }
+    await this.replicaStore.clearImportedProjectReservation(
+      projectId,
+      expected,
+    );
   }
 
   async inspectProject<T>(
@@ -860,6 +1142,16 @@ export class LocalLoroRoomHub {
     return (await this.room(projectId)).inspectProject(read);
   }
 
+  async inspectCheckpointedProject<T>(
+    projectId: string,
+    read: (doc: LoroDoc) => T | Promise<T>,
+  ): Promise<T> {
+    const initialized = this.checkpointReadableRooms.get(projectId);
+    return initialized
+      ? initialized.inspectCheckpointedProject(read)
+      : (await this.room(projectId)).inspectCheckpointedProject(read);
+  }
+
   async mutateProject<T>(
     projectId: string,
     mutation: (
@@ -867,6 +1159,13 @@ export class LocalLoroRoomHub {
     ) => { value: T; save?: boolean } | Promise<{ value: T; save?: boolean }>,
   ): Promise<T> {
     return (await this.room(projectId)).mutateProject(mutation);
+  }
+
+  async mutateProjectWithCheckpoint<T>(
+    projectId: string,
+    mutation: (doc: LoroDoc, checkpoint: () => Promise<void>) => T | Promise<T>,
+  ): Promise<T> {
+    return (await this.room(projectId)).mutateProjectWithCheckpoint(mutation);
   }
 
   async refresh(projectId: string): Promise<void> {
@@ -884,6 +1183,7 @@ export class LocalLoroRoomHub {
 
   private async closeOnce(): Promise<void> {
     this.closed = true;
+    await Promise.allSettled(this.activeImports);
     const rooms = await Promise.allSettled(this.rooms.values());
     await Promise.all(
       rooms.flatMap((result) =>
@@ -891,6 +1191,7 @@ export class LocalLoroRoomHub {
       ),
     );
     this.rooms.clear();
+    this.checkpointReadableRooms.clear();
   }
 }
 

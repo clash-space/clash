@@ -31,6 +31,36 @@ const canvasProjectAsset = (id: string) => ({
   metadata: {},
 });
 
+const directorReferencePacketFixture = {
+  schemaVersion: 1,
+  stageId: "stage-1",
+  stageRevisionId: "stage-revision-1",
+  exportedAt: "2026-08-15T00:00:00.000Z",
+  aspectRatio: "16:9",
+  durationSeconds: 6,
+  fps: 30,
+  cameraIds: ["camera-1"],
+  referenceVideo: {
+    assetId: "asset-video",
+    mimeType: "video/webm",
+  },
+  referenceStills: [],
+  shotSpec: { shots: [] },
+};
+
+const directorStageOutputWrites: Array<[string, unknown]> = [
+  ["assetId", "asset-stage-output"],
+  ["outputAssetId", "asset-stage-output"],
+  ["resultAssetId", "asset-stage-output"],
+  ["contentFile", "outputs/stage-preview.webm"],
+  ["outputVideoAssetId", "asset-video"],
+  ["outputVideoDurationSeconds", 6],
+  ["outputVideoFps", 30],
+  ["outputVideoStageRevisionId", "stage-revision-1"],
+  ["directorReferencePacket", directorReferencePacketFixture],
+  ["directorShotReferencePackets", [directorReferencePacketFixture]],
+];
+
 describe("ACTION_TYPE", () => {
   it("has Custom type", () => {
     expect(ACTION_TYPE.Custom).toBe("custom");
@@ -143,61 +173,119 @@ describe("Canvas Project persistence", () => {
     );
   });
 
-  it("keeps Director output projections out of synchronized node data", () => {
+  it("reads legacy Director output fields without making them an authoring contract", () => {
     const doc = new LoroDoc();
     const canvas = new Canvas(doc, () => {}, "main");
+    doc.getMap("nodes").set("director-stage", {
+      canvasId: "main",
+      type: "director-stage",
+      data: {
+        stageId: "stage-1",
+        outputVideoAssetId: "asset-video",
+        outputVideoDurationSeconds: 6,
+        outputVideoFps: 30,
+        outputVideoStageRevisionId: "stage-revision-1",
+        directorReferencePacket: directorReferencePacketFixture,
+      },
+      position: { x: 0, y: 0 },
+    });
 
+    expect(canvas.readNode("director-stage")?.data).toMatchObject({
+      stageId: "stage-1",
+      outputVideoAssetId: "asset-video",
+      outputVideoStageRevisionId: "stage-revision-1",
+      directorReferencePacket: directorReferencePacketFixture,
+    });
+  });
+
+  it.each(directorStageOutputWrites)(
+    "rejects new Director Stage nodes containing %s",
+    (field, value) => {
+      const doc = new LoroDoc();
+      const canvas = new Canvas(doc, () => {}, "main");
+
+      expect(() =>
+        canvas.insertNode(
+          "director-stage",
+          "director-stage",
+          { stageId: "stage-1", [field]: value },
+          null,
+          { x: 0, y: 0 },
+        ),
+      ).toThrow(/Director Stage output/i);
+      expect(canvas.readNode("director-stage")).toBeNull();
+    },
+  );
+
+  it.each(directorStageOutputWrites)(
+    "rejects generic Director Stage updates containing %s",
+    (field, value) => {
+    const doc = new LoroDoc();
+    const canvas = new Canvas(doc, () => {}, "main");
     canvas.insertNode(
       "director-stage",
       "director-stage",
-      {
-        stageId: "stage-1",
-        outputVideoAssetId: "asset-video",
-        outputVideoSrc: "blob:https://host-a.invalid/director-video",
-        outputVideoPreviewUrl:
-          "https://host-a.invalid/signed/poster.jpg?token=secret",
-        directorReferencePacket: {
-          schemaVersion: 1,
-          stageId: "stage-1",
-          stageRevisionId: "stage-revision-1",
-          exportedAt: "2026-08-13T00:00:00.000Z",
-          aspectRatio: "16:9",
-          durationSeconds: 1,
-          fps: 30,
-          cameraIds: ["camera-1"],
-          referenceVideo: {
-            assetId: "asset-video",
-            src: "https://host-a.invalid/signed/video.mp4",
-            previewUrl: "https://host-a.invalid/signed/poster.jpg",
-            mimeType: "video/mp4",
-          },
-          referenceStills: [],
-          shotSpec: { shots: [] },
-        },
-      },
+      { stageId: "stage-1", label: "Courtyard blocking" },
       null,
       { x: 0, y: 0 },
     );
 
+    expect(() => canvas.updateNode("director-stage", { [field]: value })).toThrow(
+      /Director Stage output/i,
+    );
     expect(canvas.readNode("director-stage")?.data).toEqual({
       stageId: "stage-1",
-      outputVideoAssetId: "asset-video",
-      directorReferencePacket: {
-        schemaVersion: 1,
-        stageId: "stage-1",
-        stageRevisionId: "stage-revision-1",
-        exportedAt: "2026-08-13T00:00:00.000Z",
-        aspectRatio: "16:9",
-        durationSeconds: 1,
-        fps: 30,
-        cameraIds: ["camera-1"],
-        referenceVideo: {
-          assetId: "asset-video",
-          mimeType: "video/mp4",
-        },
-        referenceStills: [],
-        shotSpec: { shots: [] },
-      },
+      label: "Courtyard blocking",
+    });
+    },
+  );
+
+  it.each(directorStageOutputWrites)(
+    "rejects retyping a node containing %s into a Director Stage",
+    (field, value) => {
+      const doc = new LoroDoc();
+      const canvas = new Canvas(doc, () => {}, "main");
+      canvas.insertNode(
+        "candidate",
+        "video",
+        { label: "Rendered output", [field]: value },
+        null,
+        { x: 0, y: 0 },
+      );
+
+      expect(() =>
+        canvas.updateNodeRecord("candidate", {
+          type: "director-stage",
+          data: { stageId: "stage-1" },
+        }),
+      ).toThrow(/Director Stage output/i);
+      expect(canvas.readNode("candidate")).toMatchObject({
+        type: "video",
+        data: { label: "Rendered output", [field]: value },
+      });
+    },
+  );
+
+  it("allows unrelated authoring edits on a legacy Director Stage output projection", () => {
+    const doc = new LoroDoc();
+    const canvas = new Canvas(doc, () => {}, "main");
+    const legacyFields = Object.fromEntries(directorStageOutputWrites);
+    doc.getMap("nodes").set("legacy-director-stage", {
+      canvasId: "main",
+      type: "director-stage",
+      data: { stageId: "stage-legacy", ...legacyFields },
+      position: { x: 0, y: 0 },
+    });
+
+    expect(
+      canvas.updateNode("legacy-director-stage", {
+        label: "Updated blocking",
+      }),
+    ).toBe(true);
+    expect(canvas.readNode("legacy-director-stage")?.data).toEqual({
+      stageId: "stage-legacy",
+      ...legacyFields,
+      label: "Updated blocking",
     });
   });
 });
@@ -899,6 +987,76 @@ describe("buildGenerationPayload", () => {
       "director-reference-still-end",
     ]);
   });
+
+  it("adapts an independent Director video output to start and end still references", () => {
+    const modelCard = MODEL_CARDS.find(
+      (card) => card.id === "seedance-2-startend",
+    );
+    expect(modelCard).toBeDefined();
+
+    const result = buildGenerationPayload({
+      prompt: "Continue from the rendered Director output",
+      refNodes: [
+        {
+          type: "video",
+          data: {
+            assetId: "director-reference-video-output",
+            directorReferencePacket: {
+              schemaVersion: 1,
+              stageId: "stage-1",
+              stageRevisionId: "stage-revision-1",
+              exportedAt: "2026-07-24T00:00:00.000Z",
+              aspectRatio: "16:9",
+              durationSeconds: 6,
+              fps: 30,
+              cameraIds: ["camera-a"],
+              referenceVideo: {
+                assetId: "director-reference-video-output",
+                mimeType: "video/webm",
+              },
+              referenceStills: [
+                {
+                  assetId: "director-output-still-start",
+                  cameraId: "camera-a",
+                  shotId: "shot-a",
+                  aspectRatio: "16:9",
+                  stageRevisionId: "stage-revision-1",
+                  timeSeconds: 0,
+                },
+                {
+                  assetId: "director-output-still-middle",
+                  cameraId: "camera-a",
+                  shotId: "shot-middle",
+                  aspectRatio: "16:9",
+                  stageRevisionId: "stage-revision-1",
+                  timeSeconds: 3,
+                },
+                {
+                  assetId: "director-output-still-end",
+                  cameraId: "camera-a",
+                  shotId: "shot-b",
+                  aspectRatio: "16:9",
+                  stageRevisionId: "stage-revision-1",
+                  timeSeconds: 6,
+                },
+              ],
+              shotSpec: { shots: [] },
+            },
+          },
+        },
+      ],
+      configId: modelCard!.id,
+      config: { kind: "model", modelCard, modelParams: {} },
+      actionType: "video-gen",
+    });
+
+    expect(result.validationError).toBeNull();
+    expect(result.pendingInput.referenceVideoAssetIds).toBeUndefined();
+    expect(result.pendingInput.referenceImageAssetIds).toEqual([
+      "director-output-still-start",
+      "director-output-still-end",
+    ]);
+  });
 });
 
 describe("Director reference packet node data", () => {
@@ -1187,7 +1345,7 @@ describe("Canvas.execute", () => {
     vi.unstubAllGlobals();
   });
 
-  it("calls crypto.randomUUID with the crypto receiver", () => {
+  it("keeps generated asset identity on the output child instead of the action", () => {
     const doc = new LoroDoc();
     const canvas = new Canvas(doc, () => {});
     const fakeCrypto = {
@@ -1201,10 +1359,47 @@ describe("Canvas.execute", () => {
 
     vi.stubGlobal("crypto", fakeCrypto);
 
-    const result = canvas.createNode("img1", "image_gen", { label: "Img" });
+    const result = canvas.createNode(
+      "img1",
+      "image_gen",
+      {
+        label: "Img",
+        prompt: "A copper robot",
+        modelId: "nano-banana-pro",
+        assetId: "legacy-data-asset",
+      },
+      null,
+      null,
+      "legacy-argument-asset",
+    );
 
     expect(result.error).toBeNull();
-    expect(result.asset_id).toBe("12345678");
+    expect(result.asset_id).toBeNull();
+    expect(result.proposal?.id).toBe("proposal-12345678");
+    expect(result.proposal).not.toHaveProperty("assetId");
+    expect(result.proposal?.nodeData).not.toHaveProperty("assetId");
+    expect(canvas.readNode("img1")?.data).not.toHaveProperty("assetId");
+
+    const execution = canvas.executeGeneration(
+      "img1",
+      () => "generated-image-node",
+    );
+    expect(execution.error).toBeNull();
+    expect(execution.assetNodeId).toBe("generated-image-node");
+    expect(canvas.readNode("generated-image-node")?.data).not.toHaveProperty(
+      "assetId",
+    );
+
+    expect(
+      canvas.updateNode("generated-image-node", {
+        status: "completed",
+        assetId: "asset-generated-image",
+      }),
+    ).toBe(true);
+    expect(canvas.readNode("img1")?.data).not.toHaveProperty("assetId");
+    expect(canvas.readNode("generated-image-node")?.data.assetId).toBe(
+      "asset-generated-image",
+    );
   });
 
   it("allows image-only custom actions to execute without a text prompt", () => {

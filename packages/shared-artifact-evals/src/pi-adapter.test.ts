@@ -1,11 +1,5 @@
 import { execFile } from "node:child_process";
-import {
-  chmod,
-  mkdir,
-  mkdtemp,
-  readFile,
-  writeFile,
-} from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
@@ -18,11 +12,15 @@ const execFileAsync = promisify(execFile);
 
 describe("Pi headless adapter", () => {
   it("constructs a first-class Pi agent", () => {
-    expect(createPiAgentAdapter({
-      model: "anthropic-proxy/claude-sonnet-5",
-      skills: ["/tmp/remotion-best-practices"],
-    })).toEqual({
+    expect(
+      createPiAgentAdapter({
+        provider: "anthropic-proxy",
+        model: "anthropic-proxy/claude-sonnet-5",
+        skills: ["/tmp/remotion-best-practices"],
+      }),
+    ).toEqual({
       adapter: "pi",
+      provider: "anthropic-proxy",
       model: "anthropic-proxy/claude-sonnet-5",
       skills: ["/tmp/remotion-best-practices"],
     });
@@ -64,7 +62,7 @@ describe("Pi headless adapter", () => {
         `#!${process.execPath}`,
         'const fs = require("node:fs")',
         'const path = require("node:path")',
-        'const workspace = process.env.CLASH_BENCH_WORKSPACE',
+        "const workspace = process.env.CLASH_BENCH_WORKSPACE",
         'const redundantPayload = "REDUNDANT_MESSAGE_PAYLOAD".repeat(1000)',
         'fs.writeFileSync(path.join(workspace, "pi-observation.json"), JSON.stringify({argv:process.argv.slice(2),cwd:process.cwd(),skill:fs.existsSync(path.join(workspace, ".agents", "skills", "test-skill", "SKILL.md")),externalSkill:fs.existsSync(path.join(workspace, ".agents", "skills", "remotion-best-practices", "SKILL.md")),promptPath:process.env.CLASH_BENCH_PROMPT_PATH,prompt:fs.readFileSync(process.env.CLASH_BENCH_PROMPT_PATH,"utf8")}))',
         'fs.writeFileSync(path.join(workspace, "result.txt"), "pi artifact")',
@@ -80,7 +78,7 @@ describe("Pi headless adapter", () => {
         'process.stdout.write(JSON.stringify({type:"tool_execution_end",toolCallId:"clash-1",toolName:"clash_composition",result:{content:[{type:"text",text:"created"}]},isError:false}) + "\\n")',
         'process.stdout.write(JSON.stringify({type:"turn_end",message:{role:"assistant",content:[{type:"thinking",thinking:redundantPayload}],usage:{input:31,cacheRead:7,output:11}},toolResults:[]}) + "\\n")',
         'process.stdout.write(JSON.stringify({type:"agent_end",messages:[{role:"assistant",content:[{type:"thinking",thinking:redundantPayload}]}]}) + "\\n")',
-        'fs.mkdirSync(path.dirname(process.env.TEST_CLI_TRACE_PATH), {recursive:true})',
+        "fs.mkdirSync(path.dirname(process.env.TEST_CLI_TRACE_PATH), {recursive:true})",
         'const largeCliArg = "x".repeat(1024)',
         'fs.appendFileSync(process.env.TEST_CLI_TRACE_PATH, JSON.stringify({type:"clash.cli.started",startedAt:new Date().toISOString(),pid:410,parentPid:409,cwd:workspace,argv:["canvas","update","--node","node-1","--content",largeCliArg,"--json"],origin:null}) + "\\n")',
         'fs.appendFileSync(process.env.TEST_CLI_TRACE_PATH, JSON.stringify({type:"clash.cli.completed",startedAt:new Date().toISOString(),finishedAt:new Date().toISOString(),durationMs:1,pid:410,parentPid:409,cwd:workspace,argv:["canvas","update","--node","node-1","--content",largeCliArg,"--json"],exitCode:0,signal:null,origin:null}) + "\\n")',
@@ -111,11 +109,6 @@ describe("Pi headless adapter", () => {
             passScore: 100,
             timeoutMs: 10_000,
             skills: ["skills/test-skill"],
-            execution: {
-              profile: "clash-host",
-              requiredProductOperations: ["timeline.create"],
-              requiredMcpTools: ["clash_timeline_create"],
-            },
             rubric: [
               {
                 id: "result",
@@ -133,6 +126,8 @@ describe("Pi headless adapter", () => {
       runId: "pi-run",
       agent: createPiAgentAdapter({
         command: fakePi,
+        provider: "test-provider",
+        model: "test-model",
         skills: [externalSkillRoot],
         env: {
           TEST_CLI_TRACE_PATH: join(
@@ -148,22 +143,15 @@ describe("Pi headless adapter", () => {
 
     expect(report.status, JSON.stringify(report, null, 2)).toBe("pass");
     expect(report.cases[0]?.execution).toMatchObject({
+      profile: "portable",
       status: "pass",
-      observedProductOperations: [
-        {
-          operation: "timeline.create",
-          transport: "mcp",
-          invocation: "clash_timeline_create",
-        },
-      ],
-      observedMcpTools: ["clash_timeline_create"],
+      observedProductOperations: [],
+      observedMcpTools: [],
       missingProductOperations: [],
       missingMcpTools: [],
-      observedCliCommands: [
-        "canvas update --node node-1 --content <arg:1024B sha256:49abd65bbf7f7e40c7055093ed2e3fd75f2f602f2c5fcf955c213e3135eb03f7> --json",
-      ],
+      observedCliCommands: [],
     });
-    expect(report.cases[0]?.execution?.detail).not.toMatch(/0 required/u);
+    expect(report.cases[0]?.execution?.detail).toMatch(/portable case/u);
     const workspace = report.cases[0]!.workspace;
     const caseRoot = dirname(workspace);
     const observation = JSON.parse(
@@ -185,72 +173,75 @@ describe("Pi headless adapter", () => {
     expect(observation.prompt).toContain(
       `\`${join(observation.cwd, ".agents", "skills", "remotion-best-practices", "SKILL.md")}\``,
     );
-    expect(observation.argv).toEqual(expect.arrayContaining([
-      "--print",
-      "--mode",
-      "json",
-      "--no-session",
-      "--no-extensions",
-      "--no-skills",
-      "--no-context-files",
-      "--approve",
-      "--thinking",
-      "medium",
-    ]));
+    expect(observation.argv).toEqual(
+      expect.arrayContaining([
+        "--print",
+        "--mode",
+        "json",
+        "--no-session",
+        "--no-extensions",
+        "--no-skills",
+        "--no-context-files",
+        "--approve",
+        "--thinking",
+        "medium",
+      ]),
+    );
+    const providerIndex = observation.argv.indexOf("--provider");
+    expect(observation.argv.slice(providerIndex, providerIndex + 4)).toEqual([
+      "--provider",
+      "test-provider",
+      "--model",
+      "test-model",
+    ]);
     const skillPaths = observation.argv.flatMap((value, index) =>
       value === "--skill" ? [observation.argv[index + 1]] : [],
     );
-    expect(skillPaths).toEqual([
-      join(observation.cwd, ".agents", "skills"),
-    ]);
+    expect(skillPaths).toEqual([join(observation.cwd, ".agents", "skills")]);
     expect(observation.argv.at(-1)).toContain("Create a report through Pi.");
     expect(report.cases[0]?.agent.stdoutPath).toBe(
       join(caseRoot, "logs", "events.jsonl"),
     );
-    const recordedEvents = (await readFile(
-      join(caseRoot, "logs", "events.jsonl"),
-      "utf8",
-    ))
+    const recordedEvents = (
+      await readFile(join(caseRoot, "logs", "events.jsonl"), "utf8")
+    )
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line) as Record<string, unknown>);
     expect(recordedEvents.some(({ type }) => type === "message_update")).toBe(
-      false,
+      true,
     );
     expect(
       recordedEvents.some(({ type }) => type === "tool_execution_update"),
-    ).toBe(false);
-    expect(JSON.stringify(recordedEvents)).not.toContain(
+    ).toBe(true);
+    expect(JSON.stringify(recordedEvents)).toContain(
       "REDUNDANT_MESSAGE_PAYLOAD",
     );
-    expect(recordedEvents).toContainEqual(expect.objectContaining({
-      schemaVersion: 1,
-      type: "benchmark.capture.compacted",
-      droppedEventTypes: { message_update: 1, tool_execution_update: 1 },
-      projectedEventTypes: {
-        message_start: 1,
-        message_end: 1,
-        turn_end: 1,
-        agent_end: 1,
-      },
-      droppedBytes: expect.any(Number),
-      projectedBytesSaved: expect.any(Number),
-    }));
-    expect(recordedEvents).toContainEqual(expect.objectContaining({
-      type: "message_end",
-      message: expect.objectContaining({
-        role: "assistant",
-        provider: "test-provider",
-        model: "test-model",
-        contentSummary: [
-          { type: "thinking", characterCount: 25_000 },
-        ],
+    expect(
+      recordedEvents.some(({ type }) => type === "benchmark.capture.compacted"),
+    ).toBe(false);
+    expect(recordedEvents).toContainEqual(
+      expect.objectContaining({
+        type: "message_end",
+        message: expect.objectContaining({
+          role: "assistant",
+          provider: "test-provider",
+          model: "test-model",
+          content: [
+            {
+              type: "thinking",
+              thinking: "REDUNDANT_MESSAGE_PAYLOAD".repeat(1_000),
+            },
+          ],
+        }),
       }),
-    }));
+    );
     expect(recordedEvents.map(({ type }) => type).filter(Boolean)).toEqual(
       expect.arrayContaining([
         "session",
+        "message_update",
         "tool_execution_start",
+        "tool_execution_update",
         "tool_execution_end",
         "turn_end",
         "agent_end",
@@ -266,7 +257,9 @@ describe("Pi headless adapter", () => {
     expect(trajectory.sourceTraces).toContainEqual(
       expect.objectContaining({ kind: "pi-events" }),
     );
-    expect(trajectory.actions).toEqual([
+    expect(
+      trajectory.actions.filter(({ source }) => source === "clash-cli"),
+    ).toEqual([
       expect.objectContaining({
         source: "clash-cli",
         kind: "cli",
@@ -279,8 +272,18 @@ describe("Pi headless adapter", () => {
         operation: "canvas update",
         status: "succeeded",
       }),
-      expect.objectContaining({ source: "pi", kind: "shell", status: "started" }),
-      expect.objectContaining({ source: "pi", kind: "shell", status: "succeeded" }),
+    ]);
+    expect(trajectory.actions.filter(({ source }) => source === "pi")).toEqual([
+      expect.objectContaining({
+        source: "pi",
+        kind: "shell",
+        status: "started",
+      }),
+      expect.objectContaining({
+        source: "pi",
+        kind: "shell",
+        status: "succeeded",
+      }),
       expect.objectContaining({
         source: "pi",
         kind: "mcp",

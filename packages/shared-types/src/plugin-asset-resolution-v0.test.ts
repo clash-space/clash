@@ -4,6 +4,7 @@ import * as executablePluginContract from "./executable-plugin.js";
 import {
   ExecutablePluginAssetHandleSchema,
   ExecutablePluginBrokerOperationSchema,
+  ExecutablePluginBrokerResolvedReferenceSchema,
   ExecutablePluginInvocationSchema,
   ExecutablePluginManifestSchema,
 } from "./executable-plugin.js";
@@ -42,6 +43,28 @@ describe("v0 Provider Asset delivery contract", () => {
         match: { kinds: ["image"], slots: ["image", "startFrame"] },
         representations: ["provider-url", "bytes"],
         mediaTypes: ["image/jpeg", "image/png"],
+      },
+    ]);
+  });
+
+  it("declares an execution-realm URL without claiming Provider reachability", () => {
+    const binding = ModelProviderImplementationSchema.parse({
+      providerId: "local-remotion",
+      upstreamId: "local-remotion",
+      upstreamModel: "timeline-render",
+      apiShape: "local-remotion",
+      assetInputs: [
+        {
+          match: { kinds: ["image", "video", "audio"] },
+          representations: ["executor-url"],
+        },
+      ],
+    });
+
+    expect(binding.assetInputs).toEqual([
+      {
+        match: { kinds: ["image", "video", "audio"] },
+        representations: ["executor-url"],
       },
     ]);
   });
@@ -118,6 +141,95 @@ describe("v0 Provider Asset delivery contract", () => {
       kind: "image",
       mediaType: "image/png",
     });
+  });
+
+  it("keeps an executor URL ephemeral in the broker result", () => {
+    const resolved = ExecutablePluginBrokerResolvedReferenceSchema.parse({
+      form: "executor-url",
+      executorUrl: "http://127.0.0.1:49321/assets/capabilities/exact-resource",
+      expiresAt: "2026-08-15T12:00:00.000Z",
+      kind: "video",
+      mediaType: "video/mp4",
+    });
+
+    expect(resolved).toEqual({
+      form: "executor-url",
+      executorUrl: "http://127.0.0.1:49321/assets/capabilities/exact-resource",
+      expiresAt: "2026-08-15T12:00:00.000Z",
+      kind: "video",
+      mediaType: "video/mp4",
+    });
+    expect(resolved).not.toHaveProperty("path");
+    expect(resolved).not.toHaveProperty("storageKey");
+  });
+
+  it("lets an Action declare the Asset delivery its executor accepts", () => {
+    const manifest = ExecutablePluginManifestSchema.parse({
+      apiVersion: "clash.plugin/v1",
+      id: "clash.remotion",
+      version: "0.1.0",
+      name: "Remotion",
+      runtime: {
+        kind: "local",
+        transport: "stdio",
+        entrypoint: "dist/index.mjs",
+      },
+      contributes: {
+        functions: [
+          {
+            id: "render-timeline",
+            kind: "action",
+            assetInputs: [
+              {
+                match: { kinds: ["image", "video", "audio"] },
+                representations: ["executor-url"],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(manifest.contributes.functions[0]).toMatchObject({
+      id: "render-timeline",
+      kind: "action",
+      assetInputs: [
+        {
+          match: { kinds: ["image", "video", "audio"] },
+          representations: ["executor-url"],
+        },
+      ],
+    });
+  });
+
+  it("does not attach Asset delivery to a pure Provider projector", () => {
+    const parsed = ExecutablePluginManifestSchema.safeParse({
+      apiVersion: "clash.plugin/v1",
+      id: "test.projector",
+      version: "0.1.0",
+      name: "Projector",
+      runtime: {
+        kind: "local",
+        transport: "stdio",
+        entrypoint: "dist/index.mjs",
+      },
+      contributes: {
+        functions: [
+          {
+            id: "project",
+            kind: "provider-projector",
+            assetInputs: [
+              {
+                match: { kinds: ["image"] },
+                representations: ["executor-url"],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(parsed.success).toBe(false);
   });
 
   it("does not expose Host storage as a plugin manifest dependency", () => {

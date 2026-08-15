@@ -14,9 +14,11 @@ right is what keeps one model usable across many providers.
 One card per model, named after the **official model name** (never after a
 provider or gateway). The card declares:
 
-- `id`, `aliases`, `name`, `kind` (`image | video | audio | text | asr`)
+- `id`, `aliases`, `name`, `kind` (`image | video | audio | text`). ASR cards
+  are text-output cards identified by an exact audio input plus an `asr_model`
+  runtime parameter; `asr` is not a separate output kind.
 - `parameters` — the user-facing vocabulary (`select | slider | number | text |
-  boolean`, with `options`/`min`/`max`/`step`)
+boolean`, with `options`/`min`/`max`/`step`)
 - `defaultParams`, `defaultAspectRatio`
 - `input` — prompt/reference requirements and **official media constraints**
   (mime types, dimension ranges, per-clip and total duration, byte limits)
@@ -72,10 +74,10 @@ for, and how much pixel area to spend. Some providers expose them as one field
 shape and a size in a single control and makes "same frame, higher quality"
 unreachable. Image cards therefore split that field:
 
-| Parameter | Means | Values |
-| --- | --- | --- |
-| `aspect_ratio` | The frame's shape | Canonical `W:H`, plus the provider's own sentinel if it has one |
-| `resolution` | How much area to render | **Exactly the options the provider publishes** |
+| Parameter      | Means                   | Values                                                          |
+| -------------- | ----------------------- | --------------------------------------------------------------- |
+| `aspect_ratio` | The frame's shape       | Canonical `W:H`, plus the provider's own sentinel if it has one |
+| `resolution`   | How much area to render | **Exactly the options the provider publishes**                  |
 
 ### Ratio is one quantity; resolution is a menu
 
@@ -107,7 +109,7 @@ menus. Squeezing them into one vocabulary guarantees lossy collisions.
 Some providers accept arbitrary dimensions rather than a menu. `gpt-image-2` takes
 any size meeting four documented constraints: every edge ≤ 3840, both edges a
 multiple of 16, long:short ≤ 3:1, and total pixels in [655360, 8294400]. There is
-no option list to pass through, so the product has to choose — and *that* is when a
+no option list to pass through, so the product has to choose — and _that_ is when a
 ratio and a tier are multiplied into a concrete `width × height`.
 
 Two rules make this safe:
@@ -144,11 +146,11 @@ Inline in the card (first-party) or contributed by a plugin binding
 
 ### The three override tools
 
-| Field | Use when | Real example¹ |
-| --- | --- | --- |
-| `parameterOverrides` | The provider accepts a **different value domain** for a parameter | Kling via one gateway rejects `1K`/`2K` uppercase; the binding overrides resolution options to `1k`/`2k` while labels stay `1K`/`2K` |
-| `defaultParamOverrides` | The card default is invalid or suboptimal **on this provider** | MiniMax-H3 text-to-video rejects `ratio: adaptive`; the in-repo fal implementation overrides the default to `16:9`, and gateway bindings do the same |
-| `excludedParameterIds` | The provider **cannot serve** a parameter at all | A gateway that ignores `voice_id` excludes it so the UI never renders a dead control |
+| Field                   | Use when                                                          | Real example¹                                                                                                                                        |
+| ----------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `parameterOverrides`    | The provider accepts a **different value domain** for a parameter | Kling via one gateway rejects `1K`/`2K` uppercase; the binding overrides resolution options to `1k`/`2k` while labels stay `1K`/`2K`                 |
+| `defaultParamOverrides` | The card default is invalid or suboptimal **on this provider**    | MiniMax-H3 text-to-video rejects `ratio: adaptive`; the in-repo fal implementation overrides the default to `16:9`, and gateway bindings do the same |
+| `excludedParameterIds`  | The provider **cannot serve** a parameter at all                  | A gateway that ignores `voice_id` excludes it so the UI never renders a dead control                                                                 |
 
 ¹ All examples are in-tree. The MiniMax H3 base card and fal implementation live in
 `packages/shared-types/src/models.ts`; the fal binding overrides `aspect_ratio` to `16:9`.
@@ -212,14 +214,18 @@ A binding artifact is `{ id, modelId } ∩ ModelProviderImplementation`:
     "executorExportId": "acme-execute",
     "requiredOAuth": ["acme-gateway"],
     "priority": 5,
-    "parameterOverrides": [{
-      "id": "resolution", "label": "Resolution", "type": "select",
-      "options": [
-        { "label": "1K", "value": "1k" },
-        { "label": "2K", "value": "2k" }
-      ],
-      "defaultValue": "2k"
-    }],
+    "parameterOverrides": [
+      {
+        "id": "resolution",
+        "label": "Resolution",
+        "type": "select",
+        "options": [
+          { "label": "1K", "value": "1k" },
+          { "label": "2K", "value": "2k" }
+        ],
+        "defaultValue": "2k"
+      }
+    ],
     "defaultParamOverrides": { "resolution": "2k" }
   }
 }

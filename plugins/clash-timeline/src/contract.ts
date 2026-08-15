@@ -42,6 +42,7 @@ export type TimelineToolInput = {
   timeoutMs?: number;
   document?: string | Record<string, unknown>;
   format?: "yaml" | "json" | "object";
+  view?: "authoring" | "full";
   state?: Record<string, unknown>;
 };
 
@@ -70,7 +71,13 @@ export function buildTimelineCliArgs(
   const args = ["timeline"];
   switch (name) {
     case "clash_timeline_schema":
-      return ["timeline", "schema", "--json"];
+      return [
+        "timeline",
+        "schema",
+        "--view",
+        input.view ?? "authoring",
+        "--json",
+      ];
     case "clash_timeline_list":
       args.push("list");
       if (input.standalone) args.push("--standalone");

@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
-  DirectorStageStateSchema,
+  DirectorStageAuthoringStateSchema,
   applyDirectorStageCommand,
   type DirectorStageCommand,
   type DirectorStageState,
@@ -171,6 +171,7 @@ export function createDirectorAdapter(options: {
   const client = options.client ?? createProjectHostClient();
   const writeProjection = options.writeProjection ?? writeDirectorProjection;
   const observations = new Map<string, { receipt: string; revisionId?: string }>();
+  const boundedMutationTails = new Map<string, Promise<void>>();
   const key = (projectId: string, stageId: string) => `${projectId}\0${stageId}`;
   const context = (input: DirectorToolInput) => client.resolveContext({ cwd: input.cwd, projectId: input.projectId });
   const request = async (input: DirectorToolInput, command: ProjectHostCommand) => {
@@ -184,6 +185,30 @@ export function createDirectorAdapter(options: {
       throw new Error(`READ_REQUIRED: Read Director Stage ${stageId} with clash_director_get before mutating it.`);
     }
     return observation;
+  };
+  const serializeBoundedMutation = async <T>(
+    input: DirectorToolInput,
+    stageId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> => {
+    const resolved = await context(input);
+    const mutationKey = key(resolved.projectId, stageId);
+    const preceding = boundedMutationTails.get(mutationKey) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((resolveGate) => {
+      release = resolveGate;
+    });
+    const tail = preceding.catch(() => undefined).then(() => gate);
+    boundedMutationTails.set(mutationKey, tail);
+    await preceding.catch(() => undefined);
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (boundedMutationTails.get(mutationKey) === tail) {
+        boundedMutationTails.delete(mutationKey);
+      }
+    }
   };
 
   const list = async (input: DirectorToolInput): Promise<DirectorEntity[]> => {
@@ -218,7 +243,7 @@ export function createDirectorAdapter(options: {
   const save = async (input: DirectorToolInput): Promise<Record<string, unknown>> => {
     const stageId = requiredInputString(input, "stageId");
     const baseRevisionId = requiredInputString(input, "baseRevisionId");
-    const parsed = DirectorStageStateSchema.safeParse(input.state);
+    const parsed = DirectorStageAuthoringStateSchema.safeParse(input.state);
     if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid Director Stage state");
     const observed = await requireObservation(input, stageId);
     if (observed.revisionId && observed.revisionId !== baseRevisionId) {
@@ -309,11 +334,14 @@ export function createDirectorAdapter(options: {
       return publicProjectHostValue(result.value);
     },
     async mutate(name, input) {
-      const stage = await get(input);
-      if (!stage.revisionId) throw new Error(`Director Stage ${stage.id} did not expose a revisionId`);
-      const applied = applyDirectorStageCommand(stage.state, directorCommand(name, input));
-      if (!applied.ok) throw new Error(applied.error);
-      return save({ ...input, baseRevisionId: stage.revisionId, state: applied.state as DirectorStageState });
+      const stageId = requiredInputString(input, "stageId");
+      return serializeBoundedMutation(input, stageId, async () => {
+        const stage = await get(input);
+        if (!stage.revisionId) throw new Error(`Director Stage ${stage.id} did not expose a revisionId`);
+        const applied = applyDirectorStageCommand(stage.state, directorCommand(name, input));
+        if (!applied.ok) throw new Error(applied.error);
+        return save({ ...input, baseRevisionId: stage.revisionId, state: applied.state as DirectorStageState });
+      });
     },
     async capture(input) {
       const stageId = requiredInputString(input, "stageId");

@@ -10,10 +10,12 @@ import {
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { extname, join, resolve } from "node:path";
+import { Readable } from "node:stream";
 import { promisify } from "node:util";
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import type { LoroDoc } from "loro-crdt";
+import { z } from "zod";
 import { clashHomeForLocalDataDir } from "./local-paths.js";
 import {
   handleProjectCommand,
@@ -87,6 +89,7 @@ import {
   providerAccountsReadToken,
   providerOAuthReadToken,
   ProviderOAuthIdSchema,
+  readProjectDirectorStage,
   resolveAssetActionOutputKind,
   sessionReadToken,
   TextAppliedRevisionSchema,
@@ -124,10 +127,20 @@ import {
   type ExecutablePluginCardRegistration,
   type ExecutablePluginModelBindingRegistration,
   type ExecutablePluginProviderRegistration,
+  type ExecutablePluginGeneratorRegistration,
+  type GeneratorDefinition,
   missingModelRouteCredentials,
   ExecutablePluginJsonValueSchema,
   ExecutablePluginOutputSchema,
+  generatorDefinitionFromExecutablePluginRegistration,
   type ProviderCredentialRequirements,
+  WorkspaceExportPlanSchema,
+  WorkspaceExportRequestSchema,
+  WorkspaceImportCommitRequestSchema,
+  WorkspaceImportCommitResponseSchema,
+  WorkspaceImportFileUploadReceiptSchema,
+  WorkspaceImportSessionSchema,
+  WorkspaceImportStartSchema,
 } from "@clash/shared-types";
 import type { AssetKind, ResolvedAsset } from "@clash/shared-types/assets";
 
@@ -227,6 +240,30 @@ import {
   type LocalMetadataSession as LocalSession,
 } from "./local-metadata-store.js";
 import { FileReplicaStore } from "./loro/file-replica-store.js";
+import {
+  AdvanceLocalProjectGeneratorInputSchema,
+  CreateLocalProjectGeneratorInputSchema,
+  SubmitLocalGeneratorActionInputSchema,
+  createLocalGeneratorProductService,
+  LocalGeneratorProductError,
+  type LocalGeneratorProjectAuthority,
+} from "./local-generator-product.js";
+import {
+  AdvanceLocalDocumentAttachmentBodySchema,
+  AdvanceLocalDocumentBodySchema,
+  AttachLocalDocumentInputSchema,
+  CreateLocalDocumentInputSchema,
+  createLocalDocumentProductService,
+  LocalDocumentProductError,
+  type LocalDocumentProjectAuthority,
+} from "./local-document-product.js";
+import {
+  LocalWorkspaceProjectOperationLease,
+  LocalWorkspaceTransferError,
+  createLocalWorkspaceTransferService,
+  type LocalWorkspaceImportAuthority,
+  type LocalWorkspaceProjectAuthority,
+} from "./local-workspace-transfer.js";
 import type {
   DirectorStageRenderRequest,
   LocalDirectorStageRenderer,
@@ -309,6 +346,20 @@ export interface LocalApiOptions {
     ExecutablePluginModelBindingRegistration[]
   >;
   listPluginProviders?: () => Promise<ExecutablePluginProviderRegistration[]>;
+  /** Active Generator definitions are listed and resolved by the Plugin Host. */
+  listPluginGenerators?: () => Promise<ExecutablePluginGeneratorRegistration[]>;
+  resolveGeneratorDefinition?: (
+    pluginId: string,
+    definitionId: string,
+  ) => Promise<GeneratorDefinition>;
+  /** Checkpoint-aware, serial Project authority used by Generator commands. */
+  generatorProjectAuthority?: LocalGeneratorProjectAuthority;
+  /** Checkpoint-aware, serial Project authority used by typed Document commands. */
+  documentProjectAuthority?: LocalDocumentProjectAuthority;
+  /** Serial live-room authority used for portable Workspace checkpoints. */
+  workspaceProjectAuthority?: LocalWorkspaceProjectAuthority;
+  /** Host-private atomic installation authority for imported Workspace Projects. */
+  workspaceImportAuthority?: LocalWorkspaceImportAuthority;
   /** Test/embedding override for the OS application-support directory. */
   localTokenImportAppDataRoot?: string;
   marketplaceActions?: Array<
@@ -1003,6 +1054,25 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function immutableMarketplaceActionErrorResponse(
+  c: Context,
+  error: unknown,
+): Response {
+  if (
+    error instanceof Error &&
+    "status" in error &&
+    error.status === 409 &&
+    "code" in error &&
+    error.code === "BUILTIN_PLUGIN_IMMUTABLE"
+  ) {
+    return c.json(
+      { error: error.message, code: "BUILTIN_PLUGIN_IMMUTABLE" },
+      409,
+    );
+  }
+  throw error;
+}
+
 function isoToEpochSeconds(value: string): number {
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : 0;
@@ -1600,6 +1670,25 @@ function validateProjectAssetImportFile(
 
 function requestOrigin(c: { req: { url: string } }): string {
   return new URL(c.req.url).origin;
+}
+
+function directorCaptureProjectAssetId(input: {
+  stageId: string;
+  sourceStageRevisionId: string;
+  artifactId: string;
+  sha256: string;
+}): string {
+  return `director-capture:${createHash("sha256")
+    .update(
+      JSON.stringify([
+        input.stageId,
+        input.sourceStageRevisionId,
+        input.artifactId,
+        input.sha256,
+      ]),
+    )
+    .digest("hex")
+    .slice(0, 32)}`;
 }
 
 function isAllowedLocalBrowserOrigin(origin: string): boolean {
@@ -3486,6 +3575,13 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     options.clashRoot,
   );
   const replicaStore = new FileReplicaStore(join(options.dataDir, "projects"));
+  const projectCommandReplica: LocalProjectAssetReplica =
+    options.projectAssetReplica ?? {
+      inspect: async (projectId, read) =>
+        read(await replicaStore.recover(projectId)),
+      mutate: (projectId, mutation) =>
+        replicaStore.updateSnapshotAtomic(projectId, mutation),
+    };
   const providerExecutionHandoffs = createProviderExecutionHandoffStore(
     options.dataDir,
   );
@@ -3517,9 +3613,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       clashRoot,
       projectionOrigin:
         configuredProjectionOrigin?.trim() || requestProjectionOrigin,
-      ...(options.projectAssetReplica
-        ? { replica: options.projectAssetReplica }
-        : {}),
+      replica: projectCommandReplica,
       readReceiptVerifier: verifyLocalApiProjectAssetReadReceipt,
       assetInspection,
     });
@@ -3597,6 +3691,21 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       clashRoot,
       inspectResource: inspectAssetResource,
     });
+  const workspaceProjectLease = new LocalWorkspaceProjectOperationLease();
+  const workspaceTransfer = options.workspaceProjectAuthority
+    ? createLocalWorkspaceTransferService({
+        dataDir: options.dataDir,
+        authority: options.workspaceProjectAuthority,
+        ...(options.workspaceImportAuthority
+          ? {
+              importAuthority: options.workspaceImportAuthority,
+              receiverOwnerId: userId,
+            }
+          : {}),
+        assetInspection,
+        projectLease: workspaceProjectLease,
+      })
+    : undefined;
   const sessionMessageStore = createLocalSessionMessageStore(db);
   options.localAcp?.setSessionMessageStore?.(sessionMessageStore);
   const falMock = options.falMock ?? createMockFalQueueService();
@@ -3641,6 +3750,283 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     options.publicAssetStorage ??
     createPublicAssetStorageService({ dataDir: options.dataDir });
   const app = new Hono();
+  const generatorProduct =
+    options.generatorProjectAuthority && options.resolveGeneratorDefinition
+      ? createLocalGeneratorProductService({
+          authority: options.generatorProjectAuthority,
+          resolveDefinition: options.resolveGeneratorDefinition,
+          ownerId: options.hostIdentity?.hostId ?? "local-api",
+          journal: durableRunJournal,
+          actor: { kind: "user", id: userId },
+          deadlineMs: providerGenerationDeadlineMs,
+        })
+      : null;
+  const documentProductForRequest = (c: Context) =>
+    options.documentProjectAuthority
+      ? createLocalDocumentProductService({
+          dataDir: options.dataDir,
+          authority: options.documentProjectAuthority,
+          producer:
+            normalizeString(
+              c.req.header("x-clash-client-type"),
+            )?.toLowerCase() === "agent"
+              ? { kind: "actor", actor: { kind: "agent" } }
+              : { kind: "actor", actor: { kind: "user", id: userId } },
+        })
+      : null;
+
+  function localDocumentProductErrorResponse(
+    c: Context,
+    error: unknown,
+  ): Response {
+    if (!(error instanceof LocalDocumentProductError)) {
+      return c.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        422,
+      );
+    }
+    const body = { error: error.message, code: error.code };
+    if (
+      error.code === "DOCUMENT_ASSET_NOT_FOUND" ||
+      error.code === "DOCUMENT_REVISION_NOT_FOUND" ||
+      error.code === "DOCUMENT_ATTACHMENT_NOT_FOUND"
+    ) {
+      return c.json(body, 404);
+    }
+    if (
+      error.code === "DOCUMENT_ASSET_EXISTS" ||
+      error.code === "DOCUMENT_REVISION_ID_COLLISION" ||
+      error.code === "DOCUMENT_ATTACHMENT_ID_COLLISION" ||
+      error.code === "STALE_DOCUMENT_HEAD" ||
+      error.code === "STALE_DOCUMENT_ATTACHMENT" ||
+      error.code === "DOCUMENT_COPY_ON_WRITE_REQUIRED"
+    ) {
+      return c.json(body, 409);
+    }
+    return c.json(body, 422);
+  }
+
+  const workspaceTransferErrorResponse = (error: unknown): Response => {
+    if (!(error instanceof LocalWorkspaceTransferError)) {
+      return Response.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        { status: 500 },
+      );
+    }
+    const status =
+      error.code === "WORKSPACE_PROJECT_NOT_FOUND" ||
+      error.code === "WORKSPACE_EXPORT_NOT_FOUND" ||
+      error.code === "WORKSPACE_EXPORT_FILE_NOT_FOUND" ||
+      error.code === "WORKSPACE_IMPORT_NOT_FOUND" ||
+      error.code === "WORKSPACE_IMPORT_FILE_NOT_FOUND"
+        ? 404
+        : error.code === "WORKSPACE_EXPORT_EXPIRED" ||
+            error.code === "WORKSPACE_IMPORT_EXPIRED"
+          ? 410
+          : error.code === "WORKSPACE_NOT_QUIESCENT" ||
+              error.code === "WORKSPACE_PROJECT_DELETED" ||
+              error.code === "WORKSPACE_IMPORT_PROJECT_EXISTS"
+            ? 409
+            : 422;
+    return Response.json(
+      {
+        error: error.message,
+        code: error.code,
+        ...(error.blockers ? { blockers: error.blockers } : {}),
+      },
+      { status },
+    );
+  };
+
+  app.post("/api/v1/projects/:projectId/workspace-exports", async (c) => {
+    if (!workspaceTransfer) {
+      return c.json(
+        { error: "Workspace export authority is unavailable" },
+        503,
+      );
+    }
+    const body = WorkspaceExportRequestSchema.safeParse(
+      await c.req.json().catch(() => null),
+    );
+    if (!body.success) {
+      return c.json(
+        {
+          error: "Invalid Workspace export request",
+          details: body.error.issues,
+        },
+        400,
+      );
+    }
+    try {
+      const plan = await workspaceTransfer.createExport({
+        projectId: c.req.param("projectId"),
+        sourceWorkspaceId: body.data.sourceWorkspaceId,
+      });
+      return c.json(WorkspaceExportPlanSchema.parse(plan), 201);
+    } catch (error) {
+      return workspaceTransferErrorResponse(error);
+    }
+  });
+
+  const serveWorkspaceExportFile = async (c: Context, head: boolean) => {
+    if (!workspaceTransfer) {
+      return c.json(
+        { error: "Workspace export authority is unavailable" },
+        503,
+      );
+    }
+    try {
+      const exportId = c.req.param("exportId") ?? "";
+      const fileId = c.req.param("fileId") ?? "";
+      const file = workspaceTransfer.getExportFile(exportId, fileId);
+      const digest = Buffer.from(file.sha256, "hex");
+      const headers = new Headers({
+        "cache-control": "private, no-store",
+        "content-type": "application/octet-stream",
+        "content-length": String(file.bytes),
+        etag: `"sha256:${digest.toString("hex")}"`,
+        "content-digest": `sha-256=:${digest.toString("base64")}:`,
+        "x-content-type-options": "nosniff",
+      });
+      if (head) return new Response(null, { status: 200, headers });
+      const opened = await workspaceTransfer.openExportFile(exportId, fileId);
+      return new Response(
+        Readable.toWeb(opened.stream) as ReadableStream<Uint8Array>,
+        { status: 200, headers },
+      );
+    } catch (error) {
+      return workspaceTransferErrorResponse(error);
+    }
+  };
+  app.get("/api/v1/workspace-exports/:exportId/files/:fileId", (c) =>
+    serveWorkspaceExportFile(c, false),
+  );
+  app.on("HEAD", "/api/v1/workspace-exports/:exportId/files/:fileId", (c) =>
+    serveWorkspaceExportFile(c, true),
+  );
+
+  app.post("/api/v1/workspace-imports", async (c) => {
+    if (!workspaceTransfer || !options.workspaceImportAuthority) {
+      return c.json(
+        { error: "Workspace import authority is unavailable" },
+        503,
+      );
+    }
+    const body = WorkspaceImportStartSchema.safeParse(
+      await c.req.json().catch(() => null),
+    );
+    if (!body.success) {
+      return c.json(
+        {
+          error: "Invalid Workspace import request",
+          details: body.error.issues,
+        },
+        400,
+      );
+    }
+    try {
+      const session = await workspaceTransfer.createImport(body.data);
+      return c.json(WorkspaceImportSessionSchema.parse(session), 201);
+    } catch (error) {
+      return workspaceTransferErrorResponse(error);
+    }
+  });
+
+  app.get("/api/v1/workspace-imports/:importId", async (c) => {
+    if (!workspaceTransfer || !options.workspaceImportAuthority) {
+      return c.json(
+        { error: "Workspace import authority is unavailable" },
+        503,
+      );
+    }
+    try {
+      const session = await workspaceTransfer.getImport(
+        c.req.param("importId") ?? "",
+      );
+      return c.json(WorkspaceImportSessionSchema.parse(session));
+    } catch (error) {
+      return workspaceTransferErrorResponse(error);
+    }
+  });
+
+  app.put("/api/v1/workspace-imports/:importId/files/:fileId", async (c) => {
+    if (!workspaceTransfer || !options.workspaceImportAuthority) {
+      return c.json(
+        { error: "Workspace import authority is unavailable" },
+        503,
+      );
+    }
+    if (
+      c.req.header("content-type")?.split(";", 1)[0]?.trim() !==
+      "application/octet-stream"
+    ) {
+      return c.json(
+        { error: "Workspace import payload must be application/octet-stream" },
+        415,
+      );
+    }
+    const body = c.req.raw.body;
+    if (!body) {
+      return c.json(
+        { error: "Workspace import payload body is required" },
+        400,
+      );
+    }
+    const source: AsyncIterable<Uint8Array> = {
+      async *[Symbol.asyncIterator]() {
+        const reader = body.getReader();
+        try {
+          while (true) {
+            const next = await reader.read();
+            if (next.done) return;
+            yield next.value;
+          }
+        } finally {
+          reader.releaseLock();
+        }
+      },
+    };
+    try {
+      const receipt = await workspaceTransfer.putImportFileStream(
+        c.req.param("importId") ?? "",
+        c.req.param("fileId") ?? "",
+        source,
+      );
+      return c.json(WorkspaceImportFileUploadReceiptSchema.parse(receipt));
+    } catch (error) {
+      return workspaceTransferErrorResponse(error);
+    }
+  });
+
+  app.post("/api/v1/workspace-imports/:importId/commit", async (c) => {
+    if (!workspaceTransfer || !options.workspaceImportAuthority) {
+      return c.json(
+        { error: "Workspace import authority is unavailable" },
+        503,
+      );
+    }
+    const body = WorkspaceImportCommitRequestSchema.safeParse(
+      await c.req.json().catch(() => null),
+    );
+    if (!body.success) {
+      return c.json(
+        {
+          error: "Invalid Workspace import commit",
+          details: body.error.issues,
+        },
+        400,
+      );
+    }
+    try {
+      const committed = await workspaceTransfer.commitImport(
+        c.req.param("importId") ?? "",
+        body.data,
+      );
+      return c.json(WorkspaceImportCommitResponseSchema.parse(committed));
+    } catch (error) {
+      return workspaceTransferErrorResponse(error);
+    }
+  });
 
   const jsonRecord = (value: unknown): Record<string, unknown> | undefined =>
     value && typeof value === "object" && !Array.isArray(value)
@@ -3809,6 +4195,420 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }),
   );
   app.get("/api/v1/me", (c) => c.json({ id: userId }));
+
+  app.get("/api/v1/generator-definitions", async (c) => {
+    if (!options.listPluginGenerators) {
+      return c.json({ error: "Generator registry is unavailable" }, 503);
+    }
+    try {
+      const definitions = (await options.listPluginGenerators()).map(
+        generatorDefinitionFromExecutablePluginRegistration,
+      );
+      return c.json({ definitions });
+    } catch (error) {
+      return c.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        502,
+      );
+    }
+  });
+
+  app.get(
+    "/api/v1/generator-definitions/:pluginId/:definitionId",
+    async (c) => {
+      if (!options.resolveGeneratorDefinition) {
+        return c.json({ error: "Generator registry is unavailable" }, 503);
+      }
+      try {
+        const definition = await options.resolveGeneratorDefinition(
+          c.req.param("pluginId"),
+          c.req.param("definitionId"),
+        );
+        return c.json({ definition });
+      } catch (error) {
+        return c.json(
+          { error: error instanceof Error ? error.message : String(error) },
+          404,
+        );
+      }
+    },
+  );
+
+  app.post("/api/v1/projects/:projectId/generators", async (c) => {
+    if (!generatorProduct) {
+      return c.json(
+        { error: "Generator Project authority is unavailable" },
+        503,
+      );
+    }
+    const body = CreateLocalProjectGeneratorInputSchema.safeParse(
+      await c.req.json().catch(() => null),
+    );
+    if (!body.success) {
+      return c.json(
+        { error: "Invalid Generator creation", details: body.error.issues },
+        400,
+      );
+    }
+    try {
+      const created = await generatorProduct.create(
+        c.req.param("projectId"),
+        body.data,
+      );
+      return c.json(
+        { generator: created.generator, revision: created.revision },
+        created.changed ? 201 : 200,
+      );
+    } catch (error) {
+      if (error instanceof LocalGeneratorProductError) {
+        return c.json({ error: error.message, code: error.code }, 409);
+      }
+      return c.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        422,
+      );
+    }
+  });
+
+  app.get("/api/v1/projects/:projectId/generators/:generatorId", async (c) => {
+    if (!generatorProduct) {
+      return c.json(
+        { error: "Generator Project authority is unavailable" },
+        503,
+      );
+    }
+    const projection = await generatorProduct.read(
+      c.req.param("projectId"),
+      c.req.param("generatorId"),
+    );
+    return projection
+      ? c.json(projection)
+      : c.json({ error: "Project Generator not found" }, 404);
+  });
+
+  app.post(
+    "/api/v1/projects/:projectId/generators/:generatorId/actions/:actionId/runs",
+    async (c) => {
+      if (!generatorProduct) {
+        return c.json(
+          { error: "Generator Project authority is unavailable" },
+          503,
+        );
+      }
+      const body = SubmitLocalGeneratorActionInputSchema.safeParse(
+        await c.req.json().catch(() => null),
+      );
+      if (!body.success) {
+        return c.json(
+          {
+            error: "Invalid Generator Action submission",
+            details: body.error.issues,
+          },
+          400,
+        );
+      }
+      try {
+        const projectId = c.req.param("projectId");
+        const run = await generatorProduct.submit(
+          projectId,
+          c.req.param("generatorId"),
+          c.req.param("actionId"),
+          body.data,
+        );
+        void options.processProjectWork?.(projectId).catch((error) => {
+          console.error(
+            "[local-api] failed to wake Generator Action work:",
+            error,
+          );
+        });
+        return c.json({ run }, 202);
+      } catch (error) {
+        if (error instanceof LocalGeneratorProductError) {
+          return c.json({ error: error.message, code: error.code }, 409);
+        }
+        return c.json(
+          { error: error instanceof Error ? error.message : String(error) },
+          422,
+        );
+      }
+    },
+  );
+
+  app.get(
+    "/api/v1/projects/:projectId/generator-runs/:actionRunId",
+    async (c) => {
+      if (!generatorProduct) {
+        return c.json(
+          { error: "Generator Project authority is unavailable" },
+          503,
+        );
+      }
+      const run = await generatorProduct.readRun(
+        c.req.param("projectId"),
+        c.req.param("actionRunId"),
+      );
+      return run
+        ? c.json({ run })
+        : c.json({ error: "Generator Action Run not found" }, 404);
+    },
+  );
+
+  app.get(
+    "/api/v1/projects/:projectId/generator-runs/:actionRunId/outputs/:outputSlot",
+    async (c) => {
+      if (!generatorProduct) {
+        return c.json(
+          { error: "Generator Project authority is unavailable" },
+          503,
+        );
+      }
+      const commit = await generatorProduct.readOutput(
+        c.req.param("projectId"),
+        {
+          actionRunId: c.req.param("actionRunId"),
+          outputSlot: c.req.param("outputSlot"),
+        },
+      );
+      return commit
+        ? c.json({ commit })
+        : c.json({ error: "Generator output is not committed" }, 404);
+    },
+  );
+
+  app.get("/api/v1/projects/:projectId/documents", async (c) => {
+    const documentProduct = documentProductForRequest(c);
+    if (!documentProduct) {
+      return c.json(
+        { error: "Document Project authority is unavailable" },
+        503,
+      );
+    }
+    try {
+      return c.json({
+        documents: await documentProduct.list(c.req.param("projectId")),
+      });
+    } catch (error) {
+      return localDocumentProductErrorResponse(c, error);
+    }
+  });
+
+  app.post("/api/v1/projects/:projectId/documents", async (c) => {
+    const documentProduct = documentProductForRequest(c);
+    if (!documentProduct) {
+      return c.json(
+        { error: "Document Project authority is unavailable" },
+        503,
+      );
+    }
+    const body = CreateLocalDocumentInputSchema.safeParse(
+      await c.req.json().catch(() => null),
+    );
+    if (!body.success) {
+      return c.json(
+        { error: "Invalid Document creation", details: body.error.issues },
+        400,
+      );
+    }
+    try {
+      const created = await documentProduct.create(
+        c.req.param("projectId"),
+        body.data,
+      );
+      return c.json(
+        {
+          asset: created.asset,
+          revision: created.revision,
+          body: created.body,
+        },
+        created.changed ? 201 : 200,
+      );
+    } catch (error) {
+      return localDocumentProductErrorResponse(c, error);
+    }
+  });
+
+  app.get(
+    "/api/v1/projects/:projectId/documents/:documentAssetId/revisions",
+    async (c) => {
+      const documentProduct = documentProductForRequest(c);
+      if (!documentProduct) {
+        return c.json(
+          { error: "Document Project authority is unavailable" },
+          503,
+        );
+      }
+      try {
+        return c.json({
+          revisions: await documentProduct.listRevisions(
+            c.req.param("projectId"),
+            c.req.param("documentAssetId"),
+          ),
+        });
+      } catch (error) {
+        return localDocumentProductErrorResponse(c, error);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v1/projects/:projectId/documents/:documentAssetId/revisions/:revisionId",
+    async (c) => {
+      const documentProduct = documentProductForRequest(c);
+      if (!documentProduct) {
+        return c.json(
+          { error: "Document Project authority is unavailable" },
+          503,
+        );
+      }
+      try {
+        const projection = await documentProduct.readRevision(
+          c.req.param("projectId"),
+          {
+            documentAssetId: c.req.param("documentAssetId"),
+            revisionId: c.req.param("revisionId"),
+          },
+        );
+        return projection
+          ? c.json(projection)
+          : c.json({ error: "Document revision not found" }, 404);
+      } catch (error) {
+        return localDocumentProductErrorResponse(c, error);
+      }
+    },
+  );
+
+  app.post(
+    "/api/v1/projects/:projectId/documents/:documentAssetId/revisions",
+    async (c) => {
+      const documentProduct = documentProductForRequest(c);
+      if (!documentProduct) {
+        return c.json(
+          { error: "Document Project authority is unavailable" },
+          503,
+        );
+      }
+      const body = AdvanceLocalDocumentBodySchema.safeParse(
+        await c.req.json().catch(() => null),
+      );
+      if (!body.success) {
+        return c.json(
+          { error: "Invalid Document revision", details: body.error.issues },
+          400,
+        );
+      }
+      try {
+        const advanced = await documentProduct.advance(
+          c.req.param("projectId"),
+          {
+            documentAssetId: c.req.param("documentAssetId"),
+            ...body.data,
+          },
+        );
+        return c.json(
+          {
+            asset: advanced.asset,
+            revision: advanced.revision,
+            body: advanced.body,
+          },
+          advanced.changed ? 201 : 200,
+        );
+      } catch (error) {
+        return localDocumentProductErrorResponse(c, error);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v1/projects/:projectId/documents/:documentAssetId",
+    async (c) => {
+      const documentProduct = documentProductForRequest(c);
+      if (!documentProduct) {
+        return c.json(
+          { error: "Document Project authority is unavailable" },
+          503,
+        );
+      }
+      try {
+        const projection = await documentProduct.read(
+          c.req.param("projectId"),
+          c.req.param("documentAssetId"),
+        );
+        return projection
+          ? c.json(projection)
+          : c.json({ error: "Document Asset not found" }, 404);
+      } catch (error) {
+        return localDocumentProductErrorResponse(c, error);
+      }
+    },
+  );
+
+  app.post("/api/v1/projects/:projectId/document-attachments", async (c) => {
+    const documentProduct = documentProductForRequest(c);
+    if (!documentProduct) {
+      return c.json(
+        { error: "Document Project authority is unavailable" },
+        503,
+      );
+    }
+    const body = AttachLocalDocumentInputSchema.safeParse(
+      await c.req.json().catch(() => null),
+    );
+    if (!body.success) {
+      return c.json(
+        { error: "Invalid Document attachment", details: body.error.issues },
+        400,
+      );
+    }
+    try {
+      const attached = await documentProduct.attach(
+        c.req.param("projectId"),
+        body.data,
+      );
+      return c.json(
+        { attachment: attached.attachment },
+        attached.changed ? 201 : 200,
+      );
+    } catch (error) {
+      return localDocumentProductErrorResponse(c, error);
+    }
+  });
+
+  app.post(
+    "/api/v1/projects/:projectId/document-attachments/:attachmentId/revisions",
+    async (c) => {
+      const documentProduct = documentProductForRequest(c);
+      if (!documentProduct) {
+        return c.json(
+          { error: "Document Project authority is unavailable" },
+          503,
+        );
+      }
+      const body = AdvanceLocalDocumentAttachmentBodySchema.safeParse(
+        await c.req.json().catch(() => null),
+      );
+      if (!body.success) {
+        return c.json(
+          {
+            error: "Invalid Document attachment revision",
+            details: body.error.issues,
+          },
+          400,
+        );
+      }
+      try {
+        const advanced = await documentProduct.advanceAttachment(
+          c.req.param("projectId"),
+          {
+            attachmentId: c.req.param("attachmentId"),
+            ...body.data,
+          },
+        );
+        return c.json({ attachment: advanced.attachment });
+      } catch (error) {
+        return localDocumentProductErrorResponse(c, error);
+      }
+    },
+  );
 
   app.get("/api/v1/projects/:projectId/assets", async (c) => {
     try {
@@ -3981,6 +4781,64 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         return c.json(observed.value);
       } catch (error) {
         return localProjectAssetErrorResponse(error);
+      }
+    },
+  );
+
+  app.post(
+    "/api/v1/projects/:projectId/generators/:generatorId/revisions",
+    async (c) => {
+      if (!generatorProduct) {
+        return c.json(
+          { error: "Generator Project authority is unavailable" },
+          503,
+        );
+      }
+      const body = AdvanceLocalProjectGeneratorInputSchema.safeParse(
+        await c.req.json().catch(() => null),
+      );
+      if (!body.success) {
+        return c.json(
+          { error: "Invalid Generator revision", details: body.error.issues },
+          400,
+        );
+      }
+      const generatorId = c.req.param("generatorId");
+      try {
+        const advanced = await generatorProduct.advance(
+          c.req.param("projectId"),
+          generatorId,
+          body.data,
+        );
+        return c.json(
+          { generator: advanced.generator, revision: advanced.revision },
+          advanced.changed ? 201 : 200,
+        );
+      } catch (error) {
+        if (error instanceof LocalGeneratorProductError) {
+          return c.json(
+            {
+              error: error.message,
+              code: error.code,
+              ...(error.code === "GENERATOR_FORK_REQUIRED"
+                ? {
+                    copyOnWrite: {
+                      required: true,
+                      forkedFrom: {
+                        generatorId,
+                        generatorRevisionId: body.data.expectedHeadRevisionId,
+                      },
+                    },
+                  }
+                : {}),
+            },
+            409,
+          );
+        }
+        return c.json(
+          { error: error instanceof Error ? error.message : String(error) },
+          422,
+        );
       }
     },
   );
@@ -4429,8 +5287,12 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   }
   if (options.uninstallMarketplaceAction) {
     app.delete("/api/settings/actions/:id", async (c) => {
-      await options.uninstallMarketplaceAction!(c.req.param("id"));
-      return new Response(null, { status: 204 });
+      try {
+        await options.uninstallMarketplaceAction!(c.req.param("id"));
+        return new Response(null, { status: 204 });
+      } catch (error) {
+        return immutableMarketplaceActionErrorResponse(c, error);
+      }
     });
   }
   app.get("/api/settings/skills", async (c) =>
@@ -6190,8 +7052,12 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           { error: "Unknown local marketplace action package" },
           404,
         );
-      await options.uninstallMarketplaceAction!(item.id);
-      return new Response(null, { status: 204 });
+      try {
+        await options.uninstallMarketplaceAction!(item.id);
+        return new Response(null, { status: 204 });
+      } catch (error) {
+        return immutableMarketplaceActionErrorResponse(c, error);
+      }
     });
   }
   if (options.installMarketplaceSkill) {
@@ -8333,15 +9199,21 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
 
     try {
-      const revision = await db.upsertTextRevision(parsed.revision);
-      const contentRecord =
-        content === undefined
-          ? undefined
-          : await storeTextRevisionContentBlob(
-              options.dataDir,
-              parsed.revision,
-              content,
-            );
+      const { revision, contentRecord } = await workspaceProjectLease.run(
+        parsed.revision.projectId,
+        async () => {
+          const revision = await db.upsertTextRevision(parsed.revision);
+          const contentRecord =
+            content === undefined
+              ? undefined
+              : await storeTextRevisionContentBlob(
+                  options.dataDir,
+                  parsed.revision,
+                  content,
+                );
+          return { revision, contentRecord };
+        },
+      );
       const mutation = hostMutationSucceeded(envelope, {
         resultEntityId: revision.revisionId,
       });
@@ -8591,6 +9463,145 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
   });
 
+  app.post(
+    "/api/v1/projects/:projectId/director-stages/:stageId/outputs",
+    async (c) => {
+      let form: FormData;
+      try {
+        form = await c.req.formData();
+      } catch {
+        return c.json(
+          {
+            error: "Invalid multipart Director output",
+            code: "INVALID_DIRECTOR_OUTPUT",
+          },
+          400,
+        );
+      }
+      const file = form.get("file");
+      const kind = AssetKindSchema.safeParse(form.get("kind"));
+      const sourceStageRevisionId = form.get("sourceStageRevisionId");
+      const artifactId = form.get("artifactId");
+      if (
+        !file ||
+        typeof file === "string" ||
+        !kind.success ||
+        (kind.data !== "image" && kind.data !== "video") ||
+        typeof sourceStageRevisionId !== "string" ||
+        !sourceStageRevisionId.trim() ||
+        typeof artifactId !== "string" ||
+        !/^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/u.test(artifactId)
+      ) {
+        return c.json(
+          {
+            error:
+              "Director output requires an image/video file, sourceStageRevisionId, and artifactId",
+            code: "INVALID_DIRECTOR_OUTPUT",
+          },
+          400,
+        );
+      }
+      const fileError = validateProjectAssetImportFile(file, kind.data);
+      if (fileError) {
+        return c.json(
+          { error: fileError, code: "INVALID_DIRECTOR_OUTPUT" },
+          400,
+        );
+      }
+
+      const projectId = c.req.param("projectId");
+      const stageId = c.req.param("stageId");
+      const expectedRevisionId = sourceStageRevisionId.trim();
+      const observedStage = await projectCommandReplica.inspect(
+        projectId,
+        (doc) => readProjectDirectorStage(doc, stageId),
+      );
+      if (!observedStage) {
+        return c.json({ error: `Director Stage ${stageId} not found` }, 404);
+      }
+      if (observedStage.revisionId !== expectedRevisionId) {
+        return c.json(
+          {
+            error: `Director Stage ${stageId} changed; read it again before publishing output`,
+            code: "STALE_READ",
+          },
+          409,
+        );
+      }
+
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const sha256 = createHash("sha256").update(bytes).digest("hex");
+      const projectAssetId = directorCaptureProjectAssetId({
+        stageId,
+        sourceStageRevisionId: expectedRevisionId,
+        artifactId,
+        sha256,
+      });
+      const actionRunId = projectAssetId;
+      const actionId =
+        observedStage.owner.kind === "canvas-action"
+          ? `node:${observedStage.owner.actionNodeId}`
+          : `director:${stageId}`;
+      const binding: ActionAssetBinding = {
+        id: `action-asset:${encodeURIComponent(actionRunId)}:output:${encodeURIComponent(artifactId)}`,
+        owner: {
+          kind: "run",
+          actionId,
+          actionRevisionId: expectedRevisionId,
+          actionRunId,
+        },
+        direction: "output",
+        slot: `director:output:${artifactId}`,
+        projectAssetId,
+        role: "primary",
+      };
+      const contentType =
+        file.type.trim().toLowerCase() ||
+        contentTypeForPath(file.name) ||
+        (kind.data === "image" ? "image/png" : "video/webm");
+      try {
+        const assetService = projectAssetServiceAt(requestOrigin(c));
+        const staged = await assetService.stageOwned({
+          kind: kind.data,
+          bytes,
+          contentType,
+          name: file.name,
+        });
+        const asset = await assetService.publishStagedOwnedWithBindings({
+          projectId,
+          projectAssetId,
+          kind: kind.data,
+          resourceId: staged.resourceId,
+          name: file.name,
+          metadata: {
+            bytes: bytes.byteLength,
+            contentType,
+            originalName: file.name,
+          },
+          provenance: { kind: "render", actionRunId },
+          bindings: [binding],
+          assertProjectState(doc) {
+            const current = readProjectDirectorStage(doc, stageId);
+            if (
+              !current ||
+              current.revisionId !== expectedRevisionId ||
+              JSON.stringify(current.owner) !==
+                JSON.stringify(observedStage.owner)
+            ) {
+              throw new AssetSdkContractError(
+                "STALE_READ",
+                `Director Stage ${stageId} changed during output publication; read it again`,
+              );
+            }
+          },
+        });
+        return c.json({ asset, binding }, 201);
+      } catch (error) {
+        return localProjectAssetErrorResponse(error);
+      }
+    },
+  );
+
   app.post("/api/v1/projects/:projectId/host-command", async (c) => {
     const projectId = c.req.param("projectId");
     const raw = await c.req.json().catch(() => undefined);
@@ -8619,24 +9630,37 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         { action: "capture_director_stage" }
       > &
         DirectorStageRenderRequest;
+      if (
+        typeof captureBody.stageId !== "string" ||
+        !captureBody.stageId.trim()
+      ) {
+        return c.json({ error: "Director Stage id is required" }, 400);
+      }
+      const stageId = captureBody.stageId;
       if (!options.directorStageRenderer) {
         return c.json(
           { error: "Director Stage product renderer is unavailable" },
           503,
         );
       }
-      const beforeDoc = await replicaStore.recover(projectId);
-      const before = handleProjectCommand(
+      const before = await projectCommandReplica.inspect(
         projectId,
-        beforeDoc,
-        body,
-        hostContext,
-      ) as {
-        error?: string;
-        code?: string;
-        stage?: { state?: unknown };
-        sourceStageRevisionId?: string;
-      };
+        (doc) =>
+          handleProjectCommand(projectId, doc, body, hostContext) as {
+            error?: string;
+            code?: string;
+            stage?: {
+              state?: unknown;
+              owner?:
+                | { kind: "project" }
+                | {
+                    kind: "canvas-action";
+                    actionNodeId: string;
+                  };
+            };
+            sourceStageRevisionId?: string;
+          },
+      );
       if (
         before.error ||
         !before.stage?.state ||
@@ -8644,23 +9668,27 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       ) {
         return c.json(before);
       }
+      const sourceStageRevisionId = before.sourceStageRevisionId;
+      const sourceStageOwner = before.stage.owner;
+      const captureActionId =
+        sourceStageOwner?.kind === "canvas-action"
+          ? `node:${sourceStageOwner.actionNodeId}`
+          : `director:${stageId}`;
       try {
         const rendered = await options.directorStageRenderer.render({
           state: before.stage.state as DirectorStageRenderRequest["state"],
           longEdge: captureBody.longEdge,
           frames: captureBody.frames,
         });
-        const afterDoc = await replicaStore.recover(projectId);
-        const after = handleProjectCommand(
+        const after = await projectCommandReplica.inspect(
           projectId,
-          afterDoc,
-          body,
-          hostContext,
-        ) as {
-          error?: string;
-          code?: string;
-          sourceStageRevisionId?: string;
-        };
+          (doc) =>
+            handleProjectCommand(projectId, doc, body, hostContext) as {
+              error?: string;
+              code?: string;
+              sourceStageRevisionId?: string;
+            },
+        );
         if (
           after.error ||
           after.sourceStageRevisionId !== before.sourceStageRevisionId
@@ -8674,13 +9702,94 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
                 },
           );
         }
+        const frames = [];
+        for (const frame of rendered.frames) {
+          const bytes = Buffer.from(frame.dataBase64, "base64");
+          if (
+            bytes.byteLength === 0 ||
+            createHash("sha256").update(bytes).digest("hex") !== frame.sha256
+          ) {
+            throw new Error(
+              `Director renderer returned invalid bytes for ${frame.label}`,
+            );
+          }
+          const projectAssetId = directorCaptureProjectAssetId({
+            stageId,
+            sourceStageRevisionId,
+            artifactId: frame.label,
+            sha256: frame.sha256,
+          });
+          const captureActionRunId = projectAssetId;
+          const assetService = projectAssetServiceAt(requestOrigin(c));
+          const staged = await assetService.stageOwned({
+            kind: "image",
+            bytes,
+            contentType: "image/png",
+            name: `${frame.label}.png`,
+          });
+          await assetService.publishStagedOwnedWithBindings({
+            projectId,
+            projectAssetId,
+            kind: "image",
+            resourceId: staged.resourceId,
+            name: `${frame.label}.png`,
+            metadata: {
+              width: frame.width,
+              height: frame.height,
+              contentType: "image/png",
+              originalName: `${frame.label}.png`,
+            },
+            provenance: {
+              kind: "render",
+              actionRunId: captureActionRunId,
+            },
+            bindings: [
+              {
+                id: `action-asset:${encodeURIComponent(captureActionRunId)}:output:${encodeURIComponent(frame.label)}`,
+                owner: {
+                  kind: "run",
+                  actionId: captureActionId,
+                  actionRevisionId: sourceStageRevisionId,
+                  actionRunId: captureActionRunId,
+                },
+                direction: "output",
+                slot: `director:capture:${frame.label}`,
+                projectAssetId,
+                role: "primary",
+              },
+            ],
+            assertProjectState(doc) {
+              const current = readProjectDirectorStage(doc, stageId);
+              if (
+                !current ||
+                current.revisionId !== sourceStageRevisionId ||
+                JSON.stringify(current.owner) !==
+                  JSON.stringify(sourceStageOwner)
+              ) {
+                throw new AssetSdkContractError(
+                  "STALE_READ",
+                  `Director Stage ${stageId} changed during capture publication; read it again`,
+                );
+              }
+            },
+          });
+          frames.push({
+            ...frame,
+            projectAssetId,
+            metadataAttached: false,
+          });
+        }
         return c.json({
           captured: true,
           stageId: body.stageId,
           sourceStageRevisionId: before.sourceStageRevisionId,
           ...rendered,
+          frames,
         });
       } catch (error) {
+        if (error instanceof AssetSdkContractError) {
+          return localProjectAssetErrorResponse(error);
+        }
         return c.json(
           { error: error instanceof Error ? error.message : String(error) },
           422,
@@ -8724,21 +9833,20 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     let result: object;
     try {
       const mutatesProject = projectCommandMutates(action);
-      result = await replicaStore.updateSnapshotAtomic(
-        projectId,
-        async (doc) => {
-          if (mutatesProject) {
+      result = mutatesProject
+        ? await projectCommandReplica.mutate(projectId, async (doc) => {
             await projectAssetServiceAt(requestOrigin(c)).materializeDoc(
               projectId,
               doc,
             );
-          }
-          return {
-            value: handleProjectCommand(projectId, doc, body, hostContext),
-            save: mutatesProject,
-          };
-        },
-      );
+            return {
+              value: handleProjectCommand(projectId, doc, body, hostContext),
+              save: true,
+            };
+          })
+        : await projectCommandReplica.inspect(projectId, (doc) =>
+            handleProjectCommand(projectId, doc, body, hostContext),
+          );
     } catch (error) {
       if (handoffNodeId) {
         await providerExecutionHandoffs.remove(projectId, handoffNodeId);
@@ -8753,7 +9861,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     ) {
       await providerExecutionHandoffs.remove(projectId, handoffNodeId);
     }
-    if (action === "execute" && !(result as { error?: unknown }).error) {
+    if (
+      (action === "execute" || action === "request_timeline_render") &&
+      !(result as { error?: unknown }).error
+    ) {
       void options.processProjectWork?.(projectId).catch((error) => {
         console.error(
           `[local-api] failed to wake project work for ${projectId}:`,

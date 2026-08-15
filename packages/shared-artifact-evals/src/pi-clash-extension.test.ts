@@ -59,11 +59,13 @@ describe("Pi Clash extension", () => {
         "clash_workspace_init",
       ]);
 
-      const result = await tools.get("clash_composition")!.execute(
-        "pi-tool-call",
-        { operation: "clash_timeline_create" },
-        undefined,
-      );
+      const result = await tools
+        .get("clash_composition")!
+        .execute(
+          "pi-tool-call",
+          { operation: "clash_timeline_create" },
+          undefined,
+        );
       expect(result.content).toEqual([
         {
           type: "text",

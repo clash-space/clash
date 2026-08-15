@@ -1,9 +1,13 @@
 import { createHash } from "node:crypto";
+import { spawn } from "node:child_process";
+import { watch, writeFileSync } from "node:fs";
 import {
   lstat,
   mkdtemp,
   mkdir,
   readFile,
+  realpath,
+  rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -12,7 +16,11 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { createBenchmarkFixtureManifest } from "./fixture";
+import {
+  createBenchmarkFixtureManifest,
+  installBenchmarkInputFixture,
+  verifyBenchmarkInputFixture,
+} from "./fixture";
 import { runBenchmarkSuite } from "./runner";
 import { ArtifactBenchmarkCaseSchema } from "./schemas";
 import type {
@@ -84,7 +92,271 @@ function fixtureReadingAgent(startedMarker?: string): BenchmarkAgent {
   return { command: process.execPath, args: ["-e", source] };
 }
 
+function fixtureMutatingAgent(): BenchmarkAgent {
+  const source = [
+    'const fs = require("node:fs")',
+    'const path = require("node:path")',
+    "const workspace = process.env.CLASH_BENCH_WORKSPACE",
+    'fs.writeFileSync(path.join(workspace, "inputs", "transcript.txt"), "easier prompt")',
+    'fs.writeFileSync(path.join(workspace, "result.txt"), "finished")',
+    'fs.writeFileSync(path.join(workspace, "submission.json"), JSON.stringify({schemaVersion:1,taskId:"spoken-edit",artifacts:[{id:"result",kind:"report",path:"result.txt"}]}))',
+  ].join(";");
+  return { command: process.execPath, args: ["-e", source] };
+}
+
+function fixtureLateMutatingAgent(input: {
+  watcherReadyPath: string;
+}): BenchmarkAgent {
+  const source = [
+    'const fs = require("node:fs")',
+    'const path = require("node:path")',
+    "const workspace = process.env.CLASH_BENCH_WORKSPACE",
+    `const watcherReadyPath = ${JSON.stringify(input.watcherReadyPath)}`,
+    "const waitArray = new Int32Array(new SharedArrayBuffer(4))",
+    "const deadline = Date.now() + 2000",
+    "while (!fs.existsSync(watcherReadyPath) && Date.now() < deadline) Atomics.wait(waitArray, 0, 0, 2)",
+    "if (!fs.existsSync(watcherReadyPath)) process.exit(9)",
+    'fs.writeFileSync(path.join(workspace, "result.txt"), "finished")',
+    'fs.writeFileSync(path.join(workspace, "submission.json"), JSON.stringify({schemaVersion:1,taskId:"spoken-edit",artifacts:[{id:"result",kind:"report",path:"result.txt"}]}))',
+  ].join(";");
+  return { command: process.execPath, args: ["-e", source] };
+}
+
+function mutateFixtureAfterPostAgentCheck(input: {
+  caseRoot: string;
+  watcherReadyPath: string;
+  donePath: string;
+}): Promise<void> {
+  const source = [
+    'const fs = require("node:fs")',
+    'const path = require("node:path")',
+    "const caseRoot = process.argv[1]",
+    "const watcherReadyPath = process.argv[2]",
+    "const donePath = process.argv[3]",
+    "const waitArray = new Int32Array(new SharedArrayBuffer(4))",
+    'fs.writeFileSync(watcherReadyPath, "ready")',
+    "const deadline = Date.now() + 2000",
+    'const findPartialName = () => { try { return fs.readdirSync(caseRoot).find((entry) => entry.startsWith("workspace.partial-")) } catch (error) { if (error && error.code === "ENOENT") return undefined; throw error } }',
+    "let partialName = findPartialName()",
+    "while (!partialName && Date.now() < deadline) { Atomics.wait(waitArray, 0, 0, 1); partialName = findPartialName() }",
+    "if (!partialName) process.exit(3)",
+    'const fixturePath = path.join(caseRoot, partialName, "inputs", "transcript.txt")',
+    "while (!fs.existsSync(fixturePath) && Date.now() < deadline) Atomics.wait(waitArray, 0, 0, 1)",
+    "if (!fs.existsSync(fixturePath)) process.exit(4)",
+    'fs.writeFileSync(fixturePath, "late background mutation")',
+    'fs.writeFileSync(donePath, "done")',
+  ].join(";");
+  return new Promise<void>((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      ["-e", source, input.caseRoot, input.watcherReadyPath, input.donePath],
+      { stdio: ["ignore", "ignore", "pipe"] },
+    );
+    let stderr = "";
+    child.stderr?.setEncoding("utf8");
+    child.stderr?.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+    child.once("error", reject);
+    child.once("close", (exitCode, signal) => {
+      if (exitCode === 0) {
+        resolve();
+        return;
+      }
+      reject(
+        new Error(
+          `Fixture mutation watcher failed with ${signal ?? `exit ${exitCode}`}${stderr.trim() ? `: ${stderr.trim()}` : ""}`,
+        ),
+      );
+    });
+  });
+}
+
 describe("benchmark input fixtures", () => {
+  it("fails closed without a receipt when the source view changes during installation", async () => {
+    for (const mutation of ["add", "rewrite"] as const) {
+      const root = await mkdtemp(
+        join(tmpdir(), `clash-fixture-source-${mutation}-`),
+      );
+      const suiteRoot = join(root, "suite");
+      const fixtureRoot = join(suiteRoot, "fixtures", "spoken-edit");
+      const workspace = join(root, "workspace");
+      await mkdir(fixtureRoot, { recursive: true });
+      await mkdir(join(fixtureRoot, "m-delay"));
+      await mkdir(join(fixtureRoot, "z-tail"));
+      await mkdir(join(workspace, ".clash"), { recursive: true });
+      await writeFile(join(workspace, ".clash", "project.toml"), "project");
+      await writeFile(join(fixtureRoot, "a-trigger.txt"), "original");
+      await writeFile(join(fixtureRoot, "z-tail", "last.txt"), "last");
+      for (let index = 0; index < 128; index += 1) {
+        await writeFile(
+          join(
+            fixtureRoot,
+            "m-delay",
+            `tail-${String(index).padStart(3, "0")}.txt`,
+          ),
+          `tail ${index}`,
+        );
+      }
+      const manifest = await createBenchmarkFixtureManifest(fixtureRoot);
+
+      let installationSettled = false;
+      let changedDuringInstallation = false;
+      let resolveMutation!: () => void;
+      const mutationObserved = new Promise<void>((resolveMutationPromise) => {
+        resolveMutation = resolveMutationPromise;
+      });
+      const watcher = watch(workspace, (_event, filename) => {
+        if (filename !== "a-trigger.txt" || changedDuringInstallation) return;
+        changedDuringInstallation = !installationSettled;
+        if (mutation === "add") {
+          writeFileSync(
+            join(fixtureRoot, "z-tail", "injected.txt"),
+            "not manifested",
+          );
+        } else {
+          writeFileSync(join(fixtureRoot, "a-trigger.txt"), "rewritten");
+        }
+        resolveMutation();
+      });
+
+      try {
+        const result = await installBenchmarkInputFixture({
+          suiteRoot: await realpath(suiteRoot),
+          workspace: await realpath(workspace),
+          fixture: {
+            path: "fixtures/spoken-edit",
+            manifestSha256: manifest.manifestSha256,
+          },
+          allowExistingWorkspace: true,
+        }).then(
+          (value) => ({ status: "resolved" as const, value }),
+          (error: unknown) => ({ status: "rejected" as const, error }),
+        );
+        installationSettled = true;
+        await mutationObserved;
+
+        expect(changedDuringInstallation).toBe(true);
+        expect(result.status).toBe("rejected");
+        if (result.status === "rejected") {
+          expect(result.error).toEqual(
+            expect.objectContaining({
+              message: expect.stringMatching(/source.*changed.*installation/i),
+            }),
+          );
+        }
+        await expect(
+          lstat(join(workspace, ".clash", "benchmark-input-fixture.json")),
+        ).rejects.toMatchObject({ code: "ENOENT" });
+        if (mutation === "add") {
+          await expect(
+            lstat(join(workspace, "z-tail", "injected.txt")),
+          ).rejects.toMatchObject({ code: "ENOENT" });
+        }
+      } finally {
+        watcher.close();
+      }
+    }
+  });
+
+  it("installs task inputs into an imported Workspace without replacing its marker", async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "clash-fixture-imported-workspace-"),
+    );
+    const suiteRoot = join(root, "suite");
+    const fixtureRoot = join(suiteRoot, "fixtures", "spoken-edit");
+    const workspace = join(root, "workspace");
+    await mkdir(join(fixtureRoot, "inputs"), { recursive: true });
+    await mkdir(join(workspace, ".clash"), { recursive: true });
+    await writeFile(
+      join(fixtureRoot, "inputs", "transcript.txt"),
+      "task input",
+      "utf8",
+    );
+    const marker = 'schema_version = 1\nproject_id = "imported"\n';
+    await writeFile(join(workspace, ".clash", "project.toml"), marker, "utf8");
+    const manifest = await createBenchmarkFixtureManifest(fixtureRoot);
+
+    const provenance = await installBenchmarkInputFixture({
+      suiteRoot: await realpath(suiteRoot),
+      workspace: await realpath(workspace),
+      fixture: {
+        path: "fixtures/spoken-edit",
+        manifestSha256: manifest.manifestSha256,
+      },
+      allowExistingWorkspace: true,
+    });
+
+    await expect(
+      readFile(join(workspace, ".clash", "project.toml"), "utf8"),
+    ).resolves.toBe(marker);
+    await expect(
+      readFile(join(workspace, "inputs", "transcript.txt"), "utf8"),
+    ).resolves.toBe("task input");
+    expect(provenance.files).toEqual(manifest.files);
+  });
+
+  it("detects changed and missing public input files after an agent run", async () => {
+    const fixtureRoot = await mkdtemp(
+      join(tmpdir(), "clash-fixture-integrity-"),
+    );
+    await mkdir(join(fixtureRoot, "inputs"));
+    await writeFile(
+      join(fixtureRoot, "inputs", "brief.txt"),
+      "original brief",
+      "utf8",
+    );
+    await writeFile(
+      join(fixtureRoot, "inputs", "source.txt"),
+      "source",
+      "utf8",
+    );
+    const manifest = await createBenchmarkFixtureManifest(fixtureRoot);
+
+    await writeFile(
+      join(fixtureRoot, "inputs", "brief.txt"),
+      "rewritten brief",
+      "utf8",
+    );
+    await rm(join(fixtureRoot, "inputs", "source.txt"));
+
+    const integrity = await verifyBenchmarkInputFixture(fixtureRoot, manifest);
+    expect(integrity).toMatchObject({
+      status: "fail",
+      changedFiles: ["inputs/brief.txt"],
+      missingFiles: ["inputs/source.txt"],
+    });
+    expect(integrity.detail).toMatch(
+      /changed.*inputs\/brief\.txt.*missing.*inputs\/source\.txt/i,
+    );
+  });
+
+  it("rejects a fixture file reached through a replacement directory symlink", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-fixture-parent-link-"));
+    const fixtureRoot = join(root, "workspace");
+    const outsideInputs = join(root, "outside-inputs");
+    await mkdir(join(fixtureRoot, "inputs"), { recursive: true });
+    await writeFile(
+      join(fixtureRoot, "inputs", "brief.txt"),
+      "unchanged bytes",
+      "utf8",
+    );
+    const manifest = await createBenchmarkFixtureManifest(fixtureRoot);
+    await mkdir(outsideInputs);
+    await writeFile(
+      join(outsideInputs, "brief.txt"),
+      "unchanged bytes",
+      "utf8",
+    );
+    await rm(join(fixtureRoot, "inputs"), { recursive: true });
+    await symlink(outsideInputs, join(fixtureRoot, "inputs"), "dir");
+
+    const integrity = await verifyBenchmarkInputFixture(fixtureRoot, manifest);
+
+    expect(integrity.status).toBe("fail");
+    expect(integrity.changedFiles).toContain("inputs/brief.txt");
+  });
+
   it("builds a canonical sorted file manifest with path, size, and sha256", async () => {
     const fixtureRoot = await mkdtemp(
       join(tmpdir(), "clash-fixture-manifest-"),
@@ -173,6 +445,155 @@ describe("benchmark input fixtures", () => {
     expect(outcome).toContain("public input fixture");
     expect(outcome).toContain("fixtures/spoken-edit");
     expect(outcome).not.toContain("result-exists");
+  });
+
+  it("fails a completed agent run that rewrites a public input fixture", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-fixture-mutation-"));
+    const suiteRoot = join(root, "suite");
+    const fixtureRoot = join(suiteRoot, "fixtures", "spoken-edit");
+    const outputRoot = join(root, "runs");
+    await mkdir(join(fixtureRoot, "inputs"), { recursive: true });
+    await writeFile(
+      join(fixtureRoot, "inputs", "transcript.txt"),
+      "original prompt",
+      "utf8",
+    );
+    const expected = await createBenchmarkFixtureManifest(fixtureRoot);
+
+    const report = await runBenchmarkSuite({
+      suite: fixtureSuite(
+        fixtureCase({
+          path: "fixtures/spoken-edit",
+          manifestSha256: expected.manifestSha256,
+        }),
+      ),
+      suiteRoot,
+      outputRoot,
+      runId: "fixture-mutation",
+      agent: fixtureMutatingAgent(),
+    });
+
+    expect(report.cases[0]).toMatchObject({
+      status: "fail",
+      agent: { status: "completed" },
+      execution: {
+        status: "fail",
+        detail: expect.stringMatching(
+          /fixture changed.*inputs\/transcript\.txt/i,
+        ),
+      },
+      failure: { classification: "product", retryable: false },
+    });
+    const integrity = JSON.parse(
+      await readFile(
+        join(
+          outputRoot,
+          "fixture-mutation",
+          "spoken-edit",
+          "fixture-integrity.json",
+        ),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+    expect(integrity).toMatchObject({
+      status: "fail",
+      changedFiles: ["inputs/transcript.txt"],
+    });
+  });
+
+  it("rejects a final snapshot changed by a background process after the post-agent check", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-fixture-late-mutation-"));
+    const suiteRoot = join(root, "suite");
+    const fixtureRoot = join(suiteRoot, "fixtures", "spoken-edit");
+    const outputRoot = join(root, "runs");
+    const runId = "fixture-late-mutation";
+    const caseRoot = join(outputRoot, runId, "spoken-edit");
+    const watcherReadyPath = join(root, "background-ready");
+    const donePath = join(root, "background-done");
+    await mkdir(join(fixtureRoot, "inputs"), { recursive: true });
+    for (let index = 0; index < 128; index += 1) {
+      await writeFile(
+        join(
+          fixtureRoot,
+          "inputs",
+          `a-ballast-${String(index).padStart(3, "0")}.txt`,
+        ),
+        "ballast",
+      );
+    }
+    await writeFile(
+      join(fixtureRoot, "inputs", "transcript.txt"),
+      "original prompt",
+      "utf8",
+    );
+    const expected = await createBenchmarkFixtureManifest(fixtureRoot);
+
+    const watcherReady = new Promise<void>((resolveReady, rejectReady) => {
+      const readyWatcher = watch(root, (_event, filename) => {
+        if (filename !== "background-ready") return;
+        readyWatcher.close();
+        resolveReady();
+      });
+      readyWatcher.once("error", (error) => {
+        readyWatcher.close();
+        rejectReady(error);
+      });
+    });
+    const mutation = mutateFixtureAfterPostAgentCheck({
+      caseRoot,
+      watcherReadyPath,
+      donePath,
+    }).then(
+      () => ({ ok: true as const }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+    await watcherReady;
+    await expect(lstat(caseRoot)).rejects.toMatchObject({ code: "ENOENT" });
+
+    const [report, mutationResult] = await Promise.all([
+      runBenchmarkSuite({
+        suite: fixtureSuite(
+          fixtureCase({
+            path: "fixtures/spoken-edit",
+            manifestSha256: expected.manifestSha256,
+          }),
+        ),
+        suiteRoot,
+        outputRoot,
+        runId,
+        agent: fixtureLateMutatingAgent({
+          watcherReadyPath,
+        }),
+      }),
+      mutation,
+    ]);
+    if (!mutationResult.ok) throw mutationResult.error;
+
+    await expect(readFile(donePath, "utf8")).resolves.toBe("done");
+    await expect(
+      readFile(
+        join(report.cases[0]!.workspace, "inputs", "transcript.txt"),
+        "utf8",
+      ),
+    ).resolves.toBe("late background mutation");
+    expect(report.cases[0]).toMatchObject({
+      status: "fail",
+      agent: { status: "completed" },
+      execution: {
+        status: "fail",
+        detail: expect.stringMatching(
+          /published final workspace snapshot.*changed/i,
+        ),
+      },
+      failure: { classification: "product", retryable: false },
+    });
+    const integrity = JSON.parse(
+      await readFile(join(caseRoot, "fixture-integrity.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(integrity).toMatchObject({
+      status: "fail",
+      changedFiles: ["inputs/transcript.txt"],
+    });
   });
 
   it("rejects a mismatched manifest before starting the agent", async () => {

@@ -8,6 +8,7 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -17,15 +18,32 @@ import { LoroDoc } from "loro-crdt";
 import { createMockExternalAigcService } from "./local-aigc.js";
 import {
   Canvas,
+  DOCUMENT_ASSET_REVISIONS_CONTAINER,
+  DOCUMENT_ASSET_SCHEMA_CONTAINER,
+  DOCUMENT_ATTACHMENTS_CONTAINER,
+  GENERATOR_ACTION_RUNS_CONTAINER,
+  GENERATOR_OUTPUT_COMMITS_CONTAINER,
+  GENERATOR_REVISIONS_CONTAINER,
+  GENERATOR_SCHEMA_CONTAINER,
+  PROJECT_DOCUMENT_ASSETS_CONTAINER,
+  PROJECT_GENERATORS_CONTAINER,
   createActionAssetBinding,
+  createProjectDocumentAsset,
+  createProjectGenerator,
   createProjectAsset,
   createProjectTimeline,
+  ensureActionRunRequest,
+  ensureDocumentAttachment,
+  ensureOutputCommit,
   listActionAssetReferences,
+  markDocumentAssetAuthority,
+  markGeneratorAuthority,
   markActionAssetBindingAuthority,
   MODEL_CARDS,
   purgeProjectAsset,
   readActionAssetBinding,
   readProjectAsset,
+  resolveOutputCommitAssetType,
   requestTimelineRender,
   trashProjectAssetIfUnreferenced,
   unbindActionAssetBinding,
@@ -145,6 +163,254 @@ function updateId(update: Uint8Array): string {
   }
   return `${update.byteLength}:${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
+
+const generatorDefinitionRef = {
+  pluginId: "clash.stage",
+  definitionId: "director-stage",
+  version: "1.0.0",
+  schemaHash: `sha256:${"a".repeat(64)}`,
+} as const;
+
+function seedGeneratorAuthority(doc: LoroDoc): void {
+  expect(markGeneratorAuthority(doc)).toMatchObject({ ok: true });
+  expect(
+    createProjectAsset(doc, {
+      id: "asset-result",
+      kind: "image",
+      source: { kind: "owned", resourceId: "resource-result" },
+      lifecycle: { state: "active" },
+      metadata: {},
+    }),
+  ).toMatchObject({ ok: true });
+  expect(
+    createProjectGenerator(doc, {
+      head: { id: "stage-1", headRevisionId: "stage-rev-1" },
+      revision: {
+        id: "stage-rev-1",
+        generatorId: "stage-1",
+        definitionRef: generatorDefinitionRef,
+        state: { scene: "courtyard" },
+        persistentInputRefs: [],
+      },
+    }),
+  ).toMatchObject({ ok: true });
+  expect(
+    ensureActionRunRequest(doc, {
+      actionRunId: "run-stage-1",
+      generatorRevision: {
+        generatorId: "stage-1",
+        generatorRevisionId: "stage-rev-1",
+      },
+      actionId: "render-still",
+      executor: {
+        pluginId: generatorDefinitionRef.pluginId,
+        version: generatorDefinitionRef.version,
+        exportId: "render-still",
+        schemaHash: generatorDefinitionRef.schemaHash,
+      },
+      invocationFingerprint: `sha256:${"b".repeat(64)}`,
+      parameters: {},
+      invocationInputRefs: [],
+      outputContract: [
+        {
+          slot: "image",
+          assetType: { kind: "media", mediaKind: "image" },
+          cardinality: { minItems: 1, maxItems: 1 },
+        },
+      ],
+    }),
+  ).toMatchObject({ ok: true });
+  expect(
+    ensureOutputCommit(
+      doc,
+      {
+        actionRunId: "run-stage-1",
+        outputSlot: "image",
+        asset: { kind: "media", projectAssetId: "asset-result" },
+      },
+      resolveOutputCommitAssetType,
+    ),
+  ).toMatchObject({ ok: true });
+}
+
+function seedDocumentAssetAuthority(doc: LoroDoc): void {
+  expect(markDocumentAssetAuthority(doc)).toMatchObject({ ok: true });
+  expect(
+    createProjectAsset(doc, {
+      id: "video-1",
+      kind: "video",
+      source: { kind: "owned", resourceId: "resource:video-1" },
+      lifecycle: { state: "active" },
+      metadata: {
+        contentType: "video/mp4",
+        width: 1,
+        height: 1,
+        durationMs: 1_000,
+      },
+    }),
+  ).toMatchObject({ ok: true });
+  expect(
+    createProjectDocumentAsset(doc, {
+      id: "transcript:r1",
+      documentAssetId: "transcript",
+      documentKind: "media.transcript",
+      schemaVersion: 1,
+      mutability: "versioned",
+      body: {
+        digest: `sha256:${"c".repeat(64)}`,
+        byteLength: 128,
+        contentType: "application/json",
+      },
+      producer: { kind: "actor", actor: { kind: "agent" } },
+      sourceRefs: [
+        {
+          slot: "source",
+          target: { kind: "media", projectAssetId: "video-1" },
+        },
+      ],
+    }),
+  ).toMatchObject({ ok: true });
+  expect(
+    ensureDocumentAttachment(doc, {
+      id: "video-transcript",
+      target: { kind: "project-asset", projectAssetId: "video-1" },
+      slot: "transcript",
+      document: {
+        kind: "document",
+        documentAssetId: "transcript",
+        revisionId: "transcript:r1",
+      },
+    }),
+  ).toMatchObject({ ok: true });
+}
+
+type HostOwnedAuthorityContainerCase = {
+  domain: "Generator" | "Document Asset";
+  label: string;
+  container: string;
+  seed(doc: LoroDoc): void;
+  forge(doc: LoroDoc): void;
+  remove(doc: LoroDoc): void;
+};
+
+const HOST_OWNED_AUTHORITY_CONTAINER_CASES = [
+  {
+    domain: "Generator",
+    label: "Generator schema marker",
+    container: GENERATOR_SCHEMA_CONTAINER,
+    seed: seedGeneratorAuthority,
+    forge: (doc) =>
+      doc
+        .getMap(GENERATOR_SCHEMA_CONTAINER)
+        .ensureMergeableMap("authorityVersions")
+        .set("1", false),
+    remove: (doc) =>
+      doc.getMap(GENERATOR_SCHEMA_CONTAINER).delete("authorityVersions"),
+  },
+  {
+    domain: "Generator",
+    label: "Project Generator head",
+    container: PROJECT_GENERATORS_CONTAINER,
+    seed: seedGeneratorAuthority,
+    forge: (doc) =>
+      doc
+        .getMap(PROJECT_GENERATORS_CONTAINER)
+        .ensureMergeableMap("stage-1")
+        .set("head", { revisionId: "stage-rev-forged" }),
+    remove: (doc) => doc.getMap(PROJECT_GENERATORS_CONTAINER).delete("stage-1"),
+  },
+  {
+    domain: "Generator",
+    label: "Generator revision",
+    container: GENERATOR_REVISIONS_CONTAINER,
+    seed: seedGeneratorAuthority,
+    forge: (doc) =>
+      doc
+        .getMap(GENERATOR_REVISIONS_CONTAINER)
+        .ensureMergeableMap("stage-1")
+        .set("stage-rev-1", { forged: true }),
+    remove: (doc) =>
+      doc.getMap(GENERATOR_REVISIONS_CONTAINER).delete("stage-1"),
+  },
+  {
+    domain: "Generator",
+    label: "Generator Action Run",
+    container: GENERATOR_ACTION_RUNS_CONTAINER,
+    seed: seedGeneratorAuthority,
+    forge: (doc) =>
+      doc
+        .getMap(GENERATOR_ACTION_RUNS_CONTAINER)
+        .ensureMergeableMap("run-stage-1")
+        .set("request", { forged: true }),
+    remove: (doc) =>
+      doc.getMap(GENERATOR_ACTION_RUNS_CONTAINER).delete("run-stage-1"),
+  },
+  {
+    domain: "Generator",
+    label: "Generator output commit",
+    container: GENERATOR_OUTPUT_COMMITS_CONTAINER,
+    seed: seedGeneratorAuthority,
+    forge: (doc) =>
+      doc
+        .getMap(GENERATOR_OUTPUT_COMMITS_CONTAINER)
+        .ensureMergeableMap("run-stage-1")
+        .set("image", { forged: true }),
+    remove: (doc) =>
+      doc.getMap(GENERATOR_OUTPUT_COMMITS_CONTAINER).delete("run-stage-1"),
+  },
+  {
+    domain: "Document Asset",
+    label: "Document Asset schema marker",
+    container: DOCUMENT_ASSET_SCHEMA_CONTAINER,
+    seed: seedDocumentAssetAuthority,
+    forge: (doc) =>
+      doc
+        .getMap(DOCUMENT_ASSET_SCHEMA_CONTAINER)
+        .ensureMergeableMap("authorityVersions")
+        .set("1", false),
+    remove: (doc) =>
+      doc.getMap(DOCUMENT_ASSET_SCHEMA_CONTAINER).delete("authorityVersions"),
+  },
+  {
+    domain: "Document Asset",
+    label: "Project Document Asset head",
+    container: PROJECT_DOCUMENT_ASSETS_CONTAINER,
+    seed: seedDocumentAssetAuthority,
+    forge: (doc) =>
+      doc
+        .getMap(PROJECT_DOCUMENT_ASSETS_CONTAINER)
+        .ensureMergeableMap("transcript")
+        .set("headRevisionId", "transcript:forged"),
+    remove: (doc) =>
+      doc.getMap(PROJECT_DOCUMENT_ASSETS_CONTAINER).delete("transcript"),
+  },
+  {
+    domain: "Document Asset",
+    label: "Document Asset revision",
+    container: DOCUMENT_ASSET_REVISIONS_CONTAINER,
+    seed: seedDocumentAssetAuthority,
+    forge: (doc) =>
+      doc
+        .getMap(DOCUMENT_ASSET_REVISIONS_CONTAINER)
+        .ensureMergeableMap("transcript")
+        .set("transcript:r1", { forged: true }),
+    remove: (doc) =>
+      doc.getMap(DOCUMENT_ASSET_REVISIONS_CONTAINER).delete("transcript"),
+  },
+  {
+    domain: "Document Asset",
+    label: "Document attachment",
+    container: DOCUMENT_ATTACHMENTS_CONTAINER,
+    seed: seedDocumentAssetAuthority,
+    forge: (doc) =>
+      doc
+        .getMap(DOCUMENT_ATTACHMENTS_CONTAINER)
+        .ensureMergeableMap("video-transcript")
+        .set("slot", "forged"),
+    remove: (doc) =>
+      doc.getMap(DOCUMENT_ATTACHMENTS_CONTAINER).delete("video-transcript"),
+  },
+] satisfies HostOwnedAuthorityContainerCase[];
 
 describe("LocalLoroRoom", () => {
   /**
@@ -301,6 +567,210 @@ describe("LocalLoroRoom", () => {
     expect(processCalls).toBe(1);
   });
 
+  it("keeps an imported snapshot invisible to Project rooms until the receiver commit finishes", async () => {
+    const projectId = "project/import-reservation";
+    const imported = new LoroDoc();
+    imported.getMap("nodes").set("portable", {
+      id: "portable",
+      type: "text",
+      position: { x: 0, y: 0 },
+      data: { label: "Portable" },
+    });
+    let notifySnapshotInstalled!: () => void;
+    let releaseReceiverCommit!: () => void;
+    const snapshotInstalled = new Promise<void>((resolve) => {
+      notifySnapshotInstalled = resolve;
+    });
+    const receiverCommit = new Promise<void>((resolve) => {
+      releaseReceiverCommit = resolve;
+    });
+    const hub = new LocalLoroRoomHub(dataDir, undefined, null);
+
+    const installing = hub.installImportedProject(
+      projectId,
+      "bundle:" + "a".repeat(64),
+      imported.export({ mode: "snapshot" }),
+      async () => {
+        notifySnapshotInstalled();
+        await receiverCommit;
+        return "committed";
+      },
+    );
+    await snapshotInstalled;
+
+    await expect(hub.room(projectId)).rejects.toMatchObject({
+      code: "PROJECT_BUSY",
+      projectId,
+    });
+    await expect(
+      hub.inspectProject(projectId, () => "visible"),
+    ).rejects.toMatchObject({ code: "PROJECT_BUSY" });
+
+    releaseReceiverCommit();
+    await expect(installing).resolves.toBe("committed");
+    await expect(
+      hub.inspectProject(
+        projectId,
+        (doc) =>
+          (doc.getMap("nodes").get("portable") as { data: { label: string } })
+            .data.label,
+      ),
+    ).resolves.toBe("Portable");
+    await hub.close();
+  });
+
+  it("persists a failed import reservation across Hub restart and permits only its exact retry", async () => {
+    const projectId = "project/import-retry";
+    const reservationId = `workspace-import:${"b".repeat(64)}`;
+    const imported = new LoroDoc();
+    imported.getMap("nodes").set("portable", {
+      id: "portable",
+      type: "text",
+      position: { x: 0, y: 0 },
+      data: { label: "Retryable" },
+    });
+    const snapshot = imported.export({ mode: "snapshot" });
+    const failedHub = new LocalLoroRoomHub(dataDir, undefined, null);
+
+    await expect(
+      failedHub.installImportedProject(
+        projectId,
+        reservationId,
+        snapshot,
+        async () => {
+          throw new Error("injected receiver commit failure");
+        },
+      ),
+    ).rejects.toThrow("injected receiver commit failure");
+    await expect(failedHub.room(projectId)).rejects.toMatchObject({
+      code: "PROJECT_BUSY",
+    });
+    await failedHub.close();
+
+    const restartedHub = new LocalLoroRoomHub(dataDir, undefined, null);
+    await expect(restartedHub.room(projectId)).rejects.toMatchObject({
+      code: "PROJECT_BUSY",
+    });
+    await expect(
+      restartedHub.installImportedProject(
+        projectId,
+        `workspace-import:${"c".repeat(64)}`,
+        snapshot,
+        async () => "wrong reservation",
+      ),
+    ).rejects.toThrow(/another Workspace import/u);
+    await expect(
+      restartedHub.installImportedProject(
+        projectId,
+        reservationId,
+        snapshot,
+        async () => "committed after retry",
+      ),
+    ).resolves.toBe("committed after retry");
+    await expect(
+      restartedHub.inspectProject(
+        projectId,
+        (doc) =>
+          (doc.getMap("nodes").get("portable") as { data: { label: string } })
+            .data.label,
+      ),
+    ).resolves.toBe("Retryable");
+    await restartedHub.close();
+  });
+
+  it("reconciles only an exact committed Workspace import after restart", async () => {
+    const projectId = "project/import-receipt-crash";
+    const reservationId = `workspace-import:${"d".repeat(64)}`;
+    const imported = new LoroDoc();
+    imported.getMap("nodes").set("portable", { label: "Committed" });
+    const snapshot = imported.export({ mode: "snapshot" });
+    const snapshotSha256 = createHash("sha256").update(snapshot).digest("hex");
+    const store = new FileReplicaStore(join(dataDir, "projects"));
+    const reservation = {
+      schemaVersion: 1 as const,
+      kind: "clash.workspace.import-reservation" as const,
+      reservationId,
+      snapshotSha256,
+    };
+    await store.reserveImportedProject(projectId, reservation);
+    await store.installSnapshotIfAbsent(projectId, snapshot);
+
+    const restartedHub = new LocalLoroRoomHub(dataDir, undefined, null);
+    await expect(restartedHub.room(projectId)).rejects.toMatchObject({
+      code: "PROJECT_BUSY",
+    });
+    await expect(
+      restartedHub.reconcileCommittedImport(
+        projectId,
+        reservationId,
+        snapshotSha256,
+      ),
+    ).resolves.toBeUndefined();
+    await expect(store.readImportReservation(projectId)).resolves.toBeNull();
+    await expect(
+      restartedHub.inspectProject(
+        projectId,
+        (doc) =>
+          (doc.getMap("nodes").get("portable") as { label: string }).label,
+      ),
+    ).resolves.toBe("Committed");
+    await restartedHub.close();
+  });
+
+  it("keeps mismatched or corrupt committed-import recovery fail closed", async () => {
+    const imported = new LoroDoc();
+    imported.getMap("nodes").set("portable", { label: "Expected" });
+    const snapshot = imported.export({ mode: "snapshot" });
+    const snapshotSha256 = createHash("sha256").update(snapshot).digest("hex");
+    const store = new FileReplicaStore(join(dataDir, "projects"));
+
+    const mismatchedProject = "project/import-reconcile-mismatch";
+    await store.reserveImportedProject(mismatchedProject, {
+      schemaVersion: 1,
+      kind: "clash.workspace.import-reservation",
+      reservationId: "workspace-import:other",
+      snapshotSha256,
+    });
+    await store.installSnapshotIfAbsent(mismatchedProject, snapshot);
+
+    const corruptProject = "project/import-reconcile-corrupt";
+    await store.reserveImportedProject(corruptProject, {
+      schemaVersion: 1,
+      kind: "clash.workspace.import-reservation",
+      reservationId: "workspace-import:expected",
+      snapshotSha256,
+    });
+    const different = new LoroDoc();
+    different.getMap("nodes").set("portable", { label: "Different" });
+    await store.installSnapshotIfAbsent(
+      corruptProject,
+      different.export({ mode: "snapshot" }),
+    );
+
+    const hub = new LocalLoroRoomHub(dataDir, undefined, null);
+    await expect(
+      hub.reconcileCommittedImport(
+        mismatchedProject,
+        "workspace-import:expected",
+        snapshotSha256,
+      ),
+    ).rejects.toThrow(/another Workspace import/u);
+    await expect(
+      hub.reconcileCommittedImport(
+        corruptProject,
+        "workspace-import:expected",
+        snapshotSha256,
+      ),
+    ).rejects.toThrow(/does not match/u);
+    await expect(
+      store.readImportReservation(mismatchedProject),
+    ).resolves.not.toBeNull();
+    await expect(
+      store.readImportReservation(corruptProject),
+    ).resolves.not.toBeNull();
+    await hub.close();
+  });
+
   it("acknowledges a peer update after persisting it", async () => {
     const room = await LocalLoroRoom.open({
       dataDir,
@@ -373,6 +843,116 @@ describe("LocalLoroRoom", () => {
       expect.objectContaining({ type: "sync_ack" }),
     );
   });
+
+  describe.each(HOST_OWNED_AUTHORITY_CONTAINER_CASES)(
+    "$label peer authority boundary",
+    ({ container, domain, forge, remove, seed }) => {
+      const authorityError = new RegExp(`${domain} authority`, "i");
+
+      it("rejects creation through a raw peer update", async () => {
+        const room = await LocalLoroRoom.open({
+          dataDir,
+          projectId: `project/${encodeURIComponent(container)}-peer-create`,
+          workflowProcessor: null,
+        });
+        const peer = room.addPeer(() => {});
+        const clientDoc = LoroDoc.fromSnapshot(room.snapshot());
+        const version = clientDoc.version();
+        const before = clientDoc.getMap(container).toJSON();
+        forge(clientDoc);
+        expect(clientDoc.getMap(container).toJSON()).not.toEqual(before);
+
+        await expect(
+          room.receive(
+            peer,
+            clientDoc.export({ mode: "update", from: version }),
+          ),
+        ).rejects.toThrow(authorityError);
+
+        expect(
+          LoroDoc.fromSnapshot(room.snapshot()).getMap(container).toJSON(),
+        ).toEqual(before);
+      });
+
+      it("accepts an ordinary edit from an existing replica but rejects mutation of its Host-owned facts", async () => {
+        const room = await LocalLoroRoom.open({
+          dataDir,
+          projectId: `project/${encodeURIComponent(container)}-peer-update`,
+          workflowProcessor: null,
+        });
+        await room.mutateProject((doc) => {
+          seed(doc);
+          return { value: undefined };
+        });
+        const peer = room.addPeer(() => {});
+        const replica = LoroDoc.fromSnapshot(room.snapshot());
+        const authorityBefore = replica.getMap(container).toJSON();
+        expect(authorityBefore).not.toEqual({});
+        const replicaVersion = replica.version();
+        replica.getMap("nodes").set("ordinary-peer-node", {
+          id: "ordinary-peer-node",
+          type: "text",
+          position: { x: 0, y: 0 },
+          data: { text: "ordinary peer edit" },
+        });
+
+        await expect(
+          room.receive(
+            peer,
+            replica.export({ mode: "update", from: replicaVersion }),
+          ),
+        ).resolves.toBeUndefined();
+        expect(
+          LoroDoc.fromSnapshot(room.snapshot()).getMap(container).toJSON(),
+        ).toEqual(authorityBefore);
+
+        const attacker = LoroDoc.fromSnapshot(room.snapshot());
+        const attackerVersion = attacker.version();
+        forge(attacker);
+        expect(attacker.getMap(container).toJSON()).not.toEqual(
+          authorityBefore,
+        );
+
+        await expect(
+          room.receive(
+            peer,
+            attacker.export({ mode: "update", from: attackerVersion }),
+          ),
+        ).rejects.toThrow(authorityError);
+        expect(
+          LoroDoc.fromSnapshot(room.snapshot()).getMap(container).toJSON(),
+        ).toEqual(authorityBefore);
+      });
+
+      it("rejects deletion through a raw peer update", async () => {
+        const room = await LocalLoroRoom.open({
+          dataDir,
+          projectId: `project/${encodeURIComponent(container)}-peer-delete`,
+          workflowProcessor: null,
+        });
+        await room.mutateProject((doc) => {
+          seed(doc);
+          return { value: undefined };
+        });
+        const peer = room.addPeer(() => {});
+        const clientDoc = LoroDoc.fromSnapshot(room.snapshot());
+        const version = clientDoc.version();
+        const before = clientDoc.getMap(container).toJSON();
+        remove(clientDoc);
+        expect(clientDoc.getMap(container).toJSON()).not.toEqual(before);
+
+        await expect(
+          room.receive(
+            peer,
+            clientDoc.export({ mode: "update", from: version }),
+          ),
+        ).rejects.toThrow(authorityError);
+        expect(
+          LoroDoc.fromSnapshot(room.snapshot()).getMap(container).toJSON(),
+        ).toEqual(before);
+      });
+    },
+  );
 
   it("accepts peer-authored draft inputs but rejects peer-authored run output lineage", async () => {
     const room = await LocalLoroRoom.open({
@@ -2051,7 +2631,7 @@ describe("LocalLoroRoom", () => {
     expect(peerUpdates.length).toBeGreaterThan(0);
   });
 
-  it("renders pending Timeline video nodes through the local backend renderer", async () => {
+  it("renders pending Timeline video nodes through the bundled Remotion Action", async () => {
     const importedAt = Math.floor(Date.now() / 1000);
     await mkdir(join(dataDir, "assets", "uploads"), { recursive: true });
     await writeFile(
@@ -2085,13 +2665,45 @@ describe("LocalLoroRoom", () => {
     await metadata.save(legacy, {
       replaceLegacyAssetMigrationInput: true,
     });
-    const renderTimeline = vi.fn(async () => ({
-      bytes: new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]),
-      contentType: "video/mp4",
-      width: 1920,
-      height: 1080,
-      durationMs: 2000,
-    }));
+    const binding = {
+      pluginId: "clash.remotion",
+      version: "0.1.0",
+      exportId: "render-timeline",
+      schemaHash: `sha256:${"e".repeat(64)}`,
+    } as const;
+    const staging = createLocalPluginAssetStagingStore({ dataDir });
+    const renderTimeline = vi.fn(async (request: Record<string, any>) => {
+      const outputSlot = String(request.input.values.outputSlot);
+      const invocationId = `${request.taskId}:sync-remotion`;
+      const staged = await staging.stage({
+        projectId: request.projectId,
+        taskId: request.taskId,
+        slot: outputSlot,
+        pluginId: binding.pluginId,
+        pluginVersion: binding.version,
+        invocationId,
+        kind: "video",
+        mediaType: "video/mp4",
+        bytes: new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]),
+      });
+      return {
+        protocol: "clash.plugin.result/v1" as const,
+        invocationId,
+        status: "completed" as const,
+        outputs: [
+          {
+            slot: outputSlot,
+            kind: "asset" as const,
+            asset: {
+              assetId: staged.projectAssetId,
+              uri: `clash-asset://${staged.projectAssetId}`,
+              kind: "video" as const,
+              mediaType: "video/mp4",
+            },
+          },
+        ],
+      };
+    });
     const room = await LocalLoroRoom.open({
       dataDir,
       projectId: "project/local-render",
@@ -2100,9 +2712,9 @@ describe("LocalLoroRoom", () => {
         assetInspection: testAssetInspection({
           video: { width: 1_920, height: 1_080, durationMs: 2_000 },
         }),
-        mediaBaseUrl: "http://127.0.0.1:49321",
-        timelineRenderer: { render: renderTimeline },
-      } as any),
+        executablePluginAction: renderTimeline,
+        resolvePluginBinding: async () => binding,
+      }),
     });
     const peer = room.addPeer(() => {});
     const clientDoc = LoroDoc.fromSnapshot(room.snapshot());
@@ -2149,29 +2761,50 @@ describe("LocalLoroRoom", () => {
 
     await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
 
-    expect(renderTimeline).toHaveBeenCalledWith(
-      expect.objectContaining({
-        projectId: "project/local-render",
-        taskId: "timeline-render:render-node-1",
-        timelineDsl: expect.objectContaining({
-          durationInFrames: 60,
-          tracks: [
-            expect.objectContaining({
-              items: [
-                expect.objectContaining({
-                  src: "http://127.0.0.1:49321/api/v1/projects/project%2Flocal-render/assets/music-asset-1/media",
-                  audioDucking: {
-                    amountDb: -18,
-                    attackFrames: 6,
-                    releaseFrames: 12,
-                  },
-                }),
-              ],
-            }),
-          ],
-        }),
-      }),
-    );
+    expect(renderTimeline).toHaveBeenCalledTimes(1);
+    const renderRequest = renderTimeline.mock.calls[0]![0];
+    expect(renderRequest).toMatchObject({
+      binding,
+      projectId: "project/local-render",
+      taskId: "timeline-render:render-node-1",
+      input: {
+        values: {
+          timelineDsl: {
+            durationInFrames: 60,
+            tracks: [
+              expect.objectContaining({
+                items: [
+                  expect.objectContaining({
+                    id: "music-1",
+                    assetId: "music-asset-1",
+                    audioDucking: {
+                      amountDb: -18,
+                      attackFrames: 6,
+                      releaseFrames: 12,
+                    },
+                  }),
+                ],
+              }),
+            ],
+          },
+        },
+        references: [
+          {
+            slot: "timeline:item:music-1",
+            index: 0,
+            asset: {
+              assetId: "music-asset-1",
+              uri: "clash-asset://music-asset-1",
+              kind: "audio",
+              mediaType: "audio/wav",
+            },
+          },
+        ],
+      },
+    });
+    expect(
+      renderRequest.input.values.timelineDsl.tracks[0].items[0],
+    ).not.toHaveProperty("src");
     const finalDoc = new LoroDoc();
     finalDoc.import(room.snapshot());
     expect(finalDoc.getMap("nodes").get("render-node-1")).toMatchObject({
@@ -2629,6 +3262,238 @@ describe("LocalLoroRoom", () => {
     expect(
       (persisted.getMap("nodes").get("node-cloud") as any).data.label,
     ).toBe("Cloud");
+  });
+
+  it("keeps an appended checkpoint committed when threshold compaction fails and retries later", async () => {
+    const projectId = "project/compact-failure-commit";
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: null,
+    });
+
+    const compactSpy = vi
+      .spyOn(FileReplicaStore.prototype, "compactSnapshot")
+      .mockRejectedValueOnce(new Error("injected compaction failure"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      let committedEdit = 0;
+      while (compactSpy.mock.calls.length === 0 && committedEdit < 64) {
+        committedEdit += 1;
+        await expect(
+          room.mutateProject((doc) => {
+            doc
+              .getMap("checkpoint-regression")
+              .set(`edit-${committedEdit}`, committedEdit);
+            return { value: undefined };
+          }),
+        ).resolves.toBeUndefined();
+      }
+      if (compactSpy.mock.calls.length === 0) {
+        throw new Error("Test setup did not reach the compaction threshold");
+      }
+      expect(
+        await room.inspectCheckpointedProject((doc) =>
+          doc.getMap("checkpoint-regression").toJSON(),
+        ),
+      ).toHaveProperty(`edit-${committedEdit}`, committedEdit);
+
+      const retryEdit = committedEdit + 1;
+      await room.mutateProject((doc) => {
+        doc.getMap("checkpoint-regression").set(`edit-${retryEdit}`, retryEdit);
+        return { value: undefined };
+      });
+      expect(
+        await room.inspectCheckpointedProject((doc) =>
+          doc.getMap("checkpoint-regression").toJSON(),
+        ),
+      ).toMatchObject({
+        [`edit-${committedEdit}`]: committedEdit,
+        [`edit-${retryEdit}`]: retryEdit,
+      });
+      expect(
+        (
+          await readFile(
+            join(
+              dataDir,
+              "projects",
+              encodeURIComponent(projectId),
+              "loro",
+              "updates.log",
+            ),
+          )
+        ).byteLength,
+      ).toBe(0);
+
+      const reopened = await LocalLoroRoom.open({
+        dataDir,
+        projectId,
+        workflowProcessor: null,
+      });
+      expect(
+        await reopened.inspectProject((doc) =>
+          doc.getMap("checkpoint-regression").toJSON(),
+        ),
+      ).toMatchObject({
+        [`edit-${committedEdit}`]: committedEdit,
+        [`edit-${retryEdit}`]: retryEdit,
+      });
+    } finally {
+      compactSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("does not let a Project read callback mutate the live replica", async () => {
+    const projectId = "project/read-isolation";
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: null,
+    });
+
+    await room.inspectProject((doc) => {
+      doc.getMap("read-callback-leak").set("created", true);
+    });
+
+    expect(
+      await room.inspectProject((doc) =>
+        doc.getMap("read-callback-leak").toJSON(),
+      ),
+    ).toEqual({});
+    expect(
+      await room.inspectCheckpointedProject((doc) =>
+        doc.getMap("read-callback-leak").toJSON(),
+      ),
+    ).toEqual({});
+  });
+
+  it("rolls a failed Host mutation back to its last committed checkpoint", async () => {
+    const projectId = "project/mutation-rollback";
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: null,
+    });
+    await room.mutateProject((doc) => {
+      doc.getMap("checkpoint-regression").set("prefix", "committed");
+      return { value: undefined };
+    });
+
+    await expect(
+      room.mutateProject((doc) => {
+        doc.getMap("checkpoint-regression").set("suffix", "dirty");
+        throw new Error("mutation failed after editing");
+      }),
+    ).rejects.toThrow("mutation failed after editing");
+    expect(
+      await room.inspectProject((doc) =>
+        doc.getMap("checkpoint-regression").toJSON(),
+      ),
+    ).toEqual({ prefix: "committed" });
+
+    for (let i = 0; i < 40; i += 1) {
+      await room.mutateProject((doc) => {
+        doc.getMap("checkpoint-regression").set(`later-${i}`, i);
+        return { value: undefined };
+      });
+    }
+    const reopened = await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: null,
+    });
+    expect(
+      await reopened.inspectProject((doc) =>
+        doc.getMap("checkpoint-regression").toJSON(),
+      ),
+    ).not.toHaveProperty("suffix");
+  });
+
+  it("rolls only the dirty suffix of a failed checkpointed Host mutation back", async () => {
+    const projectId = "project/checkpointed-mutation-rollback";
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: null,
+    });
+
+    await expect(
+      room.mutateProjectWithCheckpoint(async (doc, checkpoint) => {
+        doc.getMap("checkpoint-regression").set("prefix", "committed");
+        await checkpoint();
+        doc.getMap("checkpoint-regression").set("suffix", "dirty");
+        throw new Error("checkpointed mutation failed after editing");
+      }),
+    ).rejects.toThrow("checkpointed mutation failed after editing");
+    expect(
+      await room.inspectProject((doc) =>
+        doc.getMap("checkpoint-regression").toJSON(),
+      ),
+    ).toEqual({ prefix: "committed" });
+
+    for (let i = 0; i < 40; i += 1) {
+      await room.mutateProject((doc) => {
+        doc.getMap("checkpoint-regression").set(`later-${i}`, i);
+        return { value: undefined };
+      });
+    }
+    const reopened = await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: null,
+    });
+    expect(
+      await reopened.inspectProject((doc) =>
+        doc.getMap("checkpoint-regression").toJSON(),
+      ),
+    ).not.toHaveProperty("suffix");
+  });
+
+  it("rolls only the dirty suffix of a failed workflow processor back", async () => {
+    const projectId = "project/workflow-mutation-rollback";
+    let armed = false;
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: {
+        async process({ doc, checkpoint }) {
+          if (!armed) return false;
+          doc.getMap("checkpoint-regression").set("prefix", "committed");
+          if (!checkpoint) throw new Error("workflow checkpoint unavailable");
+          await checkpoint();
+          doc.getMap("checkpoint-regression").set("suffix", "dirty");
+          throw new Error("workflow failed after editing");
+        },
+      },
+    });
+    armed = true;
+
+    await expect((room as any).processPendingWork()).rejects.toThrow(
+      "workflow failed after editing",
+    );
+    expect(
+      await room.inspectProject((doc) =>
+        doc.getMap("checkpoint-regression").toJSON(),
+      ),
+    ).toEqual({ prefix: "committed" });
+
+    for (let i = 0; i < 40; i += 1) {
+      await room.mutateProject((doc) => {
+        doc.getMap("checkpoint-regression").set(`later-${i}`, i);
+        return { value: undefined };
+      });
+    }
+    const reopened = await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: null,
+    });
+    expect(
+      await reopened.inspectProject((doc) =>
+        doc.getMap("checkpoint-regression").toJSON(),
+      ),
+    ).not.toHaveProperty("suffix");
   });
 
   it("periodically compacts local update log records instead of keeping one record per edit", async () => {

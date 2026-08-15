@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { chmod, mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { stat } from "node:fs/promises";
+import { join } from "node:path";
+import { publishContentAddressedFile } from "@clash/shared-runtime";
 import type {
   TextAppliedRevision,
   TextRevisionContentDescriptor,
@@ -11,11 +12,19 @@ export function textRevisionContentHash(content: string): string {
   return createHash("sha256").update(content).digest("hex").slice(0, 16);
 }
 
-export function textRevisionContentBlobPath(dataDir: string, contentHash: string): string {
+export function textRevisionContentBlobPath(
+  dataDir: string,
+  contentHash: string,
+): string {
   if (!/^[a-f0-9]{16}$/.test(contentHash)) {
     throw new Error("Invalid text revision content hash");
   }
-  return join(dataDir, "text-revision-blobs", contentHash.slice(0, 2), `${contentHash}.md`);
+  return join(
+    dataDir,
+    "text-revision-blobs",
+    contentHash.slice(0, 2),
+    `${contentHash}.md`,
+  );
 }
 
 export function textRevisionContentUrl(revision: TextAppliedRevision): string {
@@ -51,22 +60,11 @@ export async function storeTextRevisionContentBlob(
     throw new Error("text revision contentHash does not match content");
   }
   const path = textRevisionContentBlobPath(dataDir, revision.contentHash);
-  const existing = await readFile(path, "utf8").catch((error: unknown) => {
-    if (error && typeof error === "object" && (error as { code?: unknown }).code === "ENOENT") return null;
-    throw error;
+  await publishContentAddressedFile(path, new TextEncoder().encode(content), {
+    isValidForIdentity: (candidate) =>
+      textRevisionContentHash(Buffer.from(candidate).toString("utf8")) ===
+      revision.contentHash,
   });
-  if (existing !== null) {
-    if (existing !== content) {
-      throw new Error("text revision content blob already exists with different content");
-    }
-    await chmod(path, 0o444).catch(() => undefined);
-    return {
-      ...textRevisionContentDescriptor(revision, { stored: true }),
-    };
-  }
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, content, { encoding: "utf8", mode: 0o444 });
-  await chmod(path, 0o444).catch(() => undefined);
   return {
     ...textRevisionContentDescriptor(revision, { stored: true }),
   };

@@ -39,33 +39,35 @@
     "clean": "rm -rf runtime",
     "dev": "CLASH_SOURCE_RUNTIME=1 tsx --tsconfig tsconfig.dev.json src/dispatcher.ts --profile dev",
     "lint": "tsc --noEmit",
-    "test": "node --import tsx --test src/*.test.ts scripts/*.test.ts",
+    "test": "TSX_TSCONFIG_PATH=tsconfig.dev.json node --import tsx --test src/*.test.ts scripts/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "1.1.0",
     "@ffprobe-installer/ffprobe": "2.1.2",
     "@remotion/renderer": "4.0.507",
+    "esbuild": "^0.25.0",
     "loro-crdt": "^1.10.3",
     "yaml": "^2.6.0"
   },
   "devDependencies": {
-    "@clash/shared-mcp": "workspace:*",
-    "@clash/shared-runtime": "workspace:*",
     "@clash/cli": "workspace:*",
     "@clash/director-plugin": "workspace:*",
-    "@clash/mcp-server": "workspace:*",
-    "@clash/timeline-plugin": "workspace:*",
+    "@clash/gui": "workspace:*",
     "@clash/local-api": "workspace:*",
+    "@clash/mcp-server": "workspace:*",
+    "@clash-plugin/remotion": "workspace:*",
     "@clash/render-server": "workspace:*",
+    "@clash/shared-mcp": "workspace:*",
+    "@clash/shared-runtime": "workspace:*",
+    "@clash/shared-types": "workspace:*",
+    "@clash/timeline-plugin": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@remotion/bundler": "4.0.507",
-    "zod": "^4.1.13",
     "@types/node": "^24.0.0",
-    "esbuild": "^0.25.0",
     "tsup": "^8.5.1",
     "tsx": "^4.23.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "zod": "^4.1.13"
   },
   "engines": {
     "node": ">=24.18.0 <25"

@@ -39,6 +39,11 @@ test("registers Director headless tools while the GUI is quarantined", async () 
       `${name} must advertise a complete operational contract`,
     );
   }
+  const captureDescription = tools.get("clash_director_capture")?.config.description;
+  assert.match(captureDescription, /Project Asset identit/i);
+  assert.match(captureDescription, /downstream Timeline/i);
+  assert.match(captureDescription, /does not mutate the Stage/i);
+  assert.doesNotMatch(captureDescription, /for Stage shots/i);
   for (const name of [
     "clash_director_list",
     "clash_director_get",
@@ -54,11 +59,28 @@ test("registers Director headless tools while the GUI is quarantined", async () 
   }
 
   const stateSchema = tools.get("clash_director_save")?.config.inputSchema.state;
+  const keyframeSchema = tools.get("clash_director_keyframe_upsert")?.config
+    .inputSchema.keyframe;
   assert.equal(
     typeof tools.get("clash_director_save")?.config.inputSchema.baseRevisionId?.safeParse,
     "function",
   );
   assert.equal(typeof stateSchema?.safeParse, "function");
+  assert.equal(keyframeSchema.safeParse({}).success, false);
+  assert.equal(
+    keyframeSchema.safeParse({
+      durationSeconds: 2,
+      fps: 30,
+      trackId: "actor-turn",
+      targetId: "actor",
+      property: "rotation",
+      id: "turn-0",
+      time: 0,
+      value: [0, 0, 0],
+      interpolation: "linear",
+    }).success,
+    true,
+  );
   const currentState: any = {
     schemaVersion: 1,
     scene: { backgroundColor: "#171816", grid: { visible: true, snap: false, size: 1 } },

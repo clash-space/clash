@@ -20,6 +20,11 @@ type CliOptions = {
   agentArgs: string[];
   agentSkills: string[];
   model?: string;
+  provider?: string;
+  qualityReviewer?: "codex";
+  qualityProvider?: string;
+  qualityModel?: string;
+  qualityReviewerCommand?: string;
   clashPluginRoot?: string;
   clashProfile?: "dev" | "prod";
   resume?: boolean;
@@ -37,6 +42,11 @@ Options:
   --agent-skill <path>        Load one additional Pi skill directory (repeatable)
   --case <case-id>            Run one benchmark case
   --model <model>             Agent model override
+  --provider <provider>       Explicit Pi provider (required for ready Environments)
+  --quality-reviewer codex    Run an independent read-only content-effect judge
+  --quality-provider openai   Explicit quality reviewer provider
+  --quality-model <model>     Explicit quality reviewer model
+  --quality-reviewer-command <path>  Codex reviewer executable (default: codex)
   --clash-plugin-root <path>  Clash plugin root for clash-host cases (default: plugins/clash)
   --clash-profile dev|prod    Isolated Clash runtime profile (default: dev)
   --run-id <id>               Stable run id (default: run-<timestamp>)
@@ -79,6 +89,20 @@ function parseArgs(args: string[]): CliOptions {
       options.caseId = requiredValue(args, index++, flag);
     else if (flag === "--model")
       options.model = requiredValue(args, index++, flag);
+    else if (flag === "--provider")
+      options.provider = requiredValue(args, index++, flag);
+    else if (flag === "--quality-reviewer") {
+      const value = requiredValue(args, index++, flag);
+      if (value !== "codex") {
+        throw new Error("--quality-reviewer must be codex");
+      }
+      options.qualityReviewer = value;
+    } else if (flag === "--quality-provider")
+      options.qualityProvider = requiredValue(args, index++, flag);
+    else if (flag === "--quality-model")
+      options.qualityModel = requiredValue(args, index++, flag);
+    else if (flag === "--quality-reviewer-command")
+      options.qualityReviewerCommand = requiredValue(args, index++, flag);
     else if (flag === "--clash-plugin-root")
       options.clashPluginRoot = requiredValue(args, index++, flag);
     else if (flag === "--clash-profile") {
@@ -137,6 +161,52 @@ async function main(): Promise<void> {
   if (options.agentSkills.length > 0 && adapter !== "pi") {
     throw new Error("--agent-skill requires --agent pi");
   }
+  if (options.provider && adapter !== "pi") {
+    throw new Error("--provider requires --agent pi");
+  }
+  const requiresExplicitSelection = suite.cases.some(
+    (benchmarkCase) =>
+      Boolean(benchmarkCase.execution?.environment) &&
+      benchmarkCase.execution?.preflight?.status !== "blocked",
+  );
+  if (requiresExplicitSelection && !options.model) {
+    throw new Error("--model is required for every ready Environment");
+  }
+  if (requiresExplicitSelection && adapter === "pi" && !options.provider) {
+    throw new Error("--provider is required for a ready Pi Environment");
+  }
+  const hasQualityOption = Boolean(
+    options.qualityProvider ||
+    options.qualityModel ||
+    options.qualityReviewerCommand,
+  );
+  if (hasQualityOption && !options.qualityReviewer) {
+    throw new Error(
+      "--quality-provider, --quality-model, and --quality-reviewer-command require --quality-reviewer codex",
+    );
+  }
+  if (options.qualityReviewer) {
+    if (options.qualityProvider !== "openai") {
+      throw new Error(
+        "--quality-provider openai is required for the Codex quality reviewer",
+      );
+    }
+    if (!options.qualityModel) {
+      throw new Error(
+        "--quality-model is required for the Codex quality reviewer",
+      );
+    }
+    if (
+      !suite.cases.some(
+        (benchmarkCase) =>
+          benchmarkCase.execution?.environment?.track === "content-effect",
+      )
+    ) {
+      throw new Error(
+        "--quality-reviewer requires at least one content-effect case",
+      );
+    }
+  }
   const requiresClashHost = suite.cases.some(
     (benchmarkCase) =>
       benchmarkCase.execution?.profile === "clash-host" &&
@@ -189,6 +259,7 @@ async function main(): Promise<void> {
       skills: options.agentSkills.map((skill) =>
         resolve(invocationRoot, skill),
       ),
+      ...(options.provider ? { provider: options.provider } : {}),
       ...(options.model ? { model: options.model } : {}),
       ...(requiresClashHost
         ? {
@@ -209,6 +280,18 @@ async function main(): Promise<void> {
     outputRoot: resolve(invocationRoot, options.output),
     runId: options.runId ?? `run-${Date.now()}`,
     agent,
+    ...(options.qualityReviewer
+      ? {
+          qualityReviewer: {
+            adapter: "codex" as const,
+            provider: "openai" as const,
+            model: options.qualityModel!,
+            ...(options.qualityReviewerCommand
+              ? { command: options.qualityReviewerCommand }
+              : {}),
+          },
+        }
+      : {}),
     ...(options.resume ? { resume: true } : {}),
     ...(options.force ? { force: true } : {}),
     ...(options.maxInfrastructureAttempts

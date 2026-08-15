@@ -98,6 +98,51 @@ test("Director mutation without a host observation fails before writing", async 
   assert.deepEqual(calls, []);
 });
 
+test("Director full-state save rejects capture outputs before writing or contacting the Host", async () => {
+  const { createDirectorAdapter } = await import("./adapter.js");
+  const calls: ProjectHostRequest[] = [];
+  let writes = 0;
+  const adapter = createDirectorAdapter({
+    client: hostClient(calls, (request) => request.command.action === "list_director_stages"
+      ? { stages: [stage], versions: { "stage-1": "director-host-receipt" } }
+      : { stage }),
+    writeProjection: async () => { writes += 1; },
+  });
+  await adapter.get({ cwd: "/workspace", stageId: "stage-1" });
+
+  await assert.rejects(
+    adapter.save({
+      cwd: "/workspace",
+      stageId: "stage-1",
+      baseRevisionId: "revision-1",
+      state: {
+        ...state,
+        cameras: [{
+          id: "camera-a",
+          name: "Camera A",
+          position: [0, 1.6, 6],
+          rotation: [0, 0, 0],
+          fov: 42,
+        }],
+        shots: [{
+          id: "legacy-capture",
+          name: "Legacy capture",
+          cameraId: "camera-a",
+          assetId: "asset-capture",
+          aspectRatio: "16:9",
+          stageRevisionId: "legacy-revision",
+          createdAt: "2026-08-15T00:00:00.000Z",
+        }],
+      },
+    }),
+    /cannot contain capture outputs.*capture receipts.*Project Asset references/i,
+  );
+  assert.equal(writes, 0);
+  assert.deepEqual(calls.map(({ command }) => command), [
+    { action: "list_director_stages" },
+  ]);
+});
+
 test("typed Director object mutation retains the complete object and uses one host update", async () => {
   const { createDirectorAdapter } = await import("./adapter.js");
   const calls: ProjectHostRequest[] = [];
@@ -127,6 +172,164 @@ test("typed Director object mutation retains the complete object and uses one ho
     [object],
   );
   assert.equal(calls.some(({ command }) => (command as { action?: string }).action === "director_object_add"), false);
+});
+
+test("bounded Director mutations to one Stage are serialized and each reapplies to the latest revision", async () => {
+  const { createDirectorAdapter } = await import("./adapter.js");
+  const calls: ProjectHostRequest[] = [];
+  let currentState: any = structuredClone(state);
+  let revision = 1;
+  let receipt = "director-host-receipt-1";
+  const client: ProjectHostClient = {
+    resolveContext: async ({ projectId, cwd } = {}) => ({
+      projectId: projectId ?? "project-marker",
+      source: projectId ? "explicit" : "marker",
+      ...(cwd ? { workspaceRoot: cwd } : {}),
+    }),
+    async request<T extends ProjectHostResponse>(request: ProjectHostRequest<T>) {
+      calls.push(request);
+      if (request.command.action === "list_director_stages") {
+        return {
+          projectId: request.projectId ?? "project-marker",
+          value: {
+            stages: [{
+              ...stage,
+              revisionId: `revision-${revision}`,
+              state: structuredClone(currentState),
+            }],
+            versions: { "stage-1": receipt },
+          } as unknown as T,
+        };
+      }
+      assert.equal(request.command.action, "update_director_stage_state");
+      const command = request.command as Extract<
+        ProjectHostRequest["command"],
+        { action: "update_director_stage_state" }
+      >;
+      if (command.ifMatch !== receipt) {
+        return {
+          projectId: request.projectId ?? "project-marker",
+          value: {
+            code: "STALE_READ",
+            error: "Stale Director Stage apply rejected (STALE_READ).",
+          } as unknown as T,
+        };
+      }
+      currentState = structuredClone(command.state);
+      revision += 1;
+      receipt = `director-host-receipt-${revision}`;
+      return {
+        projectId: request.projectId ?? "project-marker",
+        value: {
+          stage: {
+            ...stage,
+            revisionId: `revision-${revision}`,
+            state: structuredClone(currentState),
+          },
+          readToken: receipt,
+        } as unknown as T,
+      };
+    },
+  };
+  const adapter = createDirectorAdapter({
+    client,
+    writeProjection: async () => undefined,
+  });
+  const objects = ["hero", "floor", "crate", "light"].map((id) => ({
+    id,
+    name: id,
+    kind: "primitive",
+    visible: true,
+    transform: {
+      position: [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1],
+    },
+    primitive: { shape: "box" },
+  }));
+
+  const results = await Promise.allSettled(objects.map((object) =>
+    adapter.mutate("clash_director_object_add", {
+      projectId: "project-1",
+      stageId: "stage-1",
+      object,
+    })
+  ));
+
+  assert.deepEqual(results.map(({ status }) => status), [
+    "fulfilled",
+    "fulfilled",
+    "fulfilled",
+    "fulfilled",
+  ]);
+  assert.deepEqual(
+    currentState.objects.map((object: { id: string }) => object.id),
+    objects.map(({ id }) => id),
+  );
+  assert.deepEqual(calls.map(({ command }) => command.action), [
+    "list_director_stages",
+    "update_director_stage_state",
+    "list_director_stages",
+    "update_director_stage_state",
+    "list_director_stages",
+    "update_director_stage_state",
+    "list_director_stages",
+    "update_director_stage_state",
+  ]);
+});
+
+test("bounded Director mutation preserves a real external STALE_READ without replay", async () => {
+  const { createDirectorAdapter } = await import("./adapter.js");
+  const calls: ProjectHostRequest[] = [];
+  let receipt = "director-host-receipt-1";
+  const adapter = createDirectorAdapter({
+    client: hostClient(calls, (request) => {
+      if (request.command.action === "list_director_stages") {
+        return {
+          stages: [stage],
+          versions: { "stage-1": receipt },
+        };
+      }
+      assert.equal(request.command.action, "update_director_stage_state");
+      const command = request.command as Extract<
+        ProjectHostRequest["command"],
+        { action: "update_director_stage_state" }
+      >;
+      return command.ifMatch === receipt
+        ? { stage, readToken: receipt }
+        : {
+            code: "STALE_READ",
+            error: "Stale Director Stage apply rejected (STALE_READ).",
+          };
+    }),
+    writeProjection: async () => {
+      receipt = "director-host-receipt-external";
+    },
+  });
+
+  await assert.rejects(
+    adapter.mutate("clash_director_object_add", {
+      projectId: "project-1",
+      stageId: "stage-1",
+      object: {
+        id: "hero",
+        name: "Hero",
+        kind: "primitive",
+        visible: true,
+        transform: {
+          position: [0, 0, 0],
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1],
+        },
+        primitive: { shape: "box" },
+      },
+    }),
+    /STALE_READ/,
+  );
+  assert.deepEqual(calls.map(({ command }) => command.action), [
+    "list_director_stages",
+    "update_director_stage_state",
+  ]);
 });
 
 test("Director capture calls the typed host renderer command directly", async () => {

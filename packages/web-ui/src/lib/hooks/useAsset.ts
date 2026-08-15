@@ -3,7 +3,12 @@ import {
   createPersonalGlobalAssetHttpClient,
   createProjectAssetHttpClient,
 } from "@clash/asset-sdk";
-import type { AssetKind, ResolvedAsset } from "@clash/shared-types";
+import {
+  ActionAssetBindingSchema,
+  ResolvedAssetSchema,
+  type AssetKind,
+  type ResolvedAsset,
+} from "@clash/shared-types";
 import { fetchWithRetry } from "./retryFetch";
 
 type ScopedAsset = {
@@ -264,6 +269,57 @@ export async function importProjectAssetFile(
     );
   }
   cacheAsset(projectId, asset);
+  return asset;
+}
+
+/**
+ * Publish browser-rendered Director bytes without letting the browser invent
+ * Action or binding identity. The Host pins the immutable Asset to the exact
+ * Stage revision and returns the canonical producer relation.
+ */
+export async function publishDirectorStageOutputFile(input: {
+  projectId: string;
+  stageId: string;
+  sourceStageRevisionId: string;
+  artifactId: string;
+  kind: "image" | "video";
+  file: File;
+}): Promise<ResolvedAsset> {
+  const form = new FormData();
+  form.set("file", input.file);
+  form.set("kind", input.kind);
+  form.set("sourceStageRevisionId", input.sourceStageRevisionId);
+  form.set("artifactId", input.artifactId);
+  const response = await fetchWithRetry(
+    `/api/v1/projects/${encodeURIComponent(input.projectId)}/director-stages/${encodeURIComponent(input.stageId)}/outputs`,
+    {
+      method: "POST",
+      credentials: "include",
+      body: form,
+    },
+  );
+  const value = (await response.json().catch(() => undefined)) as
+    { asset?: unknown; binding?: unknown; error?: unknown } | undefined;
+  if (!response.ok) {
+    throw new Error(
+      typeof value?.error === "string" && value.error.trim()
+        ? value.error
+        : `Director output publication failed with HTTP ${response.status}`,
+    );
+  }
+  const asset = ResolvedAssetSchema.parse(value?.asset);
+  const binding = ActionAssetBindingSchema.parse(value?.binding);
+  if (
+    binding.direction !== "output" ||
+    binding.projectAssetId !== asset.id ||
+    binding.owner.kind !== "run" ||
+    binding.owner.actionRevisionId !== input.sourceStageRevisionId
+  ) {
+    throw new Error(
+      "Director output publication returned a mismatched binding",
+    );
+  }
+  cacheAsset(input.projectId, asset);
   return asset;
 }
 

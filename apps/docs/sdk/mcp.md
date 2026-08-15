@@ -50,8 +50,16 @@ clash CLI ─┘
 The advertised MCP surface stays compact: `clash` is the root menu,
 `clash_assets` dispatches Project Asset operations, `clash_canvas` dispatches
 Canvas operations, and `clash_composition` dispatches Timeline or Director
-Stage operations. Calling a dispatcher without `operation` returns its live
-contracts; pass the command-local operation and arguments to execute one.
+Stage operations. Calling `clash_assets` without arguments returns a lightweight
+operation index. Request exactly one full live contract with
+`{ "contract": "import_file" }`, or request the small set needed for a flow in
+one ordered batch with
+`{ "contracts": ["import_file", "list", "get"] }`. Batch entries must be
+distinct and are bounded; an unknown entry rejects the whole batch without a
+partial response. Execute each operation with the existing
+`{ "operation": "import_file", "arguments": { ... } }` shape. Contract
+disclosure never invokes the operation. Other dispatchers continue to return
+their live contracts when `operation` is omitted.
 
 ## Project Asset tool surface
 

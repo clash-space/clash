@@ -10,12 +10,14 @@ describe("Clash MCP command menu", () => {
   it("uses CLI-like root commands without exposing CLI wrappers", () => {
     expect(CLASH_MCP_COMMANDS.map(({ id }) => id)).toEqual([
       "workspace",
+      "plugin",
       "assets",
       "canvas",
       "director",
       "timeline",
     ]);
     expect(classifyClashMcpTool("clash_workspace_init")).toBe("workspace");
+    expect(classifyClashMcpTool("clash_plugin_activate")).toBe("plugin");
     expect(classifyClashMcpTool("clash_assets_get")).toBe("assets");
     expect(classifyClashMcpTool("clash_canvas_get")).toBe("canvas");
     expect(classifyClashMcpTool("clash_director_save")).toBe("director");

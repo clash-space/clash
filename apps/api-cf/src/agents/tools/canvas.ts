@@ -226,7 +226,7 @@ export function createCanvasTools(
   });
 
   const createGenerationNode = tool({
-    description: "Create a new image, video, audio, or text generation node on the canvas. Pass the generation prompt directly. Returns nodeId and assetId.",
+    description: "Create a new image, video, audio, or text generation node on the canvas. Pass the generation prompt directly. Returns the action nodeId; run it to create an output node.",
     inputSchema: z.object({
       node_type: z.enum(GENERATION_NODE_TYPES).describe("Generation node type: image_gen, video_gen, audio_gen, or text_gen"),
       label: z.string().describe("Display label"),
@@ -241,7 +241,6 @@ export function createCanvasTools(
       try {
         const resolvedParent = parent_id ?? getWorkspaceGroupId() ?? null;
         const nodeId = generateId();
-        const assetId = generateId();
 
         // Resolve model defaults from MODEL_CARDS
         const kind =
@@ -257,7 +256,7 @@ export function createCanvasTools(
           : MODEL_CARDS.find(c => c.kind === kind);
         const modelId = modelCard?.id || model_name || "";
 
-        log.info("create_generation_node creating node", { nodeId, assetId, modelId, resolvedParent });
+        log.info("create_generation_node creating node", { nodeId, modelId, resolvedParent });
 
         const data: Record<string, unknown> = {
           label,
@@ -277,12 +276,10 @@ export function createCanvasTools(
         };
         stampActor(data);
 
-        const result = canvas.createNode(nodeId, node_type, data, position, resolvedParent, assetId);
+        const result = canvas.createNode(nodeId, node_type, data, position, resolvedParent);
         log.info("create_generation_node result", { node_id: result.node_id, asset_id: result.asset_id, error: result.error });
         if (result.error) return `Error: ${result.error}`;
-        const response = result.asset_id
-          ? `Created generation node ${result.node_id} with assetId ${result.asset_id}`
-          : `Created generation node ${result.node_id}`;
+        const response = `Created generation node ${result.node_id}`;
         log.info("create_generation_node returning", { response });
         return response;
       } catch (e) {

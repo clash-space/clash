@@ -54,7 +54,7 @@ describe("Claude Code headless adapter", () => {
         `#!${process.execPath}`,
         'const fs = require("node:fs")',
         'const path = require("node:path")',
-        'const workspace = process.env.CLASH_BENCH_WORKSPACE',
+        "const workspace = process.env.CLASH_BENCH_WORKSPACE",
         'fs.writeFileSync(path.join(workspace, "claude-observation.json"), JSON.stringify({argv:process.argv.slice(2),cwd:process.cwd(),home:process.env.HOME,initCwd:process.env.INIT_CWD,skill:fs.existsSync(path.join(workspace, ".claude", "skills", "test-skill", "SKILL.md")),sharedSkill:fs.existsSync(path.join(workspace, ".agents", "skills", "test-skill", "SKILL.md")),promptPath:process.env.CLASH_BENCH_PROMPT_PATH}))',
         'fs.writeFileSync(path.join(workspace, "result.txt"), "claude artifact")',
         'fs.writeFileSync(path.join(workspace, "submission.json"), JSON.stringify({schemaVersion:1,taskId:"claude-portable",artifacts:[{id:"result",kind:"report",path:"result.txt"}]}))',
@@ -121,19 +121,23 @@ describe("Claude Code headless adapter", () => {
     expect(observation.sharedSkill).toBe(true);
     expect(observation.initCwd).toBeUndefined();
     expect(observation.promptPath).toBe(join(observation.cwd, "OUTCOME.md"));
-    expect(observation.argv).toEqual(expect.arrayContaining([
-      "--print",
-      "--verbose",
-      "--no-session-persistence",
-      "--output-format",
-      "stream-json",
-      "--permission-mode",
-      "dontAsk",
-      "--setting-sources",
-      "project,local",
-    ]));
+    expect(observation.argv).toEqual(
+      expect.arrayContaining([
+        "--print",
+        "--verbose",
+        "--no-session-persistence",
+        "--output-format",
+        "stream-json",
+        "--permission-mode",
+        "dontAsk",
+        "--setting-sources",
+        "project,local",
+      ]),
+    );
     expect(observation.argv).not.toContain("--dangerously-skip-permissions");
-    expect(observation.argv.at(-1)).toContain("Create a report through Claude Code.");
+    expect(observation.argv.at(-1)).toContain(
+      "Create a report through Claude Code.",
+    );
     expect(report.cases[0]?.agent.stdoutPath).toBe(
       join(caseRoot, "logs", "events.jsonl"),
     );
@@ -171,7 +175,7 @@ describe("Claude Code headless adapter", () => {
         `#!${process.execPath}`,
         'const fs = require("node:fs")',
         'const path = require("node:path")',
-        'const workspace = process.env.CLASH_BENCH_WORKSPACE',
+        "const workspace = process.env.CLASH_BENCH_WORKSPACE",
         'fs.writeFileSync(path.join(workspace, "result.txt"), "untrusted")',
         'fs.writeFileSync(path.join(workspace, "submission.json"), JSON.stringify({schemaVersion:1,taskId:"claude-error",artifacts:[{id:"result",kind:"report",path:"result.txt"}]}))',
         'process.stdout.write(JSON.stringify({type:"result",subtype:"success",is_error:true,num_turns:1,result:"Invalid API key",total_cost_usd:0,usage:{input_tokens:0,cache_read_input_tokens:0,output_tokens:0}}) + "\\n")',
@@ -237,7 +241,11 @@ describe("Claude Code headless adapter", () => {
       mkdir(suiteRoot),
       mkdir(runtimeRoot, { recursive: true }),
     ]);
-    await writeFile(join(runtimeRoot, "index.js"), "// fake MCP runtime\n", "utf8");
+    await writeFile(
+      join(runtimeRoot, "index.js"),
+      "// fake MCP runtime\n",
+      "utf8",
+    );
     await writeFile(
       join(runtimeRoot, "local-api.cjs"),
       [
@@ -245,14 +253,14 @@ describe("Claude Code headless adapter", () => {
         'const http = require("node:http")',
         'const net = require("node:net")',
         'const path = require("node:path")',
-        'const runDir = process.env.CLASH_HOST_RUN_DIR',
+        "const runDir = process.env.CLASH_HOST_RUN_DIR",
         'const discovery = path.join(runDir, "host.json")',
         'const pluginSocket = process.env.CLASH_PLUGIN_HOST_SOCKET || path.join(process.env.CLASH_HOME, "sockets", "plugin-host.sock")',
-        'fs.mkdirSync(path.dirname(pluginSocket), {recursive:true})',
-        'fs.mkdirSync(runDir, {recursive:true})',
-        'fs.rmSync(pluginSocket, {force:true})',
-        'const ipc = net.createServer((socket) => socket.end())',
-        'ipc.listen(pluginSocket)',
+        "fs.mkdirSync(path.dirname(pluginSocket), {recursive:true})",
+        "fs.mkdirSync(runDir, {recursive:true})",
+        "fs.rmSync(pluginSocket, {force:true})",
+        "const ipc = net.createServer((socket) => socket.end())",
+        "ipc.listen(pluginSocket)",
         'const server = http.createServer((request, response) => { const chunks = []; request.on("data", (chunk) => chunks.push(chunk)); request.on("end", () => { let body = {}; if (request.method === "POST" && /\\/api\\/v1\\/projects\\/[^/]+\\/host-command$/.test(request.url || "")) { const command = JSON.parse(Buffer.concat(chunks).toString("utf8")); body = command.action === "ping" ? {pong:true} : {error:"unsupported"} } response.setHeader("content-type", "application/json"); response.end(JSON.stringify(body)) }) })',
         'server.listen(0, "127.0.0.1", () => { const port = server.address().port; fs.writeFileSync(discovery, JSON.stringify({endpoint:"http://127.0.0.1:" + port,pid:process.pid,profile:process.env.CLASH_PROFILE,launchMode:"user-service",startedBy:"plugin",agentCliPath:process.env.CLASH_CLI_ENTRY_PATH})) })',
         'process.on("SIGTERM", () => { server.close(); ipc.close(); fs.rmSync(discovery, {force:true}); fs.rmSync(pluginSocket, {force:true}); process.exit(0) })',
@@ -266,11 +274,12 @@ describe("Claude Code headless adapter", () => {
         `#!${process.execPath}`,
         'const fs = require("node:fs")',
         'const path = require("node:path")',
-        'const argv = process.argv.slice(2)',
+        "const argv = process.argv.slice(2)",
         'const marker = path.join(process.cwd(), ".clash", "project.toml")',
         'if (argv[0] === "init") { const projectId = argv[argv.indexOf("--project") + 1]; fs.mkdirSync(path.dirname(marker), {recursive:true}); fs.writeFileSync(marker, "schema_version = 1\\nproject_id = " + JSON.stringify(projectId) + "\\nworkspace_id = \\"managed:claude\\"\\nstore = \\"managed\\"\\n"); process.stdout.write(JSON.stringify({projectId,markerPath:marker,workspaceId:"managed:claude",reused:false}) + "\\n"); process.exit(0) }',
-        'if (!fs.existsSync(marker)) process.exit(43)',
-        'process.exit(2)',
+        "if (!fs.existsSync(marker)) process.exit(43)",
+        'if (argv[0] === "director" && argv[1] === "create") process.exit(0)',
+        "process.exit(2)",
       ].join("\n"),
       "utf8",
     );
@@ -281,12 +290,13 @@ describe("Claude Code headless adapter", () => {
         `#!${process.execPath}`,
         'const fs = require("node:fs")',
         'const path = require("node:path")',
-        'const workspace = process.env.CLASH_BENCH_WORKSPACE',
-        'const argv = process.argv.slice(2)',
+        "const workspace = process.env.CLASH_BENCH_WORKSPACE",
+        "const argv = process.argv.slice(2)",
         'const configIndex = argv.indexOf("--mcp-config")',
-        'const config = configIndex >= 0 ? JSON.parse(argv[configIndex + 1]) : null',
+        "const config = configIndex >= 0 ? JSON.parse(argv[configIndex + 1]) : null",
         'const readyPath = path.join(workspace, ".clash", "headless-host-ready.json")',
-        'if (!fs.existsSync(readyPath)) process.exit(71)',
+        "if (!fs.existsSync(readyPath)) process.exit(71)",
+        'require("node:child_process").execFileSync(process.env.CLASH_CLI_ENTRY_PATH, ["director", "create", "--stage", "stage", "--json"], {cwd:workspace,env:{...process.env,CLASH_CLI_TRACE_ORIGIN:"mcp-transport"},stdio:"ignore"})',
         'fs.writeFileSync(path.join(workspace, "claude-host-observation.json"), JSON.stringify({argv,config,ready:JSON.parse(fs.readFileSync(readyPath,"utf8")),env:{CLASH_PROFILE:process.env.CLASH_PROFILE,CLASH_HOME:process.env.CLASH_HOME,CLASH_API_URL:process.env.CLASH_API_URL,CLASH_WORKSPACE_ROOT:process.env.CLASH_WORKSPACE_ROOT,CLASH_AGENT_MEMBER_ID:process.env.CLASH_AGENT_MEMBER_ID,CLASH_AGENT_NAME:process.env.CLASH_AGENT_NAME}}))',
         'fs.writeFileSync(path.join(workspace, "result.txt"), "host artifact")',
         'fs.writeFileSync(path.join(workspace, "submission.json"), JSON.stringify({schemaVersion:1,taskId:"claude-host",artifacts:[{id:"result",kind:"report",path:"result.txt"}]}))',
@@ -310,7 +320,8 @@ describe("Claude Code headless adapter", () => {
             title: "Claude host",
             category: "director",
             outcome: {
-              objective: "Create a report after the Clash Project Host is ready.",
+              objective:
+                "Create a report after the Clash Project Host is ready.",
               acceptanceCriteria: ["The report is persisted."],
               deliverables: [
                 { artifactId: "result", kind: "report", description: "Result" },
@@ -360,7 +371,11 @@ describe("Claude Code headless adapter", () => {
       argv: string[];
       config: {
         mcpServers: {
-          clash: { command: string; args: string[]; cwd: string; env: Record<string, string> };
+          clash: {
+            command: string;
+            args: string[];
+            cwd: string;
+          };
         };
       };
       ready: { status: string; projectId: string };
@@ -375,23 +390,18 @@ describe("Claude Code headless adapter", () => {
     const resolvedPluginRoot = await realpath(pluginRoot);
     expect(observation.config.mcpServers.clash).toMatchObject({
       command: process.execPath,
-      args: [join(resolvedPluginRoot, "runtime", "index.js")],
+      args: [expect.stringMatching(/trusted-mcp-relay[/\\]relay\.cjs$/u)],
       cwd: resolvedPluginRoot,
-      env: {
-        CLASH_PROFILE: "dev",
-        CLASH_WORKSPACE_ROOT: observation.env.CLASH_WORKSPACE_ROOT,
-        CLASH_AGENT_MEMBER_ID: observation.env.CLASH_AGENT_MEMBER_ID,
-        CLASH_AGENT_NAME: observation.env.CLASH_AGENT_NAME,
-      },
     });
-    expect(observation.env.CLASH_WORKSPACE_ROOT).toBeDefined();
-    expect(observation.env.CLASH_API_URL).toMatch(/^http:\/\/127\.0\.0\.1:/u);
-    expect(observation.config.mcpServers.clash.env.CLASH_HOME).toBe(
-      observation.env.CLASH_HOME,
-    );
+    expect(observation.env).toEqual({});
     const trajectory = JSON.parse(
-      await readFile(join(dirname(workspace), "logs", "trajectory.json"), "utf8"),
-    ) as { actions: Array<{ kind: string; operation: string; status: string }> };
+      await readFile(
+        join(dirname(workspace), "logs", "trajectory.json"),
+        "utf8",
+      ),
+    ) as {
+      actions: Array<{ kind: string; operation: string; status: string }>;
+    };
     expect(trajectory.actions.filter(({ kind }) => kind === "mcp")).toEqual([
       expect.objectContaining({
         operation: "clash/clash_director_create",
@@ -402,5 +412,5 @@ describe("Claude Code headless adapter", () => {
         status: "succeeded",
       }),
     ]);
-  });
+  }, 15_000);
 });

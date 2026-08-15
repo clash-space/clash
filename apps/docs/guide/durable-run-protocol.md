@@ -1,17 +1,25 @@
 # Durable Run Protocol
 
-> Status: shared target protocol. The Local adapter is the only implementation
-> delivered in the current work. The Cloud adapter described here is a future
-> port; this document does not claim that Cloud execution or failover exists.
+> Status: shared durability protocol. The Local adapter is the only delivered
+> execution owner. The Cloud adapter described here is a future port; this
+> document does not claim that Cloud execution or failover exists.
 
-The Local implementation does **not** create a standalone `ActionRun` entity in
-Project Loro today. Its owner-private SQLite journal is the durable run record;
-the current public projection is the Canvas node's
-`pending/generating/completed/failed` status where a node exists, plus stable
-`ActionAssetBinding` input/output lineage. The five-state coarse `ActionRun`
-model below is the unified public design contract for a future Project entity,
-including the future Cloud adapter, not a claim that such an entity already
-synchronizes.
+Native Generator v2 execution creates a standalone Project Loro Action Run
+today. Its immutable request pins a Generator Revision, Action, semantic
+executor, inputs, parameters, and output contract. Its public state is exactly
+`pending | running | succeeded | failed`, and success requires every declared
+Output Commit. See [Asset + Generator Model](/guide/asset-generator-model).
+
+That native Run is distinct from the owner-private Durable Task described in
+this document. The Local Task journal is SQLite and uses the six phases
+`queued | submitting | polling | finalizing | succeeded | failed`. Provider
+tokens, attempts, deadlines, staging receipts, realm/owner, and raw failures
+remain private.
+
+Legacy Canvas, Timeline, Director, and Provider execution does **not** gain a
+native Generator Run merely because it uses the same Durable Run Engine. Those
+surfaces still project through their existing nodes, endpoint records, and
+`ActionAssetBinding` lineage until explicitly migrated.
 
 The current Local implementation is not a second, local-only state machine.
 `@clash/shared-runtime` owns the executable graph, phases, compare-and-set
@@ -61,14 +69,15 @@ until it can provide the same journal, staging, ownership, and publisher ports
 defined below. `api-cf` therefore has no `custom_action` generation adapter;
 pending hosted Action nodes fail closed instead of calling or retrying a Worker.
 
-This delivery covers durable **ActionRun generation**, not every request that
-may call a Provider. The voice-input endpoint
+This delivery covers durable generation Tasks and native Generator Action Runs,
+not every request that may call a Provider. The voice-input endpoint
 `/api/v1/local/audio/transcriptions` is currently a non-Action synchronous
 utility boundary: it performs one Provider executor invocation, accepts only a
 completed text result, and has no internal retry or poll loop. It does not
 create a Project output. If voice input later accepts asynchronous work, needs
-restart recovery, or publishes a Project Asset, it must create an ActionRun and
-use this protocol. Until then, the implementation must not be described as
+restart recovery, or publishes a Project Asset or Document, it must be migrated
+to a native Generator Run and use this protocol. Until then, the implementation
+must not be described as
 making every Local Provider call durable.
 
 Director Hunyuan3D generation is part of the durable path. The official
@@ -82,12 +91,14 @@ and may wake the owner scheduler but never polls the Provider itself. Completion
 publishes a node-less Project Asset output and Action Asset binding through the
 same staging and publication steps used by Canvas generation.
 
-The Durable Run Engine gives every frozen `ActionRevision` one step graph and
-one single-owner `ActionRun`. Local and Cloud execution are adapters for that
-same graph, not separate workflows with approximately equivalent behaviour.
-The initiating surface selects the owner when it creates the run: Desktop, CLI,
-and MCP select a Local Host; Web selects Cloud when that runtime is available.
-Ownership does not move during the run.
+The Durable Run Engine gives every accepted execution identity one private,
+single-owner Task and one step graph. A native Generator request supplies the
+public Run identity and pins an exact Generator Revision and Action. Legacy
+products supply their existing frozen Action/Timeline/endpoint identity and
+`actionRunId`; that compatibility identity is not a native Generator entity.
+Local and future Cloud execution are adapters for the same private graph, not
+separate workflows with approximately equivalent behaviour. The initiating
+surface selects the owner, and ownership does not move during execution.
 
 ### Revision-scoped Canvas run identity
 
@@ -143,7 +154,7 @@ flowchart LR
   graph --> localPort["Local adapter<br/>SQLite journal + local CAS"]
   graph -. future .-> cloudPort["Cloud adapter<br/>Workflow journal + OSS staging"]
   localPort --> localPublisher["Local ProjectPublisher"]
-  localPublisher --> localLoro["Local Project Loro<br/>Canvas node status + ActionAssetBinding"]
+  localPublisher --> localLoro["Local Project Loro<br/>native Run + Output Commit<br/>or legacy node + ActionAssetBinding"]
   localLoro -. "optional CRDT replication" .-> room["ProjectRoom<br/>remote sequencer + fan-out"]
   cloudPort -. future .-> cloudPublisher["Hosted ProjectPublisher"]
   cloudPublisher -. future .-> room
@@ -158,8 +169,9 @@ arrow is target design for a future adapter.
 
 Every owner advances the following logical steps:
 
-1. Freeze the Action revision, inputs, output slots, selected Provider route,
-   and owner realm into an `ActionRun`.
+1. Admit the native Generator Run request, or freeze the legacy product's
+   execution identity, inputs, output slots, and selected Provider route. Put
+   the owner realm only in the private Task.
 2. Resolve and stage immutable inputs.
 3. Submit at most one Provider request for the current attempt.
 4. Checkpoint the Provider task token, or checkpoint an immediate result.
@@ -170,16 +182,20 @@ Every owner advances the following logical steps:
      Asset delivery `v0` handle, and only then may the completed result frame be
      checkpointed;
    - for text, the completed result frame is checkpointed first, and the
-     finalization stage then installs the immutable text revision.
+     finalization stage then installs the immutable legacy text revision;
+   - for a native Document, the completed typed body is checkpointed first,
+     and finalization validates its declared kind/schema, installs the body,
+     and prepares the immutable Document revision.
 7. Run the shared finalization stage. It resolves and verifies a media receipt
-   or installs the checkpointed text, then prepares the Project output.
-8. Publish Project Asset entries and output bindings through
-   `ProjectPublisher`.
-9. Publish the public outcome. A conforming future Project `ActionRun` entity
-   uses the terminal coarse state; the current Local adapter updates the Canvas
-   node when present and publishes stable `ActionAssetBinding` lineage.
+   or installs the checkpointed text/Document, then prepares the Project output.
+8. Publish the declared Asset through `ProjectPublisher`: a native Generator
+   gets its Media ProjectAsset or Document revision plus Output Commit; a
+   legacy product gets its existing ProjectAsset/output binding projection.
+9. Publish the public outcome. A native Generator Run becomes `succeeded` only
+   after its required Output Commit; a legacy adapter updates its existing
+   Canvas/Timeline/endpoint projection and stable `ActionAssetBinding` lineage.
 
-The media ordering is intentionally different from text. A media result frame
+The media ordering is intentionally different from text and Document output. A media result frame
 contains only the Host-issued handle; it never carries an object key, local
 path, or unpersisted vendor URL. The engine's later `stage` operation does not
 write those media bytes again. It verifies the receipt, resolves the immutable
@@ -192,18 +208,19 @@ flowchart LR
   brokerWrite --> mediaReceipt["Asset delivery v0 handle<br/>durable Resource receipt"]
   mediaReceipt --> completedFrame["completed frame"]
   text["Provider text"] --> completedFrame
+  document["Typed Document body"] --> completedFrame
   completedFrame --> resultCheckpoint["result checkpoint"]
-  resultCheckpoint --> finalStage["shared stage<br/>media: verify receipt<br/>text: install revision"]
-  finalStage --> projectOutput["Project Asset / output binding"]
+  resultCheckpoint --> finalStage["shared stage<br/>media: verify receipt<br/>text/Document: validate + install"]
+  finalStage --> projectOutput["native Asset + Output Commit<br/>or legacy Asset + binding"]
 ```
 
 The graph owns transition rules, checkpoint meaning, idempotency keys, and
 recovery decisions. An adapter owns persistence and byte staging only:
 
-| Realm | Journal                 | Byte staging                    | Project publication | Delivery status |
-| ----- | ----------------------- | ------------------------------- | ------------------- | --------------- |
-| Local | SQLite run/step journal | Local content-addressed storage | Canvas + bindings   | Current work    |
-| Cloud | Workflow journal        | OSS staging                     | `ProjectPublisher`  | Future port     |
+| Realm | Journal                 | Byte staging                    | Project publication                           | Delivery status |
+| ----- | ----------------------- | ------------------------------- | --------------------------------------------- | --------------- |
+| Local | SQLite run/step journal | Local content-addressed storage | Native Run/Output Commit or legacy projection | Current work    |
+| Cloud | Workflow journal        | OSS staging                     | `ProjectPublisher`                            | Future port     |
 
 Cloud must implement these three ports together: **Workflow journal + OSS
 staging + ProjectPublisher**. A Workflow that bypasses the shared graph, writes
@@ -241,12 +258,13 @@ the same atomic journal operations used by the Local engine:
   canonical metadata for Project publication; it does not upload the media
   again. Probe state is keyed by Resource and recipe, not by a Workflow
   attempt, so Workflow replay can reuse a verified winner.
-  For text, the result checkpoint comes first and `stage` installs the text
-  Resource/revision. Object keys and upload sessions stay private;
+  For text or a typed Document, the result checkpoint comes first and `stage`
+  validates/installs the body and immutable revision. Object keys and upload
+  sessions stay private;
   `actionRunId + outputSlot` remains the Project publication idempotency key,
   not the public Resource identity.
-- `HostedProjectPublisher` submits the Project Asset, output binding, and
-  coarse outcome through `ProjectRoom` admission. `ProjectRoom` sequences the
+- `HostedProjectPublisher` submits the native Asset/Output Commit or legacy
+  Asset/binding plus the coarse outcome through `ProjectRoom` admission. `ProjectRoom` sequences the
   Project mutation but does not execute Provider steps or store the attempt
   journal. The Resource Registry derives the Project claim from the admitted
   Project Asset; a staging lease protects verified bytes until reconciliation
@@ -256,42 +274,45 @@ There is deliberately no distributed transaction across Workflow state, OSS,
 the Registry, and Project Loro. The checkpoint order makes each split outcome
 recoverable:
 
-| Last Cloud durable fact                                      | Required recovery                                                                      | Forbidden recovery                                            |
-| ------------------------------------------------------------ | -------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| Journal row exists; no submit result                         | Re-enter the shared submit policy with the same run and idempotency identity           | Reconstruct execution from Loro or let a Local Host take over |
-| Opaque Provider task state is checkpointed                   | Issue one poll step for that exact state                                               | Submit replacement work                                       |
-| Media broker receipt exists; no completed result checkpoint  | Resume the journaled Provider boundary and reuse the same `taskId + slot` receipt      | Treat the receipt alone as Provider completion or publish it  |
-| Completed media handle or text result is checkpointed        | Verify the media receipt or install the text revision, then prepare the Project output | Call the Provider again or upload the media a second time     |
-| Verified Project output is checkpointed                      | Retry idempotent Project publication                                                   | Regenerate or expose the staging object key                   |
-| Project Asset/binding is admitted; Registry claim is pending | Reconcile the claim and retain the staging lease                                       | Publish a second Asset or remove the admitted Project fact    |
-| No Project publication ever occurred                         | Allow staging TTL cleanup after the recovery/retention lease expires                   | Infer deletion of any published Asset                         |
+| Last Cloud durable fact                                                       | Required recovery                                                                            | Forbidden recovery                                            |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Journal row exists; no submit result                                          | Re-enter the shared submit policy with the same run and idempotency identity                 | Reconstruct execution from Loro or let a Local Host take over |
+| Opaque Provider task state is checkpointed                                    | Issue one poll step for that exact state                                                     | Submit replacement work                                       |
+| Media broker receipt exists; no completed result checkpoint                   | Resume the journaled Provider boundary and reuse the same `taskId + slot` receipt            | Treat the receipt alone as Provider completion or publish it  |
+| Completed media handle, text, or Document result is checkpointed              | Verify media or validate/install the text/Document revision, then prepare the Project output | Call the Provider again or upload the media a second time     |
+| Verified Project output is checkpointed                                       | Retry idempotent Project publication                                                         | Regenerate or expose the staging object key                   |
+| Project Asset/commit or legacy binding is admitted; Registry claim is pending | Reconcile the claim and retain the staging lease                                             | Publish a second Asset or remove the admitted Project fact    |
+| No Project publication ever occurred                                          | Allow staging TTL cleanup after the recovery/retention lease expires                         | Infer deletion of any published Asset                         |
 
-Cloud run creation is admitted only after hosted Project membership, Action
-execute permission, declared output slots, and the selected hosted Provider
-account grant are checked. Publication rechecks the run owner and current
-Project admission. Resource download is authorized through the Project claim,
-not through possession of a `resourceId` or object key. A permission failure is
-a structured non-retryable run failure; a transient Workflow, OSS, Registry,
-or room failure follows the existing stage/publish retry rules and never
-re-enters Provider work after a result checkpoint.
+Future Cloud public-Run admission and private-Task creation happen only after
+hosted Project membership, Action execute permission, declared output slots,
+and the selected hosted Provider account grant are checked. Publication
+rechecks the Task owner and current Project admission. Resource download is
+authorized through the Project claim, not through possession of a `resourceId`
+or object key. A permission failure is a structured non-retryable failure; a
+transient Workflow, OSS, Registry, or room failure follows the existing
+stage/publish retry rules and never re-enters Provider work after a result
+checkpoint.
 
-## Provider step contract
+## Executable step contract
 
-A Provider executor invocation performs exactly one logical Provider step. It
-does not own a retry loop, task lifetime, persistence, account selection, or
-Project publication.
+A Provider executor or Generator Action executor invocation performs exactly
+one logical submit/poll step. It does not own a retry loop, Task lifetime,
+persistence, account selection, or Project publication.
 
-| Host operation | Plugin work in one invocation                                           | Valid result                                           |
-| -------------- | ----------------------------------------------------------------------- | ------------------------------------------------------ |
-| `submit`       | At most one upstream submission                                         | `completed`, `accepted`, or `failed`                   |
-| `poll`         | At most one upstream status request for the supplied opaque `pollState` | `completed`, `accepted`, or `failed`                   |
-| `stage`        | None; Host probes/seals a media receipt or installs checkpointed text   | a prepared canonical output or structured Host failure |
-| `publish`      | None; Host idempotently publishes the Project Asset/binding             | success or structured Host failure                     |
+| Host operation | Plugin work in one invocation                                                     | Valid result                                           |
+| -------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `submit`       | At most one upstream submission                                                   | `completed`, `accepted`, or `failed`                   |
+| `poll`         | At most one upstream status request for the supplied opaque `pollState`           | `completed`, `accepted`, or `failed`                   |
+| `stage`        | None; Host probes/seals media or validates/installs checkpointed text or Document | a prepared canonical output or structured Host failure |
+| `publish`      | None; Host idempotently publishes the declared native output or legacy projection | success or structured Host failure                     |
 
 Asset delivery is permanently the single `v0` handle/resolve contract. Media
 outputs are `{ assetId, uri, kind, mediaType? }`; input resolution yields one
-of `bytes`, `provider-url`, or `text`. Compatible additions extend `v0`. There
-is no version negotiation, `v1` alias, or retired `url + reach` compatibility
+of `bytes`, `provider-url`, `text`, or exact `document`. A typed Document output
+uses its explicit kind/schema/body result rather than a Media handle.
+Compatible additions extend `v0`. There is no version negotiation, `v1` alias,
+or retired `url + reach` compatibility
 dialect.
 
 `accepted.pollState` is deliberately opaque. The Host persists and returns it
@@ -422,15 +443,15 @@ is a product fact, while staging alone is not:
 Thus terminal outcome never depends on a later `advance()` noticing that the
 clock moved between an external success and its checkpoint.
 
-The public `ActionRun` design contract uses only these coarse product states:
+The native Generator Action Run uses only these four public product states:
 
 ```text
-queued -> running -> finalizing -> succeeded
-   \         \          \----------> failed
-    \---------\--------------------> failed
+pending -> running -> succeeded
+   \          \----> failed
+    \--------------> failed
 ```
 
-The private durable phases are:
+The owner-private Durable Task phases are exactly:
 
 ```text
 queued -> submitting -> polling -> finalizing -> succeeded
@@ -487,20 +508,21 @@ request and the owner's durable checkpoint:
   canonical Resource sealing, and Host-owned metadata validation. Probe failure
   keeps the run in retryable finalization with the staged receipt intact,
   creates no entry or binding, and never re-enters Provider work.
-- A text completed frame is checkpointed before `stage` installs its immutable
-  revision. The prepared Project output is checkpointed separately before any
-  Project binding is published.
+- A text or typed Document completed frame is checkpointed before `stage`
+  validates/installs its immutable revision. The prepared Project output is
+  checkpointed separately before any Output Commit or legacy binding is
+  published.
 - Project publication happens only through `ProjectPublisher`; no Provider
   request holds a Loro transaction open.
 
 Loro is therefore the collaboration projection, not the attempt journal. A
-future standalone Project `ActionRun` entity must use exactly `queued`,
-`running`, `finalizing`, `succeeded`, or `failed` and may carry stable output
-bindings. The current Local projection instead synchronizes Canvas node status
-and `ActionAssetBinding` lineage; it does not materialize that five-state
-entity. Neither form can authorize a Provider request or prove that one did or
-did not happen. `submitting` and `polling` remain owner-private journal phases,
-not additional Project states.
+native Generator Run uses exactly `pending`, `running`, `succeeded`, or
+`failed` and carries immutable Output Commits separately. Legacy Local products
+instead synchronize Canvas/Timeline/endpoint status and
+`ActionAssetBinding` lineage. Neither projection can authorize a Provider
+request or prove that one did or did not happen. `queued`, `submitting`,
+`polling`, and `finalizing` remain owner-private Task phases, not additional
+Project states.
 
 ## Checkpoints and idempotent publication
 
@@ -508,11 +530,12 @@ The owner journals a token checkpoint immediately after an accepted Provider
 submit response. For media, the Host broker first writes a durable Resource
 receipt and the owner then checkpoints the completed frame containing its
 Asset delivery `v0` handle. For text, the owner checkpoints the completed value
-before installing the immutable revision. In both cases, the shared stage
-checkpoints the prepared Project output before publication. Checkpoints are
-monotonic: recovery may advance them but must not erase a known task token,
-replace a verified result with a fresh attempt, or replace the first durable
-media receipt for the same `taskId + plugin output slot`.
+before installing the immutable revision. A typed Document follows that same
+checkpoint-first ordering with kind/schema validation. In every case, the
+shared stage checkpoints the prepared Project output before publication.
+Checkpoints are monotonic: recovery may advance them but must not erase a known
+task token, replace a verified result with a fresh attempt, or replace the first
+durable media receipt for the same `taskId + plugin output slot`.
 
 Every declared output has the idempotency key
 `(actionRunId, outputSlot)`.
@@ -532,29 +555,34 @@ The serialized form has one canonical, reversible tuple encoding:
 escaped terminal segment, so the last literal `:` is always the tuple boundary;
 the Action run id stays verbatim to preserve keys of existing journaled runs
 whose slots need no escaping. Thus `(a:b, c)` is `a:b:c`, while `(a, b:c)` is
-`a:b%3Ac`. Provider `taskId`, CAS staging identity, and the published output
-binding must all derive from this encoder. Callers must never reconstruct the
-key by joining the two raw values.
+`a:b%3Ac`. Provider `taskId`, CAS staging identity, and the published Output
+Commit or legacy binding must all derive from this encoder. Callers must never
+reconstruct the key by joining the two raw values.
 
 `ProjectPublisher` treats publication as an upsert of that one logical output:
 
-- replaying publication cannot create a second Project Asset or binding;
-- an existing binding to the same verified Resource is success;
+- replaying publication cannot create a second Project Asset, Output Commit,
+  or legacy binding;
+- an existing commit/binding to the same verified Resource or Document
+  revision is success;
 - a conflicting Resource for the same key is a protocol conflict, not another
   valid output; and
 - terminal-state replay cannot make a completed run execute again.
 
-This key is shared across realms even though each run has only one owner. It
-makes crash recovery safe; it is not permission for another realm to execute
-the run.
+This key is shared across realms even though each private Task has only one
+owner. It makes crash recovery safe; it is not permission for another realm to
+execute the Task.
 
-Project publication is the public consumer commit. For an Asset output it
-inserts the verified `ProjectAssetEntry` and its output `ActionAssetBinding` in
-one Project mutation, then the journal records the publication receipt. If the
-process dies between those writes, replay performs the same publication CAS,
-accepts the existing byte-identical winner, and records success. A different
-Resource or binding for that output key is a protocol conflict rather than a
-second winner.
+Project publication is the public consumer commit. Native Generator media
+publication writes the verified `ProjectAssetEntry`, its compatibility
+`ActionAssetBinding`, the Output Commit, and terminal outcome through one
+replay-safe Project mutation. Native Document publication writes the immutable
+revision, Output Commit, and terminal outcome through the corresponding
+replay-safe mutation. A legacy media adapter writes its existing Project Asset
+and binding projection. If the process dies around publication, replay performs
+the same CAS, accepts the existing identical winner, and records success. A
+different Resource, Document revision, commit, or binding for that output key
+is a protocol conflict rather than a second winner.
 
 The synchronous Local edit adapter reaches this same consumer boundary without
 claiming to be a Durable Provider run. One Apply carries a stable
@@ -577,12 +605,12 @@ future Cloud `ProjectPublisher` will publish through the room because the cloud
 realm has no local Project authority. The room never runs Provider steps and
 does not become the owner of Local runs.
 
-Current Local multi-device and multi-user collaboration synchronizes only the
-public Canvas node outcome, sanitized node failure information, and stable
-`ActionAssetBinding` lineage containing `actionRunId`, Action revision identity,
-and Project Asset/output bindings. It does not synchronize a standalone run
-entity or owner realm. The future public `ActionRun` entity may additionally
-carry the immutable owner realm and the five-state coarse status contract.
+Native Generator collaboration synchronizes the immutable Run request, its
+four-state public projection, and Output Commits. Legacy Local collaboration
+synchronizes its public Canvas/Timeline/endpoint outcome, sanitized failure
+information, and stable `ActionAssetBinding` lineage. Neither synchronizes the
+owner realm. Realm and owner remain private Task facts even in a future Cloud
+adapter because execution placement is not semantic identity.
 
 Provider account identity and credentials, API/session tokens, Provider task
 tokens, attempt numbers, backoff state, raw responses, local paths, staging
@@ -596,17 +624,18 @@ replicated state.
 Recovery occurs only in the original owner realm and resumes from the latest
 durable checkpoint:
 
-| Last durable fact                                      | Recovery action                                                                                       |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| Run exists, no submit token/result                     | Resume submit under the shared ambiguous-submit policy; reuse any broker receipt with the same key    |
-| Provider task token exists                             | Poll that token; never resubmit                                                                       |
-| Media receipt exists, completed frame is absent        | Resume the journaled Provider boundary; never publish the receipt as if it were a result              |
-| Completed media handle checkpoint exists               | Resolve and verify its receipt, prepare the Project Asset, and never regenerate or upload media again |
-| Completed text checkpoint exists                       | Install/reuse the immutable text revision, prepare the Project output, and never regenerate           |
-| Prepared Project output checkpoint exists              | Retry idempotent publication; never re-enter Provider work or stage known media again                 |
-| Final poll completed after normal deadline             | Resume only stage/publish until the persisted recovery deadline                                       |
-| Output binding exists, terminal state missing          | Reconcile the same publication idempotency key, then publish terminal state                           |
-| Private journal and owner-private receipts unavailable | Report owner-side recovery failure; do not reconstruct attempts from Loro                             |
+| Last durable fact                                              | Recovery action                                                                                       |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Run exists, no submit token/result                             | Resume submit under the shared ambiguous-submit policy; reuse any broker receipt with the same key    |
+| Provider task token exists                                     | Poll that token; never resubmit                                                                       |
+| Media receipt exists, completed frame is absent                | Resume the journaled Provider boundary; never publish the receipt as if it were a result              |
+| Completed media handle checkpoint exists                       | Resolve and verify its receipt, prepare the Project Asset, and never regenerate or upload media again |
+| Completed text checkpoint exists                               | Install/reuse the immutable text revision, prepare the Project output, and never regenerate           |
+| Completed Document checkpoint exists                           | Validate kind/schema, install/reuse the immutable Document revision, and never regenerate             |
+| Prepared Project output checkpoint exists                      | Retry idempotent publication; never re-enter Provider work or stage known media again                 |
+| Final poll completed after normal deadline                     | Resume only stage/publish until the persisted recovery deadline                                       |
+| Output Commit or legacy binding exists, terminal state missing | Reconcile the same publication idempotency key, then publish terminal state                           |
+| Private journal and owner-private receipts unavailable         | Report owner-side recovery failure; do not reconstruct attempts from Loro                             |
 
 Workflow replay in the future Cloud adapter and process restart in the Local
 adapter must produce these same decisions. Differences in storage technology
@@ -620,13 +649,16 @@ to resume an accepted Provider task.
 
 ## Permission and ownership boundary
 
-Run creation checks permission in the initiating realm and records the Project,
-frozen Action revision, owner, Provider account scope, and allowed output slots.
+Run admission checks permission in the initiating realm. A native public
+request records the Project-semantic Generator Revision, Action, executor,
+inputs, parameters, and output contract. The private Task records the owner,
+Provider account scope, deadlines, and execution details.
+
 The Local owner may use only locally available accounts authorized for that
 Project operation. A future Cloud owner must use hosted membership and
 account-grant checks. Credentials stay inside the selected realm.
 
-`ProjectPublisher` rechecks that the caller owns the run, may publish to its
+`ProjectPublisher` rechecks that the caller owns the Task, may publish to its
 Project, and is writing a declared output slot. The Local publisher applies the
 mutation to the canonical local replica; optional replication separately
 enforces hosted admission at `ProjectRoom`. A future Cloud publisher must have
@@ -637,6 +669,6 @@ neither execution ownership nor publish permission.
 Cloud never automatically takes over a Local run when a device disconnects,
 and a Local Host never takes over a Cloud run when Cloud is delayed. Reconnect
 resumes the same owner; other clients remain observers. Moving work between
-realms requires an explicit product operation that creates a new `ActionRun`
-with a new identity and makes any reuse of prior immutable inputs visible. It
-is not failover and must never result in two owners for one run.
+realms requires an explicit product operation that creates a new native Run or
+legacy execution identity and makes any reuse of prior immutable inputs
+visible. It is not failover and must never result in two owners for one Task.

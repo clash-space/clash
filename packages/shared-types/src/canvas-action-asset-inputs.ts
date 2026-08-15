@@ -162,27 +162,37 @@ export function canvasActionAssetInputs(input: {
     );
   }
 
-  const packets = [
-    input.node.data.directorReferencePacket,
-    ...(Array.isArray(input.node.data.directorShotReferencePackets)
-      ? input.node.data.directorShotReferencePackets
-      : []),
-  ].flatMap((candidate) => {
-    const parsed = DirectorReferencePacketSchema.safeParse(candidate);
-    return parsed.success ? [parsed.data] : [];
-  });
-  mergeProjectedSource(
-    packets.flatMap((packet) => [
-      {
-        modality: "video" as const,
-        projectAssetId: packet.referenceVideo.assetId,
-      },
-      ...packet.referenceStills.map((still) => ({
-        modality: "image" as const,
-        projectAssetId: still.assetId,
-      })),
-    ]),
-  );
+  for (const packetOwner of [
+    ...orderedSourceIds.flatMap((sourceId) => {
+      const source = nodesById.get(sourceId);
+      return source ? [source] : [];
+    }),
+    // Legacy projects copied the packet onto the consumer Action. Keep that
+    // projection readable while new writes retain it on the immutable output.
+    input.node,
+  ]) {
+    const packets = [
+      packetOwner.data.directorReferencePacket,
+      ...(Array.isArray(packetOwner.data.directorShotReferencePackets)
+        ? packetOwner.data.directorShotReferencePackets
+        : []),
+    ].flatMap((candidate) => {
+      const parsed = DirectorReferencePacketSchema.safeParse(candidate);
+      return parsed.success ? [parsed.data] : [];
+    });
+    mergeProjectedSource(
+      packets.flatMap((packet) => [
+        {
+          modality: "video" as const,
+          projectAssetId: packet.referenceVideo.assetId,
+        },
+        ...packet.referenceStills.map((still) => ({
+          modality: "image" as const,
+          projectAssetId: still.assetId,
+        })),
+      ]),
+    );
+  }
 
   return inputs;
 }

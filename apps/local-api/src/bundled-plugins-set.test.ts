@@ -47,6 +47,26 @@ function pluginSource(id: string) {
 }
 
 describe("bundled plugins", () => {
+  it("registers the Remotion renderer as a trusted bundled Action", () => {
+    expect(
+      BUNDLED_PLUGINS.find((plugin) => plugin.id === "clash.remotion"),
+    ).toEqual({
+      id: "clash.remotion",
+      packageName: "@clash-plugin/remotion",
+      workspaceDir: "remotion",
+    });
+  });
+
+  it("registers first-party ASR in the closed bundled-module trust root", () => {
+    expect(BUNDLED_PLUGINS.find((plugin) => plugin.id === "clash.asr")).toEqual(
+      {
+        id: "clash.asr",
+        packageName: "@clash-plugin/asr",
+        workspaceDir: "asr",
+      },
+    );
+  });
+
   it("names every first-party Provider, not just one", () => {
     // One plugin per Provider. A list with a single entry is what left clash.google and
     // clash.minimax unseeded after the split.

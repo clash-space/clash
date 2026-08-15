@@ -72,3 +72,25 @@ test("snapshot remains app-only while semantic tools remain model-visible", asyn
   assert.deepEqual(canvasToolVisibility("clash_canvas_move"), ["model", "app"]);
   assert.deepEqual(canvasToolVisibility("clash_canvas_open"), ["model", "app"]);
 });
+
+test("MCP Canvas file content maps to the peer CLI flag without shell expansion", async () => {
+  const { buildCanvasCliArgs } = await import("./canvas-contract");
+
+  assert.deepEqual(buildCanvasCliArgs("clash_canvas_add", {
+    cwd: "/workspace",
+    type: "remotion",
+    label: "Character",
+    contentFile: "component-source/character.tsx",
+  }), [
+    "canvas", "add",
+    "--type", "remotion",
+    "--label", "Character",
+    "--content-file", "component-source/character.tsx",
+    "--json",
+  ]);
+  assert.throws(() => buildCanvasCliArgs("clash_canvas_update", {
+    nodeId: "component-1",
+    content: "inline",
+    contentFile: "component-source/character.tsx",
+  }), /mutually exclusive/i);
+});

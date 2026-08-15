@@ -5,6 +5,34 @@ import type { ProductOperationObservation } from "./types";
 const DISCOVERY_FLAGS = new Set(["--help", "-h", "--version", "-V"]);
 const MAX_REPORTED_CLI_ARGUMENT_BYTES = 512;
 
+const MCP_TOOL_BY_CLI_COMMAND: Record<string, string> = {
+  "assets delete": "clash_assets_trash",
+  "assets get": "clash_assets_get",
+  "assets import": "clash_assets_import_file",
+  "assets list": "clash_assets_list",
+  "assets restore": "clash_assets_restore",
+  "canvas add": "clash_canvas_add",
+  "canvas get": "clash_canvas_get",
+  "canvas update": "clash_canvas_update",
+  "director apply": "clash_director_save",
+  "director capture": "clash_director_capture",
+  "director create": "clash_director_create",
+  "director pull": "clash_director_get",
+  "timeline apply": "clash_timeline_save",
+  "timeline create": "clash_timeline_create",
+  "timeline pull": "clash_timeline_get",
+  "timeline render": "clash_timeline_render",
+  "timeline validate": "clash_timeline_validate",
+};
+
+const DIRECTOR_FOCUSED_COMMANDS = new Set([
+  "action",
+  "camera",
+  "keyframe",
+  "object",
+  "scene",
+]);
+
 export function formatCliInvocation(argv: string[]): string {
   return argv
     .map((argument) => {
@@ -14,6 +42,26 @@ export function formatCliInvocation(argv: string[]): string {
       return `<arg:${bytes}B sha256:${sha256}>`;
     })
     .join(" ");
+}
+
+/**
+ * Resolve the MCP leaf whose implementation crossed the runner-owned CLI
+ * proxy. The transport origin comes from the sealed proxy trace; argv only
+ * selects the already-registered Clash leaf and never establishes success.
+ */
+export function mcpToolForCliInvocation(argv: string[]): string | undefined {
+  if (argv.some((argument) => DISCOVERY_FLAGS.has(argument))) return undefined;
+  const command = `${argv[0] ?? ""} ${argv[1] ?? ""}`.trim();
+  const direct = MCP_TOOL_BY_CLI_COMMAND[command];
+  if (direct) return direct;
+  if (
+    argv[0] === "director" &&
+    DIRECTOR_FOCUSED_COMMANDS.has(argv[1] ?? "") &&
+    /^[a-z][a-z0-9-]*$/u.test(argv[2] ?? "")
+  ) {
+    return `clash_director_${argv[1]}_${argv[2]!.replaceAll("-", "_")}`;
+  }
+  return undefined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -44,20 +92,24 @@ export function effectiveMcpToolName(input: {
   const operation = args?.operation;
   if (typeof operation !== "string") return input.tool;
 
-  const completeLeaf = /^clash_(workspace|canvas|director|timeline)_[a-z0-9_]+$/u.exec(
-    operation,
-  );
-  const legacyDispatcher = /^clash_(workspace|canvas|director|timeline)$/u.exec(
-    input.tool,
-  )?.[1];
-  const compositionKind = args?.kind === "timeline"
-    ? "timeline"
-    : args?.kind === "director-stage"
-      ? "director"
+  const completeLeaf =
+    /^clash_(workspace|canvas|director|timeline|assets)_[a-z0-9_]+$/u.exec(
+      operation,
+    );
+  const legacyDispatcher =
+    /^clash_(workspace|canvas|director|timeline|assets)$/u.exec(
+      input.tool,
+    )?.[1];
+  const compositionKind =
+    args?.kind === "timeline"
+      ? "timeline"
+      : args?.kind === "director-stage"
+        ? "director"
+        : undefined;
+  const rootCommand =
+    typeof args?.command === "string" && /^[a-z0-9-]+$/u.test(args.command)
+      ? args.command.replaceAll("-", "_")
       : undefined;
-  const rootCommand = typeof args?.command === "string" && /^[a-z0-9-]+$/u.test(args.command)
-    ? args.command.replaceAll("-", "_")
-    : undefined;
 
   if (input.tool === "clash") {
     if (!completeLeaf) return input.tool;
@@ -90,6 +142,11 @@ export function effectiveMcpToolName(input: {
 }
 
 export const PRODUCT_OPERATION_IDS = [
+  "asset.get",
+  "asset.import",
+  "asset.list",
+  "asset.restore",
+  "asset.trash",
   "canvas.add",
   "canvas.get",
   "canvas.update",
@@ -106,13 +163,181 @@ export const PRODUCT_OPERATION_IDS = [
 
 export type ProductOperationId = (typeof PRODUCT_OPERATION_IDS)[number];
 
+export type AssetEntityOperationId =
+  "asset.import" | "asset.get" | "asset.trash" | "asset.restore";
+
+export type TrustedAssetOperationEvidence = {
+  operation: AssetEntityOperationId;
+  transport: "mcp" | "cli";
+  invocation: string;
+  projectAssetId: string;
+  sourcePath?: string;
+};
+
+export type SuccessfulAssetMcpCall = {
+  tool: string;
+  arguments?: unknown;
+  result?: unknown;
+};
+
+const ASSET_ENTITY_OPERATION_BY_MCP_TOOL: Record<
+  string,
+  AssetEntityOperationId
+> = {
+  clash_assets_import_file: "asset.import",
+  clash_assets_get: "asset.get",
+  clash_assets_trash: "asset.trash",
+  clash_assets_restore: "asset.restore",
+};
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function leafMcpArguments(
+  call: SuccessfulAssetMcpCall,
+): Record<string, unknown> {
+  const outer = asRecord(call.arguments) ?? {};
+  return asRecord(outer.arguments) ?? outer;
+}
+
+function structuredMcpResult(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  const result = asRecord(value);
+  if (!result) return undefined;
+  return (
+    asRecord(result.structured_content) ??
+    asRecord(result.structuredContent) ??
+    result
+  );
+}
+
+function cliOption(argv: string[], name: string): string | undefined {
+  const exactIndex = argv.indexOf(name);
+  if (exactIndex >= 0) return nonEmptyString(argv[exactIndex + 1]);
+  const prefix = `${name}=`;
+  const joined = argv.find((argument) => argument.startsWith(prefix));
+  return joined ? nonEmptyString(joined.slice(prefix.length)) : undefined;
+}
+
+function mcpAssetOperationEvidence(
+  call: SuccessfulAssetMcpCall,
+): TrustedAssetOperationEvidence | undefined {
+  const effectiveTool = effectiveMcpToolName(call);
+  if (!effectiveTool) return undefined;
+  const operation = ASSET_ENTITY_OPERATION_BY_MCP_TOOL[effectiveTool];
+  if (!operation) return undefined;
+  const args = leafMcpArguments(call);
+  const requestedId = nonEmptyString(
+    operation === "asset.import" ? args.projectAssetId : args.assetId,
+  );
+  const resultId = nonEmptyString(structuredMcpResult(call.result)?.id);
+  if (requestedId && resultId && requestedId !== resultId) return undefined;
+  const projectAssetId = resultId ?? requestedId;
+  if (!projectAssetId) return undefined;
+  const sourcePath =
+    operation === "asset.import" ? nonEmptyString(args.filePath) : undefined;
+  if (operation === "asset.import" && !sourcePath) return undefined;
+  return {
+    operation,
+    transport: "mcp",
+    invocation: effectiveTool,
+    projectAssetId,
+    ...(sourcePath ? { sourcePath } : {}),
+  };
+}
+
+function cliAssetOperationEvidence(
+  argv: string[],
+): TrustedAssetOperationEvidence | undefined {
+  const canonicalArgv =
+    argv[0] === "asset" ? ["assets", ...argv.slice(1)] : argv;
+  if (
+    canonicalArgv[0] !== "assets" ||
+    canonicalArgv.some((argument) => DISCOVERY_FLAGS.has(argument))
+  ) {
+    return undefined;
+  }
+  const command = canonicalArgv[1];
+  const operation: AssetEntityOperationId | undefined =
+    command === "import"
+      ? "asset.import"
+      : command === "get"
+        ? "asset.get"
+        : command === "delete"
+          ? "asset.trash"
+          : command === "restore"
+            ? "asset.restore"
+            : undefined;
+  if (!operation) return undefined;
+  const projectAssetId = cliOption(
+    canonicalArgv,
+    operation === "asset.import" ? "--asset-id" : "--asset",
+  );
+  if (!projectAssetId) return undefined;
+  const sourcePath =
+    operation === "asset.import"
+      ? cliOption(canonicalArgv, "--file")
+      : undefined;
+  if (operation === "asset.import" && !sourcePath) return undefined;
+  return {
+    operation,
+    transport: "cli",
+    invocation: formatCliInvocation(argv),
+    projectAssetId,
+    ...(sourcePath ? { sourcePath } : {}),
+  };
+}
+
+/**
+ * Retain entity identity only from successful product calls. MCP structured
+ * results may strengthen the requested identity and can never contradict it;
+ * CLI imports must use the product's caller-owned `--asset-id` contract.
+ */
+export function extractTrustedAssetOperationEvidence(input: {
+  successfulMcpCalls: SuccessfulAssetMcpCall[];
+  successfulCliArgv: string[][];
+}): TrustedAssetOperationEvidence[] {
+  return [
+    ...input.successfulMcpCalls.map(mcpAssetOperationEvidence),
+    ...input.successfulCliArgv.map(cliAssetOperationEvidence),
+  ].filter(
+    (evidence): evidence is TrustedAssetOperationEvidence =>
+      evidence !== undefined,
+  );
+}
+
 type ProductOperationRule = {
   mcpTools?: readonly string[];
   mcpPrefixes?: readonly string[];
   cliPrefixes: readonly (readonly string[])[];
 };
 
-const PRODUCT_OPERATION_RULES: Record<ProductOperationId, ProductOperationRule> = {
+const PRODUCT_OPERATION_RULES: Record<
+  ProductOperationId,
+  ProductOperationRule
+> = {
+  "asset.get": {
+    mcpTools: ["clash_assets_get"],
+    cliPrefixes: [["assets", "get"]],
+  },
+  "asset.import": {
+    mcpTools: ["clash_assets_import_file"],
+    cliPrefixes: [["assets", "import"]],
+  },
+  "asset.list": {
+    mcpTools: ["clash_assets_list"],
+    cliPrefixes: [["assets", "list"]],
+  },
+  "asset.restore": {
+    mcpTools: ["clash_assets_restore"],
+    cliPrefixes: [["assets", "restore"]],
+  },
+  "asset.trash": {
+    mcpTools: ["clash_assets_trash"],
+    cliPrefixes: [["assets", "delete"]],
+  },
   "canvas.add": {
     mcpTools: ["clash_canvas_add"],
     cliPrefixes: [["canvas", "add"]],
@@ -168,11 +393,8 @@ const PRODUCT_OPERATION_RULES: Record<ProductOperationId, ProductOperationRule> 
     cliPrefixes: [["timeline", "render"]],
   },
   "timeline.save": {
-    mcpTools: ["clash_timeline_save", "clash_timeline_create"],
-    cliPrefixes: [
-      ["timeline", "apply"],
-      ["timeline", "create"],
-    ],
+    mcpTools: ["clash_timeline_save"],
+    cliPrefixes: [["timeline", "apply"]],
   },
   "timeline.validate": {
     mcpTools: ["clash_timeline_validate"],
@@ -199,11 +421,14 @@ function matchingCliArgv(
   rule: ProductOperationRule,
   successfulCliArgv: string[][],
 ): string[] | undefined {
-  return successfulCliArgv.find(
-    (argv) =>
-      !argv.some((argument) => DISCOVERY_FLAGS.has(argument)) &&
-      rule.cliPrefixes.some((prefix) => startsWithArgv(argv, prefix)),
-  );
+  return successfulCliArgv.find((argv) => {
+    const canonicalArgv =
+      argv[0] === "asset" ? ["assets", ...argv.slice(1)] : argv;
+    return (
+      !canonicalArgv.some((argument) => DISCOVERY_FLAGS.has(argument)) &&
+      rule.cliPrefixes.some((prefix) => startsWithArgv(canonicalArgv, prefix))
+    );
+  });
 }
 
 export function matchRequiredProductOperations(input: {
@@ -248,4 +473,16 @@ export function matchRequiredProductOperations(input: {
       (operation) => !observed.has(operation),
     ),
   };
+}
+
+export function matchForbiddenProductOperations(input: {
+  forbiddenProductOperations: string[];
+  invokedMcpTools: string[];
+  invokedCliArgv: string[][];
+}): ProductOperationObservation[] {
+  return matchRequiredProductOperations({
+    requiredProductOperations: input.forbiddenProductOperations,
+    successfulMcpTools: input.invokedMcpTools,
+    successfulCliArgv: input.invokedCliArgv,
+  }).observedProductOperations;
 }

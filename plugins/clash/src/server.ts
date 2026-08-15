@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createClashMcpServer } from "@clash/mcp-server/server";
+import type { PluginMcpGateway } from "@clash/mcp-server";
 import { createTimelineAdapter } from "@clash/timeline-plugin/adapter";
 import { registerTimelinePluginMcp } from "@clash/timeline-plugin/server";
 import { createDirectorAdapter } from "@clash/director-plugin/adapter";
@@ -12,6 +13,7 @@ import {
   createPluginHostManager,
   type PluginHostManager,
 } from "./plugin-host.js";
+import { createPluginMcpGateway } from "./plugin-mcp-gateway.js";
 
 export type ClashPluginAppBundles = {
   studio: string;
@@ -21,13 +23,17 @@ export type ClashPluginAppBundles = {
 };
 
 function bundledApp(name: keyof ClashPluginAppBundles): string {
-  return readFileSync(new URL(`./${name}-app-client.js`, import.meta.url), "utf8");
+  return readFileSync(
+    new URL(`./${name}-app-client.js`, import.meta.url),
+    "utf8",
+  );
 }
 
 export type ClashPluginServerOptions = {
   client?: ProjectHostClient;
   hostManager?: PluginHostManager;
   appBundles?: ClashPluginAppBundles;
+  pluginGateway?: PluginMcpGateway;
 };
 
 // Temporary quarantine: keep the MCP App implementations in-tree, but do not
@@ -38,12 +44,14 @@ const MCP_APP_SURFACES_ENABLED = false;
 function composeClashPluginServer(
   client: ProjectHostClient,
   bundles: ClashPluginAppBundles,
+  pluginGateway: PluginMcpGateway,
 ): McpServer {
   const server = createClashMcpServer({
     client,
     bundledAppJavascript: bundles.canvas,
     bundledStudioAppJavascript: bundles.studio,
     appSurfaces: MCP_APP_SURFACES_ENABLED,
+    pluginGateway,
   });
   registerTimelinePluginMcp(
     server,
@@ -60,13 +68,17 @@ function composeClashPluginServer(
   return server;
 }
 
-export function createClashPluginRuntime(options: ClashPluginServerOptions = {}): {
+export function createClashPluginRuntime(
+  options: ClashPluginServerOptions = {},
+): {
   server: McpServer;
   hostManager?: PluginHostManager;
   close(): Promise<void>;
   closeHost(): Promise<void>;
 } {
-  const hostManager = options.hostManager ?? (options.client ? undefined : createPluginHostManager());
+  const hostManager =
+    options.hostManager ??
+    (options.client ? undefined : createPluginHostManager());
   const client = options.client ?? createMcpProjectHostClient({ hostManager });
   const bundles = options.appBundles ?? {
     studio: bundledApp("studio"),
@@ -74,7 +86,11 @@ export function createClashPluginRuntime(options: ClashPluginServerOptions = {})
     timeline: bundledApp("timeline"),
     director: bundledApp("director"),
   };
-  const server = composeClashPluginServer(client, bundles);
+  const server = composeClashPluginServer(
+    client,
+    bundles,
+    options.pluginGateway ?? createPluginMcpGateway({ client }),
+  );
   const originalClose = server.close.bind(server);
   let closingHost: Promise<void> | undefined;
   let closingRuntime: Promise<void> | undefined;
@@ -96,11 +112,15 @@ export function createClashPluginRuntime(options: ClashPluginServerOptions = {})
   return { server, hostManager, close, closeHost };
 }
 
-export function createClashPluginServer(options: ClashPluginServerOptions = {}): McpServer {
+export function createClashPluginServer(
+  options: ClashPluginServerOptions = {},
+): McpServer {
   return createClashPluginRuntime(options).server;
 }
 
-export async function serveClashPluginStdio(options: ClashPluginServerOptions = {}): Promise<void> {
+export async function serveClashPluginStdio(
+  options: ClashPluginServerOptions = {},
+): Promise<void> {
   const runtime = createClashPluginRuntime(options);
   const transport = new StdioServerTransport();
   transport.onclose = () => {

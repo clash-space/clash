@@ -4,6 +4,21 @@ import { z } from "zod";
 import { AssetKindSchema } from "./assets.js";
 import { pluginIdSchema } from "./plugin-namespace.js";
 import { PluginAuthDeclarationSchema } from "./plugin-auth.js";
+import { AsrTimedTranscriptSchema } from "./production-metadata.js";
+import {
+  GeneratorDefinitionSchema,
+  GeneratorDefinitionSpecSchema,
+  type GeneratorDefinition,
+} from "./generator-v2.js";
+import {
+  ExecutablePluginJsonValueSchema,
+  type ExecutablePluginJsonValue,
+} from "./plugin-json-value.js";
+
+export {
+  ExecutablePluginJsonValueSchema,
+  type ExecutablePluginJsonValue,
+} from "./plugin-json-value.js";
 
 // Re-exported so a plugin reaches it through the one entry it already imports. The package index
 // pulls in loro-crdt, which is CommonJS, and bundling that into an ESM plugin turns its first
@@ -92,11 +107,14 @@ export const ExecutablePluginRuntimeSchema = z.discriminatedUnion("kind", [
       })
       .strict()
       .optional(),
+    /** Immutable package payloads the executor reads at runtime, never Host paths or invocation data. */
+    resources: z.array(PluginRelativePathSchema).optional(),
   }),
   z.object({
     kind: z.literal("hosted"),
     transport: z.literal("http"),
     endpoint: z.string().url(),
+    resources: z.never().optional(),
   }),
 ]);
 
@@ -139,6 +157,14 @@ export const ExecutablePluginModelBindingExportSchema = z
   .object({
     id: z.string().trim().regex(PLUGIN_ID_PATTERN),
     kind: z.literal("model-provider-binding"),
+    path: PluginRelativePathSchema,
+  })
+  .strict();
+
+export const ExecutablePluginGeneratorExportSchema = z
+  .object({
+    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    kind: z.literal("generator"),
     path: PluginRelativePathSchema,
   })
   .strict();
@@ -340,6 +366,17 @@ export const ExecutablePluginCardDocumentSchema = z
     });
   });
 
+export const ExecutablePluginGeneratorDocumentSchema = z
+  .object({
+    apiVersion: z.literal("clash.generator/v1"),
+    kind: z.literal("generator"),
+    spec: GeneratorDefinitionSpecSchema,
+  })
+  .strict();
+export type ExecutablePluginGeneratorDocument = z.infer<
+  typeof ExecutablePluginGeneratorDocumentSchema
+>;
+
 export const ExecutablePluginProviderDefinitionSchema = z
   .object({
     /**
@@ -529,6 +566,8 @@ export const ExecutablePluginFunctionExportSchema = z
   .object({
     id: z.string().trim().regex(PLUGIN_ID_PATTERN),
     kind: z.enum(["action", "provider-projector", "provider-executor"]),
+    /** Delivery forms accepted directly by an Action's own executor. */
+    assetInputs: z.array(ProviderAssetInputSchema).optional(),
     /** Defaults to submit-only: the simplest plugin declares nothing and gets the simplest contract. */
     operations: z
       .array(PluginEntryOperationSchema)
@@ -537,6 +576,14 @@ export const ExecutablePluginFunctionExportSchema = z
   })
   .strict()
   .superRefine((entry, ctx) => {
+    if (entry.kind !== "action" && entry.assetInputs !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["assetInputs"],
+        message:
+          "Only Action exports declare Asset delivery; Provider delivery belongs to the selected binding.",
+      });
+    }
     if (!entry.operations.includes("submit")) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -587,6 +634,31 @@ export const ExecutablePluginModelBindingRegistrationSchema =
   ExecutablePluginArtifactRegistrationBaseSchema.extend({
     document: ExecutablePluginModelBindingDocumentSchema,
   }).strict();
+
+/** Generator registrations carry semantic package provenance, never a Host execution realm. */
+export const ExecutablePluginGeneratorRegistrationSchema = z
+  .object({
+    pluginId: pluginIdSchema,
+    version: z.string().trim().regex(SEMVER_PATTERN),
+    schemaHash: z.string().regex(SHA256_PATTERN),
+    document: ExecutablePluginGeneratorDocumentSchema,
+  })
+  .strict();
+export type ExecutablePluginGeneratorRegistration = z.infer<
+  typeof ExecutablePluginGeneratorRegistrationSchema
+>;
+
+export function generatorDefinitionFromExecutablePluginRegistration(
+  input: ExecutablePluginGeneratorRegistration,
+): GeneratorDefinition {
+  const registration = ExecutablePluginGeneratorRegistrationSchema.parse(input);
+  return GeneratorDefinitionSchema.parse({
+    pluginId: registration.pluginId,
+    version: registration.version,
+    schemaHash: registration.schemaHash,
+    ...registration.document.spec,
+  });
+}
 
 /**
  * Interpret active plugin model Cards as the effective source of truth. Cards
@@ -738,26 +810,6 @@ export const ExecutablePluginBindingSchema = z
   })
   .strict();
 
-export type ExecutablePluginJsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | ExecutablePluginJsonValue[]
-  | { [key: string]: ExecutablePluginJsonValue };
-
-export const ExecutablePluginJsonValueSchema: z.ZodType<ExecutablePluginJsonValue> =
-  z.lazy(() =>
-    z.union([
-      z.null(),
-      z.boolean(),
-      z.number().finite(),
-      z.string(),
-      z.array(ExecutablePluginJsonValueSchema),
-      z.record(ExecutablePluginJsonValueSchema),
-    ]),
-  );
-
 const ExecutablePluginAssetHandleObjectSchema = z
   .object({
     assetId: z.string().trim().min(1),
@@ -775,6 +827,14 @@ const ExecutablePluginReferenceBaseSchema = z.object({
   index: z.number().int().nonnegative(),
 });
 
+/** The exact immutable media input accepted by the first-party speech Host tool. */
+export const ExecutableSpeechTranscriptionReferenceSchema =
+  ExecutablePluginReferenceBaseSchema.extend({
+    asset: ExecutablePluginAssetHandleObjectSchema.extend({
+      kind: z.enum(["audio", "video"]),
+    }).strict(),
+  }).strict();
+
 export const ExecutablePluginReferenceSchema = z.union([
   ExecutablePluginReferenceBaseSchema.extend({
     asset: ExecutablePluginAssetHandleSchema,
@@ -787,11 +847,22 @@ export const ExecutablePluginReferenceSchema = z.union([
       })
       .strict(),
   }).strict(),
+  ExecutablePluginReferenceBaseSchema.extend({
+    document: z
+      .object({
+        documentAssetId: z.string().trim().min(1),
+        revisionId: z.string().trim().min(1),
+        documentKind: z.string().trim().min(1),
+        schemaVersion: z.number().int().positive(),
+      })
+      .strict(),
+  }).strict(),
 ]);
 
 /**
  * Asset delivery v0 broker result for `asset.resolve`; SDKs decode bytes before plugin business
- * code sees it. There is no `url + reach` compatibility dialect.
+ * code sees it. Provider-reachable and execution-realm URLs are separate forms rather than a
+ * forgeable `url + reach` compatibility dialect.
  */
 export const ExecutablePluginBrokerResolvedReferenceSchema =
   z.discriminatedUnion("form", [
@@ -799,6 +870,15 @@ export const ExecutablePluginBrokerResolvedReferenceSchema =
       .object({
         form: z.literal("provider-url"),
         providerUrl: z.string().url(),
+        expiresAt: z.string().datetime(),
+        kind: AssetKindSchema.optional(),
+        mediaType: z.string().trim().min(1).optional(),
+      })
+      .strict(),
+    z
+      .object({
+        form: z.literal("executor-url"),
+        executorUrl: z.string().url(),
         expiresAt: z.string().datetime(),
         kind: AssetKindSchema.optional(),
         mediaType: z.string().trim().min(1).optional(),
@@ -816,6 +896,14 @@ export const ExecutablePluginBrokerResolvedReferenceSchema =
       .object({
         form: z.literal("text"),
         text: z.string(),
+      })
+      .strict(),
+    z
+      .object({
+        form: z.literal("document"),
+        documentKind: z.string().trim().min(1),
+        schemaVersion: z.number().int().positive(),
+        body: ExecutablePluginJsonValueSchema,
       })
       .strict(),
   ]);
@@ -971,6 +1059,26 @@ export const ExecutablePluginOutputSchema = z.union([
       value: ExecutablePluginJsonValueSchema,
     })
     .strict(),
+  /**
+   * One typed Document body returned by a Generator Action.
+   *
+   * `value` remains the transport-neutral result shape for legacy Actions and projectors. A
+   * native Generator must name the Document contract on the output itself so the Host can compare
+   * it with the frozen output port before it stores a body or advances any public authority.
+   */
+  z
+    .object({
+      slot: z.string().trim().min(1),
+      kind: z.literal("document"),
+      document: z
+        .object({
+          documentKind: z.string().trim().min(1),
+          schemaVersion: z.number().int().positive(),
+          body: ExecutablePluginJsonValueSchema,
+        })
+        .strict(),
+    })
+    .strict(),
 ]);
 
 /** Stable Host-level failure categories; raw upstream spellings belong in `providerCode`. */
@@ -1058,6 +1166,37 @@ export const ExecutablePluginResultSchema = z.discriminatedUnion("status", [
     })
     .strict(),
 ]);
+
+/** Credential-free request from an ASR plugin to the Host-owned speech runtime. */
+export const ExecutableSpeechTranscriptionOperationSchema = z
+  .object({
+    kind: z.literal("speech.transcribe"),
+    reference: ExecutableSpeechTranscriptionReferenceSchema,
+    modelId: z.string().trim().min(1),
+    language: z.string().trim().min(1).optional(),
+    /** Present only when resuming Host-owned asynchronous speech work. */
+    poll: ExecutablePluginJsonValueSchema.optional(),
+  })
+  .strict();
+
+export const ExecutableSpeechTranscriptionResultSchema = z.discriminatedUnion(
+  "status",
+  [
+    z
+      .object({
+        status: z.literal("completed"),
+        transcript: AsrTimedTranscriptSchema,
+      })
+      .strict(),
+    z
+      .object({
+        status: z.literal("accepted"),
+        poll: ExecutablePluginJsonValueSchema,
+        retryAfterMs: z.number().int().positive().optional(),
+      })
+      .strict(),
+  ],
+);
 
 export const ExecutablePluginBrokerOperationSchema = z.union([
   z
@@ -1211,6 +1350,7 @@ export const ExecutablePluginBrokerOperationSchema = z.union([
         .default([]),
     })
     .strict(),
+  ExecutableSpeechTranscriptionOperationSchema,
 ]);
 
 export const ExecutablePluginBrokerRequestSchema = z
@@ -1374,8 +1514,11 @@ export const ExecutablePluginContributionsSchema = z
     modelBindings: z
       .array(ExecutablePluginModelBindingExportSchema)
       .default([]),
+    generators: z.array(ExecutablePluginGeneratorExportSchema).default([]),
     functions: z.array(ExecutablePluginFunctionExportSchema).default([]),
-    hostTools: z.array(z.enum(["codex.imagegen"])).default([]),
+    hostTools: z
+      .array(z.enum(["codex.imagegen", "speech.transcribe"]))
+      .default([]),
   })
   .strict();
 
@@ -1399,6 +1542,7 @@ export const ExecutablePluginManifestSchema = z
       ["cards", manifest.contributes.cards],
       ["providers", manifest.contributes.providers],
       ["modelBindings", manifest.contributes.modelBindings],
+      ["generators", manifest.contributes.generators],
       ["functions", manifest.contributes.functions],
     ] as const) {
       const ids = new Set<string>();
@@ -1428,6 +1572,7 @@ export const ExecutablePluginManifestSchema = z
     for (const artifact of [
       ...manifest.contributes.providers,
       ...manifest.contributes.modelBindings,
+      ...manifest.contributes.generators,
     ]) {
       if (artifactPaths.has(artifact.path)) {
         ctx.addIssue({
@@ -1495,6 +1640,15 @@ export function executablePluginDependencyError(
       : `Plugin ${manifest.id} does not contribute anything that produces assets.`;
   }
 
+  if (operation.kind === "speech.transcribe") {
+    if (!capabilities.hostTools.includes("speech.transcribe")) {
+      return `Plugin ${manifest.id} does not contribute speech transcription.`;
+    }
+    return capabilities.assets
+      ? null
+      : `Plugin ${manifest.id} does not contribute anything that reads assets.`;
+  }
+
   if (operation.kind === "store.get" || operation.kind === "store.put") {
     return capabilities.store
       ? null
@@ -1521,6 +1675,7 @@ export interface ValidatedExecutablePluginPackage {
   cards: Record<string, ExecutablePluginCardDocument>;
   providers: Record<string, ExecutablePluginProviderDocument>;
   modelBindings: Record<string, ExecutablePluginModelBindingDocument>;
+  generators: Record<string, ExecutablePluginGeneratorDocument>;
   contractTests: Record<string, ExecutablePluginContractTestDocument>;
 }
 
@@ -1578,6 +1733,7 @@ export function validateExecutablePluginPackage(
   artifacts: {
     providers?: Record<string, unknown>;
     modelBindings?: Record<string, unknown>;
+    generators?: Record<string, unknown>;
   } = {},
 ): ValidatedExecutablePluginPackage {
   const manifest = ExecutablePluginManifestSchema.parse(manifestInput);
@@ -1588,6 +1744,7 @@ export function validateExecutablePluginPackage(
   const providers: Record<string, ExecutablePluginProviderDocument> = {};
   const modelBindings: Record<string, ExecutablePluginModelBindingDocument> =
     {};
+  const generators: Record<string, ExecutablePluginGeneratorDocument> = {};
   const contractTests: Record<string, ExecutablePluginContractTestDocument> =
     {};
 
@@ -1702,6 +1859,31 @@ export function validateExecutablePluginPackage(
     modelBindings[bindingExport.path] = binding;
   }
 
+  for (const generatorExport of manifest.contributes.generators) {
+    const input = artifacts.generators?.[generatorExport.path];
+    if (input === undefined) {
+      throw new Error(
+        `Missing declared Generator document: ${generatorExport.path}`,
+      );
+    }
+    const generator = ExecutablePluginGeneratorDocumentSchema.parse(input);
+    if (generator.spec.definitionId !== generatorExport.id) {
+      throw new Error(
+        `Generator ${generatorExport.path} id ${generator.spec.definitionId} ` +
+          `does not match export id ${generatorExport.id}.`,
+      );
+    }
+    for (const action of generator.spec.actions) {
+      const implementation = functions.get(action.executorExportId);
+      if (!implementation || implementation.kind !== "action") {
+        throw new Error(
+          `Generator Action ${action.id} requires action export ${action.executorExportId}.`,
+        );
+      }
+    }
+    generators[generatorExport.path] = generator;
+  }
+
   for (const path of manifest.contractTests) {
     if (!Object.prototype.hasOwnProperty.call(contractTestDocuments, path)) {
       throw new Error(`Missing declared contract test: ${path}`);
@@ -1719,11 +1901,21 @@ export function validateExecutablePluginPackage(
     contractTests[path] = contractTest;
   }
 
-  return { manifest, cards, providers, modelBindings, contractTests };
+  return {
+    manifest,
+    cards,
+    providers,
+    modelBindings,
+    generators,
+    contractTests,
+  };
 }
 
 export type ExecutablePluginRuntime = z.infer<
   typeof ExecutablePluginRuntimeSchema
+>;
+export type ExecutablePluginGeneratorExport = z.infer<
+  typeof ExecutablePluginGeneratorExportSchema
 >;
 export type ExecutableActionCard = z.infer<typeof ExecutableActionCardSchema>;
 export type ExecutableActionPresentation = z.infer<
@@ -1758,6 +1950,15 @@ export type ExecutablePluginBinding = z.infer<
 >;
 export type ExecutablePluginAssetHandle = z.infer<
   typeof ExecutablePluginAssetHandleSchema
+>;
+export type ExecutableSpeechTranscriptionReference = z.infer<
+  typeof ExecutableSpeechTranscriptionReferenceSchema
+>;
+export type ExecutableSpeechTranscriptionOperation = z.infer<
+  typeof ExecutableSpeechTranscriptionOperationSchema
+>;
+export type ExecutableSpeechTranscriptionResult = z.infer<
+  typeof ExecutableSpeechTranscriptionResultSchema
 >;
 export type ExecutablePluginBrokerResolvedReference = z.infer<
   typeof ExecutablePluginBrokerResolvedReferenceSchema

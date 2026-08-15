@@ -1,8 +1,11 @@
-import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { build } from "esbuild";
-import { BUNDLED_PLUGINS } from "../../../apps/local-api/src/bundled-plugins.js";
+import {
+  BUNDLED_PLUGINS,
+  bundledPluginPayloadFiles,
+} from "../../../apps/local-api/src/bundled-plugins.js";
 import { assertDependencyDistIsFresh } from "./host-runtime-freshness.js";
 
 const pluginRoot = resolve(import.meta.dirname, "..");
@@ -10,11 +13,6 @@ const repoRoot = resolve(pluginRoot, "../..");
 const runtimeDir = resolve(pluginRoot, "runtime");
 const importMetaUrlShim = "__clash_import_meta_url";
 const require = createRequire(import.meta.url);
-
-await mkdir(runtimeDir, { recursive: true });
-// A core build must never let a stale agent tree leak into the host bundle.
-// Agent metadata is installed after the host runtime is fresh.
-await rm(resolve(runtimeDir, "agents"), { recursive: true, force: true });
 
 assertDependencyDistIsFresh([
   resolve(import.meta.dirname, "../../../packages/cli"),
@@ -24,6 +22,17 @@ assertDependencyDistIsFresh([
     resolve(import.meta.dirname, `../../${plugin.workspaceDir}`),
   ),
 ]);
+
+await mkdir(runtimeDir, { recursive: true });
+// A core build must never let a stale agent tree leak into the host bundle.
+// Agent metadata is installed after the host runtime is fresh.
+await rm(resolve(runtimeDir, "agents"), { recursive: true, force: true });
+// Remotion is now a declared bundled Action payload. Remove the retired
+// daemon-level browser bundle so incremental builds cannot ship both paths.
+await rm(resolve(runtimeDir, "remotion-bundle"), {
+  recursive: true,
+  force: true,
+});
 
 /**
  * Prefixed to every emitted bundle.
@@ -45,9 +54,16 @@ await build({
   platform: "node",
   format: "cjs",
   target: "node24",
-  // Development-only builders stay lazy and external. Packaged hosts always
-  // use the browser assets copied below and never load these modules.
-  external: ["@remotion/renderer", "@remotion/bundler", "esbuild"],
+  // Development-only builders stay lazy and external. Packaged hosts always use the browser
+  // assets copied below and never load these modules. Provider HTTP instrumentation is likewise a
+  // test-harness-only dynamic import; keeping its preload module external prevents its ESM
+  // top-level await from entering this production CJS bundle.
+  external: [
+    "@remotion/renderer",
+    "@remotion/bundler",
+    "esbuild",
+    "./provider-http-instrumentation.js",
+  ],
   define: { "import.meta.url": importMetaUrlShim },
   banner: {
     js: `${GENERATED_BANNER}const ${importMetaUrlShim} = require("node:url").pathToFileURL(__filename).href;`,
@@ -57,35 +73,20 @@ await build({
 /**
  * Official Providers are part of the Clash distribution, not packages a user installs later.
  *
- * esbuild cannot inline a manifest, provider declaration, contract fixture, and subprocess
- * entrypoint reached through dynamic `require.resolve()`. Copy those exact declared files beside
- * local-api.cjs; the host seeds its private runtime directory from this immutable payload.
+ * esbuild cannot inline manifests, declarative artifacts, contract fixtures, and module
+ * entrypoints reached through dynamic `import()`. Copy those exact declared files beside
+ * local-api.cjs; the Host imports this immutable payload directly from its closed trust registry.
  */
 const bundledPluginRuntimeRoot = resolve(runtimeDir, "bundled-plugins");
 await rm(bundledPluginRuntimeRoot, { recursive: true, force: true });
 for (const plugin of BUNDLED_PLUGINS) {
   const sourceRoot = resolve(repoRoot, "plugins", plugin.workspaceDir);
   const targetRoot = resolve(bundledPluginRuntimeRoot, plugin.workspaceDir);
-  const manifest = JSON.parse(
-    await readFile(resolve(sourceRoot, "manifest.json"), "utf8"),
-  ) as {
-    runtime?: { entrypoint?: string };
-    contributes?: {
-      cards?: Array<{ path?: string }>;
-      providers?: Array<{ path?: string }>;
-      modelBindings?: Array<{ path?: string }>;
-    };
-    contractTests?: string[];
-  };
   const declaredFiles = new Set(
-    [
-      "manifest.json",
-      manifest.runtime?.entrypoint,
-      ...(manifest.contributes?.cards ?? []).map((entry) => entry.path),
-      ...(manifest.contributes?.providers ?? []).map((entry) => entry.path),
-      ...(manifest.contributes?.modelBindings ?? []).map((entry) => entry.path),
-      ...(manifest.contractTests ?? []),
-    ].filter((path): path is string => Boolean(path)),
+    await bundledPluginPayloadFiles(
+      JSON.parse(await readFile(resolve(sourceRoot, "manifest.json"), "utf8")),
+      sourceRoot,
+    ),
   );
   for (const relativePath of declaredFiles) {
     const target = resolve(targetRoot, relativePath);
@@ -152,49 +153,3 @@ await cp(
   require.resolve("loro-crdt/nodejs/loro_wasm_bg.wasm"),
   resolve(runtimeDir, "loro_wasm_bg.wasm"),
 );
-
-const remotionBundleDir = resolve(runtimeDir, "remotion-bundle");
-await rm(remotionBundleDir, { recursive: true, force: true });
-await cp(
-  resolve(repoRoot, "apps/render-server/.remotion-bundle"),
-  remotionBundleDir,
-  {
-    recursive: true,
-    filter: (source) => !source.endsWith(".map"),
-  },
-);
-
-const removeSourceMapReferences = async (directory: string): Promise<void> => {
-  const entries = await readdir(directory, { withFileTypes: true });
-  await Promise.all(
-    entries.map(async (entry) => {
-      const path = resolve(directory, entry.name);
-      if (entry.isDirectory()) {
-        await removeSourceMapReferences(path);
-        return;
-      }
-      if (!entry.name.endsWith(".js")) return;
-      const source = await readFile(path, "utf8");
-      const portableSource = source.replace(
-        /^\s*\/\/[#@]\s*sourceMappingURL=.*\.map\s*$/gm,
-        "",
-      );
-      if (portableSource !== source)
-        await writeFile(path, portableSource, "utf8");
-    }),
-  );
-};
-
-await removeSourceMapReferences(remotionBundleDir);
-
-const remotionIndexPath = resolve(remotionBundleDir, "index.html");
-const remotionIndex = await readFile(remotionIndexPath, "utf8");
-const remotionCwdPattern = /window\.remotion_cwd = [^;]+;/;
-if (!remotionCwdPattern.test(remotionIndex)) {
-  throw new Error("Remotion bundle index is missing window.remotion_cwd");
-}
-const portableRemotionIndex = remotionIndex.replace(
-  remotionCwdPattern,
-  'window.remotion_cwd = ".";',
-);
-await writeFile(remotionIndexPath, portableRemotionIndex, "utf8");

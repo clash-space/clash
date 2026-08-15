@@ -1463,4 +1463,116 @@ describe("ActionBadge canvas subscriptions", () => {
       }),
     );
   });
+
+  it("consumes selected Director Shots from referenced video output nodes", async () => {
+    const packet = (shotId: string, assetId: string) => ({
+      schemaVersion: 1 as const,
+      stageId: "stage-1",
+      stageRevisionId: "stage-revision-8",
+      exportedAt: "2026-07-24T10:00:00.000Z",
+      aspectRatio: "16:9" as const,
+      durationSeconds: 4,
+      fps: 30,
+      scope: { kind: "shot" as const, selectedShotIds: [shotId] },
+      cameraIds: [`camera-${shotId}`],
+      referenceVideo: { assetId, mimeType: "video/webm" },
+      referenceStills: [],
+      shotSpec: {
+        shots: [
+          {
+            id: shotId,
+            name: shotId === "shot-a" ? "Lead walk" : "Reverse follow",
+            cameraId: `camera-${shotId}`,
+            startTime: 0,
+            sequenceStartTime: shotId === "shot-a" ? 0 : 4,
+            durationSeconds: 4,
+            aspectRatio: "16:9" as const,
+            transition: "cut" as const,
+          },
+        ],
+      },
+    });
+    const firstPacket = packet("shot-a", "director-shot-a-video");
+    const secondPacket = packet("shot-b", "director-shot-b-video");
+
+    reactFlowMock.nodeConnections.push(
+      {
+        edgeId: "output-a-action-1",
+        source: "output-a",
+        sourceHandle: null,
+        target: "action-1",
+        targetHandle: null,
+      },
+      {
+        edgeId: "output-b-action-1",
+        source: "output-b",
+        sourceHandle: null,
+        target: "action-1",
+        targetHandle: null,
+      },
+    );
+    reactFlowMock.getNode.mockImplementation((id: string) => {
+      if (id === "output-a") {
+        return {
+          id,
+          type: "video",
+          data: {
+            assetId: firstPacket.referenceVideo.assetId,
+            directorReferencePacket: firstPacket,
+          },
+        };
+      }
+      if (id === "output-b") {
+        return {
+          id,
+          type: "video",
+          data: {
+            assetId: secondPacket.referenceVideo.assetId,
+            directorReferencePacket: secondPacket,
+          },
+        };
+      }
+      return undefined;
+    });
+
+    render(
+      <CanvasTransientUiProvider>
+        <PromptActionNode
+          {...baseNodeProps}
+          id="action-1"
+          type="action-badge"
+          data={{
+            actionType: "video-gen",
+            content: "Preserve each rendered Director shot",
+            label: "Generate selected shots",
+            modelId: "seedance-2-ref",
+          }}
+        />
+      </CanvasTransientUiProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Run action" }));
+
+    await waitFor(() =>
+      expect(spawnAssetMock.spawnPending).toHaveBeenCalledTimes(2),
+    );
+    expect(spawnAssetMock.spawnPending).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        directorReferencePacket: firstPacket,
+        sourceDirectorStageId: "stage-1",
+        sourceDirectorStageRevisionId: "stage-revision-8",
+        sourceDirectorStageShotId: "shot-a",
+      }),
+    );
+    expect(spawnAssetMock.spawnPending).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        directorReferencePacket: secondPacket,
+        sourceDirectorStageId: "stage-1",
+        sourceDirectorStageRevisionId: "stage-revision-8",
+        sourceDirectorStageShotId: "shot-b",
+      }),
+    );
+  });
 });

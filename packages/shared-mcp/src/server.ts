@@ -34,9 +34,12 @@ import { describeClashTool } from "./tool-guidance.js";
 import { projectClashMcpWireJsonSchema } from "./wire-schema.js";
 
 export const CLASH_ROOT_TOOL_NAME = "clash";
+export const CLASH_PLUGIN_TOOL_NAME = "clash_plugin";
 export const CLASH_ASSETS_TOOL_NAME = "clash_assets";
 export const CLASH_CANVAS_TOOL_NAME = "clash_canvas";
 export const CLASH_COMPOSITION_TOOL_NAME = "clash_composition";
+
+const MAX_ASSET_CONTRACT_BATCH_SIZE = 8;
 
 export const LEGACY_CLASH_GROUP_TOOL_NAMES = {
   director: "clash_director",
@@ -48,9 +51,9 @@ type ClashCompositionKind = "timeline" | "director-stage";
 
 export const CLASH_MCP_INSTRUCTIONS = [
   "Clash discloses product operations progressively.",
-  `Use the root ${CLASH_ROOT_TOOL_NAME} tool for command navigation, ${CLASH_ASSETS_TOOL_NAME} for Project and personal Global Assets, ${CLASH_CANVAS_TOOL_NAME} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME} for Timeline or Director Stage composition.`,
+  `Use the root ${CLASH_ROOT_TOOL_NAME} tool for command navigation, ${CLASH_PLUGIN_TOOL_NAME} for executable plugin lifecycle, ${CLASH_ASSETS_TOOL_NAME} for Project and personal Global Assets, ${CLASH_CANVAS_TOOL_NAME} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME} for Timeline or Director Stage composition.`,
   "Timeline is temporal composition; Director Stage is spatial composition.",
-  "Call a dispatcher without operation for live contracts, then pass its command-local operation and arguments to execute exactly once.",
+  "Call clash_assets without operation for its lightweight index, then pass contracts for the small set of live Asset contracts needed together; contract remains available for one. Other dispatchers reveal live contracts when operation is omitted.",
   "Composition disclosure and short operations require kind=timeline or kind=director-stage; a complete clash_* leaf name remains accepted for compatibility.",
   "The advertised tool list stays fixed and does not require a tools/list refresh.",
   "Within a selected command, tool descriptions, schemas, structured results, and recovery guidance are the operational source of truth.",
@@ -82,6 +85,11 @@ type ClashOperationView = {
   };
   metadata?: Record<string, unknown>;
 };
+
+type ClashOperationIndexEntry = Pick<
+  ClashOperationView,
+  "name" | "operation" | "title" | "readOnly" | "destructive"
+>;
 
 function modelVisible(meta: Record<string, unknown> | undefined): boolean {
   const ui = meta?.ui;
@@ -158,8 +166,8 @@ export class ClashMcpServer extends McpServer {
           effect:
             "returns command counts and navigation without expanding leaf operations into the advertised tool list",
           returns:
-            "the command menu and selected Assets, Canvas, or composition dispatcher",
-          next: "call clash_assets for Project or personal Global Assets, clash_canvas for Canvas, or clash_composition with kind for Timeline or Director Stage; complete leaf execution remains compatibility-only",
+            "the command menu and selected Plugin, Assets, Canvas, or composition dispatcher",
+          next: "call clash_plugin for executable plugin lifecycle, clash_assets for Project or personal Global Assets, clash_canvas for Canvas, or clash_composition with kind for Timeline or Director Stage; complete leaf execution remains compatibility-only",
         }),
         inputSchema: {
           command: z
@@ -230,19 +238,19 @@ export class ClashMcpServer extends McpServer {
       },
     );
 
-    const assetsDefinition = getClashMcpCommand("assets");
+    const pluginDefinition = getClashMcpCommand("plugin");
     super.registerTool(
-      CLASH_ASSETS_TOOL_NAME,
+      CLASH_PLUGIN_TOOL_NAME,
       {
-        title: assetsDefinition.title,
+        title: pluginDefinition.title,
         description: describeClashTool({
           useWhen:
-            "you need to inspect, import, admit, publish, trash, or restore Project and personal Global Assets",
+            "the Agent needs to inspect or change executable Clash plugins during the current task",
           effect:
-            "returns live Asset contracts when operation is omitted, or validates and executes one Asset leaf exactly once",
+            "returns live plugin lifecycle contracts when operation is omitted, or validates and executes one plugin operation exactly once",
           returns:
-            "typed Project or Global Asset operation contracts or the selected leaf operation's exact result",
-          next: "choose the smallest matching operation, then call clash_assets with operation and arguments",
+            "typed plugin lifecycle contracts or the selected operation's exact result",
+          next: "choose the smallest matching operation, then call clash_plugin with operation and arguments",
         }),
         inputSchema: {
           operation: z
@@ -250,7 +258,7 @@ export class ClashMcpServer extends McpServer {
             .min(1)
             .optional()
             .describe(
-              "Omit this field entirely to reveal live contracts; otherwise pass a command-local Assets operation or complete clash_assets_* leaf name",
+              "Omit this field entirely to reveal live contracts; otherwise pass a command-local Plugin operation or complete clash_plugin_* leaf name",
             ),
           arguments: z
             .record(z.string(), z.unknown())
@@ -266,11 +274,87 @@ export class ClashMcpServer extends McpServer {
           return this.#dispatchOperation({
             operation,
             arguments: operationArguments ?? {},
+            selectedCommand: "plugin",
+            extra,
+          });
+        }
+        return this.#commandResult("plugin");
+      },
+    );
+
+    const assetsDefinition = getClashMcpCommand("assets");
+    super.registerTool(
+      CLASH_ASSETS_TOOL_NAME,
+      {
+        title: assetsDefinition.title,
+        description: describeClashTool({
+          useWhen:
+            "you need to inspect, import, admit, publish, trash, or restore Project and personal Global Assets",
+          effect:
+            "returns a lightweight Asset operation index, reveals a requested bounded set of live contracts, or validates and executes one Asset leaf exactly once",
+          returns:
+            "an operation index, the requested typed Project or Global Asset contracts, or the selected leaf operation's exact result",
+          next: "choose the smallest matching operations, request their contracts together, then call clash_assets with operation and arguments for each execution",
+        }),
+        inputSchema: {
+          operation: z
+            .string()
+            .min(1)
+            .optional()
+            .describe(
+              "Pass a command-local Assets operation or complete clash_assets_* leaf name to execute it; omit to inspect the lightweight index or requested contracts",
+            ),
+          contract: z
+            .string()
+            .min(1)
+            .optional()
+            .describe(
+              "Command-local Assets operation or complete clash_assets_* leaf name whose full live contract should be returned without execution",
+            ),
+          contracts: z
+            .array(z.string().min(1))
+            .min(1)
+            .max(
+              MAX_ASSET_CONTRACT_BATCH_SIZE,
+              `Asset contract batches accept at most ${MAX_ASSET_CONTRACT_BATCH_SIZE} operations`,
+            )
+            .optional()
+            .describe(
+              "Distinct ordered Assets operations whose full live contracts should be returned together without execution",
+            ),
+          arguments: z
+            .record(z.string(), z.unknown())
+            .optional()
+            .describe(
+              "Arguments validated against the selected operation's live input schema",
+            ),
+        },
+        _meta: { ui: { visibility: ["model"] } },
+      },
+      async (
+        { operation, contract, contracts, arguments: operationArguments },
+        extra,
+      ) => {
+        if (
+          [operation, contract, contracts].filter(
+            (value) => value !== undefined,
+          ).length > 1
+        ) {
+          throw new Error(
+            "Clash Assets accepts one disclosure mode or operation execution, not a combination.",
+          );
+        }
+        if (contracts) return this.#contractBatchResult("assets", contracts);
+        if (contract) return this.#contractResult("assets", contract);
+        if (operation) {
+          return this.#dispatchOperation({
+            operation,
+            arguments: operationArguments ?? {},
             selectedCommand: "assets",
             extra,
           });
         }
-        return this.#commandResult("assets");
+        return this.#commandResult("assets", { lightweight: true });
       },
     );
 
@@ -449,6 +533,7 @@ export class ClashMcpServer extends McpServer {
   ): RegisteredTool {
     if (
       name === CLASH_ROOT_TOOL_NAME ||
+      name === CLASH_PLUGIN_TOOL_NAME ||
       name === CLASH_ASSETS_TOOL_NAME ||
       name === CLASH_CANVAS_TOOL_NAME ||
       name === CLASH_COMPOSITION_TOOL_NAME ||
@@ -520,7 +605,10 @@ export class ClashMcpServer extends McpServer {
     });
   }
 
-  #commandResult(command: ClashMcpCommandId): CallToolResult {
+  #commandResult(
+    command: ClashMcpCommandId,
+    options: { lightweight?: boolean } = {},
+  ): CallToolResult {
     const view = this.#commandView(command);
     const operationCount = view.operations?.length ?? 0;
     if (operationCount === 0) {
@@ -535,14 +623,96 @@ export class ClashMcpServer extends McpServer {
         isError: true,
       };
     }
+    const operations: ClashOperationView[] | ClashOperationIndexEntry[] =
+      options.lightweight
+        ? (view.operations ?? []).map(
+            ({ name, operation, title, readOnly, destructive }) => ({
+              name,
+              operation,
+              title,
+              readOnly,
+              destructive,
+            }),
+          )
+        : (view.operations ?? []);
     return {
       content: [
         {
           type: "text" as const,
-          text: `Revealed ${operationCount} ${command} operation${operationCount === 1 ? "" : "s"}.`,
+          text: options.lightweight
+            ? `Found ${operationCount} ${command} operation${operationCount === 1 ? "" : "s"}. Request only the needed full contracts together with contracts=["<operation>", ...] before execution; contract="<operation>" remains available for one.`
+            : `Revealed ${operationCount} ${command} operation${operationCount === 1 ? "" : "s"}.`,
         },
       ],
-      structuredContent: view,
+      structuredContent: { ...view, operations },
+    };
+  }
+
+  #contractResult(
+    command: ClashMcpCommandId,
+    requestedOperation: string,
+  ): CallToolResult {
+    const operationName = this.#resolveOperationName(
+      requestedOperation,
+      command,
+    );
+    const contract = this.#commandView(command).operations?.find(
+      ({ name }) => name === operationName,
+    );
+    if (!contract) {
+      throw new Error(
+        `Clash ${command} operation ${requestedOperation} has no live contract in this host.`,
+      );
+    }
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: `Revealed the live contract for ${contract.name}.`,
+        },
+      ],
+      structuredContent: {
+        schemaVersion: 1,
+        selectedCommand: command,
+        contract,
+      },
+    };
+  }
+
+  #contractBatchResult(
+    command: ClashMcpCommandId,
+    requestedOperations: string[],
+  ): CallToolResult {
+    const liveContracts = this.#commandView(command).operations ?? [];
+    const operationNames = requestedOperations.map((requestedOperation) =>
+      this.#resolveOperationName(requestedOperation, command),
+    );
+    if (new Set(operationNames).size !== operationNames.length) {
+      throw new Error(
+        `Clash ${command} contract batches require distinct operations.`,
+      );
+    }
+    const contracts = operationNames.map((operationName, index) => {
+      const contract = liveContracts.find(({ name }) => name === operationName);
+      if (!contract) {
+        throw new Error(
+          `Clash ${command} operation ${requestedOperations[index]} has no live contract in this host.`,
+        );
+      }
+      return contract;
+    });
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: `Revealed ${contracts.length} live ${command} contracts.`,
+        },
+      ],
+      structuredContent: {
+        schemaVersion: 1,
+        selectedCommand: command,
+        contracts,
+      },
     };
   }
 
@@ -579,6 +749,9 @@ export class ClashMcpServer extends McpServer {
       }
       if (command.id === "assets") {
         return { ...command, dispatcher: CLASH_ASSETS_TOOL_NAME };
+      }
+      if (command.id === "plugin") {
+        return { ...command, dispatcher: CLASH_PLUGIN_TOOL_NAME };
       }
       if (command.id === "canvas") {
         return { ...command, dispatcher: CLASH_CANVAS_TOOL_NAME };
@@ -739,6 +912,7 @@ export class ClashMcpServer extends McpServer {
         return false;
       if (
         tool.name === CLASH_ROOT_TOOL_NAME ||
+        tool.name === CLASH_PLUGIN_TOOL_NAME ||
         tool.name === CLASH_ASSETS_TOOL_NAME ||
         tool.name === CLASH_CANVAS_TOOL_NAME ||
         tool.name === CLASH_COMPOSITION_TOOL_NAME ||

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { createReadStream } from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createProjectAssetHttpClient } from "@clash/asset-sdk";
 import type { ProjectHostResponse } from "@clash/shared-runtime/project-host-client";
 import {
@@ -11,8 +12,15 @@ import {
   type ProjectTimeline,
 } from "@clash/shared-types";
 import { parse as parseYaml } from "yaml";
+import { timelineDslDocumentFromArtifact } from "./timeline-artifact";
 
 import { loadSubmission } from "./artifacts";
+import { readRunnerSealedMcpCalls } from "./mcp-evidence";
+import {
+  extractTrustedAssetOperationEvidence,
+  type SuccessfulAssetMcpCall,
+  type TrustedAssetOperationEvidence,
+} from "./product-operations";
 import {
   assertProjectHostReady,
   assertWorkspaceProject,
@@ -54,6 +62,7 @@ export type RemotionProductReadbackReport = {
     componentSha256: string;
     timelineArtifactId: string;
     timelineSha256: string;
+    timelineProjectAssetIds: string[];
     videoArtifactId: string;
     videoSha256: string;
     renderNodeId: string;
@@ -87,6 +96,66 @@ export type TimelineProductReadbackReport = {
   detail: string;
 };
 
+export type AssetProductReadbackReport = {
+  schemaVersion: 1;
+  status: "pass" | "fail";
+  projectId: string | null;
+  expectedProjectAssetId?: string;
+  matchedArtifactIds: string[];
+  operationEvidence: TrustedAssetOperationEvidence[];
+  matches: Array<{
+    artifactId: string;
+    assetId: string;
+    kind: "image" | "audio" | "video";
+    hostReceipt: string;
+    sha256: string;
+  }>;
+  detail: string;
+};
+
+export function mixedProductLineageProjectAssetIds(input: {
+  director?: {
+    stages: ReadonlyArray<{ id: string; revisionId: string }>;
+    matches: ReadonlyArray<{ stageId: string }>;
+    captures: ReadonlyArray<{
+      stageId: string;
+      stageRevisionId: string;
+      frames: ReadonlyArray<{ projectAssetId?: string }>;
+    }>;
+  };
+  remotion?: {
+    matches: ReadonlyArray<{ timelineProjectAssetIds: readonly string[] }>;
+  };
+}): string[] {
+  const matchedStageIds = new Set(
+    input.director?.matches.map((match) => match.stageId) ?? [],
+  );
+  const matchedStageRevisions = new Map(
+    (input.director?.stages ?? [])
+      .filter((stage) => matchedStageIds.has(stage.id))
+      .map((stage) => [stage.id, stage.revisionId] as const),
+  );
+  const timelineProjectAssetIds = new Set(
+    input.remotion?.matches.flatMap((match) => match.timelineProjectAssetIds) ??
+      [],
+  );
+  return [
+    ...new Set(
+      (input.director?.captures ?? []).flatMap((capture) =>
+        matchedStageRevisions.get(capture.stageId) === capture.stageRevisionId
+          ? capture.frames.flatMap((frame) => {
+              const projectAssetId = frame.projectAssetId?.trim();
+              return projectAssetId &&
+                timelineProjectAssetIds.has(projectAssetId)
+                ? [projectAssetId]
+                : [];
+            })
+          : [],
+      ),
+    ),
+  ].sort();
+}
+
 function stableJson(value: unknown): string {
   if (value === null) return "null";
   if (typeof value === "string") return JSON.stringify(value);
@@ -116,7 +185,6 @@ function timelineStateFromArtifact(
   delete state.name;
   return state;
 }
-
 
 function parseProjectTimeline(value: unknown): ProjectTimeline {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -209,30 +277,48 @@ async function readRenderedAssetSha256(input: {
   return sha256;
 }
 
-function compositionItems(
+function timelineItems(
   timeline: ProjectTimeline,
 ): Array<Record<string, unknown>> {
   const tracks = (timeline.state as { tracks?: unknown }).tracks;
   if (!Array.isArray(tracks)) return [];
-  return tracks
-    .flatMap((track) => {
-      if (!track || typeof track !== "object" || Array.isArray(track))
-        return [];
-      const items = (track as { items?: unknown }).items;
-      return Array.isArray(items)
-        ? items.filter(
-            (item): item is Record<string, unknown> =>
-              Boolean(item) && typeof item === "object" && !Array.isArray(item),
-          )
-        : [];
-    })
-    .filter(
-      (item) =>
-        item.type === "composition" &&
-        item.runtime === "remotion" &&
-        typeof item.sourceNodeId === "string" &&
-        item.sourceNodeId.length > 0,
-    );
+  return tracks.flatMap((track) => {
+    if (!track || typeof track !== "object" || Array.isArray(track)) return [];
+    const items = (track as { items?: unknown }).items;
+    return Array.isArray(items)
+      ? items.filter(
+          (item): item is Record<string, unknown> =>
+            Boolean(item) && typeof item === "object" && !Array.isArray(item),
+        )
+      : [];
+  });
+}
+
+function compositionItems(
+  timeline: ProjectTimeline,
+): Array<Record<string, unknown>> {
+  return timelineItems(timeline).filter(
+    (item) =>
+      item.type === "composition" &&
+      item.runtime === "remotion" &&
+      typeof item.sourceNodeId === "string" &&
+      item.sourceNodeId.length > 0,
+  );
+}
+
+function timelineProjectAssetIds(timeline: ProjectTimeline): string[] {
+  const mediaTypes = new Set(["audio", "image", "sticker", "video"]);
+  return [
+    ...new Set(
+      timelineItems(timeline).flatMap((item) =>
+        mediaTypes.has(String(item.type)) &&
+        typeof item.assetId === "string" &&
+        item.assetId.trim()
+          ? [item.assetId.trim()]
+          : [],
+      ),
+    ),
+  ].sort();
 }
 
 type HostNode = {
@@ -370,11 +456,13 @@ async function readCanvasNode(
   nodeId: string,
 ): Promise<{ node: HostNode; version: string; readToken: string } | null> {
   for (const canvasId of canvasIds) {
-    const requested = await input.client.request<ProjectHostResponse & {
-      node?: unknown;
-      version?: unknown;
-      readToken?: unknown;
-    }>({
+    const requested = await input.client.request<
+      ProjectHostResponse & {
+        node?: unknown;
+        version?: unknown;
+        readToken?: unknown;
+      }
+    >({
       cwd: input.workspace,
       projectId: input.ready.projectId,
       command: { action: "get", canvasId, nodeId },
@@ -416,6 +504,391 @@ async function writeJson(path: string, value: unknown): Promise<void> {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
+function recordOf(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+async function readJsonLinesIfPresent(path: string): Promise<unknown[]> {
+  let text: string;
+  try {
+    text = await readFile(path, "utf8");
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      return [];
+    }
+    throw error;
+  }
+  return text.split(/\r?\n/u).flatMap((line) => {
+    if (!line.trim()) return [];
+    try {
+      return [JSON.parse(line) as unknown];
+    } catch {
+      return [];
+    }
+  });
+}
+
+async function readTrustedAssetOperationEvidence(
+  caseRoot: string,
+  caseId: string,
+): Promise<TrustedAssetOperationEvidence[]> {
+  const successfulMcpCalls: SuccessfulAssetMcpCall[] =
+    await readRunnerSealedMcpCalls({
+      logsRoot: join(caseRoot, "logs"),
+      caseId,
+    });
+
+  const successfulCliArgv = (
+    await readJsonLinesIfPresent(
+      join(caseRoot, "logs", "clash-cli-events.jsonl"),
+    )
+  ).flatMap((value) => {
+    const event = recordOf(value);
+    return event?.type === "clash.cli.completed" &&
+      event.exitCode === 0 &&
+      event.origin !== "mcp-transport" &&
+      Array.isArray(event.argv) &&
+      event.argv.every((argument) => typeof argument === "string")
+      ? [event.argv as string[]]
+      : [];
+  });
+  return extractTrustedAssetOperationEvidence({
+    successfulMcpCalls,
+    successfulCliArgv,
+  });
+}
+
+function relativePathInside(
+  root: string,
+  candidate: string,
+): string | undefined {
+  const relativePath = relative(resolve(root), resolve(candidate));
+  if (
+    relativePath === ".." ||
+    relativePath.startsWith(`..${sep}`) ||
+    isAbsolute(relativePath)
+  ) {
+    return undefined;
+  }
+  return relativePath;
+}
+
+async function mapImportSourceToSnapshot(input: {
+  caseRoot: string;
+  declaredFinalWorkspace: string;
+  snapshotWorkspace: string;
+  sourcePath: string;
+}): Promise<string | undefined> {
+  const declaredFinalWorkspace = resolve(input.declaredFinalWorkspace);
+  const snapshotWorkspace = resolve(input.snapshotWorkspace);
+  if (!isAbsolute(input.sourcePath)) {
+    const candidate = resolve(snapshotWorkspace, input.sourcePath);
+    return relativePathInside(snapshotWorkspace, candidate) === undefined
+      ? undefined
+      : candidate;
+  }
+
+  const finalRelativePath =
+    relativePathInside(snapshotWorkspace, input.sourcePath) ??
+    relativePathInside(declaredFinalWorkspace, input.sourcePath);
+  if (finalRelativePath !== undefined) {
+    return resolve(snapshotWorkspace, finalRelativePath);
+  }
+
+  let hostManifest: Record<string, unknown> | undefined;
+  try {
+    hostManifest = recordOf(
+      JSON.parse(
+        await readFile(join(input.caseRoot, "clash-host.json"), "utf8"),
+      ),
+    );
+  } catch {
+    return undefined;
+  }
+  if (
+    typeof hostManifest?.executionWorkspace !== "string" ||
+    typeof hostManifest.finalWorkspace !== "string" ||
+    (resolve(hostManifest.finalWorkspace) !== declaredFinalWorkspace &&
+      resolve(hostManifest.finalWorkspace) !== snapshotWorkspace)
+  ) {
+    return undefined;
+  }
+  const executionRelativePath = relativePathInside(
+    hostManifest.executionWorkspace,
+    input.sourcePath,
+  );
+  return executionRelativePath === undefined
+    ? undefined
+    : resolve(snapshotWorkspace, executionRelativePath);
+}
+
+async function fileSha256(path: string): Promise<string | undefined> {
+  const hash = createHash("sha256");
+  try {
+    for await (const chunk of createReadStream(path)) hash.update(chunk);
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      return undefined;
+    }
+    throw error;
+  }
+  return hash.digest("hex");
+}
+
+async function fetchMediaSha256(url: string, assetId: string): Promise<string> {
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Project Asset ${assetId} media readback failed with HTTP ${response.status}`,
+    );
+  }
+  return createHash("sha256")
+    .update(new Uint8Array(await response.arrayBuffer()))
+    .digest("hex");
+}
+
+export async function captureAssetProductReadback(input: {
+  benchmark: ArtifactBenchmarkCase;
+  workspace: string;
+  caseRoot: string;
+  ready?: ProductHostReady;
+}): Promise<AssetProductReadbackReport> {
+  const reportPath = join(input.caseRoot, "asset-readback.json");
+  const expectedProjectAssetId =
+    input.benchmark.execution?.productReadback?.expectedProjectAssetId;
+  const matchedArtifactIds: string[] = [];
+  let operationEvidence: TrustedAssetOperationEvidence[] = [];
+  const matches: AssetProductReadbackReport["matches"] = [];
+  try {
+    if (!input.ready)
+      throw new Error("Clash Project Host did not become ready");
+    const host = productHostContext({
+      ready: input.ready,
+      workspace: input.workspace,
+    });
+    await assertProjectHostReady(host);
+    await assertWorkspaceProject(input.workspace, input.ready.projectId);
+
+    const expectedIds =
+      input.benchmark.execution?.productReadback?.artifactIds ?? [];
+    if (expectedIds.length === 0) {
+      throw new Error("Project Asset readback requires media artifact ids");
+    }
+    const submission = await loadSubmission(input.workspace);
+    if (submission.error) throw new Error(submission.error);
+    const artifacts = expectedIds.map((artifactId) => {
+      const artifact = submission.artifacts.find(
+        (candidate) => candidate.descriptor.id === artifactId,
+      );
+      if (
+        !artifact ||
+        artifact.error ||
+        !artifact.evidence ||
+        !artifact.absolutePath ||
+        (artifact.descriptor.kind !== "image" &&
+          artifact.descriptor.kind !== "audio" &&
+          artifact.descriptor.kind !== "video")
+      ) {
+        throw new Error(
+          `Project Asset artifact '${artifactId}' must be an available image, audio, or video file`,
+        );
+      }
+      return artifact;
+    });
+    operationEvidence = await readTrustedAssetOperationEvidence(
+      input.caseRoot,
+      input.benchmark.id,
+    );
+    if (expectedProjectAssetId) {
+      if (artifacts.length !== 1) {
+        throw new Error(
+          "An expected Project Asset identity requires exactly one submitted media artifact",
+        );
+      }
+      const requiredEntityOperations = [
+        ...new Set(
+          (input.benchmark.execution?.requiredProductOperations ?? []).filter(
+            (
+              operation,
+            ): operation is TrustedAssetOperationEvidence["operation"] =>
+              operation === "asset.import" ||
+              operation === "asset.get" ||
+              operation === "asset.trash" ||
+              operation === "asset.restore",
+          ),
+        ),
+      ];
+      for (const operation of requiredEntityOperations) {
+        const observed = operationEvidence.filter(
+          (evidence) => evidence.operation === operation,
+        );
+        if (observed.length === 0) {
+          throw new Error(
+            `Trusted ${operation} evidence is missing for expected Project Asset ${expectedProjectAssetId}`,
+          );
+        }
+        if (
+          observed.some(
+            (evidence) => evidence.projectAssetId !== expectedProjectAssetId,
+          )
+        ) {
+          throw new Error(
+            `Every required Asset operation must target the same Project Asset identity ${expectedProjectAssetId}`,
+          );
+        }
+      }
+      const importEvidence = operationEvidence.filter(
+        (evidence) =>
+          evidence.operation === "asset.import" &&
+          evidence.projectAssetId === expectedProjectAssetId,
+      );
+      if (requiredEntityOperations.includes("asset.import")) {
+        const importedSnapshotPaths = await Promise.all(
+          importEvidence.map((evidence) =>
+            evidence.sourcePath
+              ? mapImportSourceToSnapshot({
+                  caseRoot: input.caseRoot,
+                  declaredFinalWorkspace: input.workspace,
+                  snapshotWorkspace: submission.workspace,
+                  sourcePath: evidence.sourcePath,
+                })
+              : undefined,
+          ),
+        );
+        const importedSha256 = await Promise.all(
+          importedSnapshotPaths.map((sourcePath) =>
+            sourcePath ? fileSha256(sourcePath) : undefined,
+          ),
+        );
+        if (
+          importedSha256.some(
+            (sha256) => sha256 !== artifacts[0]!.evidence!.sha256,
+          )
+        ) {
+          throw new Error(
+            `Trusted import evidence for ${expectedProjectAssetId} must use bytes matching the submitted media file`,
+          );
+        }
+      }
+    }
+
+    const client = createProjectAssetHttpClient({
+      endpoint: input.ready.apiUrl,
+      fetch: (request, init) =>
+        fetch(request, { ...init, signal: AbortSignal.timeout(15_000) }),
+    });
+    const listedAssets = await client.list({
+      projectId: input.ready.projectId,
+    });
+    const expectedKinds = new Set(
+      artifacts.map((artifact) => artifact.descriptor.kind),
+    );
+    const candidates: Array<{
+      assetId: string;
+      kind: "image" | "audio" | "video";
+      hostReceipt: string;
+      sha256: string;
+    }> = [];
+    for (const listed of listedAssets) {
+      if (
+        (listed.kind !== "image" &&
+          listed.kind !== "audio" &&
+          listed.kind !== "video") ||
+        listed.lifecycle.state !== "active" ||
+        !expectedKinds.has(listed.kind)
+      ) {
+        continue;
+      }
+      const observed = await client.get({
+        projectId: input.ready.projectId,
+        assetId: listed.id,
+      });
+      const asset = observed.value;
+      if (
+        asset.id !== listed.id ||
+        asset.kind !== listed.kind ||
+        asset.lifecycle.state !== "active" ||
+        asset.status !== "ready" ||
+        !asset.url
+      ) {
+        continue;
+      }
+      candidates.push({
+        assetId: asset.id,
+        kind: asset.kind,
+        hostReceipt: observed.receipt,
+        sha256: await fetchMediaSha256(asset.url, asset.id),
+      });
+    }
+
+    const usedAssetIds = new Set<string>();
+    for (const artifact of artifacts) {
+      const matchingCandidates = candidates.filter(
+        (candidate) =>
+          !usedAssetIds.has(candidate.assetId) &&
+          (!expectedProjectAssetId ||
+            candidate.assetId === expectedProjectAssetId) &&
+          candidate.kind === artifact.descriptor.kind &&
+          candidate.sha256 === artifact.evidence!.sha256,
+      );
+      if (matchingCandidates.length !== 1) {
+        throw new Error(
+          matchingCandidates.length === 0
+            ? `Submitted media artifact '${artifact.descriptor.id}' does not match a ready Project Asset with a Host receipt`
+            : `Submitted media artifact '${artifact.descriptor.id}' ambiguously matches multiple ready Project Assets`,
+        );
+      }
+      const match = matchingCandidates[0]!;
+      usedAssetIds.add(match.assetId);
+      matchedArtifactIds.push(artifact.descriptor.id);
+      matches.push({
+        artifactId: artifact.descriptor.id,
+        ...match,
+      });
+    }
+
+    const report: AssetProductReadbackReport = {
+      schemaVersion: 1,
+      status: "pass",
+      projectId: input.ready.projectId,
+      ...(expectedProjectAssetId ? { expectedProjectAssetId } : {}),
+      matchedArtifactIds,
+      operationEvidence,
+      matches,
+      detail: `Matched ${matches.length} submitted media artifact(s) to ready Project Assets by bytes with Host receipts.`,
+    };
+    await writeJson(reportPath, report);
+    return report;
+  } catch (error) {
+    const report: AssetProductReadbackReport = {
+      schemaVersion: 1,
+      status: "fail",
+      projectId: input.ready?.projectId ?? null,
+      ...(expectedProjectAssetId ? { expectedProjectAssetId } : {}),
+      matchedArtifactIds,
+      operationEvidence,
+      matches,
+      detail: error instanceof Error ? error.message : String(error),
+    };
+    await writeJson(reportPath, report);
+    return report;
+  }
+}
+
 export async function captureRemotionProductReadback(input: {
   benchmark: ArtifactBenchmarkCase;
   workspace: string;
@@ -437,10 +910,12 @@ export async function captureRemotionProductReadback(input: {
     await assertProjectHostReady(host);
     await assertWorkspaceProject(input.workspace, input.ready.projectId);
 
-    const response = await requestProjectHost<ProjectHostResponse & {
-      timelines?: unknown;
-      versions?: unknown;
-    }>({
+    const response = await requestProjectHost<
+      ProjectHostResponse & {
+        timelines?: unknown;
+        versions?: unknown;
+      }
+    >({
       ...host,
       command: { action: "list_timelines" },
     });
@@ -488,9 +963,11 @@ export async function captureRemotionProductReadback(input: {
       });
     }
 
-    const canvasesResponse = await requestProjectHost<ProjectHostResponse & {
-      canvases?: unknown;
-    }>({
+    const canvasesResponse = await requestProjectHost<
+      ProjectHostResponse & {
+        canvases?: unknown;
+      }
+    >({
       ...host,
       command: { action: "list_canvases" },
     });
@@ -551,9 +1028,9 @@ export async function captureRemotionProductReadback(input: {
       );
     let timelineValue: unknown;
     try {
-      timelineValue = parseYaml(
-        timelineArtifact.content.toString("utf8"),
-      ) as unknown;
+      timelineValue = timelineDslDocumentFromArtifact(
+        parseYaml(timelineArtifact.content.toString("utf8")) as unknown,
+      );
     } catch (error) {
       throw new Error(
         `Timeline artifact is not YAML: ${error instanceof Error ? error.message : String(error)}`,
@@ -592,11 +1069,7 @@ export async function captureRemotionProductReadback(input: {
       });
       for (const item of compositionItems(timeline)) {
         const sourceNodeId = String(item.sourceNodeId);
-        const source = await readCanvasNode(
-          host,
-          canvasIds,
-          sourceNodeId,
-        );
+        const source = await readCanvasNode(host, canvasIds, sourceNodeId);
         const sourceData = source?.node.data ?? {};
         if (!source || source.node.type !== "remotion-component") continue;
         if (
@@ -622,6 +1095,7 @@ export async function captureRemotionProductReadback(input: {
           componentSha256,
           timelineArtifactId: timelineArtifact.descriptor.id,
           timelineSha256,
+          timelineProjectAssetIds: timelineProjectAssetIds(timeline),
           videoArtifactId: videoArtifact.descriptor.id,
           videoSha256: videoArtifact.evidence.sha256,
           renderNodeId: renderNode.node.id,
@@ -690,10 +1164,12 @@ export async function captureTimelineProductReadback(input: {
     await assertProjectHostReady(host);
     await assertWorkspaceProject(input.workspace, input.ready.projectId);
 
-    const response = await requestProjectHost<ProjectHostResponse & {
-      timelines?: unknown;
-      versions?: unknown;
-    }>({
+    const response = await requestProjectHost<
+      ProjectHostResponse & {
+        timelines?: unknown;
+        versions?: unknown;
+      }
+    >({
       ...host,
       command: { action: "list_timelines" },
     });
@@ -777,9 +1253,9 @@ export async function captureTimelineProductReadback(input: {
       );
     let timelineValue: unknown;
     try {
-      timelineValue = parseYaml(
-        timelineArtifact.content.toString("utf8"),
-      ) as unknown;
+      timelineValue = timelineDslDocumentFromArtifact(
+        parseYaml(timelineArtifact.content.toString("utf8")) as unknown,
+      );
     } catch (error) {
       throw new Error(
         `Timeline artifact is not YAML: ${error instanceof Error ? error.message : String(error)}`,

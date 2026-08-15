@@ -11,6 +11,121 @@ import {
 } from "./plugin-host-ipc";
 
 describe("local plugin host IPC", () => {
+  it("lists realm-neutral Generator registrations over the host socket", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-generator-ipc-"));
+    const socketPath = join(root, "plugin-host.sock");
+    const schemaHash = `sha256:${"a".repeat(64)}` as const;
+    const action = {
+      id: "capture-still",
+      executorExportId: "capture-still",
+      parametersSchema: { type: "object" },
+      invocationInputs: [],
+      outputs: [
+        {
+          slot: "image",
+          assetType: { kind: "media" as const, mediaKind: "image" as const },
+          cardinality: { minItems: 1, maxItems: 1 },
+        },
+      ],
+    };
+    const registration = {
+      pluginId: "clash.director",
+      version: "1.2.3",
+      schemaHash,
+      document: {
+        apiVersion: "clash.generator/v1" as const,
+        kind: "generator" as const,
+        spec: {
+          definitionId: "director-stage",
+          stateSchema: { type: "object" },
+          editPolicy: "advance-head" as const,
+          persistentInputs: [],
+          actions: [action],
+        },
+      },
+    };
+    const server = await startPluginHostIpcServer({
+      socketPath,
+      host: {
+        listCards: () => [],
+        listGenerators: () => [registration],
+        resolveBinding: () => {
+          throw new Error("not used");
+        },
+        invoke: async () => {
+          throw new Error("not used");
+        },
+      },
+    });
+    const client = new PluginHostClient({ socketPath });
+
+    try {
+      await expect(client.listGenerators()).resolves.toEqual([registration]);
+      expect(registration).not.toHaveProperty("runtime");
+      expect(registration).not.toHaveProperty("realm");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("resolves one realm-neutral Generator definition over the host socket", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-generator-resolve-ipc-"));
+    const socketPath = join(root, "plugin-host.sock");
+    const definition = {
+      pluginId: "clash.director",
+      definitionId: "director-stage",
+      version: "1.2.3",
+      schemaHash: `sha256:${"b".repeat(64)}` as const,
+      stateSchema: { type: "object" },
+      editPolicy: "advance-head" as const,
+      persistentInputs: [],
+      actions: [
+        {
+          id: "capture-still",
+          executorExportId: "capture-still",
+          parametersSchema: { type: "object" },
+          invocationInputs: [],
+          outputs: [
+            {
+              slot: "image",
+              assetType: {
+                kind: "media" as const,
+                mediaKind: "image" as const,
+              },
+              cardinality: { minItems: 1, maxItems: 1 },
+            },
+          ],
+        },
+      ],
+    };
+    const server = await startPluginHostIpcServer({
+      socketPath,
+      host: {
+        listCards: () => [],
+        resolveGeneratorDefinition: () => definition,
+        resolveBinding: () => {
+          throw new Error("not used");
+        },
+        invoke: async () => {
+          throw new Error("not used");
+        },
+      },
+    });
+    const client = new PluginHostClient({ socketPath });
+
+    try {
+      const resolved = await client.resolveGeneratorDefinition(
+        "clash.director",
+        "director-stage",
+      );
+      expect(resolved).toEqual(definition);
+      expect(resolved).not.toHaveProperty("runtime");
+      expect(resolved).not.toHaveProperty("realm");
+    } finally {
+      await server.close();
+    }
+  });
+
   it("maps a long config directory to a reachable short Unix socket", async () => {
     if (process.platform === "win32") return;
 
@@ -34,7 +149,9 @@ describe("local plugin host IPC", () => {
       },
     });
     try {
-      await expect(new PluginHostClient({ socketPath }).listCards()).resolves.toEqual([]);
+      await expect(
+        new PluginHostClient({ socketPath }).listCards(),
+      ).resolves.toEqual([]);
     } finally {
       await server.close();
     }
@@ -54,14 +171,20 @@ describe("local plugin host IPC", () => {
     };
 
     const attempts = await Promise.allSettled(
-      Array.from({ length: 8 }, () => startPluginHostIpcServer({ host, socketPath })),
+      Array.from({ length: 8 }, () =>
+        startPluginHostIpcServer({ host, socketPath }),
+      ),
     );
     const owners = attempts.filter(
-      (attempt): attempt is PromiseFulfilledResult<Awaited<ReturnType<typeof startPluginHostIpcServer>>> =>
-        attempt.status === "fulfilled",
+      (
+        attempt,
+      ): attempt is PromiseFulfilledResult<
+        Awaited<ReturnType<typeof startPluginHostIpcServer>>
+      > => attempt.status === "fulfilled",
     );
     const rejected = attempts.filter(
-      (attempt): attempt is PromiseRejectedResult => attempt.status === "rejected",
+      (attempt): attempt is PromiseRejectedResult =>
+        attempt.status === "rejected",
     );
 
     try {
@@ -73,7 +196,9 @@ describe("local plugin host IPC", () => {
       for (const attempt of rejected) {
         expect(attempt.reason).toMatchObject({ code: "EADDRINUSE" });
       }
-      await expect(new PluginHostClient({ socketPath }).listCards()).resolves.toEqual([]);
+      await expect(
+        new PluginHostClient({ socketPath }).listCards(),
+      ).resolves.toEqual([]);
       if (process.platform !== "win32") {
         expect((await stat(socketPath)).mode & 0o777).toBe(0o600);
       }
@@ -91,77 +216,116 @@ describe("local plugin host IPC", () => {
       exportId: "fal-h3",
       schemaHash: `sha256:${"d".repeat(64)}`,
     } as const;
-    const cards = [{
-      pluginId: "clash.media",
-      version: "1.2.3",
-      schemaHash: binding.schemaHash,
-      runtime: { kind: "local" as const, transport: "stdio" as const, entrypoint: "handler.mjs", args: [] },
-      document: {
-        apiVersion: "clash.card/v1" as const,
-        kind: "action-card" as const,
-        spec: {
-          id: "caption-helper",
-          name: "Caption Helper",
-          outputType: "text" as const,
-          parameters: [],
-          presentation: { type: "form" as const },
-          input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text" as const] },
-          functionExportId: "caption-helper",
+    const cards = [
+      {
+        pluginId: "clash.media",
+        version: "1.2.3",
+        schemaHash: binding.schemaHash,
+        runtime: {
+          kind: "local" as const,
+          transport: "stdio" as const,
+          entrypoint: "handler.mjs",
+          args: [],
         },
-      },
-    }];
-    const providers = [{
-      pluginId: "clash.media",
-      version: "1.2.3",
-      schemaHash: binding.schemaHash,
-      runtime: { kind: "local" as const, transport: "stdio" as const, entrypoint: "handler.mjs", args: [] },
-      document: {
-        apiVersion: "clash.provider/v1" as const,
-        kind: "provider" as const,
-        spec: {
-          id: "hilo-hub",
-          name: "MiniMax Hilo Hub",
-          upstreamId: "hilo-hub",
-          apiShape: "hilo-hub",
-          executorExportId: "hilo-hub-execute",
-          auth: {
-            methods: [{
-              id: "api-key",
-              label: "API key",
-              form: [{ kind: "field" as const, key: "apiKey", label: "API key", secret: true }],
-            }],
+        document: {
+          apiVersion: "clash.card/v1" as const,
+          kind: "action-card" as const,
+          spec: {
+            id: "caption-helper",
+            name: "Caption Helper",
+            outputType: "text" as const,
+            parameters: [],
+            presentation: { type: "form" as const },
+            input: {
+              requiresPrompt: true,
+              inputMode: {},
+              promptModalities: ["text" as const],
+            },
+            functionExportId: "caption-helper",
           },
         },
       },
-    }];
-    const modelBindings = [{
-      pluginId: "clash.media",
-      version: "1.2.3",
-      schemaHash: binding.schemaHash,
-      runtime: { kind: "local" as const, transport: "stdio" as const, entrypoint: "handler.mjs", args: [] },
-      document: {
-        apiVersion: "clash.binding/v1" as const,
-        kind: "model-provider-binding" as const,
-        spec: {
-          id: "hilo-hub-minimax-h3",
-          modelId: "minimax-h3",
-          providerId: "hilo-hub",
-          upstreamId: "hilo-hub",
-          upstreamModel: "MiniMax-H3",
-          apiShape: "hilo-hub",
-          executorExportId: "hilo-hub-execute",
+    ];
+    const providers = [
+      {
+        pluginId: "clash.media",
+        version: "1.2.3",
+        schemaHash: binding.schemaHash,
+        runtime: {
+          kind: "local" as const,
+          transport: "stdio" as const,
+          entrypoint: "handler.mjs",
+          args: [],
+        },
+        document: {
+          apiVersion: "clash.provider/v1" as const,
+          kind: "provider" as const,
+          spec: {
+            id: "hilo-hub",
+            name: "MiniMax Hilo Hub",
+            upstreamId: "hilo-hub",
+            apiShape: "hilo-hub",
+            executorExportId: "hilo-hub-execute",
+            auth: {
+              methods: [
+                {
+                  id: "api-key",
+                  label: "API key",
+                  form: [
+                    {
+                      kind: "field" as const,
+                      key: "apiKey",
+                      label: "API key",
+                      secret: true,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
         },
       },
-    }];
+    ];
+    const modelBindings = [
+      {
+        pluginId: "clash.media",
+        version: "1.2.3",
+        schemaHash: binding.schemaHash,
+        runtime: {
+          kind: "local" as const,
+          transport: "stdio" as const,
+          entrypoint: "handler.mjs",
+          args: [],
+        },
+        document: {
+          apiVersion: "clash.binding/v1" as const,
+          kind: "model-provider-binding" as const,
+          spec: {
+            id: "hilo-hub-minimax-h3",
+            modelId: "minimax-h3",
+            providerId: "hilo-hub",
+            upstreamId: "hilo-hub",
+            upstreamModel: "MiniMax-H3",
+            apiShape: "hilo-hub",
+            executorExportId: "hilo-hub-execute",
+          },
+        },
+      },
+    ];
     const invoke = vi.fn(async (_pluginId: string, invocation: any) => ({
       protocol: "clash.plugin.result/v1" as const,
       invocationId: invocation.invocationId,
       status: "completed" as const,
-      outputs: [{
-        slot: "projection",
-        kind: "value" as const,
-        value: { endpoint: "minimax/h3/text-to-video", input: { prompt: "hello" } },
-      }],
+      outputs: [
+        {
+          slot: "projection",
+          kind: "value" as const,
+          value: {
+            endpoint: "minimax/h3/text-to-video",
+            input: { prompt: "hello" },
+          },
+        },
+      ],
     }));
     const server = await startPluginHostIpcServer({
       socketPath,
@@ -177,13 +341,15 @@ describe("local plugin host IPC", () => {
 
     try {
       await expect(client.listCards()).resolves.toMatchObject(cards);
-      await expect((client as any).listProviders()).resolves.toMatchObject(providers);
-      await expect((client as any).listModelBindings()).resolves.toMatchObject(modelBindings);
-      await expect(client.resolveBinding(
-        "clash.media",
-        "fal-h3",
-        "provider-projector",
-      )).resolves.toEqual(binding);
+      await expect((client as any).listProviders()).resolves.toMatchObject(
+        providers,
+      );
+      await expect((client as any).listModelBindings()).resolves.toMatchObject(
+        modelBindings,
+      );
+      await expect(
+        client.resolveBinding("clash.media", "fal-h3", "provider-projector"),
+      ).resolves.toEqual(binding);
       const invocation = {
         protocol: "clash.plugin.invoke/v1" as const,
         invocationId: "invocation-ipc-1",
@@ -195,9 +361,11 @@ describe("local plugin host IPC", () => {
         actor: { kind: "agent" as const, id: "agent-1" },
         operation: "submit" as const,
       };
-      await expect(client.invoke("clash.media", invocation, {
-        accountId: "provider-account-7",
-      })).resolves.toMatchObject({
+      await expect(
+        client.invoke("clash.media", invocation, {
+          accountId: "provider-account-7",
+        }),
+      ).resolves.toMatchObject({
         invocationId: "invocation-ipc-1",
         status: "completed",
       });
@@ -233,8 +401,9 @@ describe("local plugin host IPC", () => {
     });
     const client = new PluginHostClient({ socketPath });
     try {
-      await expect(client.resolveBinding("missing", "project", "provider-projector"))
-        .rejects.toThrow("plugin is not installed");
+      await expect(
+        client.resolveBinding("missing", "project", "provider-projector"),
+      ).rejects.toThrow("plugin is not installed");
     } finally {
       await server.close();
     }
@@ -267,17 +436,23 @@ describe("local plugin host IPC", () => {
     });
     const client = new PluginHostClient({ socketPath, timeoutMs: 10 });
     try {
-      await expect(client.invoke("test.slow-imagegen", {
-        protocol: "clash.plugin.invoke/v1",
-        invocationId: "slow-invocation",
-        taskId: "slow-task",
-        projectId: "slow-project",
-        target: { ...binding, kind: "action" },
-        input: { values: {}, references: [] },
-        assetInputs: [],
-        actor: { kind: "user" },
-        operation: "submit" as const,
-      }, { timeoutMs: 100 })).resolves.toMatchObject({ status: "completed" });
+      await expect(
+        client.invoke(
+          "test.slow-imagegen",
+          {
+            protocol: "clash.plugin.invoke/v1",
+            invocationId: "slow-invocation",
+            taskId: "slow-task",
+            projectId: "slow-project",
+            target: { ...binding, kind: "action" },
+            input: { values: {}, references: [] },
+            assetInputs: [],
+            actor: { kind: "user" },
+            operation: "submit" as const,
+          },
+          { timeoutMs: 100 },
+        ),
+      ).resolves.toMatchObject({ status: "completed" });
     } finally {
       await server.close();
     }

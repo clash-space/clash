@@ -1,7 +1,13 @@
-import { mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, it } from "vitest";
+import type { PluginModule } from "@clash/action-sdk";
+import { describe, expect, it } from "vitest";
+import type {
+  LoadedTrustedBundledPluginModule,
+  TrustedBundledPluginModuleRegistration,
+} from "../../../bundled-plugin-modules.js";
+import type { ActionEnv } from "./actions-loader.js";
 import * as actionsLoader from "./actions-loader";
 
 const { ActionsHost } = actionsLoader;
@@ -28,6 +34,813 @@ async function attestTestPlugin(
   await mkdir(join(path, ".."), { recursive: true });
   await writeFile(path, JSON.stringify(await createReceipt(pluginDir)));
 }
+
+interface BundledTestPlugin {
+  registration: TrustedBundledPluginModuleRegistration;
+  loaded: LoadedTrustedBundledPluginModule;
+}
+
+type MixedRealmActionEnv = ActionEnv & {
+  trustedBundledPluginModules: readonly TrustedBundledPluginModuleRegistration[];
+  loadTrustedBundledPluginModule(
+    pluginId: string,
+  ): Promise<LoadedTrustedBundledPluginModule>;
+};
+
+async function bundledTestPlugin(options: {
+  id: string;
+  resultValue: string;
+  invoke?: PluginModule["invoke"];
+  actionAssetInputs?: Array<{
+    match: { kinds?: string[]; slots?: string[] };
+    representations: string[];
+    mediaTypes?: string[];
+  }>;
+}): Promise<BundledTestPlugin> {
+  const root = await mkdtemp(join(tmpdir(), "clash-bundled-module-"));
+  await mkdir(join(root, "cards"), { recursive: true });
+  await mkdir(join(root, "providers"), { recursive: true });
+  await mkdir(join(root, "bindings"), { recursive: true });
+  await mkdir(join(root, "generators"), { recursive: true });
+  await writeFile(
+    join(root, "cards", "run-action.json"),
+    JSON.stringify({
+      apiVersion: "clash.card/v1",
+      kind: "action-card",
+      spec: {
+        id: "run-action",
+        name: "Run Action",
+        outputType: "image",
+        functionExportId: "run-action",
+      },
+    }),
+  );
+  await writeFile(
+    join(root, "providers", "test-provider.json"),
+    JSON.stringify({
+      apiVersion: "clash.provider/v1",
+      kind: "provider",
+      spec: {
+        id: "test-provider",
+        name: "Test Provider",
+        upstreamId: "test-upstream",
+        apiShape: "test-api",
+        executorExportId: "execute",
+        auth: {
+          methods: [
+            {
+              id: "api-key",
+              label: "API key",
+              form: [
+                {
+                  kind: "field",
+                  key: "apiKey",
+                  label: "API key",
+                  secret: true,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    }),
+  );
+  await writeFile(
+    join(root, "bindings", "test-model.json"),
+    JSON.stringify({
+      apiVersion: "clash.binding/v1",
+      kind: "model-provider-binding",
+      spec: {
+        id: "test-model-binding",
+        modelId: "test-model",
+        providerId: "test-provider",
+        upstreamId: "test-upstream",
+        upstreamModel: "test-model-v1",
+        apiShape: "test-api",
+        executorExportId: "execute",
+      },
+    }),
+  );
+  await writeFile(
+    join(root, "generators", "test-generator.json"),
+    JSON.stringify({
+      apiVersion: "clash.generator/v1",
+      kind: "generator",
+      spec: {
+        definitionId: "test-generator",
+        stateSchema: { type: "object" },
+        editPolicy: "advance-head",
+        persistentInputs: [],
+        actions: [
+          {
+            id: "run",
+            executorExportId: "run-action",
+            parametersSchema: { type: "object" },
+            invocationInputs: [],
+            outputs: [
+              {
+                slot: "media",
+                assetType: { kind: "media", mediaKind: "image" },
+                cardinality: { minItems: 1, maxItems: 1 },
+              },
+            ],
+          },
+        ],
+      },
+    }),
+  );
+  const functions = [
+    {
+      id: "run-action",
+      kind: "action" as const,
+      ...(options.actionAssetInputs
+        ? { assetInputs: options.actionAssetInputs }
+        : {}),
+    },
+    { id: "execute", kind: "provider-executor" as const },
+  ];
+  const manifestPath = join(root, "manifest.json");
+  await writeFile(
+    manifestPath,
+    JSON.stringify({
+      apiVersion: "clash.plugin/v1",
+      id: options.id,
+      version: "1.0.0",
+      name: "Bundled module test",
+      runtime: {
+        kind: "local",
+        transport: "stdio",
+        entrypoint: "dist/must-not-be-spawned.mjs",
+      },
+      contributes: {
+        cards: [
+          {
+            id: "run-action",
+            kind: "action-card",
+            path: "cards/run-action.json",
+          },
+        ],
+        providers: [
+          {
+            id: "test-provider",
+            kind: "provider",
+            path: "providers/test-provider.json",
+          },
+        ],
+        modelBindings: [
+          {
+            id: "test-model-binding",
+            kind: "model-provider-binding",
+            path: "bindings/test-model.json",
+          },
+        ],
+        generators: [
+          {
+            id: "test-generator",
+            kind: "generator",
+            path: "generators/test-generator.json",
+          },
+        ],
+        functions,
+      },
+    }),
+  );
+  return {
+    registration: { id: options.id },
+    loaded: {
+      id: options.id,
+      manifestPath,
+      entrypointPath: join(root, "dist", "must-not-be-spawned.mjs"),
+      plugin: {
+        contributes: functions,
+        invoke:
+          options.invoke ??
+          (async (invocation) => ({
+            protocol: "clash.plugin.result/v1",
+            invocationId: invocation.invocationId,
+            status: "completed",
+            outputs: [
+              {
+                slot: "realm",
+                kind: "value",
+                value: options.resultValue,
+              },
+            ],
+          })),
+      },
+    },
+  };
+}
+
+function mixedRealmEnv(
+  actionsRoot: string,
+  ...plugins: BundledTestPlugin[]
+): MixedRealmActionEnv {
+  const loaded = new Map(
+    plugins.map((plugin) => [plugin.loaded.id, plugin.loaded]),
+  );
+  return {
+    actionsRoot,
+    trustedBundledPluginModules: plugins.map((plugin) => plugin.registration),
+    async loadTrustedBundledPluginModule(pluginId) {
+      const plugin = loaded.get(pluginId);
+      if (!plugin) throw new Error(`No trusted test module ${pluginId}.`);
+      return plugin;
+    },
+  };
+}
+
+async function writeProcessTestPlugin(options: {
+  actionsRoot: string;
+  id: string;
+  resultValue: string;
+  generator?: boolean;
+  fastExit?: boolean;
+}): Promise<void> {
+  const root = join(options.actionsRoot, options.id);
+  await mkdir(root, { recursive: true });
+  await writeFile(
+    join(root, "stdio.mjs"),
+    options.fastExit
+      ? "process.exit(0);\n"
+      : [
+          'import { createInterface } from "node:readline";',
+          "const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });",
+          "for await (const line of lines) {",
+          "  if (!line.trim()) continue;",
+          "  const invocation = JSON.parse(line);",
+          "  process.stdout.write(JSON.stringify({",
+          '    protocol: "clash.plugin.result/v1",',
+          "    invocationId: invocation.invocationId,",
+          '    status: "completed",',
+          `    outputs: [{ slot: "realm", kind: "value", value: ${JSON.stringify(options.resultValue)} }],`,
+          '  }) + "\\n");',
+          "}",
+        ].join("\n"),
+  );
+  if (options.generator) {
+    await mkdir(join(root, "generators"), { recursive: true });
+    await writeFile(
+      join(root, "generators", "test-generator.json"),
+      JSON.stringify({
+        apiVersion: "clash.generator/v1",
+        kind: "generator",
+        spec: {
+          definitionId: "test-generator",
+          stateSchema: { type: "object" },
+          editPolicy: "advance-head",
+          persistentInputs: [],
+          actions: [
+            {
+              id: "run",
+              executorExportId: "run-action",
+              parametersSchema: { type: "object" },
+              invocationInputs: [],
+              outputs: [
+                {
+                  slot: "media",
+                  assetType: { kind: "media", mediaKind: "image" },
+                  cardinality: { minItems: 1, maxItems: 1 },
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+  }
+  await writeFile(
+    join(root, "manifest.json"),
+    JSON.stringify({
+      apiVersion: "clash.plugin/v1",
+      id: options.id,
+      version: "1.0.0",
+      name: "Process test plugin",
+      runtime: { kind: "local", transport: "stdio", entrypoint: "stdio.mjs" },
+      contributes: {
+        functions: [
+          { id: "execute", kind: "provider-executor" },
+          ...(options.generator ? [{ id: "run-action", kind: "action" }] : []),
+        ],
+        ...(options.generator
+          ? {
+              generators: [
+                {
+                  id: "test-generator",
+                  kind: "generator",
+                  path: "generators/test-generator.json",
+                },
+              ],
+            }
+          : {}),
+      },
+    }),
+  );
+  await attestTestPlugin(options.actionsRoot, root);
+}
+
+function invocationFor(binding: {
+  pluginId: string;
+  version: string;
+  exportId: string;
+  schemaHash: string;
+}) {
+  return {
+    protocol: "clash.plugin.invoke/v1",
+    invocationId: `invocation-${binding.pluginId}`,
+    taskId: `task-${binding.pluginId}`,
+    projectId: "project-1",
+    target: { ...binding, kind: "provider-executor" as const },
+    input: { values: {}, references: [] },
+    actor: { kind: "system" as const, id: "test" },
+  };
+}
+
+function completedValue(result: unknown): unknown {
+  return (result as { outputs?: Array<{ value?: unknown }> }).outputs?.[0]
+    ?.value;
+}
+
+function executionDiagnostics(host: InstanceType<typeof ActionsHost>): Array<{
+  pluginId: string;
+  version: string;
+  realm: "bundled-module" | "process-stdio";
+  ready: boolean;
+}> {
+  return (
+    host as InstanceType<typeof ActionsHost> & {
+      listExecutionDiagnostics(): Array<{
+        pluginId: string;
+        version: string;
+        realm: "bundled-module" | "process-stdio";
+        ready: boolean;
+      }>;
+    }
+  ).listExecutionDiagnostics();
+}
+
+describe("ActionsHost mixed execution realms", () => {
+  it("replaces caller-supplied action Asset delivery with the schema-pinned function export", async () => {
+    const actionsRoot = await mkdtemp(
+      join(tmpdir(), "clash-module-action-asset-inputs-"),
+    );
+    const bundled = await bundledTestPlugin({
+      id: "clash.action-asset-inputs",
+      resultValue: "unused",
+      actionAssetInputs: [
+        {
+          match: { kinds: ["image"], slots: ["source"] },
+          representations: ["executor-url"],
+          mediaTypes: ["image/png"],
+        },
+      ],
+      invoke: async (current) => ({
+        protocol: "clash.plugin.result/v1",
+        invocationId: current.invocationId,
+        status: "completed",
+        outputs: [
+          {
+            slot: "delivery",
+            kind: "value",
+            value: current.assetInputs,
+          },
+        ],
+      }),
+    });
+    const host = new ActionsHost(mixedRealmEnv(actionsRoot, bundled));
+
+    try {
+      await host.start();
+      const binding = host.resolveBinding(
+        "clash.action-asset-inputs",
+        "run-action",
+        "action",
+      );
+      const result = await host.invoke("clash.action-asset-inputs", {
+        protocol: "clash.plugin.invoke/v1",
+        invocationId: "invocation-action-delivery",
+        taskId: "task-action-delivery",
+        projectId: "project-1",
+        target: { ...binding, kind: "action" },
+        input: { values: {}, references: [] },
+        assetInputs: [
+          {
+            match: { kinds: ["video"], slots: ["forged"] },
+            representations: ["bytes"],
+          },
+        ],
+        actor: { kind: "system", id: "test" },
+      });
+
+      expect(completedValue(result)).toEqual([
+        {
+          match: { kinds: ["image"], slots: ["source"] },
+          representations: ["executor-url"],
+          mediaTypes: ["image/png"],
+        },
+      ]);
+    } finally {
+      await host.stopAll();
+    }
+  });
+
+  it("preserves the caller-frozen delivery contract for provider executors", async () => {
+    const actionsRoot = await mkdtemp(
+      join(tmpdir(), "clash-module-provider-asset-inputs-"),
+    );
+    const bundled = await bundledTestPlugin({
+      id: "clash.provider-asset-inputs",
+      resultValue: "unused",
+      invoke: async (current) => ({
+        protocol: "clash.plugin.result/v1",
+        invocationId: current.invocationId,
+        status: "completed",
+        outputs: [
+          {
+            slot: "delivery",
+            kind: "value",
+            value: current.assetInputs,
+          },
+        ],
+      }),
+    });
+    const host = new ActionsHost(mixedRealmEnv(actionsRoot, bundled));
+
+    try {
+      await host.start();
+      const binding = host.resolveBinding(
+        "clash.provider-asset-inputs",
+        "execute",
+        "provider-executor",
+      );
+      const frozen = [
+        {
+          match: { kinds: ["video"], slots: ["reference"] },
+          representations: ["provider-url"],
+        },
+      ];
+      const result = await host.invoke("clash.provider-asset-inputs", {
+        ...invocationFor(binding),
+        assetInputs: frozen,
+      });
+
+      expect(completedValue(result)).toEqual(frozen);
+    } finally {
+      await host.stopAll();
+    }
+  });
+
+  it("keeps an installed Generator definition readable while its process executor is unavailable", async () => {
+    const actionsRoot = await mkdtemp(
+      join(tmpdir(), "clash-process-generator-unavailable-"),
+    );
+    await writeProcessTestPlugin({
+      actionsRoot,
+      id: "test.unavailable-generator",
+      resultValue: "unreachable",
+      generator: true,
+      fastExit: true,
+    });
+    const host = new ActionsHost({ actionsRoot });
+
+    try {
+      await host.start();
+      await expect
+        .poll(
+          () =>
+            executionDiagnostics(host).find(
+              (entry) => entry.pluginId === "test.unavailable-generator",
+            )?.ready,
+        )
+        .toBe(false);
+      expect(host.listGenerators()).toMatchObject([
+        {
+          pluginId: "test.unavailable-generator",
+          document: { spec: { definitionId: "test-generator" } },
+        },
+      ]);
+      expect(
+        host.resolveGeneratorDefinition(
+          "test.unavailable-generator",
+          "test-generator",
+        ),
+      ).toMatchObject({
+        pluginId: "test.unavailable-generator",
+        definitionId: "test-generator",
+      });
+    } finally {
+      await host.stopAll();
+    }
+  });
+
+  it("lists native Generator registrations from a trusted module without a realm fact", async () => {
+    const actionsRoot = await mkdtemp(
+      join(tmpdir(), "clash-module-generators-"),
+    );
+    const bundled = await bundledTestPlugin({
+      id: "clash.generator-module",
+      resultValue: "bundled-module",
+    });
+    const host = new ActionsHost(mixedRealmEnv(actionsRoot, bundled));
+
+    try {
+      await host.start();
+      const generatorHost = host as InstanceType<typeof ActionsHost> & {
+        listGenerators?: () => Array<Record<string, unknown>>;
+      };
+      expect(generatorHost.listGenerators).toBeTypeOf("function");
+      const registrations = generatorHost.listGenerators?.() ?? [];
+      expect(registrations).toMatchObject([
+        {
+          pluginId: "clash.generator-module",
+          version: "1.0.0",
+          document: {
+            spec: {
+              definitionId: "test-generator",
+              actions: [{ id: "run", executorExportId: "run-action" }],
+            },
+          },
+        },
+      ]);
+      expect(registrations[0]).not.toHaveProperty("runtime");
+      expect(registrations[0]).not.toHaveProperty("realm");
+    } finally {
+      await host.stopAll();
+    }
+  });
+
+  it("resolves a native Generator definition pinned to its package schema", async () => {
+    const actionsRoot = await mkdtemp(
+      join(tmpdir(), "clash-resolve-generator-"),
+    );
+    const bundled = await bundledTestPlugin({
+      id: "clash.resolve-generator",
+      resultValue: "bundled-module",
+    });
+    const host = new ActionsHost(mixedRealmEnv(actionsRoot, bundled));
+
+    try {
+      await host.start();
+      const generatorHost = host as InstanceType<typeof ActionsHost> & {
+        resolveGeneratorDefinition?: (
+          pluginId: string,
+          definitionId: string,
+        ) => Record<string, unknown>;
+      };
+      expect(generatorHost.resolveGeneratorDefinition).toBeTypeOf("function");
+      const definition = generatorHost.resolveGeneratorDefinition?.(
+        "clash.resolve-generator",
+        "test-generator",
+      );
+      expect(definition).toMatchObject({
+        pluginId: "clash.resolve-generator",
+        definitionId: "test-generator",
+        version: "1.0.0",
+        schemaHash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+        editPolicy: "advance-head",
+        actions: [{ id: "run", executorExportId: "run-action" }],
+      });
+      expect(definition).not.toHaveProperty("runtime");
+      expect(definition).not.toHaveProperty("realm");
+    } finally {
+      await host.stopAll();
+    }
+  });
+
+  it("invokes a trusted module without requiring its process entrypoint", async () => {
+    const actionsRoot = await mkdtemp(join(tmpdir(), "clash-module-host-"));
+    const bundled = await bundledTestPlugin({
+      id: "clash.test-module",
+      resultValue: "bundled-module",
+    });
+    const host = new ActionsHost(mixedRealmEnv(actionsRoot, bundled));
+
+    try {
+      await expect(host.start()).resolves.toEqual({ spawned: [], skipped: [] });
+      expect(host.listIds()).toEqual(["clash.test-module"]);
+      expect(executionDiagnostics(host)).toEqual([
+        {
+          pluginId: "clash.test-module",
+          version: "1.0.0",
+          realm: "bundled-module",
+          ready: true,
+        },
+      ]);
+      expect(host.listCards()).toMatchObject([
+        {
+          pluginId: "clash.test-module",
+          document: { spec: { id: "run-action" } },
+        },
+      ]);
+      expect(host.listProviders()).toMatchObject([
+        {
+          pluginId: "clash.test-module",
+          document: { spec: { id: "test-provider" } },
+        },
+      ]);
+      expect(host.listModelBindings()).toMatchObject([
+        {
+          pluginId: "clash.test-module",
+          document: { spec: { id: "test-model-binding" } },
+        },
+      ]);
+
+      const binding = host.resolveBinding(
+        "clash.test-module",
+        "execute",
+        "provider-executor",
+      );
+      expect(binding).not.toHaveProperty("realm");
+      await expect(
+        host.invoke("clash.test-module", invocationFor(binding)),
+      ).resolves.toSatisfy(
+        (result) => completedValue(result) === "bundled-module",
+      );
+    } finally {
+      await host.stopAll();
+    }
+  });
+
+  it("keeps an installed stdio plugin running when a bundled module is present", async () => {
+    const actionsRoot = await mkdtemp(join(tmpdir(), "clash-mixed-host-"));
+    const bundled = await bundledTestPlugin({
+      id: "clash.test-module",
+      resultValue: "bundled-module",
+    });
+    await writeProcessTestPlugin({
+      actionsRoot,
+      id: "third.process",
+      resultValue: "process-stdio",
+    });
+    const host = new ActionsHost(mixedRealmEnv(actionsRoot, bundled));
+
+    try {
+      await expect(host.start()).resolves.toEqual({
+        spawned: ["third.process"],
+        skipped: [],
+      });
+      const binding = host.resolveBinding(
+        "third.process",
+        "execute",
+        "provider-executor",
+      );
+      await expect(
+        host.invoke("third.process", invocationFor(binding)),
+      ).resolves.toSatisfy(
+        (result) => completedValue(result) === "process-stdio",
+      );
+      const moduleBinding = host.resolveBinding(
+        "clash.test-module",
+        "execute",
+        "provider-executor",
+      );
+      await expect(
+        host.invoke("clash.test-module", invocationFor(moduleBinding)),
+      ).resolves.toSatisfy(
+        (result) => completedValue(result) === "bundled-module",
+      );
+      expect(executionDiagnostics(host)).toEqual([
+        {
+          pluginId: "clash.test-module",
+          version: "1.0.0",
+          realm: "bundled-module",
+          ready: true,
+        },
+        {
+          pluginId: "third.process",
+          version: "1.0.0",
+          realm: "process-stdio",
+          ready: true,
+        },
+      ]);
+    } finally {
+      await host.stopAll();
+    }
+  });
+
+  it("refuses an installed package that collides with a trusted bundled id", async () => {
+    const actionsRoot = await mkdtemp(join(tmpdir(), "clash-collision-host-"));
+    const bundled = await bundledTestPlugin({
+      id: "clash.collision",
+      resultValue: "trusted-bundled",
+    });
+    await writeProcessTestPlugin({
+      actionsRoot,
+      id: "clash.collision",
+      resultValue: "untrusted-shadow",
+    });
+    const host = new ActionsHost(mixedRealmEnv(actionsRoot, bundled));
+
+    try {
+      await expect(host.start()).resolves.toEqual({
+        spawned: [],
+        skipped: ["clash.collision"],
+      });
+      const binding = host.resolveBinding(
+        "clash.collision",
+        "execute",
+        "provider-executor",
+      );
+      const result = await host.invoke(
+        "clash.collision",
+        invocationFor(binding),
+      );
+      expect(completedValue(result)).toBe("trusted-bundled");
+    } finally {
+      await host.stopAll();
+    }
+  });
+
+  it("fails closed when a trusted module is unavailable instead of running its same-id package", async () => {
+    const actionsRoot = await mkdtemp(join(tmpdir(), "clash-broken-bundle-"));
+    const pluginId = "clash.broken-bundle";
+    await writeProcessTestPlugin({
+      actionsRoot,
+      id: pluginId,
+      resultValue: "untrusted-fallback",
+    });
+    const host = new ActionsHost({
+      actionsRoot,
+      trustedBundledPluginModules: [{ id: pluginId }],
+      async loadTrustedBundledPluginModule() {
+        throw new Error("bundled payload is corrupt");
+      },
+    } satisfies MixedRealmActionEnv);
+
+    try {
+      await expect(host.start()).resolves.toEqual({
+        spawned: [],
+        skipped: [pluginId],
+      });
+      expect(host.listIds()).toEqual([]);
+      expect(() =>
+        host.resolveBinding(pluginId, "execute", "provider-executor"),
+      ).toThrow(/not installed/i);
+    } finally {
+      await host.stopAll();
+    }
+  });
+
+  it("keeps bundled modules outside actions-directory reconciliation", async () => {
+    const actionsRoot = await mkdtemp(
+      join(tmpdir(), "clash-module-reconcile-"),
+    );
+    const bundled = await bundledTestPlugin({
+      id: "clash.stable-module",
+      resultValue: "still-running",
+    });
+    const host = new ActionsHost(mixedRealmEnv(actionsRoot, bundled));
+
+    try {
+      await host.start();
+      await rm(actionsRoot, { recursive: true, force: true });
+      await new Promise((resolve) => setTimeout(resolve, 800));
+
+      const binding = host.resolveBinding(
+        "clash.stable-module",
+        "execute",
+        "provider-executor",
+      );
+      const result = await host.invoke(
+        "clash.stable-module",
+        invocationFor(binding),
+      );
+      expect(completedValue(result)).toBe("still-running");
+    } finally {
+      await host.stopAll();
+    }
+  });
+
+  it("closes a bundled endpoint and rejects its active invocation on shutdown", async () => {
+    const actionsRoot = await mkdtemp(join(tmpdir(), "clash-module-close-"));
+    let entered!: () => void;
+    const invoked = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const bundled = await bundledTestPlugin({
+      id: "clash.pending-module",
+      resultValue: "never",
+      invoke: async () => {
+        entered();
+        return await new Promise(() => undefined);
+      },
+    });
+    const host = new ActionsHost(mixedRealmEnv(actionsRoot, bundled));
+
+    await host.start();
+    const binding = host.resolveBinding(
+      "clash.pending-module",
+      "execute",
+      "provider-executor",
+    );
+    const active = host.invoke("clash.pending-module", invocationFor(binding));
+    await invoked;
+
+    await host.stopAll();
+
+    await expect(active).rejects.toThrow(/endpoint closed/i);
+  });
+});
 
 it("ActionsHost scans actions under CLASH_HOME", async () => {
   const originalClashHome = process.env.CLASH_HOME;

@@ -13,7 +13,8 @@ authoritative product schemas
        ClashMcpServer  <----- stdio MCP
           |       |
           |       +---- root `clash` menu
-          |             command -> live contracts
+          |             command -> dispatcher navigation
+          |             Assets -> operation index -> bounded live contracts
           |             command + operation -> leaf execution
           v
   registered leaf handlers
@@ -30,13 +31,20 @@ CLI and MCP are peer product interfaces. The CLI discloses commands through
 `clash --help` and `clash <command> --help`; MCP advertises the `clash` root,
 stable `clash_assets`, `clash_canvas`, and `clash_composition` dispatchers,
 and, when present, the bootstrap `clash_workspace_init`. Calling `clash`
-without arguments returns command counts. Adding `command` returns every live
-operation's command-local short name, compatible full name, input/output
-schemas, annotations, product metadata, and recovery paths. Adding `operation`
-and `arguments` validates against the leaf schema and invokes its handler
-exactly once. The underlying leaf and former group tools stay registered for
-compatible known-name calls, but never expand `tools/list` and are not the
-model's discovery surface. There is deliberately no `clash_menu`,
+without arguments returns command counts. Adding `command` selects the stable
+dispatcher. For Assets, calling `clash_assets` without arguments returns a
+lightweight index containing operation identity, title, and safety flags; pass
+`contracts: ["import_file", "list", "get"]` to fetch a distinct, ordered,
+bounded set of live descriptions, input/output schemas, product metadata, and
+recovery paths without executing them. Unknown or duplicate operations reject
+the whole batch; no partial contracts are returned. `contract: "<operation>"`
+remains compatible for one. Existing `operation` plus `arguments` calls still
+validate against the leaf schema and invoke its handler exactly once. Canvas,
+composition, and plugin dispatchers retain their full-contract disclosure when
+`operation` is omitted.
+The underlying leaf and former group tools stay registered for compatible
+known-name calls, but never expand `tools/list` and are not the model's
+discovery surface. There is deliberately no `clash_menu`,
 `clash_capabilities`, or model-facing `clash_cli_*` wrapper.
 
 The higher-level Clash skill teaches an agent how to choose either interface;

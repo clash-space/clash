@@ -1,5 +1,6 @@
 import type { LoroDoc } from "loro-crdt";
 import { Canvas } from "./canvas-ops.js";
+import { PROJECT_ASSET_RENDER_CANVAS_ID } from "./timeline-contract.js";
 import {
   freezeProjectTimelineRunAssetInputs,
   projectTimelineRenderActionRunId,
@@ -8,7 +9,7 @@ import {
   type TimelineRenderTarget,
 } from "./project-workspace.js";
 
-export const PROJECT_ASSET_RENDER_CANVAS_ID = "__project-asset-renders__";
+export { PROJECT_ASSET_RENDER_CANVAS_ID } from "./timeline-contract.js";
 
 export interface TimelineRenderRequestInput {
   timelineId: string;

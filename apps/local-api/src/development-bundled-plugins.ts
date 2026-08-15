@@ -1,212 +1,159 @@
-import { isDeepStrictEqual } from "node:util";
+import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, rm } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
-import { createRequire } from "node:module";
+import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
-import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
 import {
-  activateHostExecutablePluginPackage,
-  readHostExecutablePluginPackage,
-  validateHostExecutablePluginPackage,
-  type HostExecutablePluginPackage,
-} from "./runtime/plugin-package.js";
+  ExecutablePluginManifestSchema,
+  isSafePluginRelativePath,
+} from "@clash/shared-types";
 
-interface DevelopmentManifest {
-  id?: string;
-  runtime?: { kind?: string; transport?: string; entrypoint?: string };
-  contributes?: {
-    cards?: Array<{ path?: string }>;
-    providers?: Array<{ path?: string }>;
-    modelBindings?: Array<{ path?: string }>;
-  };
-  contractTests?: string[];
+import {
+  BUNDLED_PLUGINS,
+  bundledPluginPayloadFiles,
+} from "./bundled-plugins.js";
+
+const execFileAsync = promisify(execFile);
+
+export interface DevelopmentBundledPluginBuild {
+  id: string;
+  packageName: string;
+  pluginRoot: string;
+  manifestPath: string;
+  entrypointPath: string;
 }
 
+export type DevelopmentBundledPluginBuilder = (
+  plugin: DevelopmentBundledPluginBuild,
+) => Promise<void>;
+
 export interface DevelopmentBundledPlugins {
-  /** Plugin and workspace dependency roots; ActionsHost uses these only as restart signals. */
-  watchRoots: Readonly<Record<string, readonly string[]>>;
-  /** Plugins whose attested development launcher changed during this preparation. */
-  refreshed: readonly string[];
+  /** First-party immutable payloads rebuilt before this development Host starts. */
+  rebuilt: readonly string[];
 }
 
 function workspaceRoot(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 }
 
-function developmentLauncher(options: {
-  sourceEntrypoint: string;
-  tsconfigPath: string;
-  tsxApiUrl: string;
-}): string {
-  const sourceUrl = pathToFileURL(options.sourceEntrypoint).href;
-  return [
-    `import { register } from ${JSON.stringify(options.tsxApiUrl)};`,
-    `register({ tsconfig: ${JSON.stringify(options.tsconfigPath)} });`,
-    // The checked-in stdio entries start only when they are the program entrypoint. The launcher
-    // remains the actual Node entry, so give the source module the argv identity it would have
-    // under `node --import tsx src/stdio.ts` before importing it.
-    `process.argv[1] = ${JSON.stringify(options.sourceEntrypoint)};`,
-    `await import(${JSON.stringify(sourceUrl)});`,
-    "",
-  ].join("\n");
-}
-
-async function developmentPackage(options: {
-  pluginRoot: string;
-  expectedId: string;
-  tsconfigPath: string;
-  tsxApiUrl: string;
-}): Promise<HostExecutablePluginPackage> {
-  const manifestPath = join(options.pluginRoot, "manifest.json");
-  const sourceEntrypoint = join(options.pluginRoot, "src", "stdio.ts");
-  if (!existsSync(sourceEntrypoint)) {
-    throw new Error(
-      `Development plugin ${options.expectedId} has no src/stdio.ts entrypoint.`,
-    );
-  }
-  const manifest = JSON.parse(
-    await readFile(manifestPath, "utf8"),
-  ) as DevelopmentManifest;
-  if (manifest.id !== options.expectedId) {
-    throw new Error(
-      `Expected development plugin ${options.expectedId}, but ${manifestPath} declares ${manifest.id}.`,
-    );
-  }
-  if (
-    manifest.runtime?.kind !== "local" ||
-    manifest.runtime.transport !== "stdio" ||
-    !manifest.runtime.entrypoint
-  ) {
-    throw new Error(
-      `Development plugin ${options.expectedId} must declare a local stdio entrypoint.`,
-    );
-  }
-
-  const files: Record<string, string> = {
-    [manifest.runtime.entrypoint]: Buffer.from(
-      developmentLauncher({
-        sourceEntrypoint,
-        tsconfigPath: options.tsconfigPath,
-        tsxApiUrl: options.tsxApiUrl,
-      }),
-    ).toString("base64"),
-  };
-  const documents = [
-    ...(manifest.contributes?.cards ?? []).map((entry) => entry.path),
-    ...(manifest.contributes?.providers ?? []).map((entry) => entry.path),
-    ...(manifest.contributes?.modelBindings ?? []).map((entry) => entry.path),
-    ...(manifest.contractTests ?? []),
-  ];
-  for (const relativePath of documents) {
-    if (!relativePath) continue;
-    files[relativePath] = (
-      await readFile(join(options.pluginRoot, relativePath))
-    ).toString("base64");
-  }
-  return { id: options.expectedId, manifest, files };
-}
-
-async function activePackageMatches(
-  actionsRoot: string,
-  input: HostExecutablePluginPackage,
-): Promise<boolean> {
+async function buildPluginPackage(
+  plugin: DevelopmentBundledPluginBuild,
+): Promise<void> {
+  const packageManager = process.env.npm_execpath;
+  const scriptEntrypoint = packageManager?.match(/\.[cm]?js$/i);
+  const executable = scriptEntrypoint
+    ? process.execPath
+    : (packageManager ?? "pnpm");
+  const args = scriptEntrypoint
+    ? [packageManager!, "run", "build"]
+    : ["run", "build"];
   try {
-    const active = await readHostExecutablePluginPackage(actionsRoot, input.id);
-    const manifest = validateHostExecutablePluginPackage(input);
-    return (
-      isDeepStrictEqual(active.manifest, manifest) &&
-      isDeepStrictEqual(active.files, input.files)
+    await execFileAsync(executable, args, {
+      cwd: plugin.pluginRoot,
+      env: process.env,
+    });
+  } catch (error) {
+    const details = error as Error & { stderr?: string; stdout?: string };
+    throw new Error(
+      `Could not rebuild development plugin ${plugin.id}: ` +
+        (details.stderr?.trim() ||
+          details.stdout?.trim() ||
+          details.message ||
+          String(error)),
+      { cause: error },
     );
-  } catch {
-    return false;
   }
 }
 
 /**
- * Install source-backed launchers for the bundled plugins into the isolated development
- * profile. Each launcher is still validated, contract-tested, copied into daemon-owned storage and
- * attested by the normal activation path. The only development exception is what its JS imports:
- * workspace TypeScript through tsx instead of a previously built `dist/stdio.mjs`.
+ * Rebuild the workspace payloads consumed by the closed first-party module registry.
  *
- * A displaced package is retained outside the live actions directory. This keeps preparation
- * recoverable and avoids silently destroying a developer's previous dev-profile install.
+ * Development changes how immutable package bytes are produced, not where trust comes from. This
+ * helper deliberately never copies a launcher, manifest, activation receipt, or source file into
+ * the user's actions directory. That directory remains exclusively the activation authority for
+ * third-party process/stdio plugins.
  */
 export async function prepareDevelopmentBundledPlugins(options: {
+  /** Kept at the call boundary so tests can prove it is never mutated or trusted. */
   actionsRoot: string;
-  tsconfigPath: string;
+  /** Legacy caller input; source modules now compile through each plugin package's build script. */
+  tsconfigPath?: string;
   root?: string;
-  /** Internal source-launcher selection used by isolated provider tests. */
   pluginIds?: readonly string[];
+  /** Test seam; production runs each selected package's checked-in build script. */
+  buildPlugin?: DevelopmentBundledPluginBuilder;
 }): Promise<DevelopmentBundledPlugins> {
   const root = options.root ?? workspaceRoot();
-  const tsxApiUrl = pathToFileURL(
-    createRequire(import.meta.url).resolve("tsx/esm/api"),
-  ).href;
-  const watchRoots: Record<string, readonly string[]> = {};
-  const refreshed: string[] = [];
-  const actionSdkSource = join(root, "packages", "action-sdk", "src");
-  const sharedRuntimeSource = join(
-    root,
-    "packages",
-    "shared-runtime",
-    "src",
-  );
-  const sharedTypesSource = join(root, "packages", "shared-types", "src");
-  await mkdir(options.actionsRoot, { recursive: true });
-
-  const plugins =
+  const selected =
     options.pluginIds === undefined
       ? BUNDLED_PLUGINS
       : BUNDLED_PLUGINS.filter((plugin) =>
           options.pluginIds!.includes(plugin.id),
         );
-  for (const plugin of plugins) {
-    const pluginRoot = join(root, "plugins", plugin.workspaceDir);
-    const input = await developmentPackage({
-      pluginRoot,
-      expectedId: plugin.id,
-      tsconfigPath: options.tsconfigPath,
-      tsxApiUrl,
-    });
-    watchRoots[plugin.id] = [
-      join(pluginRoot, "src"),
-      // Every bundled executable imports the shared Action SDK. Its source is loaded directly by
-      // the development launcher, so an SDK edit must recycle every affected long-lived child.
-      actionSdkSource,
-      ...(plugin.id === "clash.minimax" || plugin.id === "clash.pika"
-        ? [sharedRuntimeSource]
-        : []),
-      sharedTypesSource,
-    ];
-    if (await activePackageMatches(options.actionsRoot, input)) continue;
-
-    const targetDir = join(options.actionsRoot, plugin.id);
-    let backupDir: string | undefined;
-    if (existsSync(targetDir)) {
-      const backupRoot = join(
-        `${options.actionsRoot}.development-backups`,
-        plugin.id,
-      );
-      await mkdir(backupRoot, { recursive: true });
-      backupDir = join(backupRoot, `${Date.now()}-${randomUUID()}`);
-      await rename(targetDir, backupDir);
-    }
-    try {
-      await activateHostExecutablePluginPackage(input, options.actionsRoot);
-      refreshed.push(plugin.id);
-    } catch (error) {
-      // Activation removes a partially written target. Keep the explicit cleanup scoped to the
-      // exact first-party id, then restore the previously attested directory if there was one.
-      if (existsSync(targetDir))
-        await rm(targetDir, { recursive: true, force: true });
-      if (backupDir && existsSync(backupDir))
-        await rename(backupDir, targetDir);
-      throw error;
-    }
+  const requested = new Set(options.pluginIds ?? []);
+  for (const plugin of selected) requested.delete(plugin.id);
+  if (requested.size > 0) {
+    throw new Error(
+      `Unknown bundled development plugin${requested.size === 1 ? "" : "s"}: ${[
+        ...requested,
+      ].join(", ")}`,
+    );
   }
 
-  return { watchRoots, refreshed };
+  const buildPlugin = options.buildPlugin ?? buildPluginPackage;
+  const rebuilt: string[] = [];
+  for (const plugin of selected) {
+    const pluginRoot = join(root, "plugins", plugin.workspaceDir);
+    const manifestPath = join(pluginRoot, "manifest.json");
+    const manifest = ExecutablePluginManifestSchema.parse(
+      JSON.parse(await readFile(manifestPath, "utf8")),
+    );
+    if (manifest.id !== plugin.id) {
+      throw new Error(
+        `Expected development plugin ${plugin.id}, but ${manifestPath} declares ${manifest.id}.`,
+      );
+    }
+    if (
+      manifest.runtime.kind !== "local" ||
+      manifest.runtime.transport !== "stdio" ||
+      !isSafePluginRelativePath(manifest.runtime.entrypoint)
+    ) {
+      throw new Error(
+        `Development plugin ${plugin.id} must declare a safe local stdio entrypoint.`,
+      );
+    }
+    const entrypointPath = join(pluginRoot, manifest.runtime.entrypoint);
+    await buildPlugin({
+      id: plugin.id,
+      packageName: plugin.packageName,
+      pluginRoot,
+      manifestPath,
+      entrypointPath,
+    });
+    if (!existsSync(entrypointPath)) {
+      throw new Error(
+        `Development plugin ${plugin.id} build did not produce ${manifest.runtime.entrypoint}.`,
+      );
+    }
+    for (const resource of manifest.runtime.resources ?? []) {
+      if (!existsSync(join(pluginRoot, resource))) {
+        throw new Error(
+          `Development plugin ${plugin.id} build did not produce declared resource ${resource}.`,
+        );
+      }
+    }
+    try {
+      await bundledPluginPayloadFiles(manifest, pluginRoot);
+    } catch (error) {
+      throw new Error(
+        `Development plugin ${plugin.id} build produced an invalid declared payload: ${(error as Error).message}`,
+        { cause: error },
+      );
+    }
+    rebuilt.push(plugin.id);
+  }
+
+  return { rebuilt };
 }

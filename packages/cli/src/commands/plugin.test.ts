@@ -7,12 +7,12 @@ import { join } from "node:path";
 import {
   activateDownloadedActionPackage,
   checkoutExecutablePluginDraft,
-  pluginCommand,
   rollbackDownloadedActionPackage,
   scaffoldExecutablePluginDraft,
   tryInstallLocalMarketplaceAction,
   validateDownloadedActionPackage,
-} from "./plugin";
+} from "../lib/plugin-lifecycle";
+import { pluginCommand } from "./plugin";
 
 function executablePackage(version = "1.0.0") {
   return {
@@ -35,6 +35,50 @@ function executablePackage(version = "1.0.0") {
       "handler.mjs": Buffer.from("export {};\n").toString("base64"),
     },
   };
+}
+
+function generatorPackage() {
+  const pkg = executablePackage();
+  pkg.manifest.contributes = {
+    cards: [],
+    functions: [{ id: "render", kind: "action" }],
+    generators: [
+      {
+        id: "test-generator",
+        kind: "generator",
+        path: "generators/test-generator.json",
+      },
+    ],
+  } as never;
+  const files: Record<string, string> = pkg.files;
+  files["generators/test-generator.json"] = Buffer.from(
+    JSON.stringify({
+      apiVersion: "clash.generator/v1",
+      kind: "generator",
+      spec: {
+        definitionId: "test-generator",
+        stateSchema: { type: "object" },
+        editPolicy: "advance-head",
+        persistentInputs: [],
+        actions: [
+          {
+            id: "render",
+            executorExportId: "render",
+            parametersSchema: { type: "object" },
+            invocationInputs: [],
+            outputs: [
+              {
+                slot: "media",
+                assetType: { kind: "media", mediaKind: "image" },
+                cardinality: { minItems: 1, maxItems: 1 },
+              },
+            ],
+          },
+        ],
+      },
+    }),
+  ).toString("base64");
+  return pkg;
 }
 
 test("plugin CLI exposes draft and lifecycle commands", () => {
@@ -99,6 +143,21 @@ test("downloaded executable packages are validated before reaching the host", ()
       }),
     /expected a clash\.plugin\/v1 executable plugin/i,
   );
+});
+
+test("downloaded packages expose validated native Generator documents", () => {
+  const validated = validateDownloadedActionPackage(generatorPackage());
+
+  assert.deepEqual(Object.keys(validated.generators), [
+    "generators/test-generator.json",
+  ]);
+  assert.equal(
+    validated.generators["generators/test-generator.json"]?.spec.definitionId,
+    "test-generator",
+  );
+  const document = validated.generators["generators/test-generator.json"]!;
+  assert.equal("runtime" in document, false);
+  assert.equal("realm" in document, false);
 });
 
 test("plugin lifecycle is a local-api client and never writes daemon storage", async () => {

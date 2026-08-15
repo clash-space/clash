@@ -8,6 +8,7 @@ import {
 } from "@clash/shared-types";
 
 import { PluginStdioSession } from "./plugin-stdio-runner.js";
+import type { PluginBroker } from "./plugin-stdio-runner.js";
 
 const manifest = ExecutablePluginManifestSchema.parse({
   apiVersion: "clash.plugin/v1",
@@ -20,11 +21,13 @@ const manifest = ExecutablePluginManifestSchema.parse({
     entrypoint: "dist/stdio.mjs",
   },
   contributes: {
-    functions: [{
-      id: "execute",
-      kind: "provider-executor",
-      operations: ["submit", "poll"],
-    }],
+    functions: [
+      {
+        id: "execute",
+        kind: "provider-executor",
+        operations: ["submit", "poll"],
+      },
+    ],
   },
 });
 
@@ -47,7 +50,131 @@ const invocation = ExecutablePluginInvocationSchema.parse({
   actor: { kind: "system", id: "test" },
 });
 
+function brokerWithInvocationRelease(options: {
+  onRelease(invocationId: string): void | Promise<void>;
+}): PluginBroker {
+  return Object.assign(async () => ({ value: null }), {
+    releaseInvocation: options.onRelease,
+  });
+}
+
 describe("stdio plugin Host account scope", () => {
+  it("releases an invocation exactly once after its result even when the session later closes", async () => {
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const released: string[] = [];
+    const session = new PluginStdioSession({
+      manifest,
+      stdin,
+      stdout,
+      broker: brokerWithInvocationRelease({
+        onRelease: (invocationId) => {
+          released.push(invocationId);
+        },
+      }),
+    });
+
+    const completed = session.invoke(invocation, { timeoutMs: 1_000 });
+    stdout.write(
+      `${JSON.stringify({
+        protocol: "clash.plugin.result/v1",
+        invocationId: invocation.invocationId,
+        status: "completed",
+        outputs: [],
+      })}\n`,
+    );
+
+    await expect(completed).resolves.toMatchObject({ status: "completed" });
+    session.close();
+    expect(released).toEqual(["invocation-1"]);
+  });
+
+  it("preserves an invalid-result error when invocation cleanup also fails", async () => {
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const released: string[] = [];
+    const session = new PluginStdioSession({
+      manifest,
+      stdin,
+      stdout,
+      broker: brokerWithInvocationRelease({
+        onRelease: (invocationId) => {
+          released.push(invocationId);
+          throw new Error("cleanup failed");
+        },
+      }),
+    });
+
+    const completed = session.invoke(invocation, { timeoutMs: 1_000 });
+    stdout.write(
+      `${JSON.stringify({
+        protocol: "clash.plugin.result/v1",
+        invocationId: invocation.invocationId,
+        status: "completed",
+        outputs: [{ slot: "media", kind: "invalid-output" }],
+      })}\n`,
+    );
+
+    await expect(completed).rejects.toThrow(/invalid result.*invocation-1/i);
+    expect(released).toEqual(["invocation-1"]);
+    session.close();
+  });
+
+  it("releases a timed-out invocation exactly once even when the session later closes", async () => {
+    vi.useFakeTimers();
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const released: string[] = [];
+    const session = new PluginStdioSession({
+      manifest,
+      stdin,
+      stdout,
+      broker: brokerWithInvocationRelease({
+        onRelease: (invocationId) => {
+          released.push(invocationId);
+        },
+      }),
+    });
+
+    try {
+      const completed = session.invoke(invocation, { timeoutMs: 25 });
+      const rejection = completed.catch((error: Error) => error);
+      await vi.advanceTimersByTimeAsync(25);
+
+      await expect(rejection).resolves.toMatchObject({
+        message: "Plugin invocation invocation-1 timed out.",
+      });
+      session.close();
+      expect(released).toEqual(["invocation-1"]);
+    } finally {
+      session.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("releases an active invocation exactly once when the stdio channel closes", async () => {
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const released: string[] = [];
+    const session = new PluginStdioSession({
+      manifest,
+      stdin,
+      stdout,
+      broker: brokerWithInvocationRelease({
+        onRelease: (invocationId) => {
+          released.push(invocationId);
+        },
+      }),
+    });
+    const completed = session.invoke(invocation, { timeoutMs: 1_000 });
+
+    stdout.end();
+
+    await expect(completed).rejects.toThrow(/closed its stdio channel/i);
+    session.close();
+    expect(released).toEqual(["invocation-1"]);
+  });
+
   it("binds broker requests to the account saved with the pending invocation", async () => {
     const stdin = new PassThrough();
     const stdout = new PassThrough();
@@ -65,12 +192,14 @@ describe("stdio plugin Host account scope", () => {
       timeoutMs: 1_000,
       accountId: "host-account",
     });
-    stdout.write(`${JSON.stringify({
-      protocol: "clash.plugin.broker-request/v1",
-      requestId: "broker-1",
-      invocationId: invocation.invocationId,
-      operation: { kind: "store.get", key: "apiKey" },
-    })}\n`);
+    stdout.write(
+      `${JSON.stringify({
+        protocol: "clash.plugin.broker-request/v1",
+        requestId: "broker-1",
+        invocationId: invocation.invocationId,
+        operation: { kind: "store.get", key: "apiKey" },
+      })}\n`,
+    );
 
     await vi.waitFor(() => expect(broker).toHaveBeenCalledOnce());
     expect(broker.mock.calls[0]?.[1]).toMatchObject({
@@ -80,12 +209,14 @@ describe("stdio plugin Host account scope", () => {
       },
     });
 
-    stdout.write(`${JSON.stringify({
-      protocol: "clash.plugin.result/v1",
-      invocationId: invocation.invocationId,
-      status: "completed",
-      outputs: [{ slot: "text", kind: "value", value: "done" }],
-    })}\n`);
+    stdout.write(
+      `${JSON.stringify({
+        protocol: "clash.plugin.result/v1",
+        invocationId: invocation.invocationId,
+        status: "completed",
+        outputs: [{ slot: "text", kind: "value", value: "done" }],
+      })}\n`,
+    );
     await expect(completed).resolves.toMatchObject({ status: "completed" });
     session.close();
   });
@@ -97,22 +228,30 @@ describe("stdio plugin Host account scope", () => {
       manifest,
       stdin,
       stdout,
-      broker: vi.fn(),
+      broker: async () => null,
     });
 
     const completed = session.invoke(invocation, { timeoutMs: 1_000 });
-    stdout.write(`${JSON.stringify({
-      protocol: "clash.plugin.result/v1",
-      invocationId: "already-finished",
-      status: "failed",
-      error: { code: "execution_failed", message: "late failure", retryable: false },
-    })}\n`);
-    stdout.write(`${JSON.stringify({
-      protocol: "clash.plugin.result/v1",
-      invocationId: invocation.invocationId,
-      status: "completed",
-      outputs: [{ slot: "text", kind: "value", value: "done" }],
-    })}\n`);
+    stdout.write(
+      `${JSON.stringify({
+        protocol: "clash.plugin.result/v1",
+        invocationId: "already-finished",
+        status: "failed",
+        error: {
+          code: "execution_failed",
+          message: "late failure",
+          retryable: false,
+        },
+      })}\n`,
+    );
+    stdout.write(
+      `${JSON.stringify({
+        protocol: "clash.plugin.result/v1",
+        invocationId: invocation.invocationId,
+        status: "completed",
+        outputs: [{ slot: "text", kind: "value", value: "done" }],
+      })}\n`,
+    );
 
     await expect(completed).resolves.toMatchObject({ status: "completed" });
     session.close();
@@ -125,16 +264,22 @@ describe("stdio plugin Host account scope", () => {
       manifest,
       stdin,
       stdout,
-      broker: vi.fn(),
+      broker: async () => null,
     });
 
     const completed = session.invoke(invocation, { timeoutMs: 1_000 });
-    stdout.write(`${JSON.stringify({
-      protocol: "clash.plugin.result/v1",
-      invocationId: invocation.invocationId,
-      status: "failed",
-      error: { code: "execution_failed", message: "invalid failure", retryable: false },
-    })}\n`);
+    stdout.write(
+      `${JSON.stringify({
+        protocol: "clash.plugin.result/v1",
+        invocationId: invocation.invocationId,
+        status: "failed",
+        error: {
+          code: "execution_failed",
+          message: "invalid failure",
+          retryable: false,
+        },
+      })}\n`,
+    );
 
     await expect(completed).rejects.toThrow(/invalid result.*invocation-1/i);
     session.close();

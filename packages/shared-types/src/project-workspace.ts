@@ -1,6 +1,10 @@
 import { LoroMap, type LoroDoc } from "loro-crdt";
 import { agentReadToken } from "./agent-read-proof.js";
 import { Canvas } from "./canvas-ops.js";
+import {
+  validateTimelineDsl,
+  type TimelineDslValidationIssue,
+} from "./timeline-dsl-schema.js";
 import { normalizeProjectTimelinePersistenceState } from "./timeline-persistence.js";
 import {
   freezeDraftActionAssetInputBindings,
@@ -196,7 +200,33 @@ export function projectTimelineReadToken(timeline: ProjectTimeline): string {
 
 export type ProjectTimelineMutationResult =
   | { ok: true; timeline: ProjectTimeline }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: string;
+      code?: undefined;
+      issues?: undefined;
+    }
+  | ProjectTimelineDslValidationFailure;
+
+type ProjectTimelineDslValidationFailure = {
+  ok: false;
+  error: string;
+  code: "INVALID_TIMELINE_DSL";
+  issues: TimelineDslValidationIssue[];
+};
+
+function validateProjectTimelineMutationState(
+  state: unknown,
+): ProjectTimelineDslValidationFailure | undefined {
+  const validation = validateTimelineDsl(state);
+  if (validation.ok) return undefined;
+  return {
+    ok: false,
+    error: "Timeline DSL validation failed",
+    code: "INVALID_TIMELINE_DSL",
+    issues: validation.issues,
+  };
+}
 
 export type ProjectTimelineDeleteResult =
   | { ok: true; timelineId: string }
@@ -430,6 +460,8 @@ export function createProjectTimeline(
   if (timelines.get(id)) return { ok: false, error: `Timeline ${id} already exists` };
   const persisted = normalizeProjectTimelinePersistenceState(input.state);
   if (!persisted.ok) return persisted;
+  const validationError = validateProjectTimelineMutationState(persisted.state);
+  if (validationError) return validationError;
   const timeline: ProjectTimeline = {
     id,
     name,
@@ -452,6 +484,8 @@ export function updateProjectTimelineState(
   if (!timeline) return { ok: false, error: `Timeline ${timelineId} not found` };
   const persisted = normalizeProjectTimelinePersistenceState(state);
   if (!persisted.ok) return persisted;
+  const validationError = validateProjectTimelineMutationState(persisted.state);
+  if (validationError) return validationError;
   const next: ProjectTimeline = {
     ...timeline,
     revisionId: projectTimelineRevisionId(timelineId, persisted.state),

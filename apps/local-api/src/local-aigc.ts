@@ -87,6 +87,7 @@ function promptForRoute(
   return content
     .map((part) => {
       if ("text" in part) return part.text.value;
+      if ("document" in part) return "";
       const modality = part.asset.kind;
       if (modality !== "image" && modality !== "video" && modality !== "audio") {
         return "";

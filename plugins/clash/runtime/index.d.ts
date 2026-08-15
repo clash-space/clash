@@ -3,6 +3,7 @@ import { LocalDaemonLaunchResult } from '@clash/shared-runtime/local-daemon';
 import { ClashRuntimeProfile } from '@clash/shared-runtime/local-paths';
 import { LocalHostDiscoveryRecord } from '@clash/shared-runtime';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { PluginMcpGateway } from '@clash/mcp-server';
 
 type PluginHostRecord = LocalHostDiscoveryRecord;
 interface PluginHostManager {
@@ -62,6 +63,7 @@ type ClashPluginServerOptions = {
     client?: ProjectHostClient;
     hostManager?: PluginHostManager;
     appBundles?: ClashPluginAppBundles;
+    pluginGateway?: PluginMcpGateway;
 };
 declare function createClashPluginRuntime(options?: ClashPluginServerOptions): {
     server: McpServer;

@@ -15,6 +15,7 @@
 
 export {
   ProviderExecutionError,
+  executableFailureFromThrown,
   providerHttpError,
   providerHttpFailure,
   type ProviderHttpFailureInput,
@@ -38,15 +39,21 @@ export {
 } from "./stdio-plugin.js";
 
 export {
+  createExecutorContext,
   definePlugin,
   type DefinedPlugin,
   type Executor,
   type ExecutorContext,
+  type ExecutorContextOverrides,
   type ExecutorStep,
+  type HostDependencyRequest,
   type ResolvedReference,
   type AssetUploadRequest,
   type AssetWriteRequest,
+  type DocumentOutputRequest,
   type CodexImageGenerateRequest,
+  type SpeechTranscribeRequest,
+  type SpeechTranscribeResult,
   type PluginDefinition,
   type PluginHostTools,
   type PluginStoreHandle,
@@ -54,9 +61,15 @@ export {
 
 export {
   assemblePlugin,
+  assemblePluginModule,
+  defineAction,
+  defineActionExecutor,
   defineExecutor,
   defineProjector,
+  servePluginStdio,
   type AssembleOptions,
   type AssembledPlugin,
+  type ManifestFunction,
+  type PluginModule,
   type ProjectorFn,
 } from "./assemble.js";

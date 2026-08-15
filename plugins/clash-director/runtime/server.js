@@ -39308,18 +39308,20 @@ function describeClashTool(guidance) {
 
 // ../../packages/shared-mcp/dist/server.js
 var CLASH_ROOT_TOOL_NAME = "clash";
+var CLASH_PLUGIN_TOOL_NAME = "clash_plugin";
 var CLASH_ASSETS_TOOL_NAME = "clash_assets";
 var CLASH_CANVAS_TOOL_NAME = "clash_canvas";
 var CLASH_COMPOSITION_TOOL_NAME = "clash_composition";
+var MAX_ASSET_CONTRACT_BATCH_SIZE = 8;
 var LEGACY_CLASH_GROUP_TOOL_NAMES = {
   director: "clash_director",
   timeline: "clash_timeline"
 };
 var CLASH_MCP_INSTRUCTIONS = [
   "Clash discloses product operations progressively.",
-  `Use the root ${CLASH_ROOT_TOOL_NAME} tool for command navigation, ${CLASH_ASSETS_TOOL_NAME} for Project and personal Global Assets, ${CLASH_CANVAS_TOOL_NAME} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME} for Timeline or Director Stage composition.`,
+  `Use the root ${CLASH_ROOT_TOOL_NAME} tool for command navigation, ${CLASH_PLUGIN_TOOL_NAME} for executable plugin lifecycle, ${CLASH_ASSETS_TOOL_NAME} for Project and personal Global Assets, ${CLASH_CANVAS_TOOL_NAME} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME} for Timeline or Director Stage composition.`,
   "Timeline is temporal composition; Director Stage is spatial composition.",
-  "Call a dispatcher without operation for live contracts, then pass its command-local operation and arguments to execute exactly once.",
+  "Call clash_assets without operation for its lightweight index, then pass contracts for the small set of live Asset contracts needed together; contract remains available for one. Other dispatchers reveal live contracts when operation is omitted.",
   "Composition disclosure and short operations require kind=timeline or kind=director-stage; a complete clash_* leaf name remains accepted for compatibility.",
   "The advertised tool list stays fixed and does not require a tools/list refresh.",
   "Within a selected command, tool descriptions, schemas, structured results, and recovery guidance are the operational source of truth."
@@ -39372,8 +39374,8 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       description: describeClashTool({
         useWhen: "you need the compact Clash command menu or the stable dispatcher for a product command",
         effect: "returns command counts and navigation without expanding leaf operations into the advertised tool list",
-        returns: "the command menu and selected Assets, Canvas, or composition dispatcher",
-        next: "call clash_assets for Project or personal Global Assets, clash_canvas for Canvas, or clash_composition with kind for Timeline or Director Stage; complete leaf execution remains compatibility-only"
+        returns: "the command menu and selected Plugin, Assets, Canvas, or composition dispatcher",
+        next: "call clash_plugin for executable plugin lifecycle, clash_assets for Project or personal Global Assets, clash_canvas for Canvas, or clash_composition with kind for Timeline or Director Stage; complete leaf execution remains compatibility-only"
       }),
       inputSchema: {
         command: external_exports.enum(CLASH_MCP_COMMAND_IDS).optional().describe("Root command to reveal; omit to show the root menu and fold leaf operations away"),
@@ -39419,17 +39421,17 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         structuredContent: view
       };
     });
-    const assetsDefinition = getClashMcpCommand("assets");
-    super.registerTool(CLASH_ASSETS_TOOL_NAME, {
-      title: assetsDefinition.title,
+    const pluginDefinition = getClashMcpCommand("plugin");
+    super.registerTool(CLASH_PLUGIN_TOOL_NAME, {
+      title: pluginDefinition.title,
       description: describeClashTool({
-        useWhen: "you need to inspect, import, admit, publish, trash, or restore Project and personal Global Assets",
-        effect: "returns live Asset contracts when operation is omitted, or validates and executes one Asset leaf exactly once",
-        returns: "typed Project or Global Asset operation contracts or the selected leaf operation's exact result",
-        next: "choose the smallest matching operation, then call clash_assets with operation and arguments"
+        useWhen: "the Agent needs to inspect or change executable Clash plugins during the current task",
+        effect: "returns live plugin lifecycle contracts when operation is omitted, or validates and executes one plugin operation exactly once",
+        returns: "typed plugin lifecycle contracts or the selected operation's exact result",
+        next: "choose the smallest matching operation, then call clash_plugin with operation and arguments"
       }),
       inputSchema: {
-        operation: external_exports.string().min(1).optional().describe("Omit this field entirely to reveal live contracts; otherwise pass a command-local Assets operation or complete clash_assets_* leaf name"),
+        operation: external_exports.string().min(1).optional().describe("Omit this field entirely to reveal live contracts; otherwise pass a command-local Plugin operation or complete clash_plugin_* leaf name"),
         arguments: external_exports.record(external_exports.string(), external_exports.unknown()).optional().describe("Arguments validated against the selected operation's live input schema")
       },
       _meta: { ui: { visibility: ["model"] } }
@@ -39438,11 +39440,45 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         return this.#dispatchOperation({
           operation,
           arguments: operationArguments ?? {},
+          selectedCommand: "plugin",
+          extra
+        });
+      }
+      return this.#commandResult("plugin");
+    });
+    const assetsDefinition = getClashMcpCommand("assets");
+    super.registerTool(CLASH_ASSETS_TOOL_NAME, {
+      title: assetsDefinition.title,
+      description: describeClashTool({
+        useWhen: "you need to inspect, import, admit, publish, trash, or restore Project and personal Global Assets",
+        effect: "returns a lightweight Asset operation index, reveals a requested bounded set of live contracts, or validates and executes one Asset leaf exactly once",
+        returns: "an operation index, the requested typed Project or Global Asset contracts, or the selected leaf operation's exact result",
+        next: "choose the smallest matching operations, request their contracts together, then call clash_assets with operation and arguments for each execution"
+      }),
+      inputSchema: {
+        operation: external_exports.string().min(1).optional().describe("Pass a command-local Assets operation or complete clash_assets_* leaf name to execute it; omit to inspect the lightweight index or requested contracts"),
+        contract: external_exports.string().min(1).optional().describe("Command-local Assets operation or complete clash_assets_* leaf name whose full live contract should be returned without execution"),
+        contracts: external_exports.array(external_exports.string().min(1)).min(1).max(MAX_ASSET_CONTRACT_BATCH_SIZE, `Asset contract batches accept at most ${MAX_ASSET_CONTRACT_BATCH_SIZE} operations`).optional().describe("Distinct ordered Assets operations whose full live contracts should be returned together without execution"),
+        arguments: external_exports.record(external_exports.string(), external_exports.unknown()).optional().describe("Arguments validated against the selected operation's live input schema")
+      },
+      _meta: { ui: { visibility: ["model"] } }
+    }, async ({ operation, contract, contracts, arguments: operationArguments }, extra) => {
+      if ([operation, contract, contracts].filter((value) => value !== void 0).length > 1) {
+        throw new Error("Clash Assets accepts one disclosure mode or operation execution, not a combination.");
+      }
+      if (contracts)
+        return this.#contractBatchResult("assets", contracts);
+      if (contract)
+        return this.#contractResult("assets", contract);
+      if (operation) {
+        return this.#dispatchOperation({
+          operation,
+          arguments: operationArguments ?? {},
           selectedCommand: "assets",
           extra
         });
       }
-      return this.#commandResult("assets");
+      return this.#commandResult("assets", { lightweight: true });
     });
     const canvasDefinition = getClashMcpCommand("canvas");
     super.registerTool(CLASH_CANVAS_TOOL_NAME, {
@@ -39532,7 +39568,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
     }
   }
   registerTool(name, config2, callback) {
-    if (name === CLASH_ROOT_TOOL_NAME || name === CLASH_ASSETS_TOOL_NAME || name === CLASH_CANVAS_TOOL_NAME || name === CLASH_COMPOSITION_TOOL_NAME || Object.values(LEGACY_CLASH_GROUP_TOOL_NAMES).includes(name)) {
+    if (name === CLASH_ROOT_TOOL_NAME || name === CLASH_PLUGIN_TOOL_NAME || name === CLASH_ASSETS_TOOL_NAME || name === CLASH_CANVAS_TOOL_NAME || name === CLASH_COMPOSITION_TOOL_NAME || Object.values(LEGACY_CLASH_GROUP_TOOL_NAMES).includes(name)) {
       throw new Error(`${name} is provided by ClashMcpServer`);
     }
     const handle = super.registerTool(name, config2, callback);
@@ -39578,7 +39614,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       belongsToCommand: (operation, command2) => classifyClashMcpTool(operation.name) === command2.id
     });
   }
-  #commandResult(command2) {
+  #commandResult(command2, options = {}) {
     const view = this.#commandView(command2);
     const operationCount = view.operations?.length ?? 0;
     if (operationCount === 0) {
@@ -39593,14 +39629,68 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         isError: true
       };
     }
+    const operations = options.lightweight ? (view.operations ?? []).map(({ name, operation, title, readOnly, destructive }) => ({
+      name,
+      operation,
+      title,
+      readOnly,
+      destructive
+    })) : view.operations ?? [];
     return {
       content: [
         {
           type: "text",
-          text: `Revealed ${operationCount} ${command2} operation${operationCount === 1 ? "" : "s"}.`
+          text: options.lightweight ? `Found ${operationCount} ${command2} operation${operationCount === 1 ? "" : "s"}. Request only the needed full contracts together with contracts=["<operation>", ...] before execution; contract="<operation>" remains available for one.` : `Revealed ${operationCount} ${command2} operation${operationCount === 1 ? "" : "s"}.`
         }
       ],
-      structuredContent: view
+      structuredContent: { ...view, operations }
+    };
+  }
+  #contractResult(command2, requestedOperation) {
+    const operationName = this.#resolveOperationName(requestedOperation, command2);
+    const contract = this.#commandView(command2).operations?.find(({ name }) => name === operationName);
+    if (!contract) {
+      throw new Error(`Clash ${command2} operation ${requestedOperation} has no live contract in this host.`);
+    }
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Revealed the live contract for ${contract.name}.`
+        }
+      ],
+      structuredContent: {
+        schemaVersion: 1,
+        selectedCommand: command2,
+        contract
+      }
+    };
+  }
+  #contractBatchResult(command2, requestedOperations) {
+    const liveContracts = this.#commandView(command2).operations ?? [];
+    const operationNames = requestedOperations.map((requestedOperation) => this.#resolveOperationName(requestedOperation, command2));
+    if (new Set(operationNames).size !== operationNames.length) {
+      throw new Error(`Clash ${command2} contract batches require distinct operations.`);
+    }
+    const contracts = operationNames.map((operationName, index) => {
+      const contract = liveContracts.find(({ name }) => name === operationName);
+      if (!contract) {
+        throw new Error(`Clash ${command2} operation ${requestedOperations[index]} has no live contract in this host.`);
+      }
+      return contract;
+    });
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Revealed ${contracts.length} live ${command2} contracts.`
+        }
+      ],
+      structuredContent: {
+        schemaVersion: 1,
+        selectedCommand: command2,
+        contracts
+      }
     };
   }
   #rootView(selectedCommand) {
@@ -39614,6 +39704,9 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       }
       if (command2.id === "assets") {
         return { ...command2, dispatcher: CLASH_ASSETS_TOOL_NAME };
+      }
+      if (command2.id === "plugin") {
+        return { ...command2, dispatcher: CLASH_PLUGIN_TOOL_NAME };
       }
       if (command2.id === "canvas") {
         return { ...command2, dispatcher: CLASH_CANVAS_TOOL_NAME };
@@ -39703,7 +39796,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         return false;
       if (Object.values(LEGACY_CLASH_GROUP_TOOL_NAMES).includes(tool.name))
         return false;
-      if (tool.name === CLASH_ROOT_TOOL_NAME || tool.name === CLASH_ASSETS_TOOL_NAME || tool.name === CLASH_CANVAS_TOOL_NAME || tool.name === CLASH_COMPOSITION_TOOL_NAME || tool.name === "clash_workspace_init")
+      if (tool.name === CLASH_ROOT_TOOL_NAME || tool.name === CLASH_PLUGIN_TOOL_NAME || tool.name === CLASH_ASSETS_TOOL_NAME || tool.name === CLASH_CANVAS_TOOL_NAME || tool.name === CLASH_COMPOSITION_TOOL_NAME || tool.name === "clash_workspace_init")
         return true;
       return classifyClashMcpTool(tool.name) === "other";
     });
@@ -44012,7 +44105,7 @@ var AssetRefRowSchema = z2.object({
   importedAt: z2.number()
 });
 
-// ../../packages/shared-types/dist/chunk-3E3S6SZN.js
+// ../../packages/shared-types/dist/chunk-VG5GRRAK.js
 var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
 var pluginIdSchema = z2.string().trim().superRefine((value, ctx) => {
   const segments = value.split(".");
@@ -44214,6 +44307,1088 @@ var PluginAuthDeclarationSchema = z2.object({
     seen.add(method.id);
   }
 });
+var ScopedIdSchema = z2.string().trim().min(1);
+var ProjectAssetMetadataTargetSchema = z2.object({
+  kind: z2.literal("project-asset"),
+  projectId: ScopedIdSchema,
+  assetId: ScopedIdSchema
+}).strict();
+var ActionRevisionMetadataTargetSchema = z2.object({
+  kind: z2.literal("action-revision"),
+  projectId: ScopedIdSchema,
+  actionId: ScopedIdSchema,
+  actionRevisionId: ScopedIdSchema
+}).strict();
+var MetadataAttachmentTargetSchema = z2.discriminatedUnion("kind", [
+  ProjectAssetMetadataTargetSchema,
+  ActionRevisionMetadataTargetSchema
+]);
+var FrameRangeSchema = z2.object({
+  startFrame: z2.number().int().min(0),
+  endFrame: z2.number().int().min(0)
+});
+var AudioBeatSchema = z2.object({
+  frame: z2.number().int().min(0),
+  timeSeconds: z2.number().min(0),
+  confidence: z2.number().min(0).max(1),
+  bar: z2.number().int().positive().optional(),
+  beatInBar: z2.number().int().positive().optional(),
+  downbeat: z2.boolean().optional()
+});
+var AudioEnergyPointSchema = z2.object({
+  frame: z2.number().int().min(0),
+  timeSeconds: z2.number().min(0),
+  rms: z2.number().min(0),
+  normalized: z2.number().min(0).max(1),
+  novelty: z2.number().min(0).max(1),
+  impact: z2.number().min(0).max(1)
+});
+var AudioSectionSchema = z2.object({
+  id: z2.string().min(1),
+  startFrame: z2.number().int().min(0),
+  endFrame: z2.number().int().min(0),
+  label: z2.string().min(1),
+  semanticLabel: z2.enum([
+    "intro",
+    "verse",
+    "pre-chorus",
+    "chorus",
+    "bridge",
+    "drop",
+    "buildup",
+    "breakdown",
+    "outro",
+    "instrumental",
+    "detected-beats",
+    "unknown"
+  ]).optional(),
+  semanticConfidence: z2.number().min(0).max(1).optional(),
+  reviewRequired: z2.boolean().optional(),
+  semanticSource: z2.string().min(1).optional(),
+  energy: z2.number().min(0).max(1).optional(),
+  novelty: z2.number().min(0).max(1).optional(),
+  impact: z2.number().min(0).max(1).optional(),
+  cutDensity: z2.enum(["hold", "medium", "fast"]).optional()
+});
+var AudioBeatMetadataSchema = z2.object({
+  kind: z2.literal("audio.beat-analysis"),
+  bpm: z2.number().positive(),
+  fps: z2.number().positive(),
+  beats: z2.array(AudioBeatSchema),
+  sections: z2.array(AudioSectionSchema).default([]),
+  energyCurve: z2.array(AudioEnergyPointSchema).default([])
+});
+var AudioStemTypeSchema = z2.enum([
+  "vocal",
+  "instrumental",
+  "drums",
+  "bass",
+  "other"
+]);
+var AudioStemAssetSchema = z2.object({
+  stemAssetId: z2.string().min(1),
+  stemType: AudioStemTypeSchema,
+  filePath: z2.string().min(1),
+  fileHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/),
+  codec: z2.string().min(1).optional(),
+  durationSeconds: z2.number().positive().optional(),
+  sampleRate: z2.number().int().positive().optional(),
+  channels: z2.number().int().positive().optional()
+});
+var AudioStemSeparationMetadataSchema = z2.object({
+  kind: z2.literal("audio.stem-separation"),
+  separationId: z2.string().min(1),
+  sourceAssetId: z2.string().min(1),
+  sourcePath: z2.string().min(1).optional(),
+  backendId: z2.string().min(1).optional(),
+  modelId: z2.string().min(1).optional(),
+  stems: z2.array(AudioStemAssetSchema).min(1),
+  vocalStemAssetId: z2.string().min(1).optional(),
+  decisionLog: z2.array(z2.string().min(1)).default([])
+});
+var LyricsAlignmentUnitSchema = z2.object({
+  lineId: z2.string().min(1),
+  wordId: z2.string().min(1).optional(),
+  text: z2.string().min(1),
+  startMs: z2.number().min(0),
+  endMs: z2.number().min(0),
+  startFrame: z2.number().int().min(0).optional(),
+  endFrame: z2.number().int().min(0).optional(),
+  confidence: z2.number().min(0).max(1),
+  source: z2.string().min(1)
+}).refine((unit) => unit.endMs > unit.startMs, {
+  message: "lyrics alignment unit endMs must be greater than startMs",
+  path: ["endMs"]
+});
+var LyricsUnmatchedRangeSchema = z2.object({
+  startMs: z2.number().min(0),
+  endMs: z2.number().min(0),
+  text: z2.string().optional(),
+  reason: z2.string().optional()
+}).refine((range) => range.endMs > range.startMs, {
+  message: "lyrics unmatched range endMs must be greater than startMs",
+  path: ["endMs"]
+});
+var LyricsAlignmentMetadataSchema = z2.object({
+  kind: z2.literal("audio.lyrics-alignment"),
+  fps: z2.number().positive(),
+  lyricsSource: z2.string().min(1),
+  vocalStemAssetId: z2.string().min(1).optional(),
+  units: z2.array(LyricsAlignmentUnitSchema).min(1),
+  unmatchedRanges: z2.array(LyricsUnmatchedRangeSchema).default([])
+});
+var AsrTimedWordSchema = z2.object({
+  id: z2.string().min(1),
+  text: z2.string().min(1),
+  startMs: z2.number().int().min(0),
+  endMs: z2.number().int().min(0),
+  confidence: z2.number().min(0).max(1).optional(),
+  speakerId: z2.string().min(1).optional()
+}).refine((word) => word.endMs > word.startMs, {
+  message: "ASR word endMs must be greater than startMs",
+  path: ["endMs"]
+});
+var AsrTimedSegmentSchema = z2.object({
+  id: z2.string().min(1),
+  text: z2.string().min(1),
+  startMs: z2.number().int().min(0),
+  endMs: z2.number().int().min(0),
+  wordIds: z2.array(z2.string().min(1)),
+  speakerId: z2.string().min(1).optional()
+}).refine((segment) => segment.endMs > segment.startMs, {
+  message: "ASR segment endMs must be greater than startMs",
+  path: ["endMs"]
+});
+var AsrTimedTranscriptSchema = z2.object({
+  schemaVersion: z2.literal(1),
+  kind: z2.literal("clash.asr.timed-transcript"),
+  timebase: z2.literal("milliseconds"),
+  alignment: z2.literal("word"),
+  text: z2.string().min(1),
+  backendId: z2.string().min(1),
+  modelId: z2.string().min(1),
+  language: z2.string().min(1).optional(),
+  durationMs: z2.number().int().min(0),
+  words: z2.array(AsrTimedWordSchema).min(1),
+  segments: z2.array(AsrTimedSegmentSchema)
+}).superRefine((transcript, context) => {
+  const wordIds = /* @__PURE__ */ new Set();
+  let previousStartMs = -1;
+  let maxEndMs = 0;
+  transcript.words.forEach((word, index) => {
+    if (wordIds.has(word.id)) {
+      context.addIssue({
+        code: z2.ZodIssueCode.custom,
+        message: `duplicate ASR word id: ${word.id}`,
+        path: ["words", index, "id"]
+      });
+    }
+    wordIds.add(word.id);
+    if (word.startMs < previousStartMs) {
+      context.addIssue({
+        code: z2.ZodIssueCode.custom,
+        message: "ASR words must be ordered by startMs",
+        path: ["words", index, "startMs"]
+      });
+    }
+    previousStartMs = word.startMs;
+    maxEndMs = Math.max(maxEndMs, word.endMs);
+  });
+  if (transcript.durationMs < maxEndMs) {
+    context.addIssue({
+      code: z2.ZodIssueCode.custom,
+      message: "ASR durationMs must cover every word",
+      path: ["durationMs"]
+    });
+  }
+  transcript.segments.forEach((segment, segmentIndex) => {
+    segment.wordIds.forEach((wordId, wordIndex) => {
+      if (!wordIds.has(wordId)) {
+        context.addIssue({
+          code: z2.ZodIssueCode.custom,
+          message: `ASR segment references unknown word id: ${wordId}`,
+          path: ["segments", segmentIndex, "wordIds", wordIndex]
+        });
+      }
+    });
+  });
+});
+var TranscriptWordSchema = z2.object({
+  id: z2.string().min(1),
+  text: z2.string(),
+  startFrame: z2.number().int().min(0),
+  endFrame: z2.number().int().min(0),
+  confidence: z2.number().min(0).max(1).optional(),
+  speakerId: z2.string().min(1).optional()
+});
+var AsrTranscriptMetadataSchema = z2.object({
+  kind: z2.literal("asr-transcript"),
+  sourcePath: z2.string().min(1),
+  sourceHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/),
+  backendId: z2.string().min(1),
+  modelId: z2.string().min(1),
+  language: z2.string().min(1).optional(),
+  durationFrames: z2.number().int().min(0).optional(),
+  wordCount: z2.number().int().nonnegative(),
+  averageConfidence: z2.number().min(0).max(1).optional()
+});
+var TextCutSchema = z2.object({
+  id: z2.string().min(1),
+  sourceStartFrame: z2.number().int().min(0),
+  sourceEndFrame: z2.number().int().min(0),
+  outputStartFrame: z2.number().int().min(0),
+  outputEndFrame: z2.number().int().min(0),
+  action: z2.enum(["keep", "delete", "review"]),
+  reason: z2.string().optional(),
+  requiresReview: z2.boolean().optional(),
+  confidence: z2.number().min(0).max(1).optional(),
+  detectionSource: z2.string().min(1).optional()
+});
+var CaptionCueSchema = z2.object({
+  id: z2.string().min(1),
+  startFrame: z2.number().int().min(0),
+  durationInFrames: z2.number().int().positive(),
+  text: z2.string().min(1),
+  wordIds: z2.array(z2.string()).optional(),
+  sourceStartFrame: z2.number().int().min(0).optional(),
+  sourceEndFrame: z2.number().int().min(0).optional()
+});
+var TalkingHeadMetadataSchema = z2.object({
+  kind: z2.literal("talking-head.analysis"),
+  fps: z2.number().positive(),
+  asr: AsrTranscriptMetadataSchema.optional(),
+  words: z2.array(TranscriptWordSchema),
+  cuts: z2.array(TextCutSchema).default([]),
+  captionCues: z2.array(CaptionCueSchema).default([]),
+  disfluencies: z2.array(
+    z2.object({
+      id: z2.string().optional(),
+      wordId: z2.string().optional(),
+      startFrame: z2.number().int().min(0).optional(),
+      endFrame: z2.number().int().min(0).optional(),
+      text: z2.string().optional(),
+      type: z2.enum(["filler", "silence", "tone-particle", "repeat"]),
+      requiresReview: z2.boolean().default(false),
+      confidence: z2.number().min(0).max(1).optional(),
+      detectionSource: z2.string().min(1).optional()
+    })
+  ).default([])
+});
+var RightsMetadataSchema = z2.object({
+  license: z2.string().min(1),
+  attribution: z2.string().min(1),
+  redistributionAllowed: z2.boolean(),
+  derivativeAllowed: z2.boolean()
+});
+var ReferenceShotSchema = FrameRangeSchema.extend({
+  id: z2.string().min(1),
+  description: z2.string().min(1),
+  tags: z2.array(z2.string()).default([])
+});
+var ReferenceVideoMetadataSchema = z2.object({
+  kind: z2.literal("reference-video.analysis"),
+  sourceUrl: z2.string().min(1),
+  rights: RightsMetadataSchema,
+  shots: z2.array(ReferenceShotSchema).default([]),
+  nonCopyingQa: z2.object({
+    status: z2.enum(["passed", "requires-review", "failed"]),
+    similarityScore: z2.number().min(0).max(1).optional()
+  }).optional()
+});
+var ReferenceDownloadSourceLedgerSchema = z2.object({
+  sourceUrl: z2.string().min(1),
+  license: z2.string().min(1),
+  attribution: z2.string().min(1),
+  allowedUses: z2.array(z2.string().min(1)).default(["analysis-only"]),
+  redistributionAllowed: z2.boolean(),
+  derivativeAllowed: z2.boolean()
+});
+var ReferenceDownloadFileSchema = z2.object({
+  path: z2.string().min(1),
+  mediaType: z2.enum(["video", "audio", "image", "metadata", "unknown"]),
+  sizeBytes: z2.number().int().nonnegative().optional()
+});
+var ReferenceDownloadMetadataBaseSchema = z2.object({
+  kind: z2.literal("reference.download"),
+  sourceUrl: z2.string().min(1),
+  tool: z2.literal("yt-dlp"),
+  outputDir: z2.string().min(1),
+  downloadedFiles: z2.array(ReferenceDownloadFileSchema).min(1),
+  rawReferenceQuarantine: z2.literal(true),
+  finalExportAllowed: z2.boolean(),
+  sourceLedger: ReferenceDownloadSourceLedgerSchema,
+  decisionLog: z2.array(z2.string().min(1)).default([])
+});
+function hasReferenceDownloadFinalExportRights(metadata) {
+  return !metadata.finalExportAllowed || metadata.sourceLedger.redistributionAllowed && metadata.sourceLedger.derivativeAllowed;
+}
+var ReferenceDownloadMetadataSchema = ReferenceDownloadMetadataBaseSchema.refine(
+  hasReferenceDownloadFinalExportRights,
+  {
+    message: "final export requires derivative and redistribution rights",
+    path: ["finalExportAllowed"]
+  }
+);
+var VisualMomentCandidateSchema = z2.object({
+  id: z2.string().min(1),
+  startMs: z2.number().min(0),
+  endMs: z2.number().min(0),
+  peakMs: z2.number().min(0),
+  startFrame: z2.number().int().min(0).optional(),
+  endFrame: z2.number().int().min(0).optional(),
+  peakFrame: z2.number().int().min(0).optional(),
+  sceneIndex: z2.number().int().min(0),
+  motion: z2.number().min(0).max(1),
+  quality: z2.number().min(0).max(1),
+  action: z2.number().min(0).max(1).optional(),
+  emotion: z2.number().min(0).max(1).optional(),
+  semantic: z2.string().min(1).optional(),
+  tags: z2.array(z2.string()).default([])
+}).refine((candidate) => candidate.endMs > candidate.startMs, {
+  message: "visual moment endMs must be greater than startMs",
+  path: ["endMs"]
+});
+var VideoVisualMomentMetadataSchema = z2.object({
+  kind: z2.literal("video.visual-moments"),
+  sourceVideoAssetId: z2.string().min(1),
+  fps: z2.number().positive(),
+  sourcePath: z2.string().min(1).optional(),
+  sceneChanges: z2.array(z2.number().int().min(0)).default([]),
+  candidates: z2.array(VisualMomentCandidateSchema).min(1)
+});
+var CharacterReferenceViewKindSchema = z2.enum([
+  "front",
+  "side",
+  "back",
+  "three-quarter",
+  "expression"
+]);
+var CharacterReferenceViewSchema = z2.object({
+  view: CharacterReferenceViewKindSchema,
+  assetId: z2.string().min(1),
+  path: z2.string().min(1),
+  locked: z2.boolean().default(true),
+  copyOnWriteRequired: z2.boolean().default(true)
+});
+var ImageStoryboardMetadataSchema = z2.object({
+  kind: z2.literal("image.storyboard-consistency"),
+  characters: z2.array(
+    z2.object({
+      id: z2.string().min(1),
+      name: z2.string().min(1),
+      referenceAssetIds: z2.array(z2.string()).min(1),
+      requiredViews: z2.array(CharacterReferenceViewKindSchema).default([]),
+      referenceViews: z2.array(CharacterReferenceViewSchema).default([])
+    })
+  ).default([]),
+  scenes: z2.array(
+    z2.object({
+      id: z2.string().min(1),
+      referenceAssetIds: z2.array(z2.string()).default([]),
+      prompt: z2.string().min(1)
+    })
+  ).default([]),
+  panels: z2.array(
+    z2.object({
+      id: z2.string().min(1),
+      sceneId: z2.string().min(1),
+      characterIds: z2.array(z2.string()).default([]),
+      assetId: z2.string().min(1),
+      path: z2.string().min(1).optional(),
+      consistencyScore: z2.number().min(0).max(1).optional()
+    })
+  ).default([])
+});
+var SemanticReferenceRoleKindSchema = z2.enum([
+  "identity-front",
+  "identity-side",
+  "identity-back",
+  "identity-three-quarter",
+  "identity-expression",
+  "scene-plate",
+  "style-frame",
+  "logo-lock",
+  "product-packshot"
+]);
+var SemanticReferenceDownstreamUsageSchema = z2.enum([
+  "identity-reference",
+  "scene-reference",
+  "style-reference",
+  "brand-lock",
+  "product-reference"
+]);
+var SemanticReferenceRoleSchema = z2.object({
+  roleId: z2.string().min(1),
+  assetId: z2.string().min(1),
+  role: SemanticReferenceRoleKindSchema,
+  subjectId: z2.string().min(1).optional(),
+  path: z2.string().min(1),
+  locked: z2.boolean(),
+  copyOnWriteRequired: z2.boolean(),
+  downstreamUsage: SemanticReferenceDownstreamUsageSchema,
+  constraints: z2.array(z2.string().min(1)).default([])
+});
+var SemanticReferenceRolesMetadataSchema = z2.object({
+  kind: z2.literal("image.semantic-reference-roles"),
+  roles: z2.array(SemanticReferenceRoleSchema).min(1)
+});
+var ProductLogoQaReferenceSchema = z2.object({
+  roleId: z2.string().min(1),
+  assetId: z2.string().min(1),
+  role: z2.enum(["logo-lock", "product-packshot"]),
+  subjectId: z2.string().min(1).optional(),
+  path: z2.string().min(1),
+  locked: z2.boolean(),
+  copyOnWriteRequired: z2.boolean(),
+  constraints: z2.array(z2.string().min(1)).default([])
+});
+var ProductLogoQaCheckKindSchema = z2.enum([
+  "logo-presence",
+  "glyph-lock",
+  "brand-color",
+  "packshot-presence",
+  "claim-text",
+  "material-finish",
+  "packaging-layout"
+]);
+var ProductLogoQaCheckSchema = z2.object({
+  id: z2.string().min(1),
+  roleId: z2.string().min(1),
+  referenceAssetId: z2.string().min(1),
+  check: ProductLogoQaCheckKindSchema,
+  status: z2.enum(["pass", "requires-review", "fail"]),
+  required: z2.boolean().default(true),
+  expected: z2.string().min(1),
+  actual: z2.string().min(1),
+  confidence: z2.number().min(0).max(1).optional(),
+  deltaE: z2.number().min(0).optional(),
+  evidence: z2.string().min(1).optional()
+});
+var ProductLogoQaMetadataSchema = z2.object({
+  kind: z2.literal("image.product-logo-qa"),
+  targetAssetId: z2.string().min(1),
+  referencePackAssetId: z2.string().min(1).optional(),
+  requiredReferenceAssetIds: z2.array(z2.string().min(1)).min(1),
+  references: z2.array(ProductLogoQaReferenceSchema).min(1),
+  checks: z2.array(ProductLogoQaCheckSchema).min(1),
+  verdict: z2.enum(["pass", "requires-review", "fail"]),
+  blockedReasons: z2.array(z2.string().min(1)).default([]),
+  copyOnWriteRequired: z2.boolean()
+});
+var AnalysisBackendBenchmarkMetricSchema = z2.object({
+  id: z2.string().min(1),
+  label: z2.string().min(1).optional(),
+  score: z2.number().min(0).max(1),
+  threshold: z2.number().min(0).max(1),
+  weight: z2.number().positive().default(1),
+  higherIsBetter: z2.boolean().default(true),
+  status: z2.enum(["pass", "fail"])
+});
+var AnalysisBackendBenchmarkCandidateSchema = z2.object({
+  backendId: z2.string().min(1),
+  capability: z2.string().min(1),
+  resultPath: z2.string().min(1),
+  metrics: z2.array(AnalysisBackendBenchmarkMetricSchema).min(1),
+  weightedScore: z2.number().min(0).max(1),
+  status: z2.enum(["pass", "fail"])
+});
+var AnalysisBackendBenchmarkMetadataSchema = z2.object({
+  kind: z2.literal("analysis.backend-benchmark"),
+  benchmarkId: z2.string().min(1),
+  targetCapability: z2.string().min(1),
+  fixtureSetPath: z2.string().min(1),
+  candidates: z2.array(AnalysisBackendBenchmarkCandidateSchema).min(1),
+  selectedBackendId: z2.string().min(1).optional(),
+  verdict: z2.enum(["pass", "requires-review", "fail"]),
+  blockedReasons: z2.array(z2.string().min(1)).default([]),
+  decisionLog: z2.array(z2.string().min(1)).default([])
+});
+var ImageEmbeddingDistanceMetricSchema = z2.enum([
+  "cosine",
+  "dot",
+  "euclidean"
+]);
+var ImageEmbeddingBaselineForSchema = z2.enum([
+  "identity",
+  "product",
+  "scene",
+  "style",
+  "logo"
+]);
+var ImageEmbeddingStoreItemSchema = z2.object({
+  assetId: z2.string().min(1),
+  roleId: z2.string().min(1).optional(),
+  subjectId: z2.string().min(1).optional(),
+  path: z2.string().min(1),
+  vectorPath: z2.string().min(1),
+  vectorHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/),
+  dimension: z2.number().int().positive(),
+  baselineFor: z2.array(ImageEmbeddingBaselineForSchema).min(1),
+  locked: z2.boolean(),
+  copyOnWriteRequired: z2.boolean(),
+  tags: z2.array(z2.string().min(1)).default([])
+});
+var ImageEmbeddingStoreMetadataSchema = z2.object({
+  kind: z2.literal("image.embedding-store"),
+  embeddingSetId: z2.string().min(1),
+  modelId: z2.string().min(1),
+  dimension: z2.number().int().positive(),
+  distanceMetric: ImageEmbeddingDistanceMetricSchema,
+  items: z2.array(ImageEmbeddingStoreItemSchema).min(1),
+  copyOnWriteRequired: z2.boolean()
+});
+var ImageComfyuiApiFormatSchema = z2.enum([
+  "comfyui-api-json",
+  "comfyui-ui-json"
+]);
+var ImageComfyuiModelTypeSchema = z2.enum([
+  "checkpoint",
+  "vae",
+  "lora",
+  "controlnet",
+  "upscaler",
+  "embedding",
+  "other"
+]);
+var ImageComfyuiModelReferenceSchema = z2.object({
+  name: z2.string().min(1),
+  type: ImageComfyuiModelTypeSchema,
+  path: z2.string().min(1).optional(),
+  hash: z2.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+  license: z2.string().min(1).optional()
+});
+var ImageComfyuiCustomNodeSchema = z2.object({
+  name: z2.string().min(1),
+  source: z2.string().min(1).optional(),
+  version: z2.string().min(1).optional(),
+  commit: z2.string().min(1).optional(),
+  hash: z2.string().regex(/^sha256:[a-f0-9]{64}$/).optional()
+});
+var ImageComfyuiInputKindSchema = z2.enum([
+  "text",
+  "image",
+  "mask",
+  "latent",
+  "seed",
+  "number",
+  "model",
+  "lora",
+  "controlnet",
+  "other"
+]);
+var ImageComfyuiInputSlotSchema = z2.object({
+  id: z2.string().min(1),
+  nodeId: z2.string().min(1),
+  inputName: z2.string().min(1),
+  kind: ImageComfyuiInputKindSchema,
+  value: z2.union([z2.string(), z2.number(), z2.boolean()]).optional(),
+  assetId: z2.string().min(1).optional(),
+  path: z2.string().min(1).optional()
+});
+var ImageComfyuiOutputStatusSchema = z2.enum([
+  "planned",
+  "materialized"
+]);
+var ImageComfyuiOutputMediaTypeSchema = z2.enum([
+  "image",
+  "image-sequence",
+  "mask",
+  "metadata"
+]);
+var ImageComfyuiOutputSchema = z2.object({
+  outputAssetId: z2.string().min(1),
+  nodeId: z2.string().min(1),
+  outputName: z2.string().min(1).optional(),
+  mediaType: ImageComfyuiOutputMediaTypeSchema,
+  path: z2.string().min(1),
+  fileHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+  status: ImageComfyuiOutputStatusSchema
+});
+var ImageComfyuiExecutionSchema = z2.object({
+  mode: z2.enum(["planned", "completed", "failed"]),
+  runnerId: z2.string().min(1).optional(),
+  promptId: z2.string().min(1).optional(),
+  executedAt: z2.string().min(1).optional()
+});
+var ImageComfyuiRunnerMetadataSchema = z2.object({
+  kind: z2.literal("image.comfyui-runner"),
+  workflowId: z2.string().min(1),
+  workflowPath: z2.string().min(1),
+  workflowHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/),
+  apiFormat: ImageComfyuiApiFormatSchema,
+  backendId: z2.string().min(1).optional(),
+  models: z2.array(ImageComfyuiModelReferenceSchema).default([]),
+  customNodes: z2.array(ImageComfyuiCustomNodeSchema).default([]),
+  inputs: z2.array(ImageComfyuiInputSlotSchema).default([]),
+  outputs: z2.array(ImageComfyuiOutputSchema).min(1),
+  execution: ImageComfyuiExecutionSchema.default({ mode: "planned" }),
+  decisionLog: z2.array(z2.string().min(1)).default([])
+});
+var StoryboardPromptSchema = z2.object({
+  id: z2.string().min(1),
+  panelId: z2.string().min(1),
+  sceneId: z2.string().min(1),
+  characterIds: z2.array(z2.string()).default([]),
+  prompt: z2.string().min(1),
+  negativePrompt: z2.string().optional(),
+  outputAssetId: z2.string().min(1),
+  outputPath: z2.string().min(1),
+  modelHint: z2.string().optional()
+});
+var StoryboardPromptPackSchema = z2.object({
+  schemaVersion: z2.literal(1),
+  kind: z2.literal("clash.storyboard.prompt-pack"),
+  storyboardAssetId: z2.string().min(1),
+  prompts: z2.array(StoryboardPromptSchema).min(1)
+});
+var SafeZonesSchema = z2.object({
+  top: z2.number().int().min(0),
+  right: z2.number().int().min(0),
+  bottom: z2.number().int().min(0),
+  left: z2.number().int().min(0)
+});
+var AdDeliveryVariantSchema = z2.object({
+  id: z2.string().min(1),
+  platform: z2.string().min(1),
+  durationSeconds: z2.number().positive(),
+  width: z2.number().int().positive(),
+  height: z2.number().int().positive(),
+  aspectRatio: z2.string().min(1),
+  safeZones: SafeZonesSchema,
+  subtitlesRequired: z2.boolean().default(true),
+  loudnessTarget: z2.string().min(1).default("platform-default")
+});
+var AdPackshotSpecSchema = z2.object({
+  required: z2.boolean().default(true),
+  assetId: z2.string().min(1),
+  startFrame: z2.number().int().min(0),
+  endFrame: z2.number().int().min(0)
+});
+var AdEndCardSpecSchema = z2.object({
+  required: z2.boolean().default(true),
+  durationFrames: z2.number().int().positive(),
+  cta: z2.string().min(1),
+  disclaimer: z2.string().min(1).optional(),
+  qrRequired: z2.boolean().default(false)
+});
+var AdDeliveryMetadataSchema = z2.object({
+  kind: z2.literal("ad.delivery-spec"),
+  brand: z2.string().min(1),
+  fps: z2.number().positive(),
+  platforms: z2.array(z2.string().min(1)).min(1),
+  variants: z2.array(AdDeliveryVariantSchema).min(1),
+  packshot: AdPackshotSpecSchema,
+  endCard: AdEndCardSpecSchema,
+  rightsLedgerAssetId: z2.string().min(1).optional()
+});
+var AdDeliveryChecklistItemSchema = z2.object({
+  id: z2.string().min(1),
+  label: z2.string().min(1),
+  required: z2.boolean()
+});
+var AdDeliverySpecProjectionSchema = z2.object({
+  schemaVersion: z2.literal(1),
+  kind: z2.literal("clash.ad.delivery-spec.projection"),
+  targetAssetId: z2.string().min(1),
+  brand: z2.string().min(1),
+  fps: z2.number().positive(),
+  platforms: z2.array(z2.string().min(1)).min(1),
+  variants: z2.array(AdDeliveryVariantSchema).min(1),
+  packshot: AdPackshotSpecSchema,
+  endCard: AdEndCardSpecSchema,
+  rightsLedgerAssetId: z2.string().min(1).optional(),
+  checklist: z2.array(AdDeliveryChecklistItemSchema).default([])
+});
+var AdDeliveryExportProbeSchema = z2.object({
+  width: z2.number().int().positive(),
+  height: z2.number().int().positive(),
+  fps: z2.number().positive(),
+  durationSeconds: z2.number().positive(),
+  hasVideo: z2.boolean(),
+  hasAudio: z2.boolean(),
+  videoCodec: z2.string().min(1).optional(),
+  audioCodec: z2.string().min(1).optional()
+});
+var AdDeliverySafeZoneViolationSchema = z2.object({
+  frame: z2.number().int().min(0).optional(),
+  description: z2.string().min(1),
+  severity: z2.enum(["warning", "error"]).default("error")
+});
+var AdDeliveryVisualQaReportSchema = z2.object({
+  captionsPresent: z2.boolean(),
+  safeZoneViolations: z2.array(AdDeliverySafeZoneViolationSchema).default([]),
+  packshotVisible: z2.boolean(),
+  endCardVisible: z2.boolean(),
+  disclaimerVisible: z2.boolean().optional(),
+  ctaVisible: z2.boolean().optional(),
+  logoLockupVisible: z2.boolean().optional(),
+  finalFrameHolds: z2.boolean().optional()
+});
+var AdDeliveryExportValidationCheckSchema = z2.object({
+  id: z2.string().min(1),
+  status: z2.enum(["pass", "fail"]),
+  required: z2.boolean(),
+  severity: z2.enum(["error", "warning"]).default("error"),
+  expected: z2.string().min(1),
+  actual: z2.string().min(1)
+});
+var AdDeliveryExportValidationReceiptSchema = z2.object({
+  schemaVersion: z2.literal(1),
+  kind: z2.literal("clash.ad.delivery-export-validation"),
+  targetAssetId: z2.string().min(1),
+  brand: z2.string().min(1),
+  variant: AdDeliveryVariantSchema,
+  renderedPath: z2.string().min(1),
+  probe: AdDeliveryExportProbeSchema,
+  visualQa: AdDeliveryVisualQaReportSchema.optional(),
+  checks: z2.array(AdDeliveryExportValidationCheckSchema).min(1),
+  verdict: z2.enum(["pass", "fail"])
+});
+var AdVisualQaCheckKindSchema = z2.enum([
+  "captions-present",
+  "safe-zone",
+  "packshot-visible",
+  "end-card-visible",
+  "disclaimer-visible",
+  "disclaimer-ocr",
+  "cta-visible",
+  "logo-lockup-visible",
+  "final-frame-hold"
+]);
+var AdVisualQaCheckSchema = z2.object({
+  id: z2.string().min(1),
+  check: AdVisualQaCheckKindSchema,
+  status: z2.enum(["pass", "fail", "requires-review"]),
+  required: z2.boolean().default(true),
+  expected: z2.string().min(1),
+  actual: z2.string().min(1),
+  confidence: z2.number().min(0).max(1).optional(),
+  frame: z2.number().int().min(0).optional(),
+  evidencePath: z2.string().min(1).optional()
+});
+var AdVisualQaMetadataSchema = z2.object({
+  kind: z2.literal("ad.visual-qa"),
+  targetAssetId: z2.string().min(1),
+  variantId: z2.string().min(1),
+  renderedPath: z2.string().min(1),
+  evidencePath: z2.string().min(1),
+  checks: z2.array(AdVisualQaCheckSchema).min(1),
+  verdict: z2.enum(["pass", "requires-review", "fail"]),
+  blockedReasons: z2.array(z2.string().min(1)).default([]),
+  visualQa: AdDeliveryVisualQaReportSchema,
+  decisionLog: z2.array(z2.string().min(1)).default([])
+});
+var ContentCredentialModeSchema = z2.enum([
+  "unsigned-manifest",
+  "signed-c2pa",
+  "external"
+]);
+var ContentCredentialSignatureStatusSchema = z2.enum([
+  "unsigned",
+  "signed",
+  "external",
+  "failed"
+]);
+var ContentCredentialIngredientRelationshipSchema = z2.enum([
+  "source",
+  "reference",
+  "generated-input",
+  "model",
+  "metadata"
+]);
+var ContentCredentialIngredientSchema = z2.object({
+  assetId: z2.string().min(1).optional(),
+  path: z2.string().min(1),
+  relationship: ContentCredentialIngredientRelationshipSchema,
+  hash: z2.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+  title: z2.string().min(1).optional(),
+  rights: z2.string().min(1).optional()
+});
+var ContentCredentialActionSchema = z2.object({
+  actionId: z2.string().min(1).optional(),
+  action: z2.string().min(1),
+  softwareAgent: z2.string().min(1).optional(),
+  when: z2.string().min(1).optional()
+});
+var ContentCredentialAssertionSchema = z2.object({
+  label: z2.string().min(1),
+  value: z2.string().min(1),
+  path: z2.string().min(1).optional(),
+  hash: z2.string().regex(/^sha256:[a-f0-9]{64}$/).optional()
+});
+var ContentCredentialsMetadataSchema = z2.object({
+  kind: z2.literal("provenance.content-credentials"),
+  credentialId: z2.string().min(1),
+  targetAssetId: z2.string().min(1),
+  targetPath: z2.string().min(1).optional(),
+  targetHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+  mode: ContentCredentialModeSchema,
+  signatureStatus: ContentCredentialSignatureStatusSchema,
+  c2paManifestPath: z2.string().min(1).optional(),
+  c2paManifestHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+  issuer: z2.string().min(1).optional(),
+  ingredients: z2.array(ContentCredentialIngredientSchema).default([]),
+  actions: z2.array(ContentCredentialActionSchema).default([]),
+  assertions: z2.array(ContentCredentialAssertionSchema).default([]),
+  decisionLog: z2.array(z2.string().min(1)).default([])
+});
+var ProductionMetadataBaseSchema = z2.discriminatedUnion("kind", [
+  AudioBeatMetadataSchema,
+  AudioStemSeparationMetadataSchema,
+  LyricsAlignmentMetadataSchema,
+  TalkingHeadMetadataSchema,
+  ReferenceVideoMetadataSchema,
+  ReferenceDownloadMetadataBaseSchema,
+  VideoVisualMomentMetadataSchema,
+  ImageStoryboardMetadataSchema,
+  SemanticReferenceRolesMetadataSchema,
+  ProductLogoQaMetadataSchema,
+  AnalysisBackendBenchmarkMetadataSchema,
+  ImageEmbeddingStoreMetadataSchema,
+  ImageComfyuiRunnerMetadataSchema,
+  AdDeliveryMetadataSchema,
+  AdVisualQaMetadataSchema,
+  ContentCredentialsMetadataSchema
+]);
+var ProductionMetadataSchema = ProductionMetadataBaseSchema.superRefine((metadata, context) => {
+  if (metadata.kind === "reference.download" && !hasReferenceDownloadFinalExportRights(metadata)) {
+    context.addIssue({
+      code: z2.ZodIssueCode.custom,
+      message: "final export requires derivative and redistribution rights",
+      path: ["finalExportAllowed"]
+    });
+  }
+});
+var AssetMetadataFillActionSchema = z2.object({
+  actionId: z2.string().min(1),
+  target: MetadataAttachmentTargetSchema,
+  metadataKind: z2.string().min(1),
+  metadata: ProductionMetadataSchema,
+  producer: z2.string().min(1),
+  createdAt: z2.string().optional()
+}).strict();
+var ExecutablePluginJsonValueSchema = z2.lazy(
+  () => z2.union([
+    z2.null(),
+    z2.boolean(),
+    z2.number().finite(),
+    z2.string(),
+    z2.array(ExecutablePluginJsonValueSchema),
+    z2.record(ExecutablePluginJsonValueSchema)
+  ])
+);
+var nonEmptyIdSchema = z2.string().trim().min(1);
+var prefixedSha256Schema = z2.string().regex(/^sha256:[a-f0-9]{64}$/);
+var jsonObjectSchema = z2.record(ExecutablePluginJsonValueSchema);
+var GeneratorEditPolicySchema = z2.enum([
+  "advance-head",
+  "fork-when-materialized"
+]);
+var MediaAssetRevisionRefSchema = z2.object({
+  kind: z2.literal("media"),
+  projectAssetId: nonEmptyIdSchema
+}).strict();
+var DocumentAssetRevisionRefSchema = z2.object({
+  kind: z2.literal("document"),
+  documentAssetId: nonEmptyIdSchema,
+  revisionId: nonEmptyIdSchema
+}).strict();
+var AssetRevisionRefSchema = z2.discriminatedUnion("kind", [
+  MediaAssetRevisionRefSchema,
+  DocumentAssetRevisionRefSchema
+]);
+var GeneratorRevisionRefSchema = z2.object({
+  generatorId: nonEmptyIdSchema,
+  generatorRevisionId: nonEmptyIdSchema
+}).strict();
+var GeneratorInputTargetSchema = z2.union([
+  AssetRevisionRefSchema,
+  GeneratorRevisionRefSchema
+]);
+var GeneratorInputRefSchema = z2.object({
+  slot: nonEmptyIdSchema,
+  itemKey: nonEmptyIdSchema.optional(),
+  target: GeneratorInputTargetSchema
+}).strict();
+var GeneratorDefinitionRefSchema = z2.object({
+  pluginId: pluginIdSchema,
+  definitionId: nonEmptyIdSchema,
+  version: nonEmptyIdSchema,
+  schemaHash: prefixedSha256Schema
+}).strict();
+var GeneratorExecutorRefSchema = z2.object({
+  pluginId: pluginIdSchema,
+  version: nonEmptyIdSchema,
+  exportId: nonEmptyIdSchema,
+  schemaHash: prefixedSha256Schema
+}).strict();
+var GeneratorMediaAssetTypeSchema = z2.object({
+  kind: z2.literal("media"),
+  mediaKind: AssetKindSchema
+}).strict();
+var GeneratorDocumentAssetTypeSchema = z2.object({
+  kind: z2.literal("document"),
+  documentKind: nonEmptyIdSchema,
+  schemaVersion: z2.number().int().positive()
+}).strict();
+var GeneratorAssetTypeSchema = z2.discriminatedUnion("kind", [
+  GeneratorMediaAssetTypeSchema,
+  GeneratorDocumentAssetTypeSchema
+]);
+var GeneratorInputCardinalitySchema = z2.object({
+  minItems: z2.number().int().nonnegative(),
+  maxItems: z2.number().int().positive().nullable()
+}).strict().superRefine(({ minItems, maxItems }, context) => {
+  if (maxItems !== null && maxItems < minItems) {
+    context.addIssue({
+      code: z2.ZodIssueCode.custom,
+      path: ["maxItems"],
+      message: "maxItems must be greater than or equal to minItems."
+    });
+  }
+});
+var GeneratorFamilyInputTypeSchema = z2.object({
+  kind: z2.literal("generator"),
+  pluginId: pluginIdSchema,
+  definitionId: nonEmptyIdSchema
+}).strict();
+var GeneratorInputTypeSchema = z2.discriminatedUnion("kind", [
+  GeneratorMediaAssetTypeSchema,
+  GeneratorDocumentAssetTypeSchema,
+  GeneratorFamilyInputTypeSchema
+]);
+var GeneratorInputPortSchema = z2.object({
+  slot: nonEmptyIdSchema,
+  accepts: z2.array(GeneratorInputTypeSchema).min(1),
+  cardinality: GeneratorInputCardinalitySchema
+}).strict();
+var GeneratorActionInputPortSchema = GeneratorInputPortSchema;
+var GeneratorActionOutputCardinalitySchema = GeneratorInputCardinalitySchema;
+var GeneratorActionOutputPortSchema = z2.object({
+  slot: nonEmptyIdSchema,
+  assetType: GeneratorAssetTypeSchema,
+  cardinality: GeneratorActionOutputCardinalitySchema
+}).strict();
+var GeneratorActionOutputContractSchema = z2.array(GeneratorActionOutputPortSchema).length(1).superRefine((outputs, context) => {
+  const cardinality = outputs[0]?.cardinality;
+  if (cardinality?.minItems !== 1 || cardinality.maxItems !== 1) {
+    context.addIssue({
+      code: z2.ZodIssueCode.custom,
+      path: [0, "cardinality"],
+      message: "The current Generator Action profile requires exactly one output."
+    });
+  }
+});
+var GeneratorActionDefinitionSchema = z2.object({
+  id: nonEmptyIdSchema,
+  executorExportId: nonEmptyIdSchema,
+  parametersSchema: jsonObjectSchema,
+  invocationInputs: z2.array(GeneratorActionInputPortSchema),
+  outputs: GeneratorActionOutputContractSchema
+}).strict().superRefine(({ invocationInputs }, context) => {
+  const seen = /* @__PURE__ */ new Set();
+  invocationInputs.forEach((input, index) => {
+    if (seen.has(input.slot)) {
+      context.addIssue({
+        code: z2.ZodIssueCode.custom,
+        path: ["invocationInputs", index, "slot"],
+        message: `Duplicate Generator Action input slot: ${input.slot}`
+      });
+    }
+    seen.add(input.slot);
+  });
+});
+var generatorDefinitionSpecShape = {
+  definitionId: nonEmptyIdSchema,
+  stateSchema: jsonObjectSchema,
+  editPolicy: GeneratorEditPolicySchema,
+  persistentInputs: z2.array(GeneratorInputPortSchema),
+  actions: z2.array(GeneratorActionDefinitionSchema).min(1)
+};
+function validateGeneratorDefinitionSpec(input, context) {
+  const persistentSlots = /* @__PURE__ */ new Set();
+  input.persistentInputs.forEach((persistentInput, index) => {
+    if (persistentSlots.has(persistentInput.slot)) {
+      context.addIssue({
+        code: z2.ZodIssueCode.custom,
+        path: ["persistentInputs", index, "slot"],
+        message: `Duplicate Generator persistent input slot: ${persistentInput.slot}`
+      });
+    }
+    persistentSlots.add(persistentInput.slot);
+  });
+  const actionIds = /* @__PURE__ */ new Set();
+  input.actions.forEach((action, index) => {
+    if (actionIds.has(action.id)) {
+      context.addIssue({
+        code: z2.ZodIssueCode.custom,
+        path: ["actions", index, "id"],
+        message: `Duplicate Generator action id: ${action.id}`
+      });
+    }
+    actionIds.add(action.id);
+  });
+}
+var GeneratorDefinitionSpecSchema = z2.object(generatorDefinitionSpecShape).strict().superRefine(validateGeneratorDefinitionSpec);
+var GeneratorDefinitionSchema = GeneratorDefinitionRefSchema.extend({
+  stateSchema: generatorDefinitionSpecShape.stateSchema,
+  editPolicy: generatorDefinitionSpecShape.editPolicy,
+  persistentInputs: generatorDefinitionSpecShape.persistentInputs,
+  actions: generatorDefinitionSpecShape.actions
+}).strict().superRefine(validateGeneratorDefinitionSpec);
+var ProjectGeneratorHeadSchema = z2.object({
+  id: nonEmptyIdSchema,
+  headRevisionId: nonEmptyIdSchema
+}).strict();
+var ProjectGeneratorSchema = ProjectGeneratorHeadSchema.extend({
+  definitionRef: GeneratorDefinitionRefSchema
+}).strict();
+var GeneratorRevisionSchema = z2.object({
+  id: nonEmptyIdSchema,
+  generatorId: nonEmptyIdSchema,
+  definitionRef: GeneratorDefinitionRefSchema,
+  parentRevisionId: nonEmptyIdSchema.optional(),
+  forkedFrom: GeneratorRevisionRefSchema.optional(),
+  state: jsonObjectSchema,
+  persistentInputRefs: z2.array(GeneratorInputRefSchema)
+}).strict().superRefine(({ generatorId, forkedFrom }, context) => {
+  if (forkedFrom?.generatorId === generatorId) {
+    context.addIssue({
+      code: z2.ZodIssueCode.custom,
+      path: ["forkedFrom", "generatorId"],
+      message: "Same-Generator ancestry belongs in parentRevisionId, not forkedFrom."
+    });
+  }
+});
+var ActionRunStatusSchema = z2.enum([
+  "pending",
+  "running",
+  "succeeded",
+  "failed"
+]);
+var ActionRunRequestSchema = z2.object({
+  actionRunId: nonEmptyIdSchema,
+  generatorRevision: GeneratorRevisionRefSchema,
+  actionId: nonEmptyIdSchema,
+  executor: GeneratorExecutorRefSchema,
+  invocationFingerprint: prefixedSha256Schema,
+  parameters: jsonObjectSchema,
+  invocationInputRefs: z2.array(GeneratorInputRefSchema),
+  outputContract: GeneratorActionOutputContractSchema
+}).strict();
+var ActionRunOutcomeSchema = z2.object({
+  actionRunId: nonEmptyIdSchema,
+  status: z2.enum(["succeeded", "failed"])
+}).strict();
+var ProjectActionRunSchema = ActionRunRequestSchema.extend({
+  status: ActionRunStatusSchema
+}).strict();
+var OutputCommitSchema = z2.object({
+  actionRunId: nonEmptyIdSchema,
+  outputSlot: nonEmptyIdSchema,
+  itemKey: nonEmptyIdSchema.optional(),
+  asset: AssetRevisionRefSchema
+}).strict();
 var AspectRatioSchema = z2.object({
   width: z2.number().int().positive(),
   height: z2.number().int().positive()
@@ -44656,7 +45831,7 @@ var ProviderInputAdaptationSchema = z2.object({
     mimeAliases: z2.record(z2.string().min(1), z2.string().min(1))
   }).optional()
 });
-var ProviderAssetRepresentationSchema = z2.enum(["provider-url", "bytes"]);
+var ProviderAssetRepresentationSchema = z2.enum(["provider-url", "executor-url", "bytes"]);
 var ProviderAssetInputSchema = z2.object({
   match: z2.object({
     kinds: z2.array(AssetKindSchema).min(1).optional(),
@@ -49830,12 +51005,15 @@ var ExecutablePluginRuntimeSchema = z2.discriminatedUnion("kind", [
      */
     build: z2.object({
       source: PluginRelativePathSchema
-    }).strict().optional()
+    }).strict().optional(),
+    /** Immutable package payloads the executor reads at runtime, never Host paths or invocation data. */
+    resources: z2.array(PluginRelativePathSchema).optional()
   }),
   z2.object({
     kind: z2.literal("hosted"),
     transport: z2.literal("http"),
-    endpoint: z2.string().url()
+    endpoint: z2.string().url(),
+    resources: z2.never().optional()
   })
 ]);
 var ExecutablePluginCardExportSchema = z2.object({
@@ -49851,6 +51029,11 @@ var ExecutablePluginProviderExportSchema = z2.object({
 var ExecutablePluginModelBindingExportSchema = z2.object({
   id: z2.string().trim().regex(PLUGIN_ID_PATTERN),
   kind: z2.literal("model-provider-binding"),
+  path: PluginRelativePathSchema
+}).strict();
+var ExecutablePluginGeneratorExportSchema = z2.object({
+  id: z2.string().trim().regex(PLUGIN_ID_PATTERN),
+  kind: z2.literal("generator"),
   path: PluginRelativePathSchema
 }).strict();
 var ExecutableActionPresentationSchema = z2.discriminatedUnion("type", [
@@ -50004,6 +51187,11 @@ var ExecutablePluginCardDocumentSchema = z2.discriminatedUnion("kind", [
     });
   });
 });
+var ExecutablePluginGeneratorDocumentSchema = z2.object({
+  apiVersion: z2.literal("clash.generator/v1"),
+  kind: z2.literal("generator"),
+  spec: GeneratorDefinitionSpecSchema
+}).strict();
 var ExecutablePluginProviderDefinitionSchema = z2.object({
   /**
    * What this provider needs to authenticate, and how to draw it.
@@ -50086,9 +51274,18 @@ var PluginEntryOperationSchema = z2.enum(PLUGIN_ENTRY_OPERATIONS);
 var ExecutablePluginFunctionExportSchema = z2.object({
   id: z2.string().trim().regex(PLUGIN_ID_PATTERN),
   kind: z2.enum(["action", "provider-projector", "provider-executor"]),
+  /** Delivery forms accepted directly by an Action's own executor. */
+  assetInputs: z2.array(ProviderAssetInputSchema).optional(),
   /** Defaults to submit-only: the simplest plugin declares nothing and gets the simplest contract. */
   operations: z2.array(PluginEntryOperationSchema).nonempty().default(["submit"])
 }).strict().superRefine((entry, ctx) => {
+  if (entry.kind !== "action" && entry.assetInputs !== void 0) {
+    ctx.addIssue({
+      code: z2.ZodIssueCode.custom,
+      path: ["assetInputs"],
+      message: "Only Action exports declare Asset delivery; Provider delivery belongs to the selected binding."
+    });
+  }
   if (!entry.operations.includes("submit")) {
     ctx.addIssue({
       code: z2.ZodIssueCode.custom,
@@ -50123,22 +51320,18 @@ var ExecutablePluginProviderRegistrationSchema = ExecutablePluginArtifactRegistr
 var ExecutablePluginModelBindingRegistrationSchema = ExecutablePluginArtifactRegistrationBaseSchema.extend({
   document: ExecutablePluginModelBindingDocumentSchema
 }).strict();
+var ExecutablePluginGeneratorRegistrationSchema = z2.object({
+  pluginId: pluginIdSchema,
+  version: z2.string().trim().regex(SEMVER_PATTERN),
+  schemaHash: z2.string().regex(SHA256_PATTERN),
+  document: ExecutablePluginGeneratorDocumentSchema
+}).strict();
 var ExecutablePluginBindingSchema = z2.object({
   pluginId: pluginIdSchema,
   version: z2.string().trim().regex(SEMVER_PATTERN),
   exportId: z2.string().trim().regex(PLUGIN_ID_PATTERN),
   schemaHash: z2.string().regex(SHA256_PATTERN)
 }).strict();
-var ExecutablePluginJsonValueSchema = z2.lazy(
-  () => z2.union([
-    z2.null(),
-    z2.boolean(),
-    z2.number().finite(),
-    z2.string(),
-    z2.array(ExecutablePluginJsonValueSchema),
-    z2.record(ExecutablePluginJsonValueSchema)
-  ])
-);
 var ExecutablePluginAssetHandleObjectSchema = z2.object({
   assetId: z2.string().trim().min(1),
   uri: z2.string().regex(/^clash-asset:\/\/.+/),
@@ -50150,6 +51343,11 @@ var ExecutablePluginReferenceBaseSchema = z2.object({
   slot: z2.string().trim().min(1),
   index: z2.number().int().nonnegative()
 });
+var ExecutableSpeechTranscriptionReferenceSchema = ExecutablePluginReferenceBaseSchema.extend({
+  asset: ExecutablePluginAssetHandleObjectSchema.extend({
+    kind: z2.enum(["audio", "video"])
+  }).strict()
+}).strict();
 var ExecutablePluginReferenceSchema = z2.union([
   ExecutablePluginReferenceBaseSchema.extend({
     asset: ExecutablePluginAssetHandleSchema
@@ -50159,12 +51357,27 @@ var ExecutablePluginReferenceSchema = z2.union([
       nodeId: z2.string().trim().min(1),
       value: z2.string()
     }).strict()
+  }).strict(),
+  ExecutablePluginReferenceBaseSchema.extend({
+    document: z2.object({
+      documentAssetId: z2.string().trim().min(1),
+      revisionId: z2.string().trim().min(1),
+      documentKind: z2.string().trim().min(1),
+      schemaVersion: z2.number().int().positive()
+    }).strict()
   }).strict()
 ]);
 var ExecutablePluginBrokerResolvedReferenceSchema = z2.discriminatedUnion("form", [
   z2.object({
     form: z2.literal("provider-url"),
     providerUrl: z2.string().url(),
+    expiresAt: z2.string().datetime(),
+    kind: AssetKindSchema.optional(),
+    mediaType: z2.string().trim().min(1).optional()
+  }).strict(),
+  z2.object({
+    form: z2.literal("executor-url"),
+    executorUrl: z2.string().url(),
     expiresAt: z2.string().datetime(),
     kind: AssetKindSchema.optional(),
     mediaType: z2.string().trim().min(1).optional()
@@ -50178,6 +51391,12 @@ var ExecutablePluginBrokerResolvedReferenceSchema = z2.discriminatedUnion("form"
   z2.object({
     form: z2.literal("text"),
     text: z2.string()
+  }).strict(),
+  z2.object({
+    form: z2.literal("document"),
+    documentKind: z2.string().trim().min(1),
+    schemaVersion: z2.number().int().positive(),
+    body: ExecutablePluginJsonValueSchema
   }).strict()
 ]);
 var ExecutablePluginInvocationSchema = z2.object({
@@ -50301,6 +51520,22 @@ var ExecutablePluginOutputSchema = z2.union([
     slot: z2.string().trim().min(1),
     kind: z2.literal("value"),
     value: ExecutablePluginJsonValueSchema
+  }).strict(),
+  /**
+   * One typed Document body returned by a Generator Action.
+   *
+   * `value` remains the transport-neutral result shape for legacy Actions and projectors. A
+   * native Generator must name the Document contract on the output itself so the Host can compare
+   * it with the frozen output port before it stores a body or advances any public authority.
+   */
+  z2.object({
+    slot: z2.string().trim().min(1),
+    kind: z2.literal("document"),
+    document: z2.object({
+      documentKind: z2.string().trim().min(1),
+      schemaVersion: z2.number().int().positive(),
+      body: ExecutablePluginJsonValueSchema
+    }).strict()
   }).strict()
 ]);
 var ExecutablePluginFailureCodeSchema = z2.enum([
@@ -50376,6 +51611,28 @@ var ExecutablePluginResultSchema = z2.discriminatedUnion("status", [
     error: ExecutablePluginFailureErrorSchema
   }).strict()
 ]);
+var ExecutableSpeechTranscriptionOperationSchema = z2.object({
+  kind: z2.literal("speech.transcribe"),
+  reference: ExecutableSpeechTranscriptionReferenceSchema,
+  modelId: z2.string().trim().min(1),
+  language: z2.string().trim().min(1).optional(),
+  /** Present only when resuming Host-owned asynchronous speech work. */
+  poll: ExecutablePluginJsonValueSchema.optional()
+}).strict();
+var ExecutableSpeechTranscriptionResultSchema = z2.discriminatedUnion(
+  "status",
+  [
+    z2.object({
+      status: z2.literal("completed"),
+      transcript: AsrTimedTranscriptSchema
+    }).strict(),
+    z2.object({
+      status: z2.literal("accepted"),
+      poll: ExecutablePluginJsonValueSchema,
+      retryAfterMs: z2.number().int().positive().optional()
+    }).strict()
+  ]
+);
 var ExecutablePluginBrokerOperationSchema = z2.union([
   z2.object({
     kind: z2.literal("asset.resolve"),
@@ -50493,7 +51750,8 @@ var ExecutablePluginBrokerOperationSchema = z2.union([
         kind: z2.literal("image")
       }).strict()
     ).max(5).default([])
-  }).strict()
+  }).strict(),
+  ExecutableSpeechTranscriptionOperationSchema
 ]);
 var ExecutablePluginBrokerRequestSchema = z2.object({
   protocol: z2.literal("clash.plugin.broker-request/v1"),
@@ -50586,8 +51844,9 @@ var ExecutablePluginContributionsSchema = z2.object({
   cards: z2.array(ExecutablePluginCardExportSchema).default([]),
   providers: z2.array(ExecutablePluginProviderExportSchema).default([]),
   modelBindings: z2.array(ExecutablePluginModelBindingExportSchema).default([]),
+  generators: z2.array(ExecutablePluginGeneratorExportSchema).default([]),
   functions: z2.array(ExecutablePluginFunctionExportSchema).default([]),
-  hostTools: z2.array(z2.enum(["codex.imagegen"])).default([])
+  hostTools: z2.array(z2.enum(["codex.imagegen", "speech.transcribe"])).default([])
 }).strict();
 var ExecutablePluginManifestSchema = z2.object({
   apiVersion: z2.literal("clash.plugin/v1"),
@@ -50606,6 +51865,7 @@ var ExecutablePluginManifestSchema = z2.object({
     ["cards", manifest.contributes.cards],
     ["providers", manifest.contributes.providers],
     ["modelBindings", manifest.contributes.modelBindings],
+    ["generators", manifest.contributes.generators],
     ["functions", manifest.contributes.functions]
   ]) {
     const ids = /* @__PURE__ */ new Set();
@@ -50634,7 +51894,8 @@ var ExecutablePluginManifestSchema = z2.object({
   const artifactPaths = new Set(cardPaths);
   for (const artifact of [
     ...manifest.contributes.providers,
-    ...manifest.contributes.modelBindings
+    ...manifest.contributes.modelBindings,
+    ...manifest.contributes.generators
   ]) {
     if (artifactPaths.has(artifact.path)) {
       ctx.addIssue({
@@ -51950,7 +53211,12 @@ var zodToJsonSchema2 = (schema, options) => {
   return combined;
 };
 
-// ../../packages/shared-types/dist/chunk-F5H437YY.js
+// ../../packages/shared-types/dist/chunk-2JPAPKHX.js
+var import_yaml = __toESM(require_dist2(), 1);
+var TIMELINE_DISCOVERY_VIEWS = ["authoring", "full"];
+var TimelineDiscoveryViewSchema = z2.enum(
+  TIMELINE_DISCOVERY_VIEWS
+);
 var TIMELINE_KEYFRAME_INTERPOLATIONS = ["hold", "linear"];
 var DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION = "linear";
 var TIMELINE_KEYFRAME_SAMPLING_POLICY = Object.freeze({
@@ -52649,7 +53915,7 @@ var itemBaseFields = {
     editor: timelineControl,
     runtimeConsumers: ["editor", "preview", "render", "export"]
   }),
-  assetId: authored(NonEmptyStringSchema, "Stable D1 media asset row id.", {
+  assetId: authored(NonEmptyStringSchema, "Immutable Project Asset id referenced by this Timeline item.", {
     required: false,
     editor: noControl,
     runtimeConsumers: ["asset-loader", "preview", "render"]
@@ -53110,736 +54376,6 @@ var TIMELINE_DSL_FIELD_CATALOG = {
     ])
   )
 };
-var IdentifierSchema = z2.string().trim().min(1);
-var FiniteNumberSchema2 = z2.number().finite();
-var FrameSchema = z2.number().finite().int().nonnegative();
-var PositiveFrameSchema2 = z2.number().finite().int().positive();
-var PositionSchema = z2.object({
-  x: FiniteNumberSchema2,
-  y: FiniteNumberSchema2
-}).strict();
-var TimelineDocumentEnvelopeSchema = z2.object({
-  tracks: z2.array(z2.unknown())
-}).passthrough();
-var TimelineOwnerSchema = z2.discriminatedUnion("kind", [
-  z2.object({ kind: z2.literal("project") }).strict(),
-  z2.object({
-    kind: z2.literal("canvas-action"),
-    canvasId: IdentifierSchema,
-    actionNodeId: IdentifierSchema
-  }).strict()
-]);
-var ProjectTimelineEntitySchema = z2.object({
-  id: IdentifierSchema,
-  name: IdentifierSchema,
-  owner: TimelineOwnerSchema,
-  revisionId: IdentifierSchema,
-  state: z2.unknown()
-}).passthrough();
-var TimelineIssueSchema = z2.object({
-  severity: z2.enum(["error", "warning"]).optional(),
-  code: IdentifierSchema,
-  message: z2.string().min(1),
-  path: z2.string()
-}).passthrough();
-var TimelineSchemaOutputSchema = z2.object({
-  schemaVersion: z2.union([z2.number().int().positive(), IdentifierSchema]),
-  contractFingerprint: IdentifierSchema,
-  jsonSchema: z2.record(z2.string(), z2.unknown())
-}).passthrough();
-var TimelineValidationOutputSchema = z2.object({
-  ok: z2.boolean(),
-  issues: z2.array(TimelineIssueSchema).default([]),
-  contractFingerprint: IdentifierSchema.optional(),
-  sources: z2.array(IdentifierSchema).optional()
-}).passthrough();
-var TimelineProjectionOutputSchema = z2.object({
-  pulled: z2.literal(true),
-  projectId: IdentifierSchema,
-  timelineId: IdentifierSchema,
-  revisionId: IdentifierSchema,
-  owner: TimelineOwnerSchema,
-  filePath: IdentifierSchema,
-  timelineHash: IdentifierSchema
-}).passthrough();
-var TimelineApplyOutputSchema = z2.object({
-  applied: z2.literal(true),
-  projectId: IdentifierSchema,
-  timelineId: IdentifierSchema,
-  revisionId: IdentifierSchema,
-  owner: TimelineOwnerSchema,
-  filePath: IdentifierSchema,
-  sources: z2.array(IdentifierSchema),
-  timelineHash: IdentifierSchema
-}).passthrough();
-var TimelineRenderTargetSchema = z2.discriminatedUnion("kind", [
-  z2.object({ kind: z2.literal("project-assets") }).strict(),
-  z2.object({
-    kind: z2.literal("canvas"),
-    canvasId: IdentifierSchema,
-    actionNodeId: IdentifierSchema
-  }).strict()
-]);
-var TimelineRenderReceiptSchema = z2.object({
-  submitted: z2.literal(true),
-  completed: z2.boolean(),
-  timelineId: IdentifierSchema,
-  sourceTimelineRevisionId: IdentifierSchema,
-  renderNodeId: IdentifierSchema,
-  target: TimelineRenderTargetSchema,
-  status: z2.enum(["pending", "completed", "failed"]),
-  asset: z2.object({ id: IdentifierSchema }).strict().optional(),
-  error: z2.string().min(1).optional()
-}).passthrough();
-var timelineEditorItemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => z2.object({
-  ...timelineDslAnnotatedObjectShape(
-    TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
-    {
-      requiredness: "runtime",
-      overrides: {
-        type: z2.literal(type),
-        from: FrameSchema
-      }
-    }
-  ),
-  ...timelineDslAnnotatedObjectShape(
-    TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type],
-    { requiredness: "runtime" }
-  )
-}).strict());
-var TimelineItemEnvelopeSchema = z2.discriminatedUnion(
-  "type",
-  timelineEditorItemVariantSchemas
-);
-var TimelineTrackEnvelopeSchema = z2.object(timelineDslAnnotatedObjectShape(
-  TIMELINE_DSL_FIELD_ANNOTATIONS.track,
-  {
-    requiredness: "runtime",
-    overrides: { items: z2.array(TimelineItemEnvelopeSchema) }
-  }
-)).strict();
-var TimelineAssetEnvelopeSchema = z2.object({
-  id: IdentifierSchema,
-  name: IdentifierSchema,
-  type: z2.enum(["video", "audio", "image"]),
-  src: IdentifierSchema,
-  createdAt: FiniteNumberSchema2
-}).passthrough();
-var TimelineTranscriptEnvelopeSchema = z2.object({
-  schemaVersion: z2.literal(1),
-  kind: z2.literal("clash.editor.asset-transcript"),
-  assetId: IdentifierSchema,
-  text: z2.string(),
-  durationMs: FrameSchema,
-  words: z2.array(z2.object({
-    id: IdentifierSchema,
-    text: z2.string(),
-    startMs: FrameSchema,
-    endMs: PositiveFrameSchema2
-  }).passthrough())
-}).passthrough();
-var TimelineEditorStateEnvelopeSchema = z2.object({
-  tracks: z2.array(TimelineTrackEnvelopeSchema)
-}).passthrough();
-var TimelineCommandOutputSchema = z2.object({
-  ok: z2.boolean(),
-  dsl: TimelineDocumentEnvelopeSchema,
-  issues: z2.array(TimelineIssueSchema)
-}).passthrough();
-function annotation(options) {
-  return Object.freeze({
-    ...options,
-    preconditions: Object.freeze([...options.preconditions]),
-    runtimeConsumers: Object.freeze([...options.runtimeConsumers]),
-    ...options.surfaceBindings ? { surfaceBindings: Object.freeze([...options.surfaceBindings]) } : {},
-    ...options.inputContractRefs ? { inputContractRefs: Object.freeze({ ...options.inputContractRefs }) } : {}
-  });
-}
-function agentOperation(options) {
-  return annotation({ ...options, public: true });
-}
-var agent = {
-  "timeline.open": agentOperation({
-    id: "timeline.open",
-    kind: "agent",
-    inputSchema: z2.object({ timelineId: IdentifierSchema.optional() }).strict(),
-    outputSchema: z2.object({
-      cwd: IdentifierSchema,
-      timelines: z2.array(ProjectTimelineEntitySchema),
-      selected: ProjectTimelineEntitySchema.optional()
-    }).passthrough(),
-    access: "read",
-    readOnly: true,
-    cas: "none",
-    readProof: "records-observation",
-    preconditions: ["The current cwd resolves to a Project replica."],
-    description: "Open the interactive Timeline app with an optionally selected Project Timeline.",
-    runtimeConsumers: ["mcp", "timeline-app", "agent-runtime"],
-    surfaceBindings: ["mcp:clash_timeline_open"],
-    agentCallable: true
-  }),
-  "timeline.schema": agentOperation({
-    id: "timeline.schema",
-    kind: "agent",
-    inputSchema: z2.object({}).strict(),
-    outputSchema: TimelineSchemaOutputSchema,
-    access: "read",
-    readOnly: true,
-    cas: "none",
-    readProof: "none",
-    preconditions: ["The installed Timeline contract is available."],
-    description: "Return the machine-readable Timeline DSL contract and its fingerprint.",
-    runtimeConsumers: ["cli", "mcp", "agent-runtime", "documentation-generator"],
-    surfaceBindings: ["cli:timeline schema", "mcp:clash_timeline_schema"],
-    agentCallable: true
-  }),
-  "timeline.validate": agentOperation({
-    id: "timeline.validate",
-    kind: "agent",
-    inputSchema: z2.object({
-      document: z2.union([z2.string(), TimelineDocumentEnvelopeSchema]),
-      format: z2.enum(["yaml", "json", "object"]).optional()
-    }).strict(),
-    outputSchema: TimelineValidationOutputSchema,
-    access: "read",
-    readOnly: true,
-    cas: "none",
-    readProof: "none",
-    preconditions: ["The authored document is syntactically readable as YAML, JSON, or an object."],
-    description: "Validate authored Timeline DSL without applying or mutating a Project Timeline.",
-    runtimeConsumers: ["cli", "mcp", "agent-runtime", "timeline-semantics"],
-    surfaceBindings: ["cli:timeline validate", "mcp:clash_timeline_validate"],
-    inputContractRefs: { document: "TIMELINE_DSL_DEFINITION.jsonSchema" },
-    agentCallable: true
-  }),
-  "timeline.list": agentOperation({
-    id: "timeline.list",
-    kind: "entity",
-    inputSchema: z2.object({ standalone: z2.boolean().optional() }).strict(),
-    outputSchema: z2.array(ProjectTimelineEntitySchema),
-    access: "read",
-    readOnly: true,
-    cas: "none",
-    readProof: "records-observation",
-    preconditions: ["The current cwd resolves to a Project replica."],
-    description: "List Project Timeline entities and record observations for later writes.",
-    runtimeConsumers: ["cli", "mcp", "local-host", "agent-runtime"],
-    surfaceBindings: ["cli:timeline list", "mcp:clash_timeline_list"],
-    agentCallable: true
-  }),
-  "timeline.get": agentOperation({
-    id: "timeline.get",
-    kind: "entity",
-    inputSchema: z2.object({ timelineId: IdentifierSchema }).strict(),
-    outputSchema: z2.object({ timeline: ProjectTimelineEntitySchema }).strict(),
-    access: "read",
-    readOnly: true,
-    cas: "none",
-    readProof: "records-observation",
-    preconditions: ["The requested Timeline exists in the current Project replica."],
-    description: "Read one complete Project Timeline state and its revision for a later typed save.",
-    runtimeConsumers: ["mcp", "local-host", "agent-runtime"],
-    surfaceBindings: ["mcp:clash_timeline_get"],
-    agentCallable: true
-  }),
-  "timeline.create": agentOperation({
-    id: "timeline.create",
-    kind: "entity",
-    inputSchema: z2.object({
-      id: IdentifierSchema,
-      name: IdentifierSchema,
-      state: TimelineDocumentEnvelopeSchema.optional()
-    }).strict(),
-    outputSchema: ProjectTimelineEntitySchema,
-    access: "write",
-    readOnly: false,
-    cas: "host-enforced",
-    readProof: "none",
-    preconditions: ["The Project-scoped Timeline id does not already exist."],
-    description: "Create a standalone Project Timeline through the authoritative local host.",
-    runtimeConsumers: ["cli", "mcp", "local-host", "project-workspace"],
-    surfaceBindings: ["cli:timeline create", "mcp:clash_timeline_create"],
-    inputContractRefs: { state: "TIMELINE_DSL_DEFINITION.jsonSchema" },
-    agentCallable: true
-  }),
-  "timeline.save": agentOperation({
-    id: "timeline.save",
-    kind: "entity",
-    inputSchema: z2.object({
-      timelineId: IdentifierSchema,
-      baseRevisionId: IdentifierSchema,
-      state: TimelineDocumentEnvelopeSchema
-    }).strict(),
-    outputSchema: TimelineApplyOutputSchema,
-    access: "write",
-    readOnly: false,
-    cas: "host-enforced",
-    readProof: "requires-observation",
-    preconditions: [
-      "The Timeline was read and baseRevisionId still matches its current revision.",
-      "The complete state passes the canonical structural and semantic contract."
-    ],
-    description: "Validate and save a complete typed Timeline state with an explicit base revision.",
-    runtimeConsumers: ["mcp", "local-host", "agent-runtime", "timeline-semantics"],
-    surfaceBindings: ["mcp:clash_timeline_save"],
-    inputContractRefs: { state: "TIMELINE_DSL_DEFINITION.jsonSchema" },
-    agentCallable: true
-  }),
-  "timeline.attach": agentOperation({
-    id: "timeline.attach",
-    kind: "entity",
-    inputSchema: z2.object({
-      timelineId: IdentifierSchema,
-      canvasId: IdentifierSchema,
-      actionNodeId: IdentifierSchema.optional(),
-      position: PositionSchema.optional()
-    }).strict(),
-    outputSchema: ProjectTimelineEntitySchema,
-    access: "write",
-    readOnly: false,
-    cas: "host-enforced",
-    readProof: "requires-observation",
-    preconditions: [
-      "The Timeline was observed through list or pull and remains at that revision.",
-      "The Timeline is standalone and the target Canvas exists.",
-      "The Timeline Action node id is unused."
-    ],
-    description: "Move a standalone Timeline into a Canvas as a Timeline Action.",
-    runtimeConsumers: ["cli", "mcp", "local-host", "project-workspace", "canvas"],
-    surfaceBindings: ["cli:timeline attach", "mcp:clash_timeline_attach"],
-    agentCallable: true
-  }),
-  "timeline.detach": agentOperation({
-    id: "timeline.detach",
-    kind: "entity",
-    inputSchema: z2.object({ timelineId: IdentifierSchema }).strict(),
-    outputSchema: ProjectTimelineEntitySchema,
-    access: "write",
-    readOnly: false,
-    cas: "host-enforced",
-    readProof: "requires-observation",
-    preconditions: [
-      "The Timeline was observed through list or pull and remains at that revision.",
-      "The Timeline is currently owned by a Canvas Timeline Action."
-    ],
-    description: "Detach a Canvas-owned Timeline back to the Project root.",
-    runtimeConsumers: ["cli", "mcp", "local-host", "project-workspace", "canvas"],
-    surfaceBindings: ["cli:timeline detach", "mcp:clash_timeline_detach"],
-    agentCallable: true
-  }),
-  "timeline.copy": agentOperation({
-    id: "timeline.copy",
-    kind: "entity",
-    inputSchema: z2.object({
-      sourceTimelineId: IdentifierSchema,
-      targetCanvasId: IdentifierSchema,
-      newTimelineId: IdentifierSchema.optional(),
-      newActionNodeId: IdentifierSchema.optional(),
-      position: PositionSchema.optional()
-    }).strict(),
-    outputSchema: ProjectTimelineEntitySchema,
-    access: "write",
-    readOnly: false,
-    cas: "host-enforced",
-    readProof: "requires-observation",
-    preconditions: [
-      "The source Timeline was observed and remains at that revision.",
-      "The source is a Canvas-owned Timeline Action and the target Canvas exists.",
-      "The new Timeline and Action node ids are unused."
-    ],
-    description: "Copy a Timeline Action into another Canvas using copy-on-write identity.",
-    runtimeConsumers: ["cli", "mcp", "local-host", "project-workspace", "canvas"],
-    surfaceBindings: ["cli:timeline copy", "mcp:clash_timeline_copy"],
-    agentCallable: true
-  }),
-  "timeline.render": agentOperation({
-    id: "timeline.render",
-    kind: "agent",
-    inputSchema: z2.object({
-      timelineId: IdentifierSchema,
-      wait: z2.boolean().optional(),
-      timeoutMs: z2.number().int().min(1e3).optional()
-    }).strict(),
-    outputSchema: TimelineRenderReceiptSchema,
-    access: "write",
-    readOnly: false,
-    cas: "none",
-    readProof: "records-observation",
-    preconditions: [
-      "The Timeline exists and contains at least one renderable item.",
-      "The local daemon has a healthy packaged Remotion rendering backend."
-    ],
-    description: "Submit the current Timeline revision to the daemon renderer and optionally wait for persisted Asset readback.",
-    runtimeConsumers: ["cli", "mcp", "local-host", "remotion-renderer", "agent-runtime"],
-    surfaceBindings: ["cli:timeline render", "mcp:clash_timeline_render"],
-    agentCallable: true
-  }),
-  "timeline.pull": agentOperation({
-    id: "timeline.pull",
-    kind: "projection",
-    inputSchema: z2.object({ timelineId: IdentifierSchema }).strict(),
-    outputSchema: TimelineProjectionOutputSchema,
-    access: "read",
-    readOnly: true,
-    cas: "none",
-    readProof: "records-observation",
-    preconditions: ["The Timeline exists in the current Project replica."],
-    description: "Project the current Timeline revision to agent-editable YAML and record its observation.",
-    runtimeConsumers: ["cli", "local-host", "yaml-projection", "agent-runtime"],
-    surfaceBindings: ["cli:timeline pull"],
-    agentCallable: true
-  }),
-  "timeline.apply": agentOperation({
-    id: "timeline.apply",
-    kind: "projection",
-    inputSchema: z2.object({
-      timelineId: IdentifierSchema,
-      document: z2.union([z2.string(), TimelineDocumentEnvelopeSchema]),
-      format: z2.enum(["yaml", "json", "object"]).optional()
-    }).strict(),
-    outputSchema: TimelineApplyOutputSchema,
-    access: "write",
-    readOnly: false,
-    cas: "host-enforced",
-    readProof: "requires-observation",
-    preconditions: [
-      "The Timeline was pulled or listed and remains at that revision.",
-      "The complete authored document passes structural and semantic validation.",
-      "Any immutable downstream dependency guard permits the revision advance."
-    ],
-    description: "Validate an authored projection and atomically advance the Project Timeline revision.",
-    runtimeConsumers: ["cli", "local-host", "yaml-projection", "timeline-semantics"],
-    surfaceBindings: ["cli:timeline apply"],
-    inputContractRefs: { document: "TIMELINE_DSL_DEFINITION.jsonSchema" },
-    agentCallable: true
-  })
-};
-var editorCommandDefaults = {
-  kind: "editor-command",
-  outputSchema: TimelineCommandOutputSchema,
-  access: "write",
-  readOnly: false,
-  cas: "none",
-  readProof: "none",
-  runtimeConsumers: ["remotion-core", "editor", "agent-runtime"],
-  public: true,
-  agentCallable: true
-};
-var editorCommands = {
-  "timeline.command.add_clip": annotation({
-    ...editorCommandDefaults,
-    id: "timeline.command.add_clip",
-    inputSchema: z2.object({
-      type: z2.literal("add_clip"),
-      trackId: IdentifierSchema,
-      sourceNodeId: IdentifierSchema,
-      assetId: IdentifierSchema.optional(),
-      itemType: z2.enum(["video", "audio", "image", "text"]),
-      from: FrameSchema,
-      durationInFrames: PositiveFrameSchema2,
-      id: IdentifierSchema.optional(),
-      text: z2.string().optional()
-    }).strict(),
-    preconditions: [
-      "The target track exists and accepts the requested item type.",
-      "The source node resolves for media clips."
-    ],
-    description: "Add one validated clip to a Timeline draft."
-  }),
-  "timeline.command.trim_clip": annotation({
-    ...editorCommandDefaults,
-    id: "timeline.command.trim_clip",
-    inputSchema: z2.object({
-      type: z2.literal("trim_clip"),
-      trackId: IdentifierSchema,
-      itemId: IdentifierSchema,
-      from: FrameSchema,
-      durationInFrames: PositiveFrameSchema2
-    }).strict(),
-    preconditions: ["The target track and item exist and the requested duration is positive."],
-    description: "Trim and reposition one clip in a Timeline draft."
-  }),
-  "timeline.command.split_clip": annotation({
-    ...editorCommandDefaults,
-    id: "timeline.command.split_clip",
-    inputSchema: z2.object({
-      type: z2.literal("split_clip"),
-      trackId: IdentifierSchema,
-      itemId: IdentifierSchema,
-      splitFrame: FrameSchema
-    }).strict(),
-    preconditions: ["The target item exists and the split frame lies strictly inside its bounds."],
-    description: "Split one clip at an absolute Timeline frame."
-  })
-};
-var itemUpdateFields = {
-  ...TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
-  ...Object.assign({}, ...Object.values(TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes))
-};
-var ItemUpdatesSchema = z2.object(timelineDslAnnotatedObjectShape(
-  itemUpdateFields,
-  {
-    requiredness: "partial",
-    overrides: { from: FrameSchema }
-  }
-)).strict().refine(
-  (updates) => Object.keys(updates).length > 0,
-  "At least one item field must be updated."
-);
-var TrackUpdatesSchema = z2.object(timelineDslAnnotatedObjectShape(
-  TIMELINE_DSL_FIELD_ANNOTATIONS.track,
-  {
-    requiredness: "partial",
-    overrides: { items: z2.array(TimelineItemEnvelopeSchema) }
-  }
-)).strict().refine(
-  (updates) => Object.keys(updates).length > 0,
-  "At least one track field must be updated."
-);
-function editorAction(id2, inputSchema, description, preconditions = ["A Timeline editor draft is loaded."]) {
-  return annotation({
-    id: id2,
-    kind: "editor-action",
-    inputSchema,
-    outputSchema: TimelineEditorStateEnvelopeSchema,
-    access: "write",
-    readOnly: false,
-    cas: "none",
-    readProof: "none",
-    preconditions,
-    description,
-    runtimeConsumers: ["remotion-core", "remotion-ui", "editor-history"],
-    public: true,
-    agentCallable: false
-  });
-}
-function actionWithPayload(type, payload) {
-  return z2.object({ type: z2.literal(type), payload }).strict();
-}
-function actionWithoutPayload(type) {
-  return z2.object({ type: z2.literal(type) }).strict();
-}
-var editorActions = {
-  "timeline.action.ADD_TRACK": editorAction(
-    "timeline.action.ADD_TRACK",
-    actionWithPayload("ADD_TRACK", TimelineTrackEnvelopeSchema),
-    "Append a compatible track to the local Timeline draft."
-  ),
-  "timeline.action.INSERT_TRACK": editorAction(
-    "timeline.action.INSERT_TRACK",
-    actionWithPayload("INSERT_TRACK", z2.object({
-      track: TimelineTrackEnvelopeSchema,
-      index: FrameSchema
-    }).strict()),
-    "Insert a compatible track at a requested editor index."
-  ),
-  "timeline.action.REMOVE_TRACK": editorAction(
-    "timeline.action.REMOVE_TRACK",
-    actionWithPayload("REMOVE_TRACK", IdentifierSchema),
-    "Remove a track from the local Timeline draft.",
-    ["The target track exists and editor primary-track invariants can be preserved."]
-  ),
-  "timeline.action.SET_PRIMARY_TRACK": editorAction(
-    "timeline.action.SET_PRIMARY_TRACK",
-    actionWithPayload("SET_PRIMARY_TRACK", IdentifierSchema),
-    "Choose the Timeline track that anchors semantic edits.",
-    ["The target track exists and is eligible to be primary."]
-  ),
-  "timeline.action.UPDATE_TRACK": editorAction(
-    "timeline.action.UPDATE_TRACK",
-    actionWithPayload("UPDATE_TRACK", z2.object({
-      id: IdentifierSchema,
-      updates: TrackUpdatesSchema
-    }).strict()),
-    "Update authored properties of one Timeline track.",
-    ["The target track exists and the update preserves category and primary-track invariants."]
-  ),
-  "timeline.action.REORDER_TRACKS": editorAction(
-    "timeline.action.REORDER_TRACKS",
-    actionWithPayload("REORDER_TRACKS", z2.array(TimelineTrackEnvelopeSchema)),
-    "Replace the local track ordering with a complete ordered track list.",
-    ["Every current track is represented exactly once and category ordering remains valid."]
-  ),
-  "timeline.action.ADD_ITEM": editorAction(
-    "timeline.action.ADD_ITEM",
-    actionWithPayload("ADD_ITEM", z2.object({
-      trackId: IdentifierSchema,
-      item: TimelineItemEnvelopeSchema
-    }).strict()),
-    "Append one item to a compatible Timeline track.",
-    ["The target track exists, accepts the item type, and the item id is unique."]
-  ),
-  "timeline.action.MOVE_ITEM": editorAction(
-    "timeline.action.MOVE_ITEM",
-    actionWithPayload("MOVE_ITEM", z2.object({
-      sourceTrackId: IdentifierSchema,
-      targetTrackId: IdentifierSchema,
-      itemId: IdentifierSchema,
-      from: FrameSchema
-    }).strict()),
-    "Move an item between compatible tracks at an absolute frame.",
-    ["Both tracks and the item exist, and the target track accepts the item type."]
-  ),
-  "timeline.action.REMOVE_ITEM": editorAction(
-    "timeline.action.REMOVE_ITEM",
-    actionWithPayload("REMOVE_ITEM", z2.object({
-      trackId: IdentifierSchema,
-      itemId: IdentifierSchema
-    }).strict()),
-    "Remove an item and reconcile its parent track.",
-    ["The target track and item exist."]
-  ),
-  "timeline.action.UPDATE_ITEM": editorAction(
-    "timeline.action.UPDATE_ITEM",
-    actionWithPayload("UPDATE_ITEM", z2.object({
-      trackId: IdentifierSchema,
-      itemId: IdentifierSchema,
-      updates: ItemUpdatesSchema
-    }).strict()),
-    "Update authored fields on one Timeline item.",
-    ["The target item exists and the update remains valid for its discriminated item type."]
-  ),
-  "timeline.action.SPLIT_ITEM": editorAction(
-    "timeline.action.SPLIT_ITEM",
-    actionWithPayload("SPLIT_ITEM", z2.object({
-      trackId: IdentifierSchema,
-      itemId: IdentifierSchema,
-      splitFrame: FrameSchema
-    }).strict()),
-    "Split an item at an absolute Timeline frame and slice its keyframes.",
-    ["The split frame lies strictly inside the target item bounds."]
-  ),
-  "timeline.action.RIPPLE_DELETE_RANGE": editorAction(
-    "timeline.action.RIPPLE_DELETE_RANGE",
-    actionWithPayload("RIPPLE_DELETE_RANGE", z2.object({
-      startFrame: FrameSchema,
-      endFrame: PositiveFrameSchema2
-    }).strict().refine(
-      ({ startFrame, endFrame }) => endFrame > startFrame,
-      "endFrame must be greater than startFrame."
-    )),
-    "Delete an absolute frame range and close the resulting gap.",
-    ["The requested range is non-empty and lies within the editable Timeline."]
-  ),
-  "timeline.action.RESTORE_TIMELINE_SNAPSHOT": editorAction(
-    "timeline.action.RESTORE_TIMELINE_SNAPSHOT",
-    actionWithPayload("RESTORE_TIMELINE_SNAPSHOT", z2.object({
-      tracks: z2.array(TimelineTrackEnvelopeSchema),
-      durationInFrames: PositiveFrameSchema2
-    }).strict()),
-    "Restore persistent Timeline fields from an editor history snapshot.",
-    ["The snapshot was produced by the current editor history contract."]
-  ),
-  "timeline.action.SELECT_ITEM": editorAction(
-    "timeline.action.SELECT_ITEM",
-    actionWithPayload("SELECT_ITEM", IdentifierSchema.nullable()),
-    "Select or clear one Timeline item in the editor session."
-  ),
-  "timeline.action.SELECT_TRACK": editorAction(
-    "timeline.action.SELECT_TRACK",
-    actionWithPayload("SELECT_TRACK", IdentifierSchema.nullable()),
-    "Select or clear one Timeline track in the editor session."
-  ),
-  "timeline.action.SET_CURRENT_FRAME": editorAction(
-    "timeline.action.SET_CURRENT_FRAME",
-    actionWithPayload("SET_CURRENT_FRAME", FrameSchema),
-    "Seek the editor playhead to an absolute Timeline frame."
-  ),
-  "timeline.action.SET_PLAYING": editorAction(
-    "timeline.action.SET_PLAYING",
-    actionWithPayload("SET_PLAYING", z2.boolean()),
-    "Start or stop editor preview playback."
-  ),
-  "timeline.action.SET_ZOOM": editorAction(
-    "timeline.action.SET_ZOOM",
-    actionWithPayload("SET_ZOOM", z2.number().finite().positive()),
-    "Set the Timeline viewport zoom level."
-  ),
-  "timeline.action.ADD_ASSET": editorAction(
-    "timeline.action.ADD_ASSET",
-    actionWithPayload("ADD_ASSET", TimelineAssetEnvelopeSchema),
-    "Add a media asset to the local editor asset collection.",
-    ["The asset id is not already present in the editor collection."]
-  ),
-  "timeline.action.UPSERT_ASSET": editorAction(
-    "timeline.action.UPSERT_ASSET",
-    actionWithPayload("UPSERT_ASSET", TimelineAssetEnvelopeSchema),
-    "Insert or replace a media asset in the local editor collection."
-  ),
-  "timeline.action.SET_ASSET_TRANSCRIPT": editorAction(
-    "timeline.action.SET_ASSET_TRANSCRIPT",
-    actionWithPayload("SET_ASSET_TRANSCRIPT", TimelineTranscriptEnvelopeSchema),
-    "Store an asset transcript and synchronize linked subtitle text.",
-    ["The transcript word timings are expressed in the referenced immutable asset."]
-  ),
-  "timeline.action.REMOVE_ASSET": editorAction(
-    "timeline.action.REMOVE_ASSET",
-    actionWithPayload("REMOVE_ASSET", IdentifierSchema),
-    "Remove a media asset from the local editor asset collection."
-  ),
-  "timeline.action.SET_COMPOSITION_SIZE": editorAction(
-    "timeline.action.SET_COMPOSITION_SIZE",
-    actionWithPayload("SET_COMPOSITION_SIZE", z2.object({
-      width: z2.number().finite().int().positive(),
-      height: z2.number().finite().int().positive()
-    }).strict()),
-    "Set positive pixel dimensions for the Timeline composition."
-  ),
-  "timeline.action.SET_DURATION": editorAction(
-    "timeline.action.SET_DURATION",
-    actionWithPayload("SET_DURATION", PositiveFrameSchema2),
-    "Set the Timeline composition duration in frames."
-  ),
-  "timeline.action.UNDO": editorAction(
-    "timeline.action.UNDO",
-    actionWithoutPayload("UNDO"),
-    "Restore the previous persistent Timeline history snapshot.",
-    ["The editor history has at least one past snapshot or an active changed group."]
-  ),
-  "timeline.action.REDO": editorAction(
-    "timeline.action.REDO",
-    actionWithoutPayload("REDO"),
-    "Restore the next persistent Timeline history snapshot.",
-    ["The editor history has at least one future snapshot."]
-  ),
-  "timeline.action.BEGIN_HISTORY_GROUP": editorAction(
-    "timeline.action.BEGIN_HISTORY_GROUP",
-    actionWithoutPayload("BEGIN_HISTORY_GROUP"),
-    "Begin grouping related editor mutations into one undo step."
-  ),
-  "timeline.action.END_HISTORY_GROUP": editorAction(
-    "timeline.action.END_HISTORY_GROUP",
-    actionWithoutPayload("END_HISTORY_GROUP"),
-    "Commit the active editor mutation group as one undo step.",
-    ["A Timeline editor history group is active."]
-  )
-};
-var TIMELINE_OPERATION_REGISTRY = Object.freeze({
-  agent: Object.freeze(agent),
-  editorCommands: Object.freeze(editorCommands),
-  editorActions: Object.freeze(editorActions)
-});
-function catalogGroup(group) {
-  return Object.fromEntries(
-    Object.entries(group).map(([id2, value]) => {
-      const { inputSchema: _inputSchema, outputSchema: _outputSchema, ...metadata } = value;
-      return [id2, {
-        ...metadata,
-        inputJsonSchema: zodToJsonSchema2(value.inputSchema, {
-          target: "jsonSchema7"
-        }),
-        outputJsonSchema: zodToJsonSchema2(value.outputSchema, {
-          target: "jsonSchema7"
-        })
-      }];
-    })
-  );
-}
-var TIMELINE_OPERATION_CATALOG = Object.freeze({
-  agent: Object.freeze(catalogGroup(agent)),
-  editorCommands: Object.freeze(catalogGroup(editorCommands)),
-  editorActions: Object.freeze(catalogGroup(editorActions))
-});
 var OFFSET_RE = /^(.+?)\s*([+-])\s*([0-9]+(?:\.[0-9]+)?)$/;
 var BARE_ID_RE = /^[A-Za-z0-9_.:-]+$/;
 function parseFromExpression(raw) {
@@ -54554,6 +55090,858 @@ function timelineDslSemanticIssues(input) {
     issues.push(...evaluator(context));
   return issues;
 }
+var IdentifierSchema = z2.string().trim().min(1);
+var FiniteNumberSchema2 = z2.number().finite();
+var FrameSchema = z2.number().finite().int().nonnegative();
+var PositiveFrameSchema2 = z2.number().finite().int().positive();
+var PositionSchema = z2.object({
+  x: FiniteNumberSchema2,
+  y: FiniteNumberSchema2
+}).strict();
+var TimelineDocumentEnvelopeSchema = z2.object({
+  tracks: z2.array(z2.unknown())
+}).passthrough();
+var TimelineOwnerSchema = z2.discriminatedUnion("kind", [
+  z2.object({ kind: z2.literal("project") }).strict(),
+  z2.object({
+    kind: z2.literal("canvas-action"),
+    canvasId: IdentifierSchema,
+    actionNodeId: IdentifierSchema
+  }).strict()
+]);
+var ProjectTimelineEntitySchema = z2.object({
+  id: IdentifierSchema,
+  name: IdentifierSchema,
+  owner: TimelineOwnerSchema,
+  revisionId: IdentifierSchema,
+  state: z2.unknown()
+}).passthrough();
+var TimelineIssueSchema = z2.object({
+  severity: z2.enum(["error", "warning"]).optional(),
+  code: IdentifierSchema,
+  message: z2.string().min(1),
+  path: z2.string()
+}).passthrough();
+var TimelineFullSchemaOutputSchema = z2.object({
+  schemaVersion: z2.union([z2.number().int().positive(), IdentifierSchema]),
+  contractFingerprint: IdentifierSchema,
+  jsonSchema: z2.record(z2.string(), z2.unknown())
+}).passthrough();
+var TimelineAuthoringSchemaOutputSchema = z2.object({
+  view: z2.literal("authoring"),
+  schemaVersion: z2.number().int().positive(),
+  contractFingerprint: IdentifierSchema,
+  format: z2.literal("clash.timeline.yaml"),
+  fields: z2.record(z2.string(), z2.unknown()),
+  taxonomy: z2.record(z2.string(), z2.unknown()),
+  semanticRules: z2.record(z2.string(), z2.unknown()),
+  references: z2.record(z2.string(), z2.unknown()),
+  examples: z2.record(z2.string(), z2.unknown()),
+  submission: z2.record(z2.string(), z2.unknown())
+}).passthrough();
+var TimelineSchemaOutputSchema = z2.union([
+  TimelineAuthoringSchemaOutputSchema,
+  TimelineFullSchemaOutputSchema
+]);
+var TimelineValidationOutputSchema = z2.object({
+  ok: z2.boolean(),
+  issues: z2.array(TimelineIssueSchema).default([]),
+  contractFingerprint: IdentifierSchema.optional(),
+  sources: z2.array(IdentifierSchema).optional()
+}).passthrough();
+var TimelineProjectionOutputSchema = z2.object({
+  pulled: z2.literal(true),
+  projectId: IdentifierSchema,
+  timelineId: IdentifierSchema,
+  revisionId: IdentifierSchema,
+  owner: TimelineOwnerSchema,
+  filePath: IdentifierSchema,
+  timelineHash: IdentifierSchema
+}).passthrough();
+var TimelineApplyOutputSchema = z2.object({
+  applied: z2.literal(true),
+  projectId: IdentifierSchema,
+  timelineId: IdentifierSchema,
+  revisionId: IdentifierSchema,
+  owner: TimelineOwnerSchema,
+  filePath: IdentifierSchema,
+  sources: z2.array(IdentifierSchema),
+  timelineHash: IdentifierSchema
+}).passthrough();
+var TimelineRenderTargetSchema = z2.discriminatedUnion("kind", [
+  z2.object({ kind: z2.literal("project-assets") }).strict(),
+  z2.object({
+    kind: z2.literal("canvas"),
+    canvasId: IdentifierSchema,
+    actionNodeId: IdentifierSchema
+  }).strict()
+]);
+var TimelineRenderReceiptSchema = z2.object({
+  submitted: z2.literal(true),
+  completed: z2.boolean(),
+  timelineId: IdentifierSchema,
+  sourceTimelineRevisionId: IdentifierSchema,
+  renderNodeId: IdentifierSchema,
+  target: TimelineRenderTargetSchema,
+  status: z2.enum(["pending", "completed", "failed"]),
+  asset: z2.object({ id: IdentifierSchema }).strict().optional(),
+  error: z2.string().min(1).optional()
+}).passthrough();
+var timelineEditorItemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map(
+  (type) => z2.object({
+    ...timelineDslAnnotatedObjectShape(
+      TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
+      {
+        requiredness: "runtime",
+        overrides: {
+          type: z2.literal(type),
+          from: FrameSchema
+        }
+      }
+    ),
+    ...timelineDslAnnotatedObjectShape(
+      TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type],
+      { requiredness: "runtime" }
+    )
+  }).strict()
+);
+var TimelineItemEnvelopeSchema = z2.discriminatedUnion(
+  "type",
+  timelineEditorItemVariantSchemas
+);
+var TimelineTrackEnvelopeSchema = z2.object(
+  timelineDslAnnotatedObjectShape(TIMELINE_DSL_FIELD_ANNOTATIONS.track, {
+    requiredness: "runtime",
+    overrides: { items: z2.array(TimelineItemEnvelopeSchema) }
+  })
+).strict();
+var TimelineAssetEnvelopeSchema = z2.object({
+  id: IdentifierSchema,
+  name: IdentifierSchema,
+  type: z2.enum(["video", "audio", "image"]),
+  src: IdentifierSchema,
+  createdAt: FiniteNumberSchema2
+}).passthrough();
+var TimelineTranscriptEnvelopeSchema = z2.object({
+  schemaVersion: z2.literal(1),
+  kind: z2.literal("clash.editor.asset-transcript"),
+  assetId: IdentifierSchema,
+  text: z2.string(),
+  durationMs: FrameSchema,
+  words: z2.array(
+    z2.object({
+      id: IdentifierSchema,
+      text: z2.string(),
+      startMs: FrameSchema,
+      endMs: PositiveFrameSchema2
+    }).passthrough()
+  )
+}).passthrough();
+var TimelineEditorStateEnvelopeSchema = z2.object({
+  tracks: z2.array(TimelineTrackEnvelopeSchema)
+}).passthrough();
+var TimelineCommandOutputSchema = z2.object({
+  ok: z2.boolean(),
+  dsl: TimelineDocumentEnvelopeSchema,
+  issues: z2.array(TimelineIssueSchema)
+}).passthrough();
+function annotation(options) {
+  return Object.freeze({
+    ...options,
+    preconditions: Object.freeze([...options.preconditions]),
+    runtimeConsumers: Object.freeze([...options.runtimeConsumers]),
+    ...options.surfaceBindings ? { surfaceBindings: Object.freeze([...options.surfaceBindings]) } : {},
+    ...options.inputContractRefs ? { inputContractRefs: Object.freeze({ ...options.inputContractRefs }) } : {}
+  });
+}
+function agentOperation(options) {
+  return annotation({ ...options, public: true });
+}
+var agent = {
+  "timeline.open": agentOperation({
+    id: "timeline.open",
+    kind: "agent",
+    inputSchema: z2.object({ timelineId: IdentifierSchema.optional() }).strict(),
+    outputSchema: z2.object({
+      cwd: IdentifierSchema,
+      timelines: z2.array(ProjectTimelineEntitySchema),
+      selected: ProjectTimelineEntitySchema.optional()
+    }).passthrough(),
+    access: "read",
+    readOnly: true,
+    cas: "none",
+    readProof: "records-observation",
+    preconditions: ["The current cwd resolves to a Project replica."],
+    description: "Open the interactive Timeline app with an optionally selected Project Timeline.",
+    runtimeConsumers: ["mcp", "timeline-app", "agent-runtime"],
+    surfaceBindings: ["mcp:clash_timeline_open"],
+    agentCallable: true
+  }),
+  "timeline.schema": agentOperation({
+    id: "timeline.schema",
+    kind: "agent",
+    inputSchema: z2.object({
+      view: TimelineDiscoveryViewSchema.optional()
+    }).strict(),
+    outputSchema: TimelineSchemaOutputSchema,
+    access: "read",
+    readOnly: true,
+    cas: "none",
+    readProof: "none",
+    preconditions: ["The installed Timeline contract is available."],
+    description: "Return compact Timeline authoring discovery by default, or the complete machine-readable contract on request.",
+    runtimeConsumers: [
+      "cli",
+      "mcp",
+      "agent-runtime",
+      "documentation-generator"
+    ],
+    surfaceBindings: ["cli:timeline schema", "mcp:clash_timeline_schema"],
+    agentCallable: true
+  }),
+  "timeline.validate": agentOperation({
+    id: "timeline.validate",
+    kind: "agent",
+    inputSchema: z2.object({
+      document: z2.union([z2.string(), TimelineDocumentEnvelopeSchema]),
+      format: z2.enum(["yaml", "json", "object"]).optional()
+    }).strict(),
+    outputSchema: TimelineValidationOutputSchema,
+    access: "read",
+    readOnly: true,
+    cas: "none",
+    readProof: "none",
+    preconditions: [
+      "The authored document is syntactically readable as YAML, JSON, or an object."
+    ],
+    description: "Diagnose authored Timeline DSL without applying or mutating a Project Timeline, only when no write is intended. Do not use it as a preflight for create, save, or apply; those writes run the same validation automatically.",
+    runtimeConsumers: ["cli", "mcp", "agent-runtime", "timeline-semantics"],
+    surfaceBindings: ["cli:timeline validate", "mcp:clash_timeline_validate"],
+    inputContractRefs: { document: "TIMELINE_DSL_DEFINITION.jsonSchema" },
+    agentCallable: true
+  }),
+  "timeline.list": agentOperation({
+    id: "timeline.list",
+    kind: "entity",
+    inputSchema: z2.object({ standalone: z2.boolean().optional() }).strict(),
+    outputSchema: z2.array(ProjectTimelineEntitySchema),
+    access: "read",
+    readOnly: true,
+    cas: "none",
+    readProof: "records-observation",
+    preconditions: ["The current cwd resolves to a Project replica."],
+    description: "List Project Timeline entities and record observations for later writes.",
+    runtimeConsumers: ["cli", "mcp", "local-host", "agent-runtime"],
+    surfaceBindings: ["cli:timeline list", "mcp:clash_timeline_list"],
+    agentCallable: true
+  }),
+  "timeline.get": agentOperation({
+    id: "timeline.get",
+    kind: "entity",
+    inputSchema: z2.object({ timelineId: IdentifierSchema }).strict(),
+    outputSchema: z2.object({ timeline: ProjectTimelineEntitySchema }).strict(),
+    access: "read",
+    readOnly: true,
+    cas: "none",
+    readProof: "records-observation",
+    preconditions: [
+      "The requested Timeline exists in the current Project replica."
+    ],
+    description: "Read one complete Project Timeline state and its revision for a later typed save.",
+    runtimeConsumers: ["mcp", "local-host", "agent-runtime"],
+    surfaceBindings: ["mcp:clash_timeline_get"],
+    agentCallable: true
+  }),
+  "timeline.create": agentOperation({
+    id: "timeline.create",
+    kind: "entity",
+    inputSchema: z2.object({
+      id: IdentifierSchema,
+      name: IdentifierSchema,
+      state: TimelineDocumentEnvelopeSchema.optional()
+    }).strict(),
+    outputSchema: ProjectTimelineEntitySchema,
+    access: "write",
+    readOnly: false,
+    cas: "host-enforced",
+    readProof: "none",
+    preconditions: ["The Project-scoped Timeline id does not already exist."],
+    description: "Automatically validate and create a standalone Project Timeline through the authoritative local host; invalid state leaves Project state unchanged.",
+    runtimeConsumers: ["cli", "mcp", "local-host", "project-workspace"],
+    surfaceBindings: ["cli:timeline create", "mcp:clash_timeline_create"],
+    inputContractRefs: { state: "TIMELINE_DSL_DEFINITION.jsonSchema" },
+    agentCallable: true
+  }),
+  "timeline.save": agentOperation({
+    id: "timeline.save",
+    kind: "entity",
+    inputSchema: z2.object({
+      timelineId: IdentifierSchema,
+      baseRevisionId: IdentifierSchema,
+      state: TimelineDocumentEnvelopeSchema
+    }).strict(),
+    outputSchema: TimelineApplyOutputSchema,
+    access: "write",
+    readOnly: false,
+    cas: "host-enforced",
+    readProof: "requires-observation",
+    preconditions: [
+      "The Timeline was read and baseRevisionId still matches its current revision.",
+      "The complete state passes the canonical structural and semantic contract."
+    ],
+    description: "Automatically validate and atomically save a complete typed Timeline state with an explicit base revision; invalid state leaves the Timeline revision unchanged.",
+    runtimeConsumers: [
+      "mcp",
+      "local-host",
+      "agent-runtime",
+      "timeline-semantics"
+    ],
+    surfaceBindings: ["mcp:clash_timeline_save"],
+    inputContractRefs: { state: "TIMELINE_DSL_DEFINITION.jsonSchema" },
+    agentCallable: true
+  }),
+  "timeline.attach": agentOperation({
+    id: "timeline.attach",
+    kind: "entity",
+    inputSchema: z2.object({
+      timelineId: IdentifierSchema,
+      canvasId: IdentifierSchema,
+      actionNodeId: IdentifierSchema.optional(),
+      position: PositionSchema.optional()
+    }).strict(),
+    outputSchema: ProjectTimelineEntitySchema,
+    access: "write",
+    readOnly: false,
+    cas: "host-enforced",
+    readProof: "requires-observation",
+    preconditions: [
+      "The Timeline was observed through list or pull and remains at that revision.",
+      "The Timeline is standalone and the target Canvas exists.",
+      "The Timeline Action node id is unused."
+    ],
+    description: "Move a standalone Timeline into a Canvas as a Timeline Action.",
+    runtimeConsumers: [
+      "cli",
+      "mcp",
+      "local-host",
+      "project-workspace",
+      "canvas"
+    ],
+    surfaceBindings: ["cli:timeline attach", "mcp:clash_timeline_attach"],
+    agentCallable: true
+  }),
+  "timeline.detach": agentOperation({
+    id: "timeline.detach",
+    kind: "entity",
+    inputSchema: z2.object({ timelineId: IdentifierSchema }).strict(),
+    outputSchema: ProjectTimelineEntitySchema,
+    access: "write",
+    readOnly: false,
+    cas: "host-enforced",
+    readProof: "requires-observation",
+    preconditions: [
+      "The Timeline was observed through list or pull and remains at that revision.",
+      "The Timeline is currently owned by a Canvas Timeline Action."
+    ],
+    description: "Detach a Canvas-owned Timeline back to the Project root.",
+    runtimeConsumers: [
+      "cli",
+      "mcp",
+      "local-host",
+      "project-workspace",
+      "canvas"
+    ],
+    surfaceBindings: ["cli:timeline detach", "mcp:clash_timeline_detach"],
+    agentCallable: true
+  }),
+  "timeline.copy": agentOperation({
+    id: "timeline.copy",
+    kind: "entity",
+    inputSchema: z2.object({
+      sourceTimelineId: IdentifierSchema,
+      targetCanvasId: IdentifierSchema,
+      newTimelineId: IdentifierSchema.optional(),
+      newActionNodeId: IdentifierSchema.optional(),
+      position: PositionSchema.optional()
+    }).strict(),
+    outputSchema: ProjectTimelineEntitySchema,
+    access: "write",
+    readOnly: false,
+    cas: "host-enforced",
+    readProof: "requires-observation",
+    preconditions: [
+      "The source Timeline was observed and remains at that revision.",
+      "The source is a Canvas-owned Timeline Action and the target Canvas exists.",
+      "The new Timeline and Action node ids are unused."
+    ],
+    description: "Copy a Timeline Action into another Canvas using copy-on-write identity.",
+    runtimeConsumers: [
+      "cli",
+      "mcp",
+      "local-host",
+      "project-workspace",
+      "canvas"
+    ],
+    surfaceBindings: ["cli:timeline copy", "mcp:clash_timeline_copy"],
+    agentCallable: true
+  }),
+  "timeline.render": agentOperation({
+    id: "timeline.render",
+    kind: "agent",
+    inputSchema: z2.object({
+      timelineId: IdentifierSchema,
+      wait: z2.boolean().optional(),
+      timeoutMs: z2.number().int().min(1e3).optional()
+    }).strict(),
+    outputSchema: TimelineRenderReceiptSchema,
+    access: "write",
+    readOnly: false,
+    cas: "none",
+    readProof: "records-observation",
+    preconditions: [
+      "The Timeline exists and contains at least one renderable item.",
+      "The local daemon has a healthy packaged Remotion rendering backend."
+    ],
+    description: "Submit the current Timeline revision to the daemon renderer and optionally wait for persisted Asset readback.",
+    runtimeConsumers: [
+      "cli",
+      "mcp",
+      "local-host",
+      "remotion-renderer",
+      "agent-runtime"
+    ],
+    surfaceBindings: ["cli:timeline render", "mcp:clash_timeline_render"],
+    agentCallable: true
+  }),
+  "timeline.pull": agentOperation({
+    id: "timeline.pull",
+    kind: "projection",
+    inputSchema: z2.object({ timelineId: IdentifierSchema }).strict(),
+    outputSchema: TimelineProjectionOutputSchema,
+    access: "read",
+    readOnly: true,
+    cas: "none",
+    readProof: "records-observation",
+    preconditions: ["The Timeline exists in the current Project replica."],
+    description: "Project the current Timeline revision to agent-editable YAML and record its observation.",
+    runtimeConsumers: ["cli", "local-host", "yaml-projection", "agent-runtime"],
+    surfaceBindings: ["cli:timeline pull"],
+    agentCallable: true
+  }),
+  "timeline.apply": agentOperation({
+    id: "timeline.apply",
+    kind: "projection",
+    inputSchema: z2.object({
+      timelineId: IdentifierSchema,
+      document: z2.union([z2.string(), TimelineDocumentEnvelopeSchema]),
+      format: z2.enum(["yaml", "json", "object"]).optional()
+    }).strict(),
+    outputSchema: TimelineApplyOutputSchema,
+    access: "write",
+    readOnly: false,
+    cas: "host-enforced",
+    readProof: "requires-observation",
+    preconditions: [
+      "The Timeline was pulled or listed and remains at that revision.",
+      "The complete authored document passes structural and semantic validation.",
+      "Any immutable downstream dependency guard permits the revision advance."
+    ],
+    description: "Automatically validate an authored projection and atomically advance the Project Timeline revision; invalid input leaves the Timeline revision unchanged.",
+    runtimeConsumers: [
+      "cli",
+      "local-host",
+      "yaml-projection",
+      "timeline-semantics"
+    ],
+    surfaceBindings: ["cli:timeline apply"],
+    inputContractRefs: { document: "TIMELINE_DSL_DEFINITION.jsonSchema" },
+    agentCallable: true
+  })
+};
+var editorCommandDefaults = {
+  kind: "editor-command",
+  outputSchema: TimelineCommandOutputSchema,
+  access: "write",
+  readOnly: false,
+  cas: "none",
+  readProof: "none",
+  runtimeConsumers: ["remotion-core", "editor", "agent-runtime"],
+  public: true,
+  agentCallable: true
+};
+var editorCommands = {
+  "timeline.command.add_clip": annotation({
+    ...editorCommandDefaults,
+    id: "timeline.command.add_clip",
+    inputSchema: z2.object({
+      type: z2.literal("add_clip"),
+      trackId: IdentifierSchema,
+      sourceNodeId: IdentifierSchema,
+      assetId: IdentifierSchema.optional(),
+      itemType: z2.enum(["video", "audio", "image", "text"]),
+      from: FrameSchema,
+      durationInFrames: PositiveFrameSchema2,
+      id: IdentifierSchema.optional(),
+      text: z2.string().optional()
+    }).strict(),
+    preconditions: [
+      "The target track exists and accepts the requested item type.",
+      "The source node resolves for media clips."
+    ],
+    description: "Add one validated clip to a Timeline draft."
+  }),
+  "timeline.command.trim_clip": annotation({
+    ...editorCommandDefaults,
+    id: "timeline.command.trim_clip",
+    inputSchema: z2.object({
+      type: z2.literal("trim_clip"),
+      trackId: IdentifierSchema,
+      itemId: IdentifierSchema,
+      from: FrameSchema,
+      durationInFrames: PositiveFrameSchema2
+    }).strict(),
+    preconditions: [
+      "The target track and item exist and the requested duration is positive."
+    ],
+    description: "Trim and reposition one clip in a Timeline draft."
+  }),
+  "timeline.command.split_clip": annotation({
+    ...editorCommandDefaults,
+    id: "timeline.command.split_clip",
+    inputSchema: z2.object({
+      type: z2.literal("split_clip"),
+      trackId: IdentifierSchema,
+      itemId: IdentifierSchema,
+      splitFrame: FrameSchema
+    }).strict(),
+    preconditions: [
+      "The target item exists and the split frame lies strictly inside its bounds."
+    ],
+    description: "Split one clip at an absolute Timeline frame."
+  })
+};
+var itemUpdateFields = {
+  ...TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
+  ...Object.assign(
+    {},
+    ...Object.values(TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes)
+  )
+};
+var ItemUpdatesSchema = z2.object(
+  timelineDslAnnotatedObjectShape(itemUpdateFields, {
+    requiredness: "partial",
+    overrides: { from: FrameSchema }
+  })
+).strict().refine(
+  (updates) => Object.keys(updates).length > 0,
+  "At least one item field must be updated."
+);
+var TrackUpdatesSchema = z2.object(
+  timelineDslAnnotatedObjectShape(TIMELINE_DSL_FIELD_ANNOTATIONS.track, {
+    requiredness: "partial",
+    overrides: { items: z2.array(TimelineItemEnvelopeSchema) }
+  })
+).strict().refine(
+  (updates) => Object.keys(updates).length > 0,
+  "At least one track field must be updated."
+);
+function editorAction(id2, inputSchema, description, preconditions = ["A Timeline editor draft is loaded."]) {
+  return annotation({
+    id: id2,
+    kind: "editor-action",
+    inputSchema,
+    outputSchema: TimelineEditorStateEnvelopeSchema,
+    access: "write",
+    readOnly: false,
+    cas: "none",
+    readProof: "none",
+    preconditions,
+    description,
+    runtimeConsumers: ["remotion-core", "remotion-ui", "editor-history"],
+    public: true,
+    agentCallable: false
+  });
+}
+function actionWithPayload(type, payload) {
+  return z2.object({ type: z2.literal(type), payload }).strict();
+}
+function actionWithoutPayload(type) {
+  return z2.object({ type: z2.literal(type) }).strict();
+}
+var editorActions = {
+  "timeline.action.ADD_TRACK": editorAction(
+    "timeline.action.ADD_TRACK",
+    actionWithPayload("ADD_TRACK", TimelineTrackEnvelopeSchema),
+    "Append a compatible track to the local Timeline draft."
+  ),
+  "timeline.action.INSERT_TRACK": editorAction(
+    "timeline.action.INSERT_TRACK",
+    actionWithPayload(
+      "INSERT_TRACK",
+      z2.object({
+        track: TimelineTrackEnvelopeSchema,
+        index: FrameSchema
+      }).strict()
+    ),
+    "Insert a compatible track at a requested editor index."
+  ),
+  "timeline.action.REMOVE_TRACK": editorAction(
+    "timeline.action.REMOVE_TRACK",
+    actionWithPayload("REMOVE_TRACK", IdentifierSchema),
+    "Remove a track from the local Timeline draft.",
+    [
+      "The target track exists and editor primary-track invariants can be preserved."
+    ]
+  ),
+  "timeline.action.SET_PRIMARY_TRACK": editorAction(
+    "timeline.action.SET_PRIMARY_TRACK",
+    actionWithPayload("SET_PRIMARY_TRACK", IdentifierSchema),
+    "Choose the Timeline track that anchors semantic edits.",
+    ["The target track exists and is eligible to be primary."]
+  ),
+  "timeline.action.UPDATE_TRACK": editorAction(
+    "timeline.action.UPDATE_TRACK",
+    actionWithPayload(
+      "UPDATE_TRACK",
+      z2.object({
+        id: IdentifierSchema,
+        updates: TrackUpdatesSchema
+      }).strict()
+    ),
+    "Update authored properties of one Timeline track.",
+    [
+      "The target track exists and the update preserves category and primary-track invariants."
+    ]
+  ),
+  "timeline.action.REORDER_TRACKS": editorAction(
+    "timeline.action.REORDER_TRACKS",
+    actionWithPayload("REORDER_TRACKS", z2.array(TimelineTrackEnvelopeSchema)),
+    "Replace the local track ordering with a complete ordered track list.",
+    [
+      "Every current track is represented exactly once and category ordering remains valid."
+    ]
+  ),
+  "timeline.action.ADD_ITEM": editorAction(
+    "timeline.action.ADD_ITEM",
+    actionWithPayload(
+      "ADD_ITEM",
+      z2.object({
+        trackId: IdentifierSchema,
+        item: TimelineItemEnvelopeSchema
+      }).strict()
+    ),
+    "Append one item to a compatible Timeline track.",
+    [
+      "The target track exists, accepts the item type, and the item id is unique."
+    ]
+  ),
+  "timeline.action.MOVE_ITEM": editorAction(
+    "timeline.action.MOVE_ITEM",
+    actionWithPayload(
+      "MOVE_ITEM",
+      z2.object({
+        sourceTrackId: IdentifierSchema,
+        targetTrackId: IdentifierSchema,
+        itemId: IdentifierSchema,
+        from: FrameSchema
+      }).strict()
+    ),
+    "Move an item between compatible tracks at an absolute frame.",
+    [
+      "Both tracks and the item exist, and the target track accepts the item type."
+    ]
+  ),
+  "timeline.action.REMOVE_ITEM": editorAction(
+    "timeline.action.REMOVE_ITEM",
+    actionWithPayload(
+      "REMOVE_ITEM",
+      z2.object({
+        trackId: IdentifierSchema,
+        itemId: IdentifierSchema
+      }).strict()
+    ),
+    "Remove an item and reconcile its parent track.",
+    ["The target track and item exist."]
+  ),
+  "timeline.action.UPDATE_ITEM": editorAction(
+    "timeline.action.UPDATE_ITEM",
+    actionWithPayload(
+      "UPDATE_ITEM",
+      z2.object({
+        trackId: IdentifierSchema,
+        itemId: IdentifierSchema,
+        updates: ItemUpdatesSchema
+      }).strict()
+    ),
+    "Update authored fields on one Timeline item.",
+    [
+      "The target item exists and the update remains valid for its discriminated item type."
+    ]
+  ),
+  "timeline.action.SPLIT_ITEM": editorAction(
+    "timeline.action.SPLIT_ITEM",
+    actionWithPayload(
+      "SPLIT_ITEM",
+      z2.object({
+        trackId: IdentifierSchema,
+        itemId: IdentifierSchema,
+        splitFrame: FrameSchema
+      }).strict()
+    ),
+    "Split an item at an absolute Timeline frame and slice its keyframes.",
+    ["The split frame lies strictly inside the target item bounds."]
+  ),
+  "timeline.action.RIPPLE_DELETE_RANGE": editorAction(
+    "timeline.action.RIPPLE_DELETE_RANGE",
+    actionWithPayload(
+      "RIPPLE_DELETE_RANGE",
+      z2.object({
+        startFrame: FrameSchema,
+        endFrame: PositiveFrameSchema2
+      }).strict().refine(
+        ({ startFrame, endFrame }) => endFrame > startFrame,
+        "endFrame must be greater than startFrame."
+      )
+    ),
+    "Delete an absolute frame range and close the resulting gap.",
+    ["The requested range is non-empty and lies within the editable Timeline."]
+  ),
+  "timeline.action.RESTORE_TIMELINE_SNAPSHOT": editorAction(
+    "timeline.action.RESTORE_TIMELINE_SNAPSHOT",
+    actionWithPayload(
+      "RESTORE_TIMELINE_SNAPSHOT",
+      z2.object({
+        tracks: z2.array(TimelineTrackEnvelopeSchema),
+        durationInFrames: PositiveFrameSchema2
+      }).strict()
+    ),
+    "Restore persistent Timeline fields from an editor history snapshot.",
+    ["The snapshot was produced by the current editor history contract."]
+  ),
+  "timeline.action.SELECT_ITEM": editorAction(
+    "timeline.action.SELECT_ITEM",
+    actionWithPayload("SELECT_ITEM", IdentifierSchema.nullable()),
+    "Select or clear one Timeline item in the editor session."
+  ),
+  "timeline.action.SELECT_TRACK": editorAction(
+    "timeline.action.SELECT_TRACK",
+    actionWithPayload("SELECT_TRACK", IdentifierSchema.nullable()),
+    "Select or clear one Timeline track in the editor session."
+  ),
+  "timeline.action.SET_CURRENT_FRAME": editorAction(
+    "timeline.action.SET_CURRENT_FRAME",
+    actionWithPayload("SET_CURRENT_FRAME", FrameSchema),
+    "Seek the editor playhead to an absolute Timeline frame."
+  ),
+  "timeline.action.SET_PLAYING": editorAction(
+    "timeline.action.SET_PLAYING",
+    actionWithPayload("SET_PLAYING", z2.boolean()),
+    "Start or stop editor preview playback."
+  ),
+  "timeline.action.SET_ZOOM": editorAction(
+    "timeline.action.SET_ZOOM",
+    actionWithPayload("SET_ZOOM", z2.number().finite().positive()),
+    "Set the Timeline viewport zoom level."
+  ),
+  "timeline.action.ADD_ASSET": editorAction(
+    "timeline.action.ADD_ASSET",
+    actionWithPayload("ADD_ASSET", TimelineAssetEnvelopeSchema),
+    "Add a media asset to the local editor asset collection.",
+    ["The asset id is not already present in the editor collection."]
+  ),
+  "timeline.action.UPSERT_ASSET": editorAction(
+    "timeline.action.UPSERT_ASSET",
+    actionWithPayload("UPSERT_ASSET", TimelineAssetEnvelopeSchema),
+    "Insert or replace a media asset in the local editor collection."
+  ),
+  "timeline.action.SET_ASSET_TRANSCRIPT": editorAction(
+    "timeline.action.SET_ASSET_TRANSCRIPT",
+    actionWithPayload("SET_ASSET_TRANSCRIPT", TimelineTranscriptEnvelopeSchema),
+    "Store an asset transcript and synchronize linked subtitle text.",
+    [
+      "The transcript word timings are expressed in the referenced immutable asset."
+    ]
+  ),
+  "timeline.action.REMOVE_ASSET": editorAction(
+    "timeline.action.REMOVE_ASSET",
+    actionWithPayload("REMOVE_ASSET", IdentifierSchema),
+    "Remove a media asset from the local editor asset collection."
+  ),
+  "timeline.action.SET_COMPOSITION_SIZE": editorAction(
+    "timeline.action.SET_COMPOSITION_SIZE",
+    actionWithPayload(
+      "SET_COMPOSITION_SIZE",
+      z2.object({
+        width: z2.number().finite().int().positive(),
+        height: z2.number().finite().int().positive()
+      }).strict()
+    ),
+    "Set positive pixel dimensions for the Timeline composition."
+  ),
+  "timeline.action.SET_DURATION": editorAction(
+    "timeline.action.SET_DURATION",
+    actionWithPayload("SET_DURATION", PositiveFrameSchema2),
+    "Set the Timeline composition duration in frames."
+  ),
+  "timeline.action.UNDO": editorAction(
+    "timeline.action.UNDO",
+    actionWithoutPayload("UNDO"),
+    "Restore the previous persistent Timeline history snapshot.",
+    [
+      "The editor history has at least one past snapshot or an active changed group."
+    ]
+  ),
+  "timeline.action.REDO": editorAction(
+    "timeline.action.REDO",
+    actionWithoutPayload("REDO"),
+    "Restore the next persistent Timeline history snapshot.",
+    ["The editor history has at least one future snapshot."]
+  ),
+  "timeline.action.BEGIN_HISTORY_GROUP": editorAction(
+    "timeline.action.BEGIN_HISTORY_GROUP",
+    actionWithoutPayload("BEGIN_HISTORY_GROUP"),
+    "Begin grouping related editor mutations into one undo step."
+  ),
+  "timeline.action.END_HISTORY_GROUP": editorAction(
+    "timeline.action.END_HISTORY_GROUP",
+    actionWithoutPayload("END_HISTORY_GROUP"),
+    "Commit the active editor mutation group as one undo step.",
+    ["A Timeline editor history group is active."]
+  )
+};
+var TIMELINE_OPERATION_REGISTRY = Object.freeze({
+  agent: Object.freeze(agent),
+  editorCommands: Object.freeze(editorCommands),
+  editorActions: Object.freeze(editorActions)
+});
+function catalogGroup(group) {
+  return Object.fromEntries(
+    Object.entries(group).map(([id2, value]) => {
+      const {
+        inputSchema: _inputSchema,
+        outputSchema: _outputSchema,
+        ...metadata
+      } = value;
+      return [
+        id2,
+        {
+          ...metadata,
+          inputJsonSchema: zodToJsonSchema2(value.inputSchema, {
+            target: "jsonSchema7"
+          }),
+          outputJsonSchema: zodToJsonSchema2(value.outputSchema, {
+            target: "jsonSchema7"
+          })
+        }
+      ];
+    })
+  );
+}
+var TIMELINE_OPERATION_CATALOG = Object.freeze({
+  agent: Object.freeze(catalogGroup(agent)),
+  editorCommands: Object.freeze(catalogGroup(editorCommands)),
+  editorActions: Object.freeze(catalogGroup(editorActions))
+});
 var itemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => {
   const baseShape = timelineDslAnnotatedObjectShape(
     TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
@@ -54912,7 +56300,7 @@ function timelineDslContractFingerprint(value) {
   return `fnv1a32:${(hash2 >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition = {
-  schemaVersion: 11,
+  schemaVersion: 13,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,
@@ -54964,6 +56352,203 @@ var TIMELINE_DSL_DEFINITION = {
   contractFingerprint: timelineDslContractFingerprint(
     timelineDslSerializableDefinition
   )
+};
+var CATEGORY_ALLOWED_ITEM_TYPES = Object.fromEntries(
+  Object.entries(TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES).map(([category, itemTypes]) => [
+    category,
+    new Set(itemTypes)
+  ])
+);
+var CLIP_ANIMATION_TYPES = new Set(TIMELINE_CLIP_ANIMATION_TYPES);
+var ITEM_KEY_ORDER = ["id", "type", "from", "durationInFrames"];
+function annotatedYamlFields(source, annotations, options = {}) {
+  const projected = {};
+  for (const [fieldName, annotation2] of Object.entries(annotations)) {
+    if (annotation2.relation || options.exclude?.has(fieldName)) continue;
+    const value = source[fieldName];
+    if (value === void 0) continue;
+    if (options.validate && !annotation2.schema.safeParse(value).success) continue;
+    projected[fieldName] = value;
+  }
+  return projected;
+}
+function extraYamlFields(source, annotations) {
+  const annotatedNames = new Set(Object.keys(annotations));
+  return Object.fromEntries(
+    Object.entries(source).filter(([fieldName, value]) => !annotatedNames.has(fieldName) && value !== void 0)
+  );
+}
+function itemToYamlObject(item) {
+  const out = {};
+  if (item.id !== void 0) out.id = item.id;
+  if (item.type !== void 0) out.type = item.type;
+  if (typeof item.fromExpr === "string" && item.fromExpr.length > 0) {
+    out.from = item.fromExpr;
+  } else if (item.from !== void 0) {
+    out.from = item.from;
+  }
+  if (item.durationInFrames !== void 0) out.durationInFrames = item.durationInFrames;
+  for (const [k2, v2] of Object.entries(item)) {
+    if (ITEM_KEY_ORDER.includes(k2) || k2 === "fromExpr") continue;
+    if (v2 === void 0) continue;
+    out[k2] = v2;
+  }
+  return out;
+}
+function timelineDslToYaml(dsl) {
+  const projected = {
+    ...annotatedYamlFields(dsl, TIMELINE_DSL_FIELD_ANNOTATIONS.root),
+    ...extraYamlFields(dsl, TIMELINE_DSL_FIELD_ANNOTATIONS.root)
+  };
+  projected.tracks = (dsl.tracks ?? []).map((track) => {
+    const projectedTrack = {
+      ...annotatedYamlFields(track, TIMELINE_DSL_FIELD_ANNOTATIONS.track),
+      ...extraYamlFields(track, TIMELINE_DSL_FIELD_ANNOTATIONS.track)
+    };
+    projectedTrack.items = (track.items ?? []).map((item) => itemToYamlObject(item));
+    return projectedTrack;
+  });
+  return (0, import_yaml.stringify)(projected, { lineWidth: 0 });
+}
+function authoringFields(fields) {
+  return Object.fromEntries(
+    Object.entries(fields).filter(
+      ([, field2]) => field2.authored !== false && field2.persistence !== "discard"
+    ).map(([name, field2]) => [
+      name,
+      {
+        description: field2.description,
+        required: field2.authoredRequired === true,
+        ...Object.prototype.hasOwnProperty.call(field2, "defaultValue") ? { defaultValue: field2.defaultValue } : {},
+        ...field2.deprecated ? { deprecated: field2.deprecated } : {},
+        ...field2.appliesToItemTypes ? { appliesToItemTypes: field2.appliesToItemTypes } : {}
+      }
+    ])
+  );
+}
+var baseAuthoringTrackFields = authoringFields(
+  TIMELINE_DSL_FIELD_CATALOG.track.fields
+);
+var authoringTrackFields = {
+  ...baseAuthoringTrackFields,
+  role: {
+    ...baseAuthoringTrackFields.role,
+    description: "Semantic purpose of the track. Use subtitle only for structured captions: each text item requires non-empty cues, wordRefs, and sourceToOutputMap. For a plain title, omit role."
+  },
+  category: {
+    ...baseAuthoringTrackFields.category,
+    description: "Structural lane category controlling order and allowed item types. Track categories must follow the canonical effect, text, visual, primary, audio order; supplied order is preserved and never automatically sorted."
+  }
+};
+var basicAuthoringState = {
+  compositionWidth: 1080,
+  compositionHeight: 1080,
+  fps: 30,
+  durationInFrames: 180,
+  tracks: [
+    {
+      id: "titles",
+      name: "Titles",
+      category: "text",
+      items: [
+        {
+          id: "title",
+          type: "text",
+          from: 0,
+          durationInFrames: 60,
+          text: "Opening title",
+          color: "#ffffff"
+        }
+      ]
+    },
+    {
+      id: "visuals",
+      name: "Visuals",
+      category: "visual",
+      items: [
+        {
+          id: "still",
+          type: "image",
+          from: 0,
+          durationInFrames: 90,
+          assetId: "project-asset-id"
+        },
+        {
+          id: "motion",
+          type: "composition",
+          from: 90,
+          durationInFrames: 90,
+          runtime: "remotion",
+          compositionKind: "custom",
+          compositionId: "mascot",
+          sourceNodeId: "canvas-component-node-id",
+          sourcePath: "components/mascot.tsx"
+        }
+      ]
+    }
+  ]
+};
+var authoringDiscovery = {
+  view: "authoring",
+  schemaVersion: TIMELINE_DSL_DEFINITION.schemaVersion,
+  contractFingerprint: TIMELINE_DSL_DEFINITION.contractFingerprint,
+  format: TIMELINE_DSL_DEFINITION.format,
+  fields: {
+    version: TIMELINE_DSL_FIELD_CATALOG.version,
+    root: authoringFields(TIMELINE_DSL_FIELD_CATALOG.root.fields),
+    track: authoringTrackFields,
+    itemBase: authoringFields(TIMELINE_DSL_FIELD_CATALOG.itemBase.fields),
+    itemTypes: Object.fromEntries(
+      Object.entries(TIMELINE_DSL_FIELD_CATALOG.itemTypes).map(
+        ([itemType, descriptor]) => [
+          itemType,
+          authoringFields(descriptor.fields)
+        ]
+      )
+    )
+  },
+  taxonomy: {
+    itemTypes: TIMELINE_DSL_DEFINITION.taxonomy.itemTypes,
+    trackCategoryOrder: TIMELINE_DSL_DEFINITION.taxonomy.trackCategories,
+    trackRoles: TIMELINE_DSL_DEFINITION.taxonomy.trackRoles,
+    categoryAllowedItemTypes: TIMELINE_DSL_DEFINITION.taxonomy.categoryAllowedItemTypes,
+    roleAllowedItemTypes: TIMELINE_DSL_DEFINITION.taxonomy.roleAllowedItemTypes,
+    roleCategories: TIMELINE_DSL_DEFINITION.taxonomy.roleCategories,
+    mediaFits: TIMELINE_DSL_DEFINITION.taxonomy.mediaFits,
+    clipAnimationTypes: TIMELINE_DSL_DEFINITION.taxonomy.clipAnimationTypes,
+    textAlignments: TIMELINE_DSL_DEFINITION.taxonomy.textAlignments,
+    captionPositions: TIMELINE_DSL_DEFINITION.taxonomy.captionPositions,
+    compositionKinds: TIMELINE_DSL_DEFINITION.taxonomy.compositionKinds,
+    compositionRuntimes: TIMELINE_DSL_DEFINITION.taxonomy.compositionRuntimes,
+    derivedMediaTypes: TIMELINE_DSL_DEFINITION.taxonomy.derivedMediaTypes,
+    derivationKinds: TIMELINE_DSL_DEFINITION.taxonomy.derivationKinds,
+    transitionTypes: TIMELINE_DSL_DEFINITION.taxonomy.transitionTypes
+  },
+  semanticRules: TIMELINE_DSL_SEMANTIC_RULES,
+  references: {
+    assetId: {
+      target: "project-asset",
+      description: "For a Stage capture, follow Stage revision -> capture receipt -> immutable Project Asset -> downstream Timeline item.assetId. The producer Stage or Action is not mutated."
+    },
+    sourceNodeId: {
+      target: "canvas-node",
+      description: "Reference a Canvas-owned Remotion component through Timeline item.sourceNodeId; resolve it for rendering without copying component source into persisted Timeline state."
+    }
+  },
+  examples: {
+    basic: {
+      description: "Plain text, a Project Asset image, and a Canvas-owned Remotion component in canonical track order.",
+      state: basicAuthoringState,
+      yaml: timelineDslToYaml(basicAuthoringState)
+    }
+  },
+  submission: {
+    validation: "automatic",
+    operations: ["timeline.create", "timeline.save", "timeline.apply"],
+    diagnosticOperation: "timeline.validate",
+    diagnosticRequired: false
+  },
+  nextView: "full"
 };
 
 // ../../packages/shared-types/dist/chunk-QEJHP4RV.js
@@ -55198,7 +56783,10 @@ var TimelineLibraryItemSchema = z2.discriminatedUnion("category", [
 ]);
 
 // ../../packages/shared-types/dist/index.js
-import { LoroMap as LoroMap5 } from "loro-crdt";
+import { LoroMap as LoroMap3 } from "loro-crdt";
+import { LoroMap } from "loro-crdt";
+import { LoroMap as LoroMap2 } from "loro-crdt";
+import { LoroMap as LoroMap7 } from "loro-crdt";
 
 // ../../packages/shared-layout/dist/index.js
 var ACTION_BADGE_NODE_SIZE = Object.freeze({
@@ -55207,1038 +56795,279 @@ var ACTION_BADGE_NODE_SIZE = Object.freeze({
 });
 
 // ../../packages/shared-types/dist/index.js
+import { LoroMap as LoroMap6 } from "loro-crdt";
 import { LoroMap as LoroMap4 } from "loro-crdt";
-import { LoroMap as LoroMap2 } from "loro-crdt";
-import { LoroMap } from "loro-crdt";
-import { LoroMap as LoroMap3 } from "loro-crdt";
+import { LoroMap as LoroMap5 } from "loro-crdt";
 import { LoroDoc } from "loro-crdt";
-var import_yaml = __toESM(require_dist2(), 1);
-var AgentAnnotationSurfaceSchema = z2.enum([
-  "canvas",
-  "timeline",
-  "director-stage",
-  // Project assets annotated from the workspace sidebar / asset views.
-  "asset"
-]);
-var AgentAnnotationVisualRectSchema = z2.object({
-  x: z2.number().finite().min(0).max(1),
-  y: z2.number().finite().min(0).max(1),
-  width: z2.number().finite().positive().max(1),
-  height: z2.number().finite().positive().max(1)
-});
-var AgentAnnotationSelectionSchema = z2.object({
-  kind: z2.literal("text-quote"),
-  exact: z2.string().trim().min(1).max(4e3),
-  prefix: z2.string().max(256).optional(),
-  suffix: z2.string().max(256).optional(),
-  visualRects: z2.array(AgentAnnotationVisualRectSchema).max(32).optional()
-});
-var AgentAnnotationTargetSchema = z2.object({
-  projectId: z2.string().trim().min(1),
-  surface: AgentAnnotationSurfaceSchema,
-  surfaceId: z2.string().trim().min(1),
-  surfaceLabel: z2.string().trim().min(1),
-  revisionId: z2.string().trim().min(1).optional(),
-  objectId: z2.string().trim().min(1),
-  objectType: z2.string().trim().min(1),
-  objectLabel: z2.string().trim().min(1),
-  parentId: z2.string().trim().min(1).optional(),
-  objectPath: z2.string().trim().min(1),
-  capabilities: z2.array(z2.enum(["read", "modify"])).min(1),
-  selection: AgentAnnotationSelectionSchema.optional(),
-  /** Asset backing the annotated object, when it has one — lets chat surfaces show a media preview. */
-  previewAssetId: z2.string().trim().min(1).optional()
-});
-var AgentAnnotationDraftSchema = z2.object({
-  id: z2.string().trim().min(1),
-  kind: z2.literal("agent-annotation"),
-  note: z2.string().max(4e3),
-  target: AgentAnnotationTargetSchema
-});
-var AgentAnnotationPromptPayloadSchema = z2.object({
-  version: z2.literal(1),
-  kind: z2.literal("clash-agent-annotations"),
-  annotations: z2.array(AgentAnnotationDraftSchema).min(1)
-});
-var ScopedIdSchema = z2.string().trim().min(1);
-var ProjectAssetMetadataTargetSchema = z2.object({
-  kind: z2.literal("project-asset"),
-  projectId: ScopedIdSchema,
-  assetId: ScopedIdSchema
+var idSchema = z2.string().trim().min(1);
+var sha256Schema = z2.string().regex(/^sha256:[a-f0-9]{64}$/);
+var DocumentAssetMutabilitySchema = z2.enum(["immutable", "versioned"]);
+var DocumentBodyRefSchema = z2.object({
+  digest: sha256Schema,
+  byteLength: z2.number().int().nonnegative(),
+  contentType: z2.string().trim().min(1)
 }).strict();
-var ActionRevisionMetadataTargetSchema = z2.object({
-  kind: z2.literal("action-revision"),
-  projectId: ScopedIdSchema,
-  actionId: ScopedIdSchema,
-  actionRevisionId: ScopedIdSchema
-}).strict();
-var MetadataAttachmentTargetSchema = z2.discriminatedUnion("kind", [
-  ProjectAssetMetadataTargetSchema,
-  ActionRevisionMetadataTargetSchema
+var DocumentRevisionProducerSchema = z2.discriminatedUnion("kind", [
+  z2.object({
+    kind: z2.literal("action-run"),
+    actionRunId: idSchema
+  }).strict(),
+  z2.object({
+    kind: z2.literal("actor"),
+    actor: z2.object({
+      kind: z2.enum(["user", "agent"]),
+      id: idSchema.optional()
+    }).strict()
+  }).strict(),
+  z2.object({
+    kind: z2.literal("migration"),
+    source: idSchema
+  }).strict()
 ]);
-var FrameRangeSchema = z2.object({
-  startFrame: z2.number().int().min(0),
-  endFrame: z2.number().int().min(0)
-});
-var AudioBeatSchema = z2.object({
-  frame: z2.number().int().min(0),
-  timeSeconds: z2.number().min(0),
-  confidence: z2.number().min(0).max(1),
-  bar: z2.number().int().positive().optional(),
-  beatInBar: z2.number().int().positive().optional(),
-  downbeat: z2.boolean().optional()
-});
-var AudioEnergyPointSchema = z2.object({
-  frame: z2.number().int().min(0),
-  timeSeconds: z2.number().min(0),
-  rms: z2.number().min(0),
-  normalized: z2.number().min(0).max(1),
-  novelty: z2.number().min(0).max(1),
-  impact: z2.number().min(0).max(1)
-});
-var AudioSectionSchema = z2.object({
-  id: z2.string().min(1),
-  startFrame: z2.number().int().min(0),
-  endFrame: z2.number().int().min(0),
-  label: z2.string().min(1),
-  semanticLabel: z2.enum([
-    "intro",
-    "verse",
-    "pre-chorus",
-    "chorus",
-    "bridge",
-    "drop",
-    "buildup",
-    "breakdown",
-    "outro",
-    "instrumental",
-    "detected-beats",
-    "unknown"
-  ]).optional(),
-  semanticConfidence: z2.number().min(0).max(1).optional(),
-  reviewRequired: z2.boolean().optional(),
-  semanticSource: z2.string().min(1).optional(),
-  energy: z2.number().min(0).max(1).optional(),
-  novelty: z2.number().min(0).max(1).optional(),
-  impact: z2.number().min(0).max(1).optional(),
-  cutDensity: z2.enum(["hold", "medium", "fast"]).optional()
-});
-var AudioBeatMetadataSchema = z2.object({
-  kind: z2.literal("audio.beat-analysis"),
-  bpm: z2.number().positive(),
-  fps: z2.number().positive(),
-  beats: z2.array(AudioBeatSchema),
-  sections: z2.array(AudioSectionSchema).default([]),
-  energyCurve: z2.array(AudioEnergyPointSchema).default([])
-});
-var AudioStemTypeSchema = z2.enum([
-  "vocal",
-  "instrumental",
-  "drums",
-  "bass",
-  "other"
-]);
-var AudioStemAssetSchema = z2.object({
-  stemAssetId: z2.string().min(1),
-  stemType: AudioStemTypeSchema,
-  filePath: z2.string().min(1),
-  fileHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/),
-  codec: z2.string().min(1).optional(),
-  durationSeconds: z2.number().positive().optional(),
-  sampleRate: z2.number().int().positive().optional(),
-  channels: z2.number().int().positive().optional()
-});
-var AudioStemSeparationMetadataSchema = z2.object({
-  kind: z2.literal("audio.stem-separation"),
-  separationId: z2.string().min(1),
-  sourceAssetId: z2.string().min(1),
-  sourcePath: z2.string().min(1).optional(),
-  backendId: z2.string().min(1).optional(),
-  modelId: z2.string().min(1).optional(),
-  stems: z2.array(AudioStemAssetSchema).min(1),
-  vocalStemAssetId: z2.string().min(1).optional(),
-  decisionLog: z2.array(z2.string().min(1)).default([])
-});
-var LyricsAlignmentUnitSchema = z2.object({
-  lineId: z2.string().min(1),
-  wordId: z2.string().min(1).optional(),
-  text: z2.string().min(1),
-  startMs: z2.number().min(0),
-  endMs: z2.number().min(0),
-  startFrame: z2.number().int().min(0).optional(),
-  endFrame: z2.number().int().min(0).optional(),
-  confidence: z2.number().min(0).max(1),
-  source: z2.string().min(1)
-}).refine((unit) => unit.endMs > unit.startMs, {
-  message: "lyrics alignment unit endMs must be greater than startMs",
-  path: ["endMs"]
-});
-var LyricsUnmatchedRangeSchema = z2.object({
-  startMs: z2.number().min(0),
-  endMs: z2.number().min(0),
-  text: z2.string().optional(),
-  reason: z2.string().optional()
-}).refine((range) => range.endMs > range.startMs, {
-  message: "lyrics unmatched range endMs must be greater than startMs",
-  path: ["endMs"]
-});
-var LyricsAlignmentMetadataSchema = z2.object({
-  kind: z2.literal("audio.lyrics-alignment"),
-  fps: z2.number().positive(),
-  lyricsSource: z2.string().min(1),
-  vocalStemAssetId: z2.string().min(1).optional(),
-  units: z2.array(LyricsAlignmentUnitSchema).min(1),
-  unmatchedRanges: z2.array(LyricsUnmatchedRangeSchema).default([])
-});
-var AsrTimedWordSchema = z2.object({
-  id: z2.string().min(1),
-  text: z2.string().min(1),
-  startMs: z2.number().int().min(0),
-  endMs: z2.number().int().min(0),
-  confidence: z2.number().min(0).max(1).optional(),
-  speakerId: z2.string().min(1).optional()
-}).refine((word) => word.endMs > word.startMs, {
-  message: "ASR word endMs must be greater than startMs",
-  path: ["endMs"]
-});
-var AsrTimedSegmentSchema = z2.object({
-  id: z2.string().min(1),
-  text: z2.string().min(1),
-  startMs: z2.number().int().min(0),
-  endMs: z2.number().int().min(0),
-  wordIds: z2.array(z2.string().min(1)),
-  speakerId: z2.string().min(1).optional()
-}).refine((segment) => segment.endMs > segment.startMs, {
-  message: "ASR segment endMs must be greater than startMs",
-  path: ["endMs"]
-});
-var AsrTimedTranscriptSchema = z2.object({
-  schemaVersion: z2.literal(1),
-  kind: z2.literal("clash.asr.timed-transcript"),
-  timebase: z2.literal("milliseconds"),
-  alignment: z2.literal("word"),
-  text: z2.string().min(1),
-  backendId: z2.string().min(1),
-  modelId: z2.string().min(1),
-  language: z2.string().min(1).optional(),
-  durationMs: z2.number().int().min(0),
-  words: z2.array(AsrTimedWordSchema).min(1),
-  segments: z2.array(AsrTimedSegmentSchema)
-}).superRefine((transcript, context) => {
-  const wordIds = /* @__PURE__ */ new Set();
-  let previousStartMs = -1;
-  let maxEndMs = 0;
-  transcript.words.forEach((word, index) => {
-    if (wordIds.has(word.id)) {
-      context.addIssue({
-        code: z2.ZodIssueCode.custom,
-        message: `duplicate ASR word id: ${word.id}`,
-        path: ["words", index, "id"]
-      });
-    }
-    wordIds.add(word.id);
-    if (word.startMs < previousStartMs) {
-      context.addIssue({
-        code: z2.ZodIssueCode.custom,
-        message: "ASR words must be ordered by startMs",
-        path: ["words", index, "startMs"]
-      });
-    }
-    previousStartMs = word.startMs;
-    maxEndMs = Math.max(maxEndMs, word.endMs);
-  });
-  if (transcript.durationMs < maxEndMs) {
+var DocumentRevisionSourceRefSchema = GeneratorInputRefSchema;
+var DocumentAssetRevisionSchema = z2.object({
+  id: idSchema,
+  documentAssetId: idSchema,
+  documentKind: idSchema,
+  schemaVersion: z2.number().int().positive(),
+  mutability: DocumentAssetMutabilitySchema,
+  parentRevisionId: idSchema.optional(),
+  forkedFrom: DocumentAssetRevisionRefSchema.optional(),
+  body: DocumentBodyRefSchema,
+  producer: DocumentRevisionProducerSchema,
+  sourceRefs: z2.array(DocumentRevisionSourceRefSchema)
+}).strict().superRefine(({ documentAssetId, forkedFrom }, context) => {
+  if (forkedFrom?.documentAssetId === documentAssetId) {
     context.addIssue({
       code: z2.ZodIssueCode.custom,
-      message: "ASR durationMs must cover every word",
-      path: ["durationMs"]
+      path: ["forkedFrom", "documentAssetId"],
+      message: "Same-Document ancestry belongs in parentRevisionId, not forkedFrom."
     });
   }
-  transcript.segments.forEach((segment, segmentIndex) => {
-    segment.wordIds.forEach((wordId, wordIndex) => {
-      if (!wordIds.has(wordId)) {
-        context.addIssue({
-          code: z2.ZodIssueCode.custom,
-          message: `ASR segment references unknown word id: ${wordId}`,
-          path: ["segments", segmentIndex, "wordIds", wordIndex]
-        });
-      }
-    });
-  });
 });
-var TranscriptWordSchema = z2.object({
-  id: z2.string().min(1),
-  text: z2.string(),
-  startFrame: z2.number().int().min(0),
-  endFrame: z2.number().int().min(0),
-  confidence: z2.number().min(0).max(1).optional(),
-  speakerId: z2.string().min(1).optional()
-});
-var AsrTranscriptMetadataSchema = z2.object({
-  kind: z2.literal("asr-transcript"),
-  sourcePath: z2.string().min(1),
-  sourceHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/),
-  backendId: z2.string().min(1),
-  modelId: z2.string().min(1),
-  language: z2.string().min(1).optional(),
-  durationFrames: z2.number().int().min(0).optional(),
-  wordCount: z2.number().int().nonnegative(),
-  averageConfidence: z2.number().min(0).max(1).optional()
-});
-var TextCutSchema = z2.object({
-  id: z2.string().min(1),
-  sourceStartFrame: z2.number().int().min(0),
-  sourceEndFrame: z2.number().int().min(0),
-  outputStartFrame: z2.number().int().min(0),
-  outputEndFrame: z2.number().int().min(0),
-  action: z2.enum(["keep", "delete", "review"]),
-  reason: z2.string().optional(),
-  requiresReview: z2.boolean().optional(),
-  confidence: z2.number().min(0).max(1).optional(),
-  detectionSource: z2.string().min(1).optional()
-});
-var CaptionCueSchema = z2.object({
-  id: z2.string().min(1),
-  startFrame: z2.number().int().min(0),
-  durationInFrames: z2.number().int().positive(),
-  text: z2.string().min(1),
-  wordIds: z2.array(z2.string()).optional(),
-  sourceStartFrame: z2.number().int().min(0).optional(),
-  sourceEndFrame: z2.number().int().min(0).optional()
-});
-var TalkingHeadMetadataSchema = z2.object({
-  kind: z2.literal("talking-head.analysis"),
-  fps: z2.number().positive(),
-  asr: AsrTranscriptMetadataSchema.optional(),
-  words: z2.array(TranscriptWordSchema),
-  cuts: z2.array(TextCutSchema).default([]),
-  captionCues: z2.array(CaptionCueSchema).default([]),
-  disfluencies: z2.array(
-    z2.object({
-      id: z2.string().optional(),
-      wordId: z2.string().optional(),
-      startFrame: z2.number().int().min(0).optional(),
-      endFrame: z2.number().int().min(0).optional(),
-      text: z2.string().optional(),
-      type: z2.enum(["filler", "silence", "tone-particle", "repeat"]),
-      requiresReview: z2.boolean().default(false),
-      confidence: z2.number().min(0).max(1).optional(),
-      detectionSource: z2.string().min(1).optional()
-    })
-  ).default([])
-});
-var RightsMetadataSchema = z2.object({
-  license: z2.string().min(1),
-  attribution: z2.string().min(1),
-  redistributionAllowed: z2.boolean(),
-  derivativeAllowed: z2.boolean()
-});
-var ReferenceShotSchema = FrameRangeSchema.extend({
-  id: z2.string().min(1),
-  description: z2.string().min(1),
-  tags: z2.array(z2.string()).default([])
-});
-var ReferenceVideoMetadataSchema = z2.object({
-  kind: z2.literal("reference-video.analysis"),
-  sourceUrl: z2.string().min(1),
-  rights: RightsMetadataSchema,
-  shots: z2.array(ReferenceShotSchema).default([]),
-  nonCopyingQa: z2.object({
-    status: z2.enum(["passed", "requires-review", "failed"]),
-    similarityScore: z2.number().min(0).max(1).optional()
-  }).optional()
-});
-var ReferenceDownloadSourceLedgerSchema = z2.object({
-  sourceUrl: z2.string().min(1),
-  license: z2.string().min(1),
-  attribution: z2.string().min(1),
-  allowedUses: z2.array(z2.string().min(1)).default(["analysis-only"]),
-  redistributionAllowed: z2.boolean(),
-  derivativeAllowed: z2.boolean()
-});
-var ReferenceDownloadFileSchema = z2.object({
-  path: z2.string().min(1),
-  mediaType: z2.enum(["video", "audio", "image", "metadata", "unknown"]),
-  sizeBytes: z2.number().int().nonnegative().optional()
-});
-var ReferenceDownloadMetadataBaseSchema = z2.object({
-  kind: z2.literal("reference.download"),
-  sourceUrl: z2.string().min(1),
-  tool: z2.literal("yt-dlp"),
-  outputDir: z2.string().min(1),
-  downloadedFiles: z2.array(ReferenceDownloadFileSchema).min(1),
-  rawReferenceQuarantine: z2.literal(true),
-  finalExportAllowed: z2.boolean(),
-  sourceLedger: ReferenceDownloadSourceLedgerSchema,
-  decisionLog: z2.array(z2.string().min(1)).default([])
-});
-function hasReferenceDownloadFinalExportRights(metadata) {
-  return !metadata.finalExportAllowed || metadata.sourceLedger.redistributionAllowed && metadata.sourceLedger.derivativeAllowed;
-}
-var ReferenceDownloadMetadataSchema = ReferenceDownloadMetadataBaseSchema.refine(
-  hasReferenceDownloadFinalExportRights,
+var ProjectDocumentAssetHeadSchema = z2.object({
+  id: idSchema,
+  headRevisionId: idSchema
+}).strict();
+var ProjectDocumentAssetSchema = ProjectDocumentAssetHeadSchema.extend(
   {
-    message: "final export requires derivative and redistribution rights",
-    path: ["finalExportAllowed"]
+    documentKind: idSchema,
+    mutability: DocumentAssetMutabilitySchema
   }
-);
-var VisualMomentCandidateSchema = z2.object({
-  id: z2.string().min(1),
-  startMs: z2.number().min(0),
-  endMs: z2.number().min(0),
-  peakMs: z2.number().min(0),
-  startFrame: z2.number().int().min(0).optional(),
-  endFrame: z2.number().int().min(0).optional(),
-  peakFrame: z2.number().int().min(0).optional(),
-  sceneIndex: z2.number().int().min(0),
-  motion: z2.number().min(0).max(1),
-  quality: z2.number().min(0).max(1),
-  action: z2.number().min(0).max(1).optional(),
-  emotion: z2.number().min(0).max(1).optional(),
-  semantic: z2.string().min(1).optional(),
-  tags: z2.array(z2.string()).default([])
-}).refine((candidate) => candidate.endMs > candidate.startMs, {
-  message: "visual moment endMs must be greater than startMs",
-  path: ["endMs"]
-});
-var VideoVisualMomentMetadataSchema = z2.object({
-  kind: z2.literal("video.visual-moments"),
-  sourceVideoAssetId: z2.string().min(1),
-  fps: z2.number().positive(),
-  sourcePath: z2.string().min(1).optional(),
-  sceneChanges: z2.array(z2.number().int().min(0)).default([]),
-  candidates: z2.array(VisualMomentCandidateSchema).min(1)
-});
-var CharacterReferenceViewKindSchema = z2.enum([
-  "front",
-  "side",
-  "back",
-  "three-quarter",
-  "expression"
+).strict();
+var DocumentAttachmentTargetSchema = z2.discriminatedUnion("kind", [
+  z2.object({
+    kind: z2.literal("project-asset"),
+    projectAssetId: idSchema
+  }).strict(),
+  z2.object({
+    kind: z2.literal("generator-revision"),
+    generatorId: idSchema,
+    generatorRevisionId: idSchema
+  }).strict(),
+  z2.object({
+    kind: z2.literal("action-run"),
+    actionRunId: idSchema
+  }).strict()
 ]);
-var CharacterReferenceViewSchema = z2.object({
-  view: CharacterReferenceViewKindSchema,
-  assetId: z2.string().min(1),
-  path: z2.string().min(1),
-  locked: z2.boolean().default(true),
-  copyOnWriteRequired: z2.boolean().default(true)
-});
-var ImageStoryboardMetadataSchema = z2.object({
-  kind: z2.literal("image.storyboard-consistency"),
-  characters: z2.array(
-    z2.object({
-      id: z2.string().min(1),
-      name: z2.string().min(1),
-      referenceAssetIds: z2.array(z2.string()).min(1),
-      requiredViews: z2.array(CharacterReferenceViewKindSchema).default([]),
-      referenceViews: z2.array(CharacterReferenceViewSchema).default([])
-    })
-  ).default([]),
-  scenes: z2.array(
-    z2.object({
-      id: z2.string().min(1),
-      referenceAssetIds: z2.array(z2.string()).default([]),
-      prompt: z2.string().min(1)
-    })
-  ).default([]),
-  panels: z2.array(
-    z2.object({
-      id: z2.string().min(1),
-      sceneId: z2.string().min(1),
-      characterIds: z2.array(z2.string()).default([]),
-      assetId: z2.string().min(1),
-      path: z2.string().min(1).optional(),
-      consistencyScore: z2.number().min(0).max(1).optional()
-    })
-  ).default([])
-});
-var SemanticReferenceRoleKindSchema = z2.enum([
-  "identity-front",
-  "identity-side",
-  "identity-back",
-  "identity-three-quarter",
-  "identity-expression",
-  "scene-plate",
-  "style-frame",
-  "logo-lock",
-  "product-packshot"
-]);
-var SemanticReferenceDownstreamUsageSchema = z2.enum([
-  "identity-reference",
-  "scene-reference",
-  "style-reference",
-  "brand-lock",
-  "product-reference"
-]);
-var SemanticReferenceRoleSchema = z2.object({
-  roleId: z2.string().min(1),
-  assetId: z2.string().min(1),
-  role: SemanticReferenceRoleKindSchema,
-  subjectId: z2.string().min(1).optional(),
-  path: z2.string().min(1),
-  locked: z2.boolean(),
-  copyOnWriteRequired: z2.boolean(),
-  downstreamUsage: SemanticReferenceDownstreamUsageSchema,
-  constraints: z2.array(z2.string().min(1)).default([])
-});
-var SemanticReferenceRolesMetadataSchema = z2.object({
-  kind: z2.literal("image.semantic-reference-roles"),
-  roles: z2.array(SemanticReferenceRoleSchema).min(1)
-});
-var ProductLogoQaReferenceSchema = z2.object({
-  roleId: z2.string().min(1),
-  assetId: z2.string().min(1),
-  role: z2.enum(["logo-lock", "product-packshot"]),
-  subjectId: z2.string().min(1).optional(),
-  path: z2.string().min(1),
-  locked: z2.boolean(),
-  copyOnWriteRequired: z2.boolean(),
-  constraints: z2.array(z2.string().min(1)).default([])
-});
-var ProductLogoQaCheckKindSchema = z2.enum([
-  "logo-presence",
-  "glyph-lock",
-  "brand-color",
-  "packshot-presence",
-  "claim-text",
-  "material-finish",
-  "packaging-layout"
-]);
-var ProductLogoQaCheckSchema = z2.object({
-  id: z2.string().min(1),
-  roleId: z2.string().min(1),
-  referenceAssetId: z2.string().min(1),
-  check: ProductLogoQaCheckKindSchema,
-  status: z2.enum(["pass", "requires-review", "fail"]),
-  required: z2.boolean().default(true),
-  expected: z2.string().min(1),
-  actual: z2.string().min(1),
-  confidence: z2.number().min(0).max(1).optional(),
-  deltaE: z2.number().min(0).optional(),
-  evidence: z2.string().min(1).optional()
-});
-var ProductLogoQaMetadataSchema = z2.object({
-  kind: z2.literal("image.product-logo-qa"),
-  targetAssetId: z2.string().min(1),
-  referencePackAssetId: z2.string().min(1).optional(),
-  requiredReferenceAssetIds: z2.array(z2.string().min(1)).min(1),
-  references: z2.array(ProductLogoQaReferenceSchema).min(1),
-  checks: z2.array(ProductLogoQaCheckSchema).min(1),
-  verdict: z2.enum(["pass", "requires-review", "fail"]),
-  blockedReasons: z2.array(z2.string().min(1)).default([]),
-  copyOnWriteRequired: z2.boolean()
-});
-var AnalysisBackendBenchmarkMetricSchema = z2.object({
-  id: z2.string().min(1),
-  label: z2.string().min(1).optional(),
-  score: z2.number().min(0).max(1),
-  threshold: z2.number().min(0).max(1),
-  weight: z2.number().positive().default(1),
-  higherIsBetter: z2.boolean().default(true),
-  status: z2.enum(["pass", "fail"])
-});
-var AnalysisBackendBenchmarkCandidateSchema = z2.object({
+var DocumentAttachmentSchema = z2.object({
+  id: idSchema,
+  target: DocumentAttachmentTargetSchema,
+  slot: idSchema,
+  document: DocumentAssetRevisionRefSchema
+}).strict();
+var MediaTranscriptMetadataSchema = z2.object({
+  schemaVersion: z2.literal(1),
+  kind: z2.literal("media.transcript"),
   backendId: z2.string().min(1),
-  capability: z2.string().min(1),
-  resultPath: z2.string().min(1),
-  metrics: z2.array(AnalysisBackendBenchmarkMetricSchema).min(1),
-  weightedScore: z2.number().min(0).max(1),
-  status: z2.enum(["pass", "fail"])
-});
-var AnalysisBackendBenchmarkMetadataSchema = z2.object({
-  kind: z2.literal("analysis.backend-benchmark"),
-  benchmarkId: z2.string().min(1),
-  targetCapability: z2.string().min(1),
-  fixtureSetPath: z2.string().min(1),
-  candidates: z2.array(AnalysisBackendBenchmarkCandidateSchema).min(1),
-  selectedBackendId: z2.string().min(1).optional(),
-  verdict: z2.enum(["pass", "requires-review", "fail"]),
-  blockedReasons: z2.array(z2.string().min(1)).default([]),
-  decisionLog: z2.array(z2.string().min(1)).default([])
-});
-var ImageEmbeddingDistanceMetricSchema = z2.enum([
-  "cosine",
-  "dot",
-  "euclidean"
-]);
-var ImageEmbeddingBaselineForSchema = z2.enum([
-  "identity",
-  "product",
-  "scene",
-  "style",
-  "logo"
-]);
-var ImageEmbeddingStoreItemSchema = z2.object({
-  assetId: z2.string().min(1),
-  roleId: z2.string().min(1).optional(),
-  subjectId: z2.string().min(1).optional(),
-  path: z2.string().min(1),
-  vectorPath: z2.string().min(1),
-  vectorHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/),
-  dimension: z2.number().int().positive(),
-  baselineFor: z2.array(ImageEmbeddingBaselineForSchema).min(1),
-  locked: z2.boolean(),
-  copyOnWriteRequired: z2.boolean(),
-  tags: z2.array(z2.string().min(1)).default([])
-});
-var ImageEmbeddingStoreMetadataSchema = z2.object({
-  kind: z2.literal("image.embedding-store"),
-  embeddingSetId: z2.string().min(1),
   modelId: z2.string().min(1),
-  dimension: z2.number().int().positive(),
-  distanceMetric: ImageEmbeddingDistanceMetricSchema,
-  items: z2.array(ImageEmbeddingStoreItemSchema).min(1),
-  copyOnWriteRequired: z2.boolean()
+  language: z2.string().min(1).optional(),
+  /** The media this grid was transcribed from. */
+  sourceHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  /**
+   * The word grid itself. Downstream wordIds only mean anything against this,
+   * and it survives a reflow of `text` or `segments` unchanged.
+   */
+  contentHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  /**
+   * Where the full body is stored. Distinct from `contentHash` on purpose: this
+   * addresses the whole document, so restating the same grid moves it.
+   */
+  bodyHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  summary: z2.object({
+    wordCount: z2.number().int().nonnegative(),
+    durationMs: z2.number().int().min(0),
+    segmentCount: z2.number().int().nonnegative().optional(),
+    averageConfidence: z2.number().min(0).max(1).optional()
+  })
 });
-var ImageComfyuiApiFormatSchema = z2.enum([
-  "comfyui-api-json",
-  "comfyui-ui-json"
-]);
-var ImageComfyuiModelTypeSchema = z2.enum([
-  "checkpoint",
-  "vae",
-  "lora",
-  "controlnet",
-  "upscaler",
-  "embedding",
-  "other"
-]);
-var ImageComfyuiModelReferenceSchema = z2.object({
-  name: z2.string().min(1),
-  type: ImageComfyuiModelTypeSchema,
-  path: z2.string().min(1).optional(),
-  hash: z2.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
-  license: z2.string().min(1).optional()
-});
-var ImageComfyuiCustomNodeSchema = z2.object({
-  name: z2.string().min(1),
-  source: z2.string().min(1).optional(),
-  version: z2.string().min(1).optional(),
-  commit: z2.string().min(1).optional(),
-  hash: z2.string().regex(/^sha256:[a-f0-9]{64}$/).optional()
-});
-var ImageComfyuiInputKindSchema = z2.enum([
-  "text",
-  "image",
-  "mask",
-  "latent",
-  "seed",
-  "number",
-  "model",
-  "lora",
-  "controlnet",
-  "other"
-]);
-var ImageComfyuiInputSlotSchema = z2.object({
-  id: z2.string().min(1),
-  nodeId: z2.string().min(1),
-  inputName: z2.string().min(1),
-  kind: ImageComfyuiInputKindSchema,
-  value: z2.union([z2.string(), z2.number(), z2.boolean()]).optional(),
-  assetId: z2.string().min(1).optional(),
-  path: z2.string().min(1).optional()
-});
-var ImageComfyuiOutputStatusSchema = z2.enum([
-  "planned",
-  "materialized"
-]);
-var ImageComfyuiOutputMediaTypeSchema = z2.enum([
-  "image",
-  "image-sequence",
-  "mask",
-  "metadata"
-]);
-var ImageComfyuiOutputSchema = z2.object({
-  outputAssetId: z2.string().min(1),
-  nodeId: z2.string().min(1),
-  outputName: z2.string().min(1).optional(),
-  mediaType: ImageComfyuiOutputMediaTypeSchema,
-  path: z2.string().min(1),
-  fileHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
-  status: ImageComfyuiOutputStatusSchema
-});
-var ImageComfyuiExecutionSchema = z2.object({
-  mode: z2.enum(["planned", "completed", "failed"]),
-  runnerId: z2.string().min(1).optional(),
-  promptId: z2.string().min(1).optional(),
-  executedAt: z2.string().min(1).optional()
-});
-var ImageComfyuiRunnerMetadataSchema = z2.object({
-  kind: z2.literal("image.comfyui-runner"),
-  workflowId: z2.string().min(1),
-  workflowPath: z2.string().min(1),
-  workflowHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/),
-  apiFormat: ImageComfyuiApiFormatSchema,
-  backendId: z2.string().min(1).optional(),
-  models: z2.array(ImageComfyuiModelReferenceSchema).default([]),
-  customNodes: z2.array(ImageComfyuiCustomNodeSchema).default([]),
-  inputs: z2.array(ImageComfyuiInputSlotSchema).default([]),
-  outputs: z2.array(ImageComfyuiOutputSchema).min(1),
-  execution: ImageComfyuiExecutionSchema.default({ mode: "planned" }),
-  decisionLog: z2.array(z2.string().min(1)).default([])
-});
-var StoryboardPromptSchema = z2.object({
-  id: z2.string().min(1),
-  panelId: z2.string().min(1),
-  sceneId: z2.string().min(1),
-  characterIds: z2.array(z2.string()).default([]),
-  prompt: z2.string().min(1),
-  negativePrompt: z2.string().optional(),
-  outputAssetId: z2.string().min(1),
-  outputPath: z2.string().min(1),
-  modelHint: z2.string().optional()
-});
-var StoryboardPromptPackSchema = z2.object({
+var MediaRenderLineageMetadataSchema = z2.object({
   schemaVersion: z2.literal(1),
-  kind: z2.literal("clash.storyboard.prompt-pack"),
-  storyboardAssetId: z2.string().min(1),
-  prompts: z2.array(StoryboardPromptSchema).min(1)
+  kind: z2.literal("media.render-lineage"),
+  /** The entity rendered, e.g. a Director Stage or a Timeline. */
+  sourceEntityKind: z2.string().min(1),
+  sourceEntityId: z2.string().min(1),
+  /** The exact revision rendered, so a later edit cannot be mistaken for this one. */
+  sourceRevisionId: z2.string().min(1),
+  /** Where in the entity's own time this frame was taken, when it has time. */
+  timeSeconds: z2.number().nonnegative().optional(),
+  /** Which renderer produced it. */
+  renderer: z2.string().min(1).optional(),
+  /** The media file this describes. */
+  sourceHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/u)
 });
-var SafeZonesSchema = z2.object({
-  top: z2.number().int().min(0),
-  right: z2.number().int().min(0),
-  bottom: z2.number().int().min(0),
-  left: z2.number().int().min(0)
-});
-var AdDeliveryVariantSchema = z2.object({
-  id: z2.string().min(1),
-  platform: z2.string().min(1),
-  durationSeconds: z2.number().positive(),
-  width: z2.number().int().positive(),
-  height: z2.number().int().positive(),
-  aspectRatio: z2.string().min(1),
-  safeZones: SafeZonesSchema,
-  subtitlesRequired: z2.boolean().default(true),
-  loudnessTarget: z2.string().min(1).default("platform-default")
-});
-var AdPackshotSpecSchema = z2.object({
-  required: z2.boolean().default(true),
-  assetId: z2.string().min(1),
-  startFrame: z2.number().int().min(0),
-  endFrame: z2.number().int().min(0)
-});
-var AdEndCardSpecSchema = z2.object({
-  required: z2.boolean().default(true),
-  durationFrames: z2.number().int().positive(),
-  cta: z2.string().min(1),
-  disclaimer: z2.string().min(1).optional(),
-  qrRequired: z2.boolean().default(false)
-});
-var AdDeliveryMetadataSchema = z2.object({
-  kind: z2.literal("ad.delivery-spec"),
-  brand: z2.string().min(1),
-  fps: z2.number().positive(),
-  platforms: z2.array(z2.string().min(1)).min(1),
-  variants: z2.array(AdDeliveryVariantSchema).min(1),
-  packshot: AdPackshotSpecSchema,
-  endCard: AdEndCardSpecSchema,
-  rightsLedgerAssetId: z2.string().min(1).optional()
-});
-var AdDeliveryChecklistItemSchema = z2.object({
-  id: z2.string().min(1),
-  label: z2.string().min(1),
-  required: z2.boolean()
-});
-var AdDeliverySpecProjectionSchema = z2.object({
+var MediaDescriptionMetadataSchema = z2.object({
   schemaVersion: z2.literal(1),
-  kind: z2.literal("clash.ad.delivery-spec.projection"),
-  targetAssetId: z2.string().min(1),
-  brand: z2.string().min(1),
-  fps: z2.number().positive(),
-  platforms: z2.array(z2.string().min(1)).min(1),
-  variants: z2.array(AdDeliveryVariantSchema).min(1),
-  packshot: AdPackshotSpecSchema,
-  endCard: AdEndCardSpecSchema,
-  rightsLedgerAssetId: z2.string().min(1).optional(),
-  checklist: z2.array(AdDeliveryChecklistItemSchema).default([])
+  kind: z2.literal("media.description"),
+  text: z2.string().min(1),
+  language: z2.string().min(1).optional(),
+  /** Which model or person wrote it. */
+  producerModelId: z2.string().min(1).optional(),
+  /** The media file this describes. */
+  sourceHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/u)
 });
-var AdDeliveryExportProbeSchema = z2.object({
-  width: z2.number().int().positive(),
-  height: z2.number().int().positive(),
-  fps: z2.number().positive(),
-  durationSeconds: z2.number().positive(),
-  hasVideo: z2.boolean(),
-  hasAudio: z2.boolean(),
-  videoCodec: z2.string().min(1).optional(),
-  audioCodec: z2.string().min(1).optional()
-});
-var AdDeliverySafeZoneViolationSchema = z2.object({
-  frame: z2.number().int().min(0).optional(),
-  description: z2.string().min(1),
-  severity: z2.enum(["warning", "error"]).default("error")
-});
-var AdDeliveryVisualQaReportSchema = z2.object({
-  captionsPresent: z2.boolean(),
-  safeZoneViolations: z2.array(AdDeliverySafeZoneViolationSchema).default([]),
-  packshotVisible: z2.boolean(),
-  endCardVisible: z2.boolean(),
-  disclaimerVisible: z2.boolean().optional(),
-  ctaVisible: z2.boolean().optional(),
-  logoLockupVisible: z2.boolean().optional(),
-  finalFrameHolds: z2.boolean().optional()
-});
-var AdDeliveryExportValidationCheckSchema = z2.object({
-  id: z2.string().min(1),
-  status: z2.enum(["pass", "fail"]),
-  required: z2.boolean(),
-  severity: z2.enum(["error", "warning"]).default("error"),
-  expected: z2.string().min(1),
-  actual: z2.string().min(1)
-});
-var AdDeliveryExportValidationReceiptSchema = z2.object({
-  schemaVersion: z2.literal(1),
-  kind: z2.literal("clash.ad.delivery-export-validation"),
-  targetAssetId: z2.string().min(1),
-  brand: z2.string().min(1),
-  variant: AdDeliveryVariantSchema,
-  renderedPath: z2.string().min(1),
-  probe: AdDeliveryExportProbeSchema,
-  visualQa: AdDeliveryVisualQaReportSchema.optional(),
-  checks: z2.array(AdDeliveryExportValidationCheckSchema).min(1),
-  verdict: z2.enum(["pass", "fail"])
-});
-var AdVisualQaCheckKindSchema = z2.enum([
-  "captions-present",
-  "safe-zone",
-  "packshot-visible",
-  "end-card-visible",
-  "disclaimer-visible",
-  "disclaimer-ocr",
-  "cta-visible",
-  "logo-lockup-visible",
-  "final-frame-hold"
-]);
-var AdVisualQaCheckSchema = z2.object({
-  id: z2.string().min(1),
-  check: AdVisualQaCheckKindSchema,
-  status: z2.enum(["pass", "fail", "requires-review"]),
-  required: z2.boolean().default(true),
-  expected: z2.string().min(1),
-  actual: z2.string().min(1),
-  confidence: z2.number().min(0).max(1).optional(),
-  frame: z2.number().int().min(0).optional(),
-  evidencePath: z2.string().min(1).optional()
-});
-var AdVisualQaMetadataSchema = z2.object({
-  kind: z2.literal("ad.visual-qa"),
-  targetAssetId: z2.string().min(1),
-  variantId: z2.string().min(1),
-  renderedPath: z2.string().min(1),
-  evidencePath: z2.string().min(1),
-  checks: z2.array(AdVisualQaCheckSchema).min(1),
-  verdict: z2.enum(["pass", "requires-review", "fail"]),
-  blockedReasons: z2.array(z2.string().min(1)).default([]),
-  visualQa: AdDeliveryVisualQaReportSchema,
-  decisionLog: z2.array(z2.string().min(1)).default([])
-});
-var ContentCredentialModeSchema = z2.enum([
-  "unsigned-manifest",
-  "signed-c2pa",
-  "external"
-]);
-var ContentCredentialSignatureStatusSchema = z2.enum([
-  "unsigned",
-  "signed",
-  "external",
-  "failed"
-]);
-var ContentCredentialIngredientRelationshipSchema = z2.enum([
-  "source",
-  "reference",
-  "generated-input",
-  "model",
-  "metadata"
-]);
-var ContentCredentialIngredientSchema = z2.object({
-  assetId: z2.string().min(1).optional(),
-  path: z2.string().min(1),
-  relationship: ContentCredentialIngredientRelationshipSchema,
-  hash: z2.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
-  title: z2.string().min(1).optional(),
-  rights: z2.string().min(1).optional()
-});
-var ContentCredentialActionSchema = z2.object({
-  actionId: z2.string().min(1).optional(),
-  action: z2.string().min(1),
-  softwareAgent: z2.string().min(1).optional(),
-  when: z2.string().min(1).optional()
-});
-var ContentCredentialAssertionSchema = z2.object({
-  label: z2.string().min(1),
-  value: z2.string().min(1),
-  path: z2.string().min(1).optional(),
-  hash: z2.string().regex(/^sha256:[a-f0-9]{64}$/).optional()
-});
-var ContentCredentialsMetadataSchema = z2.object({
-  kind: z2.literal("provenance.content-credentials"),
-  credentialId: z2.string().min(1),
-  targetAssetId: z2.string().min(1),
-  targetPath: z2.string().min(1).optional(),
-  targetHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
-  mode: ContentCredentialModeSchema,
-  signatureStatus: ContentCredentialSignatureStatusSchema,
-  c2paManifestPath: z2.string().min(1).optional(),
-  c2paManifestHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
-  issuer: z2.string().min(1).optional(),
-  ingredients: z2.array(ContentCredentialIngredientSchema).default([]),
-  actions: z2.array(ContentCredentialActionSchema).default([]),
-  assertions: z2.array(ContentCredentialAssertionSchema).default([]),
-  decisionLog: z2.array(z2.string().min(1)).default([])
-});
-var ProductionMetadataBaseSchema = z2.discriminatedUnion("kind", [
-  AudioBeatMetadataSchema,
-  AudioStemSeparationMetadataSchema,
-  LyricsAlignmentMetadataSchema,
-  TalkingHeadMetadataSchema,
-  ReferenceVideoMetadataSchema,
-  ReferenceDownloadMetadataBaseSchema,
-  VideoVisualMomentMetadataSchema,
-  ImageStoryboardMetadataSchema,
-  SemanticReferenceRolesMetadataSchema,
-  ProductLogoQaMetadataSchema,
-  AnalysisBackendBenchmarkMetadataSchema,
-  ImageEmbeddingStoreMetadataSchema,
-  ImageComfyuiRunnerMetadataSchema,
-  AdDeliveryMetadataSchema,
-  AdVisualQaMetadataSchema,
-  ContentCredentialsMetadataSchema
-]);
-var ProductionMetadataSchema = ProductionMetadataBaseSchema.superRefine((metadata, context) => {
-  if (metadata.kind === "reference.download" && !hasReferenceDownloadFinalExportRights(metadata)) {
-    context.addIssue({
-      code: z2.ZodIssueCode.custom,
-      message: "final export requires derivative and redistribution rights",
-      path: ["finalExportAllowed"]
-    });
+var declaredKinds = /* @__PURE__ */ new Map();
+function registerAssetMetadataKind(declaration) {
+  const issuesFor = (probe) => {
+    const result = declaration.schema.safeParse(probe);
+    return result.success ? [] : result.error.issues;
+  };
+  const complainsAbout = (issues, field3) => issues.some((issue3) => issue3.path.length === 1 && issue3.path[0] === field3);
+  if (complainsAbout(
+    issuesFor({ schemaVersion: 1, kind: declaration.kind }),
+    "kind"
+  )) {
+    throw new Error(
+      `Asset metadata kind ${declaration.kind} must declare a schema that pins its own kind`
+    );
   }
-});
-var AssetMetadataFillActionSchema = z2.object({
-  actionId: z2.string().min(1),
+  if (!complainsAbout(issuesFor({ kind: declaration.kind }), "schemaVersion")) {
+    throw new Error(
+      `Asset metadata kind ${declaration.kind} must declare a schemaVersion`
+    );
+  }
+  declaredKinds.set(declaration.kind, declaration);
+}
+var FillActionEnvelopeSchema = z2.object({
+  actionId: z2.string().trim().min(1),
   target: MetadataAttachmentTargetSchema,
-  metadataKind: z2.string().min(1),
-  metadata: ProductionMetadataSchema,
-  producer: z2.string().min(1),
+  metadataKind: z2.string().trim().min(1),
+  metadata: z2.object({ kind: z2.string().trim().min(1) }).passthrough(),
+  producer: z2.string().trim().min(1),
   createdAt: z2.string().optional()
 }).strict();
-var SourceHashSchema = z2.string().regex(/^sha256:[a-f0-9]{64}$/);
-var TimelineTranscriptSourceSchema = z2.object({
-  assetId: z2.string().min(1),
-  transcriptSourcePath: z2.string().min(1),
-  transcriptSourceHash: SourceHashSchema,
-  transcriptRevision: z2.string().min(1).optional()
+registerAssetMetadataKind({
+  kind: "media.transcript",
+  schema: MediaTranscriptMetadataSchema
 });
-var TimelineTranscriptWordSchema = z2.object({
-  id: z2.string().min(1),
-  text: z2.string().min(1),
-  assetId: z2.string().min(1),
-  assetWordId: z2.string().min(1),
-  clipId: z2.string().min(1),
-  trackId: z2.string().min(1).optional(),
-  sourceStartFrame: z2.number().int().min(0),
-  sourceEndFrame: z2.number().int().min(0),
-  timelineStartFrame: z2.number().int().min(0),
-  timelineEndFrame: z2.number().int().min(0),
-  confidence: z2.number().min(0).max(1).optional(),
-  speakerId: z2.string().min(1).optional()
-}).superRefine((word, context) => {
-  if (word.sourceEndFrame <= word.sourceStartFrame) {
-    context.addIssue({
-      code: z2.ZodIssueCode.custom,
-      message: "timeline transcript sourceEndFrame must be greater than sourceStartFrame",
-      path: ["sourceEndFrame"]
-    });
-  }
-  if (word.timelineEndFrame <= word.timelineStartFrame) {
-    context.addIssue({
-      code: z2.ZodIssueCode.custom,
-      message: "timeline transcript timelineEndFrame must be greater than timelineStartFrame",
-      path: ["timelineEndFrame"]
-    });
-  }
+registerAssetMetadataKind({
+  kind: "media.description",
+  schema: MediaDescriptionMetadataSchema
 });
-var TimelineTranscriptProjectionSchema = z2.object({
-  schemaVersion: z2.literal(1),
-  kind: z2.literal("clash.timeline.transcript.projection"),
-  timelineId: z2.string().min(1),
-  timelineRevision: z2.string().min(1),
-  fps: z2.number().positive(),
-  durationFrames: z2.number().int().min(0),
-  text: z2.string(),
-  sources: z2.array(TimelineTranscriptSourceSchema).min(1),
-  words: z2.array(TimelineTranscriptWordSchema)
-}).superRefine((projection, context) => {
-  const sourceAssetIds = new Set(projection.sources.map((source) => source.assetId));
-  const sourceIds = /* @__PURE__ */ new Set();
-  projection.sources.forEach((source, index) => {
-    if (sourceIds.has(source.assetId)) {
-      context.addIssue({
-        code: z2.ZodIssueCode.custom,
-        message: `duplicate timeline transcript source asset: ${source.assetId}`,
-        path: ["sources", index, "assetId"]
-      });
-    }
-    sourceIds.add(source.assetId);
-  });
-  const wordIds = /* @__PURE__ */ new Set();
-  let previousTimelineStart = -1;
-  projection.words.forEach((word, index) => {
-    if (wordIds.has(word.id)) {
-      context.addIssue({
-        code: z2.ZodIssueCode.custom,
-        message: `duplicate timeline transcript word id: ${word.id}`,
-        path: ["words", index, "id"]
-      });
-    }
-    wordIds.add(word.id);
-    if (!sourceAssetIds.has(word.assetId)) {
-      context.addIssue({
-        code: z2.ZodIssueCode.custom,
-        message: `timeline transcript word references unknown asset: ${word.assetId}`,
-        path: ["words", index, "assetId"]
-      });
-    }
-    if (word.timelineStartFrame < previousTimelineStart) {
-      context.addIssue({
-        code: z2.ZodIssueCode.custom,
-        message: "timeline transcript words must be ordered by timelineStartFrame",
-        path: ["words", index, "timelineStartFrame"]
-      });
-    }
-    if (word.timelineEndFrame > projection.durationFrames) {
-      context.addIssue({
-        code: z2.ZodIssueCode.custom,
-        message: "timeline transcript word exceeds durationFrames",
-        path: ["words", index, "timelineEndFrame"]
-      });
-    }
-    previousTimelineStart = word.timelineStartFrame;
-  });
+registerAssetMetadataKind({
+  kind: "media.render-lineage",
+  schema: MediaRenderLineageMetadataSchema
 });
-var TimelineTranscriptClipInputSchema = z2.object({
-  clipId: z2.string().min(1),
-  trackId: z2.string().min(1).optional(),
-  assetId: z2.string().min(1),
-  timelineStartFrame: z2.number().int().min(0),
-  sourceStartFrame: z2.number().int().min(0),
-  sourceEndFrame: z2.number().int().min(0),
-  playbackRate: z2.number().positive().default(1),
-  transcript: z2.object({
-    sourcePath: z2.string().min(1),
-    sourceHash: SourceHashSchema,
-    revision: z2.string().min(1).optional(),
-    words: z2.array(TranscriptWordSchema)
+var idSchema2 = z2.string().trim().min(1);
+var DocumentProjectionContractSchema = z2.object({
+  format: z2.enum(["json", "text"]),
+  editable: z2.boolean()
+}).strict();
+var DocumentKindDefinitionSchema = z2.object({
+  kind: idSchema2,
+  schemaVersion: z2.number().int().positive(),
+  mutability: DocumentAssetMutabilitySchema,
+  projection: DocumentProjectionContractSchema,
+  allowedAttachmentTargets: z2.array(z2.enum(["project-asset", "generator-revision", "action-run"])).min(1).refine((values) => new Set(values).size === values.length, {
+    message: "Document attachment target declarations must be unique."
+  }),
+  /** Empty means storage/projection support only; it grants no product semantics. */
+  productConsumers: z2.array(idSchema2).refine((values) => new Set(values).size === values.length, {
+    message: "Document product consumer declarations must be unique."
   })
-}).refine((clip) => clip.sourceEndFrame > clip.sourceStartFrame, {
-  message: "timeline transcript clip sourceEndFrame must be greater than sourceStartFrame",
-  path: ["sourceEndFrame"]
+}).strict();
+var declarations = /* @__PURE__ */ new Map();
+function declarationKey(kind, schemaVersion) {
+  return `${kind}\0${schemaVersion}`;
+}
+function registerDocumentKind(declarationInput) {
+  const definition = DocumentKindDefinitionSchema.parse(
+    declarationInput.definition
+  );
+  const key = declarationKey(definition.kind, definition.schemaVersion);
+  if (declarations.has(key)) {
+    throw new Error(
+      `Document kind ${definition.kind}@${definition.schemaVersion} is already declared.`
+    );
+  }
+  declarations.set(key, {
+    definition,
+    schema: declarationInput.schema
+  });
+}
+registerDocumentKind({
+  definition: {
+    kind: "media.transcript",
+    schemaVersion: 1,
+    mutability: "versioned",
+    projection: { format: "json", editable: true },
+    allowedAttachmentTargets: [
+      "project-asset",
+      "generator-revision",
+      "action-run"
+    ],
+    productConsumers: ["captions", "transcript-editing", "search"]
+  },
+  schema: AsrTimedTranscriptSchema
 });
-var BuildTimelineTranscriptProjectionInputSchema = z2.object({
-  timelineId: z2.string().min(1),
-  timelineRevision: z2.string().min(1),
-  fps: z2.number().positive(),
-  durationFrames: z2.number().int().min(0),
-  clips: z2.array(TimelineTranscriptClipInputSchema).min(1)
+registerDocumentKind({
+  definition: {
+    kind: "media.description",
+    schemaVersion: 1,
+    mutability: "versioned",
+    projection: { format: "json", editable: true },
+    allowedAttachmentTargets: [
+      "project-asset",
+      "generator-revision",
+      "action-run"
+    ],
+    productConsumers: ["search", "agent-context"]
+  },
+  schema: MediaDescriptionMetadataSchema
 });
+registerDocumentKind({
+  definition: {
+    kind: "media.render-lineage",
+    schemaVersion: 1,
+    mutability: "immutable",
+    projection: { format: "json", editable: false },
+    allowedAttachmentTargets: [
+      "project-asset",
+      "generator-revision",
+      "action-run"
+    ],
+    productConsumers: ["provenance"]
+  },
+  schema: MediaRenderLineageMetadataSchema
+});
+var LegacyLinkedProjectAssetSourceSchema = z2.object({
+  kind: z2.literal("linked"),
+  resourceId: z2.string().trim().min(1),
+  origin: z2.discriminatedUnion("scope", [
+    z2.object({
+      scope: z2.literal("global"),
+      entryId: z2.string().trim().min(1)
+    }).strict(),
+    z2.object({
+      scope: z2.literal("project"),
+      entryId: z2.string().trim().min(1)
+    }).strict(),
+    z2.object({
+      scope: z2.literal("catalog"),
+      entryId: z2.string().trim().min(1)
+    }).strict()
+  ])
+}).strict();
 var DirectorReferenceAspectRatioSchema = z2.enum([
   "16:9",
   "9:16",
@@ -56878,24 +57707,172 @@ var ProjectContextSchema = z2.object({
     type: z2.string().nullish()
   }))
 });
-var LegacyLinkedProjectAssetSourceSchema = z2.object({
-  kind: z2.literal("linked"),
-  resourceId: z2.string().trim().min(1),
-  origin: z2.discriminatedUnion("scope", [
-    z2.object({
-      scope: z2.literal("global"),
-      entryId: z2.string().trim().min(1)
-    }).strict(),
-    z2.object({
-      scope: z2.literal("project"),
-      entryId: z2.string().trim().min(1)
-    }).strict(),
-    z2.object({
-      scope: z2.literal("catalog"),
-      entryId: z2.string().trim().min(1)
-    }).strict()
-  ])
-}).strict();
+var AgentAnnotationSurfaceSchema = z2.enum([
+  "canvas",
+  "timeline",
+  "director-stage",
+  // Project assets annotated from the workspace sidebar / asset views.
+  "asset"
+]);
+var AgentAnnotationVisualRectSchema = z2.object({
+  x: z2.number().finite().min(0).max(1),
+  y: z2.number().finite().min(0).max(1),
+  width: z2.number().finite().positive().max(1),
+  height: z2.number().finite().positive().max(1)
+});
+var AgentAnnotationSelectionSchema = z2.object({
+  kind: z2.literal("text-quote"),
+  exact: z2.string().trim().min(1).max(4e3),
+  prefix: z2.string().max(256).optional(),
+  suffix: z2.string().max(256).optional(),
+  visualRects: z2.array(AgentAnnotationVisualRectSchema).max(32).optional()
+});
+var AgentAnnotationTargetSchema = z2.object({
+  projectId: z2.string().trim().min(1),
+  surface: AgentAnnotationSurfaceSchema,
+  surfaceId: z2.string().trim().min(1),
+  surfaceLabel: z2.string().trim().min(1),
+  revisionId: z2.string().trim().min(1).optional(),
+  objectId: z2.string().trim().min(1),
+  objectType: z2.string().trim().min(1),
+  objectLabel: z2.string().trim().min(1),
+  parentId: z2.string().trim().min(1).optional(),
+  objectPath: z2.string().trim().min(1),
+  capabilities: z2.array(z2.enum(["read", "modify"])).min(1),
+  selection: AgentAnnotationSelectionSchema.optional(),
+  /** Asset backing the annotated object, when it has one — lets chat surfaces show a media preview. */
+  previewAssetId: z2.string().trim().min(1).optional()
+});
+var AgentAnnotationDraftSchema = z2.object({
+  id: z2.string().trim().min(1),
+  kind: z2.literal("agent-annotation"),
+  note: z2.string().max(4e3),
+  target: AgentAnnotationTargetSchema
+});
+var AgentAnnotationPromptPayloadSchema = z2.object({
+  version: z2.literal(1),
+  kind: z2.literal("clash-agent-annotations"),
+  annotations: z2.array(AgentAnnotationDraftSchema).min(1)
+});
+var SourceHashSchema = z2.string().regex(/^sha256:[a-f0-9]{64}$/);
+var TimelineTranscriptSourceSchema = z2.object({
+  assetId: z2.string().min(1),
+  transcriptSourcePath: z2.string().min(1),
+  transcriptSourceHash: SourceHashSchema,
+  transcriptRevision: z2.string().min(1).optional()
+});
+var TimelineTranscriptWordSchema = z2.object({
+  id: z2.string().min(1),
+  text: z2.string().min(1),
+  assetId: z2.string().min(1),
+  assetWordId: z2.string().min(1),
+  clipId: z2.string().min(1),
+  trackId: z2.string().min(1).optional(),
+  sourceStartFrame: z2.number().int().min(0),
+  sourceEndFrame: z2.number().int().min(0),
+  timelineStartFrame: z2.number().int().min(0),
+  timelineEndFrame: z2.number().int().min(0),
+  confidence: z2.number().min(0).max(1).optional(),
+  speakerId: z2.string().min(1).optional()
+}).superRefine((word, context) => {
+  if (word.sourceEndFrame <= word.sourceStartFrame) {
+    context.addIssue({
+      code: z2.ZodIssueCode.custom,
+      message: "timeline transcript sourceEndFrame must be greater than sourceStartFrame",
+      path: ["sourceEndFrame"]
+    });
+  }
+  if (word.timelineEndFrame <= word.timelineStartFrame) {
+    context.addIssue({
+      code: z2.ZodIssueCode.custom,
+      message: "timeline transcript timelineEndFrame must be greater than timelineStartFrame",
+      path: ["timelineEndFrame"]
+    });
+  }
+});
+var TimelineTranscriptProjectionSchema = z2.object({
+  schemaVersion: z2.literal(1),
+  kind: z2.literal("clash.timeline.transcript.projection"),
+  timelineId: z2.string().min(1),
+  timelineRevision: z2.string().min(1),
+  fps: z2.number().positive(),
+  durationFrames: z2.number().int().min(0),
+  text: z2.string(),
+  sources: z2.array(TimelineTranscriptSourceSchema).min(1),
+  words: z2.array(TimelineTranscriptWordSchema)
+}).superRefine((projection, context) => {
+  const sourceAssetIds = new Set(projection.sources.map((source) => source.assetId));
+  const sourceIds = /* @__PURE__ */ new Set();
+  projection.sources.forEach((source, index) => {
+    if (sourceIds.has(source.assetId)) {
+      context.addIssue({
+        code: z2.ZodIssueCode.custom,
+        message: `duplicate timeline transcript source asset: ${source.assetId}`,
+        path: ["sources", index, "assetId"]
+      });
+    }
+    sourceIds.add(source.assetId);
+  });
+  const wordIds = /* @__PURE__ */ new Set();
+  let previousTimelineStart = -1;
+  projection.words.forEach((word, index) => {
+    if (wordIds.has(word.id)) {
+      context.addIssue({
+        code: z2.ZodIssueCode.custom,
+        message: `duplicate timeline transcript word id: ${word.id}`,
+        path: ["words", index, "id"]
+      });
+    }
+    wordIds.add(word.id);
+    if (!sourceAssetIds.has(word.assetId)) {
+      context.addIssue({
+        code: z2.ZodIssueCode.custom,
+        message: `timeline transcript word references unknown asset: ${word.assetId}`,
+        path: ["words", index, "assetId"]
+      });
+    }
+    if (word.timelineStartFrame < previousTimelineStart) {
+      context.addIssue({
+        code: z2.ZodIssueCode.custom,
+        message: "timeline transcript words must be ordered by timelineStartFrame",
+        path: ["words", index, "timelineStartFrame"]
+      });
+    }
+    if (word.timelineEndFrame > projection.durationFrames) {
+      context.addIssue({
+        code: z2.ZodIssueCode.custom,
+        message: "timeline transcript word exceeds durationFrames",
+        path: ["words", index, "timelineEndFrame"]
+      });
+    }
+    previousTimelineStart = word.timelineStartFrame;
+  });
+});
+var TimelineTranscriptClipInputSchema = z2.object({
+  clipId: z2.string().min(1),
+  trackId: z2.string().min(1).optional(),
+  assetId: z2.string().min(1),
+  timelineStartFrame: z2.number().int().min(0),
+  sourceStartFrame: z2.number().int().min(0),
+  sourceEndFrame: z2.number().int().min(0),
+  playbackRate: z2.number().positive().default(1),
+  transcript: z2.object({
+    sourcePath: z2.string().min(1),
+    sourceHash: SourceHashSchema,
+    revision: z2.string().min(1).optional(),
+    words: z2.array(TranscriptWordSchema)
+  })
+}).refine((clip) => clip.sourceEndFrame > clip.sourceStartFrame, {
+  message: "timeline transcript clip sourceEndFrame must be greater than sourceStartFrame",
+  path: ["sourceEndFrame"]
+});
+var BuildTimelineTranscriptProjectionInputSchema = z2.object({
+  timelineId: z2.string().min(1),
+  timelineRevision: z2.string().min(1),
+  fps: z2.number().positive(),
+  durationFrames: z2.number().int().min(0),
+  clips: z2.array(TimelineTranscriptClipInputSchema).min(1)
+});
 var DirectorStageVector3Schema = z2.tuple([
   z2.number().finite(),
   z2.number().finite(),
@@ -57338,8 +58315,12 @@ var DirectorStageStateSchema = z2.object({
     cameraCues: z2.array(DirectorStageCameraCueSchema).optional()
   }).optional()
 });
+var DIRECTOR_STAGE_CAPTURE_OUTPUT_ERROR = "Director Stage authoring state cannot contain capture outputs; use capture receipts and Project Asset references";
+var DirectorStageAuthoringStateSchema = DirectorStageStateSchema.extend({
+  shots: z2.array(DirectorStageShotSchema).max(0, DIRECTOR_STAGE_CAPTURE_OUTPUT_ERROR)
+});
 var directorStageContractSchemas = {
-  state: { schema: DirectorStageStateSchema, name: "DirectorStageState" },
+  state: { schema: DirectorStageAuthoringStateSchema, name: "DirectorStageState" },
   object: { schema: DirectorStageObjectSchema, name: "DirectorStageObject" },
   camera: { schema: DirectorStageCameraSchema, name: "DirectorStageCamera" }
 };
@@ -57402,11 +58383,20 @@ function attachmentGraphError(objects) {
   return void 0;
 }
 function applyDirectorStageCommand(state, command2) {
+  if (command2.op === "shot.register") {
+    return {
+      ok: false,
+      error: "Director Stage capture outputs are external references and cannot be registered in Stage state"
+    };
+  }
   const parsedState = DirectorStageStateSchema.safeParse(state);
   if (!parsedState.success) {
     return { ok: false, error: parsedState.error.issues[0]?.message ?? "Invalid Director Stage state" };
   }
-  const next = structuredClone(parsedState.data);
+  const next = {
+    ...structuredClone(parsedState.data),
+    shots: []
+  };
   if (command2.op === "object.add") {
     const object3 = DirectorStageObjectSchema.safeParse(command2.object);
     if (!object3.success) {
@@ -57657,9 +58647,6 @@ function applyDirectorStageCommand(state, command2) {
     if (!next.cameras.some((camera) => camera.id === command2.cameraId)) {
       return { ok: false, error: `Camera ${command2.cameraId} not found` };
     }
-    if (next.shots.some((shot) => shot.cameraId === command2.cameraId)) {
-      return { ok: false, error: `Camera ${command2.cameraId} has captured shots` };
-    }
     if (next.shotSequence?.some((shot) => shot.cameraId === command2.cameraId)) {
       return { ok: false, error: `Camera ${command2.cameraId} is used by the shot sequence` };
     }
@@ -57673,19 +58660,6 @@ function applyDirectorStageCommand(state, command2) {
         (cue) => cue.cameraId !== command2.cameraId
       );
     }
-  }
-  if (command2.op === "shot.register") {
-    const shot = DirectorStageShotSchema.safeParse(command2.shot);
-    if (!shot.success) {
-      return { ok: false, error: shot.error.issues[0]?.message ?? "Invalid Director Stage shot" };
-    }
-    if (next.shots.some((candidate) => candidate.id === shot.data.id)) {
-      return { ok: false, error: `Shot ${shot.data.id} already exists` };
-    }
-    if (!next.cameras.some((camera) => camera.id === shot.data.cameraId)) {
-      return { ok: false, error: `Shot ${shot.data.id} uses missing camera ${shot.data.cameraId}` };
-    }
-    next.shots.push(shot.data);
   }
   if (command2.op === "sequence-shot.upsert") {
     const shot = DirectorStageSequenceShotSchema.safeParse(command2.shot);
@@ -57851,7 +58825,7 @@ function applyDirectorStageCommand(state, command2) {
       (clip) => clip.id !== command2.clipId
     );
   }
-  const validated = DirectorStageStateSchema.safeParse(next);
+  const validated = DirectorStageAuthoringStateSchema.safeParse(next);
   if (!validated.success) {
     return { ok: false, error: validated.error.issues[0]?.message ?? "Invalid Director Stage command result" };
   }
@@ -58340,98 +59314,6 @@ var MODEL_UPSTREAM_ROUTES = [
   ...MOCK_DECLARED_ROUTES,
   ...MOCK_ROUTES
 ];
-var MediaTranscriptMetadataSchema = z2.object({
-  schemaVersion: z2.literal(1),
-  kind: z2.literal("media.transcript"),
-  backendId: z2.string().min(1),
-  modelId: z2.string().min(1),
-  language: z2.string().min(1).optional(),
-  /** The media this grid was transcribed from. */
-  sourceHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/u),
-  /**
-   * The word grid itself. Downstream wordIds only mean anything against this,
-   * and it survives a reflow of `text` or `segments` unchanged.
-   */
-  contentHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/u),
-  /**
-   * Where the full body is stored. Distinct from `contentHash` on purpose: this
-   * addresses the whole document, so restating the same grid moves it.
-   */
-  bodyHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/u),
-  summary: z2.object({
-    wordCount: z2.number().int().nonnegative(),
-    durationMs: z2.number().int().min(0),
-    segmentCount: z2.number().int().nonnegative().optional(),
-    averageConfidence: z2.number().min(0).max(1).optional()
-  })
-});
-var MediaRenderLineageMetadataSchema = z2.object({
-  schemaVersion: z2.literal(1),
-  kind: z2.literal("media.render-lineage"),
-  /** The entity rendered, e.g. a Director Stage or a Timeline. */
-  sourceEntityKind: z2.string().min(1),
-  sourceEntityId: z2.string().min(1),
-  /** The exact revision rendered, so a later edit cannot be mistaken for this one. */
-  sourceRevisionId: z2.string().min(1),
-  /** Where in the entity's own time this frame was taken, when it has time. */
-  timeSeconds: z2.number().nonnegative().optional(),
-  /** Which renderer produced it. */
-  renderer: z2.string().min(1).optional(),
-  /** The media file this describes. */
-  sourceHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/u)
-});
-var MediaDescriptionMetadataSchema = z2.object({
-  schemaVersion: z2.literal(1),
-  kind: z2.literal("media.description"),
-  text: z2.string().min(1),
-  language: z2.string().min(1).optional(),
-  /** Which model or person wrote it. */
-  producerModelId: z2.string().min(1).optional(),
-  /** The media file this describes. */
-  sourceHash: z2.string().regex(/^sha256:[a-f0-9]{64}$/u)
-});
-var declaredKinds = /* @__PURE__ */ new Map();
-function registerAssetMetadataKind(declaration) {
-  const issuesFor = (probe) => {
-    const result = declaration.schema.safeParse(probe);
-    return result.success ? [] : result.error.issues;
-  };
-  const complainsAbout = (issues, field3) => issues.some((issue3) => issue3.path.length === 1 && issue3.path[0] === field3);
-  if (complainsAbout(
-    issuesFor({ schemaVersion: 1, kind: declaration.kind }),
-    "kind"
-  )) {
-    throw new Error(
-      `Asset metadata kind ${declaration.kind} must declare a schema that pins its own kind`
-    );
-  }
-  if (!complainsAbout(issuesFor({ kind: declaration.kind }), "schemaVersion")) {
-    throw new Error(
-      `Asset metadata kind ${declaration.kind} must declare a schemaVersion`
-    );
-  }
-  declaredKinds.set(declaration.kind, declaration);
-}
-var FillActionEnvelopeSchema = z2.object({
-  actionId: z2.string().trim().min(1),
-  target: MetadataAttachmentTargetSchema,
-  metadataKind: z2.string().trim().min(1),
-  metadata: z2.object({ kind: z2.string().trim().min(1) }).passthrough(),
-  producer: z2.string().trim().min(1),
-  createdAt: z2.string().optional()
-}).strict();
-registerAssetMetadataKind({
-  kind: "media.transcript",
-  schema: MediaTranscriptMetadataSchema
-});
-registerAssetMetadataKind({
-  kind: "media.description",
-  schema: MediaDescriptionMetadataSchema
-});
-registerAssetMetadataKind({
-  kind: "media.render-lineage",
-  schema: MediaRenderLineageMetadataSchema
-});
 var CopilotProjectAssetReferenceSchema = z2.object({
   projectAssetId: z2.string().trim().min(1),
   kind: AssetKindSchema,
@@ -58441,13 +59323,6 @@ var CopilotProjectAssetSubmissionSchema = z2.object({
   actionId: z2.string().trim().min(1),
   assets: CopilotProjectAssetReferenceSchema.array().min(1)
 }).strict();
-var CATEGORY_ALLOWED_ITEM_TYPES = Object.fromEntries(
-  Object.entries(TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES).map(([category, itemTypes]) => [
-    category,
-    new Set(itemTypes)
-  ])
-);
-var CLIP_ANIMATION_TYPES = new Set(TIMELINE_CLIP_ANIMATION_TYPES);
 var TextRevisionActorSchema = z2.object({
   actorType: z2.enum(["user", "agent"]),
   actorUserId: z2.string(),
@@ -58576,6 +59451,556 @@ var ProviderUsageAuditEventSchema = z2.object({
   errorMessage: z2.string().optional(),
   occurredAt: z2.string().datetime()
 });
+var Sha256Schema = z2.string().regex(/^[a-f0-9]{64}$/u);
+var ContentSha256Schema = z2.string().regex(/^sha256:[a-f0-9]{64}$/u);
+var NonEmptyIdSchema = z2.string().trim().min(1).max(500);
+var WORKSPACE_BUNDLE_PROJECT_PATH = "project.bin";
+var WorkspaceBundleRelativePathSchema = z2.string().min(1).max(4096).superRefine((value, context) => {
+  if (value.includes("\0") || value.includes("\\") || value.startsWith("/") || /^[A-Za-z]:/u.test(value) || value !== value.normalize("NFC") || value.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
+    context.addIssue({
+      code: z2.ZodIssueCode.custom,
+      message: "Workspace bundle paths must be safe POSIX-relative paths"
+    });
+  }
+});
+function workspacePortablePathLooksSecret(portableRelativePath) {
+  const segments = portableRelativePath.toLocaleLowerCase("en-US").split("/");
+  const basename = segments.at(-1) ?? "";
+  if (basename === ".env.example") return false;
+  if (basename.startsWith(".env") || basename === ".npmrc") return true;
+  if (segments.some((segment) => segment === ".ssh" || segment === ".aws")) {
+    return true;
+  }
+  if (/\.(?:key|pem|p12|pfx)$/u.test(basename) || /^id_(?:rsa|dsa|ecdsa|ed25519)(?:\.|$)/u.test(basename)) {
+    return true;
+  }
+  return segments.some(
+    (segment) => /(?:^|[._-])(?:credentials?|tokens?|secrets?|keys?|private[._-]?key|api[._-]?key)(?:[._-]|$)/u.test(
+      segment
+    )
+  );
+}
+var WorkspacePortableSourcePathSchema = WorkspaceBundleRelativePathSchema.superRefine((value, context) => {
+  if (workspacePortablePathLooksSecret(value)) {
+    context.addIssue({
+      code: z2.ZodIssueCode.custom,
+      message: "Workspace source paths must not identify secret-like files"
+    });
+  }
+});
+var WORKSPACE_PRIVATE_JSON_KEYS = /* @__PURE__ */ new Set([
+  "provideraccountid",
+  "provideraccount",
+  "localpath",
+  "hostpath",
+  "workerurl",
+  "runtimeid",
+  "storagekey",
+  "signedurl"
+]);
+function workspacePrivateJsonKey(key) {
+  const normalized = key.toLocaleLowerCase("en-US").replace(/[^a-z0-9]/gu, "");
+  return WORKSPACE_PRIVATE_JSON_KEYS.has(normalized) || /(?:apikey|tokens?|credentials?|secrets?|password|passphrase|privatekey)$/u.test(
+    normalized
+  );
+}
+function workspaceAbsoluteMachinePath(value, key) {
+  if (/^file:\/\//iu.test(value)) return true;
+  const normalizedKey = key.toLocaleLowerCase("en-US").replace(/[^a-z0-9]/gu, "");
+  if (!/(?:path|file|root|dir|directory|src|url)$/u.test(normalizedKey)) {
+    return false;
+  }
+  return value.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(value) || value.startsWith("\\\\");
+}
+var WorkspacePortableJsonObjectSchema = z2.record(z2.unknown()).superRefine((root, context) => {
+  const seen = /* @__PURE__ */ new WeakSet();
+  const visit = (value, path) => {
+    if (value === null || typeof value === "boolean" || typeof value === "string") {
+      const key = typeof path.at(-1) === "string" ? String(path.at(-1)) : "";
+      if (typeof value === "string" && workspaceAbsoluteMachinePath(value, key)) {
+        context.addIssue({
+          code: z2.ZodIssueCode.custom,
+          path,
+          message: "Workspace JSON must not contain absolute machine paths"
+        });
+      }
+      return;
+    }
+    if (typeof value === "number") {
+      if (!Number.isFinite(value)) {
+        context.addIssue({
+          code: z2.ZodIssueCode.custom,
+          path,
+          message: "Workspace JSON numbers must be finite"
+        });
+      }
+      return;
+    }
+    if (typeof value !== "object") {
+      context.addIssue({
+        code: z2.ZodIssueCode.custom,
+        path,
+        message: "Workspace JSON must contain only JSON values"
+      });
+      return;
+    }
+    if (seen.has(value)) {
+      context.addIssue({
+        code: z2.ZodIssueCode.custom,
+        path,
+        message: "Workspace JSON must not be cyclic"
+      });
+      return;
+    }
+    seen.add(value);
+    if (Array.isArray(value)) {
+      value.forEach((entry, index) => visit(entry, [...path, index]));
+      return;
+    }
+    if (Object.getPrototypeOf(value) !== Object.prototype) {
+      context.addIssue({
+        code: z2.ZodIssueCode.custom,
+        path,
+        message: "Workspace JSON objects must be plain records"
+      });
+      return;
+    }
+    for (const [key, entry] of Object.entries(value)) {
+      if (workspacePrivateJsonKey(key)) {
+        context.addIssue({
+          code: z2.ZodIssueCode.custom,
+          path: [...path, key],
+          message: `Workspace JSON contains machine-private field ${key}`
+        });
+      }
+      visit(entry, [...path, key]);
+    }
+  };
+  visit(root, []);
+});
+var WorkspaceBundleFileRoleSchema = z2.enum([
+  "workspace",
+  "project",
+  "object"
+]);
+var WorkspaceBundleFileSchema = z2.object({
+  path: WorkspaceBundleRelativePathSchema,
+  role: WorkspaceBundleFileRoleSchema,
+  bytes: z2.number().int().nonnegative(),
+  sha256: Sha256Schema,
+  mode: z2.enum(["0644", "0755"])
+}).strict();
+var WorkspaceBundleResourceSchema = z2.object({
+  resource: ResourceSchema2,
+  path: WorkspaceBundleRelativePathSchema
+}).strict();
+var WorkspaceBundleDocumentBodySchema = z2.object({
+  contentHash: ContentSha256Schema,
+  byteLength: z2.number().int().nonnegative(),
+  contentType: z2.literal("application/json"),
+  path: WorkspaceBundleRelativePathSchema
+}).strict();
+var WorkspaceBundleTextRevisionSchema = z2.object({
+  revision: TextAppliedRevisionSchema.extend({
+    contentHash: z2.string().regex(/^[a-f0-9]{16}$/u),
+    sourceFilePath: WorkspacePortableSourcePathSchema
+  }).strict(),
+  path: WorkspaceBundleRelativePathSchema
+}).strict();
+var WorkspaceBundleProjectSchema = z2.object({
+  path: z2.literal(WORKSPACE_BUNDLE_PROJECT_PATH),
+  codec: z2.literal("loro-shallow-snapshot"),
+  codecVersion: z2.literal(1)
+}).strict();
+var WorkspaceSemanticModelReferenceSchema = z2.object({
+  modelId: NonEmptyIdSchema
+}).strict();
+var WorkspaceBundleExcludedPathSchema = z2.object({
+  path: WorkspaceBundleRelativePathSchema,
+  reason: z2.enum([
+    "vcs-private",
+    "target-marker-regenerated",
+    "runtime-private",
+    "cache"
+  ])
+}).strict();
+var WorkspaceBundleSourceSchema = z2.object({
+  projectId: NonEmptyIdSchema,
+  display: z2.object({
+    name: z2.string().trim().min(1).max(500),
+    description: z2.string().max(1e4).optional(),
+    createdAt: z2.string().datetime().optional(),
+    updatedAt: z2.string().datetime().optional()
+  }).strict()
+}).strict();
+var WorkspaceBundleContentSchema = z2.object({
+  workspaceRoot: z2.literal("workspace"),
+  project: WorkspaceBundleProjectSchema,
+  resources: z2.array(WorkspaceBundleResourceSchema),
+  documentBodies: z2.array(WorkspaceBundleDocumentBodySchema),
+  textRevisions: z2.array(WorkspaceBundleTextRevisionSchema)
+}).strict();
+var WorkspaceBundleSemanticRequirementsSchema = z2.object({
+  generatorDefinitions: z2.array(GeneratorDefinitionRefSchema),
+  modelReferences: z2.array(WorkspaceSemanticModelReferenceSchema)
+}).strict();
+var WorkspaceBundleManifestSchema = z2.object({
+  schemaVersion: z2.literal(1),
+  kind: z2.literal("clash.workspace.bundle"),
+  source: WorkspaceBundleSourceSchema,
+  content: WorkspaceBundleContentSchema,
+  semanticRequirements: WorkspaceBundleSemanticRequirementsSchema,
+  files: z2.array(WorkspaceBundleFileSchema).min(1),
+  excluded: z2.array(WorkspaceBundleExcludedPathSchema),
+  integrity: z2.object({
+    algorithm: z2.literal("sha256"),
+    canonicalization: z2.literal("clash.workspace-manifest-json.v1"),
+    bundleDigest: Sha256Schema
+  }).strict()
+}).strict().superRefine((manifest, context) => {
+  const materializedPaths = /* @__PURE__ */ new Map();
+  const filesByPath = new Map(
+    manifest.files.map((file2) => [file2.path, file2])
+  );
+  const issue3 = (path, message) => context.addIssue({ code: z2.ZodIssueCode.custom, path, message });
+  const requireCanonicalOrder = (values, key, path) => {
+    for (let index = 1; index < values.length; index += 1) {
+      const previous = key(values[index - 1]);
+      const current = key(values[index]);
+      if (previous >= current) {
+        issue3(
+          [...path, index],
+          previous === current ? `Duplicate canonical identity: ${current}` : `Entries must be sorted by canonical identity; ${current} follows ${previous}`
+        );
+      }
+    }
+  };
+  requireCanonicalOrder(manifest.files, (file2) => file2.path, ["files"]);
+  requireCanonicalOrder(
+    manifest.content.resources,
+    (entry) => entry.resource.id,
+    ["content", "resources"]
+  );
+  requireCanonicalOrder(
+    manifest.content.documentBodies,
+    (entry) => entry.contentHash,
+    ["content", "documentBodies"]
+  );
+  requireCanonicalOrder(
+    manifest.content.textRevisions,
+    (entry) => entry.revision.revisionId,
+    ["content", "textRevisions"]
+  );
+  requireCanonicalOrder(
+    manifest.semanticRequirements.generatorDefinitions,
+    (entry) => `${entry.pluginId}\0${entry.definitionId}\0${entry.version}\0${entry.schemaHash}`,
+    ["semanticRequirements", "generatorDefinitions"]
+  );
+  requireCanonicalOrder(
+    manifest.semanticRequirements.modelReferences,
+    (entry) => entry.modelId,
+    ["semanticRequirements", "modelReferences"]
+  );
+  requireCanonicalOrder(manifest.excluded, (entry) => entry.path, [
+    "excluded"
+  ]);
+  manifest.files.forEach((file2, index) => {
+    const collisionKey = file2.path.normalize("NFC").toLocaleLowerCase("en-US");
+    const existing = materializedPaths.get(collisionKey);
+    if (existing !== void 0) {
+      issue3(
+        ["files", index, "path"],
+        `Workspace bundle path collides with ${existing}`
+      );
+    } else {
+      materializedPaths.set(collisionKey, file2.path);
+    }
+    if (file2.role === "workspace" && !file2.path.startsWith(`${manifest.content.workspaceRoot}/`)) {
+      issue3(
+        ["files", index, "path"],
+        "Workspace payload files must stay beneath content.workspaceRoot"
+      );
+    }
+    if (file2.role !== "workspace" && file2.mode !== "0644") {
+      issue3(
+        ["files", index, "mode"],
+        "Authority and content-addressed payload files cannot be executable"
+      );
+    }
+  });
+  const projectFile = filesByPath.get(manifest.content.project.path);
+  if (projectFile?.role !== "project") {
+    issue3(
+      ["content", "project", "path"],
+      "Project state must identify the tagged project.bin payload file"
+    );
+  }
+  const resourcePaths = /* @__PURE__ */ new Set();
+  manifest.content.resources.forEach((entry, index) => {
+    resourcePaths.add(entry.path);
+    const digest = entry.resource.digest.value;
+    const canonicalPath = `objects/sha256/${digest}`;
+    if (entry.path !== canonicalPath) {
+      issue3(
+        ["content", "resources", index, "path"],
+        `Resource payload path must be its canonical content identity: ${canonicalPath}`
+      );
+    }
+    if (entry.resource.id !== `sha256:${digest}`) {
+      issue3(
+        ["content", "resources", index, "resource", "id"],
+        "Resource id must be the sha256 content identity"
+      );
+    }
+    const file2 = filesByPath.get(entry.path);
+    if (file2?.role !== "object" || file2.sha256 !== digest || file2.bytes !== entry.resource.byteLength) {
+      issue3(
+        ["content", "resources", index, "path"],
+        "Resource descriptor must match one exact resource payload file"
+      );
+    }
+  });
+  const documentPaths = /* @__PURE__ */ new Set();
+  manifest.content.documentBodies.forEach((entry, index) => {
+    documentPaths.add(entry.path);
+    const digest = entry.contentHash.slice("sha256:".length);
+    const canonicalPath = `objects/sha256/${digest}`;
+    if (entry.path !== canonicalPath) {
+      issue3(
+        ["content", "documentBodies", index, "path"],
+        `Document body path must be its canonical content identity: ${canonicalPath}`
+      );
+    }
+    const file2 = filesByPath.get(entry.path);
+    if (file2?.role !== "object" || file2.sha256 !== digest || file2.bytes !== entry.byteLength) {
+      issue3(
+        ["content", "documentBodies", index, "path"],
+        "Document body descriptor must match one exact document-body payload file"
+      );
+    }
+  });
+  const textRevisionPaths = /* @__PURE__ */ new Set();
+  manifest.content.textRevisions.forEach((entry, index) => {
+    textRevisionPaths.add(entry.path);
+    if (entry.revision.projectId !== manifest.source.projectId) {
+      issue3(
+        ["content", "textRevisions", index, "revision", "projectId"],
+        "Text revision must belong to the exported Project"
+      );
+    }
+    if (filesByPath.get(entry.path)?.role !== "object") {
+      issue3(
+        ["content", "textRevisions", index, "path"],
+        "Text revision must identify one text-revision-body payload file"
+      );
+    }
+    const file2 = filesByPath.get(entry.path);
+    if (file2?.role === "object" && !file2.sha256.startsWith(entry.revision.contentHash)) {
+      issue3(
+        ["content", "textRevisions", index, "revision", "contentHash"],
+        "Text revision contentHash must match the exported body SHA-256 prefix"
+      );
+    }
+    if (file2?.role === "object" && entry.path !== `objects/sha256/${file2.sha256}`) {
+      issue3(
+        ["content", "textRevisions", index, "path"],
+        "Text revision body path must be its canonical content identity"
+      );
+    }
+  });
+  manifest.files.forEach((file2, index) => {
+    const referenced = file2.role === "workspace" || file2.role === "project" && file2.path === manifest.content.project.path || file2.role === "object" && (resourcePaths.has(file2.path) || documentPaths.has(file2.path) || textRevisionPaths.has(file2.path));
+    if (!referenced) {
+      issue3(
+        ["files", index, "path"],
+        "Workspace bundle payload file is not part of the declared content closure"
+      );
+    }
+  });
+});
+var WorkspaceTransferTimestampSchema = z2.string().datetime({ offset: true });
+var WorkspaceTransferCapabilitySchema = z2.string().min(16).max(500).regex(/^[A-Za-z0-9_-]+$/u);
+var WorkspaceTransferIdempotencyKeySchema = z2.string().trim().min(1).max(500);
+function validateWorkspaceImportIdempotency(value, context) {
+  if (value.idempotencyKey !== `workspace-import:${value.bundleDigest}`) {
+    context.addIssue({
+      code: z2.ZodIssueCode.custom,
+      path: ["idempotencyKey"],
+      message: "Workspace import idempotency key must bind the bundle digest"
+    });
+  }
+}
+var WorkspaceTransferFileCapabilitySchema = WorkspaceBundleFileSchema.extend({
+  fileId: WorkspaceTransferCapabilitySchema
+}).strict();
+function validateTransferFileIdentities(files, context) {
+  const fileIds = /* @__PURE__ */ new Set();
+  const paths = /* @__PURE__ */ new Set();
+  files.forEach((file2, index) => {
+    if (fileIds.has(file2.fileId)) {
+      context.addIssue({
+        code: z2.ZodIssueCode.custom,
+        path: ["files", index, "fileId"],
+        message: "Duplicate Workspace transfer file capability"
+      });
+    }
+    if (paths.has(file2.path)) {
+      context.addIssue({
+        code: z2.ZodIssueCode.custom,
+        path: ["files", index, "path"],
+        message: "Duplicate Workspace transfer logical path"
+      });
+    }
+    if (index > 0 && files[index - 1].path >= file2.path) {
+      context.addIssue({
+        code: z2.ZodIssueCode.custom,
+        path: ["files", index, "path"],
+        message: "Workspace transfer files must be sorted by logical path"
+      });
+    }
+    fileIds.add(file2.fileId);
+    paths.add(file2.path);
+  });
+}
+var WorkspaceExportRequestSchema = z2.object({
+  sourceWorkspaceId: NonEmptyIdSchema
+}).strict();
+var WorkspaceExportSourceSchema = WorkspaceBundleSourceSchema.extend({
+  sourceWorkspaceId: NonEmptyIdSchema
+}).strict();
+var WorkspaceExportPlanSchema = z2.object({
+  schemaVersion: z2.literal(1),
+  kind: z2.literal("clash.workspace.export-plan"),
+  exportId: WorkspaceTransferCapabilitySchema,
+  expiresAt: WorkspaceTransferTimestampSchema,
+  source: WorkspaceExportSourceSchema,
+  content: WorkspaceBundleContentSchema,
+  semanticRequirements: WorkspaceBundleSemanticRequirementsSchema,
+  files: z2.array(WorkspaceTransferFileCapabilitySchema).min(1)
+}).strict().superRefine((plan, context) => {
+  validateTransferFileIdentities(plan.files, context);
+  const { sourceWorkspaceId: _sourceWorkspaceId, ...bundleSource } = plan.source;
+  const closure = WorkspaceBundleManifestSchema.safeParse({
+    schemaVersion: 1,
+    kind: "clash.workspace.bundle",
+    source: bundleSource,
+    content: plan.content,
+    semanticRequirements: plan.semanticRequirements,
+    files: plan.files.map(({ fileId: _fileId, ...file2 }) => file2),
+    excluded: [],
+    integrity: {
+      algorithm: "sha256",
+      canonicalization: "clash.workspace-manifest-json.v1",
+      bundleDigest: "0".repeat(64)
+    }
+  });
+  if (!closure.success) {
+    closure.error.issues.forEach(
+      (issue3) => context.addIssue({
+        code: z2.ZodIssueCode.custom,
+        path: issue3.path,
+        message: issue3.message
+      })
+    );
+  }
+});
+var WorkspaceImportStartSchema = z2.object({
+  schemaVersion: z2.literal(1),
+  kind: z2.literal("clash.workspace.import-start"),
+  idempotencyKey: WorkspaceTransferIdempotencyKeySchema,
+  bundleDigest: Sha256Schema,
+  manifest: WorkspaceBundleManifestSchema
+}).strict().superRefine((start, context) => {
+  validateWorkspaceImportIdempotency(start, context);
+  if (start.bundleDigest !== start.manifest.integrity.bundleDigest) {
+    context.addIssue({
+      code: z2.ZodIssueCode.custom,
+      path: ["bundleDigest"],
+      message: "Import bundle digest must match the manifest identity"
+    });
+  }
+});
+var WorkspaceImportFileStateSchema = z2.enum(["missing", "present"]);
+var WorkspaceImportFileSlotSchema = WorkspaceTransferFileCapabilitySchema.extend({
+  state: WorkspaceImportFileStateSchema
+}).strict();
+var WorkspaceImportTargetSchema = z2.object({
+  projectId: NonEmptyIdSchema
+}).strict();
+var WorkspaceImportIdentityShape = {
+  importId: WorkspaceTransferCapabilitySchema,
+  idempotencyKey: WorkspaceTransferIdempotencyKeySchema,
+  bundleDigest: Sha256Schema,
+  source: WorkspaceBundleSourceSchema,
+  target: WorkspaceImportTargetSchema
+};
+var WorkspaceImportSessionSchema = z2.object({
+  schemaVersion: z2.literal(1),
+  kind: z2.literal("clash.workspace.import-session"),
+  ...WorkspaceImportIdentityShape,
+  expiresAt: WorkspaceTransferTimestampSchema,
+  status: z2.enum(["staging", "committed"]),
+  files: z2.array(WorkspaceImportFileSlotSchema).min(1),
+  committedAt: WorkspaceTransferTimestampSchema.optional()
+}).strict().superRefine((session, context) => {
+  validateWorkspaceImportIdempotency(session, context);
+  validateTransferFileIdentities(session.files, context);
+  session.files.forEach((file2, index) => {
+    if (file2.role === "workspace") {
+      context.addIssue({
+        code: z2.ZodIssueCode.custom,
+        path: ["files", index, "role"],
+        message: "Workspace worktree files are materialized by the CLI, not uploaded to the Host"
+      });
+    }
+  });
+  if (session.status === "committed") {
+    if (session.committedAt === void 0) {
+      context.addIssue({
+        code: z2.ZodIssueCode.custom,
+        path: ["committedAt"],
+        message: "Committed imports require a commit timestamp"
+      });
+    }
+    session.files.forEach((file2, index) => {
+      if (file2.state === "missing") {
+        context.addIssue({
+          code: z2.ZodIssueCode.custom,
+          path: ["files", index, "state"],
+          message: "Committed imports cannot contain missing file slots"
+        });
+      }
+    });
+  } else if (session.committedAt !== void 0) {
+    context.addIssue({
+      code: z2.ZodIssueCode.custom,
+      path: ["committedAt"],
+      message: "Staging imports cannot claim a commit timestamp"
+    });
+  }
+});
+var WorkspaceImportFileUploadReceiptSchema = z2.object({
+  schemaVersion: z2.literal(1),
+  kind: z2.literal("clash.workspace.import-file-upload-receipt"),
+  importId: WorkspaceTransferCapabilitySchema,
+  fileId: WorkspaceTransferCapabilitySchema,
+  state: z2.literal("present"),
+  bytes: z2.number().int().nonnegative(),
+  sha256: Sha256Schema
+}).strict();
+var WorkspaceImportCommitRequestSchema = z2.object({
+  schemaVersion: z2.literal(1),
+  kind: z2.literal("clash.workspace.import-commit"),
+  idempotencyKey: WorkspaceTransferIdempotencyKeySchema,
+  bundleDigest: Sha256Schema
+}).strict().superRefine(validateWorkspaceImportIdempotency);
+var WorkspaceImportCommitResponseSchema = z2.object({
+  schemaVersion: z2.literal(1),
+  kind: z2.literal("clash.workspace.import-commit-response"),
+  status: z2.enum(["committed", "already-committed"]),
+  ...WorkspaceImportIdentityShape,
+  committedAt: WorkspaceTransferTimestampSchema
+}).strict().superRefine(validateWorkspaceImportIdempotency);
 
 // src/adapter.ts
 import { mkdir, writeFile } from "fs/promises";
@@ -58698,6 +60123,7 @@ function createDirectorAdapter(options = {}) {
   const client = options.client ?? createProjectHostClient();
   const writeProjection = options.writeProjection ?? writeDirectorProjection;
   const observations = /* @__PURE__ */ new Map();
+  const boundedMutationTails = /* @__PURE__ */ new Map();
   const key = (projectId, stageId) => `${projectId}\0${stageId}`;
   const context = (input) => client.resolveContext({ cwd: input.cwd, projectId: input.projectId });
   const request = async (input, command2) => {
@@ -58711,6 +60137,26 @@ function createDirectorAdapter(options = {}) {
       throw new Error(`READ_REQUIRED: Read Director Stage ${stageId} with clash_director_get before mutating it.`);
     }
     return observation;
+  };
+  const serializeBoundedMutation = async (input, stageId, operation) => {
+    const resolved = await context(input);
+    const mutationKey = key(resolved.projectId, stageId);
+    const preceding = boundedMutationTails.get(mutationKey) ?? Promise.resolve();
+    let release;
+    const gate = new Promise((resolveGate) => {
+      release = resolveGate;
+    });
+    const tail = preceding.catch(() => void 0).then(() => gate);
+    boundedMutationTails.set(mutationKey, tail);
+    await preceding.catch(() => void 0);
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (boundedMutationTails.get(mutationKey) === tail) {
+        boundedMutationTails.delete(mutationKey);
+      }
+    }
   };
   const list = async (input) => {
     const result = await request(input, { action: "list_director_stages" });
@@ -58738,7 +60184,7 @@ function createDirectorAdapter(options = {}) {
   const save = async (input) => {
     const stageId = requiredInputString(input, "stageId");
     const baseRevisionId = requiredInputString(input, "baseRevisionId");
-    const parsed = DirectorStageStateSchema.safeParse(input.state);
+    const parsed = DirectorStageAuthoringStateSchema.safeParse(input.state);
     if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid Director Stage state");
     const observed2 = await requireObservation(input, stageId);
     if (observed2.revisionId && observed2.revisionId !== baseRevisionId) {
@@ -58813,11 +60259,14 @@ function createDirectorAdapter(options = {}) {
       return publicProjectHostValue(result.value);
     },
     async mutate(name, input) {
-      const stage = await get(input);
-      if (!stage.revisionId) throw new Error(`Director Stage ${stage.id} did not expose a revisionId`);
-      const applied = applyDirectorStageCommand(stage.state, directorCommand(name, input));
-      if (!applied.ok) throw new Error(applied.error);
-      return save({ ...input, baseRevisionId: stage.revisionId, state: applied.state });
+      const stageId = requiredInputString(input, "stageId");
+      return serializeBoundedMutation(input, stageId, async () => {
+        const stage = await get(input);
+        if (!stage.revisionId) throw new Error(`Director Stage ${stage.id} did not expose a revisionId`);
+        const applied = applyDirectorStageCommand(stage.state, directorCommand(name, input));
+        if (!applied.ok) throw new Error(applied.error);
+        return save({ ...input, baseRevisionId: stage.revisionId, state: applied.state });
+      });
     },
     async capture(input) {
       const stageId = requiredInputString(input, "stageId");
@@ -59028,9 +60477,34 @@ function compactAuthoritativeSchema(schema, contract) {
     `${label} complete object. Call clash_director_schema with contract=${contract} for the authoritative JSON Schema.`
   );
 }
-var directorState = compactAuthoritativeSchema(DirectorStageStateSchema, "state");
+var directorState = compactAuthoritativeSchema(
+  DirectorStageAuthoringStateSchema,
+  "state"
+);
 var directorObject = compactAuthoritativeSchema(DirectorStageObjectSchema, "object");
 var directorCamera = compactAuthoritativeSchema(DirectorStageCameraSchema, "camera");
+var directorKeyframe = external_exports.object({
+  durationSeconds: external_exports.number().finite().positive(),
+  fps: external_exports.number().int().positive(),
+  trackId: external_exports.string().min(1),
+  targetId: external_exports.string().min(1),
+  property: external_exports.enum([
+    "position",
+    "rotation",
+    "scale",
+    "fov",
+    "focalLengthMm",
+    "focusDistanceM",
+    "fStop"
+  ]),
+  id: external_exports.string().min(1),
+  time: external_exports.number().finite().nonnegative(),
+  value: external_exports.union([
+    external_exports.number().finite(),
+    external_exports.tuple([external_exports.number().finite(), external_exports.number().finite(), external_exports.number().finite()])
+  ]),
+  interpolation: external_exports.enum(["hold", "linear", "bezier"]).optional()
+});
 var definitions = {
   clash_director_open: {
     title: "Open Clash Director",
@@ -59081,8 +60555,8 @@ var definitions = {
     description: describeClashTool({
       useWhen: "the editable Stage must be proven with exact-time product-rendered PNG evidence",
       effect: "uses the daemon-owned DirectorViewport WebGL renderer and verifies the persisted Stage revision before and after capture",
-      returns: "absolute PNG paths, hashes, active cameras, the renderer identity, and a durable capture receipt",
-      next: "inspect the returned PNGs and map them into the artifact submission; do not substitute screenshots"
+      returns: "absolute PNG paths, hashes, active cameras, immutable Project Asset identities, the renderer identity, and a durable capture receipt",
+      next: "reuse the returned Project Asset identities in downstream Timeline items; capture does not mutate the Stage, so do not write its Action output back into Stage shots, re-import the PNGs, or substitute screenshots"
     }),
     inputSchema: {
       ...stageScope,
@@ -59235,7 +60709,7 @@ var definitions = {
       returns: "the Stage apply result",
       next: "read back timing and judge anticipation, action, and settle"
     }),
-    inputSchema: { ...stageScope, keyframe: record2 }
+    inputSchema: { ...stageScope, keyframe: directorKeyframe }
   },
   clash_director_keyframe_remove: {
     title: "Remove keyframe",

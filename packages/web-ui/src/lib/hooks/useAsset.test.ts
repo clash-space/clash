@@ -8,6 +8,7 @@ import {
   importProjectAssetFile,
   invalidateAsset,
   listPersonalGlobalAssets,
+  publishDirectorStageOutputFile,
   publishProjectAssetToPersonalLibrary,
   refreshAsset,
   restoreProjectAsset,
@@ -366,6 +367,69 @@ describe("useAsset", () => {
 
     await expect(getAsset("project-1", "asset-imported")).resolves.toEqual(
       imported,
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("publishes a Director output through the revision-scoped Host facade", async () => {
+    const published = makeAsset({
+      id: "director-capture:host-owned",
+      name: "opening.png",
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse(
+        {
+          asset: published,
+          binding: {
+            id: "action-asset:host-owned",
+            owner: {
+              kind: "run",
+              actionId: "director:stage-a",
+              actionRevisionId: "revision-a",
+              actionRunId: "director-capture:host-owned",
+            },
+            direction: "output",
+            slot: "director:output:opening",
+            projectAssetId: published.id,
+            role: "primary",
+          },
+        },
+        201,
+      ),
+    );
+    const file = new File(["png bytes"], "opening.png", {
+      type: "image/png",
+    });
+
+    await expect(
+      publishDirectorStageOutputFile({
+        projectId: "project-1",
+        stageId: "stage-a",
+        sourceStageRevisionId: "revision-a",
+        artifactId: "opening",
+        kind: "image",
+        file,
+      }),
+    ).resolves.toEqual(published);
+
+    const [url, init] = fetchSpy.mock.calls[0]!;
+    expect(url).toBe(
+      "/api/v1/projects/project-1/director-stages/stage-a/outputs",
+    );
+    expect(init).toMatchObject({ method: "POST", credentials: "include" });
+    const form = init?.body as FormData;
+    expect(form.get("file")).toBe(file);
+    expect(form.get("kind")).toBe("image");
+    expect(form.get("sourceStageRevisionId")).toBe("revision-a");
+    expect(form.get("artifactId")).toBe("opening");
+    expect([...form.keys()].sort()).toEqual([
+      "artifactId",
+      "file",
+      "kind",
+      "sourceStageRevisionId",
+    ]);
+    await expect(getAsset("project-1", published.id)).resolves.toEqual(
+      published,
     );
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });

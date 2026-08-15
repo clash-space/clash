@@ -24,10 +24,7 @@ export type PiExtensionToolDefinition = {
 
 export type PiExtensionApi = {
   registerTool(tool: PiExtensionToolDefinition): void;
-  on(
-    event: "session_shutdown",
-    handler: () => Promise<void> | void,
-  ): void;
+  on(event: "session_shutdown", handler: () => Promise<void> | void): void;
 };
 
 function requiredEnvironment(name: string): string {
@@ -54,14 +51,13 @@ function toolErrorMessage(result: {
 }): string {
   if (Array.isArray(result.content)) {
     const text = result.content
-      .filter(
-        (item): item is { type: "text"; text: string } =>
-          Boolean(
-            item &&
-              typeof item === "object" &&
-              (item as { type?: unknown }).type === "text" &&
-              typeof (item as { text?: unknown }).text === "string",
-          ),
+      .filter((item): item is { type: "text"; text: string } =>
+        Boolean(
+          item &&
+          typeof item === "object" &&
+          (item as { type?: unknown }).type === "text" &&
+          typeof (item as { text?: unknown }).text === "string",
+        ),
       )
       .map((item) => item.text)
       .join("\n")
@@ -113,7 +109,10 @@ export function projectStructuredContentForPi(value: unknown): unknown {
     };
   }
 
-  if (record.operationCatalog !== undefined && record.jsonSchema !== undefined) {
+  if (
+    record.operationCatalog !== undefined &&
+    record.jsonSchema !== undefined
+  ) {
     return Object.fromEntries(
       [
         "schemaVersion",

@@ -3,24 +3,10 @@ import { cp, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-type CachedBundle = {
-  fingerprint: string;
-  path: string;
-};
-
 export interface DevelopmentBrowserAssets {
   readonly directorBundleDir: string;
-  resolveRemotionServeUrl(): Promise<string>;
   prepareDirectorBundle(): Promise<void>;
 }
-
-const REMOTION_SOURCE_PACKAGES = [
-  "remotion-components",
-  "remotion-core",
-  "remotion-effects",
-  "shared-layout",
-  "shared-types",
-] as const;
 
 const DIRECTOR_SOURCE_PACKAGES = [
   "director-core",
@@ -84,56 +70,13 @@ export function createDevelopmentBrowserAssets(options: {
   );
   const directorBundleDir = join(cacheRoot, "director-bundle");
   const directorAssetsDir = join(cacheRoot, "assets");
-  const remotionInputs = packageInputs(repoRoot, REMOTION_SOURCE_PACKAGES);
   const directorInputs = [
     ...packageInputs(repoRoot, DIRECTOR_SOURCE_PACKAGES),
     join(repoRoot, "packages", "director-ui", "assets"),
   ];
 
-  let remotionBundle: CachedBundle | undefined;
-  let remotionBuild: Promise<CachedBundle> | undefined;
   let directorFingerprint: string | undefined;
   let directorBuild: Promise<void> | undefined;
-
-  const resolveRemotionServeUrl = async (): Promise<string> => {
-    const fingerprint = await sourceFingerprint(remotionInputs);
-    if (remotionBundle?.fingerprint === fingerprint) return remotionBundle.path;
-    if (remotionBuild) {
-      const built = await remotionBuild;
-      return built.fingerprint === fingerprint
-        ? built.path
-        : resolveRemotionServeUrl();
-    }
-    const pending = (async (): Promise<CachedBundle> => {
-      console.error(
-        remotionBundle
-          ? "[clash] Remotion source changed; rebuilding the development bundle"
-          : "[clash] Building the Remotion development bundle from source",
-      );
-      const { bundle } = await import("@remotion/bundler");
-      const path = await bundle({
-        entryPoint: join(
-          repoRoot,
-          "packages",
-          "remotion-components",
-          "src",
-          "Root.tsx",
-        ),
-      });
-      const previousPath = remotionBundle?.path;
-      if (previousPath && previousPath !== path) {
-        await rm(previousPath, { recursive: true, force: true });
-      }
-      return { fingerprint, path };
-    })();
-    remotionBuild = pending;
-    try {
-      remotionBundle = await pending;
-      return remotionBundle.path;
-    } finally {
-      if (remotionBuild === pending) remotionBuild = undefined;
-    }
-  };
 
   const prepareDirectorBundle = async (): Promise<void> => {
     const fingerprint = await sourceFingerprint(directorInputs);
@@ -155,7 +98,13 @@ export function createDevelopmentBrowserAssets(options: {
       await build({
         absWorkingDir: repoRoot,
         entryPoints: [
-          join(repoRoot, "packages", "director-ui", "src", "headless-entry.tsx"),
+          join(
+            repoRoot,
+            "packages",
+            "director-ui",
+            "src",
+            "headless-entry.tsx",
+          ),
         ],
         outfile: join(directorBundleDir, "index.js"),
         bundle: true,
@@ -192,7 +141,6 @@ export function createDevelopmentBrowserAssets(options: {
 
   return {
     directorBundleDir,
-    resolveRemotionServeUrl,
     prepareDirectorBundle,
   };
 }

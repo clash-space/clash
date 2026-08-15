@@ -21,16 +21,14 @@ const { prepareDevelopmentBundledPlugins } =
 const dataDir = defaultLocalApiDataDir();
 const pluginDevelopment = await prepareDevelopmentBundledPlugins({
   actionsRoot: join(clashHomeForLocalDataDir(dataDir), "actions"),
-  tsconfigPath: fileURLToPath(new URL("../tsconfig.dev.json", import.meta.url)),
 });
-if (pluginDevelopment.refreshed.length > 0) {
+if (pluginDevelopment.rebuilt.length > 0) {
   process.stderr.write(
-    `[local-api] refreshed source-backed plugins: ${pluginDevelopment.refreshed.join(", ")}\n`,
+    `[local-api] rebuilt first-party module payloads: ${pluginDevelopment.rebuilt.join(", ")}\n`,
   );
 }
 
 await startLocalApiServer({
   port: Number(process.env.PORT ?? 49321),
   dataDir,
-  developmentPluginWatchRoots: pluginDevelopment.watchRoots,
 });

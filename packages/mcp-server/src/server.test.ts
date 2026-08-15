@@ -67,6 +67,12 @@ test("server keeps Studio and Canvas App surfaces quarantined", async () => {
     (name) => name !== "clash_canvas_open" && name !== "clash_canvas_snapshot",
   ))
     assert.ok(tools.has(name));
+  for (const name of ["clash_canvas_add", "clash_canvas_update"]) {
+    assert.ok(
+      "contentFile" in (tools.get(name)?.config.inputSchema ?? {}),
+      `${name} must expose workspace contentFile ingestion`,
+    );
+  }
   assert.ok(tools.has("clash_workspace_init"));
   assert.deepEqual(
     [...tools.keys()].filter((name) => name.startsWith("clash_cli_")),
@@ -145,7 +151,7 @@ test("server keeps Studio and Canvas App surfaces quarantined", async () => {
   }
 });
 
-test("bundled MCP wires the Assets dispatcher to the direct Host peer gateway", async (t) => {
+test("bundled MCP gives Assets a lightweight operation index before execution", async (t) => {
   const { createClashMcpServer } = await import("./server");
   const assetCalls: Array<{ name: string; input: Record<string, unknown> }> =
     [];
@@ -184,18 +190,20 @@ test("bundled MCP wires the Assets dispatcher to the direct Host peer gateway", 
     "clash_assets",
     "clash_canvas",
     "clash_composition",
+    "clash_plugin",
     "clash_workspace_init",
   ]);
-  const contracts = await client.callTool({
+  const index = await client.callTool({
     name: "clash_assets",
     arguments: {},
   });
+  const indexedOperations = (
+    index.structuredContent as {
+      operations: Array<Record<string, unknown> & { operation: string }>;
+    }
+  ).operations;
   assert.deepEqual(
-    (
-      contracts.structuredContent as {
-        operations: Array<{ operation: string }>;
-      }
-    ).operations.map(({ operation }) => operation),
+    indexedOperations.map(({ operation }) => operation),
     [
       "admit",
       "get",
@@ -212,6 +220,39 @@ test("bundled MCP wires the Assets dispatcher to the direct Host peer gateway", 
       "trash",
     ],
   );
+  for (const operation of indexedOperations) {
+    assert.equal("description" in operation, false);
+    assert.equal("inputSchema" in operation, false);
+    assert.equal("outputSchema" in operation, false);
+    assert.equal("recovery" in operation, false);
+    assert.equal("metadata" in operation, false);
+  }
+  assert.deepEqual(assetCalls, []);
+  const selected = await client.callTool({
+    name: "clash_assets",
+    arguments: { contracts: ["import_file", "list", "get"] },
+  });
+  const selectedContracts = (
+    selected.structuredContent as {
+      contracts?: Array<{
+        operation: string;
+        inputSchema: { required?: string[] };
+      }>;
+    }
+  ).contracts;
+  assert.ok(selectedContracts, "expected an explicit Asset contract batch");
+  assert.deepEqual(
+    selectedContracts.map(({ operation, inputSchema }) => ({
+      operation,
+      required: inputSchema.required,
+    })),
+    [
+      { operation: "import_file", required: ["filePath"] },
+      { operation: "list", required: undefined },
+      { operation: "get", required: ["assetId"] },
+    ],
+  );
+  assert.deepEqual(assetCalls, []);
   const listed = await client.callTool({
     name: "clash_assets",
     arguments: { operation: "list", arguments: { projectId: "project-a" } },
@@ -223,4 +264,116 @@ test("bundled MCP wires the Assets dispatcher to the direct Host peer gateway", 
       input: { projectId: "project-a" },
     },
   ]);
+});
+
+test("bundled MCP exposes executable plugin lifecycle through the fixed plugin dispatcher", async (t) => {
+  const { createClashMcpServer } = await import("./server");
+  const server = createClashMcpServer({
+    bundledAppJavascript: "window.__CLASH_CANVAS__ = true;",
+    bundledStudioAppJavascript: "window.__CLASH_STUDIO__ = true;",
+    gateway: {
+      async invoke(name) {
+        return name.endsWith("list") || name.endsWith("edges")
+          ? []
+          : { ok: true };
+      },
+    },
+    assetGateway: {
+      async invoke(name) {
+        return name.endsWith("list") ? [] : { id: "asset:one" };
+      },
+    },
+    pluginGateway: {
+      async invoke(name: string, input: Record<string, unknown>) {
+        return { invoked: name, input };
+      },
+    },
+  });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  const client = new Client({
+    name: "plugin-lifecycle-test",
+    version: "1.0.0",
+  });
+  t.after(async () => {
+    await client.close().catch(() => undefined);
+    await server.close().catch(() => undefined);
+  });
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const toolNames = (await client.listTools()).tools.map(({ name }) => name);
+  assert.ok(toolNames.includes("clash_plugin"));
+  assert.equal(
+    toolNames.some((name) => name.startsWith("clash_plugin_")),
+    false,
+  );
+
+  const contracts = await client.callTool({
+    name: "clash_plugin",
+    arguments: {},
+  });
+  assert.deepEqual(
+    (
+      contracts.structuredContent as {
+        operations: Array<{
+          operation: string;
+          readOnly: boolean;
+          destructive: boolean;
+        }>;
+      }
+    ).operations.map(({ operation, readOnly, destructive }) => ({
+      operation,
+      readOnly,
+      destructive,
+    })),
+    [
+      { operation: "activate", readOnly: false, destructive: false },
+      { operation: "checkout", readOnly: false, destructive: false },
+      { operation: "create", readOnly: false, destructive: false },
+      { operation: "install", readOnly: false, destructive: false },
+      { operation: "list", readOnly: true, destructive: false },
+      { operation: "rollback", readOnly: false, destructive: true },
+      { operation: "uninstall", readOnly: false, destructive: true },
+      { operation: "validate", readOnly: false, destructive: false },
+    ],
+  );
+
+  const created = await client.callTool({
+    name: "clash_plugin",
+    arguments: {
+      operation: "create",
+      arguments: {
+        cwd: "/work/project",
+        directory: "plugins/caption-helper",
+        id: "acme.caption-helper",
+        name: "Caption Helper",
+        kind: "action",
+        language: "ts",
+      },
+    },
+  });
+  assert.deepEqual(created.structuredContent, {
+    invoked: "clash_plugin_create",
+    input: {
+      cwd: "/work/project",
+      directory: "plugins/caption-helper",
+      id: "acme.caption-helper",
+      name: "Caption Helper",
+      kind: "action",
+      language: "ts",
+    },
+  });
+
+  const removed = await client.callTool({
+    name: "clash_plugin",
+    arguments: {
+      operation: "uninstall",
+      arguments: { id: "acme.caption-helper" },
+    },
+  });
+  assert.deepEqual(removed.structuredContent, {
+    invoked: "clash_plugin_uninstall",
+    input: { id: "acme.caption-helper" },
+  });
 });

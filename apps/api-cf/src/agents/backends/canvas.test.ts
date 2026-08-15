@@ -174,25 +174,33 @@ describe("Canvas class", () => {
       expect(node!.position).toEqual({ x: 0, y: 0 });
     });
 
-    it("creates image_gen node with generative proposal and assetId", () => {
+    it("creates an image generation action without assigning output identity", () => {
       const canvas = makeCanvas();
-      const result = canvas.createNode("img1", "image_gen", { label: "Img" }, null, null, "asset-123");
+      const result = canvas.createNode(
+        "img1",
+        "image_gen",
+        { label: "Img", assetId: "legacy-data-asset" },
+        null,
+        null,
+        "legacy-argument-asset",
+      );
 
       expect(result.proposal!.type).toBe(ProposalType.Generative);
       expect(result.proposal!.nodeType).toBe(RF_NODE_TYPE.ActionBadge);
-      expect(result.asset_id).toBe("asset-123");
+      expect(result.asset_id).toBeNull();
+      expect(result.proposal).not.toHaveProperty("assetId");
+      expect(result.proposal!.nodeData).not.toHaveProperty("assetId");
 
       const node = canvas.readNode("img1");
-      expect(node!.data.assetId).toBe("asset-123");
+      expect(node!.data).not.toHaveProperty("assetId");
     });
 
-    it("auto-generates assetId for image_gen when not provided", () => {
+    it("does not preallocate an assetId for image generation actions", () => {
       const canvas = makeCanvas();
       const result = canvas.createNode("img1", "image_gen", { label: "Img" });
 
-      expect(result.asset_id).toBeTruthy();
-      expect(typeof result.asset_id).toBe("string");
-      expect(result.asset_id!.length).toBe(8);
+      expect(result.asset_id).toBeNull();
+      expect(canvas.readNode("img1")!.data).not.toHaveProperty("assetId");
     });
 
     it("creates video_gen node with generative proposal", () => {
@@ -201,7 +209,8 @@ describe("Canvas class", () => {
 
       expect(result.proposal!.type).toBe(ProposalType.Generative);
       expect(result.proposal!.nodeType).toBe(RF_NODE_TYPE.ActionBadge);
-      expect(result.asset_id).toBeTruthy();
+      expect(result.asset_id).toBeNull();
+      expect(canvas.readNode("vid1")!.data).not.toHaveProperty("assetId");
     });
 
     it("includes upstreamNodeIds in proposal", () => {

@@ -25,15 +25,29 @@ from its installed package directory and must not be treated as the project.
 
 ## Tool workflow
 
-- Call `clash_timeline_schema` before authoring an unfamiliar Timeline field.
-  It returns the annotation-generated catalog for every root, track, common
-  item, and type-specific item field; the operation catalog; stable semantic
-  rule IDs; exact units and constraints; and executable examples. Do not guess
-  field names from UI labels.
-- Call `clash_timeline_validate` with the complete draft in `document` and
-  `format: "object"` (or authored YAML/JSON plus its matching format) to execute
-  both JSON Schema and cross-field semantic rules without mutating the Timeline.
-  Preserve the returned rule IDs when reporting or repairing invalid state.
+- Call `clash_timeline_schema` once with `view: "authoring"` before authoring
+  unfamiliar Timeline fields. This compact default projects the authored subset
+  of every root, track, common
+  item, and type-specific item field, plus stable semantic
+  rule IDs, reference semantics, and an executable basic example.
+  Request `view: "full"` only when a machine consumer or advanced field needs
+  the complete JSON Schema and operation catalog. Do not guess field names from
+  UI labels.
+- Treat `assetId` and `sourceNodeId` as downstream references. An upstream
+  Stage capture follows Stage revision → capture receipt → immutable Project
+  Asset → downstream Timeline `assetId`; it never writes the output into the
+  producer Stage or Action state. A Remotion item similarly references its
+  Canvas-owned component through `sourceNodeId` instead of copying its source.
+- Every `clash_timeline_create` and `clash_timeline_save` automatically runs
+  the authoritative JSON Schema and cross-field semantic rules before it can
+  mutate product state. Invalid submissions return stable rule IDs and leave
+  product state unchanged.
+- When the next intended step is create or save, submit directly—do not call
+  `clash_timeline_validate` as a preflight. After a rejected write, fix the
+  draft and retry that same write.
+- Reserve `clash_timeline_validate` for diagnostic-only workflows where no
+  create or save write is intended. Preserve returned rule IDs when repairing
+  a draft that is not yet being submitted.
 - Use `clash_timeline_list` or `clash_timeline_get` before describing current
   state. Never infer tracks or revisions from Canvas nodes.
 - When calling `clash_timeline_save`, pass the `revisionId` returned by
@@ -63,9 +77,11 @@ Coordinates use `percent-of-rendered-item-bounds`; frames are
 and interpolation is `hold` or `linear`.
 The complete editor default is `{"shape":"rectangle","position":[50,50],"size":[70,70],"rotation":0,"feather":0,"inverted":false}`.
 
-Use `clash_timeline_schema` for the generated JSON Schema, field descriptions,
-runtime semantics, operations, and executable YAML example; validate edits with
-`clash_timeline_validate`. Remove a mask by
+Use `clash_timeline_schema` with `view: "authoring"` for compact field
+descriptions, runtime semantics, reference bindings, and an executable YAML
+example; request `view: "full"` only for the complete JSON Schema. Create/save
+validates edits automatically; use the explicit validator only for diagnosis
+when no write is intended. Remove a mask by
 removing both `item.mask` and every generated mask channel.
 <!-- END GENERATED TIMELINE MASK CONTRACT -->
 

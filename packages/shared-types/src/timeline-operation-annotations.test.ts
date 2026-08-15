@@ -83,9 +83,9 @@ describe("Timeline operation annotations", () => {
     ];
 
     expect(annotations.length).toBe(
-      AGENT_OPERATION_KEYS.length
-      + EDITOR_COMMAND_KEYS.length
-      + EDITOR_ACTION_KEYS.length,
+      AGENT_OPERATION_KEYS.length +
+        EDITOR_COMMAND_KEYS.length +
+        EDITOR_ACTION_KEYS.length,
     );
 
     for (const annotation of annotations) {
@@ -96,11 +96,9 @@ describe("Timeline operation annotations", () => {
       expect(["read", "write"]).toContain(annotation.access);
       expect(annotation.readOnly).toBe(annotation.access === "read");
       expect(["none", "host-enforced"]).toContain(annotation.cas);
-      expect([
-        "none",
-        "records-observation",
-        "requires-observation",
-      ]).toContain(annotation.readProof);
+      expect(["none", "records-observation", "requires-observation"]).toContain(
+        annotation.readProof,
+      );
       expect(annotation.preconditions).toEqual(expect.any(Array));
       expect(annotation.preconditions.length).toBeGreaterThan(0);
       expect(annotation.runtimeConsumers).toEqual(expect.any(Array));
@@ -177,7 +175,11 @@ describe("Timeline operation annotations", () => {
       });
     }
 
-    for (const id of ["timeline.list", "timeline.get", "timeline.pull"] as const) {
+    for (const id of [
+      "timeline.list",
+      "timeline.get",
+      "timeline.pull",
+    ] as const) {
       expect(registry.agent[id]).toMatchObject({
         access: "read",
         readOnly: true,
@@ -216,21 +218,45 @@ describe("Timeline operation annotations", () => {
     }
   });
 
+  it("directs writes through automatic validation and reserves standalone validation for diagnosis", () => {
+    expect(registry.agent["timeline.validate"].description).toMatch(
+      /diagnos.*only when no write is intended/i,
+    );
+    expect(registry.agent["timeline.validate"].description).toMatch(
+      /do not use (?:it )?as a preflight for create, save, or apply/i,
+    );
+    expect(registry.agent["timeline.create"].description).toMatch(
+      /automatically validate.*invalid state leaves Project state unchanged/i,
+    );
+    expect(registry.agent["timeline.save"].description).toMatch(
+      /automatically validate.*invalid state leaves the Timeline revision unchanged/i,
+    );
+    expect(registry.agent["timeline.apply"].description).toMatch(
+      /automatically validate.*invalid input leaves the Timeline revision unchanged/i,
+    );
+  });
+
   it("allows a Timeline render to use the full default Run budget", () => {
     const schema = registry.agent["timeline.render"].inputSchema;
 
-    expect(schema.safeParse({
-      timelineId: "long-render",
-      timeoutMs: 1_800_000,
-    }).success).toBe(true);
-    expect(schema.safeParse({
-      timelineId: "long-render",
-      timeoutMs: 0,
-    }).success).toBe(false);
-    expect(schema.safeParse({
-      timelineId: "long-render",
-      timeoutMs: 1_000.5,
-    }).success).toBe(false);
+    expect(
+      schema.safeParse({
+        timelineId: "long-render",
+        timeoutMs: 1_800_000,
+      }).success,
+    ).toBe(true);
+    expect(
+      schema.safeParse({
+        timelineId: "long-render",
+        timeoutMs: 0,
+      }).success,
+    ).toBe(false);
+    expect(
+      schema.safeParse({
+        timelineId: "long-render",
+        timeoutMs: 1_000.5,
+      }).success,
+    ).toBe(false);
   });
 
   it("links every document-bearing operation to the canonical field contract", () => {
@@ -246,130 +272,214 @@ describe("Timeline operation annotations", () => {
   });
 
   it("validates representative agent and editor payloads at runtime", () => {
-    expect(registry.agent["timeline.schema"].inputSchema.safeParse({}).success).toBe(true);
-    expect(registry.agent["timeline.schema"].inputSchema.safeParse({ extra: true }).success).toBe(false);
+    expect(
+      registry.agent["timeline.schema"].inputSchema.safeParse({}).success,
+    ).toBe(true);
+    expect(
+      registry.agent["timeline.schema"].inputSchema.safeParse({
+        view: "authoring",
+      }).success,
+    ).toBe(true);
+    expect(
+      registry.agent["timeline.schema"].inputSchema.safeParse({
+        view: "full",
+      }).success,
+    ).toBe(true);
+    expect(
+      registry.agent["timeline.schema"].inputSchema.safeParse({
+        view: "verbose",
+      }).success,
+    ).toBe(false);
+    expect(
+      registry.agent["timeline.schema"].inputSchema.safeParse({ extra: true })
+        .success,
+    ).toBe(false);
 
-    expect(registry.agent["timeline.create"].inputSchema.safeParse({
-      id: "episode-1",
-      name: "Episode 1",
-      state: { tracks: [] },
-    }).success).toBe(true);
-    expect(registry.agent["timeline.create"].inputSchema.safeParse({
-      id: "",
-      name: "Episode 1",
-      state: { tracks: [] },
-    }).success).toBe(false);
+    expect(
+      registry.agent["timeline.create"].inputSchema.safeParse({
+        id: "episode-1",
+        name: "Episode 1",
+        state: { tracks: [] },
+      }).success,
+    ).toBe(true);
+    expect(
+      registry.agent["timeline.create"].inputSchema.safeParse({
+        id: "",
+        name: "Episode 1",
+        state: { tracks: [] },
+      }).success,
+    ).toBe(false);
 
-    expect(registry.agent["timeline.attach"].inputSchema.safeParse({
-      timelineId: "episode-1",
-      canvasId: "main",
-      actionNodeId: "edit-episode-1",
-      position: { x: 10, y: 20 },
-    }).success).toBe(true);
-    expect(registry.agent["timeline.attach"].inputSchema.safeParse({
-      timelineId: "episode-1",
-      canvasId: "main",
-      position: { x: Number.NaN, y: 20 },
-    }).success).toBe(false);
-    expect(registry.agent["timeline.attach"].inputSchema.safeParse({
-      timelineId: "episode-1",
-      canvasId: "main",
-      expectedReadToken: "caller-visible-proof-is-not-part-of-the-contract",
-    }).success).toBe(false);
+    expect(
+      registry.agent["timeline.attach"].inputSchema.safeParse({
+        timelineId: "episode-1",
+        canvasId: "main",
+        actionNodeId: "edit-episode-1",
+        position: { x: 10, y: 20 },
+      }).success,
+    ).toBe(true);
+    expect(
+      registry.agent["timeline.attach"].inputSchema.safeParse({
+        timelineId: "episode-1",
+        canvasId: "main",
+        position: { x: Number.NaN, y: 20 },
+      }).success,
+    ).toBe(false);
+    expect(
+      registry.agent["timeline.attach"].inputSchema.safeParse({
+        timelineId: "episode-1",
+        canvasId: "main",
+        expectedReadToken: "caller-visible-proof-is-not-part-of-the-contract",
+      }).success,
+    ).toBe(false);
 
-    expect(registry.agent["timeline.apply"].inputSchema.safeParse({
-      timelineId: "episode-1",
-      document: { tracks: [] },
-    }).success).toBe(true);
-    expect(registry.agent["timeline.apply"].inputSchema.safeParse({
-      timelineId: "episode-1",
-    }).success).toBe(false);
+    expect(
+      registry.agent["timeline.apply"].inputSchema.safeParse({
+        timelineId: "episode-1",
+        document: { tracks: [] },
+      }).success,
+    ).toBe(true);
+    expect(
+      registry.agent["timeline.apply"].inputSchema.safeParse({
+        timelineId: "episode-1",
+      }).success,
+    ).toBe(false);
 
-    expect(registry.editorCommands["timeline.command.add_clip"].inputSchema.safeParse({
-      type: "add_clip",
-      trackId: "main",
-      sourceNodeId: "source-1",
-      itemType: "video",
-      from: 0,
-      durationInFrames: 90,
-    }).success).toBe(true);
-    expect(registry.editorCommands["timeline.command.add_clip"].inputSchema.safeParse({
-      type: "add_clip",
-      trackId: "main",
-      sourceNodeId: "source-1",
-      itemType: "video",
-      from: 0,
-      durationInFrames: 0,
-    }).success).toBe(false);
+    expect(
+      registry.editorCommands[
+        "timeline.command.add_clip"
+      ].inputSchema.safeParse({
+        type: "add_clip",
+        trackId: "main",
+        sourceNodeId: "source-1",
+        itemType: "video",
+        from: 0,
+        durationInFrames: 90,
+      }).success,
+    ).toBe(true);
+    expect(
+      registry.editorCommands[
+        "timeline.command.add_clip"
+      ].inputSchema.safeParse({
+        type: "add_clip",
+        trackId: "main",
+        sourceNodeId: "source-1",
+        itemType: "video",
+        from: 0,
+        durationInFrames: 0,
+      }).success,
+    ).toBe(false);
 
-    expect(registry.editorActions["timeline.action.SET_COMPOSITION_SIZE"].inputSchema.safeParse({
-      type: "SET_COMPOSITION_SIZE",
-      payload: { width: 1920, height: 1080 },
-    }).success).toBe(true);
-    expect(registry.editorActions["timeline.action.SET_COMPOSITION_SIZE"].inputSchema.safeParse({
-      type: "SET_COMPOSITION_SIZE",
-      payload: { width: 0, height: 1080 },
-    }).success).toBe(false);
+    expect(
+      registry.editorActions[
+        "timeline.action.SET_COMPOSITION_SIZE"
+      ].inputSchema.safeParse({
+        type: "SET_COMPOSITION_SIZE",
+        payload: { width: 1920, height: 1080 },
+      }).success,
+    ).toBe(true);
+    expect(
+      registry.editorActions[
+        "timeline.action.SET_COMPOSITION_SIZE"
+      ].inputSchema.safeParse({
+        type: "SET_COMPOSITION_SIZE",
+        payload: { width: 0, height: 1080 },
+      }).success,
+    ).toBe(false);
   });
 
   it("derives editor item and track payload fields from the annotated DSL", () => {
-    const addItem = registry.editorActions["timeline.action.ADD_ITEM"].inputSchema;
-    expect(addItem.safeParse({
-      type: "ADD_ITEM",
-      payload: {
-        trackId: "visual",
-        item: {
-          id: "poster",
-          type: "image",
-          src: "/poster.png",
-          from: 0,
-          durationInFrames: 30,
-          mediaFit: "cover",
+    const addItem =
+      registry.editorActions["timeline.action.ADD_ITEM"].inputSchema;
+    expect(
+      addItem.safeParse({
+        type: "ADD_ITEM",
+        payload: {
+          trackId: "visual",
+          item: {
+            id: "poster",
+            type: "image",
+            src: "/poster.png",
+            from: 0,
+            durationInFrames: 30,
+            mediaFit: "cover",
+          },
         },
-      },
-    }).success).toBe(true);
-    expect(addItem.safeParse({
-      type: "ADD_ITEM",
-      payload: {
-        trackId: "visual",
-        item: {
-          id: "poster",
-          type: "image",
-          src: "/poster.png",
-          from: 0,
-          durationInFrames: 30,
-          audioDucking: { amountDb: -12, attackFrames: 2, releaseFrames: 4 },
+      }).success,
+    ).toBe(true);
+    expect(
+      addItem.safeParse({
+        type: "ADD_ITEM",
+        payload: {
+          trackId: "visual",
+          item: {
+            id: "poster",
+            type: "image",
+            src: "/poster.png",
+            from: 0,
+            durationInFrames: 30,
+            audioDucking: { amountDb: -12, attackFrames: 2, releaseFrames: 4 },
+          },
         },
-      },
-    }).success).toBe(false);
+      }).success,
+    ).toBe(false);
 
-    const updateItem = registry.editorActions["timeline.action.UPDATE_ITEM"].inputSchema;
-    expect(updateItem.safeParse({
-      type: "UPDATE_ITEM",
-      payload: { trackId: "visual", itemId: "title", updates: { fontWeight: 600 } },
-    }).success).toBe(true);
-    expect(updateItem.safeParse({
-      type: "UPDATE_ITEM",
-      payload: { trackId: "visual", itemId: "title", updates: { fontWeight: {} } },
-    }).success).toBe(false);
-    expect(updateItem.safeParse({
-      type: "UPDATE_ITEM",
-      payload: { trackId: "visual", itemId: "title", updates: { inventedField: true } },
-    }).success).toBe(false);
+    const updateItem =
+      registry.editorActions["timeline.action.UPDATE_ITEM"].inputSchema;
+    expect(
+      updateItem.safeParse({
+        type: "UPDATE_ITEM",
+        payload: {
+          trackId: "visual",
+          itemId: "title",
+          updates: { fontWeight: 600 },
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      updateItem.safeParse({
+        type: "UPDATE_ITEM",
+        payload: {
+          trackId: "visual",
+          itemId: "title",
+          updates: { fontWeight: {} },
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      updateItem.safeParse({
+        type: "UPDATE_ITEM",
+        payload: {
+          trackId: "visual",
+          itemId: "title",
+          updates: { inventedField: true },
+        },
+      }).success,
+    ).toBe(false);
 
-    const updateTrack = registry.editorActions["timeline.action.UPDATE_TRACK"].inputSchema;
-    expect(updateTrack.safeParse({
-      type: "UPDATE_TRACK",
-      payload: { id: "visual", updates: { hidden: false, category: "visual" } },
-    }).success).toBe(true);
-    expect(updateTrack.safeParse({
-      type: "UPDATE_TRACK",
-      payload: { id: "visual", updates: { category: "invented" } },
-    }).success).toBe(false);
-    expect(updateTrack.safeParse({
-      type: "UPDATE_TRACK",
-      payload: { id: "visual", updates: { inventedField: true } },
-    }).success).toBe(false);
+    const updateTrack =
+      registry.editorActions["timeline.action.UPDATE_TRACK"].inputSchema;
+    expect(
+      updateTrack.safeParse({
+        type: "UPDATE_TRACK",
+        payload: {
+          id: "visual",
+          updates: { hidden: false, category: "visual" },
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      updateTrack.safeParse({
+        type: "UPDATE_TRACK",
+        payload: { id: "visual", updates: { category: "invented" } },
+      }).success,
+    ).toBe(false);
+    expect(
+      updateTrack.safeParse({
+        type: "UPDATE_TRACK",
+        payload: { id: "visual", updates: { inventedField: true } },
+      }).success,
+    ).toBe(false);
   });
 
   it("publishes a serializable catalog without copying executable schemas", () => {

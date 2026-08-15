@@ -6,12 +6,15 @@ import { join } from "node:path";
 
 import { LoroDoc } from "loro-crdt";
 import {
+  createProjectAsset,
   createProjectTimeline,
   listActionAssetBindingsForOwner,
   listProjectAssets,
   markActionAssetBindingAuthority,
+  markProjectAssetAuthority,
   readProjectTimeline,
   requestTimelineRender,
+  type ExecutablePluginResult,
 } from "@clash/shared-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -23,6 +26,7 @@ import {
 import { createLocalDurableOutputStagingStore } from "./local-durable-output-staging.js";
 import { createMockExternalAigcService } from "./local-aigc.js";
 import { createLocalWorkflowProcessor } from "./local-processor.js";
+import { createLocalPluginAssetStagingStore } from "./local-plugin-asset-staging.js";
 
 let dataDir = "";
 const nodeRequire = createRequire(import.meta.url);
@@ -152,24 +156,385 @@ function submittedTimelineRender(): {
   };
 }
 
+function remotionActionHarness() {
+  const binding = {
+    pluginId: "clash.remotion",
+    version: "0.1.0",
+    exportId: "render-timeline",
+    schemaHash: `sha256:${"f".repeat(64)}` as const,
+  };
+  const staging = createLocalPluginAssetStagingStore({ dataDir });
+  const complete = async (
+    request: Record<string, any>,
+  ): Promise<ExecutablePluginResult> => {
+    const outputSlot = String(request.input.values.outputSlot);
+    const invocationId = `${request.taskId}:remotion-test`;
+    const staged = await staging.stage({
+      projectId: request.projectId,
+      taskId: request.taskId,
+      slot: outputSlot,
+      pluginId: binding.pluginId,
+      pluginVersion: binding.version,
+      invocationId,
+      kind: "video",
+      mediaType: "video/mp4",
+      bytes: new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]),
+    });
+    return {
+      protocol: "clash.plugin.result/v1" as const,
+      invocationId,
+      status: "completed" as const,
+      outputs: [
+        {
+          slot: outputSlot,
+          kind: "asset" as const,
+          asset: {
+            assetId: staged.projectAssetId,
+            uri: `clash-asset://${staged.projectAssetId}`,
+            kind: "video" as const,
+            mediaType: "video/mp4",
+          },
+        },
+      ],
+    };
+  };
+  const executablePluginAction = vi.fn(complete);
+  return {
+    binding,
+    complete,
+    executablePluginAction,
+    resolvePluginBinding: vi.fn(async () => binding),
+  };
+}
+
+function retryableRemotionFailure(message: string): ExecutablePluginResult {
+  return {
+    protocol: "clash.plugin.result/v1" as const,
+    invocationId: "remotion-test-failure",
+    status: "failed" as const,
+    error: {
+      code: "provider_unavailable" as const,
+      message,
+      retryable: true,
+      requestState: "rejected" as const,
+    },
+  };
+}
+
 describe("Local durable Timeline render workflow", () => {
-  it("publishes the render output through the shared durable journal identity", async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "clash-timeline-durable-"));
-    const { doc, owner } = submittedTimelineRender();
-    const processor = createLocalWorkflowProcessor({
+  it("refuses a legacy renderer when the bundled Remotion Action binding is unavailable", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "clash-timeline-binding-required-"));
+    const { doc } = submittedTimelineRender();
+    let legacyRenderCalls = 0;
+
+    const legacyOptions = {
       dataDir,
       assetInspection: testAssetInspection(),
       timelineRenderer: {
         async render() {
+          legacyRenderCalls += 1;
           return {
             bytes: new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]),
             contentType: "video/mp4",
-            width: 1920,
-            height: 1080,
-            durationMs: 1_000,
           };
         },
       },
+    } as unknown as Parameters<typeof createLocalWorkflowProcessor>[0];
+
+    await createLocalWorkflowProcessor(legacyOptions).process({
+      doc,
+      projectId: "project-1",
+    });
+
+    expect(legacyRenderCalls).toBe(0);
+    expect(doc.getMap("nodes").get("render-1")).toMatchObject({
+      data: {
+        status: "failed",
+        error:
+          "Timeline rendering requires the clash.remotion bundled Action binding.",
+      },
+    });
+  });
+
+  it("runs a frozen Timeline render through the bundled Remotion Action contract", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "clash-timeline-remotion-action-"));
+    const doc = new LoroDoc();
+    expect(
+      createProjectAsset(doc, {
+        id: "asset:hero",
+        kind: "image",
+        source: {
+          kind: "owned",
+          resourceId: `sha256:${"b".repeat(64)}`,
+        },
+        lifecycle: { state: "active" },
+        metadata: { contentType: "image/png" },
+      }),
+    ).toMatchObject({ ok: true });
+    expect(markProjectAssetAuthority(doc)).toMatchObject({ ok: true });
+    expect(markActionAssetBindingAuthority(doc)).toMatchObject({ ok: true });
+    expect(
+      createProjectTimeline(doc, {
+        id: "timeline-media",
+        name: "Media cut",
+        state: {
+          fps: 30,
+          durationInFrames: 30,
+          tracks: [
+            {
+              id: "visuals",
+              items: [
+                {
+                  id: "hero",
+                  type: "image",
+                  assetId: "asset:hero",
+                  from: 0,
+                  durationInFrames: 30,
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    ).toMatchObject({ ok: true });
+    const requested = requestTimelineRender(doc, {
+      timelineId: "timeline-media",
+      actorUserId: "user-1",
+      generateId: () => "render-plugin",
+    });
+    if (!requested.ok) throw new Error(requested.error);
+
+    const binding = {
+      pluginId: "clash.remotion",
+      version: "0.1.0",
+      exportId: "render-timeline",
+      schemaHash: `sha256:${"a".repeat(64)}` as const,
+    };
+    const resolvePluginBinding = vi.fn(async () => binding);
+    const staging = createLocalPluginAssetStagingStore({ dataDir });
+    const requests: Array<Record<string, any>> = [];
+    const executablePluginAction = vi.fn(async (request) => {
+      requests.push(structuredClone(request));
+      expect(request.input.values.outputSlot).toBe("render:output");
+      const staged = await staging.stage({
+        projectId: request.projectId,
+        taskId: request.taskId,
+        slot: "render:output",
+        pluginId: binding.pluginId,
+        pluginVersion: binding.version,
+        invocationId: "remotion-invocation",
+        kind: "video",
+        mediaType: "video/mp4",
+        bytes: new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]),
+      });
+      return {
+        protocol: "clash.plugin.result/v1" as const,
+        invocationId: "remotion-invocation",
+        status: "completed" as const,
+        outputs: [
+          {
+            slot: "render:output",
+            kind: "asset" as const,
+            asset: {
+              assetId: staged.projectAssetId,
+              uri: `clash-asset://${staged.projectAssetId}`,
+              kind: "video" as const,
+              mediaType: "video/mp4",
+            },
+          },
+        ],
+      };
+    });
+
+    await createLocalWorkflowProcessor({
+      dataDir,
+      assetInspection: testAssetInspection(),
+      executablePluginAction,
+      resolvePluginBinding,
+    } as Parameters<typeof createLocalWorkflowProcessor>[0] & {
+      resolvePluginBinding: typeof resolvePluginBinding;
+    }).process({ doc, projectId: "project-1", checkpoint: async () => {} });
+
+    expect(resolvePluginBinding).toHaveBeenCalledWith(
+      "clash.remotion",
+      "render-timeline",
+      "action",
+    );
+    expect(executablePluginAction).toHaveBeenCalledOnce();
+    expect(requests).toEqual([
+      expect.objectContaining({
+        binding,
+        taskId: "timeline-render:render-plugin",
+        projectId: "project-1",
+        nodeId: "render-plugin",
+        input: {
+          values: expect.objectContaining({
+            timelineDsl: expect.objectContaining({
+              tracks: expect.any(Array),
+            }),
+          }),
+          references: [
+            {
+              slot: "timeline:item:hero",
+              index: 0,
+              asset: {
+                assetId: "asset:hero",
+                uri: "clash-asset://asset:hero",
+                kind: "image",
+                mediaType: "image/png",
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+    expect(JSON.stringify(requests)).not.toMatch(
+      /(?:executorUrl|providerUrl|storageKey|\/Users\/|\/tmp\/)/,
+    );
+    const completedRun = await createSqliteDurableRunJournal(dataDir).load({
+      actionRunId: "timeline-render:render-plugin",
+      outputSlot: "render:output",
+    });
+    expect(completedRun).toMatchObject({ phase: "succeeded" });
+    expect(completedRun?.failure).toBeUndefined();
+    expect(doc.getMap("nodes").get("render-plugin")).toMatchObject({
+      data: { status: "completed", assetId: expect.any(String) },
+    });
+    expect(listProjectAssets(doc)).toContainEqual(
+      expect.objectContaining({
+        kind: "video",
+        provenance: expect.objectContaining({
+          kind: "render",
+          actionRunId: "timeline-render:render-plugin",
+        }),
+      }),
+    );
+  });
+
+  it("reuses the Timeline run's frozen Asset binding during durable plugin recovery", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "clash-timeline-plugin-recovery-"));
+    const doc = new LoroDoc();
+    expect(
+      createProjectAsset(doc, {
+        id: "asset:recovery-hero",
+        kind: "image",
+        source: {
+          kind: "owned",
+          resourceId: `sha256:${"c".repeat(64)}`,
+        },
+        lifecycle: { state: "active" },
+        metadata: { contentType: "image/png" },
+      }),
+    ).toMatchObject({ ok: true });
+    expect(markProjectAssetAuthority(doc)).toMatchObject({ ok: true });
+    expect(markActionAssetBindingAuthority(doc)).toMatchObject({ ok: true });
+    expect(
+      createProjectTimeline(doc, {
+        id: "timeline-recovery",
+        name: "Recovery cut",
+        state: {
+          fps: 30,
+          durationInFrames: 30,
+          tracks: [
+            {
+              id: "visuals",
+              items: [
+                {
+                  id: "hero",
+                  type: "image",
+                  assetId: "asset:recovery-hero",
+                  from: 0,
+                  durationInFrames: 30,
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    ).toMatchObject({ ok: true });
+    const requested = requestTimelineRender(doc, {
+      timelineId: "timeline-recovery",
+      actorUserId: "user-1",
+      generateId: () => "render-recovery",
+    });
+    if (!requested.ok) throw new Error(requested.error);
+    const owner = {
+      kind: "run" as const,
+      actionId: "timeline:timeline-recovery",
+      actionRevisionId: readProjectTimeline(doc, "timeline-recovery")!
+        .revisionId,
+      actionRunId: "timeline-render:render-recovery",
+    };
+    let now = 100;
+    const executablePluginAction = vi.fn(async () => ({
+      protocol: "clash.plugin.result/v1" as const,
+      invocationId: "remotion-recovery-invocation",
+      status: "failed" as const,
+      error: {
+        code: "provider_unavailable" as const,
+        message: "transient bundled renderer restart",
+        retryable: true,
+        requestState: "rejected" as const,
+      },
+    }));
+    const processor = createLocalWorkflowProcessor({
+      dataDir,
+      assetInspection: testAssetInspection(),
+      executablePluginAction,
+      durableProviderRuns: {
+        ownerId: "local-api",
+        now: () => now,
+        async providerPluginExecutor() {
+          throw new Error(
+            "Provider execution is not used by the Remotion Action",
+          );
+        },
+      },
+      resolvePluginBinding: async () => ({
+        pluginId: "clash.remotion",
+        version: "0.1.0",
+        exportId: "render-timeline",
+        schemaHash: `sha256:${"d".repeat(64)}`,
+      }),
+    });
+
+    await processor.process({
+      doc,
+      projectId: "project-1",
+      checkpoint: async () => {},
+    });
+    now = 1_101;
+    await processor.process({
+      doc,
+      projectId: "project-1",
+      checkpoint: async () => {},
+    });
+
+    expect(executablePluginAction).toHaveBeenCalledTimes(2);
+    expect(
+      listActionAssetBindingsForOwner(doc, owner)
+        .filter((binding) => binding.direction === "input")
+        .map((binding) => ({
+          slot: binding.slot,
+          projectAssetId: binding.projectAssetId,
+        })),
+    ).toEqual([
+      {
+        slot: "timeline:item:hero",
+        projectAssetId: "asset:recovery-hero",
+      },
+    ]);
+  });
+
+  it("publishes the render output through the shared durable journal identity", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "clash-timeline-durable-"));
+    const { doc, owner } = submittedTimelineRender();
+    const remotion = remotionActionHarness();
+    const processor = createLocalWorkflowProcessor({
+      dataDir,
+      assetInspection: testAssetInspection(),
+      executablePluginAction: remotion.executablePluginAction,
+      resolvePluginBinding: remotion.resolvePluginBinding,
     });
 
     await processor.process({ doc, projectId: "project-1" });
@@ -221,10 +586,7 @@ describe("Local durable Timeline render workflow", () => {
     dataDir = await mkdtemp(join(tmpdir(), "clash-timeline-restart-"));
     const { doc, owner } = submittedTimelineRender();
     let now = 100;
-    const render = vi.fn(async () => ({
-      bytes: new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]),
-      contentType: "video/mp4",
-    }));
+    const remotion = remotionActionHarness();
     const durableProviderRuns = {
       ownerId: "local-api",
       now: () => now,
@@ -236,7 +598,8 @@ describe("Local durable Timeline render workflow", () => {
     await createLocalWorkflowProcessor({
       dataDir,
       assetInspection: testAssetInspection(),
-      timelineRenderer: { render },
+      executablePluginAction: remotion.executablePluginAction,
+      resolvePluginBinding: remotion.resolvePluginBinding,
       durableProviderRuns,
     }).process({
       doc,
@@ -254,13 +617,14 @@ describe("Local durable Timeline render workflow", () => {
         outputSlot: "render:output",
       }),
     ).resolves.toMatchObject({ phase: "finalizing", nextAttemptAt: 1_100 });
-    expect(render).toHaveBeenCalledOnce();
+    expect(remotion.executablePluginAction).toHaveBeenCalledOnce();
 
     now = 1_100;
     await createLocalWorkflowProcessor({
       dataDir,
       assetInspection: testAssetInspection(),
-      timelineRenderer: { render },
+      executablePluginAction: remotion.executablePluginAction,
+      resolvePluginBinding: remotion.resolvePluginBinding,
       durableProviderRuns,
     }).process({ doc, projectId: "project-1", checkpoint: async () => {} });
 
@@ -270,7 +634,7 @@ describe("Local durable Timeline render workflow", () => {
         outputSlot: "render:output",
       }),
     ).resolves.toMatchObject({ phase: "succeeded", projectedAt: 1_100 });
-    expect(render).toHaveBeenCalledOnce();
+    expect(remotion.executablePluginAction).toHaveBeenCalledOnce();
   });
 
   it("does not publish a recovered staged entry after its versioned inspection receipt is lost", async () => {
@@ -279,10 +643,7 @@ describe("Local durable Timeline render workflow", () => {
     );
     const { doc, owner } = submittedTimelineRender();
     let now = 100;
-    const render = vi.fn(async () => ({
-      bytes: new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]),
-      contentType: "video/mp4",
-    }));
+    const remotion = remotionActionHarness();
     const durableProviderRuns = {
       ownerId: "local-api",
       now: () => now,
@@ -294,7 +655,8 @@ describe("Local durable Timeline render workflow", () => {
     await createLocalWorkflowProcessor({
       dataDir,
       assetInspection: testAssetInspection(),
-      timelineRenderer: { render },
+      executablePluginAction: remotion.executablePluginAction,
+      resolvePluginBinding: remotion.resolvePluginBinding,
       durableProviderRuns,
     }).process({
       doc,
@@ -320,7 +682,8 @@ describe("Local durable Timeline render workflow", () => {
     await createLocalWorkflowProcessor({
       dataDir,
       assetInspection: createLocalAssetInspectionService({ dataDir }),
-      timelineRenderer: { render },
+      executablePluginAction: remotion.executablePluginAction,
+      resolvePluginBinding: remotion.resolvePluginBinding,
       durableProviderRuns,
     }).process({ doc: recovered, projectId: "project-1" });
 
@@ -334,20 +697,17 @@ describe("Local durable Timeline render workflow", () => {
       phase: "finalizing",
       failure: { retryable: true },
     });
-    expect(render).toHaveBeenCalledOnce();
+    expect(remotion.executablePluginAction).toHaveBeenCalledOnce();
   });
 
   it("retries a transient Host-local renderer failure through the shared policy", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "clash-timeline-retry-"));
     const { doc, owner } = submittedTimelineRender();
     let now = 100;
-    const render = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("renderer worker exited"))
-      .mockResolvedValueOnce({
-        bytes: new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]),
-        contentType: "video/mp4",
-      });
+    const remotion = remotionActionHarness();
+    remotion.executablePluginAction
+      .mockResolvedValueOnce(retryableRemotionFailure("renderer worker exited"))
+      .mockImplementation(remotion.complete);
     const durableProviderRuns = {
       ownerId: "local-api",
       now: () => now,
@@ -358,7 +718,8 @@ describe("Local durable Timeline render workflow", () => {
     const processor = createLocalWorkflowProcessor({
       dataDir,
       assetInspection: testAssetInspection(),
-      timelineRenderer: { render },
+      executablePluginAction: remotion.executablePluginAction,
+      resolvePluginBinding: remotion.resolvePluginBinding,
       durableProviderRuns,
       providerPollDelayCapMs: 0,
     });
@@ -373,7 +734,190 @@ describe("Local durable Timeline render workflow", () => {
         outputSlot: "render:output",
       }),
     ).resolves.toMatchObject({ phase: "succeeded" });
-    expect(render).toHaveBeenCalledTimes(2);
+    expect(remotion.executablePluginAction).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps an in-flight Timeline render out of generic video generation while its durable retry waits", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "clash-timeline-retry-owner-"));
+    const { doc, owner } = submittedTimelineRender();
+    let now = 100;
+    const remotion = remotionActionHarness();
+    remotion.executablePluginAction.mockResolvedValue(
+      retryableRemotionFailure("Remotion media fetch timed out"),
+    );
+    const processor = createLocalWorkflowProcessor({
+      dataDir,
+      assetInspection: testAssetInspection(),
+      executablePluginAction: remotion.executablePluginAction,
+      resolvePluginBinding: remotion.resolvePluginBinding,
+      durableProviderRuns: {
+        ownerId: "local-api",
+        now: () => now,
+        async providerPluginExecutor() {
+          throw new Error("mock-video reached no provider");
+        },
+      },
+    });
+
+    await processor.process({ doc, projectId: "project-1" });
+    await processor.process({ doc, projectId: "project-1" });
+
+    expect(doc.getMap("nodes").get("render-1")).toMatchObject({
+      data: { status: "generating" },
+    });
+    expect(
+      (doc.getMap("nodes").get("render-1") as any).data.error,
+    ).toBeUndefined();
+    await expect(
+      createSqliteDurableRunJournal(dataDir).load({
+        actionRunId: owner.actionRunId,
+        outputSlot: "render:output",
+      }),
+    ).resolves.toMatchObject({
+      phase: "submitting",
+      failure: { message: "Remotion media fetch timed out" },
+    });
+  });
+
+  it("fails malformed Timeline render ownership without handing the node to generic video generation", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "clash-timeline-invalid-owner-"));
+    const doc = new LoroDoc();
+    doc.getMap("nodes").set("render-invalid-owner", {
+      type: "video",
+      data: {
+        status: "generating",
+        timelineDsl: {
+          fps: 30,
+          durationInFrames: 30,
+          tracks: [],
+        },
+        sourceTimelineActionId: "timeline:missing",
+        sourceTimelineRevisionId: "timeline-revision-v1:missing",
+        actionType: "video-gen",
+        modelId: "test-video",
+        prompt: "This generic request must never be planned",
+      },
+    });
+    const providerPluginExecutor = vi.fn(async () => {
+      throw new Error("generic video provider must not own Timeline renders");
+    });
+
+    await createLocalWorkflowProcessor({
+      dataDir,
+      assetInspection: testAssetInspection(),
+      aigc: {
+        async planProviderPlugin() {
+          return {
+            binding: {
+              pluginId: "test.provider",
+              version: "1.0.0",
+              exportId: "execute",
+              schemaHash: `sha256:${"e".repeat(64)}`,
+            },
+            accountId: "private-account",
+            assetInputs: [],
+            kind: "video",
+            projectId: "project-1",
+            nodeId: "render-invalid-owner",
+            provider: "test-provider",
+            modelEndpoint: "video-v1",
+            input: {
+              values: {
+                modelId: "test-video",
+                upstreamModel: "video-v1",
+                prompt: "This generic request must never be planned",
+                modelParams: {},
+              },
+              references: [],
+            },
+          };
+        },
+        generateImage: vi.fn(),
+        generateVideo: vi.fn(),
+        generateAudio: vi.fn(),
+        generateText: vi.fn(),
+      },
+      durableProviderRuns: {
+        ownerId: "local-api",
+        providerPluginExecutor,
+      },
+    }).process({ doc, projectId: "project-1" });
+
+    expect(providerPluginExecutor).not.toHaveBeenCalled();
+    expect(doc.getMap("nodes").get("render-invalid-owner")).toMatchObject({
+      data: {
+        status: "failed",
+        failureCode: "TIMELINE_RENDER_INPUT_INVALID",
+      },
+    });
+  });
+
+  it("keeps the real Remotion terminal failure owner-private without creating a generic video run", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "clash-timeline-real-failure-"));
+    const { doc, owner } = submittedTimelineRender();
+    let now = 100;
+    const remotion = remotionActionHarness();
+    remotion.executablePluginAction.mockResolvedValue(
+      retryableRemotionFailure("Remotion media fetch timed out"),
+    );
+    const processor = createLocalWorkflowProcessor({
+      dataDir,
+      assetInspection: testAssetInspection(),
+      executablePluginAction: remotion.executablePluginAction,
+      resolvePluginBinding: remotion.resolvePluginBinding,
+      durableProviderRuns: {
+        ownerId: "local-api",
+        now: () => now,
+        async providerPluginExecutor() {
+          throw new Error("mock-video reached no provider");
+        },
+      },
+    });
+
+    await processor.process({ doc, projectId: "project-1" });
+    for (const retryAt of [1_100, 3_100, 7_100]) {
+      now = retryAt;
+      await processor.process({ doc, projectId: "project-1" });
+    }
+
+    expect(doc.getMap("nodes").get("render-1")).toMatchObject({
+      data: {
+        status: "failed",
+        failureCode: "provider_unavailable",
+        error:
+          "Generation failed. See the owning Host for private diagnostics.",
+      },
+    });
+    await expect(
+      createSqliteDurableRunJournal(dataDir).load({
+        actionRunId: owner.actionRunId,
+        outputSlot: "render:output",
+      }),
+    ).resolves.toMatchObject({
+      phase: "failed",
+      projectedAt: 7_100,
+      failure: { message: "Remotion media fetch timed out" },
+    });
+    const { DatabaseSync } = nodeRequire("node:sqlite") as {
+      DatabaseSync: new (path: string) => {
+        prepare(sql: string): {
+          get(...params: unknown[]): Record<string, unknown> | undefined;
+        };
+        close(): void;
+      };
+    };
+    const database = new DatabaseSync(join(dataDir, "local.sqlite"));
+    try {
+      expect(
+        database
+          .prepare(
+            "SELECT count(*) AS count FROM durable_run_journal WHERE owner_id = ?",
+          )
+          .get("local-api"),
+      ).toEqual({ count: 1 });
+    } finally {
+      database.close();
+    }
   });
 
   it("keeps the first CAS output when an at-least-once renderer returns different bytes", async () => {

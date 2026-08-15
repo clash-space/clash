@@ -6,7 +6,11 @@ import { access, readFile, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { BUNDLED_PLUGINS } from "../../../apps/local-api/src/bundled-plugins.js";
+import { sourceMatches } from "../../../packages/gui/test-support/source-match.js";
+import {
+  BUNDLED_PLUGINS,
+  bundledPluginPayloadFiles,
+} from "../../../apps/local-api/src/bundled-plugins.js";
 
 const pluginRoot = dirname(
   fileURLToPath(new URL("../package.json", import.meta.url)),
@@ -147,6 +151,22 @@ test("the base Clash skill teaches peer CLI and MCP navigation without AGENTS in
   );
   assert.match(markdown, /clash --help/);
   assert.match(markdown, /clash <command> --help/);
+  assert.equal(
+    sourceMatches(
+      markdown,
+      /task already names.{0,180}command group.{0,180}skip.{0,100}root help/i,
+    ),
+    true,
+    "known CLI groups should not pay for root discovery",
+  );
+  assert.equal(
+    sourceMatches(
+      markdown,
+      /Asset.{0,220}import.{0,120}import_file.{0,120}list.{0,120}get.{0,180}contracts/i,
+    ),
+    true,
+    "known Asset operations should have a direct MCP contract path",
+  );
   assert.match(markdown, /clash init --json/);
   assert.match(markdown, /root `clash` tool/i);
   assert.match(markdown, /root `clash`[\s\S]*navigation/i);
@@ -316,6 +336,14 @@ test("plugin packaging consumes declared dependency outputs before creating the 
   assert.equal(packageJson.scripts?.["build:deps"], undefined);
   assert.doesNotMatch(hostCore, /sourceAgentsDir/);
   assert.match(hostCore, /rm\(resolve\(runtimeDir, "agents"\)/);
+  assert.equal(
+    sourceMatches(
+      hostCore,
+      /assertDependencyDistIsFresh\(.{0,700}\);\s*await mkdir\(runtimeDir/,
+    ),
+    true,
+    "freshness must fail before the build mutates the tracked runtime tree",
+  );
   assert.match(
     bundleAgents,
     /"packages",[\s\S]*"cli",[\s\S]*"assets",[\s\S]*"agents"/,
@@ -349,28 +377,13 @@ test("the packaged host carries the exact current first-party plugin payloads", 
       `../runtime/bundled-plugins/${directory}/`,
       import.meta.url,
     );
-    const manifest = JSON.parse(
-      await readFile(new URL("manifest.json", sourceRoot), "utf8"),
-    ) as {
-      runtime?: { entrypoint?: string };
-      contributes?: {
-        cards?: Array<{ path?: string }>;
-        providers?: Array<{ path?: string }>;
-        modelBindings?: Array<{ path?: string }>;
-      };
-      contractTests?: string[];
-    };
     const declared = new Set(
-      [
-        "manifest.json",
-        manifest.runtime?.entrypoint,
-        ...(manifest.contributes?.cards ?? []).map((entry) => entry.path),
-        ...(manifest.contributes?.providers ?? []).map((entry) => entry.path),
-        ...(manifest.contributes?.modelBindings ?? []).map(
-          (entry) => entry.path,
+      await bundledPluginPayloadFiles(
+        JSON.parse(
+          await readFile(new URL("manifest.json", sourceRoot), "utf8"),
         ),
-        ...(manifest.contractTests ?? []),
-      ].filter((path): path is string => Boolean(path)),
+        fileURLToPath(sourceRoot),
+      ),
     );
 
     for (const path of declared) {
@@ -432,11 +445,22 @@ test("the bundled host is a persistent user daemon rather than an MCP-owned chil
   );
 });
 
-test("the persistent daemon owns a packaged Remotion renderer without a second service port", async () => {
-  const [entry, hostBuild, packageJson, rootPackageJson] = await Promise.all([
+test("the persistent daemon loads Remotion only through its bundled Action plugin", async () => {
+  const [
+    entry,
+    hostBuild,
+    developmentBrowserAssets,
+    packageJson,
+    rootPackageJson,
+    remotionManifest,
+  ] = await Promise.all([
     readFile(new URL("./local-api-entry.ts", import.meta.url), "utf8"),
     readFile(
       new URL("../scripts/build-host-runtime.ts", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("./development-browser-assets.ts", import.meta.url),
       "utf8",
     ),
     readFile(new URL("../package.json", import.meta.url), "utf8").then(
@@ -445,18 +469,36 @@ test("the persistent daemon owns a packaged Remotion renderer without a second s
     readFile(new URL("../../../package.json", import.meta.url), "utf8").then(
       JSON.parse,
     ),
+    readFile(
+      new URL("../../remotion/manifest.json", import.meta.url),
+      "utf8",
+    ).then(JSON.parse),
   ]);
 
-  assert.match(entry, /createRemotionTimelineRenderer/);
-  assert.match(entry, /timelineRenderer,/);
-  assert.match(entry, /new URL\("\.\/remotion-bundle"/);
+  assert.equal(remotionManifest.id, "clash.remotion");
+  assert.deepEqual(remotionManifest.runtime.resources, ["dist/browser-bundle"]);
+  assert.doesNotMatch(entry, /createRemotionTimelineRenderer/);
+  assert.doesNotMatch(entry, /timelineRenderer,/);
+  assert.doesNotMatch(entry, /CLASH_REMOTION_BUNDLE_PATH|remotion-bundle/);
   assert.doesNotMatch(
     entry,
     /RENDER_SERVER_(?:PORT|URL)|child_process|spawn\(/,
   );
-  assert.match(hostBuild, /\.remotion-bundle/);
-  assert.match(hostBuild, /remotion-bundle/);
+  assert.match(hostBuild, /bundledPluginPayloadFiles/);
+  assert.doesNotMatch(
+    hostBuild,
+    /apps\/render-server\/\.remotion-bundle|const remotionBundleDir|removeSourceMapReferences/,
+  );
+  assert.doesNotMatch(
+    developmentBrowserAssets,
+    /resolveRemotionServeUrl|REMOTION_SOURCE_PACKAGES|@remotion\/bundler/,
+  );
   assert.match(hostBuild, /external:\s*\[[^\]]*"@remotion\/renderer"[^\]]*\]/);
+  assert.equal(packageJson.devDependencies?.["@remotion/bundler"], undefined);
+  await assert.rejects(
+    access(new URL("../runtime/remotion-bundle", import.meta.url)),
+    { code: "ENOENT" },
+  );
   assert.equal(
     packageJson.dependencies?.["@remotion/renderer"],
     rootPackageJson.pnpm?.overrides?.["@remotion/*"],

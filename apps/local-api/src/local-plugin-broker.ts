@@ -1,12 +1,19 @@
+import { isDeepStrictEqual } from "node:util";
+
 import {
   executablePluginDependencyError,
   type PluginBroker,
 } from "./runtime/host/lib/actions-loader.js";
-import { ExecutablePluginBrokerResolvedReferenceSchema } from "@clash/shared-types";
+import {
+  ExecutablePluginBrokerResolvedReferenceSchema,
+  ExecutableSpeechTranscriptionResultSchema,
+} from "@clash/shared-types";
 import type {
   AssetKind,
   ExecutablePluginAssetHandle,
   ExecutablePluginJsonValue,
+  ExecutableSpeechTranscriptionReference,
+  ExecutableSpeechTranscriptionResult,
 } from "@clash/shared-types";
 
 import type { RuntimeProviderAccountAvailability } from "./provider-accounts.js";
@@ -23,7 +30,8 @@ export interface LocalPluginBrokerAuditRecord {
     | "asset.upload-slot"
     | "store.get"
     | "store.put"
-    | "codex.image.generate";
+    | "codex.image.generate"
+    | "speech.transcribe";
   target: string;
   status: "ok" | "error";
   error?: string;
@@ -35,6 +43,15 @@ export interface LocalPluginBrokerResolvedAsset {
   mediaType?: string;
   bytes: Uint8Array;
   providerUrl?: { providerUrl: string; expiresAt: string };
+}
+
+export interface LocalExecutorAssetCapability {
+  executorUrl: string;
+  expiresAt: string;
+  kind: AssetKind;
+  mediaType?: string;
+  /** Revokes the opaque URL. The broker binds this to the outer invocation terminal event. */
+  release: () => Promise<void> | void;
 }
 
 export class LocalPluginBrokerAuthorizationError extends Error {
@@ -54,6 +71,31 @@ export interface LocalExecutablePluginBrokerOptions {
     assetId: string;
     projectId: string;
   }) => Promise<LocalPluginBrokerResolvedAsset>;
+  /**
+   * Open a read-only URL reachable from the active plugin execution realm.
+   *
+   * Asset identity is already authorized against the frozen invocation before this is called.
+   * The issuer resolves immutable Resource bytes privately; neither paths nor storage keys cross
+   * this interface.
+   */
+  openExecutorAsset?: (input: {
+    pluginId: string;
+    pluginVersion: string;
+    projectId: string;
+    invocationId: string;
+    assetId: string;
+    kind: AssetKind;
+    mediaType?: string;
+  }) => Promise<LocalExecutorAssetCapability>;
+  readDocument?: (input: {
+    documentAssetId: string;
+    revisionId: string;
+    projectId: string;
+  }) => Promise<{
+    documentKind: string;
+    schemaVersion: number;
+    body: ExecutablePluginJsonValue;
+  }>;
   /** Publish one immutable Resource when the binding requires a URL and no reusable one exists. */
   publishAsset?: (input: {
     pluginId: string;
@@ -141,6 +183,15 @@ export interface LocalExecutablePluginBrokerOptions {
       bytes: Uint8Array;
     }>;
   }) => Promise<{ mediaType: string; bytes: Uint8Array }>;
+  transcribeSpeech?: (input: {
+    projectId: string;
+    invocationId: string;
+    taskId: string;
+    reference: ExecutableSpeechTranscriptionReference;
+    modelId: string;
+    language?: string;
+    poll?: ExecutablePluginJsonValue;
+  }) => Promise<ExecutableSpeechTranscriptionResult>;
   audit?: (record: LocalPluginBrokerAuditRecord) => Promise<void> | void;
   now?: () => number;
 }
@@ -151,9 +202,13 @@ function requestTarget(
   if (operation.kind === "store.get" || operation.kind === "store.put")
     return operation.key;
   if (operation.kind === "asset.resolve") {
-    return "asset" in operation.reference
-      ? operation.reference.asset.assetId
-      : `${operation.reference.slot}:${operation.reference.index}`;
+    if ("asset" in operation.reference) {
+      return operation.reference.asset.assetId;
+    }
+    if ("document" in operation.reference) {
+      return `${operation.reference.document.documentAssetId}/${operation.reference.document.revisionId}`;
+    }
+    return `${operation.reference.slot}:${operation.reference.index}`;
   }
   if (
     operation.kind === "asset.write" ||
@@ -161,6 +216,9 @@ function requestTarget(
   )
     return operation.slot;
   if (operation.kind === "codex.image.generate") return "codex.imagegen";
+  if (operation.kind === "speech.transcribe") {
+    return operation.reference.asset.assetId;
+  }
   throw new Error(
     `Unsupported plugin broker operation ${String(
       (operation as unknown as { kind?: unknown }).kind,
@@ -173,7 +231,56 @@ export function createLocalExecutablePluginBroker(
 ): PluginBroker {
   const now = options.now ?? Date.now;
 
-  return async (request, context) => {
+  interface InvocationLeases {
+    opening: number;
+    terminal: boolean;
+    releases: Set<() => Promise<void>>;
+  }
+  const invocationLeases = new Map<string, InvocationLeases>();
+
+  const leaseState = (invocationId: string): InvocationLeases => {
+    const existing = invocationLeases.get(invocationId);
+    if (existing) return existing;
+    const created: InvocationLeases = {
+      opening: 0,
+      terminal: false,
+      releases: new Set(),
+    };
+    invocationLeases.set(invocationId, created);
+    return created;
+  };
+
+  const once = (release: () => Promise<void> | void): (() => Promise<void>) => {
+    let released = false;
+    return async () => {
+      if (released) return;
+      released = true;
+      await release();
+    };
+  };
+
+  const registerCapability = async (
+    invocationId: string,
+    state: InvocationLeases,
+    release: () => Promise<void> | void,
+  ): Promise<() => Promise<void>> => {
+    const releaseOnce = once(release);
+    if (state.terminal) {
+      await releaseOnce().catch(() => undefined);
+    } else {
+      state.releases.add(releaseOnce);
+    }
+    return releaseOnce;
+  };
+
+  const finishOpening = (invocationId: string, state: InvocationLeases) => {
+    state.opening -= 1;
+    if (state.terminal && state.opening === 0 && state.releases.size === 0) {
+      invocationLeases.delete(invocationId);
+    }
+  };
+
+  const broker: PluginBroker = async (request, context) => {
     const target = requestTarget(request.operation);
     const dependencyError = executablePluginDependencyError(
       context.manifest,
@@ -213,15 +320,54 @@ export function createLocalExecutablePluginBroker(
           await audit("ok");
           return result;
         }
-        if (!options.readAsset)
-          throw new Error("Local asset broker is unavailable.");
+        if ("document" in operation.reference) {
+          const reference = operation.reference;
+          const authorized = context.invocation.input.references.some(
+            (candidate) =>
+              "document" in candidate &&
+              candidate.slot === reference.slot &&
+              candidate.index === reference.index &&
+              candidate.document.documentAssetId ===
+                reference.document.documentAssetId &&
+              candidate.document.revisionId === reference.document.revisionId &&
+              candidate.document.documentKind ===
+                reference.document.documentKind &&
+              candidate.document.schemaVersion ===
+                reference.document.schemaVersion,
+          );
+          if (!authorized) {
+            throw new LocalPluginBrokerAuthorizationError(
+              reference.slot,
+              reference.index,
+            );
+          }
+          if (!options.readDocument) {
+            throw new Error("Local Document broker is unavailable.");
+          }
+          const document = await options.readDocument({
+            projectId: context.invocation.projectId,
+            documentAssetId: reference.document.documentAssetId,
+            revisionId: reference.document.revisionId,
+          });
+          if (
+            document.documentKind !== reference.document.documentKind ||
+            document.schemaVersion !== reference.document.schemaVersion
+          ) {
+            throw new Error(
+              `Document ${reference.document.documentAssetId}/${reference.document.revisionId} no longer matches its frozen kind contract.`,
+            );
+          }
+          result = ExecutablePluginBrokerResolvedReferenceSchema.parse({
+            form: "document",
+            ...document,
+          });
+          await audit("ok");
+          return result;
+        }
         const reference = operation.reference;
         const authorized = context.invocation.input.references.some(
           (candidate) =>
-            "asset" in candidate &&
-            candidate.slot === reference.slot &&
-            candidate.asset.assetId === reference.asset.assetId &&
-            candidate.asset.kind === reference.asset.kind,
+            "asset" in candidate && isDeepStrictEqual(candidate, reference),
         );
         if (!authorized) {
           throw new LocalPluginBrokerAuthorizationError(
@@ -229,6 +375,104 @@ export function createLocalExecutablePluginBroker(
             reference.index,
           );
         }
+        const executorDeliveries = context.invocation.assetInputs.filter(
+          (entry) => {
+            const kindMatches =
+              !entry.match.kinds?.length ||
+              entry.match.kinds.includes(reference.asset.kind);
+            const slotMatches =
+              !entry.match.slots?.length ||
+              entry.match.slots.includes(reference.slot);
+            const frozenMediaTypeMatches =
+              !entry.mediaTypes?.length ||
+              !reference.asset.mediaType ||
+              entry.mediaTypes.includes(reference.asset.mediaType);
+            return (
+              kindMatches &&
+              slotMatches &&
+              frozenMediaTypeMatches &&
+              entry.representations.includes("executor-url")
+            );
+          },
+        );
+        if (executorDeliveries.length > 0 && options.openExecutorAsset) {
+          const state = leaseState(context.invocation.invocationId);
+          state.opening += 1;
+          let capability: LocalExecutorAssetCapability | undefined;
+          let releaseCapability: (() => Promise<void>) | undefined;
+          try {
+            capability = await options.openExecutorAsset({
+              pluginId: context.manifest.id,
+              pluginVersion: context.manifest.version,
+              projectId: context.invocation.projectId,
+              invocationId: context.invocation.invocationId,
+              assetId: reference.asset.assetId,
+              kind: reference.asset.kind,
+              ...(reference.asset.mediaType
+                ? { mediaType: reference.asset.mediaType }
+                : {}),
+            });
+            releaseCapability = await registerCapability(
+              context.invocation.invocationId,
+              state,
+              capability.release,
+            );
+            if (capability.kind !== reference.asset.kind) {
+              await releaseCapability().catch(() => undefined);
+              state.releases.delete(releaseCapability);
+              throw new Error(
+                `Asset ${reference.asset.assetId} kind ${capability.kind} does not match ${reference.asset.kind}.`,
+              );
+            }
+            if (
+              reference.asset.mediaType &&
+              capability.mediaType &&
+              capability.mediaType !== reference.asset.mediaType
+            ) {
+              await releaseCapability().catch(() => undefined);
+              state.releases.delete(releaseCapability);
+              throw new Error(
+                `Asset ${reference.asset.assetId} media type ${capability.mediaType} does not match ${reference.asset.mediaType}.`,
+              );
+            }
+            const delivery = executorDeliveries.find(
+              (entry) =>
+                !entry.mediaTypes?.length ||
+                (!!capability?.mediaType &&
+                  entry.mediaTypes.includes(capability.mediaType)),
+            );
+            if (!delivery) {
+              await releaseCapability().catch(() => undefined);
+              state.releases.delete(releaseCapability);
+              throw new Error(
+                `Provider binding declares no delivery for ${reference.slot} ${capability.kind}` +
+                  `${capability.mediaType ? ` (${capability.mediaType})` : ""}.`,
+              );
+            }
+            result = ExecutablePluginBrokerResolvedReferenceSchema.parse({
+              form: "executor-url",
+              executorUrl: capability.executorUrl,
+              expiresAt: capability.expiresAt,
+              kind: capability.kind,
+              ...(capability.mediaType
+                ? { mediaType: capability.mediaType }
+                : {}),
+            });
+            await audit("ok");
+            return result;
+          } catch (error) {
+            if (capability && !releaseCapability) {
+              await Promise.resolve(capability.release()).catch(
+                () => undefined,
+              );
+            }
+            throw error;
+          } finally {
+            finishOpening(context.invocation.invocationId, state);
+          }
+        }
+        if (!options.readAsset)
+          throw new Error("Local asset broker is unavailable.");
         const asset = await options.readAsset({
           assetId: reference.asset.assetId,
           projectId: context.invocation.projectId,
@@ -303,6 +547,40 @@ export function createLocalExecutablePluginBroker(
             `Provider binding requires a public URL for ${reference.slot}, but the Host cannot provide one.`,
           );
         }
+      } else if (operation.kind === "speech.transcribe") {
+        if (context.manifest.id !== "clash.asr") {
+          throw new Error(
+            "The speech transcription Host tool is reserved for clash.asr.",
+          );
+        }
+        if (!options.transcribeSpeech) {
+          throw new Error(
+            "Speech transcription is unavailable in this Clash runtime.",
+          );
+        }
+        const authorized = context.invocation.input.references.some(
+          (candidate) => isDeepStrictEqual(candidate, operation.reference),
+        );
+        if (!authorized) {
+          throw new LocalPluginBrokerAuthorizationError(
+            operation.reference.slot,
+            operation.reference.index,
+          );
+        }
+        const transcription = ExecutableSpeechTranscriptionResultSchema.parse(
+          await options.transcribeSpeech({
+            projectId: context.invocation.projectId,
+            invocationId: context.invocation.invocationId,
+            taskId: context.invocation.taskId,
+            reference: operation.reference,
+            modelId: operation.modelId,
+            ...(operation.language === undefined
+              ? {}
+              : { language: operation.language }),
+            ...(operation.poll === undefined ? {} : { poll: operation.poll }),
+          }),
+        );
+        result = transcription as ExecutablePluginJsonValue;
       } else if (operation.kind === "store.get") {
         if (!options.storeGet)
           throw new Error("Local plugin store is unavailable.");
@@ -507,4 +785,16 @@ export function createLocalExecutablePluginBroker(
       throw error;
     }
   };
+
+  broker.releaseInvocation = async (invocationId) => {
+    const state = invocationLeases.get(invocationId);
+    if (!state || state.terminal) return;
+    state.terminal = true;
+    const releases = [...state.releases];
+    state.releases.clear();
+    await Promise.allSettled(releases.map((release) => release()));
+    if (state.opening === 0) invocationLeases.delete(invocationId);
+  };
+
+  return broker;
 }

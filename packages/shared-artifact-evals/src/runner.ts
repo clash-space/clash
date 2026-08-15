@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   chmod,
   cp,
+  lstat,
   mkdir,
   mkdtemp,
   open,
@@ -16,6 +17,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { createServer } from "node:http";
 import {
   basename,
   delimiter,
@@ -26,37 +28,100 @@ import {
   resolve,
   sep,
 } from "node:path";
-import { createConnection } from "node:net";
+import {
+  createConnection,
+  createServer as createNetServer,
+  type Socket,
+} from "node:net";
 import { fileURLToPath } from "node:url";
 import type { ProjectHostResponse } from "@clash/shared-runtime/project-host-client";
+import { createProjectAssetHttpClient } from "@clash/asset-sdk";
 import {
   DirectorStageStateSchema,
   projectDirectorStageReadToken,
+  type ActionAssetBinding,
   type ProjectDirectorStage,
 } from "@clash/shared-types";
 
 import { loadSubmission } from "./artifacts";
-import { evaluateSubmission } from "./evaluator";
+import { writeAtifTrajectory } from "./atif";
+import {
+  verifyBenchmarkAttempt,
+  writeBenchmarkAttempt,
+  type BenchmarkAttemptReceipt,
+  type BenchmarkAttemptVerification,
+} from "./attempt-manifest";
+import { writeBenchmarkTaskManifest } from "./benchmark-task";
+import { createBenchmarkEvaluationPipeline } from "./evaluation-pipeline";
+import {
+  parseEvaluationRecord,
+  writeAggregateRecord,
+  writeEvaluationRecord,
+  writeRewardRecord,
+  type BenchmarkEvaluationEvidenceReference,
+  type BenchmarkEvaluationRecord,
+  type EvaluationRecordReceipt,
+} from "./evaluation-records";
+import { directorStageArtifactState, evaluateSubmission } from "./evaluator";
+import {
+  captureBenchmarkWorkspaceScaffold,
+  removeVerifiedBenchmarkWorkspaceScaffold,
+  writeBenchmarkAttemptCapture,
+  type BenchmarkModifiedWorkspaceCapture,
+  type BenchmarkWorkspaceScaffoldReceipt,
+} from "./environment";
+import {
+  captureBenchmarkExecutionLock,
+  verifyBenchmarkExecutionLock,
+  type BenchmarkExecutionLockReceipt,
+} from "./environment-lock";
 import {
   installBenchmarkInputFixture,
+  verifyBenchmarkInputFixture,
   writeBenchmarkInputFixtureReceipt,
+  type BenchmarkFixtureIntegrityReport,
 } from "./fixture";
 import {
   enforceBenchmarkIdentityIntegrity,
   inspectBenchmarkIdentityIntegrity,
 } from "./identity-integrity";
+import {
+  createRunnerMcpTraceRecorder,
+  readRunnerSealedMcpInvocations,
+} from "./mcp-evidence";
 import { createOutcomeResult, renderOutcomeMarkdown } from "./outcome";
+import {
+  codexQualityJudgeSupportsRequest,
+  runCodexQualityJudge,
+} from "./quality-review-codex";
+import {
+  createQualityReviewRequest,
+  evaluateQualityReview,
+} from "./quality-review";
 import {
   effectiveMcpToolName,
   formatCliInvocation,
+  matchForbiddenProductOperations,
   matchRequiredProductOperations,
+  mcpToolForCliInvocation,
 } from "./product-operations";
 import { writeSuiteGallery } from "./report";
+import {
+  writeBenchmarkResultBundle,
+  type BenchmarkResultBundleReceipt,
+} from "./result-bundle";
 import { ArtifactBenchmarkSuiteSchema } from "./schemas";
+import {
+  publishContentAddressedFile,
+  verifyWorkspaceBundleDirectory,
+} from "@clash/shared-runtime";
 import { captureObservedOutput, writeNormalizedTrajectory } from "./trajectory";
 import {
+  captureAssetProductReadback,
   captureRemotionProductReadback,
   captureTimelineProductReadback,
+  mixedProductLineageProjectAssetIds,
+  type AssetProductReadbackReport,
   type RemotionProductReadbackReport,
   type TimelineProductReadbackReport,
 } from "./product-readback";
@@ -76,12 +141,15 @@ import type {
   BenchmarkCaseFailure,
   BenchmarkCaseReport,
   BenchmarkInputFixtureProvenance,
+  BenchmarkQualityReviewer,
   BenchmarkSuiteReport,
   ClaudeAgent,
   CodexAgent,
   OutcomeResult,
   PiAgent,
   ProductExecutionReport,
+  QualityReviewReport,
+  QualityReviewResult,
   RunBenchmarkSuiteInput,
   ReevaluateBenchmarkRunInput,
 } from "./types";
@@ -95,6 +163,21 @@ class BenchmarkInfrastructureError extends Error {
     super(message, options);
     this.name = "BenchmarkInfrastructureError";
     this.phase = phase;
+  }
+}
+
+class BenchmarkPostAgentInfrastructureError extends BenchmarkInfrastructureError {
+  readonly agent: AgentRunReport;
+
+  constructor(error: unknown, agent: AgentRunReport) {
+    const message = error instanceof Error ? error.message : String(error);
+    super(
+      error instanceof BenchmarkInfrastructureError ? error.phase : "runner",
+      message,
+      { cause: error },
+    );
+    this.name = "BenchmarkPostAgentInfrastructureError";
+    this.agent = agent;
   }
 }
 
@@ -162,17 +245,20 @@ type DirectorReadbackReport = {
     stateSha256: string;
     frames: Array<{
       artifactId: string;
+      projectAssetId?: string;
       sha256: string;
       timeSeconds: number;
       aspectRatio: string;
       width: number;
       height: number;
+      outputBinding: ActionAssetBinding;
     }>;
   }>;
   imageMatches: Array<{
     artifactId: string;
     stageId: string;
     captureArtifactId: string;
+    projectAssetId?: string;
     sha256: string;
   }>;
   detail: string;
@@ -184,20 +270,27 @@ type CombinedProductReadbackReport = {
   projectId: string | null;
   matchedArtifactIds: string[];
   reports: Array<
+    | AssetProductReadbackReport
     | DirectorReadbackReport
     | RemotionProductReadbackReport
     | TimelineProductReadbackReport
   >;
+  mixedLineage?: {
+    projectAssetIds: string[];
+  };
   detail: string;
 };
 
+type ProductReadbackReport =
+  | AssetProductReadbackReport
+  | DirectorReadbackReport
+  | RemotionProductReadbackReport
+  | TimelineProductReadbackReport;
+
 type TrustedProductReadback = {
-  report:
-    | DirectorReadbackReport
-    | RemotionProductReadbackReport
-    | TimelineProductReadbackReport
-    | CombinedProductReadbackReport;
+  report: ProductReadbackReport | CombinedProductReadbackReport;
   receiptPath:
+    | "asset-readback.json"
     | "director-readback.json"
     | "remotion-readback.json"
     | "timeline-readback.json"
@@ -303,16 +396,901 @@ class BenchmarkProcessScope {
   }
 }
 
-async function assertSnapshotTree(path: string): Promise<void> {
+type TrustedCliProxy = {
+  agentCliPath: string;
+  close(): Promise<void>;
+};
+
+type TrustedMcpRelay = {
+  runtimePath: string;
+  close(): Promise<void>;
+};
+
+type AgentClashAccess = {
+  sandboxRoots: string[];
+  mcp?: {
+    runtimePath: string;
+    pluginRoot: string;
+  };
+  cli?: {
+    agentCliPath: string;
+  };
+};
+
+const BENCHMARK_IDENTITY_ENVIRONMENT_KEYS = [
+  "CLASH_SESSION_AS_LOCAL_USER",
+  "CLASH_AGENT_MEMBER_ID",
+  "CLASH_AGENT_NAME",
+] as const;
+
+function sanitizedBenchmarkEnvironment(
+  source: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  const environment = { ...source };
+  for (const key of BENCHMARK_IDENTITY_ENVIRONMENT_KEYS) {
+    delete environment[key];
+  }
+  return environment;
+}
+
+type TrustedCliProxyResult = {
+  pid: number | null;
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+  stdoutBase64: string;
+  stderrBase64: string;
+  error?: string;
+};
+
+type SealedCliInvocation = {
+  argv: string[];
+  origin?: "mcp-transport";
+  succeeded: boolean;
+};
+
+function sameStringArray(left: string[], right: string[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((argument, index) => argument === right[index])
+  );
+}
+
+function parseSealedCliInvocations(traceText: string):
+  | {
+      eventCount: number;
+      invocations: SealedCliInvocation[];
+    }
+  | undefined {
+  type StartedEvent = {
+    invocationId: string;
+    startedAt: string;
+    pid: number | null;
+    parentPid: number;
+    cwd: string;
+    argv: string[];
+    origin?: "mcp-transport";
+  };
+  type PendingPair = {
+    started: StartedEvent;
+    completed: boolean;
+    succeeded: boolean;
+  };
+
+  const pairs = new Map<string, PendingPair>();
+  let eventCount = 0;
+  for (const line of traceText.split(/\r?\n/u)) {
+    if (!line.trim()) continue;
+    eventCount += 1;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line) as unknown;
+    } catch {
+      return undefined;
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return undefined;
+    }
+    const event = parsed as Record<string, unknown>;
+    if (
+      (event.type !== "clash.cli.started" &&
+        event.type !== "clash.cli.completed") ||
+      typeof event.invocationId !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
+        event.invocationId,
+      ) ||
+      typeof event.startedAt !== "string" ||
+      !Number.isFinite(Date.parse(event.startedAt)) ||
+      !(
+        event.pid === null ||
+        (Number.isSafeInteger(event.pid) && (event.pid as number) > 0)
+      ) ||
+      !Number.isSafeInteger(event.parentPid) ||
+      (event.parentPid as number) <= 0 ||
+      typeof event.cwd !== "string" ||
+      !isAbsolute(event.cwd) ||
+      !Array.isArray(event.argv) ||
+      !event.argv.every((argument) => typeof argument === "string") ||
+      (event.origin !== undefined && event.origin !== "mcp-transport")
+    ) {
+      return undefined;
+    }
+    const common: StartedEvent = {
+      invocationId: event.invocationId,
+      startedAt: event.startedAt,
+      pid: event.pid as number | null,
+      parentPid: event.parentPid as number,
+      cwd: event.cwd,
+      argv: event.argv as string[],
+      ...(event.origin === "mcp-transport"
+        ? { origin: "mcp-transport" as const }
+        : {}),
+    };
+    if (event.type === "clash.cli.started") {
+      if (pairs.has(common.invocationId)) return undefined;
+      pairs.set(common.invocationId, {
+        started: common,
+        completed: false,
+        succeeded: false,
+      });
+      continue;
+    }
+
+    const pair = pairs.get(common.invocationId);
+    if (
+      !pair ||
+      pair.completed ||
+      pair.started.startedAt !== common.startedAt ||
+      pair.started.pid !== common.pid ||
+      pair.started.parentPid !== common.parentPid ||
+      pair.started.cwd !== common.cwd ||
+      pair.started.origin !== common.origin ||
+      !sameStringArray(pair.started.argv, common.argv) ||
+      typeof event.finishedAt !== "string" ||
+      !Number.isFinite(Date.parse(event.finishedAt)) ||
+      (event.exitCode !== null && !Number.isSafeInteger(event.exitCode)) ||
+      (event.signal !== null && typeof event.signal !== "string") ||
+      (event.error !== undefined && typeof event.error !== "string")
+    ) {
+      return undefined;
+    }
+    pair.completed = true;
+    pair.succeeded =
+      event.exitCode === 0 &&
+      event.signal === null &&
+      event.error === undefined;
+  }
+  if ([...pairs.values()].some((pair) => !pair.completed)) return undefined;
+  return {
+    eventCount,
+    invocations: [...pairs.values()].map((pair) => ({
+      argv: pair.started.argv,
+      ...(pair.started.origin ? { origin: pair.started.origin } : {}),
+      succeeded: pair.succeeded,
+    })),
+  };
+}
+
+const TRUSTED_CLI_PREFIXES_BY_OPERATION: Record<
+  string,
+  readonly (readonly string[])[]
+> = {
+  "asset.get": [["assets", "get"]],
+  "asset.import": [["assets", "import"]],
+  "asset.list": [["assets", "list"]],
+  "asset.restore": [["assets", "restore"]],
+  "asset.trash": [["assets", "delete"]],
+  "canvas.add": [["canvas", "add"]],
+  "canvas.get": [["canvas", "get"]],
+  "canvas.update": [["canvas", "update"]],
+  "director.capture": [["director", "capture"]],
+  "director.create": [["director", "create"]],
+  "director.get": [["director", "pull"]],
+  "director.mutate": [
+    ["director", "apply"],
+    ["director", "object"],
+    ["director", "camera"],
+    ["director", "scene"],
+    ["director", "keyframe"],
+    ["director", "action"],
+  ],
+  "timeline.create": [["timeline", "create"]],
+  "timeline.get": [["timeline", "pull"]],
+  "timeline.render": [["timeline", "render"]],
+  "timeline.save": [["timeline", "apply"]],
+  "timeline.validate": [["timeline", "validate"]],
+};
+
+const TRUSTED_CLI_PATH_FLAGS = new Set([
+  "--file",
+  "--out",
+  "--output",
+  "--output-dir",
+]);
+
+const TRUSTED_CLI_GROUP_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  assets: ["assets", "asset"],
+};
+
+function trustedCliGroupSpellings(group: string): readonly string[] {
+  return TRUSTED_CLI_GROUP_ALIASES[group] ?? [group];
+}
+
+const TRUSTED_CLI_NAVIGATION_GROUPS = new Set(
+  Object.values(TRUSTED_CLI_PREFIXES_BY_OPERATION).flatMap((prefixes) =>
+    prefixes.flatMap((prefix) => trustedCliGroupSpellings(prefix[0]!)),
+  ),
+);
+
+function isTrustedCliNavigation(argv: string[]): boolean {
+  return (
+    (argv.length === 1 && argv[0] === "--help") ||
+    (argv.length === 2 &&
+      argv[1] === "--help" &&
+      TRUSTED_CLI_NAVIGATION_GROUPS.has(argv[0]!))
+  );
+}
+
+const TRUSTED_DIRECTOR_SCHEMA_CONTRACTS = new Set([
+  "state",
+  "object",
+  "camera",
+]);
+
+function isTrustedDirectorSchemaDiscovery(argv: string[]): boolean {
+  if (argv[0] !== "director" || argv[1] !== "schema") return false;
+  if (argv.length === 3) {
+    return argv[2] === "--help" || argv[2] === "--json";
+  }
+  return (
+    argv.length === 5 &&
+    argv[2] === "--contract" &&
+    TRUSTED_DIRECTOR_SCHEMA_CONTRACTS.has(argv[3]!) &&
+    argv[4] === "--json"
+  );
+}
+
+function isTrustedTimelineSchemaDiscovery(argv: string[]): boolean {
+  return (
+    argv[0] === "timeline" &&
+    argv[1] === "schema" &&
+    argv.length === 3 &&
+    (argv[2] === "--help" || argv[2] === "--json")
+  );
+}
+
+function benchmarkRequiresDirectorOperation(
+  benchmark: ArtifactBenchmarkCase,
+): boolean {
+  return [
+    ...(benchmark.execution?.requiredProductOperations ?? []),
+    ...(benchmark.execution?.forbiddenProductOperations ?? []),
+  ].some((operation) => operation.startsWith("director."));
+}
+
+function benchmarkRequiresTimelineOperation(
+  benchmark: ArtifactBenchmarkCase,
+): boolean {
+  return [
+    ...(benchmark.execution?.requiredProductOperations ?? []),
+    ...(benchmark.execution?.forbiddenProductOperations ?? []),
+  ].some((operation) => operation.startsWith("timeline."));
+}
+
+function trustedCliPrefixes(
+  benchmark: ArtifactBenchmarkCase,
+): readonly (readonly string[])[] {
+  const canonicalPrefixes = [
+    ...(benchmark.execution?.requiredProductOperations ?? []).flatMap(
+      (operation) => TRUSTED_CLI_PREFIXES_BY_OPERATION[operation] ?? [],
+    ),
+    ...(benchmark.execution?.forbiddenProductOperations ?? []).flatMap(
+      (operation) => TRUSTED_CLI_PREFIXES_BY_OPERATION[operation] ?? [],
+    ),
+    ...(benchmarkRequiresTimelineOperation(benchmark)
+      ? (TRUSTED_CLI_PREFIXES_BY_OPERATION["timeline.validate"] ?? [])
+      : []),
+    ...(benchmark.execution?.requiredCliCommands ?? []).map((command) =>
+      command.split(" "),
+    ),
+  ];
+  return canonicalPrefixes.flatMap(([group, ...rest]) =>
+    trustedCliGroupSpellings(group!).map((spelling) => [spelling, ...rest]),
+  );
+}
+
+function assertTrustedCliPrefix(
+  argv: string[],
+  prefixes: readonly (readonly string[])[],
+  allowDirectorSchemaDiscovery: boolean,
+  allowTimelineSchemaDiscovery: boolean,
+): void {
+  if (isTrustedCliNavigation(argv)) return;
+  const isDirectorSchema = argv[0] === "director" && argv[1] === "schema";
+  const isTimelineSchema = argv[0] === "timeline" && argv[1] === "schema";
+  const isSchemaDiscovery = isDirectorSchema || isTimelineSchema;
+  const isAllowedSchemaDiscovery =
+    (isDirectorSchema &&
+      allowDirectorSchemaDiscovery &&
+      isTrustedDirectorSchemaDiscovery(argv)) ||
+    (isTimelineSchema &&
+      allowTimelineSchemaDiscovery &&
+      isTrustedTimelineSchemaDiscovery(argv));
+  if (
+    (isSchemaDiscovery && !isAllowedSchemaDiscovery) ||
+    (!isSchemaDiscovery &&
+      !prefixes.some((prefix) =>
+        prefix.every((argument, index) => argv[index] === argument),
+      ))
+  ) {
+    throw new Error(
+      `Trusted Clash CLI proxy rejected a command outside this benchmark case: ${formatCliInvocation(argv)}`,
+    );
+  }
+}
+
+async function assertTrustedCliWorkspacePath(input: {
+  workspace: string;
+  cwd: string;
+  value: string;
+}): Promise<void> {
+  if (!input.value || input.value.includes("\0"))
+    throw new Error("Trusted Clash CLI proxy path is invalid");
+  const candidate = resolve(input.cwd, input.value);
+  const local = relative(input.workspace, candidate);
+  if (local === ".." || local.startsWith(`..${sep}`) || isAbsolute(local)) {
+    throw new Error("Trusted Clash CLI proxy path must remain in workspace");
+  }
+  let current = input.workspace;
+  for (const segment of local.split(sep).filter(Boolean)) {
+    current = join(current, segment);
+    try {
+      const metadata = await lstat(current);
+      if (metadata.isSymbolicLink()) {
+        throw new Error(
+          "Trusted Clash CLI proxy path must not traverse a symbolic link",
+        );
+      }
+    } catch (error) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "ENOENT"
+      )
+        return;
+      throw error;
+    }
+  }
+}
+
+async function assertTrustedCliPaths(
+  workspace: string,
+  cwd: string,
+  argv: string[],
+): Promise<void> {
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index]!;
+    if (TRUSTED_CLI_PATH_FLAGS.has(argument)) {
+      const value = argv[index + 1];
+      if (!value)
+        throw new Error(`Trusted Clash CLI proxy ${argument} requires a path`);
+      await assertTrustedCliWorkspacePath({ workspace, cwd, value });
+      index += 1;
+      continue;
+    }
+    const joinedFlag = [...TRUSTED_CLI_PATH_FLAGS].find((flag) =>
+      argument.startsWith(`${flag}=`),
+    );
+    if (joinedFlag) {
+      await assertTrustedCliWorkspacePath({
+        workspace,
+        cwd,
+        value: argument.slice(joinedFlag.length + 1),
+      });
+      continue;
+    }
+    if (
+      isAbsolute(argument) ||
+      argument === ".." ||
+      argument.startsWith(`..${sep}`) ||
+      argument.startsWith(`.${sep}`)
+    ) {
+      await assertTrustedCliWorkspacePath({
+        workspace,
+        cwd,
+        value: argument,
+      });
+    }
+  }
+}
+
+async function readTrustedCliProxyRequest(
+  request: import("node:http").IncomingMessage,
+): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.byteLength;
+    if (bytes > 64 * 1024) {
+      throw new Error("Trusted Clash CLI proxy request is too large");
+    }
+    chunks.push(buffer);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+}
+
+function trustedCliCwd(workspace: string, candidate: string): Promise<string> {
+  if (!isAbsolute(candidate)) {
+    throw new Error("Trusted Clash CLI proxy cwd must be absolute");
+  }
+  return realpath(candidate).then((resolved) => {
+    if (resolved !== workspace)
+      throw new Error("Trusted Clash CLI proxy cwd must be the workspace root");
+    return resolved;
+  });
+}
+
+async function executeTrustedCli(input: {
+  cliPath: string;
+  argv: string[];
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+  processScope: BenchmarkProcessScope;
+  activeChildren: Set<ChildProcess>;
+  onSpawn(child: ChildProcess): void;
+}): Promise<TrustedCliProxyResult> {
+  return await new Promise<TrustedCliProxyResult>((resolveResult) => {
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    let child: ChildProcess;
+    try {
+      child = input.processScope.track(
+        spawn(input.cliPath, input.argv, {
+          cwd: input.cwd,
+          env: input.env,
+          shell: false,
+          stdio: ["ignore", "pipe", "pipe"],
+        }),
+      );
+    } catch (error) {
+      resolveResult({
+        pid: null,
+        exitCode: null,
+        signal: null,
+        stdoutBase64: "",
+        stderrBase64: "",
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    input.activeChildren.add(child);
+    input.onSpawn(child);
+    child.stdout?.on("data", (chunk: Buffer | string) => {
+      stdout.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    child.stderr?.on("data", (chunk: Buffer | string) => {
+      stderr.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    let settled = false;
+    const finish = (result: {
+      exitCode: number | null;
+      signal: NodeJS.Signals | null;
+      error?: string;
+    }): void => {
+      if (settled) return;
+      settled = true;
+      input.activeChildren.delete(child);
+      resolveResult({
+        ...result,
+        pid: child.pid ?? null,
+        stdoutBase64: Buffer.concat(stdout).toString("base64"),
+        stderrBase64: Buffer.concat(stderr).toString("base64"),
+      });
+    };
+    child.once("error", (error) => {
+      finish({ exitCode: null, signal: null, error: error.message });
+    });
+    child.once("close", (exitCode, signal) => {
+      finish({ exitCode, signal });
+    });
+  });
+}
+
+async function startTrustedCliProxy(input: {
+  host: RunningClashHost;
+  benchmark: ArtifactBenchmarkCase;
+  workspace: string;
+  logsRoot: string;
+  processScope: BenchmarkProcessScope;
+}): Promise<TrustedCliProxy> {
+  const tracePath = join(input.logsRoot, "clash-cli-events.jsonl");
+  await writeFile(tracePath, "", { encoding: "utf8", flag: "wx", mode: 0o600 });
+  const allowedPrefixes = trustedCliPrefixes(input.benchmark);
+  const allowDirectorSchemaDiscovery = benchmarkRequiresDirectorOperation(
+    input.benchmark,
+  );
+  const allowTimelineSchemaDiscovery = benchmarkRequiresTimelineOperation(
+    input.benchmark,
+  );
+  const activeChildren = new Set<ChildProcess>();
+  const activeRequests = new Set<Promise<void>>();
+  const events: Array<Record<string, unknown>> = [];
+  let accepting = true;
+  const server = createServer((request, response) => {
+    const task = (async () => {
+      if (!accepting) {
+        response.statusCode = 503;
+        response.end();
+        return;
+      }
+      if (request.method !== "POST" || request.url !== "/invoke") {
+        response.statusCode = 404;
+        response.end();
+        return;
+      }
+      const body = await readTrustedCliProxyRequest(request);
+      if (!body || typeof body !== "object" || Array.isArray(body)) {
+        throw new Error("Trusted Clash CLI proxy request must be an object");
+      }
+      const candidate = body as {
+        argv?: unknown;
+        cwd?: unknown;
+        traceOrigin?: unknown;
+      };
+      if (
+        !Array.isArray(candidate.argv) ||
+        candidate.argv.length > 256 ||
+        !candidate.argv.every(
+          (argument) =>
+            typeof argument === "string" && argument.length <= 16_384,
+        ) ||
+        typeof candidate.cwd !== "string"
+      ) {
+        throw new Error("Trusted Clash CLI proxy argv or cwd is invalid");
+      }
+      if (
+        candidate.traceOrigin !== undefined &&
+        candidate.traceOrigin !== "mcp-transport"
+      ) {
+        throw new Error("Trusted Clash CLI proxy trace origin is invalid");
+      }
+      const cwd = await trustedCliCwd(input.workspace, candidate.cwd);
+      assertTrustedCliPrefix(
+        candidate.argv,
+        allowedPrefixes,
+        allowDirectorSchemaDiscovery,
+        allowTimelineSchemaDiscovery,
+      );
+      await assertTrustedCliPaths(input.workspace, cwd, candidate.argv);
+      const startedAt = new Date().toISOString();
+      const invocationId = randomUUID();
+      const startedMonotonic = process.hrtime.bigint();
+      let startedPid: number | null = null;
+      const cliEnvironment: NodeJS.ProcessEnv = {
+        ...sanitizedBenchmarkEnvironment(process.env),
+        ...clashClientEnvironment(input.host, input.workspace),
+      };
+      delete cliEnvironment.CLASH_CLI_TRACE_PATH;
+      delete cliEnvironment.CLASH_CLI_TRACE_ORIGIN;
+      const result = await executeTrustedCli({
+        cliPath: input.host.agentCliPath,
+        argv: candidate.argv,
+        cwd,
+        env: cliEnvironment,
+        processScope: input.processScope,
+        activeChildren,
+        onSpawn: (child) => {
+          startedPid = child.pid ?? null;
+          events.push({
+            type: "clash.cli.started",
+            invocationId,
+            startedAt,
+            pid: startedPid,
+            parentPid: process.pid,
+            cwd,
+            argv: candidate.argv,
+            ...(candidate.traceOrigin ? { origin: candidate.traceOrigin } : {}),
+          });
+        },
+      });
+      events.push({
+        type: "clash.cli.completed",
+        invocationId,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        durationMs: Number(
+          (process.hrtime.bigint() - startedMonotonic) / 1_000_000n,
+        ),
+        pid: result.pid ?? startedPid,
+        parentPid: process.pid,
+        cwd,
+        argv: candidate.argv,
+        exitCode: result.exitCode,
+        signal: result.signal,
+        ...(result.error ? { error: result.error } : {}),
+        ...(candidate.traceOrigin ? { origin: candidate.traceOrigin } : {}),
+      });
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify(result));
+    })().catch((error) => {
+      response.statusCode = 400;
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    });
+    activeRequests.add(task);
+    void task.finally(() => activeRequests.delete(task));
+  });
+  await new Promise<void>((resolveListening, rejectListening) => {
+    server.once("error", rejectListening);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", rejectListening);
+      resolveListening();
+    });
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    await new Promise<void>((resolveClosed) =>
+      server.close(() => resolveClosed()),
+    );
+    throw new Error("Trusted Clash CLI proxy did not bind a TCP port");
+  }
+  const proxyRoot = join(input.host.runtimeRoot, "trusted-agent-cli");
+  const agentCliPath = join(proxyRoot, "clash");
+  await mkdir(proxyRoot, { recursive: true });
+  await writeFile(
+    agentCliPath,
+    [
+      `#!${process.execPath}`,
+      'const fs = require("node:fs")',
+      `const endpoint = ${JSON.stringify(`http://127.0.0.1:${address.port}/invoke`)}`,
+      ";(async () => {",
+      "const response = await fetch(endpoint, {",
+      'method: "POST",',
+      'headers: {"content-type":"application/json"},',
+      'body: JSON.stringify({argv:process.argv.slice(2),cwd:process.cwd(),...(process.env.CLASH_CLI_TRACE_ORIGIN === "mcp-transport" ? {traceOrigin:"mcp-transport"} : {})}),',
+      "})",
+      "const result = await response.json()",
+      'if (!response.ok) throw new Error(result.error || "Trusted Clash CLI proxy rejected the invocation")',
+      'if (result.stdoutBase64) fs.writeSync(1, Buffer.from(result.stdoutBase64, "base64"))',
+      'if (result.stderrBase64) fs.writeSync(2, Buffer.from(result.stderrBase64, "base64"))',
+      'if (result.error) fs.writeSync(2, Buffer.from(result.error + "\\n"))',
+      "if (result.signal) { process.kill(process.pid, result.signal); return }",
+      "process.exitCode = Number.isInteger(result.exitCode) ? result.exitCode : 1",
+      '})().catch((error) => { fs.writeSync(2, Buffer.from(String(error && error.stack || error) + "\\n")); process.exitCode = 1 })',
+    ].join("\n"),
+    { encoding: "utf8", mode: 0o500 },
+  );
+  let closePromise: Promise<void> | undefined;
+  return {
+    agentCliPath,
+    close: async () => {
+      closePromise ??= (async () => {
+        accepting = false;
+        const serverClosed = new Promise<void>(
+          (resolveClosed, rejectClosed) => {
+            server.close((error) =>
+              error ? rejectClosed(error) : resolveClosed(),
+            );
+          },
+        );
+        server.closeAllConnections();
+        await Promise.all([...activeChildren].map(terminateChildAndWait));
+        await Promise.allSettled([...activeRequests]);
+        await serverClosed;
+        const traceText = events.length
+          ? `${events.map((event) => JSON.stringify(event)).join("\n")}\n`
+          : "";
+        await writeFile(tracePath, traceText, {
+          encoding: "utf8",
+          mode: 0o600,
+        });
+        await writeJson(join(input.logsRoot, "clash-cli-trace-receipt.json"), {
+          schemaVersion: 1,
+          source: "runner-cli-proxy",
+          status: "sealed",
+          caseId: input.benchmark.id,
+          tracePath: "clash-cli-events.jsonl",
+          traceSha256: sha256Bytes(traceText),
+          eventCount: events.length,
+        });
+      })();
+      await closePromise;
+    },
+  };
+}
+
+function observeJsonRpcLines(
+  onMessage: (message: unknown) => void,
+): (chunk: Buffer | string) => void {
+  let buffered = Buffer.alloc(0);
+  return (chunk) => {
+    buffered = Buffer.concat([
+      buffered,
+      Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
+    ]);
+    for (;;) {
+      const newline = buffered.indexOf(0x0a);
+      if (newline < 0) return;
+      const line = buffered
+        .subarray(0, newline)
+        .toString("utf8")
+        .replace(/\r$/u, "");
+      buffered = buffered.subarray(newline + 1);
+      if (!line.trim()) continue;
+      try {
+        onMessage(JSON.parse(line) as unknown);
+      } catch {
+        // The real MCP runtime will reject malformed JSON-RPC independently;
+        // an unparseable line can never create runner-owned call evidence.
+      }
+    }
+  };
+}
+
+async function startTrustedMcpRelay(input: {
+  host: RunningClashHost;
+  benchmark: ArtifactBenchmarkCase;
+  workspace: string;
+  logsRoot: string;
+  processScope: BenchmarkProcessScope;
+}): Promise<TrustedMcpRelay> {
+  const recorder = createRunnerMcpTraceRecorder();
+  const stderr = await open(join(input.logsRoot, "clash-mcp.stderr.log"), "w");
+  const sockets = new Set<Socket>();
+  const children = new Set<ChildProcess>();
+  let accepting = true;
+  const server = createNetServer((socket) => {
+    if (!accepting) {
+      socket.destroy();
+      return;
+    }
+    const sessionId = randomUUID();
+    sockets.add(socket);
+    const environment = {
+      ...sanitizedBenchmarkEnvironment(process.env),
+      ...clashClientEnvironment(input.host, input.workspace),
+    };
+    delete environment.CLASH_CLI_TRACE_PATH;
+    delete environment.CLASH_CLI_TRACE_ORIGIN;
+    let runtime: ChildProcess;
+    try {
+      runtime = input.processScope.track(
+        spawn(process.execPath, [input.host.runtimePath], {
+          cwd: input.host.pluginRoot,
+          env: environment,
+          shell: false,
+          stdio: ["pipe", "pipe", stderr.fd],
+        }),
+      );
+    } catch (error) {
+      socket.destroy(error instanceof Error ? error : new Error(String(error)));
+      return;
+    }
+    children.add(runtime);
+    socket.on(
+      "data",
+      observeJsonRpcLines((message) =>
+        recorder.observeClientMessage(sessionId, message),
+      ),
+    );
+    runtime.stdout?.on(
+      "data",
+      observeJsonRpcLines((message) =>
+        recorder.observeServerMessage(sessionId, message),
+      ),
+    );
+    socket.pipe(runtime.stdin!);
+    runtime.stdout!.pipe(socket);
+    socket.once("error", () => {
+      runtime.stdin?.end();
+    });
+    socket.once("close", () => {
+      sockets.delete(socket);
+      runtime.stdin?.end();
+    });
+    runtime.once("error", (error) => socket.destroy(error));
+    runtime.once("close", () => {
+      children.delete(runtime);
+      socket.end();
+    });
+  });
+  try {
+    await new Promise<void>((resolveListening, rejectListening) => {
+      server.once("error", rejectListening);
+      server.listen(0, "127.0.0.1", () => {
+        server.off("error", rejectListening);
+        resolveListening();
+      });
+    });
+  } catch (error) {
+    await stderr.close();
+    throw error;
+  }
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    await new Promise<void>((resolveClosed) =>
+      server.close(() => resolveClosed()),
+    );
+    await stderr.close();
+    throw new Error("Trusted Clash MCP relay did not bind a TCP port");
+  }
+  const relayRoot = join(input.host.runtimeRoot, "trusted-mcp-relay");
+  const runtimePath = join(relayRoot, "relay.cjs");
+  await mkdir(relayRoot, { recursive: true });
+  await writeFile(
+    runtimePath,
+    [
+      'const net = require("node:net")',
+      `const socket = net.createConnection({host:"127.0.0.1",port:${address.port}})`,
+      "process.stdin.pipe(socket)",
+      "socket.pipe(process.stdout)",
+      'socket.once("error", (error) => { process.stderr.write(String(error && error.stack || error) + "\\n"); process.exitCode = 1 })',
+      'process.stdin.once("error", (error) => socket.destroy(error))',
+    ].join("\n"),
+    { encoding: "utf8", mode: 0o500 },
+  );
+  let closePromise: Promise<void> | undefined;
+  return {
+    runtimePath,
+    close: async () => {
+      closePromise ??= (async () => {
+        accepting = false;
+        const serverClosed = new Promise<void>(
+          (resolveClosed, rejectClosed) => {
+            server.close((error) =>
+              error ? rejectClosed(error) : resolveClosed(),
+            );
+          },
+        );
+        for (const socket of sockets) socket.destroy();
+        await Promise.all([...children].map(terminateChildAndWait));
+        await serverClosed;
+        await stderr.close();
+        await recorder.seal({
+          logsRoot: input.logsRoot,
+          caseId: input.benchmark.id,
+        });
+      })();
+      await closePromise;
+    },
+  };
+}
+
+function isManagedAssetLinkPath(
+  workspaceRoot: string,
+  candidatePath: string,
+): boolean {
+  const managedLinks = join("assets", "links");
+  const candidate = relative(workspaceRoot, candidatePath);
+  return (
+    candidate === managedLinks || candidate.startsWith(`${managedLinks}${sep}`)
+  );
+}
+
+async function assertSnapshotTree(
+  path: string,
+  workspaceRootWithManagedLinks?: string,
+): Promise<void> {
   for (const entry of await readdir(path, { withFileTypes: true })) {
     const entryPath = join(path, entry.name);
+    if (
+      workspaceRootWithManagedLinks &&
+      isManagedAssetLinkPath(workspaceRootWithManagedLinks, entryPath)
+    ) {
+      continue;
+    }
     if (entry.isSymbolicLink()) {
       throw new Error(
         `Workspace snapshot contains a symbolic link: ${entryPath}`,
       );
     }
     if (entry.isDirectory()) {
-      await assertSnapshotTree(entryPath);
+      await assertSnapshotTree(entryPath, workspaceRootWithManagedLinks);
       continue;
     }
     if (!entry.isFile()) {
@@ -323,23 +1301,63 @@ async function assertSnapshotTree(path: string): Promise<void> {
   }
 }
 
-async function publishWorkspaceSnapshot(
+async function publishWorkspaceSnapshot<Result = undefined>(
   source: string,
   destination: string,
-): Promise<void> {
-  await assertSnapshotTree(source);
+  inspect?: (snapshot: string) => Promise<Result>,
+): Promise<Result | undefined> {
+  await assertSnapshotTree(source, source);
   const partial = `${destination}.partial-${process.pid}-${Date.now()}`;
   try {
     await cp(source, partial, {
       recursive: true,
+      dereference: false,
       errorOnExist: true,
+      filter: (entryPath) => !isManagedAssetLinkPath(source, entryPath),
       force: false,
+      verbatimSymlinks: true,
     });
+    await assertSnapshotTree(partial);
+    const result = inspect ? await inspect(partial) : undefined;
+    await assertSnapshotTree(partial);
     await rename(partial, destination);
+    return result;
   } catch (error) {
     await rm(partial, { recursive: true, force: true });
     throw error;
   }
+}
+
+function combineFixtureIntegrityChecks(input: {
+  fileCount: number;
+  postAgent: BenchmarkFixtureIntegrityReport;
+  finalSnapshot: BenchmarkFixtureIntegrityReport;
+}): BenchmarkFixtureIntegrityReport {
+  const changedFiles = [
+    ...new Set([
+      ...input.postAgent.changedFiles,
+      ...input.finalSnapshot.changedFiles,
+    ]),
+  ].sort();
+  const missingFiles = [
+    ...new Set([
+      ...input.postAgent.missingFiles,
+      ...input.finalSnapshot.missingFiles,
+    ]),
+  ].sort();
+  const status =
+    input.postAgent.status === "pass" && input.finalSnapshot.status === "pass"
+      ? "pass"
+      : "fail";
+  return {
+    status,
+    changedFiles,
+    missingFiles,
+    detail:
+      status === "pass"
+        ? `Verified ${input.fileCount} benchmark input fixture file(s) match the installed manifest in the execution workspace after the Agent exited and in the published final workspace snapshot.`
+        : `Benchmark input fixture integrity failed. Execution workspace after the Agent exited: ${input.postAgent.detail} Published final workspace snapshot: ${input.finalSnapshot.detail}`,
+  };
 }
 
 function terminateChild(child: ChildProcess, signal: NodeJS.Signals): void {
@@ -359,22 +1377,38 @@ function terminateChild(child: ChildProcess, signal: NodeJS.Signals): void {
   }
 }
 
+async function terminateResidualProcessGroup(
+  child: ChildProcess,
+): Promise<void> {
+  if (process.platform === "win32" || !child.pid) return;
+  try {
+    process.kill(-child.pid, "SIGTERM");
+  } catch {
+    return;
+  }
+  await delay(25);
+  try {
+    process.kill(-child.pid, "SIGKILL");
+  } catch {
+    // The process group exited after SIGTERM.
+  }
+}
+
 function resolveAgentCommand(
   agent: BenchmarkAgent,
   workspace: string,
   prompt: string,
-  clashHost?: RunningClashHost,
-  cliTracePath?: string,
+  clashAccess?: AgentClashAccess,
 ): { command: string; args: string[] } {
   if (agent.adapter === "codex") {
-    const clashConfig = clashHost
+    const clashConfig = clashAccess?.mcp
       ? [
           "-c",
           `mcp_servers.clash.command=${JSON.stringify(process.execPath)}`,
           "-c",
-          `mcp_servers.clash.args=${JSON.stringify([clashHost.runtimePath])}`,
+          `mcp_servers.clash.args=${JSON.stringify([clashAccess.mcp.runtimePath])}`,
           "-c",
-          `mcp_servers.clash.cwd=${JSON.stringify(clashHost.pluginRoot)}`,
+          `mcp_servers.clash.cwd=${JSON.stringify(clashAccess.mcp.pluginRoot)}`,
           "-c",
           "mcp_servers.clash.enabled=true",
           "-c",
@@ -385,32 +1419,6 @@ function resolveAgentCommand(
           "mcp_servers.clash.tool_timeout_sec=600",
           "-c",
           'mcp_servers.clash.default_tools_approval_mode="approve"',
-          "-c",
-          "sandbox_workspace_write.network_access=true",
-          "-c",
-          `mcp_servers.clash.env.CLASH_PROFILE=${JSON.stringify(clashHost.profile)}`,
-          "-c",
-          `mcp_servers.clash.env.CLASH_HOME=${JSON.stringify(clashHost.clashHome)}`,
-          "-c",
-          `mcp_servers.clash.env.CLASH_LOCAL_DATA_DIR=${JSON.stringify(clashHost.localDataDir)}`,
-          "-c",
-          'mcp_servers.clash.env.CLASH_PLUGIN_HOST_SOCKET=""',
-          "-c",
-          `mcp_servers.clash.env.CLASH_WORKSPACE_ROOT=${JSON.stringify(workspace)}`,
-          "-c",
-          `mcp_servers.clash.env.CLASH_AGENT_MEMBER_ID=${JSON.stringify(clashHost.agentMemberId)}`,
-          "-c",
-          `mcp_servers.clash.env.CLASH_AGENT_NAME=${JSON.stringify(clashHost.agentName)}`,
-          "-c",
-          `mcp_servers.clash.env.CLASH_API_URL=${JSON.stringify(clashHost.endpoint)}`,
-          "-c",
-          `mcp_servers.clash.env.CLASH_CLI_ENTRY_PATH=${JSON.stringify(clashHost.agentCliPath)}`,
-          ...(cliTracePath
-            ? [
-                "-c",
-                `mcp_servers.clash.env.CLASH_CLI_TRACE_PATH=${JSON.stringify(cliTracePath)}`,
-              ]
-            : []),
         ]
       : [];
     const args = [
@@ -419,22 +1427,25 @@ function resolveAgentCommand(
       "--ephemeral",
       "--json",
       "--ignore-user-config",
+      "--disable",
+      "plugins",
+      "--disable",
+      "remote_plugin",
+      "--disable",
+      "recommended_plugins",
       "--strict-config",
       "--ignore-rules",
       "--color",
       "never",
       "--sandbox",
       "workspace-write",
-      ...(clashHost
-        ? [
-            "--add-dir",
-            clashHost.runtimeRoot,
-            "--add-dir",
-            clashHost.persistedClashHome,
-          ]
-        : []),
+      ...(clashAccess?.sandboxRoots.flatMap((root) => ["--add-dir", root]) ??
+        []),
       "-c",
       'approval_policy="never"',
+      ...(clashAccess
+        ? ["-c", "sandbox_workspace_write.network_access=true"]
+        : []),
       "-C",
       workspace,
       ...(agent.model ? ["--model", agent.model] : []),
@@ -445,25 +1456,13 @@ function resolveAgentCommand(
     return { command: agent.command ?? "codex", args };
   }
   if (agent.adapter === "claude") {
-    const mcpConfig = clashHost
+    const mcpConfig = clashAccess?.mcp
       ? JSON.stringify({
           mcpServers: {
             clash: {
               command: process.execPath,
-              args: [clashHost.runtimePath],
-              cwd: clashHost.pluginRoot,
-              env: {
-                CLASH_PROFILE: clashHost.profile,
-                CLASH_HOME: clashHost.clashHome,
-                CLASH_LOCAL_DATA_DIR: clashHost.localDataDir,
-                CLASH_PLUGIN_HOST_SOCKET: "",
-                CLASH_WORKSPACE_ROOT: workspace,
-                CLASH_AGENT_MEMBER_ID: clashHost.agentMemberId,
-                CLASH_AGENT_NAME: clashHost.agentName,
-                CLASH_API_URL: clashHost.endpoint,
-                CLASH_CLI_ENTRY_PATH: clashHost.agentCliPath,
-                ...(cliTracePath ? { CLASH_CLI_TRACE_PATH: cliTracePath } : {}),
-              },
+              args: [clashAccess.mcp.runtimePath],
+              cwd: clashAccess.mcp.pluginRoot,
             },
           },
         })
@@ -477,15 +1476,15 @@ function resolveAgentCommand(
       "--permission-mode",
       "dontAsk",
       "--allowedTools",
-      "Read,Write,Edit,Glob,Grep,Skill,Bash,WebFetch,WebSearch,mcp__clash__*",
+      [
+        "Read,Write,Edit,Glob,Grep,Skill,Bash,WebFetch,WebSearch",
+        ...(clashAccess?.mcp ? ["mcp__clash__*"] : []),
+      ].join(","),
       "--setting-sources",
       "project,local",
-      ...(clashHost
+      ...(clashAccess?.mcp
         ? [
-            "--add-dir",
-            clashHost.runtimeRoot,
-            "--add-dir",
-            clashHost.persistedClashHome,
+            ...clashAccess.sandboxRoots.flatMap((root) => ["--add-dir", root]),
             "--strict-mcp-config",
             "--mcp-config",
             mcpConfig!,
@@ -512,7 +1511,7 @@ function resolveAgentCommand(
       "json",
       "--no-session",
       "--no-extensions",
-      ...(clashHost ? ["--extension", extensionPath] : []),
+      ...(clashAccess?.mcp ? ["--extension", extensionPath] : []),
       "--no-skills",
       "--skill",
       join(workspace, ".agents", "skills"),
@@ -521,6 +1520,7 @@ function resolveAgentCommand(
       "--approve",
       "--thinking",
       "medium",
+      ...(agent.provider ? ["--provider", agent.provider] : []),
       ...(agent.model ? ["--model", agent.model] : []),
       ...(agent.args ?? []),
       prompt,
@@ -534,7 +1534,7 @@ function isolatedAgentEnvironment(
   source: NodeJS.ProcessEnv,
   workspace: string,
 ): NodeJS.ProcessEnv {
-  const env = { ...source };
+  const env = sanitizedBenchmarkEnvironment(source);
   for (const key of Object.keys(env)) {
     if (key === "INIT_CWD" || key === "OLDPWD" || /^(npm|pnpm)_/i.test(key)) {
       delete env[key];
@@ -586,15 +1586,52 @@ function claudeResultError(eventsText: string): string | undefined {
   return resultError;
 }
 
+function codexLifecycleError(eventsText: string): string | undefined {
+  let lifecycleError: string | undefined;
+  for (const line of eventsText.split(/\r?\n/u)) {
+    if (!line.trim()) continue;
+    try {
+      const event = JSON.parse(line) as unknown;
+      if (!event || typeof event !== "object" || Array.isArray(event)) continue;
+      const item = event as {
+        type?: unknown;
+        message?: unknown;
+        error?: unknown;
+      };
+      const nestedError =
+        item.error &&
+        typeof item.error === "object" &&
+        !Array.isArray(item.error)
+          ? (item.error as { message?: unknown }).message
+          : item.error;
+      const message =
+        typeof nestedError === "string" && nestedError.trim()
+          ? nestedError.trim()
+          : typeof item.message === "string" && item.message.trim()
+            ? item.message.trim()
+            : undefined;
+      if ((item.type === "error" || item.type === "turn.failed") && message) {
+        lifecycleError = message;
+      }
+    } catch {
+      // Raw output stays authoritative; malformed lines do not mask a later
+      // valid public Codex lifecycle error.
+    }
+  }
+  return lifecycleError;
+}
+
 async function runAgent(input: {
   agent: BenchmarkAgent;
+  /** Canonical executable captured by the pre-execution Environment lock. */
+  lockedExecutablePath?: string;
   benchmark: ArtifactBenchmarkCase;
   suiteRoot: string;
   workspace: string;
   logsRoot: string;
   promptPath: string;
   prompt: string;
-  clashHost?: RunningClashHost;
+  clashAccess?: AgentClashAccess;
   processScope: BenchmarkProcessScope;
 }): Promise<AgentRunReport> {
   await mkdir(input.logsRoot, { recursive: true });
@@ -611,21 +1648,15 @@ async function runAgent(input: {
   const stderr = await open(stderrPath, "w");
   const startedAt = Date.now();
   const startedMonotonic = process.hrtime.bigint();
-  const cliTraceSourcePath = input.clashHost
-    ? join(input.workspace, ".clash", "evidence", "clash-cli-events.jsonl")
-    : undefined;
-  const cliTracePath = input.clashHost
-    ? join(input.logsRoot, "clash-cli-events.jsonl")
-    : undefined;
-  if (cliTraceSourcePath)
-    await mkdir(dirname(cliTraceSourcePath), { recursive: true });
   const resolvedAgent = resolveAgentCommand(
     input.agent,
     input.workspace,
     input.prompt,
-    input.clashHost,
-    cliTraceSourcePath,
+    input.clashAccess,
   );
+  if (input.lockedExecutablePath) {
+    resolvedAgent.command = input.lockedExecutablePath;
+  }
   const inheritedEnvironment =
     input.agent.inheritEnv === false ? {} : process.env;
   const env = isolatedAgentEnvironment(
@@ -635,13 +1666,12 @@ async function runAgent(input: {
     },
     input.workspace,
   );
-  if (input.clashHost) {
-    Object.assign(
-      env,
-      clashClientEnvironment(input.clashHost, input.workspace),
-    );
-    env.CLASH_CLI_TRACE_PATH = cliTraceSourcePath;
-    env.PATH = [dirname(input.clashHost.agentCliPath), env.PATH]
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("CLASH_")) delete env[key];
+  }
+  if (input.clashAccess?.cli) {
+    env.CLASH_CLI_ENTRY_PATH = input.clashAccess.cli.agentCliPath;
+    env.PATH = [dirname(input.clashAccess.cli.agentCliPath), env.PATH]
       .filter((entry): entry is string => Boolean(entry))
       .join(delimiter);
   }
@@ -659,9 +1689,9 @@ async function runAgent(input: {
     env.CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL = "1";
   }
   if (input.agent.adapter === "pi") env.PI_TELEMETRY = "0";
-  if (input.agent.adapter === "pi" && input.clashHost) {
-    env.CLASH_PI_MCP_RUNTIME_PATH = input.clashHost.runtimePath;
-    env.CLASH_PI_MCP_PLUGIN_ROOT = input.clashHost.pluginRoot;
+  if (input.agent.adapter === "pi" && input.clashAccess?.mcp) {
+    env.CLASH_PI_MCP_RUNTIME_PATH = input.clashAccess.mcp.runtimePath;
+    env.CLASH_PI_MCP_PLUGIN_ROOT = input.clashAccess.mcp.pluginRoot;
   }
 
   let child: ChildProcess;
@@ -774,6 +1804,22 @@ async function runAgent(input: {
 
   let lifecycle = await lifecyclePromise;
   await capture;
+  await terminateResidualProcessGroup(child);
+  if (
+    input.agent.adapter === "codex" &&
+    (lifecycle.status === "completed" || lifecycle.status === "failed")
+  ) {
+    const lifecycleError = codexLifecycleError(
+      await readFile(stdoutPath, "utf8"),
+    );
+    if (lifecycleError) {
+      lifecycle = {
+        ...lifecycle,
+        status: "failed",
+        error: lifecycleError,
+      };
+    }
+  }
   if (input.agent.adapter === "claude" && lifecycle.status === "completed") {
     const resultError = claudeResultError(await readFile(stdoutPath, "utf8"));
     if (resultError) {
@@ -782,21 +1828,6 @@ async function runAgent(input: {
         status: "failed",
         error: resultError,
       };
-    }
-  }
-  if (cliTraceSourcePath && cliTracePath) {
-    try {
-      await cp(cliTraceSourcePath, cliTracePath, { force: true });
-      await rm(cliTraceSourcePath, { force: true });
-    } catch (error) {
-      if (!(
-        error &&
-        typeof error === "object" &&
-        "code" in error &&
-        error.code === "ENOENT"
-      )) {
-        throw error;
-      }
     }
   }
   const trajectoryPath = await writeNormalizedTrajectory({
@@ -996,7 +2027,7 @@ async function startClashHost(
   await mkdir(runDir, { recursive: true });
   const ownerClientId = `headless-eval-${process.pid}-${Date.now()}`;
   const env: NodeJS.ProcessEnv = {
-    ...process.env,
+    ...sanitizedBenchmarkEnvironment(process.env),
     CLASH_PROFILE: host.profile,
     CLASH_HOME: host.clashHome,
     CLASH_LOCAL_DATA_DIR: host.localDataDir,
@@ -1158,7 +2189,7 @@ function clashProjectEnvironment(
   workspace: string,
 ): NodeJS.ProcessEnv {
   return {
-    ...process.env,
+    ...sanitizedBenchmarkEnvironment(process.env),
     ...clashClientEnvironment(host, workspace),
   };
 }
@@ -1190,7 +2221,7 @@ async function pathIsFile(path: string): Promise<boolean> {
   }
 }
 
-async function runWorkspaceInitCli(input: {
+async function runWorkspaceCli(input: {
   cliPath: string;
   args: string[];
   workspace: string;
@@ -1198,6 +2229,8 @@ async function runWorkspaceInitCli(input: {
   stdoutPath: string;
   stderrPath: string;
   processScope: BenchmarkProcessScope;
+  label: string;
+  timeoutMs?: number;
 }): Promise<string> {
   let stdout = "";
   let stderr = "";
@@ -1213,7 +2246,7 @@ async function runWorkspaceInitCli(input: {
     );
   } catch (error) {
     throw new Error(
-      `Unable to start packaged Clash workspace init: ${error instanceof Error ? error.message : String(error)}`,
+      `Unable to start packaged Clash ${input.label}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
   child.stdout?.setEncoding("utf8");
@@ -1248,10 +2281,10 @@ async function runWorkspaceInitCli(input: {
         finish({
           exitCode: null,
           signal: "SIGTERM",
-          error: new Error("Packaged Clash workspace init timed out"),
+          error: new Error(`Packaged Clash ${input.label} timed out`),
         });
       });
-    }, 15_000);
+    }, input.timeoutMs ?? 15_000);
     child.once("error", (error) =>
       finish({ exitCode: null, signal: null, error }),
     );
@@ -1267,7 +2300,7 @@ async function runWorkspaceInitCli(input: {
   if (result.exitCode !== 0) {
     const detail = stderr.trim() || stdout.trim();
     throw new Error(
-      `Packaged Clash workspace init failed with exit code ${result.exitCode}${result.signal ? ` (${result.signal})` : ""}${detail ? `: ${detail.slice(0, 2_000)}` : ""}`,
+      `Packaged Clash ${input.label} failed with exit code ${result.exitCode}${result.signal ? ` (${result.signal})` : ""}${detail ? `: ${detail.slice(0, 2_000)}` : ""}`,
     );
   }
   return stdout;
@@ -1290,7 +2323,7 @@ export async function prepareBenchmarkWorkspaceBinding(input: {
   const args = hadMarker
     ? ["init", "--json"]
     : ["init", "--project", input.generatedProjectId, "--json"];
-  const stdout = await runWorkspaceInitCli({
+  const stdout = await runWorkspaceCli({
     cliPath: input.cliPath,
     args,
     workspace: input.workspace,
@@ -1298,6 +2331,7 @@ export async function prepareBenchmarkWorkspaceBinding(input: {
     stdoutPath: join(input.logsRoot, "clash-workspace-init.stdout.log"),
     stderrPath: join(input.logsRoot, "clash-workspace-init.stderr.log"),
     processScope: input.processScope ?? new BenchmarkProcessScope(),
+    label: "workspace init",
   });
   let parsed: unknown;
   try {
@@ -1530,69 +2564,171 @@ function parseProjectDirectorStage(value: unknown): ProjectDirectorStage {
   };
 }
 
-async function verifyDirectorCaptureWithProductRenderer(input: {
+export function directorCaptureTargetsStageRevision(
+  capture: { stageId: string; sourceStageRevisionId: string },
+  stage: Pick<ProjectDirectorStage, "id" | "revisionId">,
+): boolean {
+  return (
+    capture.stageId === stage.id &&
+    capture.sourceStageRevisionId === stage.revisionId
+  );
+}
+
+export function directorCaptureFrameId(frame: {
+  artifactId?: unknown;
+  label?: unknown;
+}): string | undefined {
+  const value =
+    typeof frame.artifactId === "string"
+      ? frame.artifactId
+      : typeof frame.label === "string"
+        ? frame.label
+        : undefined;
+  return value?.trim() ? value : undefined;
+}
+
+async function verifyDirectorCaptureWithProjectAssets(input: {
   ready: ProjectHostReady;
   stage: ProjectDirectorStage;
-  stateSha256: string;
-  frames: DirectorReadbackReport["captures"][number]["frames"];
-}): Promise<boolean> {
-  const longEdges = new Set(
-    input.frames.map((frame) => Math.max(frame.width, frame.height)),
-  );
-  if (longEdges.size !== 1) return false;
-  const response = await fetch(
-    new URL("/api/v1/local/director-stage/capture", input.ready.apiUrl),
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        state: input.stage.state,
-        longEdge: [...longEdges][0],
-        frames: input.frames.map((frame) => ({
-          label: frame.artifactId,
-          timeSeconds: frame.timeSeconds,
-          aspectRatio: frame.aspectRatio,
-        })),
-      }),
-      signal: AbortSignal.timeout(120_000),
-    },
-  );
-  if (!response.ok) return false;
-  const rendered = (await response.json()) as {
-    renderer?: { id?: unknown; contractVersion?: unknown };
-    stateSha256?: unknown;
-    frames?: unknown;
-  };
-  if (
-    rendered.renderer?.id !== "clash-director-viewport-webgl" ||
-    rendered.renderer.contractVersion !== 1 ||
-    rendered.stateSha256 !== input.stateSha256 ||
-    !Array.isArray(rendered.frames) ||
-    rendered.frames.length !== input.frames.length
-  )
-    return false;
-  const renderedFrames = rendered.frames;
-  return input.frames.every((expected, index) => {
-    const actual = renderedFrames[index];
-    if (!actual || typeof actual !== "object" || Array.isArray(actual))
-      return false;
-    const value = actual as {
-      label?: unknown;
-      timeSeconds?: unknown;
-      aspectRatio?: unknown;
-      width?: unknown;
-      height?: unknown;
-      sha256?: unknown;
-    };
-    return (
-      value.label === expected.artifactId &&
-      value.timeSeconds === expected.timeSeconds &&
-      value.aspectRatio === expected.aspectRatio &&
-      value.width === expected.width &&
-      value.height === expected.height &&
-      value.sha256 === expected.sha256
+  receiptStateSha256: string;
+  frames: Array<
+    Omit<
+      DirectorReadbackReport["captures"][number]["frames"][number],
+      "outputBinding"
+    >
+  >;
+}): Promise<DirectorReadbackReport["captures"][number]["frames"]> {
+  const liveStateSha256 = sha256Bytes(JSON.stringify(input.stage.state));
+  if (input.receiptStateSha256 !== liveStateSha256) {
+    throw new Error(
+      `capture receipt state SHA-256 does not match live Director Stage ${input.stage.id}`,
     );
+  }
+  const client = createProjectAssetHttpClient({
+    endpoint: input.ready.apiUrl,
+    fetch: (request, init) =>
+      fetch(request, { ...init, signal: AbortSignal.timeout(15_000) }),
   });
+  return Promise.all(
+    input.frames.map(async (frame) => {
+      if (!frame.projectAssetId) {
+        throw new Error(
+          `Director capture frame '${frame.artifactId}' is missing its Project Asset identity`,
+        );
+      }
+      const assetId = frame.projectAssetId;
+      let observed;
+      try {
+        observed = await client.get({
+          projectId: input.ready.projectId,
+          assetId,
+        });
+      } catch (error) {
+        throw new Error(
+          `Director capture frame '${frame.artifactId}' Project Asset ${assetId} Host read failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      const asset = observed.value;
+      if (asset.id !== assetId) {
+        throw new Error(
+          `Director capture frame '${frame.artifactId}' Host returned a different Project Asset identity for ${assetId}`,
+        );
+      }
+      if (asset.kind !== "image") {
+        throw new Error(
+          `Director capture Project Asset ${assetId} has media kind '${asset.kind}', expected 'image'`,
+        );
+      }
+      if (asset.lifecycle.state !== "active") {
+        throw new Error(
+          `Director capture Project Asset ${assetId} is not active (${asset.lifecycle.state})`,
+        );
+      }
+      if (asset.status !== "ready" || !asset.url) {
+        throw new Error(
+          `Director capture Project Asset ${assetId} is not ready with immutable media bytes`,
+        );
+      }
+      const declaredByteLength = asset.metadata.bytes;
+      const declaredContentType = asset.metadata.contentType
+        ?.split(";", 1)[0]
+        ?.trim()
+        .toLowerCase();
+      if (declaredByteLength === undefined) {
+        throw new Error(
+          `Director capture Project Asset ${assetId} is missing its authoritative byte length`,
+        );
+      }
+      if (!declaredContentType?.startsWith("image/")) {
+        throw new Error(
+          `Director capture Project Asset ${assetId} is missing an image media content type`,
+        );
+      }
+      const mediaResponse = await fetch(asset.url, {
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (!mediaResponse.ok) {
+        throw new Error(
+          `Director capture Project Asset ${assetId} media readback failed with HTTP ${mediaResponse.status}`,
+        );
+      }
+      const fetchedContentType = mediaResponse.headers
+        .get("content-type")
+        ?.split(";", 1)[0]
+        ?.trim()
+        .toLowerCase();
+      if (
+        !fetchedContentType?.startsWith("image/") ||
+        fetchedContentType !== declaredContentType
+      ) {
+        throw new Error(
+          `Director capture Project Asset ${assetId} fetched media kind does not match '${declaredContentType}'`,
+        );
+      }
+      const bytes = new Uint8Array(await mediaResponse.arrayBuffer());
+      if (bytes.byteLength !== declaredByteLength) {
+        throw new Error(
+          `Director capture Project Asset ${assetId} byte length ${bytes.byteLength} does not match Host metadata ${declaredByteLength}`,
+        );
+      }
+      const fetchedSha256 = sha256Bytes(bytes);
+      if (fetchedSha256 !== frame.sha256) {
+        throw new Error(
+          `Director capture Project Asset ${assetId} fetched SHA-256 ${fetchedSha256} does not match capture artifact SHA-256 ${frame.sha256}`,
+        );
+      }
+
+      const outputBindings = (
+        await client.references({
+          projectId: input.ready.projectId,
+          assetId,
+        })
+      ).value.filter((binding) => binding.direction === "output");
+      if (outputBindings.length !== 1) {
+        throw new Error(
+          `Director capture Project Asset ${assetId} must have exactly one output ActionAssetBinding (found ${outputBindings.length})`,
+        );
+      }
+      const outputBinding = outputBindings[0]!;
+      const expectedActionId =
+        input.stage.owner.kind === "canvas-action"
+          ? `node:${input.stage.owner.actionNodeId}`
+          : `director:${input.stage.id}`;
+      if (
+        outputBinding.owner.kind !== "run" ||
+        outputBinding.owner.actionId !== expectedActionId ||
+        outputBinding.owner.actionRevisionId !== input.stage.revisionId
+      ) {
+        throw new Error(
+          `Director capture Project Asset ${assetId} output ActionAssetBinding is not owned by ${expectedActionId} at Stage revision ${input.stage.revisionId}`,
+        );
+      }
+      return {
+        ...frame,
+        outputBinding,
+      };
+    }),
+  );
 }
 
 async function captureDirectorReadback(input: {
@@ -1607,6 +2743,7 @@ async function captureDirectorReadback(input: {
   const matches: DirectorReadbackReport["matches"] = [];
   const captures: DirectorReadbackReport["captures"] = [];
   const imageMatches: DirectorReadbackReport["imageMatches"] = [];
+  const captureVerificationErrors: string[] = [];
   try {
     if (!input.ready)
       throw new Error("Clash Project Host did not become ready");
@@ -1616,10 +2753,12 @@ async function captureDirectorReadback(input: {
     });
     await assertProjectHostReady(host);
     await assertWorkspaceProject(input.workspace, input.ready.projectId);
-    const response = await requestProjectHost<ProjectHostResponse & {
-      stages?: unknown;
-      versions?: unknown;
-    }>({
+    const response = await requestProjectHost<
+      ProjectHostResponse & {
+        stages?: unknown;
+        versions?: unknown;
+      }
+    >({
       ...host,
       command: { action: "list_director_stages" },
     });
@@ -1702,7 +2841,9 @@ async function captureDirectorReadback(input: {
           `Director artifact '${artifactId}' is not JSON: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-      const state = DirectorStageStateSchema.safeParse(value);
+      const state = DirectorStageStateSchema.safeParse(
+        directorStageArtifactState(value),
+      );
       if (!state.success)
         throw new Error(
           `Director artifact '${artifactId}' is not a valid Stage state`,
@@ -1717,7 +2858,11 @@ async function captureDirectorReadback(input: {
         );
       }
       matchedArtifactIds.push(artifactId);
-      matches.push({ artifactId, stageId: matchedStage.id, stateSha256 });
+      matches.push({
+        artifactId,
+        stageId: matchedStage.id,
+        stateSha256,
+      });
     }
 
     const matchedStageIds = new Set(matches.map((match) => match.stageId));
@@ -1747,7 +2892,8 @@ async function captureDirectorReadback(input: {
         typeof value.stageId !== "string" ||
         !matchedStageIds.has(value.stageId) ||
         typeof value.sourceStageRevisionId !== "string" ||
-        value.sourceStageRevisionId !== value.verifiedStageRevisionId ||
+        (value.verifiedStageRevisionId !== undefined &&
+          value.sourceStageRevisionId !== value.verifiedStageRevisionId) ||
         !value.renderer ||
         typeof value.renderer !== "object" ||
         Array.isArray(value.renderer) ||
@@ -1756,31 +2902,41 @@ async function captureDirectorReadback(input: {
         (value.renderer as { contractVersion?: unknown }).contractVersion !==
           1 ||
         typeof value.stateSha256 !== "string" ||
+        !/^[a-f0-9]{64}$/u.test(value.stateSha256) ||
         !Array.isArray(value.frames)
       )
         continue;
-      const liveStage = parsedStages.find(
-        (stage) =>
-          stage.id === value.stageId &&
-          stage.revisionId === value.sourceStageRevisionId,
+      const liveStage = parsedStages.find((stage) =>
+        directorCaptureTargetsStageRevision(
+          {
+            stageId: value.stageId as string,
+            sourceStageRevisionId: value.sourceStageRevisionId as string,
+          },
+          stage,
+        ),
       );
-      if (
-        !liveStage ||
-        sha256Bytes(JSON.stringify(liveStage.state)) !== value.stateSha256
-      )
-        continue;
+      if (!liveStage) continue;
       const frames = value.frames.flatMap((frame) => {
         if (!frame || typeof frame !== "object" || Array.isArray(frame))
           return [];
         const candidate = frame as {
           artifactId?: unknown;
+          label?: unknown;
+          projectAssetId?: unknown;
           sha256?: unknown;
           timeSeconds?: unknown;
           aspectRatio?: unknown;
           width?: unknown;
           height?: unknown;
         };
-        return typeof candidate.artifactId === "string" &&
+        const artifactId = directorCaptureFrameId(candidate);
+        const projectAssetId =
+          typeof candidate.projectAssetId === "string" &&
+          candidate.projectAssetId.trim()
+            ? candidate.projectAssetId.trim()
+            : undefined;
+        return artifactId &&
+          (candidate.projectAssetId === undefined || projectAssetId) &&
           typeof candidate.sha256 === "string" &&
           /^[a-f0-9]{64}$/u.test(candidate.sha256) &&
           typeof candidate.timeSeconds === "number" &&
@@ -1793,7 +2949,8 @@ async function captureDirectorReadback(input: {
           candidate.height > 0
           ? [
               {
-                artifactId: candidate.artifactId,
+                artifactId,
+                ...(projectAssetId ? { projectAssetId } : {}),
                 sha256: candidate.sha256,
                 timeSeconds: candidate.timeSeconds,
                 aspectRatio: candidate.aspectRatio,
@@ -1804,22 +2961,27 @@ async function captureDirectorReadback(input: {
           : [];
       });
       if (frames.length !== value.frames.length) continue;
-      if (
-        !(await verifyDirectorCaptureWithProductRenderer({
+      let verifiedFrames: DirectorReadbackReport["captures"][number]["frames"];
+      try {
+        verifiedFrames = await verifyDirectorCaptureWithProjectAssets({
           ready: input.ready,
           stage: liveStage,
-          stateSha256: value.stateSha256,
+          receiptStateSha256: value.stateSha256,
           frames,
-        }))
-      )
+        });
+      } catch (error) {
+        captureVerificationErrors.push(
+          `${relative(input.workspace, receiptPath)}: ${error instanceof Error ? error.message : String(error)}`,
+        );
         continue;
+      }
       captures.push({
         receiptPath: relative(input.workspace, receiptPath),
         stageId: value.stageId,
         stageRevisionId: value.sourceStageRevisionId,
         renderer: "clash-director-viewport-webgl@1",
         stateSha256: value.stateSha256,
-        frames,
+        frames: verifiedFrames,
       });
     }
 
@@ -1837,7 +2999,10 @@ async function captureDirectorReadback(input: {
         .find(({ frame }) => frame.sha256 === artifact.evidence!.sha256);
       if (!match) {
         throw new Error(
-          `Director capture artifact '${artifactId}' does not match a trusted product capture receipt`,
+          [
+            `Director capture artifact '${artifactId}' does not match a trusted product capture receipt`,
+            ...captureVerificationErrors,
+          ].join(". "),
         );
       }
       matchedArtifactIds.push(artifactId);
@@ -1845,6 +3010,9 @@ async function captureDirectorReadback(input: {
         artifactId,
         stageId: match.capture.stageId,
         captureArtifactId: match.frame.artifactId,
+        ...(match.frame.projectAssetId
+          ? { projectAssetId: match.frame.projectAssetId }
+          : {}),
         sha256: match.frame.sha256,
       });
     }
@@ -1878,14 +3046,15 @@ async function captureDirectorReadback(input: {
   }
 }
 
-async function combineProductReadbacks(
-  caseRoot: string,
+function combineProductReadbackReports(
   reports: Array<
+    | AssetProductReadbackReport
     | DirectorReadbackReport
     | RemotionProductReadbackReport
     | TimelineProductReadbackReport
   >,
-): Promise<CombinedProductReadbackReport> {
+  options: { requireMixedLineage?: boolean } = {},
+): CombinedProductReadbackReport {
   const matchedArtifactIds = [
     ...new Set(reports.flatMap((report) => report.matchedArtifactIds)),
   ];
@@ -1896,27 +3065,53 @@ async function combineProductReadbacks(
         .filter((id): id is string => Boolean(id)),
     ),
   ];
-  const report: CombinedProductReadbackReport = {
+  const directorReport = reports.find(
+    (report): report is DirectorReadbackReport => "captures" in report,
+  );
+  const remotionReport = reports.find(
+    (report): report is RemotionProductReadbackReport =>
+      "sourceNodes" in report,
+  );
+  const mixedLineageProjectAssetIds = mixedProductLineageProjectAssetIds({
+    ...(directorReport ? { director: directorReport } : {}),
+    ...(remotionReport ? { remotion: remotionReport } : {}),
+  });
+  const mixedLineageValid =
+    !options.requireMixedLineage || mixedLineageProjectAssetIds.length > 0;
+  const readbacksValid =
+    reports.length > 0 &&
+    reports.every((candidate) => candidate.status === "pass");
+  return {
     schemaVersion: 1,
     status:
-      reports.length > 0 &&
-      reports.every((candidate) => candidate.status === "pass") &&
-      projectIds.length === 1
+      readbacksValid && projectIds.length === 1 && mixedLineageValid
         ? "pass"
         : "fail",
     projectId: projectIds.length === 1 ? projectIds[0]! : null,
     matchedArtifactIds,
     reports,
+    ...(options.requireMixedLineage
+      ? {
+          mixedLineage: {
+            projectAssetIds: mixedLineageProjectAssetIds,
+          },
+        }
+      : {}),
     detail:
       reports.length === 0
         ? "No supported trusted product readback was executed."
-        : reports.map((candidate) => candidate.detail).join(" "),
+        : [
+            ...reports.map((candidate) => candidate.detail),
+            ...(options.requireMixedLineage && !mixedLineageValid
+              ? [
+                  "No exact Director capture Project Asset from the verified Stage revision is referenced by a matched canonical Timeline.",
+                ]
+              : []),
+          ].join(" "),
   };
-  await writeJson(join(caseRoot, "product-readback.json"), report);
-  return report;
 }
 
-async function captureRequiredProductReadback(input: {
+export async function captureRequiredProductReadback(input: {
   benchmark: ArtifactBenchmarkCase;
   workspace: string;
   caseRoot: string;
@@ -1932,7 +3127,10 @@ async function captureRequiredProductReadback(input: {
     readbackMechanism === "mixed-remotion-lineage-and-render-receipt";
   const requiresTimelineReadback =
     readbackMechanism === "timeline-state-and-render-receipt";
+  const requiresAssetReadback =
+    readbackMechanism === "asset-bytes-and-host-receipt";
   if (
+    !requiresAssetReadback &&
     !requiresDirectorReadback &&
     !requiresRemotionReadback &&
     !requiresTimelineReadback
@@ -1941,10 +3139,21 @@ async function captureRequiredProductReadback(input: {
   }
 
   const readbacks: Array<
+    | AssetProductReadbackReport
     | DirectorReadbackReport
     | RemotionProductReadbackReport
     | TimelineProductReadbackReport
   > = [];
+  if (requiresAssetReadback) {
+    readbacks.push(
+      await captureAssetProductReadback({
+        benchmark: input.benchmark,
+        workspace: input.workspace,
+        caseRoot: input.caseRoot,
+        ready: input.ready,
+      }),
+    );
+  }
   if (requiresDirectorReadback) {
     readbacks.push(
       await captureDirectorReadback({
@@ -1977,16 +3186,23 @@ async function captureRequiredProductReadback(input: {
   if (readbacks.length === 1) {
     return {
       report: readbacks[0]!,
-      receiptPath: requiresDirectorReadback
-        ? "director-readback.json"
-        : requiresRemotionReadback
-          ? "remotion-readback.json"
-          : "timeline-readback.json",
+      receiptPath: requiresAssetReadback
+        ? "asset-readback.json"
+        : requiresDirectorReadback
+          ? "director-readback.json"
+          : requiresRemotionReadback
+            ? "remotion-readback.json"
+            : "timeline-readback.json",
     };
   }
+  const report = combineProductReadbackReports(readbacks, {
+    requireMixedLineage:
+      readbackMechanism === "mixed-remotion-lineage-and-render-receipt",
+  });
+  await writeJson(join(input.caseRoot, "product-readback.json"), report);
   return {
     receiptPath: "product-readback.json",
-    report: await combineProductReadbacks(input.caseRoot, readbacks),
+    report,
   };
 }
 
@@ -1994,36 +3210,43 @@ async function evaluateProductExecution(
   benchmark: ArtifactBenchmarkCase,
   agent: AgentRunReport,
   productReadback?: TrustedProductReadback,
+  fixtureIntegrity?: BenchmarkFixtureIntegrityReport,
 ): Promise<ProductExecutionReport> {
   const requiredProductOperations =
     benchmark.execution?.requiredProductOperations ?? [];
+  const forbiddenProductOperations =
+    benchmark.execution?.forbiddenProductOperations ?? [];
   const requiredMcpTools = benchmark.execution?.requiredMcpTools ?? [];
   const requiredCliCommands = benchmark.execution?.requiredCliCommands ?? [];
   if (!benchmark.execution) {
     return {
       profile: "portable",
-      status: "pass",
+      status: fixtureIntegrity?.status === "fail" ? "fail" : "pass",
       requiredProductOperations,
       observedProductOperations: [],
       missingProductOperations: [],
+      forbiddenProductOperations,
+      observedForbiddenProductOperations: [],
       requiredMcpTools,
       observedMcpTools: [],
       missingMcpTools: [],
       requiredCliCommands,
       observedCliCommands: [],
       missingCliCommands: [],
-      detail: "No live Clash host calls are required for this portable case.",
+      detail: [
+        "No live Clash host calls are required for this portable case.",
+        ...(fixtureIntegrity ? [fixtureIntegrity.detail] : []),
+      ].join(" "),
     };
   }
 
   const observedMcpTools: string[] = [];
   const observedCliCommands: string[] = [];
   const successfulCliArgv: string[][] = [];
-  const observed = new Set<string>();
-  let cliTraceText = "";
-  let text = "";
+  const logsRoot = dirname(agent.stdoutPath);
+  let agentEventsText = "";
   try {
-    text = await readFile(agent.stdoutPath, "utf8");
+    agentEventsText = await readFile(agent.stdoutPath, "utf8");
   } catch (error) {
     return {
       profile: "clash-host",
@@ -2031,195 +3254,81 @@ async function evaluateProductExecution(
       requiredProductOperations,
       observedProductOperations: [],
       missingProductOperations: [...requiredProductOperations],
+      forbiddenProductOperations,
+      observedForbiddenProductOperations: [],
       requiredMcpTools,
       observedMcpTools,
       missingMcpTools: [...requiredMcpTools],
       requiredCliCommands,
       observedCliCommands,
       missingCliCommands: [...requiredCliCommands],
-      detail: `Unable to read agent JSONL events: ${error instanceof Error ? error.message : String(error)}`,
+      detail: `Unable to inspect Agent events for identity violations: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
-  const claudeMcpToolUses = new Map<
-    string,
-    { tool: string; arguments: unknown }
-  >();
-  const piMcpToolUses = new Map<string, { tool: string; arguments: unknown }>();
-  for (const line of text.split(/\r?\n/u)) {
-    if (!line.trim()) continue;
-    let event: unknown;
-    try {
-      event = JSON.parse(line) as unknown;
-    } catch {
-      continue;
+  const seenMcpTools = new Set<string>();
+  const invokedMcpTools: string[] = [];
+  const seenInvokedMcpTools = new Set<string>();
+  for (const call of await readRunnerSealedMcpInvocations({
+    logsRoot,
+    caseId: benchmark.id,
+  })) {
+    const tool = effectiveMcpToolName(call) ?? call.tool;
+    if (!seenInvokedMcpTools.has(tool)) {
+      seenInvokedMcpTools.add(tool);
+      invokedMcpTools.push(tool);
     }
-    if (!event || typeof event !== "object") continue;
-    const envelope = event as {
-      type?: unknown;
-      item?: unknown;
-      message?: unknown;
-      toolCallId?: unknown;
-      toolName?: unknown;
-      args?: unknown;
-      isError?: unknown;
-    };
-    if (
-      envelope.type === "tool_execution_start" &&
-      typeof envelope.toolCallId === "string" &&
-      typeof envelope.toolName === "string"
-    ) {
-      const mcpName =
-        /^mcp__clash__(.+)$/u.exec(envelope.toolName)?.[1] ??
-        (envelope.toolName.startsWith("clash") ? envelope.toolName : undefined);
-      if (mcpName) {
-        piMcpToolUses.set(envelope.toolCallId, {
-          tool: mcpName,
-          arguments: envelope.args,
-        });
-      }
-      continue;
+    if (call.succeeded && !seenMcpTools.has(tool)) {
+      seenMcpTools.add(tool);
+      observedMcpTools.push(tool);
     }
-    if (
-      envelope.type === "tool_execution_end" &&
-      typeof envelope.toolCallId === "string"
-    ) {
-      const toolUse = piMcpToolUses.get(envelope.toolCallId);
-      if (toolUse) {
-        if (envelope.isError !== true) {
-          const effectiveTool = effectiveMcpToolName(toolUse);
-          if (effectiveTool && !observed.has(effectiveTool)) {
-            observed.add(effectiveTool);
-            observedMcpTools.push(effectiveTool);
-          }
-        }
-        piMcpToolUses.delete(envelope.toolCallId);
-      }
-      continue;
-    }
-    if (
-      (envelope.type === "assistant" || envelope.type === "user") &&
-      envelope.message &&
-      typeof envelope.message === "object"
-    ) {
-      const content = (envelope.message as { content?: unknown }).content;
-      if (Array.isArray(content) && envelope.type === "assistant") {
-        for (const candidate of content) {
-          if (!candidate || typeof candidate !== "object") continue;
-          const toolUse = candidate as {
-            type?: unknown;
-            id?: unknown;
-            name?: unknown;
-            input?: unknown;
-          };
-          const mcpName =
-            typeof toolUse.name === "string"
-              ? /^mcp__clash__(.+)$/u.exec(toolUse.name)
-              : null;
-          if (
-            toolUse.type === "tool_use" &&
-            typeof toolUse.id === "string" &&
-            mcpName
-          ) {
-            claudeMcpToolUses.set(toolUse.id, {
-              tool: mcpName[1]!,
-              arguments: toolUse.input,
-            });
-          }
-        }
-      }
-      if (Array.isArray(content) && envelope.type === "user") {
-        for (const candidate of content) {
-          if (!candidate || typeof candidate !== "object") continue;
-          const toolResult = candidate as {
-            type?: unknown;
-            tool_use_id?: unknown;
-            is_error?: unknown;
-          };
-          if (
-            toolResult.type !== "tool_result" ||
-            typeof toolResult.tool_use_id !== "string" ||
-            toolResult.is_error === true
-          ) {
-            continue;
-          }
-          const toolUse = claudeMcpToolUses.get(toolResult.tool_use_id);
-          if (!toolUse) continue;
-          const effectiveTool = effectiveMcpToolName(toolUse);
-          if (effectiveTool && !observed.has(effectiveTool)) {
-            observed.add(effectiveTool);
-            observedMcpTools.push(effectiveTool);
-          }
-          claudeMcpToolUses.delete(toolResult.tool_use_id);
-        }
-      }
-      continue;
-    }
-    if (
-      envelope.type !== "item.completed" ||
-      !envelope.item ||
-      typeof envelope.item !== "object"
-    ) {
-      continue;
-    }
-    const item = envelope.item as {
-      type?: unknown;
-      server?: unknown;
-      tool?: unknown;
-      arguments?: unknown;
-      status?: unknown;
-      error?: unknown;
-    };
-    const effectiveTool = effectiveMcpToolName(item);
-    if (
-      item.type !== "mcp_tool_call" ||
-      item.server !== "clash" ||
-      item.status !== "completed" ||
-      item.error ||
-      !effectiveTool ||
-      observed.has(effectiveTool)
-    ) {
-      continue;
-    }
-    observed.add(effectiveTool);
-    observedMcpTools.push(effectiveTool);
   }
-  const missingMcpTools = requiredMcpTools.filter(
-    (tool) => !observed.has(tool),
-  );
+  let cliTraceText = "";
+  let trustedCliTrace = false;
+  const invokedCliArgv: string[][] = [];
   try {
     cliTraceText = await readFile(
-      join(dirname(agent.stdoutPath), "clash-cli-events.jsonl"),
+      join(logsRoot, "clash-cli-events.jsonl"),
       "utf8",
     );
-    const seenCliCommands = new Set<string>();
-    for (const line of cliTraceText.split(/\r?\n/u)) {
-      if (!line.trim()) continue;
-      let event: unknown;
-      try {
-        event = JSON.parse(line) as unknown;
-      } catch {
-        continue;
-      }
-      if (!event || typeof event !== "object" || Array.isArray(event)) continue;
-      const value = event as {
-        type?: unknown;
-        argv?: unknown;
-        exitCode?: unknown;
-        origin?: unknown;
-      };
-      if (
-        value.type !== "clash.cli.completed" ||
-        value.exitCode !== 0 ||
-        value.origin === "mcp-transport" ||
-        !Array.isArray(value.argv) ||
-        !value.argv.every((arg) => typeof arg === "string")
-      )
-        continue;
-      const command = formatCliInvocation(value.argv);
-      successfulCliArgv.push(value.argv);
-      if (!seenCliCommands.has(command)) {
-        seenCliCommands.add(command);
-        observedCliCommands.push(command);
+    const receipt = JSON.parse(
+      await readFile(join(logsRoot, "clash-cli-trace-receipt.json"), "utf8"),
+    ) as Record<string, unknown>;
+    const parsedTrace = parseSealedCliInvocations(cliTraceText);
+    trustedCliTrace =
+      receipt.schemaVersion === 1 &&
+      receipt.source === "runner-cli-proxy" &&
+      receipt.status === "sealed" &&
+      receipt.caseId === benchmark.id &&
+      receipt.tracePath === "clash-cli-events.jsonl" &&
+      receipt.traceSha256 === sha256Bytes(cliTraceText) &&
+      parsedTrace !== undefined &&
+      receipt.eventCount === parsedTrace.eventCount;
+    if (trustedCliTrace && parsedTrace) {
+      const seenCliCommands = new Set<string>();
+      for (const invocation of parsedTrace.invocations) {
+        if (invocation.origin === "mcp-transport") {
+          const tool = mcpToolForCliInvocation(invocation.argv);
+          if (tool) {
+            if (!seenInvokedMcpTools.has(tool)) {
+              seenInvokedMcpTools.add(tool);
+              invokedMcpTools.push(tool);
+            }
+            if (invocation.succeeded && !seenMcpTools.has(tool)) {
+              seenMcpTools.add(tool);
+              observedMcpTools.push(tool);
+            }
+          }
+          continue;
+        }
+        if (isCliDiscoveryInvocation(invocation.argv)) continue;
+        invokedCliArgv.push(invocation.argv);
+        if (!invocation.succeeded) continue;
+        const command = formatCliInvocation(invocation.argv);
+        successfulCliArgv.push(invocation.argv);
+        if (!seenCliCommands.has(command)) {
+          seenCliCommands.add(command);
+          observedCliCommands.push(command);
+        }
       }
     }
   } catch (error) {
@@ -2231,6 +3340,9 @@ async function evaluateProductExecution(
     ))
       throw error;
   }
+  const missingMcpTools = requiredMcpTools.filter(
+    (tool) => !observedMcpTools.includes(tool),
+  );
   const missingCliCommands = requiredCliCommands.filter(
     (required) =>
       !successfulCliArgv.some((argv) =>
@@ -2243,8 +3355,14 @@ async function evaluateProductExecution(
       successfulMcpTools: observedMcpTools,
       successfulCliArgv,
     });
+  const observedForbiddenProductOperations = matchForbiddenProductOperations({
+    forbiddenProductOperations,
+    invokedMcpTools,
+    invokedCliArgv,
+  });
   const tracePassed =
     missingProductOperations.length === 0 &&
+    observedForbiddenProductOperations.length === 0 &&
     missingMcpTools.length === 0 &&
     missingCliCommands.length === 0;
   const expectedReadbackArtifactIds =
@@ -2260,10 +3378,15 @@ async function evaluateProductExecution(
         missingReadbackArtifactIds.length === 0;
   const executionReport: ProductExecutionReport = {
     profile: "clash-host",
-    status: tracePassed && readbackPassed ? "pass" : "fail",
+    status:
+      tracePassed && readbackPassed && fixtureIntegrity?.status !== "fail"
+        ? "pass"
+        : "fail",
     requiredProductOperations,
     observedProductOperations,
     missingProductOperations,
+    forbiddenProductOperations,
+    observedForbiddenProductOperations,
     requiredMcpTools,
     observedMcpTools,
     missingMcpTools,
@@ -2278,11 +3401,23 @@ async function evaluateProductExecution(
               : `Missing successful Clash product operations: ${missingProductOperations.join(", ")}.`,
           ]
         : []),
+      ...(forbiddenProductOperations.length > 0
+        ? [
+            observedForbiddenProductOperations.length === 0
+              ? `Observed no forbidden Clash product operations across runner-sealed CLI or MCP invocations.`
+              : `Observed forbidden Clash product operations: ${observedForbiddenProductOperations
+                  .map(
+                    ({ operation, transport, invocation }) =>
+                      `${operation} (${transport}: ${invocation})`,
+                  )
+                  .join(", ")}.`,
+          ]
+        : []),
       ...(requiredMcpTools.length > 0
         ? [
             missingMcpTools.length === 0
-              ? `Observed all ${requiredMcpTools.length} required successful Clash MCP calls in agent JSONL.`
-              : `Missing successful Clash MCP calls: ${missingMcpTools.join(", ")}.`,
+              ? `Observed all ${requiredMcpTools.length} required successful Clash MCP calls in the runner-sealed proxy trace.`
+              : `Missing runner-sealed successful Clash MCP calls: ${missingMcpTools.join(", ")}.`,
           ]
         : []),
       ...(requiredCliCommands.length > 0
@@ -2298,6 +3433,7 @@ async function evaluateProductExecution(
             `Missing trusted product readback for artifacts: ${missingReadbackArtifactIds.join(", ")}.`,
           ]
         : []),
+      ...(fixtureIntegrity ? [fixtureIntegrity.detail] : []),
     ].join(" "),
     ...(productReadback
       ? {
@@ -2311,7 +3447,7 @@ async function evaluateProductExecution(
       : {}),
   };
   const identityIntegrity = inspectBenchmarkIdentityIntegrity({
-    agentEventsText: text,
+    agentEventsText,
     cliTraceText,
   });
   return enforceBenchmarkIdentityIntegrity(executionReport, identityIntegrity);
@@ -2321,17 +3457,7 @@ export function matchesRequiredCliCommand(
   required: string,
   argv: string[],
 ): boolean {
-  if (
-    argv.some(
-      (argument) =>
-        argument === "--help" ||
-        argument === "-h" ||
-        argument === "--version" ||
-        argument === "-V",
-    )
-  ) {
-    return false;
-  }
+  if (isCliDiscoveryInvocation(argv)) return false;
   const requiredArgv = required.trim().split(/\s+/u).filter(Boolean);
   return (
     requiredArgv.length > 0 &&
@@ -2339,9 +3465,148 @@ export function matchesRequiredCliCommand(
   );
 }
 
+function isCliDiscoveryInvocation(argv: string[]): boolean {
+  return argv.some(
+    (argument) =>
+      argument === "--help" ||
+      argument === "-h" ||
+      argument === "--version" ||
+      argument === "-V",
+  );
+}
+
+function nonRequiredQualityReview(): QualityReviewReport {
+  return {
+    required: false,
+    status: "pass",
+    detail:
+      "Independent semantic review is not required for the functional track.",
+  };
+}
+
+function nonRunQualityReview(
+  benchmark: ArtifactBenchmarkCase,
+  status: "blocked" | "failed",
+): QualityReviewReport {
+  if (benchmark.execution?.environment?.track !== "content-effect") {
+    return nonRequiredQualityReview();
+  }
+  return {
+    required: true,
+    status: status === "blocked" ? "pending" : "fail",
+    detail:
+      status === "blocked"
+        ? "Content-effect review is pending because preflight blocked artifact production."
+        : "Content-effect review failed closed because exact reviewable artifact evidence was not produced.",
+  };
+}
+
+async function evaluateCaseQualityReview(input: {
+  benchmark: ArtifactBenchmarkCase;
+  evaluation: ArtifactEvaluationReport;
+  execution: ProductExecutionReport;
+  agent: AgentRunReport;
+  reviewer?: BenchmarkQualityReviewer;
+  executionLockReceipt?: BenchmarkExecutionLockReceipt;
+  workspace: string;
+  caseRoot: string;
+}): Promise<QualityReviewReport> {
+  if (input.benchmark.execution?.environment?.track !== "content-effect") {
+    const review = nonRequiredQualityReview();
+    await writeJson(join(input.caseRoot, "quality-review.json"), review);
+    return review;
+  }
+  if (input.agent.status !== "completed") {
+    const review = nonRunQualityReview(input.benchmark, "failed");
+    await writeJson(join(input.caseRoot, "quality-review.json"), review);
+    return review;
+  }
+
+  let request;
+  try {
+    request = createQualityReviewRequest({
+      benchmark: input.benchmark,
+      evaluation: input.evaluation,
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    const review: QualityReviewReport = {
+      required: true,
+      status: "fail",
+      detail: `Independent content review lacked exact artifact evidence (error sha256 ${sha256Bytes(detail)}).`,
+    };
+    await writeJson(join(input.caseRoot, "quality-review.json"), review);
+    return review;
+  }
+  await writeJson(join(input.caseRoot, "quality-review-request.json"), request);
+  let review = evaluateQualityReview({ request });
+  if (!input.reviewer) {
+    await writeJson(join(input.caseRoot, "quality-review.json"), review);
+    return review;
+  }
+  if (!codexQualityJudgeSupportsRequest(request)) {
+    review = {
+      ...review,
+      detail:
+        "The configured Codex reviewer supports exact image evidence only; at least one quality criterion requires unsupported evidence, so the whole review remains pending.",
+    };
+    await writeJson(join(input.caseRoot, "quality-review.json"), review);
+    return review;
+  }
+
+  try {
+    if (input.executionLockReceipt) {
+      await verifyBenchmarkExecutionLock(input.executionLockReceipt);
+    }
+    let result;
+    try {
+      const lockedReviewerExecutable =
+        input.executionLockReceipt?.sources.qualityReviewerExecutable?.path;
+      result = await runCodexQualityJudge({
+        reviewer: lockedReviewerExecutable
+          ? { ...input.reviewer, command: lockedReviewerExecutable }
+          : input.reviewer,
+        request,
+        evidence: input.evaluation.artifacts,
+        workspace: input.workspace,
+        caseRoot: input.caseRoot,
+      });
+    } finally {
+      if (input.executionLockReceipt) {
+        await verifyBenchmarkExecutionLock(input.executionLockReceipt);
+      }
+    }
+    if (!result) {
+      review = {
+        ...review,
+        detail:
+          "The configured reviewer could not inspect every criterion's exact evidence, so the whole review remains pending.",
+      };
+    } else {
+      await writeJson(
+        join(input.caseRoot, "quality-review-result.json"),
+        result,
+      );
+      review = evaluateQualityReview({ request, result });
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    review = {
+      required: true,
+      status: "fail",
+      detail: `Independent quality reviewer failed closed (error sha256 ${sha256Bytes(detail)}).`,
+      request,
+    };
+  }
+  await writeJson(join(input.caseRoot, "quality-review.json"), review);
+  return review;
+}
+
 async function runCase(input: {
+  suiteId: string;
   benchmark: ArtifactBenchmarkCase;
   agent: BenchmarkAgent;
+  qualityReviewer?: BenchmarkQualityReviewer;
   suiteRoot: string;
   caseRoot: string;
   processScope: BenchmarkProcessScope;
@@ -2349,28 +3614,123 @@ async function runCase(input: {
   assertSafePathSegment(input.benchmark.id, "Benchmark case id");
   const caseRoot = input.caseRoot;
   await createFreshDirectory(caseRoot, "Case directory");
+  if (input.benchmark.execution?.environment) {
+    await writeBenchmarkTaskManifest({
+      caseRoot,
+      suiteId: input.suiteId,
+      track: input.benchmark.execution.environment.track,
+      benchmark: input.benchmark,
+    });
+  }
   const finalWorkspace = join(caseRoot, "workspace");
   const executionWorkspaceRoot = await mkdtemp(
     join(tmpdir(), "clash-benchmark-workspace-"),
   );
   const workspaceCandidate = join(executionWorkspaceRoot, "workspace");
-  await mkdir(workspaceCandidate);
-  const workspace = await realpath(workspaceCandidate);
+  const environment = input.benchmark.execution?.environment;
+  if (!environment) await mkdir(workspaceCandidate);
+  let workspace = environment
+    ? workspaceCandidate
+    : await realpath(workspaceCandidate);
+  const logsRoot = join(caseRoot, "logs");
   let snapshotPublished = false;
   let clashHostConfig: ResolvedClashHost | undefined;
   let inputFixture: BenchmarkInputFixtureProvenance | undefined;
+  let environmentCapture: BenchmarkModifiedWorkspaceCapture | undefined;
+  let executionLockReceipt: BenchmarkExecutionLockReceipt | undefined;
+  let completedAgent: AgentRunReport | undefined;
   try {
+    clashHostConfig = await resolveClashHost(input.agent, caseRoot, workspace);
+    if (environment) {
+      const inputWorkspace = environment.initialState?.workspace;
+      if (!inputWorkspace || !clashHostConfig) {
+        throw new BenchmarkInfrastructureError(
+          "environment-import",
+          "A ready benchmark Environment requires an exact input Workspace bundle and a packaged Clash Host",
+        );
+      }
+      const inputBundleCandidate = resolve(
+        input.suiteRoot,
+        inputWorkspace.path,
+      );
+      const inputBundle = await realpath(inputBundleCandidate);
+      const suiteRelative = relative(input.suiteRoot, inputBundle);
+      if (
+        !suiteRelative ||
+        suiteRelative === ".." ||
+        suiteRelative.startsWith(`..${sep}`) ||
+        isAbsolute(suiteRelative)
+      ) {
+        throw new BenchmarkInfrastructureError(
+          "environment-import",
+          "Benchmark input Workspace must remain beneath suiteRoot",
+        );
+      }
+      const verifiedInput = await verifyWorkspaceBundleDirectory(inputBundle);
+      if (
+        verifiedInput.manifest.integrity.bundleDigest !==
+        inputWorkspace.bundleDigest
+      ) {
+        throw new BenchmarkInfrastructureError(
+          "environment-import",
+          "Benchmark input Workspace digest does not match the suite contract",
+        );
+      }
+      executionLockReceipt = await captureBenchmarkExecutionLock({
+        caseRoot,
+        suiteRoot: input.suiteRoot,
+        benchmark: input.benchmark,
+        agent: input.agent,
+        ...(input.qualityReviewer
+          ? { qualityReviewer: input.qualityReviewer }
+          : {}),
+        executionIntent: "execute",
+        inputManifest: verifiedInput.manifest,
+      });
+      const importHost = await startClashHost(
+        clashHostConfig,
+        logsRoot,
+        input.processScope,
+      );
+      try {
+        await runWorkspaceCli({
+          cliPath: importHost.agentCliPath,
+          args: [
+            "workspace",
+            "import",
+            inputBundle,
+            "--into",
+            workspaceCandidate,
+            "--json",
+          ],
+          workspace: executionWorkspaceRoot,
+          environment: clashProjectEnvironment(
+            importHost,
+            executionWorkspaceRoot,
+          ),
+          stdoutPath: join(logsRoot, "workspace-import.stdout.log"),
+          stderrPath: join(logsRoot, "workspace-import.stderr.log"),
+          processScope: input.processScope,
+          label: "workspace import",
+          timeoutMs: 5 * 60_000,
+        });
+      } finally {
+        await stopClashHost(importHost);
+      }
+      workspace = await realpath(workspaceCandidate);
+      clashHostConfig = { ...clashHostConfig, workspace };
+    }
     if (input.benchmark.inputFixture) {
       inputFixture = await installBenchmarkInputFixture({
         suiteRoot: input.suiteRoot,
         workspace,
         fixture: input.benchmark.inputFixture,
+        ...(environment ? { allowExistingWorkspace: true as const } : {}),
       });
     }
     // Persist the public outcome before any optional setup so even a setup crash
     // leaves a useful, recoverable attempt workspace.
     await writeJson(join(workspace, "outcome.json"), input.benchmark.outcome);
-    clashHostConfig = await resolveClashHost(input.agent, caseRoot, workspace);
     const installedSkillNames = await installCaseSkills(
       [
         ...input.benchmark.skills,
@@ -2410,13 +3770,15 @@ async function runCase(input: {
       );
     }
     await Promise.all(setupWrites);
-
-    const logsRoot = join(caseRoot, "logs");
     let clashHost: RunningClashHost | undefined;
     let projectHost: ProjectHostController | undefined;
     let projectReady: ProjectHostReady | undefined;
     let agent: AgentRunReport;
     let productReadback: TrustedProductReadback | undefined;
+    let fixtureIntegrity: BenchmarkFixtureIntegrityReport | undefined;
+    let trustedCliProxy: TrustedCliProxy | undefined;
+    let trustedMcpRelay: TrustedMcpRelay | undefined;
+    let workspaceScaffold: BenchmarkWorkspaceScaffoldReceipt | undefined;
     try {
       clashHost = clashHostConfig
         ? await startClashHost(clashHostConfig, logsRoot, input.processScope)
@@ -2485,22 +3847,227 @@ async function runCase(input: {
           projectHostGate: "satisfied-before-agent",
           lifecycleOwner: "benchmark-runner",
         });
+        if (environment) {
+          workspaceScaffold = await captureBenchmarkWorkspaceScaffold({
+            workspace,
+            skillNames: installedSkillNames,
+          });
+        }
+      }
+      const clashTransport =
+        input.benchmark.execution?.transport ?? ("auto" as const);
+      trustedCliProxy = clashHost
+        ? await startTrustedCliProxy({
+            host: clashHost,
+            benchmark: input.benchmark,
+            workspace,
+            logsRoot,
+            processScope: input.processScope,
+          })
+        : undefined;
+      trustedMcpRelay =
+        clashHost && clashTransport !== "cli"
+          ? await startTrustedMcpRelay({
+              host: {
+                ...clashHost,
+                ...(trustedCliProxy
+                  ? { agentCliPath: trustedCliProxy.agentCliPath }
+                  : {}),
+              },
+              benchmark: input.benchmark,
+              workspace,
+              logsRoot,
+              processScope: input.processScope,
+            })
+          : undefined;
+      const agentClashAccess: AgentClashAccess | undefined = clashHost
+        ? {
+            sandboxRoots: [
+              ...(trustedMcpRelay
+                ? [dirname(trustedMcpRelay.runtimePath)]
+                : []),
+              ...(clashTransport !== "mcp" && trustedCliProxy
+                ? [dirname(trustedCliProxy.agentCliPath)]
+                : []),
+            ],
+            ...(trustedMcpRelay
+              ? {
+                  mcp: {
+                    runtimePath: trustedMcpRelay.runtimePath,
+                    pluginRoot: clashHost.pluginRoot,
+                  },
+                }
+              : {}),
+            ...(clashTransport !== "mcp" && trustedCliProxy
+              ? { cli: { agentCliPath: trustedCliProxy.agentCliPath } }
+              : {}),
+          }
+        : undefined;
+      if (executionLockReceipt) {
+        await verifyBenchmarkExecutionLock(executionLockReceipt, {
+          workspace,
+          installedSkillNames,
+        });
       }
       agent = await runAgent({
         agent: input.agent,
+        ...(executionLockReceipt?.sources.executable
+          ? {
+              lockedExecutablePath:
+                executionLockReceipt.sources.executable.path,
+            }
+          : {}),
         benchmark: input.benchmark,
         suiteRoot: input.suiteRoot,
         workspace,
         logsRoot,
         promptPath,
         prompt,
-        clashHost,
+        clashAccess: agentClashAccess,
         processScope: input.processScope,
       });
-      if (inputFixture) {
-        await writeBenchmarkInputFixtureReceipt(workspace, inputFixture);
+      completedAgent = agent;
+      if (executionLockReceipt) {
+        await verifyBenchmarkExecutionLock(executionLockReceipt, {
+          workspace,
+          installedSkillNames,
+        });
       }
-      await publishWorkspaceSnapshot(workspace, finalWorkspace);
+      if (trustedMcpRelay) {
+        await trustedMcpRelay.close();
+        trustedMcpRelay = undefined;
+      }
+      if (trustedCliProxy) {
+        await trustedCliProxy.close();
+        trustedCliProxy = undefined;
+        agent.trajectoryPath = await writeNormalizedTrajectory({
+          agent: input.agent,
+          logsRoot,
+          rawPath: agent.stdoutPath,
+          observedPath:
+            agent.observedEventsPath ?? join(logsRoot, "observed-events.jsonl"),
+        });
+      }
+      if (
+        environment &&
+        (input.agent.adapter === "codex" || input.agent.adapter === "pi")
+      ) {
+        const lockedAgent = executionLockReceipt?.lock.agent;
+        if (
+          !lockedAgent ||
+          lockedAgent.adapter !== input.agent.adapter ||
+          lockedAgent.model.kind !== "explicit" ||
+          !lockedAgent.executable
+        ) {
+          throw new BenchmarkInfrastructureError(
+            "atif-projection",
+            `${input.agent.adapter} ATIF projection requires the exact locked Agent executable and model`,
+          );
+        }
+        const atifReceipt = await writeAtifTrajectory({
+          adapter: input.agent.adapter,
+          publicPrompt: prompt,
+          source: { kind: "file", path: agent.stdoutPath },
+          lockedAgent: {
+            name: input.agent.adapter,
+            version:
+              lockedAgent.executable.reportedVersion ??
+              `sha256:${lockedAgent.executable.sha256}`,
+            model: lockedAgent.model.id,
+          },
+          workspaceRoot: workspace,
+          outputDirectory: logsRoot,
+        });
+        await writeJson(
+          join(logsRoot, "trajectory.atif-receipt.json"),
+          atifReceipt,
+        );
+      }
+      let postAgentIntegrity: BenchmarkFixtureIntegrityReport | undefined;
+      if (inputFixture) {
+        postAgentIntegrity = await verifyBenchmarkInputFixture(
+          workspace,
+          inputFixture,
+        );
+        await writeJson(
+          join(caseRoot, "fixture-integrity.json"),
+          postAgentIntegrity,
+        );
+      }
+      if (environment) {
+        try {
+          if (!workspaceScaffold || !clashHost) {
+            throw new Error(
+              "Workspace Environment capture requires runner scaffold provenance and a live Clash Host",
+            );
+          }
+          await removeVerifiedBenchmarkWorkspaceScaffold({
+            workspace,
+            receipt: workspaceScaffold,
+          });
+          const modifiedWorkspace = join(caseRoot, "modified-workspace");
+          await runWorkspaceCli({
+            cliPath: clashHost.agentCliPath,
+            args: ["workspace", "export", "--out", modifiedWorkspace, "--json"],
+            workspace,
+            environment: clashProjectEnvironment(clashHost, workspace),
+            stdoutPath: join(logsRoot, "workspace-export.stdout.log"),
+            stderrPath: join(logsRoot, "workspace-export.stderr.log"),
+            processScope: input.processScope,
+            label: "workspace export",
+            timeoutMs: 5 * 60_000,
+          });
+          await verifyWorkspaceBundleDirectory(modifiedWorkspace);
+          environmentCapture = {
+            status: "complete",
+            path: modifiedWorkspace,
+          };
+        } catch (error) {
+          environmentCapture = {
+            status: "failed",
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+        await writeJson(join(caseRoot, "environment-capture.json"), {
+          schemaVersion: 1,
+          status: environmentCapture.status,
+          ...(environmentCapture.status === "complete"
+            ? { path: "modified-workspace" }
+            : environmentCapture.status === "failed"
+              ? { error: environmentCapture.error }
+              : {}),
+        });
+      }
+      if (inputFixture) {
+        const finalSnapshotIntegrity = await publishWorkspaceSnapshot(
+          workspace,
+          finalWorkspace,
+          async (snapshot) => {
+            const integrity = await verifyBenchmarkInputFixture(
+              snapshot,
+              inputFixture!,
+            );
+            await writeBenchmarkInputFixtureReceipt(snapshot, inputFixture!);
+            return integrity;
+          },
+        );
+        if (!finalSnapshotIntegrity) {
+          throw new Error(
+            "Published benchmark fixture snapshot was not inspected",
+          );
+        }
+        fixtureIntegrity = combineFixtureIntegrityChecks({
+          fileCount: inputFixture.files.length,
+          postAgent: postAgentIntegrity!,
+          finalSnapshot: finalSnapshotIntegrity,
+        });
+        await writeJson(
+          join(caseRoot, "fixture-integrity.json"),
+          fixtureIntegrity,
+        );
+      } else {
+        await publishWorkspaceSnapshot(workspace, finalWorkspace);
+      }
       snapshotPublished = true;
       productReadback = await captureRequiredProductReadback({
         benchmark: input.benchmark,
@@ -2510,9 +4077,17 @@ async function runCase(input: {
       });
     } finally {
       try {
-        if (projectHost) await projectHost.stop();
+        if (trustedMcpRelay) await trustedMcpRelay.close();
       } finally {
-        if (clashHost) await stopClashHost(clashHost);
+        try {
+          if (trustedCliProxy) await trustedCliProxy.close();
+        } finally {
+          try {
+            if (projectHost) await projectHost.stop();
+          } finally {
+            if (clashHost) await stopClashHost(clashHost);
+          }
+        }
       }
     }
 
@@ -2520,19 +4095,41 @@ async function runCase(input: {
       input.benchmark,
       agent,
       productReadback,
+      fixtureIntegrity,
     );
+    if (environmentCapture?.status === "failed") {
+      execution.status = "fail";
+      execution.detail =
+        `${execution.detail} Modified Workspace capture failed: ${environmentCapture.error}`.trim();
+    }
     const evaluation = await evaluateSubmission({
       benchmark: input.benchmark,
       workspace: finalWorkspace,
+    });
+    const qualityReview = await evaluateCaseQualityReview({
+      benchmark: input.benchmark,
+      evaluation,
+      execution,
+      agent,
+      ...(input.qualityReviewer ? { reviewer: input.qualityReviewer } : {}),
+      ...(executionLockReceipt ? { executionLockReceipt } : {}),
+      workspace: finalWorkspace,
+      caseRoot,
     });
     const outcome = createOutcomeResult({
       benchmark: input.benchmark,
       agentStatus: agent.status,
       evaluationStatus: evaluation.status,
       executionStatus: execution.status,
+      qualityReviewStatus: qualityReview.status,
       score: evaluation.score,
     });
-    const status = outcome.status === "achieved" ? "pass" : "fail";
+    const status =
+      outcome.status === "achieved"
+        ? "pass"
+        : outcome.status === "pending-review"
+          ? "pending-review"
+          : "fail";
     const report: BenchmarkCaseReport = {
       id: input.benchmark.id,
       workspace: finalWorkspace,
@@ -2541,7 +4138,18 @@ async function runCase(input: {
       agent,
       execution,
       evaluation,
+      qualityReview,
       outcome,
+      ...(environmentCapture?.status === "failed"
+        ? {
+            failure: {
+              classification: "infrastructure" as const,
+              retryable: true,
+              phase: "environment-capture",
+              detail: environmentCapture.error,
+            },
+          }
+        : {}),
     };
     await Promise.all([
       writeJson(join(caseRoot, "evaluation.json"), evaluation),
@@ -2550,6 +4158,11 @@ async function runCase(input: {
       writeJson(join(caseRoot, "case-report.json"), report),
     ]);
     return report;
+  } catch (error) {
+    if (completedAgent) {
+      throw new BenchmarkPostAgentInfrastructureError(error, completedAgent);
+    }
+    throw error;
   } finally {
     if (!snapshotPublished) {
       try {
@@ -2600,7 +4213,7 @@ type RunProgress = {
   schemaVersion: 2;
   suiteId: string;
   runId: string;
-  status: "in-progress";
+  status: "in-progress" | BenchmarkSuiteReport["status"];
   startedAt: string;
   updatedAt: string;
   resumed: boolean;
@@ -2609,6 +4222,109 @@ type RunProgress = {
 };
 
 type StoredRunProgress = LegacyRunProgress | RunProgress;
+
+async function assertEnvironmentResumeLockMatches(input: {
+  suiteId: string;
+  suiteRoot: string;
+  runRoot: string;
+  priorCaseRoot: string;
+  benchmark: ArtifactBenchmarkCase;
+  agent: BenchmarkAgent;
+  qualityReviewer?: BenchmarkQualityReviewer;
+}): Promise<void> {
+  const environment = input.benchmark.execution?.environment;
+  if (!environment) return;
+  const priorRoot = resolve(input.runRoot, input.priorCaseRoot);
+  relativeRunPath(input.runRoot, priorRoot);
+  const priorLock = JSON.parse(
+    await readFile(join(priorRoot, "environment-lock.json"), "utf8"),
+  ) as unknown;
+  const comparisonRoot = await mkdtemp(
+    join(input.runRoot, ".resume-environment-lock-"),
+  );
+  try {
+    await writeBenchmarkTaskManifest({
+      caseRoot: comparisonRoot,
+      suiteId: input.suiteId,
+      track: environment.track,
+      benchmark: input.benchmark,
+    });
+    const declaredWorkspace =
+      environment.profile === "clash-agent-environment-v1"
+        ? environment.initialState?.workspace
+        : environment.inputWorkspace;
+    const inputManifest = declaredWorkspace
+      ? (
+          await verifyWorkspaceBundleDirectory(
+            resolve(input.suiteRoot, declaredWorkspace.path),
+          )
+        ).manifest
+      : undefined;
+    const current = await captureBenchmarkExecutionLock({
+      caseRoot: comparisonRoot,
+      suiteRoot: input.suiteRoot,
+      benchmark: input.benchmark,
+      agent: input.agent,
+      ...(input.qualityReviewer
+        ? { qualityReviewer: input.qualityReviewer }
+        : {}),
+      executionIntent:
+        input.benchmark.execution?.preflight?.status === "blocked"
+          ? "blocked-no-run"
+          : "execute",
+      ...(inputManifest ? { inputManifest } : {}),
+    });
+    if (sha256Json(priorLock) !== sha256Json(current.lock)) {
+      throw new Error(
+        `Cannot resume case '${input.benchmark.id}': the resolved Environment does not match the completed attempt`,
+      );
+    }
+  } finally {
+    await rm(comparisonRoot, { recursive: true, force: true });
+  }
+}
+
+async function assertEnvironmentResumeAttemptMatches(input: {
+  suiteRoot: string;
+  runRoot: string;
+  benchmark: ArtifactBenchmarkCase;
+  completed: BenchmarkAttemptLedgerEntry;
+}): Promise<BenchmarkAttemptVerification | undefined> {
+  if (!input.benchmark.execution?.environment) return undefined;
+  const fail = (detail: string): never => {
+    throw new Error(
+      `Cannot resume case '${input.benchmark.id}': the immutable Attempt does not match its sealed ledger entry: ${detail}`,
+    );
+  };
+  if (
+    typeof input.completed.attemptPath !== "string" ||
+    typeof input.completed.attemptSha256 !== "string" ||
+    typeof input.completed.attemptDigest !== "string"
+  ) {
+    fail("Attempt identity is missing");
+  }
+  const priorRoot = resolve(input.runRoot, input.completed.caseRoot);
+  relativeRunPath(input.runRoot, priorRoot);
+  const verification = await verifyBenchmarkAttempt({
+    caseRoot: priorRoot,
+    suiteRoot: input.suiteRoot,
+  }).catch((error: unknown) =>
+    fail(error instanceof Error ? error.message : String(error)),
+  );
+  const receipt: BenchmarkAttemptReceipt = verification.receipt;
+  const manifestPath = relativeRunPath(
+    input.runRoot,
+    join(priorRoot, receipt.path),
+  );
+  if (
+    manifestPath !== input.completed.attemptPath ||
+    receipt.sha256 !== input.completed.attemptSha256 ||
+    receipt.attemptDigest !== input.completed.attemptDigest
+  ) {
+    fail("Attempt path, bytes, or digest changed");
+  }
+  return verification;
+}
 
 async function pathExists(path: string): Promise<boolean> {
   try {
@@ -2668,6 +4384,9 @@ function nonRunExecution(
     observedProductOperations: [],
     missingProductOperations:
       benchmark.execution?.requiredProductOperations ?? [],
+    forbiddenProductOperations:
+      benchmark.execution?.forbiddenProductOperations ?? [],
+    observedForbiddenProductOperations: [],
     requiredMcpTools: benchmark.execution?.requiredMcpTools ?? [],
     observedMcpTools: [],
     missingMcpTools: benchmark.execution?.requiredMcpTools ?? [],
@@ -2726,11 +4445,209 @@ async function writeCaseReportFiles(
     writeJson(join(caseRoot, "evaluation.json"), report.evaluation),
     writeJson(join(caseRoot, "execution.json"), report.execution),
     writeJson(join(caseRoot, "outcome-result.json"), report.outcome),
+    ...(report.qualityReview
+      ? [writeJson(join(caseRoot, "quality-review.json"), report.qualityReview)]
+      : []),
     writeJson(join(caseRoot, "case-report.json"), report),
   ]);
 }
 
+async function publishEvaluationEvidence(input: {
+  caseRoot: string;
+  value: unknown;
+}): Promise<BenchmarkEvaluationEvidenceReference> {
+  const bytes = Buffer.from(`${stableJson(input.value)}\n`);
+  const digest = sha256Bytes(bytes);
+  const relativePath = `evaluation-evidence/sha256/${digest}.json`;
+  const absolutePath = join(input.caseRoot, relativePath);
+  await publishContentAddressedFile(absolutePath, bytes, {
+    isValidForIdentity: (candidate) => sha256Bytes(candidate) === digest,
+  });
+  const info = await lstat(absolutePath);
+  if (info.isSymbolicLink() || !info.isFile() || info.nlink !== 1) {
+    throw new Error("Evaluation evidence must be one immutable regular file");
+  }
+  const actual = await readFile(absolutePath);
+  if (!actual.equals(bytes)) {
+    throw new Error("Evaluation evidence changed after publication");
+  }
+  return {
+    path: relativePath,
+    bytes: bytes.byteLength,
+    sha256: digest,
+  };
+}
+
+async function verifyEvaluationEvidenceReference(input: {
+  caseRoot: string;
+  evidence: BenchmarkEvaluationEvidenceReference;
+}): Promise<void> {
+  const segments = input.evidence.path.split("/");
+  let cursor = input.caseRoot;
+  for (const segment of segments.slice(0, -1)) {
+    cursor = join(cursor, segment);
+    const info = await lstat(cursor);
+    if (info.isSymbolicLink() || !info.isDirectory()) {
+      throw new Error(
+        `Evaluation evidence path must not traverse a link: ${input.evidence.path}`,
+      );
+    }
+  }
+  const absolutePath = join(input.caseRoot, ...segments);
+  const before = await lstat(absolutePath);
+  if (before.isSymbolicLink() || !before.isFile() || before.nlink !== 1) {
+    throw new Error(
+      `Evaluation evidence must be one regular unlinked file: ${input.evidence.path}`,
+    );
+  }
+  const bytes = await readFile(absolutePath);
+  const after = await lstat(absolutePath);
+  if (
+    after.isSymbolicLink() ||
+    !after.isFile() ||
+    after.nlink !== 1 ||
+    before.dev !== after.dev ||
+    before.ino !== after.ino ||
+    before.size !== after.size ||
+    bytes.byteLength !== input.evidence.bytes ||
+    sha256Bytes(bytes) !== input.evidence.sha256
+  ) {
+    throw new Error(
+      `Evaluation evidence bytes or sha256 changed: ${input.evidence.path}`,
+    );
+  }
+}
+
+async function readAttemptEvaluationReceipts(input: {
+  caseRoot: string;
+  attemptDigest: string;
+}): Promise<EvaluationRecordReceipt<BenchmarkEvaluationRecord>[]> {
+  const directory = join(input.caseRoot, "evaluations", "sha256");
+  if (!(await pathExists(directory))) return [];
+  const directoryInfo = await lstat(directory);
+  if (directoryInfo.isSymbolicLink() || !directoryInfo.isDirectory()) {
+    throw new Error("Evaluation store must be a real directory");
+  }
+  const entries = await readdir(directory, { withFileTypes: true });
+  return await Promise.all(
+    entries
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .map(async (entry) => {
+        if (!entry.isFile() || !/^[a-f0-9]{64}\.json$/u.test(entry.name)) {
+          throw new Error(
+            `Evaluation store contains an unsupported entry: ${entry.name}`,
+          );
+        }
+        const relativePath = `evaluations/sha256/${entry.name}`;
+        const absolutePath = join(input.caseRoot, relativePath);
+        const info = await lstat(absolutePath);
+        if (info.isSymbolicLink() || !info.isFile() || info.nlink !== 1) {
+          throw new Error(
+            `Evaluation record must be one immutable regular file: ${relativePath}`,
+          );
+        }
+        const bytes = await readFile(absolutePath);
+        const record = parseEvaluationRecord(bytes);
+        if (
+          record.attemptDigest !== input.attemptDigest ||
+          `${record.digest}.json` !== entry.name
+        ) {
+          throw new Error(
+            `Evaluation record is bound to a different Attempt: ${relativePath}`,
+          );
+        }
+        await Promise.all(
+          record.evidence.map((evidence) =>
+            verifyEvaluationEvidenceReference({
+              caseRoot: input.caseRoot,
+              evidence,
+            }),
+          ),
+        );
+        return {
+          record,
+          path: relativePath,
+          bytes: bytes.byteLength,
+          sha256: sha256Bytes(bytes),
+          publication: "existing" as const,
+        };
+      }),
+  );
+}
+
+async function publishBenchmarkEvaluationResults(input: {
+  caseRoot: string;
+  suiteRoot: string;
+  benchmark: ArtifactBenchmarkCase;
+  report: BenchmarkCaseReport;
+}): Promise<BenchmarkResultBundleReceipt> {
+  const attempt = await verifyBenchmarkAttempt({
+    caseRoot: input.caseRoot,
+    suiteRoot: input.suiteRoot,
+  });
+  const technicalEvidence = await publishEvaluationEvidence({
+    caseRoot: input.caseRoot,
+    value: {
+      schemaVersion: 1,
+      kind: "clash.benchmark.technical-evaluation-evidence",
+      benchmarkId: input.benchmark.id,
+      agent: input.report.agent,
+      evaluation: input.report.evaluation,
+      execution: input.report.execution,
+    },
+  });
+  const qualityEvidence = input.report.qualityReview?.result
+    ? await publishEvaluationEvidence({
+        caseRoot: input.caseRoot,
+        value: {
+          schemaVersion: 1,
+          kind: "clash.benchmark.quality-evaluation-evidence",
+          benchmarkId: input.benchmark.id,
+          qualityReview: input.report.qualityReview,
+        },
+      })
+    : undefined;
+  const pipeline = createBenchmarkEvaluationPipeline({
+    attemptDigest: attempt.receipt.attemptDigest,
+    benchmark: input.benchmark,
+    report: input.report,
+    evidence: {
+      technical: [technicalEvidence],
+      ...(qualityEvidence ? { quality: [qualityEvidence] } : {}),
+    },
+  });
+  await Promise.all(
+    pipeline.evaluations.map((record) =>
+      writeEvaluationRecord({ storeRoot: input.caseRoot, record }),
+    ),
+  );
+  const aggregate = await writeAggregateRecord({
+    storeRoot: input.caseRoot,
+    record: pipeline.aggregate,
+    evaluations: pipeline.evaluations,
+  });
+  const reward = pipeline.reward
+    ? await writeRewardRecord({
+        storeRoot: input.caseRoot,
+        record: pipeline.reward,
+        aggregate: pipeline.aggregate,
+      })
+    : undefined;
+  const evaluations = await readAttemptEvaluationReceipts({
+    caseRoot: input.caseRoot,
+    attemptDigest: attempt.receipt.attemptDigest,
+  });
+  return await writeBenchmarkResultBundle({
+    root: input.caseRoot,
+    attempt,
+    evaluations,
+    aggregate,
+    ...(reward ? { reward } : {}),
+  });
+}
+
 async function createInfrastructureFailureReport(input: {
+  suiteId: string;
   benchmark: ArtifactBenchmarkCase;
   agent: BenchmarkAgent;
   caseRoot: string;
@@ -2751,6 +4668,14 @@ async function createInfrastructureFailureReport(input: {
     mkdir(workspace, { recursive: true }),
     mkdir(logsRoot, { recursive: true }),
   ]);
+  if (input.benchmark.execution?.environment) {
+    await writeBenchmarkTaskManifest({
+      caseRoot: input.caseRoot,
+      suiteId: input.suiteId,
+      track: input.benchmark.execution.environment.track,
+      benchmark: input.benchmark,
+    });
+  }
   await Promise.all([
     ensureFile(
       join(workspace, "outcome.json"),
@@ -2771,11 +4696,14 @@ async function createInfrastructureFailureReport(input: {
     phase,
     detail,
   };
-  const agent = await createNonRunAgentReport({
-    agent: input.agent,
-    logsRoot,
-    error: detail,
-  });
+  const agent =
+    input.error instanceof BenchmarkPostAgentInfrastructureError
+      ? input.error.agent
+      : await createNonRunAgentReport({
+          agent: input.agent,
+          logsRoot,
+          error: detail,
+        });
   const evaluation = nonRunEvaluation(
     input.benchmark,
     "fail",
@@ -2786,6 +4714,7 @@ async function createInfrastructureFailureReport(input: {
     "fail",
     `Product execution could not be verified because the runner infrastructure failed: ${detail}`,
   );
+  const qualityReview = nonRunQualityReview(input.benchmark, "failed");
   const outcome: OutcomeResult = {
     schemaVersion: 1,
     caseId: input.benchmark.id,
@@ -2796,6 +4725,7 @@ async function createInfrastructureFailureReport(input: {
     agentStatus: agent.status,
     evaluationStatus: evaluation.status,
     executionStatus: execution.status,
+    qualityReviewStatus: qualityReview.status,
     completedAt: new Date().toISOString(),
   };
   const report: BenchmarkCaseReport = {
@@ -2807,6 +4737,7 @@ async function createInfrastructureFailureReport(input: {
     agent,
     execution,
     evaluation,
+    qualityReview,
     outcome,
   };
   await writeCaseReportFiles(input.caseRoot, report);
@@ -2814,12 +4745,33 @@ async function createInfrastructureFailureReport(input: {
 }
 
 async function createBlockedCaseReport(input: {
+  suiteId: string;
   benchmark: ArtifactBenchmarkCase;
   agent: BenchmarkAgent;
+  qualityReviewer?: BenchmarkQualityReviewer;
+  suiteRoot: string;
   caseRoot: string;
   attempt: number;
 }): Promise<BenchmarkCaseReport> {
   await createFreshDirectory(input.caseRoot, "Case directory");
+  if (input.benchmark.execution?.environment) {
+    await writeBenchmarkTaskManifest({
+      caseRoot: input.caseRoot,
+      suiteId: input.suiteId,
+      track: input.benchmark.execution.environment.track,
+      benchmark: input.benchmark,
+    });
+    await captureBenchmarkExecutionLock({
+      caseRoot: input.caseRoot,
+      suiteRoot: input.suiteRoot,
+      benchmark: input.benchmark,
+      agent: input.agent,
+      ...(input.qualityReviewer
+        ? { qualityReviewer: input.qualityReviewer }
+        : {}),
+      executionIntent: "blocked-no-run",
+    });
+  }
   const workspace = join(input.caseRoot, "workspace");
   const logsRoot = join(input.caseRoot, "logs");
   await Promise.all([mkdir(workspace), mkdir(logsRoot)]);
@@ -2853,6 +4805,7 @@ async function createBlockedCaseReport(input: {
   const agent = await createNonRunAgentReport({ agent: input.agent, logsRoot });
   const evaluation = nonRunEvaluation(input.benchmark, "not-run", detail);
   const execution = nonRunExecution(input.benchmark, "blocked", detail);
+  const qualityReview = nonRunQualityReview(input.benchmark, "blocked");
   const outcome: OutcomeResult = {
     schemaVersion: 1,
     caseId: input.benchmark.id,
@@ -2863,6 +4816,7 @@ async function createBlockedCaseReport(input: {
     agentStatus: agent.status,
     evaluationStatus: evaluation.status,
     executionStatus: execution.status,
+    qualityReviewStatus: qualityReview.status,
     completedAt: new Date().toISOString(),
   };
   const report: BenchmarkCaseReport = {
@@ -2874,6 +4828,7 @@ async function createBlockedCaseReport(input: {
     agent,
     execution,
     evaluation,
+    qualityReview,
     outcome,
   };
   await writeCaseReportFiles(input.caseRoot, report);
@@ -2883,7 +4838,9 @@ async function createBlockedCaseReport(input: {
 function classifyCaseFailure(
   report: BenchmarkCaseReport,
 ): BenchmarkCaseFailure | undefined {
-  if (report.status === "pass") return undefined;
+  if (report.status === "pass" || report.status === "pending-review") {
+    return undefined;
+  }
   if (report.failure) return report.failure;
   if (report.status === "blocked" || report.execution.status === "blocked") {
     return (
@@ -2903,6 +4860,20 @@ function classifyCaseFailure(
       detail:
         report.agent.error ??
         "The benchmark agent process could not be spawned.",
+    };
+  }
+  if (
+    report.agent.status === "failed" &&
+    report.agent.error &&
+    /(?:\busage\s+limit\b|\busage\s+quota\b|\bquota\s+(?:is\s+)?(?:exhausted|exceeded)\b|\bcredits?\s+(?:are\s+)?(?:exhausted|depleted)\b|\b(?:quota|usage|credits?)\b[^.\n]*\b(?:resets?|try\s+again\s+at)\b)/iu.test(
+      report.agent.error,
+    )
+  ) {
+    return {
+      classification: "infrastructure",
+      retryable: false,
+      phase: "agent",
+      detail: report.agent.error,
     };
   }
   if (report.agent.status !== "completed") {
@@ -3043,7 +5014,27 @@ function suiteStatus(
 ): BenchmarkSuiteReport["status"] {
   if (cases.some(({ status }) => status === "fail")) return "fail";
   if (cases.some(({ status }) => status === "blocked")) return "blocked";
+  if (cases.some(({ status }) => status === "pending-review")) {
+    return "pending-review";
+  }
   return "pass";
+}
+
+function suiteQualityReview(
+  cases: BenchmarkCaseReport[],
+): NonNullable<BenchmarkSuiteReport["qualityReview"]> {
+  const statuses = cases.map(
+    (report) => report.qualityReview?.status ?? "pass",
+  );
+  const failed = statuses.filter((status) => status === "fail").length;
+  const pending = statuses.filter((status) => status === "pending").length;
+  const passed = statuses.filter((status) => status === "pass").length;
+  return {
+    status: failed > 0 ? "fail" : pending > 0 ? "pending" : "pass",
+    pending,
+    passed,
+    failed,
+  };
 }
 
 async function writeSuiteProgress(input: {
@@ -3051,6 +5042,7 @@ async function writeSuiteProgress(input: {
   progress: RunProgress;
   resumed: boolean;
   cases: BenchmarkCaseReport[];
+  status?: RunProgress["status"];
 }): Promise<void> {
   const completedCases = input.cases.map(
     ({ id, status, attempt, failure }): RunProgressCase => ({
@@ -3063,10 +5055,12 @@ async function writeSuiteProgress(input: {
   const updatedAt = new Date().toISOString();
   await writeJsonAtomically(input.progressPath, {
     ...input.progress,
+    status: input.status ?? input.progress.status,
     updatedAt,
     resumed: input.resumed,
     completedCases,
   });
+  input.progress.status = input.status ?? input.progress.status;
   input.progress.updatedAt = updatedAt;
   input.progress.resumed = input.resumed;
   input.progress.completedCases = completedCases;
@@ -3236,6 +5230,23 @@ async function runBenchmarkSuiteInProcessScope(
     const latestCompleted = completedEntries.at(-1);
     let latestReport: BenchmarkCaseReport | undefined;
     if (latestCompleted) {
+      await assertEnvironmentResumeLockMatches({
+        suiteId: parsedSuite.data.id,
+        suiteRoot,
+        runRoot,
+        priorCaseRoot: latestCompleted.caseRoot,
+        benchmark,
+        agent: input.agent,
+        ...(input.qualityReviewer
+          ? { qualityReviewer: input.qualityReviewer }
+          : {}),
+      });
+      await assertEnvironmentResumeAttemptMatches({
+        suiteRoot,
+        runRoot,
+        benchmark,
+        completed: latestCompleted,
+      });
       const reportPath = resolve(runRoot, latestCompleted.reportPath);
       relativeRunPath(runRoot, reportPath);
       try {
@@ -3332,20 +5343,30 @@ async function runBenchmarkSuiteInProcessScope(
         report =
           benchmark.execution?.preflight?.status === "blocked"
             ? await createBlockedCaseReport({
+                suiteId: parsedSuite.data.id,
                 benchmark,
                 agent: input.agent,
+                ...(input.qualityReviewer
+                  ? { qualityReviewer: input.qualityReviewer }
+                  : {}),
+                suiteRoot,
                 caseRoot,
                 attempt: nextAttempt,
               })
             : await runCase({
+                suiteId: parsedSuite.data.id,
                 benchmark,
                 agent: input.agent,
+                ...(input.qualityReviewer
+                  ? { qualityReviewer: input.qualityReviewer }
+                  : {}),
                 suiteRoot,
                 caseRoot,
                 processScope,
               });
       } catch (error) {
         report = await createInfrastructureFailureReport({
+          suiteId: parsedSuite.data.id,
           benchmark,
           agent: input.agent,
           caseRoot,
@@ -3359,6 +5380,97 @@ async function runBenchmarkSuiteInProcessScope(
         report.forcePending = true;
       }
       await writeJson(join(caseRoot, "case-report.json"), report);
+
+      let attemptReceipt: BenchmarkAttemptReceipt | undefined;
+
+      if (benchmark.execution?.environment) {
+        let environmentCapture: BenchmarkModifiedWorkspaceCapture;
+        if (benchmark.execution.preflight?.status === "blocked") {
+          environmentCapture = { status: "blocked" };
+        } else {
+          try {
+            const recorded = JSON.parse(
+              await readFile(
+                join(caseRoot, "environment-capture.json"),
+                "utf8",
+              ),
+            ) as Record<string, unknown>;
+            environmentCapture =
+              recorded.status === "complete" &&
+              typeof recorded.path === "string"
+                ? {
+                    status: "complete",
+                    path: resolve(caseRoot, recorded.path),
+                  }
+                : recorded.status === "failed" &&
+                    typeof recorded.error === "string"
+                  ? { status: "failed", error: recorded.error }
+                  : {
+                      status: "failed",
+                      error: "Modified Workspace capture receipt is invalid",
+                    };
+          } catch (error) {
+            environmentCapture = {
+              status: "failed",
+              error:
+                report.failure?.detail ??
+                `Modified Workspace capture receipt is unavailable: ${error instanceof Error ? error.message : String(error)}`,
+            };
+          }
+        }
+        if (
+          environmentCapture.status !== "complete" &&
+          report.status === "pass"
+        ) {
+          const detail =
+            environmentCapture.status === "failed"
+              ? environmentCapture.error
+              : "Modified Workspace capture was blocked";
+          report.status = "fail";
+          report.execution.status = "fail";
+          report.execution.detail =
+            `${report.execution.detail} Modified Workspace capture failed: ${detail}`.trim();
+          report.outcome.status = "failed";
+          report.outcome.executionStatus = "fail";
+          report.failure = {
+            classification: "infrastructure",
+            retryable: true,
+            phase: "environment-capture",
+            detail,
+          };
+          await writeCaseReportFiles(caseRoot, report);
+        }
+        const inputWorkspace =
+          benchmark.execution.environment.initialState?.workspace;
+        await writeBenchmarkAttemptCapture({
+          caseRoot,
+          suiteId: parsedSuite.data.id,
+          runId: input.runId,
+          benchmark,
+          agent: input.agent,
+          report,
+          attempt: nextAttempt,
+          startedAt: startedEntry.at,
+          finishedAt: new Date().toISOString(),
+          ...(inputWorkspace
+            ? {
+                inputWorkspaceBundle: resolve(suiteRoot, inputWorkspace.path),
+              }
+            : {}),
+          modifiedWorkspaceCapture: environmentCapture,
+          serviceVersion: "0.1.0",
+        });
+        attemptReceipt = await writeBenchmarkAttempt({
+          caseRoot,
+          suiteRoot,
+        });
+        await publishBenchmarkEvaluationResults({
+          caseRoot,
+          suiteRoot,
+          benchmark,
+          report,
+        });
+      }
 
       const completedEntry: BenchmarkAttemptLedgerEntry = {
         schemaVersion: 1,
@@ -3376,6 +5488,16 @@ async function runBenchmarkSuiteInProcessScope(
           runRoot,
           join(caseRoot, "case-report.json"),
         ),
+        ...(attemptReceipt
+          ? {
+              attemptPath: relativeRunPath(
+                runRoot,
+                join(caseRoot, attemptReceipt.path),
+              ),
+              attemptSha256: attemptReceipt.sha256,
+              attemptDigest: attemptReceipt.attemptDigest,
+            }
+          : {}),
       };
       await recordAttemptEntry(progressPath, progress, completedEntry);
 
@@ -3441,12 +5563,20 @@ async function runBenchmarkSuiteInProcessScope(
     startedAt,
     finishedAt: new Date().toISOString(),
     resumed: Boolean(input.resume),
+    qualityReview: suiteQualityReview(cases),
     cases,
   };
   await Promise.all([
     writeJson(join(runRoot, "suite-report.json"), report),
     writeSuiteGallery({ report, runRoot }),
   ]);
+  await writeSuiteProgress({
+    progressPath,
+    progress,
+    resumed: Boolean(input.resume),
+    cases,
+    status: report.status,
+  });
   return report;
 }
 
@@ -3499,109 +5629,124 @@ async function assertPersistedAgentEvidence(
   }
 }
 
-async function loadPersistedWorkspaceBinding(
-  caseRoot: string,
-  workspace: string,
-): Promise<BenchmarkWorkspaceBinding> {
-  const receipt = JSON.parse(
-    await readFile(join(caseRoot, "clash-workspace-init.json"), "utf8"),
-  ) as Record<string, unknown>;
-  const markerPath = join(workspace, ".clash", "project.toml");
-  const marker = await readFile(markerPath, "utf8");
-  const projectId = /^project_id\s*=\s*"([^"]+)"/mu.exec(marker)?.[1];
-  const workspaceId = /^workspace_id\s*=\s*"([^"]+)"/mu.exec(marker)?.[1];
-  const markerSha256 = sha256Bytes(marker);
+function persistedProductReadbackReport(
+  value: unknown,
+  path: Exclude<TrustedProductReadback["receiptPath"], "product-readback.json">,
+): ProductReadbackReport {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`Persisted product readback '${path}' must be an object`);
+  }
+  const report = value as Record<string, unknown>;
   if (
-    receipt.status !== "initialized" ||
-    typeof receipt.projectId !== "string" ||
-    typeof receipt.workspaceId !== "string" ||
-    (receipt.initDisposition !== "created" &&
-      receipt.initDisposition !== "reused") ||
-    receipt.markerSha256 !== markerSha256 ||
-    receipt.projectId !== projectId ||
-    receipt.workspaceId !== workspaceId
+    report.schemaVersion !== 1 ||
+    (report.status !== "pass" && report.status !== "fail") ||
+    (report.projectId !== null && typeof report.projectId !== "string") ||
+    !Array.isArray(report.matchedArtifactIds) ||
+    !report.matchedArtifactIds.every((id) => typeof id === "string") ||
+    typeof report.detail !== "string"
   ) {
-    throw new Error(
-      "Cannot reevaluate because the persisted Clash workspace binding is invalid",
-    );
+    throw new Error(`Persisted product readback '${path}' is invalid`);
   }
-  return {
-    projectId: receipt.projectId,
-    workspaceId: receipt.workspaceId,
-    markerPath,
-    markerSha256,
-    initDisposition: receipt.initDisposition,
-  };
-}
-
-async function recapturePersistedProductReadback(input: {
-  benchmark: ArtifactBenchmarkCase;
-  caseRoot: string;
-  workspace: string;
-}): Promise<TrustedProductReadback | undefined> {
-  const storedHost = JSON.parse(
-    await readFile(join(input.caseRoot, "clash-host.json"), "utf8"),
-  ) as Record<string, unknown>;
-  if (
-    typeof storedHost.pluginRoot !== "string" ||
-    (storedHost.profile !== "dev" && storedHost.profile !== "prod")
-  ) {
-    throw new Error(
-      "Cannot reevaluate because the persisted Clash host receipt is invalid",
-    );
+  const requiredArrays =
+    path === "asset-readback.json"
+      ? ["operationEvidence", "matches"]
+      : path === "director-readback.json"
+        ? ["stages", "matches", "captures", "imageMatches"]
+        : path === "remotion-readback.json"
+          ? ["timelines", "sourceNodes", "matches"]
+          : ["timelines", "matches"];
+  if (requiredArrays.some((key) => !Array.isArray(report[key]))) {
+    throw new Error(`Persisted product readback '${path}' is invalid`);
   }
-  const resolvedHost = await resolveClashHost(
-    {
-      adapter: "codex",
-      clashHost: {
-        pluginRoot: storedHost.pluginRoot,
-        profile: storedHost.profile,
-      },
-    },
-    input.caseRoot,
-    input.workspace,
-  );
-  if (!resolvedHost) {
-    throw new Error("Cannot reevaluate without a persisted Clash host");
-  }
-
-  const processScope = new BenchmarkProcessScope();
-  const logsRoot = join(resolvedHost.runtimeRoot, "reevaluate-logs");
-  const agentReadyPath = join(
-    resolvedHost.runtimeRoot,
-    "headless-host-ready.json",
-  );
-  let runningHost: RunningClashHost | undefined;
-  let projectHost: ProjectHostController | undefined;
-  try {
-    runningHost = await startClashHost(resolvedHost, logsRoot, processScope);
-    const binding = await loadPersistedWorkspaceBinding(
-      input.caseRoot,
-      input.workspace,
-    );
-    projectHost = startProjectHostController({
-      host: runningHost,
-      binding,
-      workspace: input.workspace,
-      caseRoot: input.caseRoot,
-      agentReadyPath,
-    });
-    const ready = await projectHost.ready;
-    return await captureRequiredProductReadback({
-      benchmark: input.benchmark,
-      workspace: input.workspace,
-      caseRoot: input.caseRoot,
-      ready,
-    });
-  } finally {
-    try {
-      if (projectHost) await projectHost.stop();
-    } finally {
-      if (runningHost) await stopClashHost(runningHost);
-      await processScope.dispose();
-      await rm(resolvedHost.runtimeRoot, { recursive: true, force: true });
+  if (path === "director-readback.json") {
+    const captures = report.captures as Array<Record<string, unknown>>;
+    if (
+      captures.some(
+        (capture) =>
+          !capture ||
+          typeof capture !== "object" ||
+          !Array.isArray(capture.frames),
+      )
+    ) {
+      throw new Error(`Persisted product readback '${path}' is invalid`);
     }
   }
+  if (path === "remotion-readback.json") {
+    const matches = report.matches as Array<Record<string, unknown>>;
+    if (
+      matches.some(
+        (match) =>
+          !match ||
+          typeof match !== "object" ||
+          !Array.isArray(match.timelineProjectAssetIds),
+      )
+    ) {
+      throw new Error(`Persisted product readback '${path}' is invalid`);
+    }
+  }
+  return report as ProductReadbackReport;
+}
+
+async function loadPersistedProductReadback(input: {
+  benchmark: ArtifactBenchmarkCase;
+  caseRoot: string;
+  attempt?: BenchmarkAttemptVerification;
+}): Promise<TrustedProductReadback | undefined> {
+  const mechanism = input.benchmark.execution?.productReadback?.mechanism;
+  const paths: Array<
+    Exclude<TrustedProductReadback["receiptPath"], "product-readback.json">
+  > = [];
+  if (mechanism === "asset-bytes-and-host-receipt") {
+    paths.push("asset-readback.json");
+  }
+  if (
+    input.benchmark.rubric.some((rubric) => rubric.type === "director-stage")
+  ) {
+    paths.push("director-readback.json");
+  }
+  if (
+    mechanism === "remotion-component-and-render-receipt" ||
+    mechanism === "mixed-remotion-lineage-and-render-receipt"
+  ) {
+    paths.push("remotion-readback.json");
+  } else if (mechanism === "timeline-state-and-render-receipt") {
+    paths.push("timeline-readback.json");
+  }
+  if (paths.length === 0) return undefined;
+
+  const declared = input.attempt
+    ? new Set(
+        input.attempt.record.evidence.readback.map((evidence) => evidence.path),
+      )
+    : undefined;
+  const reports = await Promise.all(
+    paths.map(async (path) => {
+      if (declared && !declared.has(path)) {
+        throw new Error(
+          `Cannot reevaluate because the sealed Attempt does not declare '${path}'`,
+        );
+      }
+      let value: unknown;
+      try {
+        value = JSON.parse(await readFile(join(input.caseRoot, path), "utf8"));
+      } catch (error) {
+        throw new Error(
+          `Cannot reevaluate without persisted product readback '${path}': ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      return persistedProductReadbackReport(value, path);
+    }),
+  );
+  if (reports.length === 1) {
+    return { report: reports[0]!, receiptPath: paths[0]! };
+  }
+  return {
+    receiptPath: "product-readback.json",
+    report: combineProductReadbackReports(reports, {
+      requireMixedLineage:
+        mechanism === "mixed-remotion-lineage-and-render-receipt",
+    }),
+  };
 }
 
 export async function reevaluateBenchmarkRun(
@@ -3686,6 +5831,12 @@ export async function reevaluateBenchmarkRun(
   if ((await realpath(caseRoot)) !== caseRoot) {
     throw new Error("Cannot reevaluate a case root reached through a symlink");
   }
+  const attemptVerification = await assertEnvironmentResumeAttemptMatches({
+    suiteRoot,
+    runRoot,
+    benchmark,
+    completed: latest,
+  });
   const reportPath = resolve(runRoot, latest.reportPath);
   relativeRunPath(runRoot, reportPath);
   if (dirname(reportPath) !== caseRoot) {
@@ -3735,34 +5886,89 @@ export async function reevaluateBenchmarkRun(
     );
   }
   const productReadback = benchmark.execution
-    ? await recapturePersistedProductReadback({
+    ? await loadPersistedProductReadback({
         benchmark,
         caseRoot,
-        workspace,
+        ...(attemptVerification ? { attempt: attemptVerification } : {}),
       })
+    : undefined;
+  const fixtureIntegrity = previous.inputFixture
+    ? await verifyBenchmarkInputFixture(workspace, previous.inputFixture)
     : undefined;
   const execution = await evaluateProductExecution(
     benchmark,
     previous.agent,
     productReadback,
+    fixtureIntegrity,
   );
   const evaluation = await evaluateSubmission({ benchmark, workspace });
+  let qualityReview: QualityReviewReport;
+  if (benchmark.execution?.environment?.track !== "content-effect") {
+    qualityReview = nonRequiredQualityReview();
+  } else if (previous.agent.status !== "completed") {
+    qualityReview = nonRunQualityReview(benchmark, "failed");
+  } else {
+    try {
+      const request = createQualityReviewRequest({ benchmark, evaluation });
+      let result: QualityReviewResult | undefined;
+      try {
+        result = JSON.parse(
+          await readFile(join(caseRoot, "quality-review-result.json"), "utf8"),
+        ) as QualityReviewResult;
+      } catch (error) {
+        if (
+          !error ||
+          typeof error !== "object" ||
+          !("code" in error) ||
+          error.code !== "ENOENT"
+        ) {
+          throw error;
+        }
+      }
+      qualityReview = evaluateQualityReview({
+        request,
+        ...(result ? { result } : {}),
+      });
+      await writeJsonAtomically(
+        join(caseRoot, "quality-review-request.json"),
+        request,
+      );
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      qualityReview = {
+        required: true,
+        status: "fail",
+        detail: `Independent content review lacked exact artifact evidence (error sha256 ${sha256Bytes(detail)}).`,
+      };
+    }
+  }
+  await writeJsonAtomically(
+    join(caseRoot, "quality-review.json"),
+    qualityReview,
+  );
   const outcome = createOutcomeResult({
     benchmark,
     agentStatus: previous.agent.status,
     evaluationStatus: evaluation.status,
     executionStatus: execution.status,
+    qualityReviewStatus: qualityReview.status,
     score: evaluation.score,
   });
   const report: BenchmarkCaseReport = {
     id: benchmark.id,
     workspace,
     ...(previous.inputFixture ? { inputFixture: previous.inputFixture } : {}),
-    status: outcome.status === "achieved" ? "pass" : "fail",
+    status:
+      outcome.status === "achieved"
+        ? "pass"
+        : outcome.status === "pending-review"
+          ? "pending-review"
+          : "fail",
     attempt: previous.attempt ?? latest.attempt,
     agent: previous.agent,
     execution,
     evaluation,
+    qualityReview,
     outcome,
   };
   report.failure = classifyCaseFailure(report);
@@ -3794,6 +6000,7 @@ export async function reevaluateBenchmarkRun(
   const updatedSuiteReport: BenchmarkSuiteReport = {
     ...suiteReport,
     status: suiteStatus(cases),
+    qualityReview: suiteQualityReview(cases),
     finishedAt: new Date().toISOString(),
     cases,
   };
@@ -3801,6 +6008,14 @@ export async function reevaluateBenchmarkRun(
   await writeJsonAtomically(join(caseRoot, "execution.json"), execution);
   await writeJsonAtomically(join(caseRoot, "outcome-result.json"), outcome);
   await writeJsonAtomically(reportPath, report);
+  if (benchmark.execution?.environment) {
+    await publishBenchmarkEvaluationResults({
+      caseRoot,
+      suiteRoot,
+      benchmark,
+      report,
+    });
+  }
   await writeJsonAtomically(suiteReportPath, updatedSuiteReport);
   await writeSuiteGallery({ report: updatedSuiteReport, runRoot });
   return report;

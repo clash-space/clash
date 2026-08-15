@@ -9,18 +9,32 @@ agent operations, and routing metadata. Complex UI controls and renderer behavio
 explicit adapters, with compile-time/test coverage gates against descriptor
 drift.
 
-The current release is schema version `11`
-with fingerprint `fnv1a32:01aeda96`. Version 11
-marks legacy inline waveform samples as discard-on-save device presentation;
+The current release is schema version `13`
+with fingerprint `fnv1a32:d4911874`. Version 13
+clarifies that create, save, and apply validate automatically before mutation
+and reserves the explicit validator for diagnostic-only workflows where no
+write is intended. Version 12 adds compact reference-based authoring discovery
+while preserving the complete machine contract behind the full view. Version 11 marks legacy inline waveform
+samples as discard-on-save device presentation;
 browsers regenerate them instead of synchronizing them. Version 10 narrowed the
 public `timeline.render` receipt to a strict Project Asset reference
 `asset: { id }`. Clients migrating from version 9 must resolve that Project Asset
 through the Asset SDK; transient delivery URLs and storage keys are not Timeline
 receipt fields.
 
-Validate without mutation through `clash timeline validate --file <path> --json`
-or `clash_timeline_validate`. Standard JSON Schema handles
-the structural contract and portable applicability rules; generated
+Timeline media fields are downstream references, not producer state. A Stage
+capture follows Stage revision → capture receipt → immutable Project Asset →
+downstream Timeline `assetId`; it never writes the output into the producer
+Stage or Action state. Custom Remotion items similarly keep `sourceNodeId` as
+a reference to the Canvas-owned component instead of copying component source
+into persisted Timeline state.
+
+Create, save, or apply directly; each write validates before mutation and an
+invalid submission leaves product state unchanged. For diagnostic-only work
+where no write is intended, use `clash timeline validate --file <path> --json`
+or `clash_timeline_validate` without mutation. Do not use
+the explicit validator as a write preflight. Standard JSON Schema handles the
+structural contract and portable applicability rules; generated
 `x-clash-semantic-rules` plus the executable validator cover owner-duration
 frame bounds and per-channel frame uniqueness.
 
@@ -73,7 +87,7 @@ authored optional field is absent; parsing does not silently materialize it.
 | `type` | authored / runtime | editable | — | timeline | all declared owners | editor, preview, render, export, yaml | Discriminant selecting the item field contract and renderer. |
 | `from` | authored / runtime | editable | — | timeline | all declared owners | editor, preview, render, yaml | Composition-absolute start frame or a relative authoring expression such as prev+15. |
 | `durationInFrames` | authored / runtime | editable | — | timeline | all declared owners | editor, preview, render, export | Positive item duration in Timeline frames. |
-| `assetId` | optional / optional | editable | — | none | all declared owners | asset-loader, preview, render | Stable D1 media asset row id. |
+| `assetId` | optional / optional | editable | — | none | all declared owners | asset-loader, preview, render | Immutable Project Asset id referenced by this Timeline item. |
 | `sourceNodeId` | optional / optional | editable | — | none | all declared owners | asset-loader, canvas-link, render | Canvas node id used to resolve linked source media. |
 | `properties` | optional / optional | editable | `{"x":0,"y":0,"width":1,"height":1,"rotation":0,"opacity":1}` | properties-panel | video, image, solid, text, sticker, composition, derived-overlay | editor, preview, render, export | Static item transform: x/y are composition-center pixel offsets; width/height are unitless source-size multipliers, never output pixels. |
 | `keyframes` | optional / optional | editable | — | properties-panel | video, image, solid, text, sticker, composition, derived-overlay | editor, preview, render, export | Seek-safe item-local transform and mask keyframe channels. |
@@ -203,18 +217,18 @@ are generated from the executable operation registry embedded in
 | Operation | Agent-callable | Access | CAS | Read proof | Public bindings | Runtime consumers | Meaning and preconditions |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `timeline.open` | yes | read | none | records-observation | mcp:clash_timeline_open | mcp, timeline-app, agent-runtime | Open the interactive Timeline app with an optionally selected Project Timeline. Preconditions: The current cwd resolves to a Project replica. |
-| `timeline.schema` | yes | read | none | none | cli:timeline schema, mcp:clash_timeline_schema | cli, mcp, agent-runtime, documentation-generator | Return the machine-readable Timeline DSL contract and its fingerprint. Preconditions: The installed Timeline contract is available. |
-| `timeline.validate` | yes | read | none | none | cli:timeline validate, mcp:clash_timeline_validate | cli, mcp, agent-runtime, timeline-semantics | Validate authored Timeline DSL without applying or mutating a Project Timeline. Preconditions: The authored document is syntactically readable as YAML, JSON, or an object. |
+| `timeline.schema` | yes | read | none | none | cli:timeline schema, mcp:clash_timeline_schema | cli, mcp, agent-runtime, documentation-generator | Return compact Timeline authoring discovery by default, or the complete machine-readable contract on request. Preconditions: The installed Timeline contract is available. |
+| `timeline.validate` | yes | read | none | none | cli:timeline validate, mcp:clash_timeline_validate | cli, mcp, agent-runtime, timeline-semantics | Diagnose authored Timeline DSL without applying or mutating a Project Timeline, only when no write is intended. Do not use it as a preflight for create, save, or apply; those writes run the same validation automatically. Preconditions: The authored document is syntactically readable as YAML, JSON, or an object. |
 | `timeline.list` | yes | read | none | records-observation | cli:timeline list, mcp:clash_timeline_list | cli, mcp, local-host, agent-runtime | List Project Timeline entities and record observations for later writes. Preconditions: The current cwd resolves to a Project replica. |
 | `timeline.get` | yes | read | none | records-observation | mcp:clash_timeline_get | mcp, local-host, agent-runtime | Read one complete Project Timeline state and its revision for a later typed save. Preconditions: The requested Timeline exists in the current Project replica. |
-| `timeline.create` | yes | write | host-enforced | none | cli:timeline create, mcp:clash_timeline_create | cli, mcp, local-host, project-workspace | Create a standalone Project Timeline through the authoritative local host. Preconditions: The Project-scoped Timeline id does not already exist. |
-| `timeline.save` | yes | write | host-enforced | requires-observation | mcp:clash_timeline_save | mcp, local-host, agent-runtime, timeline-semantics | Validate and save a complete typed Timeline state with an explicit base revision. Preconditions: The Timeline was read and baseRevisionId still matches its current revision. The complete state passes the canonical structural and semantic contract. |
+| `timeline.create` | yes | write | host-enforced | none | cli:timeline create, mcp:clash_timeline_create | cli, mcp, local-host, project-workspace | Automatically validate and create a standalone Project Timeline through the authoritative local host; invalid state leaves Project state unchanged. Preconditions: The Project-scoped Timeline id does not already exist. |
+| `timeline.save` | yes | write | host-enforced | requires-observation | mcp:clash_timeline_save | mcp, local-host, agent-runtime, timeline-semantics | Automatically validate and atomically save a complete typed Timeline state with an explicit base revision; invalid state leaves the Timeline revision unchanged. Preconditions: The Timeline was read and baseRevisionId still matches its current revision. The complete state passes the canonical structural and semantic contract. |
 | `timeline.attach` | yes | write | host-enforced | requires-observation | cli:timeline attach, mcp:clash_timeline_attach | cli, mcp, local-host, project-workspace, canvas | Move a standalone Timeline into a Canvas as a Timeline Action. Preconditions: The Timeline was observed through list or pull and remains at that revision. The Timeline is standalone and the target Canvas exists. The Timeline Action node id is unused. |
 | `timeline.detach` | yes | write | host-enforced | requires-observation | cli:timeline detach, mcp:clash_timeline_detach | cli, mcp, local-host, project-workspace, canvas | Detach a Canvas-owned Timeline back to the Project root. Preconditions: The Timeline was observed through list or pull and remains at that revision. The Timeline is currently owned by a Canvas Timeline Action. |
 | `timeline.copy` | yes | write | host-enforced | requires-observation | cli:timeline copy, mcp:clash_timeline_copy | cli, mcp, local-host, project-workspace, canvas | Copy a Timeline Action into another Canvas using copy-on-write identity. Preconditions: The source Timeline was observed and remains at that revision. The source is a Canvas-owned Timeline Action and the target Canvas exists. The new Timeline and Action node ids are unused. |
 | `timeline.render` | yes | write | none | records-observation | cli:timeline render, mcp:clash_timeline_render | cli, mcp, local-host, remotion-renderer, agent-runtime | Submit the current Timeline revision to the daemon renderer and optionally wait for persisted Asset readback. Preconditions: The Timeline exists and contains at least one renderable item. The local daemon has a healthy packaged Remotion rendering backend. |
 | `timeline.pull` | yes | read | none | records-observation | cli:timeline pull | cli, local-host, yaml-projection, agent-runtime | Project the current Timeline revision to agent-editable YAML and record its observation. Preconditions: The Timeline exists in the current Project replica. |
-| `timeline.apply` | yes | write | host-enforced | requires-observation | cli:timeline apply | cli, local-host, yaml-projection, timeline-semantics | Validate an authored projection and atomically advance the Project Timeline revision. Preconditions: The Timeline was pulled or listed and remains at that revision. The complete authored document passes structural and semantic validation. Any immutable downstream dependency guard permits the revision advance. |
+| `timeline.apply` | yes | write | host-enforced | requires-observation | cli:timeline apply | cli, local-host, yaml-projection, timeline-semantics | Automatically validate an authored projection and atomically advance the Project Timeline revision; invalid input leaves the Timeline revision unchanged. Preconditions: The Timeline was pulled or listed and remains at that revision. The complete authored document passes structural and semantic validation. Any immutable downstream dependency guard permits the revision advance. |
 
 ### Semantic editor commands
 

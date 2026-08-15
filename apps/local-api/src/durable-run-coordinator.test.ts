@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createBoundedRetryPolicy } from "@clash/shared-runtime";
+import type { ExecutablePluginOutput } from "@clash/shared-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -52,11 +53,13 @@ function createCommand() {
       kind: "video" as const,
       projectId: "project-1",
       nodeId: "node-1",
-      assetInputs: [{
-        match: { kinds: ["image" as const], slots: ["startFrame"] },
-        representations: ["provider-url" as const, "bytes" as const],
-        mediaTypes: ["image/png"],
-      }],
+      assetInputs: [
+        {
+          match: { kinds: ["image" as const], slots: ["startFrame"] },
+          representations: ["provider-url" as const, "bytes" as const],
+          mediaTypes: ["image/png"],
+        },
+      ],
       input: {
         values: {
           modelId: "minimax-h3",
@@ -69,9 +72,69 @@ function createCommand() {
   };
 }
 
+function createCustomActionCommand(kind: "image" | "text") {
+  return {
+    type: "create" as const,
+    actionRunId: `custom-${kind}-run-1`,
+    outputSlot: kind === "text" ? "text" : "media",
+    deadlineAt: 10_000,
+    executor: {
+      targetKind: "action" as const,
+      binding,
+      actionId: "legacy-custom-action",
+      actor: { kind: "user" as const, id: "local-user" },
+      kind,
+      projectId: "project-1",
+      nodeId: "custom-action-node",
+      input: { values: {}, references: [] },
+    },
+  };
+}
+
+function createLocalExecutorCommand() {
+  return {
+    type: "create" as const,
+    actionRunId: "local-executor-run-1",
+    outputSlot: "render:output",
+    deadlineAt: 10_000,
+    executor: {
+      targetKind: "local-executor" as const,
+      binding,
+      actionId: "timeline:render",
+      actor: { kind: "system" as const, id: "local-api" },
+      kind: "video" as const,
+      projectId: "project-1",
+      nodeId: "render-node",
+      input: { values: {}, references: [] },
+    },
+  };
+}
+
+function valueOutput(slot: string, value: string): ExecutablePluginOutput {
+  return { slot, kind: "value", value };
+}
+
+function assetOutput(
+  slot: string,
+  kind: "image" | "video",
+): ExecutablePluginOutput {
+  return {
+    slot,
+    kind: "asset",
+    asset: {
+      assetId: `${kind}-asset-1`,
+      uri: `clash-asset://${kind}-asset-1`,
+      kind,
+      mediaType: kind === "video" ? "video/mp4" : "image/png",
+    },
+  };
+}
+
 function harness(input: {
   dataDir: string;
   provider: ProviderPluginExecutor;
+  executablePluginAction?: LocalDurableRunCoordinatorOptions["executablePluginAction"];
+  localExecutor?: LocalDurableRunCoordinatorOptions["localExecutor"];
   ownerId?: string;
   now: { value: number };
   recoveryFinalizationTimeoutMs?: number;
@@ -87,6 +150,10 @@ function harness(input: {
     ownerId: input.ownerId ?? "host-1",
     journal: createSqliteDurableRunJournal(input.dataDir),
     providerPluginExecutor: input.provider,
+    ...(input.executablePluginAction
+      ? { executablePluginAction: input.executablePluginAction }
+      : {}),
+    ...(input.localExecutor ? { localExecutor: input.localExecutor } : {}),
     outputStore: { stage: staged },
     publisher: {
       publish: published,
@@ -113,7 +180,178 @@ function harness(input: {
   };
 }
 
+async function advanceCompletedExecutable(
+  input:
+    | {
+        targetKind: "action";
+        kind: "image" | "text";
+        outputs: ExecutablePluginOutput[];
+      }
+    | {
+        targetKind: "local-executor";
+        outputs: ExecutablePluginOutput[];
+      },
+) {
+  const dataDir = await temporaryDataDir();
+  const execute = async () => ({
+    protocol: "clash.plugin.result/v1" as const,
+    invocationId: "executable-result-1",
+    status: "completed" as const,
+    outputs: input.outputs,
+  });
+  const run = harness({
+    dataDir,
+    now: { value: 100 },
+    provider: async () => {
+      throw new Error("Provider path must not run for an Action executor.");
+    },
+    ...(input.targetKind === "action"
+      ? { executablePluginAction: execute }
+      : { localExecutor: execute }),
+  });
+  const command =
+    input.targetKind === "action"
+      ? createCustomActionCommand(input.kind)
+      : createLocalExecutorCommand();
+  const identity = {
+    actionRunId: command.actionRunId,
+    outputSlot: command.outputSlot,
+  };
+
+  await run.coordinator.coordinate(command);
+  await run.coordinator.coordinate({ type: "advance", identity });
+  await run.coordinator.coordinate({ type: "advance", identity });
+  return { run, identity };
+}
+
 describe("Local Durable Run coordinator", () => {
+  it.each([
+    {
+      name: "two legacy text values",
+      input: {
+        targetKind: "action" as const,
+        kind: "text" as const,
+        outputs: [
+          valueOutput("result", "first"),
+          valueOutput("result", "second"),
+        ],
+      },
+    },
+    {
+      name: "a text value and an Asset sibling",
+      input: {
+        targetKind: "action" as const,
+        kind: "text" as const,
+        outputs: [
+          valueOutput("result", "caption"),
+          assetOutput("media", "image"),
+        ],
+      },
+    },
+    {
+      name: "an Asset envelope for a text Action",
+      input: {
+        targetKind: "action" as const,
+        kind: "text" as const,
+        outputs: [assetOutput("result", "image")],
+      },
+    },
+    {
+      name: "a value envelope for a media Action",
+      input: {
+        targetKind: "action" as const,
+        kind: "image" as const,
+        outputs: [valueOutput("media", "not an Asset")],
+      },
+    },
+    {
+      name: "a video Asset for an image Action",
+      input: {
+        targetKind: "action" as const,
+        kind: "image" as const,
+        outputs: [assetOutput("media", "video")],
+      },
+    },
+    {
+      name: "custom text through the durable text slot",
+      input: {
+        targetKind: "action" as const,
+        kind: "text" as const,
+        outputs: [valueOutput("text", "caption")],
+      },
+    },
+    {
+      name: "custom media through an undeclared thumbnail slot",
+      input: {
+        targetKind: "action" as const,
+        kind: "image" as const,
+        outputs: [assetOutput("thumbnail", "image")],
+      },
+    },
+    {
+      name: "Host-local output through a different durable slot",
+      input: {
+        targetKind: "local-executor" as const,
+        outputs: [assetOutput("media", "video")],
+      },
+    },
+  ])(
+    "fails closed before staging when an executable returns $name",
+    async ({ input }) => {
+      const { run, identity } = await advanceCompletedExecutable(input);
+
+      await expect(run.journal.load(identity)).resolves.toMatchObject({
+        phase: "failed",
+        failure: {
+          code: "contract_violation",
+          retryable: false,
+          requestState: "accepted",
+        },
+      });
+      expect(run.staged).not.toHaveBeenCalled();
+      expect(run.published).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    {
+      name: "legacy text value",
+      input: {
+        targetKind: "action" as const,
+        kind: "text" as const,
+        outputs: [valueOutput("result", "caption")],
+      },
+      durableOutput: valueOutput("text", "caption"),
+    },
+    {
+      name: "legacy media Asset",
+      input: {
+        targetKind: "action" as const,
+        kind: "image" as const,
+        outputs: [assetOutput("media", "image")],
+      },
+      durableOutput: assetOutput("media", "image"),
+    },
+    {
+      name: "Host-local output",
+      input: {
+        targetKind: "local-executor" as const,
+        outputs: [assetOutput("render:output", "video")],
+      },
+      durableOutput: assetOutput("render:output", "video"),
+    },
+  ])(
+    "normalizes one valid $name into its frozen durable slot",
+    async ({ input, durableOutput }) => {
+      const { run, identity } = await advanceCompletedExecutable(input);
+
+      await expect(run.journal.load(identity)).resolves.toMatchObject({
+        phase: "finalizing",
+        providerOutputs: [durableOutput],
+      });
+    },
+  );
+
   it("freezes a node-less Project Asset delivery in the same journal", async () => {
     const dataDir = await temporaryDataDir();
     const now = { value: 100 };
@@ -203,11 +441,13 @@ describe("Local Durable Run coordinator", () => {
         timeoutMs: 9_900,
         accountId: "minimax-primary",
         binding,
-        assetInputs: [{
-          match: { kinds: ["image"], slots: ["startFrame"] },
-          representations: ["provider-url", "bytes"],
-          mediaTypes: ["image/png"],
-        }],
+        assetInputs: [
+          {
+            match: { kinds: ["image"], slots: ["startFrame"] },
+            representations: ["provider-url", "bytes"],
+            mediaTypes: ["image/png"],
+          },
+        ],
         input: {
           values: expect.objectContaining({ prompt: "A frozen prompt" }),
           references: [],
@@ -311,7 +551,8 @@ describe("Local Durable Run coordinator", () => {
       run: expect.objectContaining({ actionRunId: "action-run-1", failure }),
       failure: {
         code: "content_rejected",
-        message: "Generation failed. See the owning Host for private diagnostics.",
+        message:
+          "Generation failed. See the owning Host for private diagnostics.",
       },
     });
     await expect(run.journal.load(identity)).resolves.toMatchObject({

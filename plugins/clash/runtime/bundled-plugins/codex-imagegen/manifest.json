@@ -18,6 +18,13 @@
         "path": "cards/codex-imagegen.json"
       }
     ],
+    "generators": [
+      {
+        "id": "codex-imagegen",
+        "kind": "generator",
+        "path": "generators/codex-imagegen.json"
+      }
+    ],
     "functions": [
       {
         "id": "generate-image",

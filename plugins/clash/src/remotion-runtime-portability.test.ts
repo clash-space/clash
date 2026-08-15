@@ -5,7 +5,10 @@ import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const bundleRoot = fileURLToPath(
-  new URL("../runtime/remotion-bundle/", import.meta.url),
+  new URL(
+    "../runtime/bundled-plugins/remotion/dist/browser-bundle/",
+    import.meta.url,
+  ),
 );
 
 const listFiles = async (directory: string): Promise<string[]> => {
@@ -23,7 +26,11 @@ test("the packaged Remotion bundle is portable and ships without source maps", a
   const files = await listFiles(bundleRoot);
   const sourceMaps = files.filter((path) => extname(path) === ".map");
 
-  assert.deepEqual(sourceMaps, [], "published runtime must not include source maps");
+  assert.deepEqual(
+    sourceMaps,
+    [],
+    "published runtime must not include source maps",
+  );
 
   const textFiles = files.filter((path) =>
     [".css", ".html", ".js", ".json", ".txt"].includes(extname(path)),
@@ -47,17 +54,38 @@ test("the packaged Remotion bundle is portable and ships without source maps", a
 });
 
 test("the packaged Remotion bundle matches the renderer version", async () => {
-  const packageJson = JSON.parse(
-    await readFile(new URL("../package.json", import.meta.url), "utf8"),
-  ) as { dependencies?: Record<string, string> };
-  const rendererVersion = packageJson.dependencies?.["@remotion/renderer"];
-  assert.ok(rendererVersion, "plugin must declare @remotion/renderer");
+  const [packageJson, remotionPackageJson] = (await Promise.all([
+    readFile(new URL("../package.json", import.meta.url), "utf8").then(
+      JSON.parse,
+    ),
+    readFile(
+      new URL("../../remotion/package.json", import.meta.url),
+      "utf8",
+    ).then(JSON.parse),
+  ])) as [
+    { dependencies?: Record<string, string> },
+    { dependencies?: Record<string, string> },
+  ];
+  const hostRendererVersion = packageJson.dependencies?.["@remotion/renderer"];
+  const pluginRendererVersion =
+    remotionPackageJson.dependencies?.["@remotion/renderer"];
+  assert.ok(
+    hostRendererVersion,
+    "distribution must provide @remotion/renderer",
+  );
+  assert.equal(
+    pluginRendererVersion,
+    hostRendererVersion,
+    "the plugin and its execution realm must use one exact Remotion version",
+  );
 
   const indexHtml = await readFile(join(bundleRoot, "index.html"), "utf8");
-  const bundledVersion = indexHtml.match(/window\.remotion_version = ['"]([^'"]+)['"]/u)?.[1];
+  const bundledVersion = indexHtml.match(
+    /window\.remotion_version = ['"]([^'"]+)['"]/u,
+  )?.[1];
   assert.equal(
     bundledVersion,
-    rendererVersion,
-    "the browser bundle and Node renderer must use the same exact Remotion version",
+    pluginRendererVersion,
+    "the browser bundle and plugin renderer must use the same exact Remotion version",
   );
 });

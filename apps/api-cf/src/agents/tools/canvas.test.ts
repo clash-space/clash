@@ -215,8 +215,8 @@ describe("Canvas tools", () => {
   // ─── create_generation_node ───
 
   describe("create_generation_node", () => {
-    it("creates generation node with assetId", async () => {
-      const result = await tools.create_generation_node.execute!(
+    it("creates an action first and assigns asset identity only to its output child", async () => {
+      const created = await tools.create_generation_node.execute!(
         {
           node_type: "image_gen",
           label: "AI Cat",
@@ -225,8 +225,35 @@ describe("Canvas tools", () => {
         { toolCallId: "1", messages: [] }
       );
 
-      expect(result).toContain("Created generation node gen-id-1");
-      expect(result).toContain("assetId gen-id-2");
+      expect(created).toBe("Created generation node gen-id-1");
+      const action = doc.getMap("nodes").get("gen-id-1") as any;
+      expect(action.data).not.toHaveProperty("assetId");
+
+      const started = await tools.run_generation_node.execute!(
+        { node_id: "gen-id-1" },
+        { toolCallId: "2", messages: [] },
+      );
+      expect(started).toBe(
+        "Started generation: created pending image node gen-id-2",
+      );
+
+      const output = doc.getMap("nodes").get("gen-id-2") as any;
+      expect(output.type).toBe("image");
+      expect(output.data).not.toHaveProperty("assetId");
+      doc.getMap("nodes").set("gen-id-2", {
+        ...output,
+        data: {
+          ...output.data,
+          status: "completed",
+          assetId: "asset-ai-cat",
+        },
+      });
+      expect((doc.getMap("nodes").get("gen-id-1") as any).data).not.toHaveProperty(
+        "assetId",
+      );
+      expect(
+        (doc.getMap("nodes").get("gen-id-2") as any).data.assetId,
+      ).toBe("asset-ai-cat");
     });
 
     it("creates video_gen node", async () => {

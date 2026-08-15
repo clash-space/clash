@@ -10,12 +10,13 @@ export default defineConfig({
   bundle: true,
   splitting: false,
   dts: true,
-  // `yaml` publishes a Node-targeted CommonJS implementation. Keep it as a
-  // real runtime dependency so Node performs the CJS/ESM interop; inlining it
-  // into this ESM bundle turns its `require("process")` calls into unsupported
-  // dynamic requires.
-  external: ["loro-crdt", "yaml"],
+  // These are real runtime dependencies with Node-specific loading behavior:
+  // loro's WASM and yaml use CommonJS dynamic require, while esbuild resolves
+  // its platform binary at runtime. Let Node own that interop instead of
+  // inlining any of them into this ESM bundle.
+  external: ["esbuild", "loro-crdt", "yaml"],
   noExternal: [
+    "@clash/cli/plugin",
     "@clash/director-plugin",
     "@clash/director-plugin/adapter",
     "@clash/director-plugin/server",

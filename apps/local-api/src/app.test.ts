@@ -1854,6 +1854,41 @@ describe("local API app", () => {
     ).toBe(404);
   });
 
+  it("returns a structured conflict when an immutable built-in action is uninstalled", async () => {
+    const immutable = Object.assign(
+      new Error("Built-in plugin clash.codex-imagegen is immutable."),
+      {
+        status: 409,
+        code: "BUILTIN_PLUGIN_IMMUTABLE",
+      },
+    );
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      marketplaceActions: [
+        {
+          id: "codex-imagegen",
+          packageId: "clash.codex-imagegen",
+        },
+      ],
+      uninstallMarketplaceAction: async () => {
+        throw immutable;
+      },
+    } as any);
+
+    for (const path of [
+      "/api/settings/actions/codex-imagegen",
+      "/api/marketplace/actions/clash.codex-imagegen/install",
+    ]) {
+      const response = await app.request(path, { method: "DELETE" });
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toEqual({
+        error: "Built-in plugin clash.codex-imagegen is immutable.",
+        code: "BUILTIN_PLUGIN_IMMUTABLE",
+      });
+    }
+  });
+
   it("persists local project metadata in SQLite", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 

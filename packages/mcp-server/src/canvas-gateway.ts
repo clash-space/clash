@@ -1,4 +1,5 @@
 import type { ProjectHostCommand } from "@clash/shared-types";
+import { resolveWorkspaceTextInput } from "@clash/shared-runtime";
 import {
   createProjectHostClient,
   publicProjectHostValue,
@@ -41,6 +42,21 @@ function readToken(value: ProjectHostResponse): string | undefined {
       : undefined;
 }
 
+async function resolvedContent(
+  input: CanvasToolInput,
+  workspaceRoot: string | undefined,
+): Promise<string | undefined> {
+  if (input.contentFile === undefined) return input.content;
+  if (!workspaceRoot) {
+    throw new Error("contentFile requires a cwd linked to a Clash workspace");
+  }
+  return resolveWorkspaceTextInput({
+    workspaceRoot,
+    inline: input.content,
+    filePath: input.contentFile,
+  });
+}
+
 /** Direct Canvas transport with MCP-session read receipts and no CLI process. */
 export function createCanvasProjectHostGateway(
   client: ProjectHostClient = createProjectHostClient(),
@@ -50,6 +66,7 @@ export function createCanvasProjectHostGateway(
     const context = await client.resolveContext({ cwd: input.cwd, projectId: input.projectId });
     return {
       projectId: context.projectId,
+      workspaceRoot: context.workspaceRoot,
       canvasId: input.canvasId?.trim() || "main",
       key: `${context.projectId}\0${input.canvasId?.trim() || "main"}`,
     };
@@ -133,12 +150,13 @@ export function createCanvasProjectHostGateway(
           return Array.isArray(value.nodes) ? value.nodes : [];
         }
         case "clash_canvas_add": {
+          const content = await resolvedContent(input, resolved.workspaceRoot);
           const value = await request(input, {
             action: "add",
             canvasId,
             type: requiredString(input, "type") as "text",
             label: requiredString(input, "label"),
-            ...(input.content !== undefined ? { content: input.content } : {}),
+            ...(content !== undefined ? { content } : {}),
             ...(input.prompt !== undefined ? { prompt: input.prompt } : {}),
             ...(input.parentId?.trim() ? { parentId: input.parentId.trim() } : {}),
             ...(input.modelId?.trim() ? { modelId: input.modelId.trim() } : {}),
@@ -175,6 +193,7 @@ export function createCanvasProjectHostGateway(
         case "clash_canvas_update": {
           const nodeId = requiredString(input, "nodeId");
           const receipt = await requireNodeReceipt(input, nodeId);
+          const content = await resolvedContent(input, resolved.workspaceRoot);
           const data = {
             ...(input.data ?? {}),
             ...(input.assetId?.trim() ? { assetId: input.assetId.trim() } : {}),
@@ -184,7 +203,7 @@ export function createCanvasProjectHostGateway(
             canvasId,
             nodeId,
             ...(input.label !== undefined ? { label: input.label } : {}),
-            ...(input.content !== undefined ? { content: input.content } : {}),
+            ...(content !== undefined ? { content } : {}),
             ...(Object.keys(data).length ? { data } : {}),
             actorClientType: "mcp",
             observedVersion: receipt,

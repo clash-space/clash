@@ -24,6 +24,45 @@ export {
 } from "./metadata-body-blobs.js";
 
 export {
+  publishContentAddressedFile,
+  type ContentAddressedFilePublication,
+} from "./content-addressed-file.js";
+
+export {
+  DEFAULT_WORKSPACE_BUNDLE_VERIFICATION_LIMITS,
+  WORKSPACE_BUNDLE_MANIFEST_FILE,
+  WorkspaceBundleIntegrityError,
+  createWorkspaceBundleManifest,
+  materializeVerifiedWorkspaceBundleFile,
+  verifyWorkspaceBundleDirectory,
+  writeWorkspaceBundleManifest,
+  workspaceBundleDigest,
+  type MaterializedWorkspaceBundleFile,
+  type MaterializeVerifiedWorkspaceBundleFileInput,
+  type UnsignedWorkspaceBundleManifest,
+  type WorkspaceBundleIntegrityErrorCode,
+  type WorkspaceBundleVerificationLimits,
+  type WorkspaceBundleVerificationOptions,
+} from "./workspace-bundle.js";
+
+export {
+  DEFAULT_WORKSPACE_TREE_PACKING_LIMITS,
+  WorkspaceTreePackingError,
+  materializeWorkspaceTree,
+  planWorkspaceTree,
+  workspaceTreePathPolicy,
+  type MaterializedWorkspaceTree,
+  type PlanWorkspaceTreeInput,
+  type WorkspaceTreeExcludedPath,
+  type WorkspaceTreeExcludedReason,
+  type WorkspaceTreePackingErrorCode,
+  type WorkspaceTreePackingLimits,
+  type WorkspaceTreePathPolicy,
+  type WorkspaceTreePlan,
+  type WorkspaceTreePlannedFile,
+} from "./workspace-tree.js";
+
+export {
   planCascadeTick,
   type CascadeAdoptDecision,
   type CascadeClearDecision,
@@ -45,6 +84,8 @@ export {
 } from "./text-generation.js";
 
 export { visibleUserPromptText } from "./prompt-content.js";
+
+export { resolveWorkspaceTextInput } from "./workspace-text-input.js";
 
 export {
   DurableRunEngine,

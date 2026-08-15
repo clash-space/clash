@@ -1,20 +1,21 @@
 # Executable Plugins — Overview
 
-Executable plugins extend Clash with runnable actions, provider projectors,
-and provider executors. A plugin is ordinary trusted code installed by the
-user. It owns its vendor protocol and performs its own HTTP, filesystem, and
-process I/O.
+Executable plugins extend Clash with Generator Definitions, runnable Actions,
+provider projectors, and provider executors. A plugin is ordinary trusted code
+installed by the user. It owns its vendor protocol and performs its own HTTP,
+filesystem, and process I/O.
 
-## What a provider plugin ships
+## What an executable plugin can ship
 
-| Artifact         | apiVersion                      | Purpose                                                           |
-| ---------------- | ------------------------------- | ----------------------------------------------------------------- |
-| Manifest         | `clash.plugin/v1`               | Identity, version, runtime, and contributions                     |
-| Provider         | `clash.provider/v1`             | Provider identity and account configuration methods               |
-| Model bindings   | `clash.binding/v1`              | Attach the provider to model cards                                |
-| Cards (optional) | `clash.card/v1`                 | Add models that are not already in the catalog                    |
-| Contract tests   | `clash.plugin.contract-test/v1` | Exercise the real entrypoint with deterministic Host dependencies |
-| Handler          | ESM bundle or Python source     | Implements the stdio invocation/result ABI                        |
+| Artifact                  | apiVersion                      | Purpose                                                           |
+| ------------------------- | ------------------------------- | ----------------------------------------------------------------- |
+| Manifest                  | `clash.plugin/v1`               | Identity, version, runtime, and contributions                     |
+| Provider                  | `clash.provider/v1`             | Provider identity and account configuration methods               |
+| Model bindings            | `clash.binding/v1`              | Attach the provider to model cards                                |
+| Cards (optional)          | `clash.card/v1`                 | Add models that are not already in the catalog                    |
+| Generators (optional)     | `clash.generator/v1`            | Declare versioned state and one or more materializing Actions     |
+| Contract tests            | `clash.plugin.contract-test/v1` | Exercise the real entrypoint with deterministic Host dependencies |
+| Executable implementation | ESM module or Python entrypoint | Implements the shared invocation/result ABI                       |
 
 A gateway normally contributes zero cards and several bindings: existing
 cards describe the models, while the plugin adds another route to them.
@@ -40,20 +41,31 @@ clash plugin list
 clash plugin uninstall <plugin-id>
 ```
 
-The CLI never installs a handler into a Project Loro document and never
+The CLI never installs executable code into a Project Loro document and never
 downloads the retired Python ClashAgent package format. A Project records only
 the stable plugin/action binding needed by product state; local-api owns the
-active executable package and process.
+active executable package and Host endpoint.
 
 ## Runtime and ownership
 
-Local plugins run as separate processes with newline-delimited JSON over
-stdio:
+Executable plugins implement one `PluginModule` invocation/result ABI:
 
 - input: `clash.plugin.invoke/v1`
 - output: `clash.plugin.result/v1`
 
-Normal runtime APIs are available, and provider HTTP uses the language's
+The Local Host chooses one of two execution realms without changing that ABI:
+
+- trusted first-party packages in the closed `bundled-module` registry run as
+  imported modules inside local-api;
+- explicitly activated third-party packages use the `process-stdio` realm: a
+  supervised child process with newline-delimited JSON over stdio.
+
+Execution realm is Host placement and diagnostics, not Generator, Action, Run,
+or plugin binding identity. A first-party manifest may still declare its stdio
+entrypoint as the distributable compatibility entrypoint; that declaration does
+not force the bundled Host realm.
+
+Normal runtime APIs are available in both realms, and provider HTTP uses the language's
 normal client (`globalThis.fetch` in Node, an ordinary HTTP library in
 Python). Clash does not proxy vendor requests.
 
@@ -69,5 +81,12 @@ There is no plugin id or account id argument on those APIs. The Host fixes the
 scope before invoking the plugin, so code cannot select another account by
 forging an invocation field.
 
+A child process is fault isolation, not a security sandbox. Installing a
+plugin installs trusted user code with the user's runtime privileges. Bundling
+a first-party module is likewise a placement choice, not a broader semantic
+contract.
+
 See [Manifest & Artifacts](/plugins/manifest) and [Host-scoped SDK
-context](/plugins/sdk-context).
+context](/plugins/sdk-context). Native Generator semantics and current product
+migration status are documented in
+[Asset + Generator Model](/guide/asset-generator-model).

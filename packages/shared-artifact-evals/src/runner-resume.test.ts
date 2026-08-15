@@ -75,6 +75,7 @@ function successfulAgent(extraSource = ""): BenchmarkAgent {
 
 type TestRunProgress = {
   schemaVersion: number;
+  status: "in-progress" | "pass" | "fail" | "blocked" | "pending-review";
   attempts: Array<Record<string, unknown>>;
 };
 
@@ -88,6 +89,205 @@ async function readRunProgress(
 }
 
 describe("benchmark batch recovery", () => {
+  it("finalizes suite progress with the terminal suite status", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-bench-progress-final-"));
+    const suiteRoot = join(root, "suite");
+    const outputRoot = join(root, "runs");
+    await mkdir(suiteRoot);
+
+    const report = await runBenchmarkSuite({
+      suite: suite([benchmarkCase("completed-case")]),
+      suiteRoot,
+      outputRoot,
+      runId: "completed-run",
+      agent: successfulAgent(),
+    });
+
+    expect(report.status).toBe("pass");
+    await expect(readRunProgress(outputRoot, "completed-run")).resolves.toMatchObject({
+      status: "pass",
+      completedCases: [
+        { id: "completed-case", status: "pass", attempt: 1 },
+      ],
+    });
+  });
+
+  it("rejects Environment resume when the selected model changes", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-bench-env-resume-"));
+    const suiteRoot = join(root, "suite");
+    const outputRoot = join(root, "runs");
+    await mkdir(suiteRoot);
+    const benchmarkSuite = suite([
+      benchmarkCase("blocked-environment", {
+        execution: {
+          profile: "clash-host",
+          lane: "blocked-contract",
+          requiredProductOperations: ["asset.get"],
+          requiredCapabilities: ["generator-agent-surface"],
+          preflight: {
+            status: "blocked",
+            checks: [
+              {
+                capability: "generator-agent-surface",
+                status: "missing",
+                detail: "The agent-facing contract is intentionally absent.",
+              },
+            ],
+          },
+          evidence: { traceRequired: true, submissionRequired: true },
+          productReadback: {
+            required: true,
+            mechanism: "generator-authority-readback",
+            artifactIds: ["result"],
+            description: "Read the frozen Generator authority.",
+          },
+          environment: {
+            profile: "clash-agent-environment-v1",
+            track: "functional",
+            outputs: {
+              modifiedWorkspace: true,
+              rawTrajectory: true,
+              normalizedTrajectory: "clash-normalized-v1",
+              atifTrajectory: "ATIF-v1.7-when-supported",
+              otlpTrace: "otlp-json",
+              attempt: "clash-attempt-v1",
+            },
+          },
+        },
+      }),
+    ]);
+
+    await runBenchmarkSuite({
+      suite: benchmarkSuite,
+      suiteRoot,
+      outputRoot,
+      runId: "environment-selection",
+      agent: { adapter: "codex", model: "gpt-5.6-sol" },
+    });
+
+    await expect(
+      runBenchmarkSuite({
+        suite: benchmarkSuite,
+        suiteRoot,
+        outputRoot,
+        runId: "environment-selection",
+        agent: { adapter: "codex", model: "gpt-5.6-sol" },
+        resume: true,
+      }),
+    ).resolves.toMatchObject({ status: "blocked", resumed: true });
+
+    await expect(
+      runBenchmarkSuite({
+        suite: benchmarkSuite,
+        suiteRoot,
+        outputRoot,
+        runId: "environment-selection",
+        agent: { adapter: "codex", model: "gpt-5.6-terra" },
+        resume: true,
+      }),
+    ).rejects.toThrow(/resolved Environment.*does not match/iu);
+  });
+
+  it("ignores Evaluation changes on resume but rejects a mutated immutable Attempt", async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "clash-bench-env-bundle-resume-"),
+    );
+    const suiteRoot = join(root, "suite");
+    const outputRoot = join(root, "runs");
+    await mkdir(suiteRoot);
+    const benchmarkSuite = suite([
+      benchmarkCase("blocked-environment", {
+        execution: {
+          profile: "clash-host",
+          lane: "blocked-contract",
+          requiredProductOperations: ["asset.get"],
+          requiredCapabilities: ["generator-agent-surface"],
+          preflight: {
+            status: "blocked",
+            checks: [
+              {
+                capability: "generator-agent-surface",
+                status: "missing",
+                detail: "The agent-facing contract is intentionally absent.",
+              },
+            ],
+          },
+          evidence: { traceRequired: true, submissionRequired: true },
+          productReadback: {
+            required: true,
+            mechanism: "generator-authority-readback",
+            artifactIds: ["result"],
+            description: "Read the frozen Generator authority.",
+          },
+          environment: {
+            profile: "clash-agent-environment-v1",
+            track: "functional",
+            outputs: {
+              modifiedWorkspace: true,
+              rawTrajectory: true,
+              normalizedTrajectory: "clash-normalized-v1",
+              atifTrajectory: "ATIF-v1.7-when-supported",
+              otlpTrace: "otlp-json",
+              attempt: "clash-attempt-v1",
+            },
+          },
+        },
+      }),
+    ]);
+
+    await runBenchmarkSuite({
+      suite: benchmarkSuite,
+      suiteRoot,
+      outputRoot,
+      runId: "environment-bundle",
+      agent: { adapter: "codex", model: "gpt-5.6-sol" },
+    });
+    const progress = await readRunProgress(outputRoot, "environment-bundle");
+    const completed = progress.attempts.find(
+      ({ event }) => event === "completed",
+    );
+    expect(completed).toBeDefined();
+    expect(typeof completed?.reportPath).toBe("string");
+    const reportPath = join(
+      outputRoot,
+      "environment-bundle",
+      completed!.reportPath as string,
+    );
+    const report = await readFile(reportPath, "utf8");
+    await writeFile(reportPath, `${report.trimEnd()}\n\n`, "utf8");
+
+    await expect(
+      runBenchmarkSuite({
+        suite: benchmarkSuite,
+        suiteRoot,
+        outputRoot,
+        runId: "environment-bundle",
+        agent: { adapter: "codex", model: "gpt-5.6-sol" },
+        resume: true,
+      }),
+    ).resolves.toMatchObject({ resumed: true, status: "blocked" });
+
+    expect(typeof completed?.attemptPath).toBe("string");
+    const attemptPath = join(
+      outputRoot,
+      "environment-bundle",
+      completed!.attemptPath as string,
+    );
+    const attempt = await readFile(attemptPath, "utf8");
+    await writeFile(attemptPath, `${attempt.trimEnd()}\n\n`, "utf8");
+
+    await expect(
+      runBenchmarkSuite({
+        suite: benchmarkSuite,
+        suiteRoot,
+        outputRoot,
+        runId: "environment-bundle",
+        agent: { adapter: "codex", model: "gpt-5.6-sol" },
+        resume: true,
+      }),
+    ).rejects.toThrow(/immutable Attempt.*does not match/iu);
+  });
+
   it("isolates a case setup crash, retries only that infrastructure failure, and continues the suite", async () => {
     const root = await mkdtemp(join(tmpdir(), "clash-bench-isolation-"));
     const suiteRoot = join(root, "suite");
@@ -268,7 +468,7 @@ describe("benchmark batch recovery", () => {
       "utf8",
     );
     expect(gallery).toContain("recoverable/attempts/002/workspace/result.txt");
-  });
+  }, 15_000);
 
   it("does not rerun evaluation failures when resuming", async () => {
     const root = await mkdtemp(join(tmpdir(), "clash-bench-no-mask-"));

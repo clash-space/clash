@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "kind": "clash.workspace.bundle",
+  "source": {
+    "projectId": "benchmark-content-effect-base-v1",
+    "display": {
+      "name": "benchmark-content-effect-base-v1"
+    }
+  },
+  "content": {
+    "workspaceRoot": "workspace",
+    "project": {
+      "path": "project.bin",
+      "codec": "loro-shallow-snapshot",
+      "codecVersion": 1
+    },
+    "resources": [],
+    "documentBodies": [],
+    "textRevisions": []
+  },
+  "semanticRequirements": {
+    "generatorDefinitions": [],
+    "modelReferences": []
+  },
+  "files": [
+    {
+      "path": "project.bin",
+      "role": "project",
+      "bytes": 598,
+      "sha256": "727eecdd9e55866a0d8c867ca762b07a48c35eada66da03f2103f136b4cac080",
+      "mode": "0644"
+    }
+  ],
+  "excluded": [],
+  "integrity": {
+    "algorithm": "sha256",
+    "canonicalization": "clash.workspace-manifest-json.v1",
+    "bundleDigest": "44942cda6371beb8cba8c41d521ffdf055ce2015f0535be500b789e79d38903f"
+  }
+}

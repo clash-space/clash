@@ -62,7 +62,7 @@ describe("agent-facing Timeline DSL schema", () => {
       .TIMELINE_DSL_DEFINITION as any;
 
     expect(definition).toBeDefined();
-    expect(definition.schemaVersion).toBe(11);
+    expect(definition.schemaVersion).toBe(13);
     expect(definition.format).toBe("clash.timeline.yaml");
     expect(definition.features.clipMask).toMatchObject({
       yamlPath: "tracks[].items[]",
@@ -431,6 +431,8 @@ describe("agent-facing Timeline DSL schema", () => {
       9: "fnv1a32:e79b87fb",
       10: "fnv1a32:bc1b6602",
       11: "fnv1a32:01aeda96",
+      12: "fnv1a32:19eca23f",
+      13: "fnv1a32:d4911874",
     };
     expect(contractFingerprint).toBe(
       releasedContractFingerprints[definition.schemaVersion],
@@ -493,7 +495,6 @@ describe("agent-facing Timeline DSL schema", () => {
     expect(generatedSkillSection).toBe(
       shared.renderTimelineMaskSkillReference(),
     );
-
     for (const creativeGuidanceUrl of ["plugins/clash/skills/clash/SKILL.md"]) {
       const creativeGuidance = readFileSync(
         repositoryPath(creativeGuidanceUrl),
@@ -504,6 +505,15 @@ describe("agent-facing Timeline DSL schema", () => {
       );
       expect(creativeGuidance).not.toContain("contract fingerprint");
     }
+  });
+
+  it("generates direct-submit guidance without presenting validate as a write preflight", () => {
+    expect(shared.renderTimelineMaskSkillReference()).toMatch(
+      /use the explicit validator only for diagnosis\s+when no write is intended/i,
+    );
+    expect(shared.renderTimelineAgentWorkflowReference()).toMatch(
+      /do not use.*(?:validate|validator).*as a preflight/i,
+    );
   });
 
   it.each([

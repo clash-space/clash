@@ -1,23 +1,31 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { LoroDoc } from "loro-crdt";
 import {
+  canonicalMetadataBody,
   createBoundedRetryPolicy,
   durableRunIdempotencyKey,
+  readMetadataBody,
+  storeMetadataBody,
 } from "@clash/shared-runtime";
 import {
+  DocumentAssetRevisionSchema,
   extractPromptText,
   ActionBindingOwnerSchema,
   ensureActionAssetBinding,
   ExecutablePluginBindingSchema,
   ExecutablePluginJsonValueSchema,
+  getDocumentKindDefinition,
   hostMutationSucceeded,
   listActionAssetBindingsForOwner,
   listProjectAssets,
   MODEL_CARDS,
   normalizeModelId,
+  parseDocumentBody,
   parsePromptParts,
   ProjectAssetEntrySchema,
   readProjectAsset,
+  readProjectActionRun,
+  readGeneratorRevision,
   validateReferenceMedia,
   validateRefs,
 } from "@clash/shared-types";
@@ -31,6 +39,7 @@ import type {
   ProjectAssetEntry,
   ReferenceMediaMetadata,
   TextAppliedRevision,
+  DocumentAssetRevision,
 } from "@clash/shared-types";
 import type { AssetKind } from "@clash/shared-types/assets";
 import {
@@ -53,6 +62,7 @@ import {
 } from "./local-project-assets.js";
 import { createLocalPluginAssetStagingStore } from "./local-plugin-asset-staging.js";
 import { createLocalDurableOutputStagingStore } from "./local-durable-output-staging.js";
+import { createLocalGeneratorRunBridge } from "./local-generator-run-bridge.js";
 import type { LocalAssetInspectionService } from "./local-asset-inspections.js";
 import { storeTextRevisionContentBlob } from "./text-revision-content.js";
 import type {
@@ -82,10 +92,15 @@ export interface LocalWorkflowProcessorOptions {
   assetInspection?: LocalAssetInspectionService;
   userId?: string;
   mediaBaseUrl?: string | (() => string);
-  timelineRenderer?: LocalTimelineRenderer;
   aigc?: ExternalAigcService;
   modelCards?: () => Promise<ModelCard[]>;
   executablePluginAction?: ExecutablePluginActionInvoker;
+  /** Resolve one active, schema-pinned Action before a durable run is frozen. */
+  resolvePluginBinding?: (
+    pluginId: string,
+    exportId: string,
+    kind: "action",
+  ) => Promise<ReturnType<typeof ExecutablePluginBindingSchema.parse>>;
   durableProviderRuns?: {
     ownerId: string;
     providerPluginExecutor: ProviderPluginExecutor;
@@ -106,20 +121,6 @@ export interface LocalWorkflowProcessorOptions {
   };
 }
 
-export interface LocalTimelineRenderer {
-  render(input: {
-    projectId: string;
-    taskId: string;
-    timelineDsl: Record<string, any>;
-  }): Promise<{
-    bytes: Uint8Array;
-    contentType?: string;
-    width?: number;
-    height?: number;
-    durationMs?: number;
-  }>;
-}
-
 const LOCAL_EXECUTOR_BINDING = ExecutablePluginBindingSchema.parse({
   pluginId: "clash.local-executor",
   version: "1.0.0",
@@ -128,6 +129,9 @@ const LOCAL_EXECUTOR_BINDING = ExecutablePluginBindingSchema.parse({
     .update("clash.local-executor/v1")
     .digest("hex")}`,
 });
+
+const REMOTION_RENDER_PLUGIN_ID = "clash.remotion";
+const REMOTION_RENDER_EXPORT_ID = "render-timeline";
 
 function jsonSnapshot(value: unknown): ExecutablePluginJsonValue {
   return ExecutablePluginJsonValueSchema.parse(
@@ -489,17 +493,14 @@ function isCurrentProviderNodeRevision(input: {
   const { frozen } = input;
   if (!frozen.nodeId) return true;
   if (frozen.kind === "model") return false;
-  if (
-    frozen.targetKind === "local-executor" &&
-    frozen.input.values.localExecutor === "timeline-render"
-  ) {
+  if (frozen.publicOwner) {
     const owner = timelineRenderInputOwner(input.nodeData);
-    return (
-      !!owner &&
-      !!frozen.publicOwner &&
-      owner.actionId === frozen.publicOwner.actionId &&
-      owner.actionRevisionId === frozen.publicOwner.actionRevisionId
-    );
+    if (owner) {
+      return (
+        owner.actionId === frozen.publicOwner.actionId &&
+        owner.actionRevisionId === frozen.publicOwner.actionRevisionId
+      );
+    }
   }
   if (frozen.nodeProjectionRevisionId) {
     return (
@@ -826,6 +827,14 @@ function pendingKindForNode(
   if (!data || typeof data !== "object") return null;
   if (data.assetId) return null;
   if (data.status !== "pending" && data.status !== "generating") return null;
+  if (
+    node.type === "video" &&
+    data.timelineDsl &&
+    typeof data.timelineDsl === "object" &&
+    !Array.isArray(data.timelineDsl)
+  ) {
+    return null;
+  }
 
   const kind = node.type as ProcessableNodeKind;
   const expectedActionType = `${kind}-gen`;
@@ -845,43 +854,34 @@ function timelineRenderInputOwner(
   return parsed.success && parsed.data.kind === "run" ? parsed.data : null;
 }
 
-export async function resolveLocalTimelineDslReferences(options: {
-  dataDir: string;
+function frozenRemotionTimelineInput(options: {
   doc: LoroDoc;
-  projectId: string;
-  mediaBaseUrl?: string | (() => string);
   timelineDsl: Record<string, any>;
   inputOwner: Extract<ActionBindingOwner, { kind: "run" }>;
-}): Promise<Record<string, any>> {
-  const resolved = structuredClone(options.timelineDsl);
-  const projectAssets = createLocalProjectAssetService({
-    dataDir: options.dataDir,
-    projectionOrigin: () => {
-      if (!options.mediaBaseUrl) return "http://127.0.0.1";
-      return typeof options.mediaBaseUrl === "function"
-        ? options.mediaBaseUrl()
-        : options.mediaBaseUrl;
-    },
-  });
-  await projectAssets.materializeDoc(options.projectId, options.doc);
+}): {
+  timelineDsl: Record<string, any>;
+  references: ExecutablePluginReference[];
+} {
+  const timelineDsl = structuredClone(options.timelineDsl);
   const nodes = options.doc.getMap("nodes");
-  const frozenInputs = listActionAssetBindingsForOwner(
+  const bindings = listActionAssetBindingsForOwner(
     options.doc,
     options.inputOwner,
   ).filter((binding) => binding.direction === "input");
-  const frozenBySlot = new Map<string, ActionAssetBinding>();
-  for (const binding of frozenInputs) {
-    if (frozenBySlot.has(binding.slot)) {
+  const bindingBySlot = new Map<string, ActionAssetBinding>();
+  for (const binding of bindings) {
+    if (bindingBySlot.has(binding.slot)) {
       throw new Error(
         `Timeline render run ${options.inputOwner.actionRunId} has duplicate input slot ${binding.slot}`,
       );
     }
-    frozenBySlot.set(binding.slot, binding);
+    bindingBySlot.set(binding.slot, binding);
   }
 
-  for (const track of resolved.tracks ?? []) {
-    for (const item of track.items ?? []) {
-      if (item.type === "composition" && item.runtime === "remotion") {
+  const references: ExecutablePluginReference[] = [];
+  for (const track of timelineDsl.tracks ?? []) {
+    for (const item of track?.items ?? []) {
+      if (item?.type === "composition" && item.runtime === "remotion") {
         const sourceNodeId =
           typeof item.sourceNodeId === "string" ? item.sourceNodeId.trim() : "";
         if (!sourceNodeId) {
@@ -908,9 +908,6 @@ export async function resolveLocalTimelineDslReferences(options: {
             `Remotion Canvas node ${sourceNodeId} has no executable TSX content`,
           );
         }
-        // This field exists only in the cloned render input. Timeline state
-        // keeps the stable sourceNodeId and resolves the latest code anew for
-        // every preview/export start.
         item.componentSource = sourceData.content;
         if (
           typeof sourceData.componentId === "string" &&
@@ -921,47 +918,43 @@ export async function resolveLocalTimelineDslReferences(options: {
         continue;
       }
       if (
-        item.type !== "video" &&
-        item.type !== "image" &&
-        item.type !== "audio"
-      )
+        item?.type !== "video" &&
+        item?.type !== "image" &&
+        item?.type !== "audio"
+      ) {
         continue;
+      }
       const itemId = typeof item.id === "string" ? item.id.trim() : "";
       if (!itemId) {
         throw new Error("Timeline render media items require a stable item id");
       }
       const slot = `timeline:item:${itemId}`;
-      const binding = frozenBySlot.get(slot);
+      const binding = bindingBySlot.get(slot);
       const asset = binding
         ? readProjectAsset(options.doc, binding.projectAssetId)
         : null;
-      if (!asset) {
+      if (!asset || asset.lifecycle.state !== "active") {
         throw new Error(
-          `Timeline render run ${options.inputOwner.actionRunId} has no readable frozen input for ${slot}`,
+          `Timeline render run ${options.inputOwner.actionRunId} has no active frozen input for ${slot}`,
         );
       }
+      delete item.src;
       item.assetId = asset.id;
-      const resolvedAsset = await projectAssets.readFromDoc(
-        options.doc,
-        options.projectId,
-        asset.id,
-      );
-      if (!options.mediaBaseUrl) {
-        throw new Error("Timeline rendering requires a local media base URL");
-      }
-      if (
-        !resolvedAsset ||
-        resolvedAsset.status !== "ready" ||
-        !resolvedAsset.url
-      ) {
-        throw new Error(
-          `Timeline render cannot read Project Asset ${asset.id} from this Host`,
-        );
-      }
-      item.src = resolvedAsset.url;
+      references.push({
+        slot,
+        index: 0,
+        asset: {
+          assetId: asset.id,
+          uri: `clash-asset://${asset.id}`,
+          kind: asset.kind,
+          ...(typeof asset.metadata?.contentType === "string"
+            ? { mediaType: asset.metadata.contentType }
+            : {}),
+        },
+      });
     }
   }
-  return resolved;
+  return { timelineDsl, references };
 }
 
 export function createLocalWorkflowProcessor(
@@ -977,6 +970,10 @@ export function createLocalWorkflowProcessor(
   // semantics without needing to invent a dummy Provider adapter.
   const durableOwnerId = options.durableProviderRuns?.ownerId ?? "local-api";
   const durableJournal = createSqliteDurableRunJournal(options.dataDir);
+  const generatorRuns = createLocalGeneratorRunBridge({
+    ownerId: durableOwnerId,
+    journal: durableJournal,
+  });
   const providerExecutionHandoffs = createProviderExecutionHandoffStore(
     options.dataDir,
   );
@@ -1060,83 +1057,6 @@ export function createLocalWorkflowProcessor(
           throw new Error("Frozen Host-local executor input is invalid.");
         }
         const invocationId = `${request.taskId}:${outputSlot}`;
-        if (mode === "timeline-render") {
-          if (!options.timelineRenderer) {
-            throw new Error("Timeline rendering backend is unavailable");
-          }
-          const timelineDsl = request.input.values.timelineDsl;
-          const inputOwnerValue = request.input.values.inputOwner;
-          if (
-            !timelineDsl ||
-            typeof timelineDsl !== "object" ||
-            Array.isArray(timelineDsl) ||
-            !inputOwnerValue ||
-            typeof inputOwnerValue !== "object" ||
-            Array.isArray(inputOwnerValue)
-          ) {
-            throw new Error("Frozen Timeline render input is invalid.");
-          }
-          const inputOwner = ActionBindingOwnerSchema.parse(inputOwnerValue);
-          if (inputOwner.kind !== "run") {
-            throw new Error("Frozen Timeline render owner is not a run.");
-          }
-          const resolvedDsl = await resolveLocalTimelineDslReferences({
-            dataDir: options.dataDir,
-            doc,
-            projectId: request.projectId,
-            mediaBaseUrl: options.mediaBaseUrl,
-            timelineDsl: timelineDsl as Record<string, any>,
-            inputOwner,
-          });
-          const rendered = await beforeAttemptDeadline(
-            options.timelineRenderer.render({
-              projectId: request.projectId,
-              taskId: request.taskId,
-              timelineDsl: resolvedDsl,
-            }),
-          );
-          const staged = await localOutputStaging.stage({
-            projectId: request.projectId,
-            actionRunId: request.taskId,
-            outputSlot,
-            kind: "video",
-            bytes: rendered.bytes,
-            contentType: rendered.contentType ?? "video/mp4",
-            metadata: {
-              ...(rendered.width === undefined
-                ? {}
-                : { width: rendered.width }),
-              ...(rendered.height === undefined
-                ? {}
-                : { height: rendered.height }),
-              ...(rendered.durationMs === undefined
-                ? {}
-                : { durationMs: rendered.durationMs }),
-            },
-            result: {
-              provider: "local-render",
-              modelEndpoint: "remotion-render",
-            },
-          });
-          return {
-            protocol: "clash.plugin.result/v1",
-            invocationId,
-            status: "completed",
-            outputs: [
-              {
-                slot: outputSlot,
-                kind: "asset",
-                asset: {
-                  assetId: staged.projectAssetId,
-                  uri: `clash-asset://${staged.projectAssetId}`,
-                  kind: "video",
-                  mediaType: staged.contentType,
-                },
-              },
-            ],
-          } satisfies ExecutablePluginResult;
-        }
-
         if (mode !== "generation") {
           throw new Error(`Host-local executor ${mode} is not recognized.`);
         }
@@ -1298,7 +1218,15 @@ export function createLocalWorkflowProcessor(
         outputStore: {
           async stage({ run, idempotencyKey, outputs }) {
             const frozen = frozenExecutorInput(run);
-            if (!frozen.nodeId && !frozen.delivery) {
+            const generatorDocumentPort =
+              frozen.targetKind === "generator-action"
+                ? frozen.generatorOutputContract?.find(
+                    (candidate) =>
+                      candidate.slot === run.outputSlot &&
+                      candidate.assetType.kind === "document",
+                  )
+                : undefined;
+            if (!frozen.nodeId && !frozen.delivery && !generatorDocumentPort) {
               throw new Error(
                 "A durable Provider output requires a Canvas node or Project Asset delivery.",
               );
@@ -1321,6 +1249,73 @@ export function createLocalWorkflowProcessor(
               throw new Error(
                 `Durable Provider output slot ${run.outputSlot} is missing.`,
               );
+            }
+            if (
+              generatorDocumentPort &&
+              generatorDocumentPort.assetType.kind === "document"
+            ) {
+              if (
+                output.kind !== "document" ||
+                output.document.documentKind !==
+                  generatorDocumentPort.assetType.documentKind ||
+                output.document.schemaVersion !==
+                  generatorDocumentPort.assetType.schemaVersion
+              ) {
+                throw new Error(
+                  `Generator document output slot ${run.outputSlot} does not match its frozen Document contract.`,
+                );
+              }
+              const descriptor = getDocumentKindDefinition(
+                generatorDocumentPort.assetType.documentKind,
+                generatorDocumentPort.assetType.schemaVersion,
+              );
+              if (!descriptor) {
+                throw new Error(
+                  `Generator document output declares an unknown kind ${generatorDocumentPort.assetType.documentKind}@${generatorDocumentPort.assetType.schemaVersion}.`,
+                );
+              }
+              const body = parseDocumentBody(
+                descriptor.kind,
+                descriptor.schemaVersion,
+                output.document.body,
+              );
+              const stored = await storeMetadataBody({
+                dataDir: options.dataDir,
+                body,
+              });
+              const publicRun = readProjectActionRun(doc, run.actionRunId);
+              const generatorRevision = publicRun
+                ? readGeneratorRevision(doc, publicRun.generatorRevision)
+                : null;
+              if (!publicRun || !generatorRevision) {
+                throw new Error(
+                  `Generator Action Run ${run.actionRunId} is missing its immutable public revision.`,
+                );
+              }
+              const revision = DocumentAssetRevisionSchema.parse({
+                id: `document-revision:${run.actionRunId}:${run.outputSlot}`,
+                documentAssetId: `document:${run.actionRunId}:${run.outputSlot}`,
+                documentKind: descriptor.kind,
+                schemaVersion: descriptor.schemaVersion,
+                mutability: descriptor.mutability,
+                body: {
+                  digest: stored.contentHash,
+                  byteLength: stored.bytes,
+                  contentType: "application/json",
+                },
+                producer: {
+                  kind: "action-run",
+                  actionRunId: run.actionRunId,
+                },
+                sourceRefs: [
+                  ...generatorRevision.persistentInputRefs,
+                  ...publicRun.invocationInputRefs,
+                ],
+              } satisfies DocumentAssetRevision);
+              return {
+                kind: "document",
+                revision,
+              } as ExecutablePluginJsonValue;
             }
             if (frozen.kind === "text") {
               if (output.kind !== "value") {
@@ -1441,7 +1436,10 @@ export function createLocalWorkflowProcessor(
               );
             }
             const expectedReceiptTaskId =
-              frozen.targetKind === "action" ? run.actionRunId : idempotencyKey;
+              frozen.targetKind === "action" ||
+              frozen.targetKind === "generator-action"
+                ? run.actionRunId
+                : idempotencyKey;
             if (
               staged.taskId !== expectedReceiptTaskId ||
               staged.slot !== run.outputSlot ||
@@ -1462,7 +1460,12 @@ export function createLocalWorkflowProcessor(
                 ...(staged.mediaType ? { contentType: staged.mediaType } : {}),
               },
               provenance: {
-                kind: "generation",
+                kind:
+                  frozen.targetKind === "action" &&
+                  frozen.binding.pluginId === REMOTION_RENDER_PLUGIN_ID &&
+                  frozen.binding.exportId === REMOTION_RENDER_EXPORT_ID
+                    ? "render"
+                    : "generation",
                 actionRunId: run.actionRunId,
                 ...(frozen.modelEndpoint
                   ? { model: frozen.modelEndpoint }
@@ -1488,11 +1491,6 @@ export function createLocalWorkflowProcessor(
         publisher: {
           async publish({ run, stagedOutput }) {
             const frozen = frozenExecutorInput(run);
-            if (!frozen.nodeId && !frozen.delivery) {
-              throw new Error(
-                "A durable Provider publication requires a Canvas node or Project Asset delivery.",
-              );
-            }
             const target = frozen.nodeId
               ? (nodes.get(frozen.nodeId) as Record<string, any> | undefined)
               : undefined;
@@ -1512,6 +1510,72 @@ export function createLocalWorkflowProcessor(
               throw new Error("Durable Provider staged output is invalid.");
             }
             const staged = stagedOutput as Record<string, unknown>;
+            if (
+              !frozen.nodeId &&
+              !frozen.delivery &&
+              !(
+                frozen.targetKind === "generator-action" &&
+                staged.kind === "document"
+              )
+            ) {
+              throw new Error(
+                "A durable Provider publication requires a Canvas node, Project Asset delivery, or Generator Document output.",
+              );
+            }
+            if (
+              frozen.targetKind === "generator-action" &&
+              staged.kind === "document"
+            ) {
+              const revision = DocumentAssetRevisionSchema.parse(
+                staged.revision,
+              );
+              const descriptor = getDocumentKindDefinition(
+                revision.documentKind,
+                revision.schemaVersion,
+              );
+              if (
+                !descriptor ||
+                descriptor.mutability !== revision.mutability ||
+                revision.body.contentType !== "application/json"
+              ) {
+                throw new Error(
+                  "Generator staged Document no longer matches its declared kind contract.",
+                );
+              }
+              const body = await readMetadataBody({
+                dataDir: options.dataDir,
+                contentHash: revision.body.digest,
+              });
+              if (
+                Buffer.byteLength(canonicalMetadataBody(body)) !==
+                revision.body.byteLength
+              ) {
+                throw new Error(
+                  "Generator staged Document body length does not match its immutable revision.",
+                );
+              }
+              parseDocumentBody(
+                descriptor.kind,
+                descriptor.schemaVersion,
+                body,
+              );
+              const publication = await generatorRuns.publishDocumentSuccess({
+                doc,
+                actionRunId: run.actionRunId,
+                outputSlot: run.outputSlot,
+                revision,
+                checkpoint: async () => {
+                  if (!input.checkpoint) {
+                    throw new Error(
+                      "Generator Document publication requires a Project checkpoint.",
+                    );
+                  }
+                  await input.checkpoint();
+                },
+              });
+              changed = publication.changed || changed;
+              return;
+            }
             let publishedAsset: ProjectAssetEntry | undefined;
             if (staged.kind === "asset") {
               const parsed = ProjectAssetEntrySchema.safeParse(
@@ -1542,19 +1606,33 @@ export function createLocalWorkflowProcessor(
                   ? { provenance: parsed.data.provenance }
                   : {}),
               });
-              const publication = publishLocalProjectAssetWithBindings(
-                doc,
-                verified,
-                [
-                  {
-                    id: `action-asset:${durableRunIdempotencyKey(run)}:output`,
-                    owner: durableActionOwner(frozen, run.actionRunId),
-                    direction: "output",
-                    slot: run.outputSlot,
-                    projectAssetId: verified.id,
-                  },
-                ],
-              );
+              const outputBinding = {
+                id: `action-asset:${durableRunIdempotencyKey(run)}:output`,
+                owner: durableActionOwner(frozen, run.actionRunId),
+                direction: "output" as const,
+                slot: run.outputSlot,
+                projectAssetId: verified.id,
+              };
+              const publication =
+                frozen.targetKind === "generator-action"
+                  ? await generatorRuns.publishMediaSuccess({
+                      doc,
+                      actionRunId: run.actionRunId,
+                      outputSlot: run.outputSlot,
+                      entry: verified,
+                      legacyBinding: outputBinding,
+                      checkpoint: async () => {
+                        if (!input.checkpoint) {
+                          throw new Error(
+                            "Generator Action publication requires a Project checkpoint.",
+                          );
+                        }
+                        await input.checkpoint();
+                      },
+                    })
+                  : publishLocalProjectAssetWithBindings(doc, verified, [
+                      outputBinding,
+                    ]);
               publishedAsset = publication.entry;
               changed = publication.changed || changed;
             }
@@ -1638,6 +1716,22 @@ export function createLocalWorkflowProcessor(
           },
           async publishFailure({ run, failure }) {
             const frozen = frozenExecutorInput(run);
+            if (frozen.targetKind === "generator-action") {
+              const publication = await generatorRuns.publishFailure({
+                doc,
+                actionRunId: run.actionRunId,
+                checkpoint: async () => {
+                  if (!input.checkpoint) {
+                    throw new Error(
+                      "Generator Action failure projection requires a Project checkpoint.",
+                    );
+                  }
+                  await input.checkpoint();
+                },
+              });
+              changed = publication.changed || changed;
+              return;
+            }
             if (!frozen.nodeId) return;
             const target = nodes.get(frozen.nodeId) as
               Record<string, any> | undefined;
@@ -1728,10 +1822,59 @@ export function createLocalWorkflowProcessor(
         const run = await durableJournal.load(identity);
         if (!run) return undefined;
         const frozen = frozenExecutorInput(run);
+        if (frozen.targetKind === "generator-action") {
+          if (!input.checkpoint) {
+            throw new Error(
+              "Generator Action recovery requires a Project checkpoint.",
+            );
+          }
+          const before = readProjectActionRun(doc, identity.actionRunId);
+          await generatorRuns.projectRunning({
+            doc,
+            identity,
+            checkpoint: input.checkpoint,
+          });
+          changed = before?.status === "pending" || changed;
+        }
         const owner = durableActionOwner(frozen, identity.actionRunId);
+        const frozenAssetReferences = frozen.input.references.filter(
+          (
+            reference,
+          ): reference is Extract<
+            ExecutablePluginReference,
+            { asset: unknown }
+          > => "asset" in reference,
+        );
+        const frozenReferenceCountBySlot = new Map<string, number>();
+        for (const reference of frozenAssetReferences) {
+          frozenReferenceCountBySlot.set(
+            reference.slot,
+            (frozenReferenceCountBySlot.get(reference.slot) ?? 0) + 1,
+          );
+        }
+        const publishedInputBindings = listActionAssetBindingsForOwner(
+          doc,
+          owner,
+        ).filter((binding) => binding.direction === "input");
         let bindingsChanged = false;
-        for (const reference of frozen.input.references) {
-          if (!("asset" in reference)) continue;
+        for (const reference of frozenAssetReferences) {
+          const exactPublishedSlot = publishedInputBindings.filter(
+            (binding) => binding.slot === reference.slot,
+          );
+          if (
+            frozenReferenceCountBySlot.get(reference.slot) === 1 &&
+            exactPublishedSlot.length > 0
+          ) {
+            if (
+              exactPublishedSlot.length !== 1 ||
+              exactPublishedSlot[0]!.projectAssetId !== reference.asset.assetId
+            ) {
+              throw new Error(
+                `Frozen Asset reference ${reference.slot} conflicts with its synchronized run binding`,
+              );
+            }
+            continue;
+          }
           const ensured = ensureActionAssetBinding(doc, {
             id: `action-asset:${identity.actionRunId}:${reference.slot}:${reference.index}:input`,
             owner,
@@ -1976,18 +2119,35 @@ export function createLocalWorkflowProcessor(
           node.data && typeof node.data === "object"
             ? (node.data as Record<string, any>)
             : {};
-        const isTimelineRender =
+        const hasTimelineRenderDsl =
           node.type === "video" &&
-          renderData.status === "pending" &&
+          (renderData.status === "pending" ||
+            renderData.status === "generating") &&
           !renderData.assetId &&
-          !renderData.pendingTask &&
           renderData.timelineDsl &&
-          typeof renderData.timelineDsl === "object";
+          typeof renderData.timelineDsl === "object" &&
+          !Array.isArray(renderData.timelineDsl);
+        if (hasTimelineRenderDsl && !timelineRenderInputOwner(renderData)) {
+          nodes.set(nodeId, {
+            ...node,
+            data: {
+              ...renderData,
+              status: "failed",
+              failureCode: "TIMELINE_RENDER_INPUT_INVALID",
+              error:
+                "Timeline render is missing its frozen Action input owner.",
+            },
+          });
+          changed = true;
+          continue;
+        }
+        const isTimelineRender =
+          hasTimelineRenderDsl &&
+          renderData.status === "pending" &&
+          !renderData.pendingTask &&
+          !renderData.assetId;
         if (isTimelineRender) {
           try {
-            if (!options.timelineRenderer) {
-              throw new Error("Timeline rendering backend is unavailable");
-            }
             const inputOwner = timelineRenderInputOwner(renderData);
             if (!inputOwner) {
               throw new Error(
@@ -1998,14 +2158,34 @@ export function createLocalWorkflowProcessor(
               actionRunId: inputOwner.actionRunId,
               outputSlot: "render:output",
             };
+            if (
+              !options.executablePluginAction ||
+              !options.resolvePluginBinding
+            ) {
+              throw new Error(
+                "Timeline rendering requires the clash.remotion bundled Action binding.",
+              );
+            }
+            const pluginExecution = {
+              binding: await options.resolvePluginBinding(
+                REMOTION_RENDER_PLUGIN_ID,
+                REMOTION_RENDER_EXPORT_ID,
+                "action",
+              ),
+              input: frozenRemotionTimelineInput({
+                doc,
+                timelineDsl: renderData.timelineDsl,
+                inputOwner,
+              }),
+            };
             const createdAt = durable?.now?.() ?? Date.now();
             await coordinator.coordinate({
               type: "create",
               ...identity,
               deadlineAt: createdAt + generationDeadlineMs,
               executor: {
-                targetKind: "local-executor",
-                binding: LOCAL_EXECUTOR_BINDING,
+                targetKind: "action",
+                binding: pluginExecution.binding,
                 actionId: inputOwner.actionId,
                 actor: {
                   kind: renderData.actorType === "agent" ? "agent" : "user",
@@ -2020,20 +2200,22 @@ export function createLocalWorkflowProcessor(
                   actionId: inputOwner.actionId,
                   actionRevisionId: inputOwner.actionRevisionId,
                 },
+                pluginOutputSlot: identity.outputSlot,
                 kind: "video",
                 projectId,
                 nodeId,
-                provider: "local-render",
+                provider: `plugin:${REMOTION_RENDER_PLUGIN_ID}`,
                 modelEndpoint: "remotion-render",
                 input: {
                   values: {
-                    localExecutor: "timeline-render",
                     outputSlot: identity.outputSlot,
-                    timelineDsl: jsonSnapshot(renderData.timelineDsl),
+                    timelineDsl: jsonSnapshot(
+                      pluginExecution.input.timelineDsl,
+                    ),
                     inputOwner: jsonSnapshot(inputOwner),
                     prompt: `Render Timeline ${String(renderData.sourceTimelineId ?? nodeId)}`,
                   },
-                  references: [],
+                  references: pluginExecution.input.references,
                 },
               },
             });

@@ -47,6 +47,13 @@ export function renderOutcomeMarkdown(
       ),
     ),
   ];
+  const requiredBodyParts = [
+    ...new Set(
+      benchmark.rubric.flatMap((rubric) =>
+        rubric.type === "mg-character" ? (rubric.requiredBodyParts ?? []) : [],
+      ),
+    ),
+  ];
   const hasRemotionComponentRubric = benchmark.rubric.some(
     (rubric) => rubric.type === "mg-character",
   );
@@ -54,6 +61,13 @@ export function renderOutcomeMarkdown(
     ...(options.clashHost && hasRemotionComponentRubric
       ? [
           "Clash-hosted Remotion component authoring: this is not a standalone Remotion project. Clash supplies the Remotion dependencies and renderer; author the self-contained TSX directly without project scaffolding or local package discovery.",
+        ]
+      : []),
+    ...(requiredBodyParts.length
+      ? [
+          `Required character-part markers: ${requiredBodyParts
+            .map((part) => `\`data-character-part="${part}"\``)
+            .join(", ")}.`,
         ]
       : []),
     ...(requiredRemotionApis.length
@@ -69,6 +83,27 @@ export function renderOutcomeMarkdown(
 
 ${authoringContractLines.join("\n\n")}`
     : "";
+  const requiredProductOperations = benchmark.execution
+    ?.requiredProductOperations?.length
+    ? `Required public product operations: ${benchmark.execution.requiredProductOperations
+        .map((operation) => `\`${operation}\``)
+        .join(", ")}.`
+    : "";
+  const forbiddenProductOperations = benchmark.execution
+    ?.forbiddenProductOperations?.length
+    ? `Forbidden public product operations: ${benchmark.execution.forbiddenProductOperations
+        .map((operation) => `\`${operation}\``)
+        .join(
+          ", ",
+        )}. Do not invoke these operations; discovery and help calls remain allowed and do not count as product-operation invocations.`
+    : "";
+  const transport = benchmark.execution?.transport ?? "auto";
+  const transportGuidance =
+    transport === "mcp"
+      ? "Only the runner-sealed Clash MCP surface is available to you. Use its advertised capabilities, schemas, structured results, and recovery guidance. Clash CLI is not available in this lane; do not search for or invoke it."
+      : transport === "cli"
+        ? "Only the runner-sealed Clash CLI surface is available to you. Use its public command help and structured results. Clash MCP is not available in this lane; do not search for or invoke it."
+        : "The runner-sealed Clash MCP and Clash CLI surfaces are both available. Choose one surface and avoid switching unless the selected surface fails.";
   return `# ${benchmark.title}
 
 Task ID: \`${benchmark.id}\`
@@ -91,7 +126,13 @@ ${deliverables}
 
 ${
   options.clashHost
-    ? "This workspace is already bound to an isolated Clash project, and its private Project Host is ready. Discover and use the advertised MCP capabilities from their descriptions, schemas, structured results, and recovery guidance. Workspace initialization and Project Host readiness are benchmark infrastructure, not creative work; do not wait for or repair them. Product work must be persisted and read back through Clash; ordinary files alone are not evidence of a completed product outcome."
+    ? `This workspace is already bound to an isolated Clash project, and its private Project Host is ready. ${transportGuidance} Workspace initialization and Project Host readiness are benchmark infrastructure, not creative work; do not wait for or repair them. Product work must be persisted and read back through public Clash operations; ordinary files alone are not evidence of a completed product outcome.
+
+${requiredProductOperations}
+
+${forbiddenProductOperations}
+
+The runner independently performs byte-level readback after you finish. Use public Clash reads to confirm semantic state; do not call internal Host HTTP endpoints or create separate verification downloads. Do not use Git as a completion check unless this workspace actually contains a \`.git\` repository.`
     : "This is a portable artifact workspace. Do not claim a live Clash product mutation unless a Clash MCP host is actually available."
 }
 ${
@@ -133,22 +174,32 @@ export function createOutcomeResult(input: {
   agentStatus: OutcomeResult["agentStatus"];
   evaluationStatus: OutcomeResult["evaluationStatus"];
   executionStatus: OutcomeResult["executionStatus"];
+  qualityReviewStatus?: OutcomeResult["qualityReviewStatus"];
   score: number;
 }): OutcomeResult {
-  const achieved =
+  const technicallyAchieved =
     input.agentStatus === "completed" &&
     input.executionStatus === "pass" &&
     input.evaluationStatus === "pass";
+  const qualityReviewStatus = input.qualityReviewStatus ?? "pass";
+  const status = !technicallyAchieved
+    ? "failed"
+    : qualityReviewStatus === "pending"
+      ? "pending-review"
+      : qualityReviewStatus === "pass"
+        ? "achieved"
+        : "failed";
   return {
     schemaVersion: 1,
     caseId: input.benchmark.id,
     objective: input.benchmark.outcome.objective,
-    status: achieved ? "achieved" : "failed",
+    status,
     score: input.score,
     passScore: input.benchmark.passScore,
     agentStatus: input.agentStatus,
     evaluationStatus: input.evaluationStatus,
     executionStatus: input.executionStatus,
+    ...(input.qualityReviewStatus ? { qualityReviewStatus } : {}),
     completedAt: new Date().toISOString(),
   };
 }

@@ -14,12 +14,17 @@ import { dirname, join } from "node:path";
 import {
   ExecutablePluginManifestSchema,
   ExecutablePluginActivationReceiptSchema,
+  ExecutablePluginGeneratorRegistrationSchema,
   isSafePluginRelativePath,
+  generatorDefinitionFromExecutablePluginRegistration,
   pluginIdSchema,
   validateExecutablePluginPackage,
   type ExecutablePluginContractTestDocument,
+  type ExecutablePluginGeneratorDocument,
+  type ExecutablePluginGeneratorRegistration,
   type ExecutablePluginModelBindingDocument,
   type ExecutablePluginProviderDocument,
+  type GeneratorDefinition,
 } from "@clash/shared-types";
 
 import {
@@ -64,10 +69,14 @@ function decodeJsonDocuments<T>(
   return documents;
 }
 
-export function validateHostExecutablePluginPackage(input: HostExecutablePluginPackage) {
+function validateHostExecutablePluginArtifacts(
+  input: HostExecutablePluginPackage,
+) {
   const manifest = ExecutablePluginManifestSchema.parse(input.manifest);
   if (input.id !== manifest.id) {
-    throw new Error(`Package id ${input.id} does not match plugin manifest id ${manifest.id}.`);
+    throw new Error(
+      `Package id ${input.id} does not match plugin manifest id ${manifest.id}.`,
+    );
   }
   if (manifest.runtime.kind !== "local") {
     throw new Error(`Plugin ${manifest.id} is not a local executable plugin.`);
@@ -78,7 +87,9 @@ export function validateHostExecutablePluginPackage(input: HostExecutablePluginP
     }
   }
   if (typeof input.files[manifest.runtime.entrypoint] !== "string") {
-    throw new Error(`Plugin entrypoint ${manifest.runtime.entrypoint} is missing.`);
+    throw new Error(
+      `Plugin entrypoint ${manifest.runtime.entrypoint} is missing.`,
+    );
   }
 
   const cards = decodeJsonDocuments(
@@ -91,21 +102,34 @@ export function validateHostExecutablePluginPackage(input: HostExecutablePluginP
     input.files,
     "Provider document",
   );
-  const modelBindings = decodeJsonDocuments<ExecutablePluginModelBindingDocument>(
-    manifest.contributes.modelBindings,
+  const modelBindings =
+    decodeJsonDocuments<ExecutablePluginModelBindingDocument>(
+      manifest.contributes.modelBindings,
+      input.files,
+      "model Provider binding",
+    );
+  const generators = decodeJsonDocuments<ExecutablePluginGeneratorDocument>(
+    manifest.contributes.generators,
     input.files,
-    "model Provider binding",
+    "Generator document",
   );
-  const contractTests = decodeJsonDocuments<ExecutablePluginContractTestDocument>(
-    manifest.contractTests.map((path) => ({ path })),
-    input.files,
-    "contract test",
-  );
-  validateExecutablePluginPackage(manifest, cards, contractTests, {
+  const contractTests =
+    decodeJsonDocuments<ExecutablePluginContractTestDocument>(
+      manifest.contractTests.map((path) => ({ path })),
+      input.files,
+      "contract test",
+    );
+  return validateExecutablePluginPackage(manifest, cards, contractTests, {
     providers,
     modelBindings,
+    generators,
   });
-  return manifest;
+}
+
+export function validateHostExecutablePluginPackage(
+  input: HostExecutablePluginPackage,
+) {
+  return validateHostExecutablePluginArtifacts(input).manifest;
 }
 
 async function writeHostPackageDirectory(
@@ -133,9 +157,15 @@ async function contractTestHostPackage(
   return runExecutablePluginContractTests(directory);
 }
 
-async function writeActivationReceipt(actionsRoot: string, pluginDir: string): Promise<void> {
+async function writeActivationReceipt(
+  actionsRoot: string,
+  pluginDir: string,
+): Promise<void> {
   const receipt = await createExecutablePluginActivationReceipt(pluginDir);
-  const target = executablePluginActivationReceiptPath(actionsRoot, receipt.pluginId);
+  const target = executablePluginActivationReceiptPath(
+    actionsRoot,
+    receipt.pluginId,
+  );
   await mkdir(dirname(target), { recursive: true });
   const staging = await mkdtemp(join(dirname(target), `.${receipt.pluginId}-`));
   const stagedReceipt = join(staging, "receipt.json");
@@ -183,7 +213,8 @@ export async function activateHostExecutablePluginPackage(
     };
   } catch (error) {
     await rm(stagingDir, { recursive: true, force: true });
-    if (existsSync(targetDir)) await rm(targetDir, { recursive: true, force: true });
+    if (existsSync(targetDir))
+      await rm(targetDir, { recursive: true, force: true });
     throw error;
   }
 }
@@ -191,7 +222,39 @@ export async function activateHostExecutablePluginPackage(
 export interface ValidatedHostExecutablePluginPackage {
   id: string;
   version: string;
+  generatorRegistrations: ExecutablePluginGeneratorRegistration[];
+  generatorDefinitions: GeneratorDefinition[];
   contractTests?: ExecutablePluginContractTestRun;
+}
+
+function generatorArtifactsFor(
+  validatedPackage: ReturnType<typeof validateHostExecutablePluginArtifacts>,
+  schemaHash: string,
+): Pick<
+  ValidatedHostExecutablePluginPackage,
+  "generatorRegistrations" | "generatorDefinitions"
+> {
+  const { manifest } = validatedPackage;
+  const generatorRegistrations = Object.values(validatedPackage.generators)
+    .map((document) =>
+      ExecutablePluginGeneratorRegistrationSchema.parse({
+        pluginId: manifest.id,
+        version: manifest.version,
+        schemaHash,
+        document,
+      }),
+    )
+    .sort((left, right) =>
+      left.document.spec.definitionId.localeCompare(
+        right.document.spec.definitionId,
+      ),
+    );
+  return {
+    generatorRegistrations,
+    generatorDefinitions: generatorRegistrations.map((registration) =>
+      generatorDefinitionFromExecutablePluginRegistration(registration),
+    ),
+  };
 }
 
 /** Validate and execute a package's declared contracts without activating it. */
@@ -199,15 +262,19 @@ export async function validateHostExecutablePluginPackageContracts(
   input: HostExecutablePluginPackage,
   actionsRoot: string,
 ): Promise<ValidatedHostExecutablePluginPackage> {
-  const manifest = validateHostExecutablePluginPackage(input);
+  const validatedPackage = validateHostExecutablePluginArtifacts(input);
+  const { manifest } = validatedPackage;
   await mkdir(dirname(actionsRoot), { recursive: true });
   const stagingDir = await mkdtemp(`${actionsRoot}.validate-${manifest.id}-`);
   try {
     await writeHostPackageDirectory(stagingDir, input);
     const contractTests = await contractTestHostPackage(stagingDir, input);
+    const { schemaHash } =
+      await createExecutablePluginActivationReceipt(stagingDir);
     return {
       id: manifest.id,
       version: manifest.version,
+      ...generatorArtifactsFor(validatedPackage, schemaHash),
       ...(contractTests ? { contractTests } : {}),
     };
   } finally {
@@ -215,8 +282,7 @@ export async function validateHostExecutablePluginPackageContracts(
   }
 }
 
-export interface UpdatedHostExecutablePluginPackage
-  extends ActivatedHostExecutablePluginPackage {
+export interface UpdatedHostExecutablePluginPackage extends ActivatedHostExecutablePluginPackage {
   id: string;
   version: string;
   rollbackDir?: string;
@@ -238,8 +304,8 @@ export async function activateOrUpdateHostExecutablePluginPackage(
     );
     if (existing.version === manifest.version) {
       throw new Error(
-        `Executable plugin ${manifest.id} version ${manifest.version} is already active; `
-          + "bump the version before changing or reactivating executable code.",
+        `Executable plugin ${manifest.id} version ${manifest.version} is already active; ` +
+          "bump the version before changing or reactivating executable code.",
       );
     }
   }
@@ -274,7 +340,8 @@ export async function activateOrUpdateHostExecutablePluginPackage(
           // Receipt verification remains fail-closed if recovery itself fails.
         }
       }
-      if (rollbackDir && !existsSync(targetDir)) await rename(rollbackDir, targetDir);
+      if (rollbackDir && !existsSync(targetDir))
+        await rename(rollbackDir, targetDir);
       throw error;
     }
     return {
@@ -285,7 +352,8 @@ export async function activateOrUpdateHostExecutablePluginPackage(
       ...(contractTests ? { contractTests } : {}),
     };
   } catch (error) {
-    if (existsSync(stagingDir)) await rm(stagingDir, { recursive: true, force: true });
+    if (existsSync(stagingDir))
+      await rm(stagingDir, { recursive: true, force: true });
     throw error;
   }
 }
@@ -307,7 +375,12 @@ export async function rollbackHostExecutablePluginPackage(
 
   const targetDir = join(actionsRoot, id);
   const selectedDir = join(rollbackRoot, selected);
-  const displacedDir = join(actionsRoot, ".rollback-displaced", id, String(Date.now()));
+  const displacedDir = join(
+    actionsRoot,
+    ".rollback-displaced",
+    id,
+    String(Date.now()),
+  );
   if (existsSync(targetDir)) {
     await mkdir(dirname(displacedDir), { recursive: true });
     await rename(targetDir, displacedDir);
@@ -340,15 +413,23 @@ async function collectHostPackageFiles(
   output: Record<string, string>,
 ): Promise<void> {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (entry.name === "node_modules" || entry.name === "manifest.json") continue;
+    if (entry.name === "node_modules" || entry.name === "manifest.json")
+      continue;
     const absolutePath = join(directory, entry.name);
-    const relativePath = absolutePath.slice(root.length + 1).split("\\").join("/");
+    const relativePath = absolutePath
+      .slice(root.length + 1)
+      .split("\\")
+      .join("/");
     if (!isSafePluginRelativePath(relativePath)) {
-      throw new Error(`Refusing suspicious active plugin path: ${relativePath}`);
+      throw new Error(
+        `Refusing suspicious active plugin path: ${relativePath}`,
+      );
     }
     const metadata = await lstat(absolutePath);
     if (metadata.isSymbolicLink()) {
-      throw new Error(`Active plugins cannot contain symbolic links: ${relativePath}`);
+      throw new Error(
+        `Active plugins cannot contain symbolic links: ${relativePath}`,
+      );
     }
     if (metadata.isDirectory()) {
       await collectHostPackageFiles(root, absolutePath, output);
@@ -362,7 +443,13 @@ async function collectHostPackageFiles(
 export async function readHostExecutablePluginPackage(
   actionsRoot: string,
   inputId: string,
-): Promise<HostExecutablePluginPackage & { version: string }> {
+): Promise<
+  HostExecutablePluginPackage &
+    Pick<
+      ValidatedHostExecutablePluginPackage,
+      "generatorRegistrations" | "generatorDefinitions"
+    > & { version: string }
+> {
   const id = pluginIdSchema.parse(inputId);
   const pluginDir = join(actionsRoot, id);
   const manifest = ExecutablePluginManifestSchema.parse(
@@ -370,15 +457,19 @@ export async function readHostExecutablePluginPackage(
   );
   const storedReceipt = ExecutablePluginActivationReceiptSchema.parse(
     JSON.parse(
-      await readFile(executablePluginActivationReceiptPath(actionsRoot, id), "utf8"),
+      await readFile(
+        executablePluginActivationReceiptPath(actionsRoot, id),
+        "utf8",
+      ),
     ),
   );
-  const currentReceipt = await createExecutablePluginActivationReceipt(pluginDir);
+  const currentReceipt =
+    await createExecutablePluginActivationReceipt(pluginDir);
   if (
-    storedReceipt.pluginId !== currentReceipt.pluginId
-    || storedReceipt.version !== currentReceipt.version
-    || storedReceipt.schemaHash !== currentReceipt.schemaHash
-    || storedReceipt.contentHash !== currentReceipt.contentHash
+    storedReceipt.pluginId !== currentReceipt.pluginId ||
+    storedReceipt.version !== currentReceipt.version ||
+    storedReceipt.schemaHash !== currentReceipt.schemaHash ||
+    storedReceipt.contentHash !== currentReceipt.contentHash
   ) {
     throw new Error(
       `Active plugin ${id} differs from its activation receipt; restore or reactivate it before checkout.`,
@@ -386,7 +477,18 @@ export async function readHostExecutablePluginPackage(
   }
   const files: Record<string, string> = {};
   await collectHostPackageFiles(pluginDir, pluginDir, files);
-  return { id, version: manifest.version, manifest, files };
+  const validatedPackage = validateHostExecutablePluginArtifacts({
+    id,
+    manifest,
+    files,
+  });
+  return {
+    id,
+    version: manifest.version,
+    manifest,
+    files,
+    ...generatorArtifactsFor(validatedPackage, currentReceipt.schemaHash),
+  };
 }
 
 /** Move an active package out of daemon-owned storage; keep it recoverable in trash. */
@@ -410,13 +512,15 @@ export async function removeHostExecutablePluginPackage(
 
 export async function listHostExecutablePluginPackages(
   actionsRoot: string,
-): Promise<Array<{
-  id: string;
-  name?: string;
-  version?: string;
-  targetDir: string;
-  drifted: boolean;
-}>> {
+): Promise<
+  Array<{
+    id: string;
+    name?: string;
+    version?: string;
+    targetDir: string;
+    drifted: boolean;
+  }>
+> {
   if (!existsSync(actionsRoot)) return [];
   const results = [];
   for (const entry of await readdir(actionsRoot, { withFileTypes: true })) {

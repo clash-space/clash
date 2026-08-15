@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { renderOutcomeMarkdown } from "./outcome";
+import { createOutcomeResult, renderOutcomeMarkdown } from "./outcome";
 import type { ArtifactBenchmarkCase } from "./types";
 
 const benchmark: ArtifactBenchmarkCase = {
@@ -33,6 +33,20 @@ const benchmark: ArtifactBenchmarkCase = {
 };
 
 describe("benchmark outcome prompt", () => {
+  it("does not call technically passing content achieved while quality review is pending", () => {
+    const result = createOutcomeResult({
+      benchmark,
+      agentStatus: "completed",
+      evaluationStatus: "pass",
+      executionStatus: "pass",
+      qualityReviewStatus: "pending",
+      score: 100,
+    });
+
+    expect(result.status).toBe("pending-review");
+    expect(result.qualityReviewStatus).toBe("pending");
+  });
+
   it("makes every active skill an explicit workflow requirement", () => {
     const markdown = renderOutcomeMarkdown(
       benchmark,
@@ -98,7 +112,73 @@ describe("benchmark outcome prompt", () => {
 
     expect(markdown).toMatch(/Clash-hosted Remotion component authoring/i);
     expect(markdown).toMatch(/not a standalone Remotion project/i);
-    expect(markdown).toMatch(/supplies the Remotion dependencies and renderer/i);
-    expect(markdown).toMatch(/without project scaffolding or local package discovery/i);
+    expect(markdown).toMatch(
+      /supplies the Remotion dependencies and renderer/i,
+    );
+    expect(markdown).toMatch(
+      /without project scaffolding or local package discovery/i,
+    );
+  });
+
+  it("assigns trusted byte readback to the runner without encouraging private Host or Git checks", () => {
+    const markdown = renderOutcomeMarkdown(
+      {
+        ...benchmark,
+        execution: {
+          profile: "clash-host",
+          lane: "agent-product",
+          requiredProductOperations: [
+            "asset.import",
+            "asset.list",
+            "asset.get",
+          ],
+          forbiddenProductOperations: ["timeline.validate"],
+        },
+      },
+      [],
+      { clashHost: true, workspaceRoot: "/case/workspace" },
+    );
+
+    expect(markdown).toContain(
+      "Required public product operations: `asset.import`, `asset.list`, `asset.get`.",
+    );
+    expect(markdown).toContain(
+      "Forbidden public product operations: `timeline.validate`.",
+    );
+    expect(markdown).toMatch(/do not invoke.*discovery.*help/isu);
+    expect(markdown).toMatch(
+      /runner independently performs byte-level readback/i,
+    );
+    expect(markdown).toMatch(/do not call internal Host HTTP/i);
+    expect(markdown).toMatch(/do not use Git as a completion check/i);
+  });
+
+  it("describes only the Clash transport surface assigned to the benchmark lane", () => {
+    const renderFor = (transport: "auto" | "mcp" | "cli") =>
+      renderOutcomeMarkdown(
+        {
+          ...benchmark,
+          execution: {
+            profile: "clash-host",
+            lane: "agent-product",
+            transport,
+            requiredProductOperations: ["asset.import"],
+          },
+        },
+        [],
+        { clashHost: true, workspaceRoot: "/case/workspace" },
+      );
+
+    const mcp = renderFor("mcp");
+    expect(mcp).toMatch(/only.*runner-sealed Clash MCP/is);
+    expect(mcp).toMatch(/Clash CLI is not available/i);
+
+    const cli = renderFor("cli");
+    expect(cli).toMatch(/only.*runner-sealed Clash CLI/is);
+    expect(cli).toMatch(/Clash MCP is not available/i);
+
+    const auto = renderFor("auto");
+    expect(auto).toMatch(/runner-sealed Clash MCP and Clash CLI.*available/is);
+    expect(auto).toMatch(/choose one.*avoid switching/i);
   });
 });

@@ -1,16 +1,30 @@
 {
-  "summary": "Outcome-driven, artifact-first headless benchmark runner and deterministic graders for Clash creative work.",
+  "summary": "Standardized headless Agent benchmark pipeline with immutable score-free Attempts, independently versioned Evaluations, derived Aggregate/Reward records, portable Workspaces, and trusted Clash Host evidence.",
   "context_hints": [
     "The execution agent receives only the outcome contract and copied built-in skills; rubric checks remain outside its workspace.",
     "Never grade from the agent final message. Resolve submission paths inside the isolated workspace, reject symlinks, hash files, and independently validate artifacts.",
+    "Recheck every installed fixture file after the agent exits; fixture mutation is a hard product-execution failure.",
+    "An agent-product case is runnable only when a real CLI or MCP surface and trusted Host readback both exist. Missing Generator or Document surfaces belong in blocked-contract cases, never raw internal HTTP instructions.",
     "Required rubric gates fail closed even when the weighted score exceeds the pass threshold.",
+    "ProductExecution negative gates use forbiddenProductOperations; any runner-sealed CLI or MCP invocation violates the gate even when the product call domain-fails, while discovery/help is excluded.",
     "Director v1 is structural unless real rendered media exists; MG character v1 is the geometric 2D profile, not a skeletal rig."
   ],
   "key_files": {
     "src/schemas.ts": "Versioned benchmark, outcome, submission, and rubric schemas.",
     "src/evaluator.ts": "Director, Timeline, MG, media, artifact-set, and mixed-lineage grading.",
-    "src/runner.ts": "Isolated workspace provisioning, skill installation, native Codex and Claude Code execution, logs, and outcome result generation.",
-    "src/cli.ts": "CLI entry point for real Codex, Claude Code, and command-based benchmark runs.",
+    "src/runner.ts": "Isolated workspace provisioning, native Agent execution, product-operation gates, trusted readback dispatch, logs, resume, and outcome generation.",
+    "src/product-readback.ts": "Independent Asset, Timeline, and Remotion readback matched to submitted bytes or canonical product state.",
+    "src/fixture.ts": "Fixture manifest creation, safe installation, provenance receipt, and post-Agent integrity verification.",
+    "src/environment.ts": "Score-free functional/content-effect Attempt capture, runner-scaffold separation, modified Workspace capture, and OTLP receipts.",
+    "src/environment-lock.ts": "Pre-execution Agent model/provider selection, exact executable evidence, Clash plugin/runtime manifest, installed skill digests, and pre/post byte verification; evaluator identity is intentionally separate.",
+    "src/benchmark-task.ts": "Canonical immutable Task evidence shared by functional and content-effect attempts.",
+    "src/atif.ts": "Codex exec-event and Pi agent-event to ATIF-v1.7 structured projection with reasoning omission and recursive privacy redaction.",
+    "src/attempt-manifest.ts": "Immutable score-free Attempt inventory binding Task, Agent Environment, Workspace trees, trajectories, readback, logs, and facts-only OTLP under attemptDigest.",
+    "src/evaluation-records.ts": "Immutable content-addressed Evaluation, Aggregate, and Reward contracts bound to one Attempt digest.",
+    "src/evaluation-pipeline.ts": "Compatibility adapter that maps current technical and quality reports into independent versioned Evaluation records and a selected Aggregate.",
+    "src/result-bundle.ts": "Replaceable current index referencing one immutable Attempt plus zero or more Evaluations and optional Aggregate/Reward records.",
+    "src/otel.ts": "Score-free OTLP/JSON Attempt trace from normalized Agent actions, sealed runner CLI evidence, and fingerprinted trusted Host readback.",
+    "src/cli.ts": "CLI entry point for real Codex, Claude Code, and Pi benchmark runs with explicit ready-Environment model/provider selection; command agents remain portable-only.",
     "src/claude-adapter.test.ts": "Claude print-mode arguments, Project Host readiness before stdio MCP binding, skills, stream-json trajectory, and error contracts.",
     "src/index.test.ts": "Artifact security, hard-gate, mixed-source, suite, and real child-process runner contracts."
   }

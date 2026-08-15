@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { TIMELINE_DSL_DEFINITION } from "@clash/shared-types/timeline-contract";
 
 async function serverModule(): Promise<Record<string, any>> {
   return import("./server.js").catch(() => ({}));
@@ -160,6 +161,38 @@ test("registers Timeline headless tools while the GUI is quarantined", async () 
     /replaces the entire Timeline state/i,
   );
   assert.match(
+    tools.get("clash_timeline_create")?.config.description,
+    /automatically validates/i,
+  );
+  assert.match(
+    tools.get("clash_timeline_create")?.config.description,
+    /effect.*text.*visual.*primary.*audio/is,
+  );
+  assert.match(
+    tools.get("clash_timeline_create")?.config.description,
+    /subtitle.*structured.*cues.*wordRefs.*sourceToOutputMap.*plain title.*omit.*role/is,
+  );
+  assert.match(
+    tools.get("clash_timeline_save")?.config.description,
+    /automatically validates/i,
+  );
+  assert.match(
+    tools.get("clash_timeline_validate")?.config.description,
+    /only when.*no (?:create or save )?write is intended/i,
+  );
+  assert.match(
+    tools.get("clash_timeline_validate")?.config.description,
+    /skip this diagnostic.*create or save directly/i,
+  );
+  assert.match(
+    tools.get("clash_timeline_create")?.config.description,
+    /invalid state.*Project state unchanged/i,
+  );
+  assert.match(
+    tools.get("clash_timeline_save")?.config.description,
+    /invalid state.*Timeline revision unchanged/i,
+  );
+  assert.match(
     tools.get("clash_timeline_save")?.config.description,
     /automatically pulled latest projection.*merge.*resubmit/i,
   );
@@ -185,7 +218,10 @@ test("registers Timeline headless tools while the GUI is quarantined", async () 
     timelineId: "rough-cut",
   });
   assert.equal(read.structuredContent.timeline.id, "rough-cut");
-  assert.equal(read.structuredContent.contract.schemaVersion, 9);
+  assert.equal(
+    read.structuredContent.contract.schemaVersion,
+    TIMELINE_DSL_DEFINITION.schemaVersion,
+  );
   assert.equal(read.structuredContent.validation.ok, true);
 });
 

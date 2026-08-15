@@ -134,14 +134,21 @@ test("local-api host owns generation node defaults, parameter coercion, prompt r
     actorUserId: "user-1",
   }) as {
     node_id?: string;
+    asset_id?: string | null;
     node?: { type?: string; data?: Record<string, unknown> };
     refNodeIds?: string[];
     readToken?: string;
   };
 
   assert.ok(result.node_id);
+  assert.equal(result.asset_id, null);
   assert.equal(result.node?.type, "action-badge");
   const data = result.node?.data ?? {};
+  assert.equal(Object.hasOwn(data, "assetId"), false);
+  assert.equal(
+    Object.hasOwn(client.readNode(result.node_id)?.data ?? {}, "assetId"),
+    false,
+  );
   assert.deepEqual({
     label: data.label,
     actionType: data.actionType,
@@ -658,6 +665,16 @@ test("local-api host lists trusted standalone Timeline renders without registeri
     false,
   );
 
+  const genericCanvasRead = handleCommandForTest(client, {
+    action: "get",
+    canvasId: PROJECT_ASSET_RENDER_CANVAS_ID,
+    nodeId: "render-completed",
+  }) as { error?: string };
+  assert.equal(
+    genericCanvasRead.error,
+    `Canvas ${PROJECT_ASSET_RENDER_CANVAS_ID} not found`,
+  );
+
   const completedOnly = handleCommandForTest(client, {
     action: "list_timeline_renders",
   }) as {
@@ -854,13 +871,13 @@ test("local-api host Timeline state apply advances its revision under implicit C
   assert.match(JSON.stringify(handleCommandForTest(client, {
     action: "update_timeline_state",
     timelineId: "timeline-1",
-    state: { tracks: [{ id: "dialogue" }] },
+    state: { tracks: [{ id: "dialogue", items: [] }] },
     actorClientType: "agent",
   })), /READ_REQUIRED/);
   assert.match(JSON.stringify(handleCommandForTest(client, {
     action: "update_timeline_state",
     timelineId: "timeline-1",
-    state: { tracks: [{ id: "dialogue" }] },
+    state: { tracks: [{ id: "dialogue", items: [] }] },
     actorClientType: "agent",
     observedVersion: "timeline-v1:stale",
   })), /STALE_READ/);
@@ -868,13 +885,15 @@ test("local-api host Timeline state apply advances its revision under implicit C
   const result = handleCommandForTest(client, {
     action: "update_timeline_state",
     timelineId: "timeline-1",
-    state: { tracks: [{ id: "dialogue" }] },
+    state: { tracks: [{ id: "dialogue", items: [] }] },
     actorClientType: "agent",
     observedVersion,
   }) as { timeline?: Parameters<typeof projectTimelineReadToken>[0]; version?: string };
   assert.equal(
     result.timeline?.revisionId,
-    projectTimelineRevisionId("timeline-1", { tracks: [{ id: "dialogue" }] }),
+    projectTimelineRevisionId("timeline-1", {
+      tracks: [{ id: "dialogue", items: [] }],
+    }),
   );
   assert.equal(result.version, result.timeline && projectTimelineReadToken(result.timeline));
 });

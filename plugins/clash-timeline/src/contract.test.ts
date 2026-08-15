@@ -34,7 +34,10 @@ test("maps typed Timeline operations to exact shell-free Clash CLI argv", async 
     "timeline", "list", "--standalone", "--json",
   ]);
   assert.deepEqual(build("clash_timeline_schema", {}), [
-    "timeline", "schema", "--json",
+    "timeline", "schema", "--view", "authoring", "--json",
+  ]);
+  assert.deepEqual(build("clash_timeline_schema", { view: "full" }), [
+    "timeline", "schema", "--view", "full", "--json",
   ]);
   assert.deepEqual(build("clash_timeline_create", {
     timelineId: "social-cut",

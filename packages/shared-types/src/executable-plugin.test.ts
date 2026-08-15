@@ -3,6 +3,67 @@ import { describe, expect, it } from "vitest";
 import * as sharedTypes from "./index.js";
 
 describe("agent-editable executable plugin contract", () => {
+  it("keeps native Generator Document outputs typed instead of reusing legacy values", () => {
+    const schema = sharedTypes.ExecutablePluginOutputSchema;
+    const body = { text: "hello", segments: [] };
+
+    expect(
+      schema.parse({
+        slot: "transcript",
+        kind: "document",
+        document: {
+          documentKind: "media.transcript",
+          schemaVersion: 1,
+          body,
+        },
+      }),
+    ).toEqual({
+      slot: "transcript",
+      kind: "document",
+      document: {
+        documentKind: "media.transcript",
+        schemaVersion: 1,
+        body,
+      },
+    });
+    expect(
+      schema.safeParse({
+        slot: "transcript",
+        kind: "document",
+        document: { schemaVersion: 1, body },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("pins a plugin Document input to one exact immutable revision", () => {
+    const reference = {
+      slot: "transcript",
+      index: 0,
+      document: {
+        documentAssetId: "document-1",
+        revisionId: "revision-2",
+        documentKind: "media.transcript",
+        schemaVersion: 1,
+      },
+    };
+    expect(sharedTypes.ExecutablePluginReferenceSchema.parse(reference)).toEqual(
+      reference,
+    );
+    expect(
+      sharedTypes.ExecutablePluginBrokerResolvedReferenceSchema.parse({
+        form: "document",
+        documentKind: "media.transcript",
+        schemaVersion: 1,
+        body: { text: "frozen words" },
+      }),
+    ).toEqual({
+      form: "document",
+      documentKind: "media.transcript",
+      schemaVersion: 1,
+      body: { text: "frozen words" },
+    });
+  });
+
   it("defines host-controlled form, dialog, and workspace Action presentations", () => {
     const schema = (sharedTypes as Record<string, unknown>).ExecutableActionCardSchema as
       | { parse(value: unknown): any; safeParse(value: unknown): { success: boolean } }

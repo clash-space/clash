@@ -29,6 +29,7 @@ export type CanvasToolInput = {
   types?: string[];
   label?: string;
   content?: string;
+  contentFile?: string;
   prompt?: string;
   query?: string;
   parentId?: string;
@@ -97,6 +98,9 @@ export function buildCanvasCliArgs(
       if (input.types?.length) args.push("--type", input.types.join(","));
       break;
     case "clash_canvas_add":
+      if (input.content !== undefined && input.contentFile !== undefined) {
+        throw new Error("content and contentFile are mutually exclusive");
+      }
       args.push(
         "add",
         "--type", requireString(input, "type"),
@@ -104,6 +108,7 @@ export function buildCanvasCliArgs(
       );
       if (input.prompt !== undefined) args.push("--prompt", input.prompt);
       if (input.content !== undefined) args.push("--content", input.content);
+      if (input.contentFile !== undefined) args.push("--content-file", input.contentFile);
       if (input.parentId?.trim()) args.push("--parent", input.parentId.trim());
       if (input.modelId?.trim()) args.push("--model", input.modelId.trim());
       if (input.actionId?.trim()) args.push("--action", input.actionId.trim());
@@ -114,9 +119,13 @@ export function buildCanvasCliArgs(
       args.push("execute", "--node", requireString(input, "nodeId"));
       break;
     case "clash_canvas_update":
+      if (input.content !== undefined && input.contentFile !== undefined) {
+        throw new Error("content and contentFile are mutually exclusive");
+      }
       args.push("update", "--node", requireString(input, "nodeId"));
       if (input.label !== undefined) args.push("--label", input.label);
       if (input.content !== undefined) args.push("--content", input.content);
+      if (input.contentFile !== undefined) args.push("--content-file", input.contentFile);
       if (input.assetId?.trim()) args.push("--asset-id", input.assetId.trim());
       appendRecord(args, "--data", input.data);
       break;

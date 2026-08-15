@@ -3,6 +3,7 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
+      "@clash/cli/plugin": ["../../packages/cli/src/lib/plugin-lifecycle.ts"],
       "@clash/director-plugin": ["../clash-director/src/index.ts"],
       "@clash/director-plugin/*": ["../clash-director/src/*.ts"],
       "@clash/local-api": ["../../apps/local-api/src/server.ts"],

@@ -551,7 +551,7 @@ describe("Project workspace model", () => {
     (workspace as any).createProjectTimeline(doc, {
       id: "timeline-1",
       name: "Episode 1",
-      state: { tracks: [{ id: "dialogue" }] },
+      state: { tracks: [{ id: "dialogue", items: [] }] },
     });
 
     const stored = doc.getMap("timelines").get("timeline-1") as any;
@@ -559,9 +559,9 @@ describe("Project workspace model", () => {
     expect(stored.get("name")).toBe("Episode 1");
     expect(stored.get("owner")).toEqual({ kind: "project" });
     expect(stored.get("revision")).toEqual({
-      state: { tracks: [{ id: "dialogue" }] },
+      state: { tracks: [{ id: "dialogue", items: [] }] },
       revisionId: (workspace as any).projectTimelineRevisionId("timeline-1", {
-        tracks: [{ id: "dialogue" }],
+        tracks: [{ id: "dialogue", items: [] }],
       }),
     });
     expect(stored.get("state")).toBeUndefined();
@@ -593,7 +593,7 @@ describe("Project workspace model", () => {
       },
     ]);
 
-    const nextState = { tracks: [{ id: "promoted" }] };
+    const nextState = { tracks: [{ id: "promoted", items: [] }] };
     expect(
       (workspace as any).updateProjectTimelineState(
         doc,
@@ -642,7 +642,7 @@ describe("Project workspace model", () => {
       actionNodeId: "timeline-action-1",
       position: { x: 0, y: 0 },
     });
-    const nextState = { tracks: [{ id: "dialogue" }] };
+    const nextState = { tracks: [{ id: "dialogue", items: [] }] };
     (workspace as any).updateProjectTimelineState(
       docB,
       "timeline-1",
@@ -967,13 +967,13 @@ describe("Project workspace model", () => {
     const updated = (workspace as any).updateProjectTimelineState(
       doc,
       "timeline-1",
-      { tracks: [{ id: "dialogue" }] },
+      { tracks: [{ id: "dialogue", items: [] }] },
     );
     expect(updated).toMatchObject({
       ok: true,
       timeline: {
         id: "timeline-1",
-        state: { tracks: [{ id: "dialogue" }] },
+        state: { tracks: [{ id: "dialogue", items: [] }] },
       },
     });
     expect(updated.timeline.revisionId).not.toBe(initialRevisionId);
@@ -1057,7 +1057,7 @@ describe("Project workspace model", () => {
     (workspace as any).createProjectTimeline(doc, {
       id: "timeline-1",
       name: "Episode 1",
-      state: { tracks: [{ id: "dialogue" }] },
+      state: { tracks: [{ id: "dialogue", items: [] }] },
     });
     (workspace as any).attachTimelineToCanvas(doc, {
       timelineId: "timeline-1",
@@ -1083,7 +1083,7 @@ describe("Project workspace model", () => {
           canvasId: "shots",
           actionNodeId: "timeline-action-2",
         },
-        state: { tracks: [{ id: "dialogue" }] },
+        state: { tracks: [{ id: "dialogue", items: [] }] },
       },
     });
     expect((workspace as any).listProjectTimelines(doc)).toEqual(
@@ -1171,7 +1171,17 @@ describe("Project workspace model", () => {
       name: "Episode 1",
       state: {
         fps: 30,
-        tracks: [{ items: [{ from: 0, durationInFrames: 30 }] }],
+        durationInFrames: 30,
+        tracks: [{
+          id: "visuals",
+          items: [{
+            id: "solid-1",
+            type: "solid",
+            from: 0,
+            durationInFrames: 30,
+            color: "#000000",
+          }],
+        }],
       },
     });
     (workspace as any).attachTimelineToCanvas(doc, {
@@ -1198,12 +1208,32 @@ describe("Project workspace model", () => {
           "timeline-1",
           {
             fps: 30,
-            tracks: [{ items: [{ from: 0, durationInFrames: 30 }] }],
+            durationInFrames: 30,
+            tracks: [{
+              id: "visuals",
+              items: [{
+                id: "solid-1",
+                type: "solid",
+                from: 0,
+                durationInFrames: 30,
+                color: "#000000",
+              }],
+            }],
           },
         ),
         timelineDsl: {
           fps: 30,
-          tracks: [{ items: [{ from: 0, durationInFrames: 30 }] }],
+          durationInFrames: 30,
+          tracks: [{
+            id: "visuals",
+            items: [{
+              id: "solid-1",
+              type: "solid",
+              from: 0,
+              durationInFrames: 30,
+              color: "#000000",
+            }],
+          }],
         },
       },
     });
@@ -1217,7 +1247,17 @@ describe("Project workspace model", () => {
       name: "Episode 1",
       state: {
         fps: 30,
-        tracks: [{ items: [{ from: 0, durationInFrames: 30 }] }],
+        durationInFrames: 30,
+        tracks: [{
+          id: "visuals",
+          items: [{
+            id: "solid-1",
+            type: "solid",
+            from: 0,
+            durationInFrames: 30,
+            color: "#000000",
+          }],
+        }],
       },
     });
     (workspace as any).attachTimelineToCanvas(doc, {

@@ -12,8 +12,13 @@ run `npx -y clash mcp`.
 ## Runtime model
 
 The package contains the CLI, MCP tools, skills, bundled GUI resources,
-`local-api`, Loro WASM, and agent templates. The source stays split across
-internal workspace modules; those modules are not separate user installs.
+`local-api`, Loro WASM, agent templates, and the exact immutable payloads for
+its first-party plugins. The Host imports those trusted modules in-process from
+a closed registry; it does not copy them into `~/.clash/actions`, create
+activation receipts for them, or launch them as child processes. Explicitly
+activated third-party plugins remain isolated process/stdio packages under the
+actions directory, and cannot shadow a reserved first-party id. The source stays
+split across internal workspace modules; those modules are not separate user installs.
 Clash Desktop is optional and carries the same host runtime for standalone
 installation. A daemon-only installer may also carry that host artifact for
 service deployments; it is a packaging mode of the same implementation and

@@ -110,6 +110,8 @@ export interface CreateDirectorReferencePacketInput {
   selectedShotIds?: string[];
   normalizeShotTimes?: boolean;
   referenceVideo: DirectorReferenceVideo;
+  /** Capture receipt / Project Asset references consumed by this export. */
+  referenceStills?: ReadonlyArray<DirectorReferenceStill>;
   state: {
     activeCameraId?: string;
     cameras: ReadonlyArray<{
@@ -176,10 +178,17 @@ export function createDirectorReferencePacket(
         }
       : {}),
   }));
-  const referenceShots = selectedShotIds.length > 0
-    ? input.state.shots.filter((shot) =>
-        selectedShotIdSet.has(shot.sequenceShotId ?? shot.id))
-    : input.state.shots;
+  const referencedStills = input.referenceStills ?? input.state.shots.map((shot) => ({
+    assetId: shot.assetId,
+    cameraId: shot.cameraId,
+    shotId: shot.sequenceShotId ?? shot.id,
+    aspectRatio: shot.aspectRatio,
+    stageRevisionId: shot.stageRevisionId,
+    ...(shot.timeSeconds !== undefined ? { timeSeconds: shot.timeSeconds } : {}),
+  }));
+  const referenceStills = selectedShotIds.length > 0
+    ? referencedStills.filter((still) => selectedShotIdSet.has(still.shotId))
+    : referencedStills;
   const durationSeconds = input.durationSeconds
     ?? input.state.animation?.durationSeconds
     ?? Math.max(
@@ -188,16 +197,16 @@ export function createDirectorReferencePacket(
     );
   const aspectRatio = input.aspectRatio
     ?? sequenceShots[0]?.aspectRatio
-    ?? referenceShots[0]?.aspectRatio
+    ?? referenceStills[0]?.aspectRatio
     ?? "16:9";
   const cameraIds = uniqueIds(selectedShotIds.length > 0 ? [
     ...sequenceShots.map((shot) => shot.cameraId),
-    ...referenceShots.map((shot) => shot.cameraId),
+    ...referenceStills.map((still) => still.cameraId),
   ] : [
     ...sequenceShots.map((shot) => shot.cameraId),
     ...(input.state.animation?.cameraCues ?? []).map((cue) => cue.cameraId),
     input.state.activeCameraId,
-    ...referenceShots.map((shot) => shot.cameraId),
+    ...referenceStills.map((still) => still.cameraId),
   ]);
 
   return DirectorReferencePacketSchema.parse({
@@ -230,19 +239,15 @@ export function createDirectorReferencePacket(
       }),
     },
     referenceVideo: input.referenceVideo,
-    referenceStills: referenceShots.map((shot) => ({
-      assetId: shot.assetId,
-      cameraId: shot.cameraId,
-      shotId: shot.sequenceShotId ?? shot.id,
-      aspectRatio: shot.aspectRatio,
-      stageRevisionId: shot.stageRevisionId,
-      ...(shot.timeSeconds !== undefined
+    referenceStills: referenceStills.map((still) => ({
+      ...still,
+      ...(still.timeSeconds !== undefined
         ? input.normalizeShotTimes
           ? {
-              timeSeconds: Math.max(0, shot.timeSeconds - timeOrigin),
-              sequenceTimeSeconds: shot.timeSeconds,
+              timeSeconds: Math.max(0, still.timeSeconds - timeOrigin),
+              sequenceTimeSeconds: still.timeSeconds,
             }
-          : { timeSeconds: shot.timeSeconds }
+          : { timeSeconds: still.timeSeconds }
         : {}),
     })),
     shotSpec: { shots: sequenceShots },

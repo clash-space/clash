@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type {
   ProjectHostClient,
   ProjectHostRequest,
@@ -145,4 +148,51 @@ test("Canvas App snapshot composes direct host node and edge reads", async () =>
     { action: "list", canvasId: "main" },
     { action: "edges", canvasId: "main" },
   ]);
+});
+
+test("Canvas add resolves contentFile once and persists only exact file content", async () => {
+  const { createCanvasProjectHostGateway } = await import("./canvas-gateway");
+  const workspaceRoot = await mkdtemp(join(tmpdir(), "clash-canvas-content-"));
+  await mkdir(join(workspaceRoot, "component-source"));
+  const content = "export default () => <div>Character</div>;\n";
+  await writeFile(join(workspaceRoot, "component-source", "character.tsx"), content, "utf8");
+  const calls: ProjectHostRequest[] = [];
+  const gateway = createCanvasProjectHostGateway(hostClient(
+    () => ({ nodeId: "component-1", created: true }),
+    calls,
+  ));
+
+  await gateway.invoke("clash_canvas_add", {
+    cwd: workspaceRoot,
+    type: "remotion",
+    label: "Character",
+    contentFile: "component-source/character.tsx",
+  });
+
+  assert.deepEqual(calls.map(({ command }) => command), [{
+    action: "add",
+    canvasId: "main",
+    type: "remotion",
+    label: "Character",
+    content,
+    actorClientType: "mcp",
+  }]);
+  assert.doesNotMatch(JSON.stringify(calls), /contentFile|character\.tsx/);
+});
+
+test("Canvas content and contentFile are mutually exclusive before Host mutation", async () => {
+  const { createCanvasProjectHostGateway } = await import("./canvas-gateway");
+  const workspaceRoot = await mkdtemp(join(tmpdir(), "clash-canvas-exclusive-"));
+  await writeFile(join(workspaceRoot, "character.tsx"), "from-file", "utf8");
+  const calls: ProjectHostRequest[] = [];
+  const gateway = createCanvasProjectHostGateway(hostClient(() => ({}), calls));
+
+  await assert.rejects(gateway.invoke("clash_canvas_add", {
+    cwd: workspaceRoot,
+    type: "remotion",
+    label: "Character",
+    content: "inline",
+    contentFile: "character.tsx",
+  }), /mutually exclusive/i);
+  assert.deepEqual(calls, []);
 });

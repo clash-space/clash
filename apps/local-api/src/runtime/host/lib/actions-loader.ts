@@ -21,12 +21,20 @@ import {
   type FSWatcher,
   writeFileSync,
 } from "node:fs";
-import { delimiter, isAbsolute, join, relative, resolve } from "node:path";
+import {
+  delimiter,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+} from "node:path";
 import {
   ExecutablePluginActivationReceiptSchema,
   executablePluginDependencyError,
   ExecutablePluginManifestSchema,
   ExecutablePluginInvocationSchema,
+  generatorDefinitionFromExecutablePluginRegistration,
   isSafePluginRelativePath,
   validateExecutablePluginPackage,
   type ExecutablePluginResult,
@@ -36,10 +44,13 @@ import {
   type ExecutablePluginProviderRegistration,
   type ExecutablePluginFunctionExport,
   type ExecutablePluginModelBindingRegistration,
+  type ExecutablePluginGeneratorRegistration,
+  type GeneratorDefinition,
   type ExecutablePluginActivationReceipt,
   type ExecutablePluginCardDocument,
   type ExecutablePluginProviderDocument,
   type ExecutablePluginModelBindingDocument,
+  type ExecutablePluginGeneratorDocument,
   type ExecutablePluginContractTestDocument,
   resolvePluginLanguage,
 } from "@clash/shared-types";
@@ -48,7 +59,15 @@ import {
   PluginStdioSession,
   type PluginBroker,
 } from "./plugin-stdio-runner.js";
+import {
+  createModulePluginEndpoint,
+  type PluginExecutionEndpoint,
+} from "./plugin-module-runner.js";
 import { providerHttpInstrumentationPythonPath } from "../../../provider-http-instrumentation-python.js";
+import type {
+  LoadedTrustedBundledPluginModule,
+  TrustedBundledPluginModuleRegistration,
+} from "../../../bundled-plugin-modules.js";
 
 export { executablePluginDependencyError, PluginStdioSession };
 export type { PluginBroker };
@@ -88,6 +107,12 @@ export interface ActionEnv {
    * then supplies these roots so edits are picked up without rebuilding a package.
    */
   developmentPluginWatchRoots?: Readonly<Record<string, readonly string[]>>;
+  /** Closed Host trust registry for first-party modules; never populated from disk or a manifest. */
+  trustedBundledPluginModules?: readonly TrustedBundledPluginModuleRegistration[];
+  /** Resolves one entry from the closed registry to its immutable packaged module payload. */
+  loadTrustedBundledPluginModule?: (
+    pluginId: string,
+  ) => Promise<LoadedTrustedBundledPluginModule>;
 }
 
 export interface ProviderHttpInstrumentationLaunch {
@@ -107,6 +132,7 @@ interface HostedActionPackage {
   cards: Record<string, ExecutablePluginCardDocument>;
   providers: Record<string, ExecutablePluginProviderDocument>;
   modelBindings: Record<string, ExecutablePluginModelBindingDocument>;
+  generators: Record<string, ExecutablePluginGeneratorDocument>;
   contractTests: Record<string, ExecutablePluginContractTestDocument>;
 }
 
@@ -138,20 +164,22 @@ async function readHostedPackage(dir: string): Promise<HostedActionPackage> {
       await readFile(join(dir, binding.path), "utf8"),
     );
   }
+  const generators: Record<string, unknown> = {};
+  for (const generator of localManifest.contributes.generators) {
+    generators[generator.path] = JSON.parse(
+      await readFile(join(dir, generator.path), "utf8"),
+    );
+  }
   const contractTests: Record<string, unknown> = {};
   for (const path of localManifest.contractTests) {
     contractTests[path] = JSON.parse(await readFile(join(dir, path), "utf8"));
   }
   return {
-    ...validateExecutablePluginPackage(
-      localManifest,
-      cards,
-      contractTests,
-      {
-        providers,
-        modelBindings,
-      },
-    ),
+    ...validateExecutablePluginPackage(localManifest, cards, contractTests, {
+      providers,
+      modelBindings,
+      generators,
+    }),
     manifest: localManifest,
   };
 }
@@ -172,6 +200,7 @@ function executablePluginSchemaHash(
   cards: Record<string, ExecutablePluginCardDocument>,
   providers: Record<string, ExecutablePluginProviderDocument> = {},
   modelBindings: Record<string, ExecutablePluginModelBindingDocument> = {},
+  generators: Record<string, ExecutablePluginGeneratorDocument> = {},
 ): `sha256:${string}` {
   return `sha256:${createHash("sha256")
     .update(
@@ -183,6 +212,7 @@ function executablePluginSchemaHash(
         cards,
         providers,
         modelBindings,
+        generators,
       }),
     )
     .digest("hex")}`;
@@ -251,6 +281,7 @@ export async function createExecutablePluginActivationReceipt(
       hostedPackage.cards,
       hostedPackage.providers,
       hostedPackage.modelBindings,
+      hostedPackage.generators,
     ),
     contentHash: await executablePluginDirectoryContentHash(pluginDir),
     activatedAt: new Date().toISOString(),
@@ -264,6 +295,7 @@ async function verifyExecutablePluginActivation(
   cards: Record<string, ExecutablePluginCardDocument>,
   providers: Record<string, ExecutablePluginProviderDocument>,
   modelBindings: Record<string, ExecutablePluginModelBindingDocument>,
+  generators: Record<string, ExecutablePluginGeneratorDocument>,
 ): Promise<void> {
   const receiptFile = executablePluginActivationReceiptPath(
     actionsRoot,
@@ -285,6 +317,7 @@ async function verifyExecutablePluginActivation(
     cards,
     providers,
     modelBindings,
+    generators,
   );
   const contentHash = await executablePluginDirectoryContentHash(pluginDir);
   if (
@@ -307,21 +340,34 @@ interface LoadedAction {
   cards: Record<string, ExecutablePluginCardDocument>;
   providers: Record<string, ExecutablePluginProviderDocument>;
   modelBindings: Record<string, ExecutablePluginModelBindingDocument>;
+  generators: Record<string, ExecutablePluginGeneratorDocument>;
   schemaHash: `sha256:${string}`;
 }
 
-interface SupervisedAction {
+export type PluginExecutionRealm = "bundled-module" | "process-stdio";
+
+interface SupervisedActionBase {
   loaded: LoadedAction;
+  realm: PluginExecutionRealm;
+  endpoint: PluginExecutionEndpoint | null;
+  /** Set when stop() is called so no new invocation or restart can begin. */
+  stopping: boolean;
+}
+
+interface SupervisedBundledModule extends SupervisedActionBase {
+  realm: "bundled-module";
+}
+
+interface SupervisedProcessStdio extends SupervisedActionBase {
+  realm: "process-stdio";
   child: ChildProcess | null;
   startedAt: number;
   backoffMs: number;
-  /** Set when stop() is called so the exit handler doesn't restart. */
-  stopping: boolean;
   /** Pending restart timer (so stop() can clear it). */
   restartTimer: NodeJS.Timeout | null;
-  /** Present only for credential-free clash.plugin/v1 processes. */
-  session: PluginStdioSession | null;
 }
+
+type SupervisedAction = SupervisedBundledModule | SupervisedProcessStdio;
 
 interface PythonDepsStamp {
   requirements?: Record<string, string>;
@@ -338,10 +384,14 @@ export class ActionsHost {
   private developmentPluginsPendingRestart = new Set<string>();
   private watchDebounce: NodeJS.Timeout | null = null;
   private readonly root: string;
+  private readonly trustedBundledPluginIds: ReadonlySet<string>;
 
   constructor(env: ActionEnv) {
     this.env = env;
     this.root = env.actionsRoot ?? actionsDir();
+    this.trustedBundledPluginIds = new Set(
+      (env.trustedBundledPluginModules ?? []).map(({ id }) => id),
+    );
   }
 
   /**
@@ -353,6 +403,8 @@ export class ActionsHost {
     const spawned: string[] = [];
     const skipped: string[] = [];
     const root = this.root;
+
+    await this.loadTrustedBundledModules();
 
     // Ensure the dir exists so we can immediately watch it. Without this,
     // a brand-new install would silently skip the watcher and the user
@@ -390,6 +442,81 @@ export class ActionsHost {
     return { spawned, skipped };
   }
 
+  /** Load only modules named by the Host's closed first-party registry. */
+  private async loadTrustedBundledModules(): Promise<void> {
+    const registrations = this.env.trustedBundledPluginModules ?? [];
+    if (registrations.length === 0) return;
+    const load = this.env.loadTrustedBundledPluginModule;
+    if (!load) {
+      throw new Error(
+        "Trusted bundled Plugin registrations require a Host module loader.",
+      );
+    }
+
+    for (const registration of registrations) {
+      try {
+        if (this.actions.has(registration.id)) {
+          throw new Error(
+            `Trusted bundled Plugin id ${registration.id} is registered more than once.`,
+          );
+        }
+        const packaged = await load(registration.id);
+        if (packaged.id !== registration.id) {
+          throw new Error(
+            `Trusted bundled registration ${registration.id} loaded ${packaged.id}.`,
+          );
+        }
+        const hostedPackage = await readHostedPackage(
+          dirname(packaged.manifestPath),
+        );
+        const { manifest, cards, providers, modelBindings, generators } =
+          hostedPackage;
+        if (manifest.id !== registration.id) {
+          throw new Error(
+            `Trusted bundled registration ${registration.id} contains manifest ${manifest.id}.`,
+          );
+        }
+        const schemaHash = executablePluginSchemaHash(
+          manifest,
+          cards,
+          providers,
+          modelBindings,
+          generators,
+        );
+        const endpoint = createModulePluginEndpoint({
+          manifest,
+          schemaHash,
+          module: packaged.plugin,
+          broker:
+            this.env.pluginBroker ??
+            (async () => {
+              throw new Error(
+                "Clash local plugin host context is unavailable.",
+              );
+            }),
+        });
+        this.actions.set(manifest.id, {
+          realm: "bundled-module",
+          loaded: {
+            manifest,
+            dir: dirname(packaged.manifestPath),
+            cards,
+            providers,
+            modelBindings,
+            generators,
+            schemaHash,
+          },
+          endpoint,
+          stopping: false,
+        });
+      } catch (error) {
+        process.stderr.write(
+          `actions: bundled module ${registration.id} unavailable: ${(error as Error).message}\n`,
+        );
+      }
+    }
+  }
+
   /**
    * Read $CLASH_HOME/actions/<dirName>/manifest.json, validate, and spawn
    * (or skip) the subprocess. Returns the outcome so callers can update
@@ -423,7 +550,14 @@ export class ActionsHost {
       );
       return "skipped";
     }
-    const { manifest, cards, providers, modelBindings } = hostedPackage;
+    const { manifest, cards, providers, modelBindings, generators } =
+      hostedPackage;
+    if (this.trustedBundledPluginIds.has(manifest.id)) {
+      process.stderr.write(
+        `actions: ${manifest.id}: installed package cannot shadow a trusted bundled module — skipping\n`,
+      );
+      return "skipped";
+    }
     try {
       await verifyExecutablePluginActivation(
         this.root,
@@ -432,6 +566,7 @@ export class ActionsHost {
         cards,
         providers,
         modelBindings,
+        generators,
       );
     } catch (error) {
       process.stderr.write(
@@ -461,21 +596,24 @@ export class ActionsHost {
       cards,
       providers,
       modelBindings,
+      generators,
       schemaHash: executablePluginSchemaHash(
         manifest,
         cards,
         providers,
         modelBindings,
+        generators,
       ),
     };
-    const supervised: SupervisedAction = {
+    const supervised: SupervisedProcessStdio = {
       loaded,
+      realm: "process-stdio",
+      endpoint: null,
       child: null,
       startedAt: 0,
       backoffMs: RESTART_BACKOFF_MIN_MS,
       stopping: false,
       restartTimer: null,
-      session: null,
     };
     this.actions.set(manifest.id, supervised);
     this.dirIndex.set(dirName, manifest.id);
@@ -514,12 +652,13 @@ export class ActionsHost {
 
     for (const sup of this.actions.values()) {
       sup.stopping = true;
+      sup.endpoint?.close();
+      sup.endpoint = null;
+      if (sup.realm === "bundled-module") continue;
       if (sup.restartTimer) {
         clearTimeout(sup.restartTimer);
         sup.restartTimer = null;
       }
-      sup.session?.close();
-      sup.session = null;
       if (!sup.child) continue;
 
       pending.push(
@@ -561,12 +700,29 @@ export class ActionsHost {
     return [...this.actions.keys()];
   }
 
+  /** Host-private execution facts. They never enter a binding or invocation. */
+  listExecutionDiagnostics(): Array<{
+    pluginId: string;
+    version: string;
+    realm: PluginExecutionRealm;
+    ready: boolean;
+  }> {
+    return [...this.actions.values()]
+      .map((supervised) => ({
+        pluginId: supervised.loaded.manifest.id,
+        version: supervised.loaded.manifest.version,
+        realm: supervised.realm,
+        ready: supervised.endpoint !== null,
+      }))
+      .sort((left, right) => left.pluginId.localeCompare(right.pluginId));
+  }
+
   /** Activated declarative Cards currently eligible for Kernel discovery. */
   listCards(): ExecutablePluginCardRegistration[] {
     const registrations: ExecutablePluginCardRegistration[] = [];
     for (const supervised of this.actions.values()) {
       const { manifest, cards, schemaHash } = supervised.loaded;
-      if (!supervised.session) continue;
+      if (!supervised.endpoint) continue;
       for (const document of Object.values(cards)) {
         registrations.push({
           pluginId: manifest.id,
@@ -618,7 +774,7 @@ export class ActionsHost {
     const registrations: ExecutablePluginModelBindingRegistration[] = [];
     for (const supervised of this.actions.values()) {
       const { manifest, modelBindings, schemaHash } = supervised.loaded;
-      if (!supervised.session) continue;
+      if (!supervised.endpoint) continue;
       for (const document of Object.values(modelBindings)) {
         registrations.push({
           pluginId: manifest.id,
@@ -636,6 +792,52 @@ export class ActionsHost {
     );
   }
 
+  /** Activated native Generator definitions with semantic package provenance only. */
+  listGenerators(): ExecutablePluginGeneratorRegistration[] {
+    const registrations: ExecutablePluginGeneratorRegistration[] = [];
+    for (const supervised of this.actions.values()) {
+      const { manifest, generators, schemaHash } = supervised.loaded;
+      for (const document of Object.values(generators)) {
+        registrations.push({
+          pluginId: manifest.id,
+          version: manifest.version,
+          schemaHash,
+          document,
+        });
+      }
+    }
+    return registrations.sort((left, right) =>
+      `${left.pluginId}:${left.document.spec.definitionId}`.localeCompare(
+        `${right.pluginId}:${right.document.spec.definitionId}`,
+      ),
+    );
+  }
+
+  /** Resolve one immutable Generator definition without exposing its Host execution realm. */
+  resolveGeneratorDefinition(
+    pluginId: string,
+    definitionId: string,
+  ): GeneratorDefinition {
+    const supervised = this.actions.get(pluginId);
+    if (!supervised) {
+      throw new Error(`Executable plugin ${pluginId} is not installed.`);
+    }
+    const document = Object.values(supervised.loaded.generators).find(
+      (candidate) => candidate.spec.definitionId === definitionId,
+    );
+    if (!document) {
+      throw new Error(
+        `Executable plugin ${pluginId} does not export Generator ${definitionId}.`,
+      );
+    }
+    return generatorDefinitionFromExecutablePluginRegistration({
+      pluginId,
+      version: supervised.loaded.manifest.version,
+      schemaHash: supervised.loaded.schemaHash,
+      document,
+    });
+  }
+
   /** Resolve the active immutable contract before a Canvas node is authored. */
   resolveBinding(
     pluginId: string,
@@ -646,7 +848,7 @@ export class ActionsHost {
     if (!supervised) {
       throw new Error(`Executable plugin ${pluginId} is not installed.`);
     }
-    if (!supervised.session) {
+    if (!supervised.endpoint) {
       throw new Error(`Executable plugin ${pluginId} is not running.`);
     }
     const exported = supervised.loaded.manifest.contributes.functions.find(
@@ -665,14 +867,14 @@ export class ActionsHost {
     };
   }
 
-  /** Invoke one exact, already-supervised plugin version over stdio. */
+  /** Invoke one exact, already-supervised plugin through its Host-selected execution endpoint. */
   async invoke(
     pluginId: string,
     invocation: unknown,
     options: { timeoutMs?: number; accountId?: string } = {},
   ): Promise<ExecutablePluginResult> {
     const supervised = this.actions.get(pluginId);
-    if (!supervised?.session) {
+    if (!supervised?.endpoint) {
       throw new Error(`Executable plugin ${pluginId} is not running.`);
     }
     const parsed = ExecutablePluginInvocationSchema.parse(invocation);
@@ -686,14 +888,25 @@ export class ActionsHost {
     }
     const exported = supervised.loaded.manifest.contributes.functions.find(
       (entry) =>
-        entry.id === parsed.target.exportId && entry.kind === parsed.target.kind,
+        entry.id === parsed.target.exportId &&
+        entry.kind === parsed.target.kind,
     );
     if (!exported) {
       throw new Error(
         `Executable plugin ${pluginId} does not export ${parsed.target.kind} ${parsed.target.exportId}.`,
       );
     }
-    return await supervised.session.invoke(parsed, options);
+    const pinnedInvocation =
+      parsed.target.kind === "action"
+        ? ExecutablePluginInvocationSchema.parse({
+            ...parsed,
+            // An Action's delivery contract belongs to the schema-hashed function export. The
+            // scheduler supplies frozen references, but cannot widen or replace how plugin code
+            // may consume their bytes.
+            assetInputs: exported.assetInputs ?? [],
+          })
+        : parsed;
+    return await supervised.endpoint.invoke(pinnedInvocation, options);
   }
 
   // ─── fs.watch / reconciliation ──────────────────────────────
@@ -827,9 +1040,13 @@ export class ActionsHost {
       entries = await readdir(root);
     } catch (e: any) {
       if (e.code === "ENOENT") {
-        // Whole dir vanished — tear down everything we host.
-        for (const id of [...this.actions.keys()])
-          await this.stopOne(id, "dir-removed");
+        // The watched directory owns only installed process packages. Bundled modules come from an
+        // immutable Host registry and remain available when a user removes or recreates actions/.
+        for (const [id, supervised] of [...this.actions.entries()]) {
+          if (supervised.realm === "process-stdio") {
+            await this.stopOne(id, "dir-removed");
+          }
+        }
         return;
       }
       throw e;
@@ -859,6 +1076,12 @@ export class ActionsHost {
         continue;
       }
       const { manifest } = hostedPackage;
+      if (this.trustedBundledPluginIds.has(manifest.id)) {
+        process.stderr.write(
+          `actions: ${manifest.id}: installed package cannot shadow a trusted bundled module — ignored\n`,
+        );
+        continue;
+      }
       try {
         await verifyExecutablePluginActivation(
           this.root,
@@ -867,6 +1090,7 @@ export class ActionsHost {
           hostedPackage.cards,
           hostedPackage.providers,
           hostedPackage.modelBindings,
+          hostedPackage.generators,
         );
       } catch (error) {
         const active = this.actions.get(manifest.id);
@@ -944,13 +1168,16 @@ export class ActionsHost {
     process.stderr.write(`actions: stopOne id=${id} reason=${reason}\n`);
 
     sup.stopping = true;
+    sup.endpoint?.close();
+    sup.endpoint = null;
+    if (sup.realm === "bundled-module") {
+      this.actions.delete(id);
+      return;
+    }
     if (sup.restartTimer) {
       clearTimeout(sup.restartTimer);
       sup.restartTimer = null;
     }
-
-    sup.session?.close();
-    sup.session = null;
 
     const child = sup.child;
     if (child) {
@@ -1006,7 +1233,7 @@ export class ActionsHost {
 
   // ─── internals ──────────────────────────────────────────────
 
-  private spawnOne(sup: SupervisedAction): void {
+  private spawnOne(sup: SupervisedProcessStdio): void {
     if (this.stopping || sup.stopping) return;
 
     const { manifest, dir } = sup.loaded;
@@ -1129,7 +1356,7 @@ export class ActionsHost {
       }
       return;
     }
-    sup.session = new PluginStdioSession({
+    sup.endpoint = new PluginStdioSession({
       manifest,
       stdin: child.stdin,
       stdout: child.stdout,
@@ -1140,9 +1367,7 @@ export class ActionsHost {
         }),
     });
     child.stderr?.on("data", (chunk: Buffer) => {
-      process.stderr.write(
-        `plugin[${manifest.id}]: ${chunk.toString("utf8")}`,
-      );
+      process.stderr.write(`plugin[${manifest.id}]: ${chunk.toString("utf8")}`);
     });
 
     child.once("exit", (code, signal) => {
@@ -1151,8 +1376,8 @@ export class ActionsHost {
         `actions: exit id=${manifest.id} code=${code} signal=${signal ?? "-"} uptime=${Math.round(uptime / 1000)}s\n`,
       );
       sup.child = null;
-      sup.session?.close();
-      sup.session = null;
+      sup.endpoint?.close();
+      sup.endpoint = null;
 
       // If we ran healthy for a while, reset backoff. Otherwise scale.
       if (uptime > HEALTHY_UPTIME_MS) {
@@ -1431,7 +1656,14 @@ export async function runExecutablePluginContractTests(
 ): Promise<ExecutablePluginContractTestRun> {
   const pluginDir = realpathSync(pluginDirInput);
   const hostedPackage = await readHostedPackage(pluginDir);
-  const { manifest, cards, contractTests } = hostedPackage;
+  const {
+    manifest,
+    cards,
+    providers,
+    modelBindings,
+    generators,
+    contractTests,
+  } = hostedPackage;
   if (
     manifest.runtime.kind !== "local" ||
     manifest.runtime.transport !== "stdio"
@@ -1483,7 +1715,13 @@ export async function runExecutablePluginContractTests(
           args: executablePluginNodeArgs(entrypointPath, manifest.runtime.args),
           env: credentialFreePluginEnv(manifest),
         };
-  const schemaHash = executablePluginSchemaHash(manifest, cards);
+  const schemaHash = executablePluginSchemaHash(
+    manifest,
+    cards,
+    providers,
+    modelBindings,
+    generators,
+  );
   const completed: ExecutablePluginContractTestRun["tests"] = [];
 
   for (const path of manifest.contractTests) {

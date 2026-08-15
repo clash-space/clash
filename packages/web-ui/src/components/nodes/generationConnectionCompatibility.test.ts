@@ -21,15 +21,15 @@ describe("generationConnectionAcceptsSource", () => {
         })).toBe(true);
     });
 
-    it("adapts a Director Stage packet to video or keyframe-image models", () => {
+    it("requires a Director media output instead of connecting the Stage producer", () => {
         expect(generationConnectionAcceptsSource({
             sourceType: "director-stage",
             targetData: { modelId: "seedance-2-ref" },
-        })).toBe(true);
+        })).toBe(false);
         expect(generationConnectionAcceptsSource({
             sourceType: "director-stage",
             targetData: { modelId: "seedance-2-startend" },
-        })).toBe(true);
+        })).toBe(false);
         expect(generationConnectionAcceptsSource({
             sourceType: "director-stage",
             targetData: { modelId: "gemini-3.1-flash-tts" },

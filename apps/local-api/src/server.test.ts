@@ -6,6 +6,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rm,
   stat,
   writeFile,
@@ -18,8 +19,13 @@ import { describe, expect, it, vi } from "vitest";
 import {
   LOCAL_HOST_PROTOCOL_VERSION,
   createDurableRunRecord,
+  storeMetadataBody,
 } from "@clash/shared-runtime";
-import { projectAssetAuthorityVersion } from "@clash/shared-types";
+import {
+  createProjectDocumentAsset,
+  projectAssetAuthorityVersion,
+  readProjectDocumentAsset,
+} from "@clash/shared-types";
 import { readHostDiscovery } from "./host-discovery";
 import {
   createConfiguredLocalAcpAdapter,
@@ -34,9 +40,18 @@ import * as serverModule from "./server";
 import { createLocalAudioConfigStore } from "./audio-config";
 import { createLocalMetadataStore } from "./local-metadata-store";
 import { createLocalPluginAssetStagingStore } from "./local-plugin-asset-staging";
-import type { LocalProjectAssetReplica } from "./local-project-assets";
+import {
+  createLocalProjectAssetService,
+  type LocalProjectAssetReplica,
+} from "./local-project-assets";
+import { createLocalAssetInspectionService } from "./local-asset-inspections";
 import { createClashUserConfigStore } from "./user-config";
 import { createSqliteDurableRunJournal } from "./durable-run-journal";
+import { FileReplicaStore } from "./loro/file-replica-store";
+import {
+  createProviderConformanceStubs,
+  providerTestRecordingEventToJsonl,
+} from "./provider-test-recorder";
 
 const execFileAsync = promisify(execFile);
 
@@ -89,6 +104,386 @@ async function listenOnLoopback(
 }
 
 describe("local API server configuration", () => {
+  it("resolves workflow bindings only after the verified plugin runtime is ready and forces the action export kind", async () => {
+    const createResolver = (serverModule as Record<string, unknown>)
+      .createWorkflowPluginBindingResolver as
+      | ((options: {
+          ensurePluginRuntime(): Promise<void>;
+          resolveBinding(
+            pluginId: string,
+            exportId: string,
+            kind: "action",
+          ): Promise<{
+            pluginId: string;
+            version: string;
+            exportId: string;
+            schemaHash: string;
+          }>;
+        }) => (pluginId: string, exportId: string) => Promise<unknown>)
+      | undefined;
+    expect(createResolver).toBeDefined();
+    if (!createResolver) return;
+    const events: string[] = [];
+    let runtimeReady = false;
+    const resolver = createResolver({
+      async ensurePluginRuntime() {
+        events.push("runtime-ready");
+        runtimeReady = true;
+      },
+      async resolveBinding(pluginId, exportId, kind) {
+        if (!runtimeReady) throw new Error("plugin runtime was not ready");
+        events.push(`resolve:${pluginId}:${exportId}:${kind}`);
+        return {
+          pluginId,
+          version: "1.0.0",
+          exportId,
+          schemaHash: `sha256:${"a".repeat(64)}`,
+        };
+      },
+    });
+
+    await expect(
+      resolver("clash.remotion", "render-timeline"),
+    ).resolves.toEqual({
+      pluginId: "clash.remotion",
+      version: "1.0.0",
+      exportId: "render-timeline",
+      schemaHash: `sha256:${"a".repeat(64)}`,
+    });
+    expect(events).toEqual([
+      "runtime-ready",
+      "resolve:clash.remotion:render-timeline:action",
+    ]);
+  });
+
+  it("installs replay instrumentation in the Host process only for the test option and disposes it on close", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-host-module-replay-"));
+    const trafficPath = join(root, "traffic.jsonl");
+    const requestId = "host-module-replay";
+    const providerUrl = "https://module-provider.invalid/generate";
+    const stub = createProviderConformanceStubs({ includeMock: true }).find(
+      (candidate) =>
+        candidate.providerId === "mock" && candidate.shape === "text",
+    );
+    if (!stub) throw new Error("Mock text Provider stub is missing.");
+    await writeFile(
+      trafficPath,
+      [
+        providerTestRecordingEventToJsonl({
+          schemaVersion: 1,
+          type: "request",
+          timestamp: "2026-08-14T00:00:00.000Z",
+          requestId,
+          stub,
+          request: {
+            url: providerUrl,
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: { prompt: "module replay" },
+          },
+        }),
+        providerTestRecordingEventToJsonl({
+          schemaVersion: 1,
+          type: "response",
+          timestamp: "2026-08-14T00:00:01.000Z",
+          requestId,
+          response: {
+            status: 200,
+            headers: { "content-type": "application/json" },
+            body: { answer: "same cassette" },
+          },
+        }),
+      ].join(""),
+    );
+    let server: Awaited<ReturnType<typeof startLocalApiServer>> | undefined;
+
+    try {
+      server = await startLocalApiServer({
+        dataDir: join(root, "local-api"),
+        port: 0,
+        remotePersistence: null,
+        providerHttpInstrumentation: {
+          mode: "replay",
+          trafficPath,
+          modulePath: "child-preload-not-used-by-module-realm.mjs",
+        },
+        discovery: { enabled: false },
+        localAcp: createConfiguredLocalAcpAdapter({
+          CLASH_E2E_STUB_ACP: "1",
+        }),
+      });
+      const hostAddress = server.address();
+      if (!hostAddress || typeof hostAddress === "string") {
+        throw new Error("Local Host fixture did not bind a TCP port.");
+      }
+      const providers = await fetch(
+        `http://127.0.0.1:${hostAddress.port}/api/v1/plugin-providers`,
+      );
+      expect(providers.status).toBe(200);
+
+      const replayed = await fetch(providerUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompt: "module replay" }),
+      });
+      await expect(replayed.json()).resolves.toEqual({
+        answer: "same cassette",
+      });
+      await new Promise<void>((resolveClose) =>
+        server!.close(() => resolveClose()),
+      );
+      server = undefined;
+
+      await expect(
+        fetch(providerUrl, { signal: AbortSignal.timeout(3_000) }),
+      ).rejects.toThrow();
+    } finally {
+      if (server) {
+        await new Promise<void>((resolveClose) =>
+          server!.close(() => resolveClose()),
+        );
+      }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not install a process-wide HTTP hook in a normal production startup", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-host-no-replay-hook-"));
+    const originalFetch = globalThis.fetch;
+    const transport = vi.fn(async () =>
+      Response.json({ direct: true }),
+    ) as unknown as typeof fetch;
+    globalThis.fetch = transport;
+    let server: Awaited<ReturnType<typeof startLocalApiServer>> | undefined;
+
+    try {
+      server = await startLocalApiServer({
+        dataDir: join(root, "local-api"),
+        port: 0,
+        remotePersistence: null,
+        discovery: { enabled: false },
+        localAcp: createConfiguredLocalAcpAdapter({
+          CLASH_E2E_STUB_ACP: "1",
+        }),
+      });
+      const response = await fetch("https://ordinary-production.invalid/");
+      await expect(response.json()).resolves.toEqual({ direct: true });
+      expect(transport).toHaveBeenCalledOnce();
+    } finally {
+      if (server) {
+        await new Promise<void>((resolveClose) =>
+          server!.close(() => resolveClose()),
+        );
+      }
+      globalThis.fetch = originalFetch;
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("loads trusted first-party modules without seeding or trusting an actions-directory shadow", async () => {
+    const clashRoot = await mkdtemp(
+      join(tmpdir(), "clash-bundled-module-startup-"),
+    );
+    const dataDir = join(clashRoot, "local-api");
+    const actionsRoot = join(clashRoot, "actions");
+    const shadowRoot = join(actionsRoot, "clash.google");
+    await mkdir(shadowRoot, { recursive: true });
+    await writeFile(
+      join(shadowRoot, "manifest.json"),
+      JSON.stringify({ id: "clash.google", marker: "untrusted-shadow" }),
+    );
+    let server: Awaited<ReturnType<typeof startLocalApiServer>> | undefined;
+
+    try {
+      server = await startLocalApiServer({
+        dataDir,
+        port: 0,
+        remotePersistence: null,
+        discovery: { enabled: false },
+        localAcp: createConfiguredLocalAcpAdapter({
+          CLASH_E2E_STUB_ACP: "1",
+        }),
+      });
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        throw new Error("local-api did not bind a TCP port");
+      }
+
+      const response = await fetch(
+        `http://127.0.0.1:${address.port}/api/v1/plugin-providers`,
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        providers: Array<{ pluginId: string }>;
+      };
+      expect(new Set(body.providers.map(({ pluginId }) => pluginId))).toEqual(
+        new Set([
+          "clash.fal",
+          "clash.google",
+          "clash.minimax",
+          "clash.pika",
+          "clash.volcengine",
+        ]),
+      );
+
+      const generatorDefinitions = await fetch(
+        `http://127.0.0.1:${address.port}/api/v1/generator-definitions`,
+      );
+      expect(
+        generatorDefinitions.status,
+        await generatorDefinitions.clone().text(),
+      ).toBe(200);
+      const generatorBody = (await generatorDefinitions.json()) as {
+        definitions: Array<Record<string, unknown>>;
+      };
+      expect(generatorBody.definitions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            pluginId: "clash.asr",
+            definitionId: "speech-analysis",
+            actions: expect.arrayContaining([
+              expect.objectContaining({
+                id: "transcribe",
+                executorExportId: "transcribe",
+              }),
+            ]),
+          }),
+          expect.objectContaining({
+            pluginId: "clash.codex-imagegen",
+            definitionId: "codex-imagegen",
+            actions: expect.arrayContaining([
+              expect.objectContaining({
+                id: "generate",
+                executorExportId: "generate-image",
+              }),
+            ]),
+          }),
+        ]),
+      );
+
+      const createdGenerator = await fetch(
+        `http://127.0.0.1:${address.port}/api/v1/projects/server-generator-project/generators`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            generatorId: "codex-imagegen-1",
+            generatorRevisionId: "codex-imagegen-1:r1",
+            pluginId: "clash.codex-imagegen",
+            definitionId: "codex-imagegen",
+            state: { prompt: "a lighthouse built from folded paper" },
+            persistentInputRefs: [],
+          }),
+        },
+      );
+      expect(
+        createdGenerator.status,
+        await createdGenerator.clone().text(),
+      ).toBe(201);
+      const readGenerator = await fetch(
+        `http://127.0.0.1:${address.port}/api/v1/projects/server-generator-project/generators/codex-imagegen-1`,
+      );
+      expect(readGenerator.status, await readGenerator.clone().text()).toBe(
+        200,
+      );
+      await expect(readGenerator.json()).resolves.toMatchObject({
+        generator: {
+          id: "codex-imagegen-1",
+          headRevisionId: "codex-imagegen-1:r1",
+          definitionRef: {
+            pluginId: "clash.codex-imagegen",
+            definitionId: "codex-imagegen",
+          },
+        },
+      });
+
+      const documentsUrl =
+        `http://127.0.0.1:${address.port}` +
+        "/api/v1/projects/server-generator-project/documents";
+      const createdDocument = await fetch(documentsUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          documentAssetId: "server-description-1",
+          revisionId: "server-description-1:r1",
+          documentKind: "media.description",
+          schemaVersion: 1,
+          body: {
+            schemaVersion: 1,
+            kind: "media.description",
+            text: "A folded-paper lighthouse at dusk.",
+            sourceHash:
+              "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          },
+          sourceRefs: [],
+        }),
+      });
+      expect(createdDocument.status, await createdDocument.clone().text()).toBe(
+        201,
+      );
+      await expect(createdDocument.json()).resolves.toMatchObject({
+        asset: {
+          id: "server-description-1",
+          headRevisionId: "server-description-1:r1",
+        },
+        revision: {
+          id: "server-description-1:r1",
+          producer: {
+            kind: "actor",
+            actor: { kind: "user", id: "local-user" },
+          },
+        },
+        body: { text: "A folded-paper lighthouse at dusk." },
+      });
+      const checkpointedProject = await new FileReplicaStore(
+        join(dataDir, "projects"),
+      ).recover("server-generator-project");
+      expect(
+        readProjectDocumentAsset(checkpointedProject, "server-description-1"),
+      ).toMatchObject({ headRevisionId: "server-description-1:r1" });
+
+      const listedDocuments = await fetch(documentsUrl);
+      expect(listedDocuments.status, await listedDocuments.clone().text()).toBe(
+        200,
+      );
+      await expect(listedDocuments.json()).resolves.toMatchObject({
+        documents: [
+          {
+            id: "server-description-1",
+            headRevisionId: "server-description-1:r1",
+          },
+        ],
+      });
+      const documentHistory = await fetch(
+        `${documentsUrl}/server-description-1/revisions`,
+      );
+      expect(documentHistory.status, await documentHistory.clone().text()).toBe(
+        200,
+      );
+      const documentHistoryBody = (await documentHistory.json()) as {
+        revisions: Array<Record<string, unknown>>;
+      };
+      expect(documentHistoryBody.revisions).toEqual([
+        expect.objectContaining({ id: "server-description-1:r1" }),
+      ]);
+      expect(JSON.stringify(documentHistoryBody)).not.toContain(
+        "A folded-paper lighthouse at dusk.",
+      );
+
+      expect((await readdir(actionsRoot)).sort()).toEqual(["clash.google"]);
+      await expect(
+        readFile(join(shadowRoot, "manifest.json"), "utf8"),
+      ).resolves.toContain("untrusted-shadow");
+    } finally {
+      if (server) {
+        await new Promise<void>((resolveClose) =>
+          server!.close(() => resolveClose()),
+        );
+      }
+      await rm(clashRoot, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   it("reopens journal-owned Projects for recovery without waiting for a client visit", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "clash-startup-recovery-"));
     try {
@@ -288,6 +683,7 @@ describe("local API server configuration", () => {
                 cards: [],
                 providers: [],
                 modelBindings: [],
+                generators: [],
                 functions: [
                   {
                     id: "run",
@@ -343,6 +739,141 @@ describe("local API server configuration", () => {
       expect(projectAssetAuthorityVersion(liveDoc)).toBe(1);
     } finally {
       await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("serves an invocation-scoped executor URL directly from an immutable Project Resource", async () => {
+    const clashRoot = await mkdtemp(
+      join(tmpdir(), "clash-plugin-executor-url-"),
+    );
+    const dataDir = join(clashRoot, "local-api");
+    const projectId = "project-executor-url";
+    const assetId = "asset-executor-url";
+    const bytes = Uint8Array.from([10, 20, 30, 40, 50, 60]);
+    const projectAssets = createLocalProjectAssetService({
+      dataDir,
+      clashRoot,
+      projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection: createLocalAssetInspectionService({
+        dataDir,
+        clashRoot,
+        inspectResource: async ({ resource }) => ({
+          width: 1,
+          height: 1,
+          rotationDegrees: 0,
+          ...(resource.contentType
+            ? { contentType: resource.contentType }
+            : {}),
+        }),
+      }),
+    });
+    await projectAssets.installOwned({
+      projectId,
+      projectAssetId: assetId,
+      kind: "image",
+      bytes,
+      contentType: "image/png",
+      name: "source.png",
+      metadata: { width: 1, height: 1 },
+      provenance: { kind: "import" },
+    });
+    const broker = createLocalPluginBrokerServices({ dataDir });
+    const reference = {
+      slot: "source",
+      index: 0,
+      asset: {
+        assetId,
+        uri: `clash-asset://${assetId}`,
+        kind: "image" as const,
+        mediaType: "image/png",
+      },
+    };
+
+    try {
+      const resolved = await broker(
+        {
+          protocol: "clash.plugin.broker-request/v1",
+          requestId: "read-executor-url",
+          invocationId: "invocation-executor-url",
+          operation: { kind: "asset.resolve", reference },
+        },
+        {
+          manifest: {
+            apiVersion: "clash.plugin/v1",
+            id: "test.executor-reader",
+            version: "1.0.0",
+            name: "Executor reader",
+            runtime: {
+              kind: "local",
+              transport: "stdio",
+              entrypoint: "handler.mjs",
+              args: [],
+            },
+            contractTests: [],
+            contributes: {
+              cards: [],
+              providers: [],
+              modelBindings: [],
+              generators: [],
+              functions: [
+                {
+                  id: "run",
+                  kind: "action",
+                  operations: ["submit"],
+                  assetInputs: [
+                    {
+                      match: { kinds: ["image"], slots: ["source"] },
+                      representations: ["executor-url"],
+                    },
+                  ],
+                },
+              ],
+              hostTools: [],
+            },
+          },
+          invocation: {
+            protocol: "clash.plugin.invoke/v1",
+            invocationId: "invocation-executor-url",
+            taskId: "task-executor-url",
+            projectId,
+            target: {
+              pluginId: "test.executor-reader",
+              version: "1.0.0",
+              exportId: "run",
+              schemaHash: `sha256:${"e".repeat(64)}`,
+              kind: "action",
+            },
+            input: { values: {}, references: [reference] },
+            assetInputs: [
+              {
+                match: { kinds: ["image"], slots: ["source"] },
+                representations: ["executor-url"],
+              },
+            ],
+            actor: { kind: "agent", id: "agent-executor" },
+            operation: "submit",
+          },
+        },
+      );
+      expect(resolved).toMatchObject({
+        form: "executor-url",
+        kind: "image",
+        mediaType: "image/png",
+      });
+      const executorUrl = (resolved as { executorUrl: string }).executorUrl;
+      const range = await fetch(executorUrl, {
+        headers: { Range: "bytes=1-3" },
+      });
+      expect(range.status).toBe(206);
+      expect(new Uint8Array(await range.arrayBuffer())).toEqual(
+        Uint8Array.from([20, 30, 40]),
+      );
+
+      await broker.releaseInvocation?.("invocation-executor-url");
+      expect((await fetch(executorUrl)).status).toBe(404);
+    } finally {
+      await broker.close?.();
+      await rm(clashRoot, { recursive: true, force: true });
     }
   });
 
@@ -445,6 +976,7 @@ describe("local API server configuration", () => {
                 cards: [],
                 providers: [],
                 modelBindings: [],
+                generators: [],
                 functions: [
                   {
                     id: "run",
@@ -500,6 +1032,128 @@ describe("local API server configuration", () => {
         mediaType: "image/png",
       });
       expect(publish).not.toHaveBeenCalled();
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves a frozen Project Document revision through the production broker", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-plugin-document-"));
+    try {
+      const projectId = "project-document-input";
+      const body = {
+        schemaVersion: 1,
+        kind: "clash.asr.timed-transcript",
+        timebase: "milliseconds",
+        alignment: "word",
+        text: "frozen words",
+        backendId: "test-asr",
+        modelId: "test-model",
+        durationMs: 500,
+        words: [{ id: "word-1", text: "frozen", startMs: 0, endMs: 500 }],
+        segments: [
+          {
+            id: "segment-1",
+            text: "frozen",
+            startMs: 0,
+            endMs: 500,
+            wordIds: ["word-1"],
+          },
+        ],
+      };
+      const stored = await storeMetadataBody({ dataDir, body });
+      const liveDoc = new LoroDoc();
+      const created = createProjectDocumentAsset(liveDoc, {
+        id: "revision-2",
+        documentAssetId: "document-1",
+        documentKind: "media.transcript",
+        schemaVersion: 1,
+        mutability: "versioned",
+        body: {
+          digest: stored.contentHash,
+          byteLength: stored.bytes,
+          contentType: "application/json",
+        },
+        producer: { kind: "actor", actor: { kind: "user", id: "user-1" } },
+        sourceRefs: [],
+      });
+      if (!created.ok) throw new Error(created.error.message);
+      const projectAssetReplica: LocalProjectAssetReplica = {
+        inspect: async (_id, read) => read(liveDoc),
+        mutate: async (_id, mutation) => (await mutation(liveDoc)).value,
+      };
+      const broker = createLocalPluginBrokerServices({
+        dataDir,
+        projectAssetReplica,
+      });
+      const reference = {
+        slot: "transcript",
+        index: 0,
+        document: {
+          documentAssetId: "document-1",
+          revisionId: "revision-2",
+          documentKind: "media.transcript",
+          schemaVersion: 1,
+        },
+      } as const;
+
+      await expect(
+        broker(
+          {
+            protocol: "clash.plugin.broker-request/v1",
+            requestId: "read-document",
+            invocationId: "invocation-document",
+            operation: { kind: "asset.resolve", reference },
+          },
+          {
+            manifest: {
+              apiVersion: "clash.plugin/v1",
+              id: "test.document-reader",
+              version: "1.0.0",
+              name: "Document reader",
+              runtime: {
+                kind: "local",
+                transport: "stdio",
+                entrypoint: "handler.mjs",
+                args: [],
+              },
+              contractTests: [],
+              contributes: {
+                cards: [],
+                providers: [],
+                modelBindings: [],
+                generators: [],
+                functions: [
+                  { id: "run", kind: "action", operations: ["submit"] },
+                ],
+                hostTools: [],
+              },
+            },
+            invocation: {
+              protocol: "clash.plugin.invoke/v1",
+              invocationId: "invocation-document",
+              taskId: "task-document",
+              projectId,
+              target: {
+                pluginId: "test.document-reader",
+                version: "1.0.0",
+                exportId: "run",
+                schemaHash: `sha256:${"f".repeat(64)}`,
+                kind: "action",
+              },
+              input: { values: {}, references: [reference] },
+              assetInputs: [],
+              actor: { kind: "system" },
+              operation: "submit",
+            },
+          },
+        ),
+      ).resolves.toEqual({
+        form: "document",
+        documentKind: "media.transcript",
+        schemaVersion: 1,
+        body,
+      });
     } finally {
       await rm(dataDir, { recursive: true, force: true });
     }

@@ -86,7 +86,10 @@ export const TIMELINE_MCP_EXECUTORS = {
     inputSchema: timelineOperationInputSchema("timeline.schema"),
     outputSchema: timelineOperationOutputSchema("timeline.schema"),
     execute: (input, adapter) => adapter.schema(input),
-    summary: () => "Returned the machine-readable Timeline YAML DSL contract.",
+    summary: (value) =>
+      (value as { view?: unknown })?.view === "authoring"
+        ? "Returned compact Timeline authoring discovery."
+        : "Returned the complete machine-readable Timeline YAML DSL contract.",
   },
   "timeline.validate": {
     title: "Validate Timeline DSL",

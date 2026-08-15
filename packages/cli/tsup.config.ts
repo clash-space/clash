@@ -3,7 +3,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
     index: "src/index.ts",
-    plugin: "src/commands/plugin.ts",
+    plugin: "src/lib/plugin-lifecycle.ts",
   },
   // Ship as CJS even though package.json says "type": "module" —
   // ESM bundling falls over on bundled transitive dependencies that

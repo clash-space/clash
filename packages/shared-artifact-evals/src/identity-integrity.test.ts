@@ -5,12 +5,12 @@ import {
   enforceBenchmarkIdentityIntegrity,
   inspectBenchmarkIdentityIntegrity,
 } from "./identity-integrity";
-import type {
-  ArtifactBenchmarkCase,
-  ProductExecutionReport,
-} from "./types";
+import type { ArtifactBenchmarkCase, ProductExecutionReport } from "./types";
 
-function codexEvent(command: string, options: { id?: string; output?: string } = {}): string {
+function codexEvent(
+  command: string,
+  options: { id?: string; output?: string } = {},
+): string {
   return JSON.stringify({
     type: "item.completed",
     item: {
@@ -54,6 +54,8 @@ function passingExecution(): ProductExecutionReport {
       },
     ],
     missingProductOperations: [],
+    forbiddenProductOperations: [],
+    observedForbiddenProductOperations: [],
     requiredMcpTools: [],
     observedMcpTools: [],
     missingMcpTools: [],

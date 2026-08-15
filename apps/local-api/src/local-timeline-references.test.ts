@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LoroDoc } from "loro-crdt";
 import {
-  createActionAssetBinding,
   createProjectAsset,
   createProjectTimeline,
   listActionAssetBindingsForOwner,
@@ -13,16 +12,14 @@ import {
   requestTimelineRender,
   updateProjectTimelineState,
 } from "@clash/shared-types";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   createLocalAssetInspectionService,
   type LocalAssetInspector,
 } from "./local-asset-inspections.js";
-import {
-  createLocalWorkflowProcessor,
-  resolveLocalTimelineDslReferences,
-} from "./local-processor.js";
+import { createLocalWorkflowProcessor } from "./local-processor.js";
+import { createLocalPluginAssetStagingStore } from "./local-plugin-asset-staging.js";
 import { createLocalProjectAssetService } from "./local-project-assets.js";
 
 let dataDir = "";
@@ -72,13 +69,61 @@ function testAssetInspection() {
   });
 }
 
+function remotionCapture() {
+  const binding = {
+    pluginId: "clash.remotion",
+    version: "0.1.0",
+    exportId: "render-timeline",
+    schemaHash: `sha256:${"a".repeat(64)}` as const,
+  };
+  const requests: Array<Record<string, any>> = [];
+  const staging = createLocalPluginAssetStagingStore({ dataDir });
+  return {
+    requests,
+    resolvePluginBinding: async () => binding,
+    executablePluginAction: async (request: Record<string, any>) => {
+      requests.push(structuredClone(request));
+      const outputSlot = String(request.input.values.outputSlot);
+      const invocationId = `${request.taskId}:remotion-reference-test`;
+      const staged = await staging.stage({
+        projectId: request.projectId,
+        taskId: request.taskId,
+        slot: outputSlot,
+        pluginId: binding.pluginId,
+        pluginVersion: binding.version,
+        invocationId,
+        kind: "video",
+        mediaType: "video/mp4",
+        bytes: new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]),
+      });
+      return {
+        protocol: "clash.plugin.result/v1" as const,
+        invocationId,
+        status: "completed" as const,
+        outputs: [
+          {
+            slot: outputSlot,
+            kind: "asset" as const,
+            asset: {
+              assetId: staged.projectAssetId,
+              uri: `clash-asset://${staged.projectAssetId}`,
+              kind: "video" as const,
+              mediaType: "video/mp4",
+            },
+          },
+        ],
+      };
+    },
+  };
+}
+
 afterEach(async () => {
   if (dataDir) await rm(dataDir, { recursive: true, force: true });
   dataDir = "";
 });
 
 describe("local Timeline live references", () => {
-  it("hydrates media through the canonical Host Asset resolver", async () => {
+  it("freezes media as a clash-asset reference without a Host URL or path", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "clash-timeline-asset-resolver-"));
     const doc = new LoroDoc();
     const assetInspection = testAssetInspection();
@@ -106,49 +151,77 @@ describe("local Timeline live references", () => {
     expect(createProjectAsset(doc, entry)).toMatchObject({ ok: true });
     expect(markProjectAssetAuthority(doc)).toMatchObject({ ok: true });
     expect(markActionAssetBindingAuthority(doc)).toMatchObject({ ok: true });
-    const inputOwner = {
-      kind: "run" as const,
-      actionId: "timeline:timeline-1",
-      actionRevisionId: "revision-1",
-      actionRunId: "timeline-render:render-1",
-    };
     expect(
-      createActionAssetBinding(doc, {
-        id: "action-asset:run:render-1:voice",
-        owner: inputOwner,
-        direction: "input",
-        slot: "timeline:item:voice",
-        projectAssetId: "asset:voice",
-        role: "source",
+      createProjectTimeline(doc, {
+        id: "timeline-1",
+        name: "Voice cut",
+        state: {
+          fps: 30,
+          durationInFrames: 60,
+          tracks: [
+            {
+              id: "audio",
+              items: [
+                {
+                  id: "voice",
+                  type: "audio",
+                  assetId: "asset:voice",
+                  from: 0,
+                  durationInFrames: 60,
+                },
+              ],
+            },
+          ],
+        },
       }),
     ).toMatchObject({ ok: true });
+    expect(
+      requestTimelineRender(doc, {
+        timelineId: "timeline-1",
+        actorUserId: "user-1",
+        generateId: () => "render-1",
+      }),
+    ).toMatchObject({ ok: true, renderNodeId: "render-1" });
+    const remotion = remotionCapture();
 
-    const resolved = await resolveLocalTimelineDslReferences({
+    await createLocalWorkflowProcessor({
       dataDir,
-      doc,
-      projectId: "project-1",
-      mediaBaseUrl: "http://127.0.0.1:49321",
-      inputOwner,
-      timelineDsl: {
-        tracks: [
-          {
-            id: "audio",
-            items: [
-              {
-                id: "voice",
-                type: "audio",
-                assetId: "asset:voice",
-                from: 0,
-                durationInFrames: 60,
-              },
-            ],
-          },
-        ],
-      },
-    });
+      assetInspection,
+      executablePluginAction: remotion.executablePluginAction,
+      resolvePluginBinding: remotion.resolvePluginBinding,
+    }).process({ doc, projectId: "project-1", checkpoint: async () => {} });
 
-    expect(resolved.tracks[0].items[0].src).toBe(
-      "http://127.0.0.1:49321/api/v1/projects/project-1/assets/asset%3Avoice/media",
+    expect(remotion.requests).toHaveLength(1);
+    expect(remotion.requests[0]!.input).toMatchObject({
+      values: {
+        timelineDsl: {
+          tracks: [
+            {
+              items: [
+                expect.objectContaining({
+                  id: "voice",
+                  assetId: "asset:voice",
+                }),
+              ],
+            },
+          ],
+        },
+      },
+      references: [
+        {
+          slot: "timeline:item:voice",
+          index: 0,
+          asset: {
+            assetId: "asset:voice",
+            uri: "clash-asset://asset:voice",
+            kind: "audio",
+            mediaType: "audio/mpeg",
+          },
+        },
+      ],
+    });
+    expect(JSON.stringify(remotion.requests)).not.toMatch(
+      /(?:executorUrl|providerUrl|storageKey|127\.0\.0\.1|\/tmp\/|\/Users\/)/,
     );
   });
 
@@ -263,35 +336,31 @@ describe("local Timeline live references", () => {
         timelineDsl: rewiredState,
       },
     });
-    const render = vi.fn(
-      async (_input: {
-        projectId: string;
-        taskId: string;
-        timelineDsl: Record<string, any>;
-      }) => ({
-        bytes: new TextEncoder().encode("rendered timeline"),
-        contentType: "video/mp4",
-        width: 1920,
-        height: 1080,
-        durationMs: 2_000,
-      }),
-    );
+    const remotion = remotionCapture();
 
     await createLocalWorkflowProcessor({
       dataDir,
-      mediaBaseUrl: "http://127.0.0.1:49321",
       assetInspection,
-      timelineRenderer: { render },
-    }).process({ doc, projectId });
+      executablePluginAction: remotion.executablePluginAction,
+      resolvePluginBinding: remotion.resolvePluginBinding,
+    }).process({ doc, projectId, checkpoint: async () => {} });
 
-    expect(render).toHaveBeenCalledOnce();
-    const renderedDsl = render.mock.calls[0]![0].timelineDsl;
+    expect(remotion.requests).toHaveLength(1);
+    const renderedDsl = remotion.requests[0]!.input.values.timelineDsl;
     expect(renderedDsl.tracks[0].items[0]).toMatchObject({
       id: "clip-1",
       assetId: "asset:original",
-      src: "http://127.0.0.1:49321/api/v1/projects/project-1/assets/asset%3Aoriginal/media",
     });
-    expect(JSON.stringify(renderedDsl)).not.toContain("asset%3Areplacement");
+    expect(renderedDsl.tracks[0].items[0]).not.toHaveProperty("src");
+    expect(remotion.requests[0]!.input.references).toEqual([
+      expect.objectContaining({
+        slot: "timeline:item:clip-1",
+        asset: expect.objectContaining({ assetId: "asset:original" }),
+      }),
+    ]);
+    expect(JSON.stringify(remotion.requests[0])).not.toContain(
+      "asset:replacement",
+    );
     expect(readProjectTimeline(doc, "timeline-1")?.state).toMatchObject({
       tracks: [
         {
@@ -322,26 +391,7 @@ describe("local Timeline live references", () => {
     dataDir = await mkdtemp(join(tmpdir(), "clash-remotion-reference-"));
     const doc = new LoroDoc();
     const nodes = doc.getMap("nodes");
-    const timelineDsl = {
-      tracks: [
-        {
-          id: "overlays",
-          items: [
-            {
-              id: "live-card",
-              type: "composition",
-              runtime: "remotion",
-              compositionKind: "custom",
-              compositionId: "LiveCard",
-              sourcePath: "components/remotion-fixed.tsx",
-              sourceNodeId: "remotion-fixed",
-              from: 0,
-              durationInFrames: 60,
-            },
-          ],
-        },
-      ],
-    };
+    expect(markActionAssetBindingAuthority(doc)).toMatchObject({ ok: true });
     nodes.set("remotion-fixed", {
       type: "remotion-component",
       data: {
@@ -350,18 +400,52 @@ describe("local Timeline live references", () => {
           "export default function LiveCard(){ return <div>Before</div>; }",
       },
     });
-
-    const before = await resolveLocalTimelineDslReferences({
+    expect(
+      createProjectTimeline(doc, {
+        id: "timeline-1",
+        name: "Live component",
+        state: {
+          fps: 30,
+          durationInFrames: 60,
+          tracks: [
+            {
+              id: "overlays",
+              items: [
+                {
+                  id: "live-card",
+                  type: "composition",
+                  runtime: "remotion",
+                  compositionKind: "custom",
+                  compositionId: "LiveCard",
+                  sourcePath: "components/remotion-fixed.tsx",
+                  sourceNodeId: "remotion-fixed",
+                  from: 0,
+                  durationInFrames: 60,
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      requestTimelineRender(doc, {
+        timelineId: "timeline-1",
+        actorUserId: "user-1",
+        generateId: () => "render-before",
+      }),
+    ).toMatchObject({ ok: true });
+    const remotion = remotionCapture();
+    const processor = createLocalWorkflowProcessor({
       dataDir,
+      assetInspection: testAssetInspection(),
+      executablePluginAction: remotion.executablePluginAction,
+      resolvePluginBinding: remotion.resolvePluginBinding,
+    });
+    await processor.process({
       doc,
       projectId: "project-1",
-      inputOwner: {
-        kind: "run",
-        actionId: "timeline:timeline-1",
-        actionRevisionId: "revision-1",
-        actionRunId: "timeline-render:render-1",
-      },
-      timelineDsl,
+      checkpoint: async () => {},
     });
 
     nodes.set("remotion-fixed", {
@@ -372,52 +456,52 @@ describe("local Timeline live references", () => {
           "export default function LiveCard(){ return <div>After</div>; }",
       },
     });
-    const after = await resolveLocalTimelineDslReferences({
-      dataDir,
+    expect(
+      requestTimelineRender(doc, {
+        timelineId: "timeline-1",
+        actorUserId: "user-1",
+        generateId: () => "render-after",
+      }),
+    ).toMatchObject({ ok: true });
+    await processor.process({
       doc,
       projectId: "project-1",
-      inputOwner: {
-        kind: "run",
-        actionId: "timeline:timeline-1",
-        actionRevisionId: "revision-1",
-        actionRunId: "timeline-render:render-1",
-      },
-      timelineDsl,
+      checkpoint: async () => {},
     });
 
-    expect(before.tracks[0].items[0]).toMatchObject({
+    expect(remotion.requests).toHaveLength(2);
+    expect(
+      remotion.requests[0]!.input.values.timelineDsl.tracks[0].items[0],
+    ).toMatchObject({
       sourceNodeId: "remotion-fixed",
       componentSource: expect.stringContaining("Before"),
     });
-    expect(after.tracks[0].items[0]).toMatchObject({
+    expect(
+      remotion.requests[1]!.input.values.timelineDsl.tracks[0].items[0],
+    ).toMatchObject({
       sourceNodeId: "remotion-fixed",
       componentSource: expect.stringContaining("After"),
     });
-    expect(timelineDsl.tracks[0].items[0]).not.toHaveProperty(
-      "componentSource",
-    );
+    expect(
+      (readProjectTimeline(doc, "timeline-1")!.state as any).tracks[0].items[0],
+    ).not.toHaveProperty("componentSource");
   });
 
   it("fails closed when a Remotion Timeline reference is not a component node", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "clash-remotion-reference-"));
     const doc = new LoroDoc();
+    expect(markActionAssetBindingAuthority(doc)).toMatchObject({ ok: true });
     doc.getMap("nodes").set("wrong-node", {
       type: "text",
       data: { content: "Not executable TSX" },
     });
-
-    await expect(
-      resolveLocalTimelineDslReferences({
-        dataDir,
-        doc,
-        projectId: "project-1",
-        inputOwner: {
-          kind: "run",
-          actionId: "timeline:timeline-1",
-          actionRevisionId: "revision-1",
-          actionRunId: "timeline-render:render-1",
-        },
-        timelineDsl: {
+    expect(
+      createProjectTimeline(doc, {
+        id: "timeline-1",
+        name: "Invalid component",
+        state: {
+          fps: 30,
+          durationInFrames: 60,
           tracks: [
             {
               id: "overlays",
@@ -438,6 +522,31 @@ describe("local Timeline live references", () => {
           ],
         },
       }),
-    ).rejects.toThrow(/must reference a remotion-component Canvas node/);
+    ).toMatchObject({ ok: true });
+    expect(
+      requestTimelineRender(doc, {
+        timelineId: "timeline-1",
+        actorUserId: "user-1",
+        generateId: () => "render-invalid-component",
+      }),
+    ).toMatchObject({ ok: true });
+    const remotion = remotionCapture();
+
+    await createLocalWorkflowProcessor({
+      dataDir,
+      assetInspection: testAssetInspection(),
+      executablePluginAction: remotion.executablePluginAction,
+      resolvePluginBinding: remotion.resolvePluginBinding,
+    }).process({ doc, projectId: "project-1", checkpoint: async () => {} });
+
+    expect(remotion.requests).toEqual([]);
+    expect(doc.getMap("nodes").get("render-invalid-component")).toMatchObject({
+      data: {
+        status: "failed",
+        error: expect.stringMatching(
+          /must reference a remotion-component Canvas node/,
+        ),
+      },
+    });
   });
 });

@@ -54,9 +54,92 @@ rejected.
 - `hostTools` is for named Host functionality such as `codex.imagegen`. It is
   an explicit product contribution.
 
+`runtime` describes the package's distributable entrypoint and transport. It is
+not a semantic execution-realm declaration. The Local Host may select a trusted
+first-party package from its closed bundled-module registry and invoke its
+transport-neutral `PluginModule` in-process. Activated third-party packages use
+the declared process/stdio entrypoint. Both realms use the same invocation,
+result, broker, and failure ABI; realm never enters a Generator Definition,
+Action Run, or executable binding. A process is fault isolation, not a security
+sandbox.
+
 Clash dependencies follow from contributions. A provider executor or action
 receives scoped state and asset primitives; a pure projector does not need
 vendor I/O. This is dependency wiring rather than a domain declaration.
+
+## Generator definition (`clash.generator/v1`)
+
+A manifest registers a Generator artifact and the Action executor exports it
+uses:
+
+```json
+{
+  "contributes": {
+    "generators": [
+      {
+        "id": "image-workbench",
+        "kind": "generator",
+        "path": "generators/image-workbench.json"
+      }
+    ],
+    "functions": [{ "id": "generate-image", "kind": "action" }]
+  }
+}
+```
+
+The artifact declares versioned state, persistent inputs, and one or more named
+Actions:
+
+```json
+{
+  "apiVersion": "clash.generator/v1",
+  "kind": "generator",
+  "spec": {
+    "definitionId": "image-workbench",
+    "stateSchema": {
+      "type": "object",
+      "properties": { "prompt": { "type": "string" } },
+      "required": ["prompt"],
+      "additionalProperties": false
+    },
+    "editPolicy": "fork-when-materialized",
+    "persistentInputs": [
+      {
+        "slot": "reference",
+        "accepts": [{ "kind": "media", "mediaKind": "image" }],
+        "cardinality": { "minItems": 0, "maxItems": 4 }
+      }
+    ],
+    "actions": [
+      {
+        "id": "generate",
+        "executorExportId": "generate-image",
+        "parametersSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "invocationInputs": [],
+        "outputs": [
+          {
+            "slot": "image",
+            "assetType": { "kind": "media", "mediaKind": "image" },
+            "cardinality": { "minItems": 1, "maxItems": 1 }
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Actions are materializing methods inside the Definition, not standalone mutable
+entities. A Definition may declare multiple Actions and the same immutable
+Generator Revision may invoke any of them. The current profile requires exactly
+one output Asset per Action. The Host injects exact package provenance and
+schema hashes; an artifact never declares a module/process execution realm.
+
+See [Asset + Generator Model](/guide/asset-generator-model) for revision, Run,
+copy-on-write, and delivery status.
 
 ## Provider definition (`clash.provider/v1`)
 
@@ -128,12 +211,16 @@ if (reference?.form === "bytes") {
   await sendBytesToVendor(reference.bytes, reference.mediaType);
 } else if (reference?.form === "provider-url") {
   await sendUrlToVendor(reference.providerUrl);
+} else if (reference?.form === "document") {
+  await sendStructuredInput(reference.body);
 }
 ```
 
 The plugin decides how to adapt the resolved form to its vendor. For results,
-return typed media or use `context.upload` for large bytes. The Host persists
-the asset and returns the canonical Clash handle.
+return typed media, a declared Document output, or use `context.upload` for
+large bytes. The Host persists the Asset and returns or publishes the canonical
+Clash identity. A Document reference always pins an exact revision, kind, and
+schema version; see [Document Assets](/guide/document-assets).
 
 Local, synced, and shared projects use the same plugin code. Only the Host
 implementation of store/reference/upload changes.

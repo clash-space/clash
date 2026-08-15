@@ -19,6 +19,17 @@ const emptyStageState = {
   shots: [],
 };
 
+const legacyCapturedShot = {
+  id: "capture-opening",
+  name: "Opening keyframe",
+  cameraId: "camera-a",
+  assetId: "asset-opening-still",
+  aspectRatio: "16:9" as const,
+  stageRevisionId: "stage-revision-a",
+  createdAt: "2026-07-24T00:00:00.000Z",
+  timeSeconds: 1.25,
+};
+
 describe("Project Director Stage model", () => {
   it("admits the curated full-body interact action", () => {
     expect((shared as any).DirectorStageActionNameSchema.parse("interact")).toBe("interact");
@@ -51,6 +62,54 @@ describe("Project Director Stage model", () => {
     const parsed = (shared as any).DirectorStageStateSchema.parse(emptyStageState);
 
     expect(parsed).toEqual(emptyStageState);
+  });
+
+  it("reads legacy captured-shot state without admitting it through new Stage writers", () => {
+    const doc = new LoroDoc();
+    const legacyState = {
+      ...emptyStageState,
+      cameras: [{
+        id: "camera-a",
+        name: "Camera A",
+        position: [0, 1.6, 6],
+        rotation: [0, 0, 0],
+        fov: 42,
+      }],
+      shots: [legacyCapturedShot],
+    };
+    const fields = doc.getMap("directorStages").ensureMergeableMap("legacy-stage");
+    fields.set("name", "Legacy Stage");
+    fields.set("owner", { kind: "project" });
+    fields.set("revision", {
+      state: legacyState,
+      revisionId: "legacy-stage-revision",
+    });
+
+    expect(
+      (shared as any).readProjectDirectorStage(doc, "legacy-stage")?.state.shots,
+    ).toEqual([legacyCapturedShot]);
+
+    const created = (shared as any).createProjectDirectorStage(new LoroDoc(), {
+      id: "new-stage",
+      name: "New Stage",
+      state: legacyState,
+    });
+    expect(created).toEqual({
+      ok: false,
+      error:
+        "Director Stage authoring state cannot contain capture outputs; use capture receipts and Project Asset references",
+    });
+
+    const updated = (shared as any).updateProjectDirectorStageState(
+      doc,
+      "legacy-stage",
+      legacyState,
+    );
+    expect(updated).toEqual({
+      ok: false,
+      error:
+        "Director Stage authoring state cannot contain capture outputs; use capture receipts and Project Asset references",
+    });
   });
 
   it("persists story beats, camera cues, and multi-character camera targets", () => {
@@ -732,7 +791,7 @@ describe("Project Director Stage model", () => {
     );
   });
 
-  it("applies deterministic object, camera, and shot commands", () => {
+  it("applies deterministic object and camera commands", () => {
     expect((shared as any).applyDirectorStageCommand).toBeTypeOf("function");
 
     const withActor = (shared as any).applyDirectorStageCommand(emptyStageState, {
@@ -774,27 +833,66 @@ describe("Project Director Stage model", () => {
         targetObjectId: "actor-a",
       },
     });
-    const withShot = (shared as any).applyDirectorStageCommand(withCamera.state, {
-      op: "shot.register",
-      shot: {
-        id: "shot-a",
-        name: "Front medium 01",
-        cameraId: "camera-a",
-        assetId: "asset-shot-a",
-        aspectRatio: "16:9",
-        stageRevisionId: "stage-revision-a",
-        createdAt: "2026-07-16T00:00:00.000Z",
-      },
-    });
-
     expect(withActor).toMatchObject({ ok: true });
-    expect(withCamera).toMatchObject({ ok: true });
-    expect(withShot).toMatchObject({
+    expect(withCamera).toMatchObject({
       ok: true,
       state: {
         objects: [expect.objectContaining({ id: "actor-a" })],
         cameras: [expect.objectContaining({ id: "camera-a", targetObjectId: "actor-a" })],
-        shots: [expect.objectContaining({ id: "shot-a", assetId: "asset-shot-a" })],
+        shots: [],
+      },
+    });
+  });
+
+  it("rejects capture output registration on the Stage command surface", () => {
+    const result = (shared as any).applyDirectorStageCommand(
+      {
+        ...emptyStageState,
+        cameras: [{
+          id: "camera-a",
+          name: "Camera A",
+          position: [0, 1.6, 6],
+          rotation: [0, 0, 0],
+          fov: 42,
+        }],
+      },
+      {
+        op: "shot.register",
+        shot: legacyCapturedShot,
+      },
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error:
+        "Director Stage capture outputs are external references and cannot be registered in Stage state",
+    });
+  });
+
+  it("drops legacy captured-shot payloads when an old Stage enters the authoring path", () => {
+    const result = (shared as any).applyDirectorStageCommand(
+      {
+        ...emptyStageState,
+        cameras: [{
+          id: "camera-a",
+          name: "Camera A",
+          position: [0, 1.6, 6],
+          rotation: [0, 0, 0],
+          fov: 42,
+        }],
+        shots: [legacyCapturedShot],
+      },
+      {
+        op: "scene.update",
+        patch: { backgroundColor: "#202126" },
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      state: {
+        scene: { backgroundColor: "#202126" },
+        shots: [],
       },
     });
   });
@@ -1516,16 +1614,7 @@ describe("Project Director Stage model", () => {
           farClipM: 1000,
         },
       }],
-      shots: [{
-        id: "capture-opening",
-        name: "Opening keyframe",
-        cameraId: "camera-a",
-        assetId: "asset-opening-still",
-        aspectRatio: "16:9",
-        stageRevisionId: "stage-revision-a",
-        createdAt: "2026-07-24T00:00:00.000Z",
-        timeSeconds: 1.25,
-      }],
+      shots: [],
       shotSequence: [{
         id: "shot-opening",
         name: "Opening push",
@@ -1553,6 +1642,14 @@ describe("Project Director Stage model", () => {
         previewUrl: "https://assets.example/reference-poster.jpg",
         mimeType: "video/webm",
       },
+      referenceStills: [{
+        assetId: "asset-opening-still",
+        cameraId: "camera-a",
+        shotId: "shot-opening",
+        aspectRatio: "16:9",
+        stageRevisionId: "stage-revision-a",
+        timeSeconds: 1.25,
+      }],
     });
 
     expect((shared as any).DirectorReferencePacketSchema.parse(packet)).toEqual(packet);
@@ -1570,7 +1667,7 @@ describe("Project Director Stage model", () => {
       referenceStills: [{
         assetId: "asset-opening-still",
         cameraId: "camera-a",
-        shotId: "capture-opening",
+        shotId: "shot-opening",
         timeSeconds: 1.25,
       }],
       cameraSpec: {

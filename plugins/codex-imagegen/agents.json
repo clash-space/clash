@@ -1,5 +1,5 @@
 {
-  "summary": "Executable Custom Action that delegates image generation to the signed-in Codex built-in image generation tool.",
+  "summary": "First-party Codex image generation plugin shipping a legacy Action Card plus a native Generator Definition over one transport-neutral PluginModule.",
   "context_hints": [
     "Keep Codex CLI execution in the Clash host tool; plugin code calls context.hostTools.codexImagegen.generate",
     "Do not add API-key fallbacks: this Action intentionally uses the user's existing Codex sign-in",
@@ -7,14 +7,16 @@
   ],
   "subdirectories": {
     "cards": "User-facing Action Card parameters and reference-image constraints.",
-    "src": "Typed stdio adapter and protocol tests.",
+    "generators": "Native clash.generator/v1 Definition. The Local Host HTTP surface can create/read/run it and enforces its fork-when-materialized edit policy; CLI/MCP/GUI clients remain unwired.",
+    "src": "Transport-neutral PluginModule plus its compatibility stdio entrypoint and protocol tests.",
     "contract-tests": "Declarative activation-gating ABI fixtures.",
     "dist": "Generated standalone install artifact; never hand-edit."
   },
   "key_files": {
     "manifest.json": "Versioned executable package and contribution declarations.",
     "cards/codex-imagegen.json": "Marketplace Action Card and aspect-ratio controls.",
-    "src/stdio.ts": "Typed host-tool plugin runtime adapter.",
+    "generators/codex-imagegen.json": "Native fork-when-materialized Generator Definition with one generate Action and one Media output.",
+    "src/stdio.ts": "Exports the inert first-party PluginModule and starts the same module over stdio only when executed directly.",
     "contract-tests/generate-image.json": "Activation contract for asset output."
   },
   "verification": [

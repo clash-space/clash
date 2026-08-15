@@ -80,9 +80,18 @@ authoritative schema only when full-state authoring requires it. Follow each
 tool's description and returned next-step guidance rather than memorizing its
 full schema here.
 
+Serialize mutations to the same Stage. Each successful object, camera,
+keyframe, action, or full-state write advances its revision, so parallel writes
+to one Stage correctly race and produce `STALE_READ`. Independent reads may be
+parallel; dependent writes may not.
+
 Before claiming a rendered result, capture at least the beginning, turning
 point, and ending through `clash director capture` or
 the Director menu's capture operation. Require the product renderer identity,
 unchanged source/readback revision, exact times, active cameras, PNG hashes,
-and a durable receipt. Inspect the returned PNGs; never substitute UI
-screenshots or a different renderer for Director evidence.
+immutable Project Asset identities, and a durable receipt. Reuse those returned
+identities directly in downstream Timeline items; the capture receipt links
+each output to its source Stage revision. Capture is an Action output and does
+not mutate its input Stage, so never write a capture Asset back into a Stage
+shot. Do not import the captured PNGs again. Inspect the returned PNGs; never
+substitute UI screenshots or a different renderer for Director evidence.

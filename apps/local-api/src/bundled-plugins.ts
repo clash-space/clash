@@ -1,8 +1,10 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename } from "node:fs/promises";
+import { lstat, readFile, readdir } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { ExecutablePluginManifestSchema } from "@clash/shared-types";
 
 import { activateHostExecutablePluginPackage } from "./runtime/plugin-package.js";
 
@@ -24,20 +26,44 @@ export const CODEX_IMAGEGEN_MARKETPLACE_ACTION = {
   color: "#57534e",
   tags: ["image", "codex", "local", "chatgpt"],
   promptModalities: ["text", "image"],
+  builtIn: true,
+  immutable: true,
 } as const;
+
+export class BuiltinPluginImmutableError extends Error {
+  readonly status = 409 as const;
+  readonly code = "BUILTIN_PLUGIN_IMMUTABLE" as const;
+
+  constructor(readonly pluginId: string) {
+    super(
+      `Built-in plugin ${pluginId} is immutable and cannot be uninstalled.`,
+    );
+    this.name = "BuiltinPluginImmutableError";
+  }
+}
 
 /**
  * The Providers that ship with the host.
  *
- * First-party plugins are not installed the way a third-party one is. `clash.google` and
- * `clash.minimax` were activated through `clash plugin activate` during development, which put them
- * under `~/.clash/actions` -- and the host still reported only what this list named, because what it
- * seeds at startup is this list rather than that directory.
+ * This closed source registry is the first-party trust root. The Host imports each declared module
+ * directly from its immutable distribution payload; it never installs these packages into the
+ * user's actions directory, and an actions-directory package cannot promote or shadow one of these
+ * reserved ids.
  *
- * A third-party Provider takes the other path: it is downloaded, attested and activated, and never
- * appears here. `hrhrng.hub` is one.
+ * A third-party Provider takes the process/stdio path: it is downloaded, attested, explicitly
+ * activated under the actions directory, and never appears here. `hrhrng.hub` is one.
  */
 export const BUNDLED_PLUGINS = [
+  {
+    id: "clash.asr",
+    packageName: "@clash-plugin/asr",
+    workspaceDir: "asr",
+  },
+  {
+    id: "clash.remotion",
+    packageName: "@clash-plugin/remotion",
+    workspaceDir: "remotion",
+  },
   {
     id: "clash.fal",
     packageName: "@clash-plugin/fal",
@@ -69,6 +95,63 @@ export const BUNDLED_PLUGINS = [
     workspaceDir: "codex-imagegen",
   },
 ] as const;
+
+/** Exact immutable files a bundled Host must carry for one validated plugin manifest. */
+export function bundledPluginPayloadPaths(manifestInput: unknown): string[] {
+  const manifest = ExecutablePluginManifestSchema.parse(manifestInput);
+  if (manifest.runtime.kind !== "local") {
+    throw new Error(
+      `Bundled plugin ${manifest.id} must have a local entrypoint.`,
+    );
+  }
+  return [
+    "manifest.json",
+    manifest.runtime.entrypoint,
+    ...(manifest.runtime.resources ?? []),
+    ...manifest.contributes.cards.map(({ path }) => path),
+    ...manifest.contributes.providers.map(({ path }) => path),
+    ...manifest.contributes.modelBindings.map(({ path }) => path),
+    ...manifest.contributes.generators.map(({ path }) => path),
+    ...manifest.contractTests,
+  ];
+}
+
+/** Expands declared resource directories to the exact regular files in one immutable package. */
+export async function bundledPluginPayloadFiles(
+  manifestInput: unknown,
+  pluginRoot: string,
+): Promise<string[]> {
+  const files: string[] = [];
+  const visit = async (relativePath: string): Promise<void> => {
+    const path = join(pluginRoot, relativePath);
+    const info = await lstat(path);
+    if (info.isSymbolicLink()) {
+      throw new Error(
+        `Bundled plugin payload ${relativePath} must not be a symbolic link.`,
+      );
+    }
+    if (info.isFile()) {
+      files.push(relativePath);
+      return;
+    }
+    if (!info.isDirectory()) {
+      throw new Error(
+        `Bundled plugin payload ${relativePath} is not a regular file or directory.`,
+      );
+    }
+    const entries = (await readdir(path, { withFileTypes: true })).sort(
+      (left, right) => left.name.localeCompare(right.name),
+    );
+    for (const entry of entries) {
+      await visit(`${relativePath}/${entry.name}`);
+    }
+  };
+
+  for (const relativePath of bundledPluginPayloadPaths(manifestInput)) {
+    await visit(relativePath);
+  }
+  return [...new Set(files)];
+}
 
 export function bundledPluginPaths(
   id: string,
@@ -147,32 +230,34 @@ export function createCodexImagegenMarketplace(options: {
   manifestPath?: string;
   entrypointPath?: string;
 }) {
-  const targetDir = join(options.actionsRoot, CODEX_IMAGEGEN_PLUGIN_ID);
-  const sourcePaths = () => {
-    if (options.manifestPath && options.entrypointPath) {
-      return {
-        manifestPath: options.manifestPath,
-        entrypointPath: options.entrypointPath,
-      };
+  const readBundledManifest = async () => {
+    const manifestPath =
+      options.manifestPath ?? bundledCodexImagegenPaths().manifestPath;
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+      id?: string;
+      version?: string;
+    };
+    if (
+      manifest.id !== CODEX_IMAGEGEN_PLUGIN_ID ||
+      typeof manifest.version !== "string"
+    ) {
+      throw new Error("Bundled Codex ImageGen package is invalid.");
     }
-    return bundledCodexImagegenPaths();
+    return manifest;
   };
 
   return {
     actions: [CODEX_IMAGEGEN_MARKETPLACE_ACTION],
     async listInstalled() {
-      if (!existsSync(join(targetDir, "manifest.json"))) return [];
-      const manifest = JSON.parse(
-        await readFile(join(targetDir, "manifest.json"), "utf8"),
-      ) as {
-        version?: string;
-      };
+      const manifest = await readBundledManifest();
       return [
         {
           actionId: CODEX_IMAGEGEN_ACTION_ID,
           name: "Codex ImageGen",
           runtime: "local",
-          version: manifest.version ?? "0.0.0",
+          version: manifest.version,
+          builtIn: true,
+          immutable: true,
           manifest: JSON.stringify({
             ...CODEX_IMAGEGEN_MARKETPLACE_ACTION,
             id: CODEX_IMAGEGEN_ACTION_ID,
@@ -184,70 +269,20 @@ export function createCodexImagegenMarketplace(options: {
       if (packageId !== CODEX_IMAGEGEN_PLUGIN_ID) {
         throw new Error(`Unknown local action package: ${packageId}`);
       }
-      if (existsSync(join(targetDir, "manifest.json"))) {
-        return {
-          actionId: CODEX_IMAGEGEN_ACTION_ID,
-          packageId,
-          installed: false,
-          targetDir,
-        };
-      }
-      const { manifestPath, entrypointPath } = sourcePaths();
-      const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
-        id?: string;
-        runtime?: { entrypoint?: string };
-        contributes?: { cards?: Array<{ path?: string }> };
-        contractTests?: string[];
-      };
-      if (
-        manifest.id !== CODEX_IMAGEGEN_PLUGIN_ID ||
-        !manifest.runtime?.entrypoint
-      ) {
-        throw new Error("Bundled Codex ImageGen package is invalid.");
-      }
-      const files: Record<string, string> = {
-        [manifest.runtime.entrypoint]: (
-          await readFile(entrypointPath)
-        ).toString("base64"),
-      };
-      for (const card of manifest.contributes?.cards ?? []) {
-        if (!card.path) continue;
-        files[card.path] = (
-          await readFile(join(dirname(manifestPath), card.path))
-        ).toString("base64");
-      }
-      for (const contractPath of manifest.contractTests ?? []) {
-        files[contractPath] = (
-          await readFile(join(dirname(manifestPath), contractPath))
-        ).toString("base64");
-      }
-      const activated = await activateHostExecutablePluginPackage(
-        {
-          id: CODEX_IMAGEGEN_PLUGIN_ID,
-          manifest,
-          files,
-        },
-        options.actionsRoot,
-      );
+      const manifest = await readBundledManifest();
       return {
         actionId: CODEX_IMAGEGEN_ACTION_ID,
         packageId,
-        installed: true,
-        targetDir: activated.targetDir,
+        version: manifest.version,
+        installed: false,
+        bundled: true,
       };
     },
     async uninstall(actionId: string) {
       if (actionId !== CODEX_IMAGEGEN_ACTION_ID) {
         throw new Error(`Unknown local action: ${actionId}`);
       }
-      if (!existsSync(targetDir)) return;
-      const trashRoot = join(options.actionsRoot, ".trash");
-      await mkdir(trashRoot, { recursive: true });
-      const firstTrash = join(trashRoot, CODEX_IMAGEGEN_PLUGIN_ID);
-      const destination = existsSync(firstTrash)
-        ? join(trashRoot, `${CODEX_IMAGEGEN_PLUGIN_ID}-${Date.now()}`)
-        : firstTrash;
-      await rename(targetDir, destination);
+      throw new BuiltinPluginImmutableError(CODEX_IMAGEGEN_PLUGIN_ID);
     },
   };
 }
@@ -259,9 +294,9 @@ export async function ensureBundledPlugin(options: {
   entrypointPath?: string;
 }): Promise<{ installed: boolean; targetDir: string }> {
   const targetDir = join(options.actionsRoot, options.id);
-  // The installed directory is the user's editable source of truth. Never
-  // overwrite it on app startup; upgrades go through the explicit atomic
-  // activation flow so an agent's edits remain inspectable and rollbackable.
+  // Compatibility utility for an explicit standalone activation. First-party startup never calls
+  // this path: its package payload stays immutable and outside the actions activation authority.
+  // An existing explicit install remains user-owned and must not be overwritten here.
   if (existsSync(join(targetDir, "manifest.json"))) {
     return { installed: false, targetDir };
   }
@@ -271,18 +306,9 @@ export async function ensureBundledPlugin(options: {
       : bundledPluginPaths(options.id);
   const manifestPath = options.manifestPath ?? defaults!.manifestPath;
   const entrypointPath = options.entrypointPath ?? defaults!.entrypointPath;
-  const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
-    id?: string;
-    runtime?: { kind?: string; entrypoint?: string };
-    contributes?: {
-      cards?: Array<{ path?: string }>;
-      // Seeding the entrypoint without these produces a Provider nobody can configure: the
-      // declaration is what the settings screen renders and what `--set` validates against.
-      providers?: Array<{ path?: string }>;
-      modelBindings?: Array<{ path?: string }>;
-    };
-    contractTests?: string[];
-  };
+  const manifest = ExecutablePluginManifestSchema.parse(
+    JSON.parse(await readFile(manifestPath, "utf8")),
+  );
   // Seeding a plugin under another's directory name gives two ids for one install, and a route
   // bound to either finds a manifest that disagrees with where it lives.
   if (manifest.id !== options.id) {
@@ -290,24 +316,20 @@ export async function ensureBundledPlugin(options: {
       `Expected the bundled manifest for ${options.id}, but it declares ${manifest.id}.`,
     );
   }
-  if (manifest.runtime?.kind !== "local" || !manifest.runtime.entrypoint) {
+  if (manifest.runtime.kind !== "local") {
     throw new Error(
       `Bundled plugin ${options.id} must have a local entrypoint.`,
     );
   }
+  const runtimeEntrypoint = manifest.runtime.entrypoint;
   const entrypoint = await readFile(entrypointPath);
   const files: Record<string, string> = {
-    [manifest.runtime.entrypoint]: entrypoint.toString("base64"),
+    [runtimeEntrypoint]: entrypoint.toString("base64"),
   };
   const manifestDir = dirname(manifestPath);
-  const declaredDocuments = [
-    ...(manifest.contributes?.cards ?? []).map((card) => card.path),
-    ...(manifest.contributes?.providers ?? []).map((provider) => provider.path),
-    ...(manifest.contributes?.modelBindings ?? []).map(
-      (binding) => binding.path,
-    ),
-    ...(manifest.contractTests ?? []),
-  ];
+  const declaredDocuments = (
+    await bundledPluginPayloadFiles(manifest, manifestDir)
+  ).filter((path) => path !== "manifest.json" && path !== runtimeEntrypoint);
   for (const relativePath of declaredDocuments) {
     if (!relativePath) continue;
     files[relativePath] = (

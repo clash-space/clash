@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from "vitest";
 
 import {
   ExecutablePluginRuntimeSchema,
   resolvePluginLanguage,
-} from './executable-plugin.js';
+} from "./executable-plugin.js";
 
 /**
  * The host launches a plugin; the plugin declares which interpreter to use.
@@ -17,47 +17,62 @@ import {
  * the launch protocol, stdio framing, and lifecycle adapter for each supported
  * runtime; an arbitrary command would not have that contract.
  */
-describe('plugin runtime language', () => {
+describe("plugin runtime language", () => {
   const base = {
-    kind: 'local' as const,
-    transport: 'stdio' as const,
-    entrypoint: 'dist/stdio.mjs',
+    kind: "local" as const,
+    transport: "stdio" as const,
+    entrypoint: "dist/stdio.mjs",
   };
 
-  it('accepts a declared interpreter', () => {
-    const runtime = ExecutablePluginRuntimeSchema.parse({ ...base, language: 'node' });
-    expect(resolvePluginLanguage(runtime)).toBe('node');
-  });
-
-  it('accepts python', () => {
+  it("accepts a declared interpreter", () => {
     const runtime = ExecutablePluginRuntimeSchema.parse({
       ...base,
-      entrypoint: 'handler.py',
-      language: 'python',
+      language: "node",
     });
-    expect(resolvePluginLanguage(runtime)).toBe('python');
+    expect(resolvePluginLanguage(runtime)).toBe("node");
   });
 
-  it('rejects an interpreter without a host runtime adapter', () => {
-    expect(() => ExecutablePluginRuntimeSchema.parse({ ...base, language: 'bash' })).toThrow();
-    expect(() => ExecutablePluginRuntimeSchema.parse({ ...base, language: 'deno' })).toThrow();
+  it("accepts python", () => {
+    const runtime = ExecutablePluginRuntimeSchema.parse({
+      ...base,
+      entrypoint: "handler.py",
+      language: "python",
+    });
+    expect(resolvePluginLanguage(runtime)).toBe("python");
   });
 
-  it('infers the interpreter for manifests written before the field existed', () => {
+  it("rejects an interpreter without a host runtime adapter", () => {
+    expect(() =>
+      ExecutablePluginRuntimeSchema.parse({ ...base, language: "bash" }),
+    ).toThrow();
+    expect(() =>
+      ExecutablePluginRuntimeSchema.parse({ ...base, language: "deno" }),
+    ).toThrow();
+  });
+
+  it("infers the interpreter for manifests written before the field existed", () => {
     // Both plugins installed on a real machine predate `language`; they must keep
     // loading rather than fail closed on a field they cannot have.
-    expect(resolvePluginLanguage({ kind: 'local', entrypoint: 'dist/handler.mjs' })).toBe('node');
-    expect(resolvePluginLanguage({ kind: 'local', entrypoint: 'handler.py' })).toBe('python');
-  });
-
-  it('lets a declaration override a misleading extension', () => {
     expect(
-      resolvePluginLanguage({ kind: 'local', language: 'python', entrypoint: 'handler.mjs' }),
-    ).toBe('python');
+      resolvePluginLanguage({ kind: "local", entrypoint: "dist/handler.mjs" }),
+    ).toBe("node");
+    expect(
+      resolvePluginLanguage({ kind: "local", entrypoint: "handler.py" }),
+    ).toBe("python");
   });
 
-  it('has no interpreter for a hosted runtime', () => {
-    expect(resolvePluginLanguage({ kind: 'hosted' })).toBeUndefined();
+  it("lets a declaration override a misleading extension", () => {
+    expect(
+      resolvePluginLanguage({
+        kind: "local",
+        language: "python",
+        entrypoint: "handler.mjs",
+      }),
+    ).toBe("python");
+  });
+
+  it("has no interpreter for a hosted runtime", () => {
+    expect(resolvePluginLanguage({ kind: "hosted" })).toBeUndefined();
   });
 });
 
@@ -67,39 +82,78 @@ describe('plugin runtime language', () => {
  * filenames whether a `dist/` file is generated or hand-written -- and never
  * overwrites something it did not produce.
  */
-describe('plugin runtime build declaration', () => {
+describe("plugin runtime build declaration", () => {
   const base = {
-    kind: 'local' as const,
-    transport: 'stdio' as const,
-    entrypoint: 'dist/stdio.mjs',
-    language: 'node' as const,
+    kind: "local" as const,
+    transport: "stdio" as const,
+    entrypoint: "dist/stdio.mjs",
+    language: "node" as const,
   };
 
-  it('accepts a source declaration', () => {
+  it("accepts a source declaration", () => {
     const runtime = ExecutablePluginRuntimeSchema.parse({
       ...base,
-      build: { source: 'src/stdio.ts' },
+      build: { source: "src/stdio.ts" },
     });
-    expect(runtime.kind === 'local' && runtime.build?.source).toBe('src/stdio.ts');
+    expect(runtime.kind === "local" && runtime.build?.source).toBe(
+      "src/stdio.ts",
+    );
   });
 
-  it('is absent for an authored entrypoint', () => {
+  it("is absent for an authored entrypoint", () => {
     const runtime = ExecutablePluginRuntimeSchema.parse(base);
-    expect(runtime.kind === 'local' && runtime.build).toBeUndefined();
+    expect(runtime.kind === "local" && runtime.build).toBeUndefined();
   });
 
-  it('refuses a source path that escapes the plugin directory', () => {
-    expect(() =>
-      ExecutablePluginRuntimeSchema.parse({ ...base, build: { source: '../elsewhere/stdio.ts' } }),
-    ).toThrow();
-  });
-
-  it('refuses unknown build keys', () => {
+  it("refuses a source path that escapes the plugin directory", () => {
     expect(() =>
       ExecutablePluginRuntimeSchema.parse({
         ...base,
-        build: { source: 'src/stdio.ts', command: 'make' },
+        build: { source: "../elsewhere/stdio.ts" },
       }),
     ).toThrow();
+  });
+
+  it("refuses unknown build keys", () => {
+    expect(() =>
+      ExecutablePluginRuntimeSchema.parse({
+        ...base,
+        build: { source: "src/stdio.ts", command: "make" },
+      }),
+    ).toThrow();
+  });
+});
+
+describe("plugin runtime resources", () => {
+  const base = {
+    kind: "local" as const,
+    transport: "stdio" as const,
+    entrypoint: "dist/stdio.mjs",
+  };
+
+  it("carries safe package-relative resources for a local executor", () => {
+    const runtime = ExecutablePluginRuntimeSchema.parse({
+      ...base,
+      resources: ["dist/browser-bundle", "assets/fonts"],
+    });
+
+    expect(runtime.kind === "local" && runtime.resources).toEqual([
+      "dist/browser-bundle",
+      "assets/fonts",
+    ]);
+    expect(
+      ExecutablePluginRuntimeSchema.safeParse({
+        ...base,
+        resources: ["../host/remotion-bundle"],
+      }).success,
+    ).toBe(false);
+    expect(
+      ExecutablePluginRuntimeSchema.safeParse({
+        kind: "hosted",
+        transport: "http",
+        endpoint: "https://plugin.example.com/run",
+        resources: ["dist/browser-bundle"],
+      }).success,
+    ).toBe(false);
   });
 });

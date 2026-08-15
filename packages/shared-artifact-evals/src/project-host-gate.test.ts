@@ -1,4 +1,11 @@
-import { chmod, lstat, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -19,7 +26,11 @@ describe("benchmark Project Host gate", () => {
       mkdir(suiteRoot),
       mkdir(runtimeRoot, { recursive: true }),
     ]);
-    await writeFile(join(runtimeRoot, "index.js"), "// fake MCP runtime\n", "utf8");
+    await writeFile(
+      join(runtimeRoot, "index.js"),
+      "// fake MCP runtime\n",
+      "utf8",
+    );
     await writeFile(
       join(runtimeRoot, "local-api.cjs"),
       [
@@ -27,14 +38,14 @@ describe("benchmark Project Host gate", () => {
         'const http = require("node:http")',
         'const net = require("node:net")',
         'const path = require("node:path")',
-        'const runDir = process.env.CLASH_HOST_RUN_DIR',
+        "const runDir = process.env.CLASH_HOST_RUN_DIR",
         'const discovery = path.join(runDir, "host.json")',
         'const pluginSocket = process.env.CLASH_PLUGIN_HOST_SOCKET || path.join(process.env.CLASH_HOME, "sockets", "plugin-host.sock")',
-        'fs.mkdirSync(path.dirname(pluginSocket), {recursive:true})',
-        'fs.mkdirSync(runDir, {recursive:true})',
-        'fs.rmSync(pluginSocket, {force:true})',
-        'const ipc = net.createServer((socket) => socket.end())',
-        'ipc.listen(pluginSocket)',
+        "fs.mkdirSync(path.dirname(pluginSocket), {recursive:true})",
+        "fs.mkdirSync(runDir, {recursive:true})",
+        "fs.rmSync(pluginSocket, {force:true})",
+        "const ipc = net.createServer((socket) => socket.end())",
+        "ipc.listen(pluginSocket)",
         'const server = http.createServer((_request, response) => { response.setHeader("content-type", "application/json"); response.end("{}") })',
         'server.listen(0, "127.0.0.1", () => { const port = server.address().port; fs.writeFileSync(discovery, JSON.stringify({endpoint:"http://127.0.0.1:" + port,pid:process.pid,profile:process.env.CLASH_PROFILE,launchMode:"user-service",startedBy:"plugin",agentCliPath:process.env.CLASH_CLI_ENTRY_PATH})) })',
         'process.on("SIGTERM", () => { server.close(); ipc.close(); fs.rmSync(discovery, {force:true}); fs.rmSync(pluginSocket, {force:true}); process.exit(0) })',
@@ -47,9 +58,9 @@ describe("benchmark Project Host gate", () => {
         `#!${process.execPath}`,
         'const fs = require("node:fs")',
         'const path = require("node:path")',
-        'const argv = process.argv.slice(2)',
+        "const argv = process.argv.slice(2)",
         'if (argv[0] === "init") { const projectId = argv[argv.indexOf("--project") + 1]; const markerPath = path.join(process.cwd(), ".clash", "project.toml"); fs.mkdirSync(path.dirname(markerPath), {recursive:true}); fs.writeFileSync(markerPath, "schema_version = 1\\nproject_id = " + JSON.stringify(projectId) + "\\nworkspace_id = \\"managed:gate\\"\\nstore = \\"managed\\"\\n"); process.stdout.write(JSON.stringify({projectId,markerPath,workspaceId:"managed:gate",reused:false}) + "\\n"); process.exit(0) }',
-        'process.exit(2)',
+        "process.exit(2)",
       ].join("\n"),
       "utf8",
     );
@@ -132,7 +143,9 @@ describe("benchmark Project Host gate", () => {
     });
     const caseRoot = join(outputRoot, "host-gate-run", "host-gate");
     expect(
-      JSON.parse(await readFile(join(caseRoot, "clash-project-host.json"), "utf8")),
+      JSON.parse(
+        await readFile(join(caseRoot, "clash-project-host.json"), "utf8"),
+      ),
     ).toMatchObject({ status: "failed", initDisposition: "created" });
   });
 });
