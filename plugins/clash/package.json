@@ -40,12 +40,14 @@
     "dev": "CLASH_SOURCE_RUNTIME=1 tsx --tsconfig tsconfig.dev.json src/dispatcher.ts --profile dev",
     "lint": "tsc --noEmit",
     "test": "TSX_TSCONFIG_PATH=tsconfig.dev.json node --import tsx --test src/*.test.ts scripts/*.test.ts",
+    "test:package-runtime": "TSX_TSCONFIG_PATH=tsconfig.dev.json node --import tsx --test shared-mcp-package-runtime.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "1.1.0",
     "@ffprobe-installer/ffprobe": "2.1.2",
     "@remotion/renderer": "4.0.507",
+    "agent-browser": "^0.34.0",
     "esbuild": "^0.25.0",
     "loro-crdt": "^1.10.3",
     "yaml": "^2.6.0"

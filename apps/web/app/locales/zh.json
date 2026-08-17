@@ -130,6 +130,24 @@
         "failed": "失败"
       }
     },
+    "subagent": {
+      "activityTitle": "子任务",
+      "workingCount": "{{count}} 个工作中",
+      "openTask": "打开 {{title}}",
+      "stop": "停止",
+      "stopTask": "停止 {{title}}",
+      "stopAll": "全部停止",
+      "stopAllLabel": "停止全部子任务",
+      "back": "返回主会话",
+      "close": "关闭子任务详情",
+      "status": {
+        "running": "工作中",
+        "completed": "已完成",
+        "failed": "失败",
+        "cancelled": "已取消",
+        "unknown": "状态未知"
+      }
+    },
     "thinking": {
       "label": "思考过程"
     },

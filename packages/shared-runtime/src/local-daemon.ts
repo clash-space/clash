@@ -47,6 +47,8 @@ export interface DetachedLocalDaemonOptions {
   nodeVersion?: string;
   /** Run an Electron executable as its embedded Node runtime. */
   electronRunAsNode?: boolean;
+  /** Defaults to detached silence; instrumented launchers may explicitly inherit diagnostics. */
+  stdio?: "ignore" | "inherit";
   spawnProcess?: (
     command: string,
     args: readonly string[],
@@ -146,7 +148,7 @@ export function launchDetachedLocalDaemon(
         CLASH_DAEMON_NODE_PATH: runtime.nodePath,
         PORT: "0",
       },
-      stdio: "ignore",
+      stdio: options.stdio ?? "ignore",
     },
   );
   if (!child.pid) throw new Error("Failed to start Clash daemon process");

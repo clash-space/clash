@@ -44072,7 +44072,7 @@ function launchDetachedLocalDaemon(options) {
       CLASH_DAEMON_NODE_PATH: runtime.nodePath,
       PORT: "0"
     },
-    stdio: "ignore"
+    stdio: options.stdio ?? "ignore"
   });
   if (!child.pid)
     throw new Error("Failed to start Clash daemon process");

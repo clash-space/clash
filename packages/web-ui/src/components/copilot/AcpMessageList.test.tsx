@@ -33,7 +33,7 @@ describe("AcpMessageList", () => {
     expect(screen.getByTestId("acp-assistant-body")).toBeTruthy();
   });
 
-  it("shows only the latest Codex thought while its turn is streaming", () => {
+  it("projects each explicit line of the live tail thought and keeps its full body mounted", () => {
     const messages: ByoMessage[] = [{
       id: "asst-codex-live",
       role: "assistant",
@@ -45,20 +45,31 @@ describe("AcpMessageList", () => {
           title: "List Canvas",
           status: "completed",
         },
-        { type: "thought", text: "**Requesting clarification**" },
+        {
+          type: "thought",
+          text: "**Requesting clarification**\n\nChecking whether the user wants both variants.",
+        },
       ],
     }];
 
     render(<AcpMessageList messages={messages} agentId="codex-acp" isStreaming />);
 
     expect(screen.getAllByTestId("acp-thought-row")).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: /思考中/ }));
+    const trigger = screen.getByRole("button", { name: /Requesting clarification/ });
+    expect(within(trigger).getByText("**Requesting clarification**")).toBeTruthy();
+    expect(within(trigger).getByText("Checking whether the user wants both variants.")).toBeTruthy();
+    expect(within(trigger).getAllByTestId("acp-thought-projection-line")).toHaveLength(2);
     expect(screen.queryByText("**Planning genre exploration**")).toBeNull();
-    expect(screen.getByText("**Requesting clarification**")).toBeTruthy();
-    expect(within(screen.getByTestId("acp-thought-details")).getByTestId("streamdown")).toBeTruthy();
+    const details = screen.getByTestId("acp-thought-details");
+    expect(details).toHaveAttribute("data-state", "closed");
+    expect(details.className).toContain("data-[state=closed]:hidden");
+    expect(within(details).getByTestId("streamdown")).toBeTruthy();
+
+    fireEvent.click(trigger);
+    expect(details).toHaveAttribute("data-state", "open");
   });
 
-  it("keeps the active Codex thought below newer content in the current turn", () => {
+  it("does not resurrect a Codex thought after the agent has spoken past it", () => {
     const messages: ByoMessage[] = [{
       id: "asst-codex-live-order",
       role: "assistant",
@@ -70,9 +81,28 @@ describe("AcpMessageList", () => {
 
     render(<AcpMessageList messages={messages} agentId="codex-acp" isStreaming />);
 
-    const prose = screen.getByText("当前 Main Canvas 为空，我先写入文本方案。");
-    const thought = screen.getByTestId("acp-thought-row");
-    expect(prose.compareDocumentPosition(thought) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("当前 Main Canvas 为空，我先写入文本方案。")).toBeTruthy();
+    expect(screen.queryByTestId("acp-thought-row")).toBeNull();
+  });
+
+  it("does not mark a historical turn's thought as live while a newer turn streams", () => {
+    const messages: ByoMessage[] = [
+      {
+        id: "asst-codex-history",
+        role: "assistant",
+        parts: [{ type: "thought", text: "Historical private thought" }],
+      },
+      {
+        id: "asst-codex-current",
+        role: "assistant",
+        parts: [{ type: "text", text: "Working on the current turn." }],
+      },
+    ];
+
+    render(<AcpMessageList messages={messages} agentId="codex-acp" isStreaming />);
+
+    expect(screen.getByText("Working on the current turn.")).toBeTruthy();
+    expect(screen.queryByTestId("acp-thought-row")).toBeNull();
   });
 
   it("hides completed Codex thoughts but preserves other harness thought timelines", () => {
@@ -157,6 +187,8 @@ describe("AcpMessageList", () => {
     expect(screen.getByText("先读取当前画布结构。")).toBeTruthy();
     expect(screen.getByTestId("acp-thought-details").className).toContain("bg-transparent");
     expect(screen.getByTestId("acp-thought-details").className).toContain("w-full");
+    expect(screen.getByTestId("acp-thought-details").className).not.toContain("overflow-y-auto");
+    expect(screen.getByTestId("acp-thought-details").className).not.toContain("max-h-");
     expect(screen.getByTestId("acp-thought-details").className).not.toContain("ml-7");
     expect(screen.getByTestId("acp-thought-details").className).not.toContain("rounded");
 

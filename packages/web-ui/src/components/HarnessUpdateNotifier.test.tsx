@@ -148,9 +148,9 @@ describe("HarnessUpdateNotifier", () => {
 
     expect(
       (
-        await screen.findByRole("button", { name: "Updating Codex" })
-      ).hasAttribute("disabled"),
-    ).toBe(true);
+        await screen.findByRole("status", { name: "Updating Codex" })
+      ).textContent,
+    ).toContain("Updating");
     expect(
       await screen.findByRole("button", { name: "1 ACP update available" }),
     ).toBeTruthy();
@@ -159,6 +159,53 @@ describe("HarnessUpdateNotifier", () => {
     expect(updatedEvent).toHaveBeenCalledTimes(1);
 
     window.removeEventListener(HARNESS_UPDATED_EVENT, updatedEvent);
+  });
+
+  it("replaces the upgrade action with a non-interactive status while npm is running", async () => {
+    let resolveUpgrade!: (response: Response) => void;
+    const pendingUpgrade = new Promise<Response>((resolve) => {
+      resolveUpgrade = resolve;
+    });
+    const fetchMock = vi.fn((input: string, init?: RequestInit) => {
+      if (init?.method === "POST") return pendingUpgrade;
+      return Promise.resolve(
+        new Response(JSON.stringify({ harnesses: [availableHarnesses[0]] }), {
+          status: 200,
+        }),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderNotifier();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "1 ACP update available" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Update Codex" }));
+
+    expect(
+      await screen.findByRole("status", { name: "Updating Codex" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Updating Codex" }),
+    ).toBeNull();
+
+    resolveUpgrade(
+      new Response(
+        JSON.stringify({
+          harnesses: [{
+            ...availableHarnesses[0],
+            installedVersion: "1.1.5",
+            updateAvailable: false,
+          }],
+        }),
+        { status: 200 },
+      ),
+    );
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("status", { name: "Updating Codex" }),
+      ).toBeNull();
+    });
   });
 
   it("updates different ACPs concurrently without stale responses restoring completed updates", async () => {
@@ -192,7 +239,7 @@ describe("HarnessUpdateNotifier", () => {
       await screen.findByRole("button", { name: "Update Codex" }),
     );
     expect(
-      await screen.findByRole("button", { name: "Updating Codex" }),
+      await screen.findByRole("status", { name: "Updating Codex" }),
     ).toBeTruthy();
 
     const claudeButton = screen.getByRole("button", { name: "Update Claude" });
@@ -200,9 +247,9 @@ describe("HarnessUpdateNotifier", () => {
     fireEvent.click(claudeButton);
 
     expect(
-      await screen.findByRole("button", { name: "Updating Claude" }),
+      await screen.findByRole("status", { name: "Updating Claude" }),
     ).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Updating Codex" })).toBeTruthy();
+    expect(screen.getByRole("status", { name: "Updating Codex" })).toBeTruthy();
 
     resolveClaude(
       new Response(
@@ -239,10 +286,10 @@ describe("HarnessUpdateNotifier", () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByRole("button", { name: "Updating Codex" }),
+        screen.queryByRole("status", { name: "Updating Codex" }),
       ).toBeNull();
       expect(
-        screen.queryByRole("button", { name: "Updating Claude" }),
+        screen.queryByRole("status", { name: "Updating Claude" }),
       ).toBeNull();
     });
     expect(screen.queryByText("Codex")).toBeNull();

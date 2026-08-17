@@ -130,6 +130,24 @@
         "failed": "Failed"
       }
     },
+    "subagent": {
+      "activityTitle": "Subagents",
+      "workingCount": "{{count}} Working",
+      "openTask": "Open {{title}}",
+      "stop": "Stop",
+      "stopTask": "Stop {{title}}",
+      "stopAll": "Stop All",
+      "stopAllLabel": "Stop all subagents",
+      "back": "Back to conversation",
+      "close": "Close subagent details",
+      "status": {
+        "running": "Working",
+        "completed": "Completed",
+        "failed": "Failed",
+        "cancelled": "Cancelled",
+        "unknown": "Status unknown"
+      }
+    },
     "thinking": {
       "label": "Thinking Process"
     },

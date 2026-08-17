@@ -46,7 +46,7 @@ function selectClashEntrypoint(argv = process.argv) {
       continue;
     }
     if (argument?.startsWith("--profile=")) continue;
-    return argument === "mcp" ? "mcp" : "cli";
+    return argument === "mcp" || argument === "openma-mcp" ? argument : "cli";
   }
   return "cli";
 }
@@ -79,6 +79,11 @@ var runtimeLoaders = {
         }
       } : void 0
     );
+  },
+  "openma-mcp": async () => {
+    const sourceRuntime = useSourceRuntime();
+    const runtime = await import(new URL(sourceRuntime ? "./index.ts" : "./index.js", import.meta.url).href);
+    await runtime.serveOpenMaPluginStdio();
   }
 };
 async function runClashEntrypoint(argv = process.argv, loaders = runtimeLoaders) {

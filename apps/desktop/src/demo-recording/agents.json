@@ -1,0 +1,9 @@
+{
+  "summary": "Opt-in Desktop demo recording primitives; not part of Workspace, Attempt, or evaluation state.",
+  "architecture_notes": [
+    "Suite contracts describe case identity, drivers, chapters, and recording defaults while typed drivers keep workflow logic in TypeScript.",
+    "CDP screencast records the existing Electron page; it never opens a replacement page or changes product state.",
+    "Session observation stores only sanitized lifecycle metadata. Raw prompts, reasoning, tool arguments, outputs, credentials, and local paths remain in memory and are never demo artifacts.",
+    "Durable session and Project Host readback prove completion independently of the recording, and scoring remains outside this package."
+  ]
+}

@@ -2,11 +2,12 @@ import { readFileSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-export type ClashEntrypoint = "cli" | "mcp";
+export type ClashEntrypoint = "cli" | "mcp" | "openma-mcp";
 
 export type ClashEntrypointLoaders = {
   cli(): Promise<unknown>;
   mcp(): Promise<unknown>;
+  "openma-mcp"(): Promise<unknown>;
 };
 
 export function resolveClashDistributionVersion(
@@ -63,7 +64,9 @@ export function selectClashEntrypoint(
       continue;
     }
     if (argument?.startsWith("--profile=")) continue;
-    return argument === "mcp" ? "mcp" : "cli";
+    return argument === "mcp" || argument === "openma-mcp"
+      ? argument
+      : "cli";
   }
   return "cli";
 }
@@ -116,6 +119,15 @@ const runtimeLoaders: ClashEntrypointLoaders = {
           }
         : undefined,
     );
+  },
+  "openma-mcp": async () => {
+    const sourceRuntime = useSourceRuntime();
+    const runtime = (await import(
+      new URL(sourceRuntime ? "./index.ts" : "./index.js", import.meta.url).href
+    )) as {
+      serveOpenMaPluginStdio(): Promise<void>;
+    };
+    await runtime.serveOpenMaPluginStdio();
   },
 };
 

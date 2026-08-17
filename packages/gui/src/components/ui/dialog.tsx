@@ -33,6 +33,8 @@ export interface DialogProps {
   contentClassName?: string;
   /** Optional local surface for dialogs whose interaction must stay inside a workspace. */
   portalContainer?: HTMLElement | null;
+  /** Keep a locally portaled detail layer from aria-hiding its own ancestor surface. */
+  modal?: boolean;
 }
 
 const sizeClasses = {
@@ -67,6 +69,7 @@ export function Dialog({
   containerClassName,
   contentClassName,
   portalContainer,
+  modal = true,
 }: DialogProps) {
   if (!title && !ariaLabel) {
     // eslint-disable-next-line no-console
@@ -80,6 +83,7 @@ export function Dialog({
   return (
     <DialogPrimitive.Root
       open={open}
+      modal={modal}
       onOpenChange={(nextOpen) => {
         if (!nextOpen) onClose();
       }}

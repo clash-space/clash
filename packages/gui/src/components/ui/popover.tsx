@@ -8,15 +8,27 @@ export const PopoverTrigger = PopoverPrimitive.Trigger;
 export const PopoverAnchor = PopoverPrimitive.Anchor;
 export const PopoverClose = PopoverPrimitive.Close;
 
+export interface PopoverContentProps
+    extends ComponentPropsWithoutRef<typeof PopoverPrimitive.Content> {
+    /** Optional local surface that owns this popover's visual boundary. */
+    portalContainer?: HTMLElement | null;
+}
+
 export const PopoverContent = forwardRef<
     ElementRef<typeof PopoverPrimitive.Content>,
-    ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
+    PopoverContentProps
 >(function PopoverContent(
-    { className, sideOffset = 8, collisionPadding = 12, ...props },
+    {
+        className,
+        sideOffset = 8,
+        collisionPadding = 12,
+        portalContainer,
+        ...props
+    },
     ref,
 ) {
     return (
-        <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Portal container={portalContainer ?? undefined}>
             <PopoverPrimitive.Content
                 ref={ref}
                 sideOffset={sideOffset}

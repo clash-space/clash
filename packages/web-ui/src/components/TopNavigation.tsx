@@ -39,6 +39,10 @@ declare global {
     | {
         isDesktop: true;
         newWindow: () => Promise<{ windowId: number; windowCount: number }>;
+        notify?: (request: {
+          title: string;
+          body: string;
+        }) => Promise<{ shown: boolean }>;
         authorizeProvider?: (request: {
           verificationUri: string;
           callbackScheme: string;

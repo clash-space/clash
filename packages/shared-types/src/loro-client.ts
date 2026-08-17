@@ -223,7 +223,7 @@ export class LoroSyncClient {
     timelineId: string;
     canvasId: string;
     actionNodeId: string;
-    position: { x: number; y: number };
+    position?: { x: number; y: number };
   }) {
     const result = attachTimelineToCanvas(this.doc, input);
     if (result.ok) this.doc.commit();
@@ -268,7 +268,7 @@ export class LoroSyncClient {
     stageId: string;
     canvasId: string;
     actionNodeId: string;
-    position: { x: number; y: number };
+    position?: { x: number; y: number };
   }) {
     const result = attachDirectorStageToCanvas(this.doc, input);
     if (result.ok) this.doc.commit();

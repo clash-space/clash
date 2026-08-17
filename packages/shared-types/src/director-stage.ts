@@ -971,7 +971,7 @@ export function attachDirectorStageToCanvas(
     stageId: string;
     canvasId: string;
     actionNodeId: string;
-    position: { x: number; y: number };
+    position?: { x: number; y: number };
   },
 ): ProjectDirectorStageMutationResult {
   const stage = readProjectDirectorStage(doc, input.stageId);
@@ -1004,12 +1004,17 @@ export function attachDirectorStageToCanvas(
   const fields = doc.getMap("directorStages").get(input.stageId);
   if (!isLoroMap(fields)) return { ok: false, error: `Director Stage ${input.stageId} not found` };
   fields.set("owner", next.owner);
-  nodes.set(input.actionNodeId, {
-    canvasId: input.canvasId,
-    type: "director-stage",
-    data: { stageId: input.stageId, label: stage.name },
-    position: input.position,
-  });
+  const created = new Canvas(doc, () => {}, input.canvasId).createNode(
+    input.actionNodeId,
+    "director-stage",
+    { stageId: input.stageId, label: stage.name },
+    input.position,
+  );
+  if (created.error) {
+    fields.set("owner", stage.owner);
+    rehomeProjectDirectorAssetInputs(doc, next, stage);
+    return { ok: false, error: created.error };
+  }
   return { ok: true, stage: next };
 }
 

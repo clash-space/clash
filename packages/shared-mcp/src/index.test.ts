@@ -68,6 +68,21 @@ function firstTextContent(value: unknown): string {
     : "";
 }
 
+function allTextContent(value: unknown): string {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
+  const result = value as Record<string, unknown>;
+  if (!Array.isArray(result.content)) return "";
+  return result.content
+    .flatMap((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+      const record = entry as Record<string, unknown>;
+      return record.type === "text" && typeof record.text === "string"
+        ? [record.text]
+        : [];
+    })
+    .join("\n");
+}
+
 test("one shared server boundary projects homogeneous fixed tuples for every tool", async (t) => {
   const server = new ClashMcpServer({
     name: "shared-mcp-test",
@@ -97,6 +112,10 @@ test("one shared server boundary projects homogeneous fixed tuples for every too
 
   assert.match(client.getInstructions() ?? "", /progressive/i);
   assert.match(client.getInstructions() ?? "", /root clash tool/i);
+  assert.match(
+    client.getInstructions() ?? "",
+    /Assets, Canvas, and Composition dispatchers/i,
+  );
   assert.match(
     client.getInstructions() ?? "",
     /descriptions.*schemas.*results/i,
@@ -299,10 +318,24 @@ test("Canvas and composition dispatchers keep tools/list stable while legacy gro
   assert.deepEqual(
     (
       canvas.structuredContent as {
-        operations: Array<{ name: string; operation: string }>;
+        operations: Array<{
+          name: string;
+          operation: string;
+          title: string;
+          readOnly: boolean;
+          destructive: boolean;
+        }>;
       }
-    ).operations.map(({ name, operation }) => ({ name, operation })),
-    [{ name: "clash_canvas_get", operation: "get" }],
+    ).operations,
+    [
+      {
+        name: "clash_canvas_get",
+        operation: "get",
+        title: "Read Canvas node",
+        readOnly: false,
+        destructive: false,
+      },
+    ],
   );
   assert.deepEqual(await names(), fixedNames);
 
@@ -313,20 +346,40 @@ test("Canvas and composition dispatchers keep tools/list stable while legacy gro
   assert.deepEqual(
     (
       timeline.structuredContent as {
-        operations: Array<{ name: string; operation: string }>;
+        operations: Array<{
+          name: string;
+          operation: string;
+          title: string;
+          readOnly: boolean;
+          destructive: boolean;
+        }>;
       }
-    ).operations.map(({ name, operation }) => ({ name, operation })),
-    [{ name: "clash_timeline_get", operation: "get" }],
+    ).operations,
+    [
+      {
+        name: "clash_timeline_get",
+        operation: "get",
+        title: "Read Timeline",
+        readOnly: false,
+        destructive: false,
+      },
+    ],
   );
   const directorView = await client.callTool({
     name: "clash_composition",
     arguments: { kind: "director-stage" },
   });
   assert.deepEqual(
-    (
-      directorView.structuredContent as { operations: Array<{ name: string }> }
-    ).operations.map(({ name }) => name),
-    ["clash_director_get"],
+    (directorView.structuredContent as { operations: unknown[] }).operations,
+    [
+      {
+        name: "clash_director_get",
+        operation: "get",
+        title: "Read Director stage",
+        readOnly: false,
+        destructive: false,
+      },
+    ],
   );
   assert.deepEqual(await names(), fixedNames);
 
@@ -407,7 +460,303 @@ test("Canvas and composition dispatchers keep tools/list stable while legacy gro
   });
   assert.equal(directLegacy.isError, undefined);
   assert.equal(timelineCalls, 3);
+
+  const legacyDirectorMenu = await client.callTool({
+    name: "clash_director",
+    arguments: {},
+  });
+  const legacyDirectorOperations = (
+    legacyDirectorMenu.structuredContent as {
+      operations: Array<Record<string, unknown>>;
+    }
+  ).operations;
+  assert.equal(legacyDirectorOperations.length, 1);
+  assert.equal(legacyDirectorOperations[0]?.name, "clash_director_get");
+  assert.equal(
+    legacyDirectorOperations[0]?.description,
+    "Read one spatial composition.",
+  );
+  assert.ok(legacyDirectorOperations[0]?.inputSchema);
+  assert.ok(legacyDirectorOperations[0]?.recovery);
+
+  const directLegacyDirector = await client.callTool({
+    name: "clash_director",
+    arguments: {
+      operation: "clash_director_get",
+      arguments: { id: "director-legacy" },
+    },
+  });
+  assert.equal(directLegacyDirector.isError, undefined);
+  assert.equal(directorCalls, 2);
   assert.deepEqual(await names(), fixedNames);
+});
+
+test("Canvas dispatcher reveals one requested contract without executing it", async (t) => {
+  const server = new ClashMcpServer({
+    name: "canvas-contract-disclosure-test",
+    version: "1.0.0",
+  });
+  let executions = 0;
+  server.registerTool(
+    "clash_canvas_add",
+    {
+      title: "Add Canvas node",
+      description: describeClashTool({
+        useWhen: "a new editable Canvas node is needed",
+        effect: "persists one Canvas node",
+        returns: "the created Canvas node",
+        next: "read the created node",
+      }),
+      inputSchema: {
+        type: z.string().min(1),
+        label: z.string().min(1),
+      },
+    },
+    async () => {
+      executions += 1;
+      return {
+        content: [{ type: "text", text: "Added Canvas node." }],
+        structuredContent: { id: "node-1" },
+      };
+    },
+  );
+
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  const client = new Client({
+    name: "canvas-contract-disclosure-client",
+    version: "1.0.0",
+  });
+  t.after(async () => {
+    await client.close().catch(() => undefined);
+    await server.close().catch(() => undefined);
+  });
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const disclosed = await client.callTool({
+    name: "clash_canvas",
+    arguments: { contract: "add" },
+  });
+  const contract = (
+    disclosed.structuredContent as {
+      contract?: {
+        name: string;
+        operation: string;
+        inputSchema: { required?: string[] };
+      };
+    }
+  ).contract;
+  assert.ok(contract, "expected one explicit Canvas contract");
+  assert.deepEqual(
+    {
+      name: contract.name,
+      operation: contract.operation,
+      required: contract.inputSchema.required,
+    },
+    {
+      name: "clash_canvas_add",
+      operation: "add",
+      required: ["type", "label"],
+    },
+  );
+  assert.equal(executions, 0);
+});
+
+test("Composition dispatcher reveals an ordered contract batch from only the selected kind", async (t) => {
+  const server = new ClashMcpServer({
+    name: "composition-contract-disclosure-test",
+    version: "1.0.0",
+  });
+  let executions = 0;
+  const register = (
+    name:
+      "clash_timeline_create" | "clash_timeline_get" | "clash_director_create",
+    title: string,
+    inputSchema: Record<string, z.ZodTypeAny>,
+  ) => {
+    server.registerTool(name, { title, inputSchema }, async () => {
+      executions += 1;
+      return {
+        content: [{ type: "text", text: `${title}.` }],
+        structuredContent: { ok: true },
+      };
+    });
+  };
+  register("clash_timeline_get", "Read Timeline", {
+    timelineId: z.string().min(1),
+  });
+  register("clash_director_create", "Create Director Stage", {
+    stageId: z.string().min(1),
+    name: z.string().min(1),
+  });
+  register("clash_timeline_create", "Create Timeline", {
+    timelineId: z.string().min(1),
+    name: z.string().min(1),
+  });
+
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  const client = new Client({
+    name: "composition-contract-disclosure-client",
+    version: "1.0.0",
+  });
+  t.after(async () => {
+    await client.close().catch(() => undefined);
+    await server.close().catch(() => undefined);
+  });
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const disclosed = await client.callTool({
+    name: "clash_composition",
+    arguments: {
+      kind: "timeline",
+      contracts: ["create", "get"],
+    },
+  });
+  const contracts = (
+    disclosed.structuredContent as {
+      contracts?: Array<{
+        name: string;
+        operation: string;
+        inputSchema: { required?: string[] };
+      }>;
+    }
+  ).contracts;
+  assert.ok(contracts, "expected an explicit Timeline contract batch");
+  assert.deepEqual(
+    contracts.map(({ name, operation, inputSchema }) => ({
+      name,
+      operation,
+      required: inputSchema.required,
+    })),
+    [
+      {
+        name: "clash_timeline_create",
+        operation: "create",
+        required: ["timelineId", "name"],
+      },
+      {
+        name: "clash_timeline_get",
+        operation: "get",
+        required: ["timelineId"],
+      },
+    ],
+  );
+
+  const exact = await client.callTool({
+    name: "clash_composition",
+    arguments: {
+      kind: "timeline",
+      contract: "clash_timeline_get",
+    },
+  });
+  assert.equal(exact.isError, undefined);
+  assert.equal(
+    (exact.structuredContent as { contract?: { name?: string } }).contract
+      ?.name,
+    "clash_timeline_get",
+  );
+
+  for (const request of [
+    {
+      kind: "director-stage",
+      contract: "clash_timeline_get",
+    },
+    {
+      kind: "director-stage",
+      contracts: ["clash_director_create", "clash_timeline_get"],
+    },
+  ]) {
+    const rejected = await client.callTool({
+      name: "clash_composition",
+      arguments: request,
+    });
+    assert.equal(rejected.isError, true, JSON.stringify(rejected));
+    assert.equal(
+      (
+        rejected.structuredContent as
+          { contract?: unknown; contracts?: unknown } | undefined
+      )?.contract,
+      undefined,
+    );
+    assert.equal(
+      (
+        rejected.structuredContent as
+          { contract?: unknown; contracts?: unknown } | undefined
+      )?.contracts,
+      undefined,
+    );
+  }
+  assert.equal(executions, 0);
+});
+
+test("Canvas and composition dispatchers reject mixed disclosure and execution modes", async (t) => {
+  const server = new ClashMcpServer({
+    name: "dispatcher-mode-exclusivity-test",
+    version: "1.0.0",
+  });
+  let executions = 0;
+  for (const name of ["clash_canvas_get", "clash_timeline_get"] as const) {
+    server.registerTool(
+      name,
+      { inputSchema: { id: z.string().min(1) } },
+      async () => {
+        executions += 1;
+        return { content: [{ type: "text", text: "Read." }] };
+      },
+    );
+  }
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  const client = new Client({
+    name: "dispatcher-mode-exclusivity-client",
+    version: "1.0.0",
+  });
+  t.after(async () => {
+    await client.close().catch(() => undefined);
+    await server.close().catch(() => undefined);
+  });
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  for (const request of [
+    {
+      name: "clash_canvas",
+      arguments: {
+        operation: "get",
+        contract: "get",
+        arguments: { id: "node-1" },
+      },
+    },
+    {
+      name: "clash_canvas",
+      arguments: { contract: "get", contracts: ["get"] },
+    },
+    {
+      name: "clash_composition",
+      arguments: {
+        kind: "timeline",
+        operation: "get",
+        contracts: ["get"],
+        arguments: { id: "timeline-1" },
+      },
+    },
+    {
+      name: "clash_composition",
+      arguments: {
+        kind: "timeline",
+        contract: "get",
+        contracts: ["get"],
+      },
+    },
+  ]) {
+    const rejected = await client.callTool(request);
+    assert.equal(rejected.isError, true, JSON.stringify(request));
+    assert.match(firstTextContent(rejected), /one|combination|mode/i);
+  }
+  assert.equal(executions, 0);
 });
 
 test("Assets dispatcher reveals one complete operation contract without executing it", async (t) => {
@@ -817,21 +1166,25 @@ test("the root Clash tool reveals live leaf contracts and dispatches them withou
   const canvasInputSchema = initialTools.tools.find(
     ({ name }) => name === "clash_canvas",
   )?.inputSchema as {
-    properties?: Record<string, { description?: unknown }>;
+    properties?: Record<string, { description?: unknown; type?: unknown }>;
   };
   const compositionInputSchema = initialTools.tools.find(
     ({ name }) => name === "clash_composition",
   )?.inputSchema as {
-    properties?: Record<string, { description?: unknown }>;
+    properties?: Record<string, { description?: unknown; type?: unknown }>;
   };
   assert.match(
     String(canvasInputSchema.properties?.operation?.description ?? ""),
-    /omit.*entirely.*live contracts.*empty string.*list_operations.*contracts/i,
+    /execute.*omit.*index.*requested contracts/i,
   );
   assert.match(
     String(compositionInputSchema.properties?.operation?.description ?? ""),
-    /omit.*entirely.*live contracts.*empty string.*list_operations.*contracts/i,
+    /execute.*omit.*index.*requested contracts/i,
   );
+  for (const inputSchema of [canvasInputSchema, compositionInputSchema]) {
+    assert.equal(inputSchema.properties?.contract?.type, "string");
+    assert.equal(inputSchema.properties?.contracts?.type, "array");
+  }
 
   const rootNavigation = await client.callTool({
     name: "clash",
@@ -850,14 +1203,57 @@ test("the root Clash tool reveals live leaf contracts and dispatches them withou
     (await client.listTools()).tools.map(({ name }) => name).sort(),
     fixedToolNames,
   );
+  assert.match(
+    allTextContent(rootNavigation),
+    /"selectedDispatcher":"clash_canvas"/u,
+    "text-only MCP clients must receive root navigation",
+  );
 
-  const revealed = await client.callTool({
+  const index = await client.callTool({
     name: "clash_canvas",
     arguments: {},
   });
-  const operation = (
+  assert.deepEqual(
+    (
+      index.structuredContent as {
+        operations: Array<{
+          name: string;
+          operation: string;
+          title: string;
+          readOnly: boolean;
+          destructive: boolean;
+        }>;
+      }
+    ).operations,
+    [
+      {
+        name: "clash_canvas_get",
+        operation: "get",
+        title: "Read Canvas node",
+        readOnly: true,
+        destructive: false,
+      },
+      {
+        name: "clash_canvas_update",
+        operation: "update",
+        title: "Update Canvas node",
+        readOnly: false,
+        destructive: false,
+      },
+    ],
+  );
+  assert.match(
+    allTextContent(index),
+    /"operation":"get"/u,
+    "text-only MCP clients must receive lightweight operation names",
+  );
+  const revealed = await client.callTool({
+    name: "clash_canvas",
+    arguments: { contracts: ["get", "update"] },
+  });
+  const contracts = (
     revealed.structuredContent as {
-      operations: Array<{
+      contracts: Array<{
         name: string;
         operation: string;
         inputSchema: Record<string, any>;
@@ -866,7 +1262,8 @@ test("the root Clash tool reveals live leaf contracts and dispatches them withou
         metadata?: Record<string, unknown>;
       }>;
     }
-  ).operations.find(({ name }) => name === "clash_canvas_get");
+  ).contracts;
+  const operation = contracts.find(({ name }) => name === "clash_canvas_get");
   assert.ok(operation);
   assert.equal(operation.operation, "get");
   assert.equal(operation.inputSchema.type, "object");
@@ -883,21 +1280,19 @@ test("the root Clash tool reveals live leaf contracts and dispatches them withou
   assert.deepEqual(operation.metadata, {
     "clash/readProof": { recordsObservation: true },
   });
-  const updateOperation = (
-    revealed.structuredContent as {
-      operations: Array<{
-        name: string;
-        outputSchema?: Record<string, any>;
-      }>;
-    }
-  ).operations.find(({ name }) => name === "clash_canvas_update");
+  const updateOperation = contracts.find(
+    ({ name }) => name === "clash_canvas_update",
+  );
   assert.equal(updateOperation?.outputSchema?.properties.updated.const, true);
   assert.deepEqual(
-    (
-      revealed.structuredContent as { operations: Array<{ name: string }> }
-    ).operations.map(({ name }) => name),
+    contracts.map(({ name }) => name),
     ["clash_canvas_get", "clash_canvas_update"],
     "disabled and app-only operations must stay out of root discovery",
+  );
+  assert.match(
+    allTextContent(revealed),
+    /"inputSchema":\{.*"nodeId"/u,
+    "text-only MCP clients must receive requested live schemas",
   );
 
   // Deliberately do not call tools/list again: clients such as Codex keep the
@@ -914,6 +1309,11 @@ test("the root Clash tool reveals live leaf contracts and dispatches them withou
     node: { id: "node-7" },
     revisionId: "revision-1",
   });
+  assert.match(
+    allTextContent(dispatched),
+    /"revisionId":"revision-1"/u,
+    "text-only MCP clients must receive structured operation results",
+  );
   assert.equal(calls.length, 1);
   assert.equal(calls[0]?.nodeId, "node-7");
   assert.notEqual(calls[0]?.requestId, undefined);

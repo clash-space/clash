@@ -343,11 +343,12 @@ it("ensureAgentCwd does not guess a Skill directory or overwrite a user's worksp
   }
 });
 
-it("resolves the source Clash plugin as an ACP stdio MCP descriptor in development", async () => {
+it("resolves separate Clash product and task-scoped OpenMA MCP descriptors in development", async () => {
   const electron = "/Applications/Clash.app/Contents/MacOS/Clash";
-  const [server] = await resolveAgentMcpServers("clash", {
+  const [server, openma] = await resolveAgentMcpServers("clash", {
     CLASH_NODE_EXEC_PATH: electron,
     CLASH_PROJECT_ID: "project-mcp",
+    CLASH_SESSION_ID: "session-mcp",
     CLASH_HOME: "/Users/me/.clash",
     CLASH_WORKSPACE_ROOT: "/Users/me/.clash/projects/project-mcp",
     PATH: "/usr/local/bin:/usr/bin:/bin",
@@ -369,6 +370,21 @@ it("resolves the source Clash plugin as an ACP stdio MCP descriptor in developme
       "clash.renderer": "product",
     },
   });
+  expect(openma).toMatchObject({
+    name: "openma",
+    command: electron,
+    args: [
+      expect.stringMatching(/plugins\/clash\/runtime\/dispatcher\.js$/),
+      "openma-mcp",
+    ],
+    _meta: {
+      "io.modelcontextprotocol/ui": {
+        host: "clash",
+        mimeTypes: ["text/html;profile=mcp-app"],
+      },
+    },
+  });
+  expect(openma?._meta).not.toHaveProperty("clash.renderer");
   if (!("env" in server)) throw new Error("expected stdio MCP descriptor");
   expect(server.env).toEqual(
     expect.arrayContaining([
@@ -381,6 +397,11 @@ it("resolves the source Clash plugin as an ACP stdio MCP descriptor in developme
       { name: "ELECTRON_RUN_AS_NODE", value: "1" },
     ]),
   );
+  if (!openma || !("env" in openma)) throw new Error("expected OpenMA stdio MCP descriptor");
+  expect(openma.env).toEqual(expect.arrayContaining([
+    { name: "CLASH_SESSION_ID", value: "session-mcp" },
+    { name: "ELECTRON_RUN_AS_NODE", value: "1" },
+  ]));
   const entry = "args" in server ? server.args[0] : undefined;
   expect(entry).toBeDefined();
   expect((await stat(entry!)).isFile()).toBe(true);

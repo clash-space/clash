@@ -87,6 +87,52 @@ test("local-api allocates composition owner ids and the default Director Stage s
   assert.equal(createdStage.stage?.state?.schemaVersion, 1);
 });
 
+test("local-api auto-places attached composition nodes when position is omitted", () => {
+  const client = new LoroSyncClient({
+    serverUrl: "http://localhost:0",
+    projectId: "project-host-composition-layout",
+    token: "test",
+  });
+  client.createNode(
+    "existing-note",
+    "text",
+    { label: "Existing note", content: "Keep clear" },
+    { x: 0, y: 0 },
+  );
+  handleCommandForTest(client, {
+    action: "create_timeline",
+    timelineId: "cut-1",
+    name: "Cut",
+  });
+  handleCommandForTest(client, {
+    action: "create_director_stage",
+    stageId: "stage-1",
+    name: "Stage",
+  });
+
+  handleCommandForTest(client, {
+    action: "attach_timeline",
+    timelineId: "cut-1",
+    canvasId: "main",
+    actionNodeId: "timeline-action",
+  });
+  handleCommandForTest(client, {
+    action: "attach_director_stage",
+    stageId: "stage-1",
+    canvasId: "main",
+    actionNodeId: "stage-action",
+  });
+
+  const positions = ["existing-note", "timeline-action", "stage-action"].map(
+    (nodeId) => client.canvas.readNode(nodeId)?.position,
+  );
+  assert.equal(positions.every(Boolean), true);
+  assert.equal(
+    new Set(positions.map((position) => `${position?.x},${position?.y}`)).size,
+    positions.length,
+  );
+});
+
 test("local-api host scopes commands to the requested Canvas in one Project replica", () => {
   const client = new LoroSyncClient({
     serverUrl: "http://localhost:0",

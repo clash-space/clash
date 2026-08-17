@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createWindowRegistry,
   ensureNativeWindowControlsVisible,
+  parseDesktopRecordingViewport,
   resolveDesktopWindowOptions,
   shouldCreateWindowOnActivate,
 } from "./windowing";
@@ -24,6 +25,27 @@ describe("desktop windowing", () => {
       },
     });
     expect(options).not.toHaveProperty("titleBarOverlay");
+  });
+
+  it("uses an exact native content surface only for an explicit recording viewport", () => {
+    const viewport = parseDesktopRecordingViewport("1440x900");
+    const options = resolveDesktopWindowOptions(0, false, viewport);
+
+    expect(viewport).toEqual({ width: 1440, height: 900 });
+    expect(options).toMatchObject({
+      width: 1440,
+      height: 900,
+      useContentSize: true,
+      frame: false,
+      enableLargerThanScreen: true,
+    });
+    expect(options).not.toHaveProperty("titleBarStyle");
+    expect(options).not.toHaveProperty("trafficLightPosition");
+    expect(options).not.toHaveProperty("x");
+    expect(options).not.toHaveProperty("y");
+    expect(() => parseDesktopRecordingViewport("1440-by-900")).toThrow(
+      /recording viewport/iu,
+    );
   });
 
   it("offsets additional windows so multiple windows are visible", () => {

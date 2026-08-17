@@ -2050,6 +2050,80 @@ describe("local API server configuration", () => {
     );
   });
 
+  it("streams canonical child-agent activity from the opt-in desktop recording fixture", async () => {
+    const adapter = createConfiguredLocalAcpAdapter({
+      CLASH_E2E_STUB_ACP: "1",
+      CLASH_E2E_STUB_ACP_SUBAGENT: "1",
+      CLASH_E2E_STUB_ACP_SUBAGENT_DELAY_MS: "0",
+    });
+    const created = await adapter.createSession({
+      runtimeId: "desktop-local",
+      agentTemplateId: "clash",
+      agentMemberId: "mock-agent",
+      projectId: "mock-project",
+    });
+    const handlers = new Map<string, (raw?: unknown) => void>();
+    const sent: Array<Record<string, unknown>> = [];
+    const ws = {
+      OPEN: 1,
+      readyState: 1,
+      send: vi.fn((raw: string) => {
+        sent.push(JSON.parse(raw) as Record<string, unknown>);
+      }),
+      on: vi.fn((event: string, handler: (raw?: unknown) => void) => {
+        handlers.set(event, handler);
+      }),
+      close: vi.fn(),
+    };
+
+    adapter.bindSessionSocket(created.session_id, ws as never);
+    handlers.get("message")?.(
+      JSON.stringify({
+        type: "prompt",
+        turn_id: "turn-subagent-demo",
+        text: "review the agent gui",
+      }),
+    );
+
+    await vi.waitFor(() => {
+      expect(sent).toContainEqual({
+        type: "session.complete",
+        session_id: created.session_id,
+        turn_id: "turn-subagent-demo",
+      });
+    });
+
+    const events = sent
+      .filter((message) => message.type === "session.event")
+      .map((message) => message.event as Record<string, unknown>);
+    expect(events).toContainEqual(expect.objectContaining({
+      sessionUpdate: "tool_call",
+      toolCallId: "mock-subagent-spawn-turn-subagent-demo",
+      title: "Delegate agent GUI review",
+    }));
+    const canonical = events.filter(
+      (event) => event.schema_version === "oma.event.v1",
+    );
+    expect(canonical.map((event) => event.type)).toEqual([
+      "work_item.started",
+      "agent.thinking",
+      "work_item.progress",
+      "work_item.progress",
+      "agent.message_chunk",
+      "work_item.progress",
+      "work_item.completed",
+    ]);
+    expect(canonical[0]).toMatchObject({
+      work_item_id: "mock-child-turn-subagent-demo",
+      turn_id: "turn-subagent-demo",
+      parent_id: "mock-subagent-spawn-turn-subagent-demo",
+      data: {
+        title: "Review agent GUI parity",
+        agent_type: "reviewer",
+      },
+    });
+  });
+
   it("can stage a managed harness update and session restart for GUI E2E", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "clash-harness-update-e2e-"));
     const adapter = createConfiguredLocalAcpAdapter({

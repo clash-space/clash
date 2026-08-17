@@ -694,7 +694,7 @@ function handleCommand(
         actionNodeId: typeof cmd.actionNodeId === "string" && cmd.actionNodeId.trim()
           ? cmd.actionNodeId.trim()
           : crypto.randomUUID().slice(0, 8),
-        position: cmd.position ?? { x: 0, y: 0 },
+        ...(cmd.position ? { position: cmd.position } : {}),
       });
       return result.ok
         ? {
@@ -816,7 +816,7 @@ function handleCommand(
         actionNodeId: typeof cmd.actionNodeId === "string" && cmd.actionNodeId.trim()
           ? cmd.actionNodeId.trim()
           : crypto.randomUUID().slice(0, 8),
-        position: cmd.position ?? { x: 0, y: 0 },
+        ...(cmd.position ? { position: cmd.position } : {}),
       });
       return result.ok
         ? {

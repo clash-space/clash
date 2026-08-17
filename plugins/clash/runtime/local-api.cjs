@@ -19046,7 +19046,7 @@ var require_websocket = __commonJS({
     var http = require("http");
     var net = require("net");
     var tls = require("tls");
-    var { randomBytes: randomBytes6, createHash: createHash28 } = require("crypto");
+    var { randomBytes: randomBytes6, createHash: createHash29 } = require("crypto");
     var { Duplex, Readable: Readable12 } = require("stream");
     var { URL: URL2 } = require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -19714,7 +19714,7 @@ var require_websocket = __commonJS({
           abortHandshake(websocket, socket, "Invalid Upgrade header");
           return;
         }
-        const digest3 = createHash28("sha1").update(key + GUID).digest("base64");
+        const digest3 = createHash29("sha1").update(key + GUID).digest("base64");
         if (res.headers["sec-websocket-accept"] !== digest3) {
           abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
           return;
@@ -20083,7 +20083,7 @@ var require_websocket_server = __commonJS({
     var EventEmitter = require("events");
     var http = require("http");
     var { Duplex } = require("stream");
-    var { createHash: createHash28 } = require("crypto");
+    var { createHash: createHash29 } = require("crypto");
     var extension2 = require_extension();
     var PerMessageDeflate2 = require_permessage_deflate();
     var subprotocol2 = require_subprotocol();
@@ -20390,7 +20390,7 @@ var require_websocket_server = __commonJS({
           );
         }
         if (this._state > RUNNING) return abortHandshake(socket, 503);
-        const digest3 = createHash28("sha1").update(key + GUID).digest("base64");
+        const digest3 = createHash29("sha1").update(key + GUID).digest("base64");
         const headers = [
           "HTTP/1.1 101 Switching Protocols",
           "Upgrade: websocket",
@@ -23812,11 +23812,11 @@ var init_schema_date_utils = __esm({
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/serde/split-every.js
-function splitEvery(value, delimiter8, numDelimiters) {
+function splitEvery(value, delimiter9, numDelimiters) {
   if (numDelimiters <= 0 || !Number.isInteger(numDelimiters)) {
     throw new Error("Invalid number of delimiters (" + numDelimiters + ") for splitEvery.");
   }
-  const segments = value.split(delimiter8);
+  const segments = value.split(delimiter9);
   if (numDelimiters === 1) {
     return segments;
   }
@@ -23826,7 +23826,7 @@ function splitEvery(value, delimiter8, numDelimiters) {
     if (currentSegment === "") {
       currentSegment = segments[i5];
     } else {
-      currentSegment += delimiter8 + segments[i5];
+      currentSegment += delimiter9 + segments[i5];
     }
     if ((i5 + 1) % numDelimiters === 0) {
       compoundSegments.push(currentSegment);
@@ -24257,11 +24257,11 @@ var init_numberSelector = __esm({
     numberSelector = (obj, key, type) => {
       if (!(key in obj))
         return void 0;
-      const numberValue2 = parseInt(obj[key], 10);
-      if (Number.isNaN(numberValue2)) {
+      const numberValue3 = parseInt(obj[key], 10);
+      if (Number.isNaN(numberValue3)) {
         throw new TypeError(`Cannot load ${type} '${key}'. Expected number, got '${obj[key]}'.`);
       }
-      return numberValue2;
+      return numberValue3;
     };
   }
 });
@@ -25892,18 +25892,18 @@ var init_parseURL = __esm({
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/endpoints/util-endpoints/lib/split.js
-function split(value, delimiter8, limit) {
+function split(value, delimiter9, limit) {
   if (limit === 1) {
     return [value];
   }
   if (value === "") {
     return [""];
   }
-  const parts = value.split(delimiter8);
+  const parts = value.split(delimiter9);
   if (limit === 0) {
     return parts;
   }
-  return parts.slice(0, limit - 1).concat(parts.slice(1).join(delimiter8));
+  return parts.slice(0, limit - 1).concat(parts.slice(1).join(delimiter9));
 }
 var init_split = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/endpoints/util-endpoints/lib/split.js"() {
@@ -38862,21 +38862,21 @@ var init_bucketHostnameUtils = __esm({
       }
     };
     getArnResources = (resource) => {
-      const delimiter8 = resource.includes(":") ? ":" : "/";
-      const [resourceType, ...rest] = resource.split(delimiter8);
+      const delimiter9 = resource.includes(":") ? ":" : "/";
+      const [resourceType, ...rest] = resource.split(delimiter9);
       if (resourceType === "accesspoint") {
         if (rest.length !== 1 || rest[0] === "") {
-          throw new Error(`Access Point ARN should have one resource accesspoint${delimiter8}{accesspointname}`);
+          throw new Error(`Access Point ARN should have one resource accesspoint${delimiter9}{accesspointname}`);
         }
         return { accesspointName: rest[0] };
       } else if (resourceType === "outpost") {
         if (!rest[0] || rest[1] !== "accesspoint" || !rest[2] || rest.length !== 3) {
-          throw new Error(`Outpost ARN should have resource outpost${delimiter8}{outpostId}${delimiter8}accesspoint${delimiter8}{accesspointName}`);
+          throw new Error(`Outpost ARN should have resource outpost${delimiter9}{outpostId}${delimiter9}accesspoint${delimiter9}{accesspointName}`);
         }
         const [outpostId, _, accesspointName] = rest;
         return { outpostId, accesspointName };
       } else {
-        throw new Error(`ARN resource should begin with 'accesspoint${delimiter8}' or 'outpost${delimiter8}'`);
+        throw new Error(`ARN resource should begin with 'accesspoint${delimiter9}' or 'outpost${delimiter9}'`);
       }
     };
     validateNoDualstack = (dualstackEndpoint) => {
@@ -45349,7 +45349,7 @@ var require_dist_cjs11 = __commonJS({
     var { setCredentialFeature: setCredentialFeature2 } = (init_client3(), __toCommonJS(client_exports2));
     var { CredentialsProviderError: CredentialsProviderError2, parseKnownFiles: parseKnownFiles2, getProfileName: getProfileName2 } = (init_config2(), __toCommonJS(config_exports));
     var { HttpRequest: HttpRequest2 } = (init_protocols(), __toCommonJS(protocols_exports));
-    var { createHash: createHash28, createPrivateKey, createPublicKey, sign: sign3 } = require("node:crypto");
+    var { createHash: createHash29, createPrivateKey, createPublicKey, sign: sign3 } = require("node:crypto");
     var { promises } = require("node:fs");
     var { homedir: homedir6 } = require("node:os");
     var { dirname: dirname18, join: join46 } = require("node:path");
@@ -45518,7 +45518,7 @@ var require_dist_cjs11 = __commonJS({
       getTokenFilePath() {
         const directory = process.env.AWS_LOGIN_CACHE_DIRECTORY ?? join46(homedir6(), ".aws", "login", "cache");
         const loginSessionBytes = Buffer.from(this.loginSession, "utf8");
-        const loginSessionSha256 = createHash28("sha256").update(loginSessionBytes).digest("hex");
+        const loginSessionSha256 = createHash29("sha256").update(loginSessionBytes).digest("hex");
         return join46(directory, `${loginSessionSha256}.json`);
       }
       derToRawSignature(derSignature) {
@@ -62825,7 +62825,7 @@ var import_node_path50 = require("node:path");
 
 // ../../apps/local-api/dist/server.js
 var import_node_module13 = require("node:module");
-var import_node_crypto40 = require("node:crypto");
+var import_node_crypto41 = require("node:crypto");
 var import_node_path48 = require("node:path");
 var import_node_url6 = require("node:url");
 var import_node_fs19 = require("node:fs");
@@ -86012,12 +86012,21 @@ function attachTimelineToCanvas(doc, input) {
   const bindingError = rehomeProjectTimelineAssetInputs(doc, timeline, next);
   if (bindingError) return bindingError;
   ensureTimelineFields(doc, input.timelineId, timeline).set("owner", next.owner);
-  nodes5.set(input.actionNodeId, {
-    canvasId: input.canvasId,
-    type: "video-editor",
-    data: { timelineId: input.timelineId, label: timeline.name },
-    position: input.position
-  });
+  const created = new Canvas(doc, () => {
+  }, input.canvasId).createNode(
+    input.actionNodeId,
+    "video-editor",
+    { timelineId: input.timelineId, label: timeline.name },
+    input.position
+  );
+  if (created.error) {
+    ensureTimelineFields(doc, input.timelineId, timeline).set(
+      "owner",
+      timeline.owner
+    );
+    rehomeProjectTimelineAssetInputs(doc, next, timeline);
+    return { ok: false, error: created.error };
+  }
   return { ok: true, timeline: next };
 }
 function detachTimelineFromCanvas(doc, timelineId) {
@@ -87925,12 +87934,18 @@ function attachDirectorStageToCanvas(doc, input) {
   const fields = doc.getMap("directorStages").get(input.stageId);
   if (!isLoroMap7(fields)) return { ok: false, error: `Director Stage ${input.stageId} not found` };
   fields.set("owner", next.owner);
-  nodes5.set(input.actionNodeId, {
-    canvasId: input.canvasId,
-    type: "director-stage",
-    data: { stageId: input.stageId, label: stage.name },
-    position: input.position
-  });
+  const created = new Canvas(doc, () => {
+  }, input.canvasId).createNode(
+    input.actionNodeId,
+    "director-stage",
+    { stageId: input.stageId, label: stage.name },
+    input.position
+  );
+  if (created.error) {
+    fields.set("owner", stage.owner);
+    rehomeProjectDirectorAssetInputs(doc, next, stage);
+    return { ok: false, error: created.error };
+  }
   return { ok: true, stage: next };
 }
 function directorStageActionStageId(raw2) {
@@ -91191,10 +91206,10 @@ async function startPluginHostIpcServer(options) {
         if (answered)
           return;
         buffer += chunk.toString("utf8");
-        const newline = buffer.indexOf("\n");
-        if (newline < 0)
+        const newline2 = buffer.indexOf("\n");
+        if (newline2 < 0)
           return;
-        const line = buffer.slice(0, newline);
+        const line = buffer.slice(0, newline2);
         buffer = "";
         answered = true;
         let message;
@@ -91348,11 +91363,11 @@ var PluginHostClient = class {
 `));
       socket.on("data", (chunk) => {
         buffer += chunk.toString("utf8");
-        const newline = buffer.indexOf("\n");
-        if (newline < 0)
+        const newline2 = buffer.indexOf("\n");
+        if (newline2 < 0)
           return;
         try {
-          const response = JSON.parse(buffer.slice(0, newline));
+          const response = JSON.parse(buffer.slice(0, newline2));
           if (response.protocol !== "clash.plugin-host/v1" || response.requestId !== request.requestId) {
             throw new Error("Clash plugin host returned a mismatched response.");
           }
@@ -98286,7 +98301,7 @@ function handleCommand(client2, cmd, context) {
         timelineId: cmd.timelineId,
         canvasId: cmd.canvasId,
         actionNodeId: typeof cmd.actionNodeId === "string" && cmd.actionNodeId.trim() ? cmd.actionNodeId.trim() : crypto.randomUUID().slice(0, 8),
-        position: cmd.position ?? { x: 0, y: 0 }
+        ...cmd.position ? { position: cmd.position } : {}
       });
       return result.ok ? {
         timeline: result.timeline,
@@ -98390,7 +98405,7 @@ function handleCommand(client2, cmd, context) {
         stageId: cmd.stageId,
         canvasId: cmd.canvasId,
         actionNodeId: typeof cmd.actionNodeId === "string" && cmd.actionNodeId.trim() ? cmd.actionNodeId.trim() : crypto.randomUUID().slice(0, 8),
-        position: cmd.position ?? { x: 0, y: 0 }
+        ...cmd.position ? { position: cmd.position } : {}
       });
       return result.ok ? {
         stage: result.stage,
@@ -112257,8 +112272,8 @@ function emoji() {
 }
 var ipv4 = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/;
 var ipv6 = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))$/;
-var mac = (delimiter8) => {
-  const escapedDelim = escapeRegex(delimiter8 ?? ":");
+var mac = (delimiter9) => {
+  const escapedDelim = escapeRegex(delimiter9 ?? ":");
   return new RegExp(`^(?:[0-9A-F]{2}${escapedDelim}){5}[0-9A-F]{2}$|^(?:[0-9a-f]{2}${escapedDelim}){5}[0-9a-f]{2}$`);
 };
 var cidrv4 = /^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\/([0-9]|[1-2][0-9]|3[0-2])$/;
@@ -128263,18 +128278,25 @@ function createLocalSessionMessageStore(db) {
       patchSessionAfterMessage(state2, sessionId, message);
     });
   }
-  async function touch(sessionId, patch) {
-    await db.update((state2) => {
-      const session = state2.sessions.find((candidate) => candidate.id === sessionId);
-      if (session)
-        Object.assign(session, patch ?? {}, { updatedAt: nowIso() });
-    });
-  }
   return {
     appendUserPrompt: append,
     appendAgentEvent: append,
-    async markTurnComplete(sessionId) {
-      await touch(sessionId);
+    async markTurnComplete(sessionId, turnId, response) {
+      await db.update((state2) => {
+        if (response) {
+          appendPersistedSessionMessage(state2, sessionId, {
+            id: `${turnId}-agent`,
+            sender_kind: "agent",
+            sender_id: "local-agent",
+            turn_id: turnId,
+            events: [{ type: "promptComplete", response }],
+            created_at: Math.floor(Date.now() / 1e3)
+          });
+        }
+        const session = state2.sessions.find((candidate) => candidate.id === sessionId);
+        if (session)
+          Object.assign(session, { updatedAt: nowIso() });
+      });
     },
     async appendTurnError(sessionId, turnId, message) {
       await db.update((state2) => {
@@ -136080,60 +136102,63 @@ function createCodexImageGenerator(options = {}) {
 
 // ../../apps/local-api/dist/local-acp.js
 var import_node_child_process10 = require("node:child_process");
-var import_node_crypto35 = require("node:crypto");
+var import_node_crypto36 = require("node:crypto");
 var import_promises39 = require("node:fs/promises");
 var import_node_path43 = require("node:path");
 
-// ../../node_modules/.pnpm/@agentclientprotocol+sdk@0.25.1_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/schema/index.js
+// ../../node_modules/.pnpm/@agentclientprotocol+sdk@1.3.0_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/schema/index.js
 var AGENT_METHODS = {
-  authenticate: "authenticate",
-  document_did_change: "document/didChange",
-  document_did_close: "document/didClose",
-  document_did_focus: "document/didFocus",
-  document_did_open: "document/didOpen",
-  document_did_save: "document/didSave",
   initialize: "initialize",
-  logout: "logout",
-  mcp_message: "mcp/message",
-  nes_accept: "nes/accept",
-  nes_close: "nes/close",
-  nes_reject: "nes/reject",
-  nes_start: "nes/start",
-  nes_suggest: "nes/suggest",
-  providers_disable: "providers/disable",
+  authenticate: "authenticate",
   providers_list: "providers/list",
   providers_set: "providers/set",
+  providers_disable: "providers/disable",
+  session_new: "session/new",
+  session_load: "session/load",
+  session_set_mode: "session/set_mode",
+  session_set_config_option: "session/set_config_option",
+  session_prompt: "session/prompt",
   session_cancel: "session/cancel",
-  session_close: "session/close",
+  mcp_message: "mcp/message",
+  session_list: "session/list",
   session_delete: "session/delete",
   session_fork: "session/fork",
-  session_list: "session/list",
-  session_load: "session/load",
-  session_new: "session/new",
-  session_prompt: "session/prompt",
   session_resume: "session/resume",
-  session_set_config_option: "session/set_config_option",
-  session_set_mode: "session/set_mode"
+  session_close: "session/close",
+  logout: "logout",
+  nes_start: "nes/start",
+  nes_suggest: "nes/suggest",
+  nes_accept: "nes/accept",
+  nes_reject: "nes/reject",
+  nes_close: "nes/close",
+  document_did_open: "document/didOpen",
+  document_did_change: "document/didChange",
+  document_did_close: "document/didClose",
+  document_did_save: "document/didSave",
+  document_did_focus: "document/didFocus"
 };
 var CLIENT_METHODS = {
-  elicitation_complete: "elicitation/complete",
-  elicitation_create: "elicitation/create",
-  fs_read_text_file: "fs/read_text_file",
-  fs_write_text_file: "fs/write_text_file",
-  mcp_connect: "mcp/connect",
-  mcp_disconnect: "mcp/disconnect",
-  mcp_message: "mcp/message",
   session_request_permission: "session/request_permission",
   session_update: "session/update",
+  fs_write_text_file: "fs/write_text_file",
+  fs_read_text_file: "fs/read_text_file",
   terminal_create: "terminal/create",
-  terminal_kill: "terminal/kill",
   terminal_output: "terminal/output",
   terminal_release: "terminal/release",
-  terminal_wait_for_exit: "terminal/wait_for_exit"
+  terminal_wait_for_exit: "terminal/wait_for_exit",
+  terminal_kill: "terminal/kill",
+  mcp_connect: "mcp/connect",
+  mcp_message: "mcp/message",
+  mcp_disconnect: "mcp/disconnect",
+  elicitation_create: "elicitation/create",
+  elicitation_complete: "elicitation/complete"
+};
+var PROTOCOL_METHODS = {
+  cancel_request: "$/cancel_request"
 };
 var PROTOCOL_VERSION = 1;
 
-// ../../node_modules/.pnpm/@agentclientprotocol+sdk@0.25.1_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/schema-deserialize.js
+// ../../node_modules/.pnpm/@agentclientprotocol+sdk@1.3.0_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/schema-deserialize.js
 var skippedItem = Symbol("skippedItem");
 function defaultOnError(schema, fallback2) {
   return schema.catch(fallback2);
@@ -136150,1137 +136175,146 @@ function requiredDefaultOnError(schema, fallback2) {
     return external_exports.NEVER;
   });
 }
+function stringTag(value, key) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return void 0;
+  }
+  const tag = value[key];
+  return typeof tag === "string" ? tag : void 0;
+}
+function excludeKnownTags(schema, key, knownTags) {
+  return schema.superRefine((value, context) => {
+    const tag = stringTag(value, key);
+    if (tag !== void 0 && knownTags.includes(tag)) {
+      context.addIssue({
+        code: "custom",
+        path: [key],
+        message: `${key} ${JSON.stringify(tag)} is reserved by a known variant, but the value does not match that variant's schema`
+      });
+    }
+  });
+}
+function preserveCustomPayload(schema, key, knownTags) {
+  return external_exports.unknown().transform((value, context) => {
+    const result = schema.safeParse(value);
+    if (!result.success) {
+      for (const issue3 of result.error.issues) {
+        context.addIssue({ ...issue3, input: value });
+      }
+      return external_exports.NEVER;
+    }
+    const output = result.data;
+    const tag = stringTag(value, key);
+    if (tag !== void 0 && !knownTags.includes(tag)) {
+      const raw2 = value;
+      for (const [property, rawValue] of Object.entries(raw2)) {
+        if (property === "__proto__")
+          continue;
+        if (!Object.hasOwn(output, property))
+          output[property] = rawValue;
+      }
+    }
+    return output;
+  });
+}
 function vecSkipError(itemSchema) {
   return external_exports.array(itemSchema.catch(skippedItem)).transform((items) => items.filter((item) => item !== skippedItem));
 }
 
-// ../../node_modules/.pnpm/@agentclientprotocol+sdk@0.25.1_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/schema/zod.gen.js
-var zAuthCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  terminal: boolean2().optional().default(false)
+// ../../node_modules/.pnpm/@agentclientprotocol+sdk@1.3.0_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/schema/zod.gen.js
+var zRequestId = union([number2(), string2()]).nullable();
+var zSessionId = string2();
+var zWriteTextFileRequest = object({
+  sessionId: zSessionId,
+  path: string2(),
+  content: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
-var zAuthEnvVar = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  label: string2().nullish(),
-  name: string2(),
-  optional: boolean2().optional().default(false),
-  secret: boolean2().optional().default(true)
-});
-var zAuthMethodAgent = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  description: string2().nullish(),
-  id: string2(),
-  name: string2()
-});
-var zAuthMethodEnvVar = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  description: string2().nullish(),
-  id: string2(),
-  link: string2().nullish(),
-  name: string2(),
-  vars: array(zAuthEnvVar)
-});
-var zAuthMethodTerminal = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  args: array(string2()).optional(),
-  description: string2().nullish(),
-  env: record2(string2(), string2()).optional(),
-  id: string2(),
-  name: string2()
-});
-var zAuthMethod = union([
-  zAuthMethodEnvVar.and(object({
-    type: literal("env_var")
-  })),
-  zAuthMethodTerminal.and(object({
-    type: literal("terminal")
-  })),
-  zAuthMethodAgent
-]);
-var zAuthenticateRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  methodId: string2()
-});
-var zAuthenticateResponse = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zBlobResourceContents = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  blob: string2(),
-  mimeType: string2().nullish(),
-  uri: string2()
-});
-var zBooleanPropertySchema = object({
-  default: boolean2().nullish(),
-  description: string2().nullish(),
-  title: string2().nullish()
-});
-var zCloseNesResponse = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zCloseSessionResponse = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zCost = object({
-  amount: number2(),
-  currency: string2()
-});
-var zCreateTerminalResponse = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  terminalId: string2()
-});
-var zDeleteSessionResponse = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zDiff = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  newText: string2(),
-  oldText: string2().nullish(),
-  path: string2()
-});
-var zDisableProviderRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  id: string2()
-});
-var zDisableProviderResponse = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zDisconnectMcpResponse = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zElicitationContentValue = union([
-  string2(),
-  number2(),
-  number2(),
-  boolean2(),
-  array(string2())
-]);
-var zElicitationAcceptAction = object({
-  content: record2(string2(), zElicitationContentValue).nullish()
-});
-var zCreateElicitationResponse = intersection(union([
-  zElicitationAcceptAction.and(object({
-    action: literal("accept")
-  })),
-  object({
-    action: literal("decline")
-  }),
-  object({
-    action: literal("cancel")
-  })
-]), object({
-  _meta: record2(string2(), unknown()).nullish()
-}));
-var zElicitationFormCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zElicitationId = string2();
-var zCompleteElicitationNotification = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  elicitationId: zElicitationId
-});
-var zElicitationSchemaType = literal("object");
-var zElicitationStringType = literal("string");
-var zElicitationUrlCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zElicitationCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  form: defaultOnError(zElicitationFormCapabilities.nullish(), () => void 0),
-  url: defaultOnError(zElicitationUrlCapabilities.nullish(), () => void 0)
-});
-var zEnumOption = object({
-  const: string2(),
-  title: string2()
-});
-var zEnvVariable = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  name: string2(),
-  value: string2()
-});
-var zErrorCode = union([
-  literal(-32700),
-  literal(-32600),
-  literal(-32601),
-  literal(-32602),
-  literal(-32603),
-  literal(-32800),
-  literal(-32e3),
-  literal(-32002),
-  literal(-32042),
-  int().min(-2147483648, {
-    error: "Invalid value: Expected int32 to be >= -2147483648"
-  }).max(2147483647, {
-    error: "Invalid value: Expected int32 to be <= 2147483647"
-  })
-]);
-var zError = object({
-  code: zErrorCode,
-  data: unknown().optional(),
-  message: string2()
-});
-var zExtNotification = unknown();
-var zExtRequest = unknown();
-var zExtResponse = unknown();
-var zFileSystemCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  readTextFile: boolean2().optional().default(false),
-  writeTextFile: boolean2().optional().default(false)
-});
-var zHttpHeader = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  name: string2(),
-  value: string2()
-});
-var zImplementation = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  name: string2(),
-  title: string2().nullish(),
-  version: string2()
-});
-var zIntegerPropertySchema = object({
-  default: number2().nullish(),
-  description: string2().nullish(),
-  maximum: number2().nullish(),
-  minimum: number2().nullish(),
-  title: string2().nullish()
-});
-var zKillTerminalResponse = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zListProvidersRequest = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zListSessionsRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  cursor: string2().nullish(),
-  cwd: string2().nullish()
-});
-var zLlmProtocol = union([
-  literal("anthropic"),
-  literal("openai"),
-  literal("azure"),
-  literal("vertex"),
-  literal("bedrock"),
-  string2()
-]);
-var zLogoutCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zAgentAuthCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  logout: defaultOnError(zLogoutCapabilities.nullish(), () => void 0)
-});
-var zLogoutRequest = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zLogoutResponse = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zMcpCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  acp: boolean2().optional().default(false),
-  http: boolean2().optional().default(false),
-  sse: boolean2().optional().default(false)
-});
-var zMcpConnectionId = string2();
-var zConnectMcpResponse = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  connectionId: zMcpConnectionId
-});
-var zDisconnectMcpRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  connectionId: zMcpConnectionId
-});
-var zMcpServerAcpId = string2();
-var zConnectMcpRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  acpId: zMcpServerAcpId
-});
-var zMcpServerAcp = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  id: zMcpServerAcpId,
-  name: string2()
-});
-var zMcpServerHttp = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  headers: array(zHttpHeader),
-  name: string2(),
-  url: string2()
-});
-var zMcpServerSse = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  headers: array(zHttpHeader),
-  name: string2(),
-  url: string2()
-});
-var zMcpServerStdio = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  args: array(string2()),
-  command: string2(),
-  env: array(zEnvVariable),
-  name: string2()
-});
-var zMcpServer = union([
-  zMcpServerHttp.and(object({
-    type: literal("http")
-  })),
-  zMcpServerSse.and(object({
-    type: literal("sse")
-  })),
-  zMcpServerAcp.and(object({
-    type: literal("acp")
-  })),
-  zMcpServerStdio
-]);
-var zMessageId = string2();
-var zMessageMcpNotification = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  connectionId: zMcpConnectionId,
-  method: string2(),
-  params: record2(string2(), unknown()).nullish()
-});
-var zMessageMcpRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  connectionId: zMcpConnectionId,
-  method: string2(),
-  params: record2(string2(), unknown()).nullish()
-});
-var zMessageMcpResponse = unknown();
-var zNesDiagnosticSeverity = union([
-  literal("error"),
-  literal("warning"),
-  literal("information"),
-  literal("hint")
-]);
-var zNesDiagnosticsCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesDocumentDidCloseCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesDocumentDidFocusCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesDocumentDidOpenCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesDocumentDidSaveCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesEditHistoryCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  maxCount: int().gte(0).max(4294967295, {
+var zReadTextFileRequest = object({
+  sessionId: zSessionId,
+  path: string2(),
+  line: defaultOnError(int().gte(0).max(4294967295, {
     error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }).nullish()
-});
-var zNesEditHistoryEntry = object({
-  diff: string2(),
-  uri: string2()
-});
-var zNesExcerpt = object({
-  endLine: int().gte(0).max(4294967295, {
+  }).nullish(), () => void 0),
+  limit: defaultOnError(int().gte(0).max(4294967295, {
     error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }),
-  startLine: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }),
-  text: string2()
+  }).nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
-var zNesJumpCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesOpenFilesCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesRecentFile = object({
-  languageId: string2(),
-  text: string2(),
-  uri: string2()
-});
-var zNesRecentFilesCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  maxCount: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }).nullish()
-});
-var zNesRejectReason = union([
-  literal("rejected"),
-  literal("ignored"),
-  literal("replaced"),
-  literal("cancelled")
+var zToolCallId = string2();
+var zToolKind = union([
+  literal("read"),
+  literal("edit"),
+  literal("delete"),
+  literal("move"),
+  literal("search"),
+  literal("execute"),
+  literal("think"),
+  literal("fetch"),
+  literal("switch_mode"),
+  literal("other")
 ]);
-var zNesRelatedSnippet = object({
-  excerpts: array(zNesExcerpt),
-  uri: string2()
-});
-var zNesRelatedSnippetsCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesRenameCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesRepository = object({
-  name: string2(),
-  owner: string2(),
-  remoteUrl: string2()
-});
-var zNesSearchAndReplaceCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zClientNesCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  jump: defaultOnError(zNesJumpCapabilities.nullish(), () => void 0),
-  rename: defaultOnError(zNesRenameCapabilities.nullish(), () => void 0),
-  searchAndReplace: defaultOnError(zNesSearchAndReplaceCapabilities.nullish(), () => void 0)
-});
-var zNesSearchAndReplaceSuggestion = object({
-  id: string2(),
-  isRegex: boolean2().nullish(),
-  replace: string2(),
-  search: string2(),
-  uri: string2()
-});
-var zNesTriggerKind = union([
-  literal("automatic"),
-  literal("diagnostic"),
-  literal("manual")
-]);
-var zNesUserActionsCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  maxCount: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }).nullish()
-});
-var zNesContextCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  diagnostics: defaultOnError(zNesDiagnosticsCapabilities.nullish(), () => void 0),
-  editHistory: defaultOnError(zNesEditHistoryCapabilities.nullish(), () => void 0),
-  openFiles: defaultOnError(zNesOpenFilesCapabilities.nullish(), () => void 0),
-  recentFiles: defaultOnError(zNesRecentFilesCapabilities.nullish(), () => void 0),
-  relatedSnippets: defaultOnError(zNesRelatedSnippetsCapabilities.nullish(), () => void 0),
-  userActions: defaultOnError(zNesUserActionsCapabilities.nullish(), () => void 0)
-});
-var zNewSessionRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  additionalDirectories: array(string2()).optional(),
-  cwd: string2(),
-  mcpServers: array(zMcpServer)
-});
-var zNumberPropertySchema = object({
-  default: number2().nullish(),
-  description: string2().nullish(),
-  maximum: number2().nullish(),
-  minimum: number2().nullish(),
-  title: string2().nullish()
-});
-var zPermissionOptionId = string2();
-var zPermissionOptionKind = union([
-  literal("allow_once"),
-  literal("allow_always"),
-  literal("reject_once"),
-  literal("reject_always")
-]);
-var zPermissionOption = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  kind: zPermissionOptionKind,
-  name: string2(),
-  optionId: zPermissionOptionId
-});
-var zPlanCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zPlanEntryPriority = union([
-  literal("high"),
-  literal("medium"),
-  literal("low")
-]);
-var zPlanEntryStatus = union([
+var zToolCallStatus = union([
   literal("pending"),
   literal("in_progress"),
-  literal("completed")
+  literal("completed"),
+  literal("failed")
 ]);
-var zPlanEntry = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  content: string2(),
-  priority: zPlanEntryPriority,
-  status: zPlanEntryStatus
-});
-var zPlan = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  entries: requiredDefaultOnError(vecSkipError(zPlanEntry), () => [])
-});
-var zPlanId = string2();
-var zPlanFile = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  id: zPlanId,
-  uri: string2()
-});
-var zPlanItems = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  entries: requiredDefaultOnError(vecSkipError(zPlanEntry), () => []),
-  id: zPlanId
-});
-var zPlanMarkdown = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  content: string2(),
-  id: zPlanId
-});
-var zPlanRemoved = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  id: zPlanId
-});
-var zPlanUpdateContent = union([
-  zPlanItems.and(object({
-    type: literal("items")
-  })),
-  zPlanFile.and(object({
-    type: literal("file")
-  })),
-  zPlanMarkdown.and(object({
-    type: literal("markdown")
-  }))
-]);
-var zPlanUpdate = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  plan: zPlanUpdateContent
-});
-var zPosition = object({
-  character: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }),
-  line: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  })
-});
-var zNesJumpSuggestion = object({
-  id: string2(),
-  position: zPosition,
-  uri: string2()
-});
-var zNesRenameSuggestion = object({
-  id: string2(),
-  newName: string2(),
-  position: zPosition,
-  uri: string2()
-});
-var zNesUserAction = object({
-  action: string2(),
-  position: zPosition,
-  timestampMs: number2(),
-  uri: string2()
-});
-var zPositionEncodingKind = union([
-  literal("utf-16"),
-  literal("utf-32"),
-  literal("utf-8")
-]);
-var zClientCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  auth: zAuthCapabilities.optional().default({ terminal: false }),
-  elicitation: defaultOnError(zElicitationCapabilities.nullish(), () => void 0),
-  fs: zFileSystemCapabilities.optional().default({ readTextFile: false, writeTextFile: false }),
-  nes: defaultOnError(zClientNesCapabilities.nullish(), () => void 0),
-  plan: defaultOnError(zPlanCapabilities.nullish(), () => void 0),
-  positionEncodings: defaultOnError(vecSkipError(zPositionEncodingKind).optional(), () => []),
-  terminal: boolean2().optional().default(false)
-});
-var zPromptCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  audio: boolean2().optional().default(false),
-  embeddedContext: boolean2().optional().default(false),
-  image: boolean2().optional().default(false)
-});
-var zProtocolVersion = int().gte(0).lte(65535);
-var zInitializeRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  clientCapabilities: zClientCapabilities.optional().default({
-    auth: { terminal: false },
-    fs: { readTextFile: false, writeTextFile: false },
-    terminal: false
-  }),
-  clientInfo: defaultOnError(zImplementation.nullish(), () => void 0),
-  protocolVersion: zProtocolVersion
-});
-var zProviderCurrentConfig = object({
-  apiType: zLlmProtocol,
-  baseUrl: string2()
-});
-var zProviderInfo = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  current: zProviderCurrentConfig.nullish(),
-  id: string2(),
-  required: boolean2(),
-  supported: requiredDefaultOnError(vecSkipError(zLlmProtocol), () => [])
-});
-var zListProvidersResponse = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  providers: requiredDefaultOnError(vecSkipError(zProviderInfo), () => [])
-});
-var zProvidersCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zRange = object({
-  end: zPosition,
-  start: zPosition
-});
-var zNesDiagnostic = object({
-  message: string2(),
-  range: zRange,
-  severity: zNesDiagnosticSeverity,
-  uri: string2()
-});
-var zNesOpenFile = object({
-  languageId: string2(),
-  lastFocusedMs: defaultOnError(number2().nullish(), () => void 0),
-  uri: string2(),
-  visibleRange: defaultOnError(zRange.nullish(), () => void 0)
-});
-var zNesSuggestContext = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  diagnostics: defaultOnError(vecSkipError(zNesDiagnostic).nullish(), () => void 0),
-  editHistory: defaultOnError(vecSkipError(zNesEditHistoryEntry).nullish(), () => void 0),
-  openFiles: defaultOnError(vecSkipError(zNesOpenFile).nullish(), () => void 0),
-  recentFiles: defaultOnError(vecSkipError(zNesRecentFile).nullish(), () => void 0),
-  relatedSnippets: defaultOnError(vecSkipError(zNesRelatedSnippet).nullish(), () => void 0),
-  userActions: defaultOnError(vecSkipError(zNesUserAction).nullish(), () => void 0)
-});
-var zNesTextEdit = object({
-  newText: string2(),
-  range: zRange
-});
-var zNesEditSuggestion = object({
-  cursorPosition: defaultOnError(zPosition.nullish(), () => void 0),
-  edits: array(zNesTextEdit),
-  id: string2(),
-  uri: string2()
-});
-var zNesSuggestion = union([
-  zNesEditSuggestion.and(object({
-    kind: literal("edit")
-  })),
-  zNesJumpSuggestion.and(object({
-    kind: literal("jump")
-  })),
-  zNesRenameSuggestion.and(object({
-    kind: literal("rename")
-  })),
-  zNesSearchAndReplaceSuggestion.and(object({
-    kind: literal("searchAndReplace")
-  }))
-]);
-var zReadTextFileResponse = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  content: string2()
-});
-var zReleaseTerminalResponse = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zRequestId = union([number2(), string2()]).nullable();
-var zCancelRequestNotification = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  requestId: zRequestId
-});
-var zElicitationRequestScope = object({
-  requestId: zRequestId
-});
-var zRole = _enum2(["assistant", "user"]);
+var zRole = union([literal("assistant"), literal("user")]);
 var zAnnotations = object({
-  _meta: record2(string2(), unknown()).nullish(),
   audience: defaultOnError(vecSkipError(zRole).nullish(), () => void 0),
-  lastModified: string2().nullish(),
-  priority: number2().nullish()
+  lastModified: defaultOnError(string2().nullish(), () => void 0),
+  priority: defaultOnError(number2().nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
-var zAudioContent = object({
-  _meta: record2(string2(), unknown()).nullish(),
+var zTextContent = object({
   annotations: defaultOnError(zAnnotations.nullish(), () => void 0),
-  data: string2(),
-  mimeType: string2()
+  text: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
 var zImageContent = object({
-  _meta: record2(string2(), unknown()).nullish(),
   annotations: defaultOnError(zAnnotations.nullish(), () => void 0),
   data: string2(),
   mimeType: string2(),
-  uri: string2().nullish()
+  uri: defaultOnError(string2().nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zAudioContent = object({
+  annotations: defaultOnError(zAnnotations.nullish(), () => void 0),
+  data: string2(),
+  mimeType: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
 var zResourceLink = object({
-  _meta: record2(string2(), unknown()).nullish(),
   annotations: defaultOnError(zAnnotations.nullish(), () => void 0),
-  description: string2().nullish(),
-  mimeType: string2().nullish(),
+  description: defaultOnError(string2().nullish(), () => void 0),
+  mimeType: defaultOnError(string2().nullish(), () => void 0),
   name: string2(),
-  size: number2().nullish(),
-  title: string2().nullish(),
-  uri: string2()
-});
-var zSelectedPermissionOutcome = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  optionId: zPermissionOptionId
-});
-var zRequestPermissionOutcome = union([
-  object({
-    outcome: literal("cancelled")
-  }),
-  zSelectedPermissionOutcome.and(object({
-    outcome: literal("selected")
-  }))
-]);
-var zRequestPermissionResponse = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  outcome: zRequestPermissionOutcome
-});
-var zSessionAdditionalDirectoriesCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionCloseCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionConfigBoolean = object({
-  currentValue: boolean2()
-});
-var zSessionConfigGroupId = string2();
-var zSessionConfigId = string2();
-var zSessionConfigOptionCategory = union([
-  literal("mode"),
-  literal("model"),
-  literal("thought_level"),
-  string2()
-]);
-var zSessionConfigValueId = string2();
-var zSessionConfigSelectOption = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  description: string2().nullish(),
-  name: string2(),
-  value: zSessionConfigValueId
-});
-var zSessionConfigSelectGroup = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  group: zSessionConfigGroupId,
-  name: string2(),
-  options: array(zSessionConfigSelectOption)
-});
-var zSessionConfigSelectOptions = union([
-  array(zSessionConfigSelectOption),
-  array(zSessionConfigSelectGroup)
-]);
-var zSessionConfigSelect = object({
-  currentValue: zSessionConfigValueId,
-  options: zSessionConfigSelectOptions
-});
-var zSessionConfigOption = intersection(union([
-  zSessionConfigSelect.and(object({
-    type: literal("select")
-  })),
-  zSessionConfigBoolean.and(object({
-    type: literal("boolean")
-  }))
-]), object({
-  _meta: record2(string2(), unknown()).nullish(),
-  category: defaultOnError(zSessionConfigOptionCategory.nullish(), () => void 0),
-  description: string2().nullish(),
-  id: zSessionConfigId,
-  name: string2()
-}));
-var zConfigOptionUpdate = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  configOptions: requiredDefaultOnError(vecSkipError(zSessionConfigOption), () => [])
-});
-var zSessionDeleteCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionForkCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionId = string2();
-var zAcceptNesNotification = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  id: string2(),
-  sessionId: zSessionId
-});
-var zCancelNotification = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  sessionId: zSessionId
-});
-var zCloseNesRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  sessionId: zSessionId
-});
-var zCloseSessionRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  sessionId: zSessionId
-});
-var zCreateTerminalRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  args: array(string2()).optional(),
-  command: string2(),
-  cwd: string2().nullish(),
-  env: array(zEnvVariable).optional(),
-  outputByteLimit: number2().nullish(),
-  sessionId: zSessionId
-});
-var zDeleteSessionRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  sessionId: zSessionId
-});
-var zDidCloseDocumentNotification = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  sessionId: zSessionId,
-  uri: string2()
-});
-var zDidFocusDocumentNotification = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  position: zPosition,
-  sessionId: zSessionId,
-  uri: string2(),
-  version: number2(),
-  visibleRange: zRange
-});
-var zDidOpenDocumentNotification = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  languageId: string2(),
-  sessionId: zSessionId,
-  text: string2(),
-  uri: string2(),
-  version: number2()
-});
-var zDidSaveDocumentNotification = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  sessionId: zSessionId,
-  uri: string2()
-});
-var zForkSessionRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  additionalDirectories: array(string2()).optional(),
-  cwd: string2(),
-  mcpServers: array(zMcpServer).optional(),
-  sessionId: zSessionId
-});
-var zKillTerminalRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  sessionId: zSessionId,
-  terminalId: string2()
-});
-var zLoadSessionRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  additionalDirectories: array(string2()).optional(),
-  cwd: string2(),
-  mcpServers: array(zMcpServer),
-  sessionId: zSessionId
-});
-var zReadTextFileRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  limit: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }).nullish(),
-  line: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }).nullish(),
-  path: string2(),
-  sessionId: zSessionId
-});
-var zRejectNesNotification = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  id: string2(),
-  reason: defaultOnError(zNesRejectReason.nullish(), () => void 0),
-  sessionId: zSessionId
-});
-var zReleaseTerminalRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  sessionId: zSessionId,
-  terminalId: string2()
-});
-var zResumeSessionRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  additionalDirectories: array(string2()).optional(),
-  cwd: string2(),
-  mcpServers: array(zMcpServer).optional(),
-  sessionId: zSessionId
-});
-var zSessionInfo = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  additionalDirectories: array(string2()).optional(),
-  cwd: string2(),
-  sessionId: zSessionId,
+  size: defaultOnError(number2().nullish(), () => void 0),
   title: defaultOnError(string2().nullish(), () => void 0),
-  updatedAt: defaultOnError(string2().nullish(), () => void 0)
-});
-var zListSessionsResponse = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  nextCursor: string2().nullish(),
-  sessions: requiredDefaultOnError(vecSkipError(zSessionInfo), () => [])
-});
-var zSessionInfoUpdate = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  title: string2().nullish(),
-  updatedAt: string2().nullish()
-});
-var zSessionListCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionModeId = string2();
-var zCurrentModeUpdate = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  currentModeId: zSessionModeId
-});
-var zSessionMode = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  description: string2().nullish(),
-  id: zSessionModeId,
-  name: string2()
-});
-var zSessionModeState = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  availableModes: requiredDefaultOnError(vecSkipError(zSessionMode), () => []),
-  currentModeId: zSessionModeId
-});
-var zForkSessionResponse = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  configOptions: defaultOnError(vecSkipError(zSessionConfigOption).nullish(), () => void 0),
-  modes: defaultOnError(zSessionModeState.nullish(), () => void 0),
-  sessionId: zSessionId
-});
-var zLoadSessionResponse = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  configOptions: defaultOnError(vecSkipError(zSessionConfigOption).nullish(), () => void 0),
-  modes: defaultOnError(zSessionModeState.nullish(), () => void 0)
-});
-var zNewSessionResponse = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  configOptions: defaultOnError(vecSkipError(zSessionConfigOption).nullish(), () => void 0),
-  modes: defaultOnError(zSessionModeState.nullish(), () => void 0),
-  sessionId: zSessionId
-});
-var zResumeSessionResponse = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  configOptions: defaultOnError(vecSkipError(zSessionConfigOption).nullish(), () => void 0),
-  modes: defaultOnError(zSessionModeState.nullish(), () => void 0)
-});
-var zSessionResumeCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  additionalDirectories: defaultOnError(zSessionAdditionalDirectoriesCapabilities.nullish(), () => void 0),
-  close: defaultOnError(zSessionCloseCapabilities.nullish(), () => void 0),
-  delete: defaultOnError(zSessionDeleteCapabilities.nullish(), () => void 0),
-  fork: defaultOnError(zSessionForkCapabilities.nullish(), () => void 0),
-  list: defaultOnError(zSessionListCapabilities.nullish(), () => void 0),
-  resume: defaultOnError(zSessionResumeCapabilities.nullish(), () => void 0)
-});
-var zSetProviderRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  apiType: zLlmProtocol,
-  baseUrl: string2(),
-  headers: record2(string2(), string2()).optional(),
-  id: string2()
-});
-var zSetProviderResponse = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSetSessionConfigOptionRequest = intersection(union([
-  object({
-    type: literal("boolean"),
-    value: boolean2()
-  }),
-  object({
-    value: zSessionConfigValueId
-  })
-]), object({
-  _meta: record2(string2(), unknown()).nullish(),
-  configId: zSessionConfigId,
-  sessionId: zSessionId
-}));
-var zSetSessionConfigOptionResponse = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  configOptions: requiredDefaultOnError(vecSkipError(zSessionConfigOption), () => [])
-});
-var zSetSessionModeRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  modeId: zSessionModeId,
-  sessionId: zSessionId
-});
-var zSetSessionModeResponse = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zStartNesResponse = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  sessionId: zSessionId
-});
-var zStopReason = union([
-  literal("end_turn"),
-  literal("max_tokens"),
-  literal("max_turn_requests"),
-  literal("refusal"),
-  literal("cancelled")
-]);
-var zStringFormat = union([
-  literal("email"),
-  literal("uri"),
-  literal("date"),
-  literal("date-time")
-]);
-var zStringPropertySchema = object({
-  default: string2().nullish(),
-  description: string2().nullish(),
-  enum: array(string2()).nullish(),
-  format: zStringFormat.nullish(),
-  maxLength: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }).nullish(),
-  minLength: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }).nullish(),
-  oneOf: array(zEnumOption).nullish(),
-  pattern: string2().nullish(),
-  title: string2().nullish()
-});
-var zSuggestNesRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  context: defaultOnError(zNesSuggestContext.nullish(), () => void 0),
-  position: zPosition,
-  selection: defaultOnError(zRange.nullish(), () => void 0),
-  sessionId: zSessionId,
-  triggerKind: zNesTriggerKind,
   uri: string2(),
-  version: number2()
-});
-var zSuggestNesResponse = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  suggestions: requiredDefaultOnError(vecSkipError(zNesSuggestion), () => [])
-});
-var zTerminal = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  terminalId: string2()
-});
-var zTerminalExitStatus = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  exitCode: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }).nullish(),
-  signal: string2().nullish()
-});
-var zTerminalOutputRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  sessionId: zSessionId,
-  terminalId: string2()
-});
-var zTerminalOutputResponse = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  exitStatus: zTerminalExitStatus.nullish(),
-  output: string2(),
-  truncated: boolean2()
-});
-var zTextContent = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  annotations: defaultOnError(zAnnotations.nullish(), () => void 0),
-  text: string2()
-});
-var zTextDocumentContentChangeEvent = object({
-  range: zRange.nullish(),
-  text: string2()
-});
-var zDidChangeDocumentNotification = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  contentChanges: array(zTextDocumentContentChangeEvent),
-  sessionId: zSessionId,
-  uri: string2(),
-  version: number2()
-});
-var zClientNotification = object({
-  method: string2(),
-  params: union([
-    zCancelNotification,
-    zDidOpenDocumentNotification,
-    zDidChangeDocumentNotification,
-    zDidCloseDocumentNotification,
-    zDidSaveDocumentNotification,
-    zDidFocusDocumentNotification,
-    zAcceptNesNotification,
-    zRejectNesNotification,
-    zMessageMcpNotification,
-    zExtNotification
-  ]).nullish()
-});
-var zTextDocumentSyncKind = union([
-  literal("full"),
-  literal("incremental")
-]);
-var zNesDocumentDidChangeCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  syncKind: zTextDocumentSyncKind
-});
-var zNesDocumentEventCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  didChange: defaultOnError(zNesDocumentDidChangeCapabilities.nullish(), () => void 0),
-  didClose: defaultOnError(zNesDocumentDidCloseCapabilities.nullish(), () => void 0),
-  didFocus: defaultOnError(zNesDocumentDidFocusCapabilities.nullish(), () => void 0),
-  didOpen: defaultOnError(zNesDocumentDidOpenCapabilities.nullish(), () => void 0),
-  didSave: defaultOnError(zNesDocumentDidSaveCapabilities.nullish(), () => void 0)
-});
-var zNesEventCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  document: defaultOnError(zNesDocumentEventCapabilities.nullish(), () => void 0)
-});
-var zNesCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  context: defaultOnError(zNesContextCapabilities.nullish(), () => void 0),
-  events: defaultOnError(zNesEventCapabilities.nullish(), () => void 0)
-});
-var zAgentCapabilities = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  auth: zAgentAuthCapabilities.optional().default({}),
-  loadSession: boolean2().optional().default(false),
-  mcpCapabilities: zMcpCapabilities.optional().default({
-    acp: false,
-    http: false,
-    sse: false
-  }),
-  nes: defaultOnError(zNesCapabilities.nullish(), () => void 0),
-  positionEncoding: defaultOnError(zPositionEncodingKind.nullish(), () => void 0),
-  promptCapabilities: zPromptCapabilities.optional().default({
-    audio: false,
-    embeddedContext: false,
-    image: false
-  }),
-  providers: defaultOnError(zProvidersCapabilities.nullish(), () => void 0),
-  sessionCapabilities: zSessionCapabilities.optional().default({})
-});
-var zInitializeResponse = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  agentCapabilities: zAgentCapabilities.optional().default({
-    auth: {},
-    loadSession: false,
-    mcpCapabilities: {
-      acp: false,
-      http: false,
-      sse: false
-    },
-    promptCapabilities: {
-      audio: false,
-      embeddedContext: false,
-      image: false
-    },
-    sessionCapabilities: {}
-  }),
-  agentInfo: defaultOnError(zImplementation.nullish(), () => void 0),
-  authMethods: defaultOnError(vecSkipError(zAuthMethod).optional().default([]), () => []),
-  protocolVersion: zProtocolVersion
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
 var zTextResourceContents = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  mimeType: string2().nullish(),
+  mimeType: defaultOnError(string2().nullish(), () => void 0),
   text: string2(),
-  uri: string2()
+  uri: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zBlobResourceContents = object({
+  blob: string2(),
+  mimeType: defaultOnError(string2().nullish(), () => void 0),
+  uri: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
 var zEmbeddedResourceResource = union([
   zTextResourceContents,
   zBlobResourceContents
 ]);
 var zEmbeddedResource = object({
-  _meta: record2(string2(), unknown()).nullish(),
   annotations: defaultOnError(zAnnotations.nullish(), () => void 0),
-  resource: zEmbeddedResourceResource
+  resource: zEmbeddedResourceResource,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
 var zContentBlock = union([
   zTextContent.and(object({
@@ -137300,21 +136334,19 @@ var zContentBlock = union([
   }))
 ]);
 var zContent = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  content: zContentBlock
-});
-var zContentChunk = object({
-  _meta: record2(string2(), unknown()).nullish(),
   content: zContentBlock,
-  messageId: zMessageId.nullish()
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
-var zPromptRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  prompt: array(zContentBlock),
-  sessionId: zSessionId
+var zDiff = object({
+  path: string2(),
+  oldText: defaultOnError(string2().nullish(), () => void 0),
+  newText: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
-var zTitledMultiSelectItems = object({
-  anyOf: array(zEnumOption)
+var zTerminalId = string2();
+var zTerminal = object({
+  terminalId: zTerminalId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
 var zToolCallContent = union([
   zContent.and(object({
@@ -137327,100 +136359,163 @@ var zToolCallContent = union([
     type: literal("terminal")
   }))
 ]);
-var zToolCallId = string2();
-var zElicitationSessionScope = object({
-  sessionId: zSessionId,
-  toolCallId: zToolCallId.nullish()
-});
-var zElicitationUrlMode = intersection(union([zElicitationSessionScope, zElicitationRequestScope]), object({
-  elicitationId: zElicitationId,
-  url: url()
-}));
 var zToolCallLocation = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  line: int().gte(0).max(4294967295, {
+  path: string2(),
+  line: defaultOnError(int().gte(0).max(4294967295, {
     error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }).nullish(),
-  path: string2()
-});
-var zToolCallStatus = union([
-  literal("pending"),
-  literal("in_progress"),
-  literal("completed"),
-  literal("failed")
-]);
-var zToolKind = union([
-  literal("read"),
-  literal("edit"),
-  literal("delete"),
-  literal("move"),
-  literal("search"),
-  literal("execute"),
-  literal("think"),
-  literal("fetch"),
-  literal("switch_mode"),
-  literal("other")
-]);
-var zToolCall = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  content: defaultOnError(vecSkipError(zToolCallContent).optional(), () => []),
-  kind: zToolKind.optional(),
-  locations: defaultOnError(vecSkipError(zToolCallLocation).optional(), () => []),
-  rawInput: unknown().optional(),
-  rawOutput: unknown().optional(),
-  status: zToolCallStatus.optional(),
-  title: string2(),
-  toolCallId: zToolCallId
+  }).nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
 var zToolCallUpdate = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  content: defaultOnError(vecSkipError(zToolCallContent).nullish(), () => void 0),
+  toolCallId: zToolCallId,
   kind: defaultOnError(zToolKind.nullish(), () => void 0),
-  locations: defaultOnError(vecSkipError(zToolCallLocation).nullish(), () => void 0),
-  rawInput: unknown().optional(),
-  rawOutput: unknown().optional(),
   status: defaultOnError(zToolCallStatus.nullish(), () => void 0),
-  title: string2().nullish(),
-  toolCallId: zToolCallId
+  title: defaultOnError(string2().nullish(), () => void 0),
+  name: defaultOnError(string2().nullish(), () => void 0),
+  content: defaultOnError(vecSkipError(zToolCallContent).nullish(), () => void 0),
+  locations: defaultOnError(vecSkipError(zToolCallLocation).nullish(), () => void 0),
+  rawInput: defaultOnError(unknown().optional(), () => void 0),
+  rawOutput: defaultOnError(unknown().optional(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zPermissionOptionId = string2();
+var zPermissionOptionKind = union([
+  literal("allow_once"),
+  literal("allow_always"),
+  literal("reject_once"),
+  literal("reject_always")
+]);
+var zPermissionOption = object({
+  optionId: zPermissionOptionId,
+  name: string2(),
+  kind: zPermissionOptionKind,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
 var zRequestPermissionRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  options: array(zPermissionOption),
   sessionId: zSessionId,
-  toolCall: zToolCallUpdate
+  toolCall: zToolCallUpdate,
+  options: array(zPermissionOption),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
-var zUnstructuredCommandInput = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  hint: string2()
+var zEnvVariable = object({
+  name: string2(),
+  value: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
-var zAvailableCommandInput = zUnstructuredCommandInput;
-var zAvailableCommand = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  description: string2(),
-  input: defaultOnError(zAvailableCommandInput.nullish(), () => void 0),
-  name: string2()
+var zCreateTerminalRequest = object({
+  sessionId: zSessionId,
+  command: string2(),
+  args: defaultOnError(vecSkipError(string2()).optional(), () => []),
+  env: defaultOnError(vecSkipError(zEnvVariable).optional(), () => []),
+  cwd: defaultOnError(string2().nullish(), () => void 0),
+  outputByteLimit: defaultOnError(number2().nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
-var zAvailableCommandsUpdate = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  availableCommands: requiredDefaultOnError(vecSkipError(zAvailableCommand), () => [])
+var zTerminalOutputRequest = object({
+  sessionId: zSessionId,
+  terminalId: zTerminalId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
-var zUntitledMultiSelectItems = object({
-  enum: array(string2()),
-  type: zElicitationStringType
+var zReleaseTerminalRequest = object({
+  sessionId: zSessionId,
+  terminalId: zTerminalId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
-var zMultiSelectItems = union([
-  zUntitledMultiSelectItems,
-  zTitledMultiSelectItems
+var zWaitForTerminalExitRequest = object({
+  sessionId: zSessionId,
+  terminalId: zTerminalId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zKillTerminalRequest = object({
+  sessionId: zSessionId,
+  terminalId: zTerminalId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zElicitationSessionScope = object({
+  sessionId: zSessionId,
+  toolCallId: defaultOnError(zToolCallId.nullish(), () => void 0)
+});
+var zElicitationRequestScope = object({
+  requestId: zRequestId
+});
+var zElicitationSchemaType = literal("object");
+var zStringFormat = union([
+  literal("email"),
+  literal("uri"),
+  literal("date"),
+  literal("date-time")
 ]);
-var zMultiSelectPropertySchema = object({
-  default: array(string2()).nullish(),
-  description: string2().nullish(),
-  items: zMultiSelectItems,
-  maxItems: number2().nullish(),
-  minItems: number2().nullish(),
-  title: string2().nullish()
+var zEnumOption = object({
+  const: string2(),
+  title: string2(),
+  description: defaultOnError(string2().nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
-var zElicitationPropertySchema = union([
+var zStringPropertySchema = object({
+  title: defaultOnError(string2().nullish(), () => void 0),
+  description: defaultOnError(string2().nullish(), () => void 0),
+  minLength: int().gte(0).max(4294967295, {
+    error: "Invalid value: Expected uint32 to be <= 4294967295"
+  }).nullish(),
+  maxLength: int().gte(0).max(4294967295, {
+    error: "Invalid value: Expected uint32 to be <= 4294967295"
+  }).nullish(),
+  pattern: string2().nullish(),
+  format: zStringFormat.nullish(),
+  default: defaultOnError(string2().nullish(), () => void 0),
+  enum: array(string2()).nullish(),
+  oneOf: array(zEnumOption).nullish(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNumberPropertySchema = object({
+  title: defaultOnError(string2().nullish(), () => void 0),
+  description: defaultOnError(string2().nullish(), () => void 0),
+  minimum: number2().nullish(),
+  maximum: number2().nullish(),
+  default: defaultOnError(number2().nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zIntegerPropertySchema = object({
+  title: defaultOnError(string2().nullish(), () => void 0),
+  description: defaultOnError(string2().nullish(), () => void 0),
+  minimum: number2().nullish(),
+  maximum: number2().nullish(),
+  default: defaultOnError(number2().nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zBooleanPropertySchema = object({
+  title: defaultOnError(string2().nullish(), () => void 0),
+  description: defaultOnError(string2().nullish(), () => void 0),
+  default: defaultOnError(boolean2().nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zStringMultiSelectItems = object({
+  enum: array(string2()),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zTitledMultiSelectItems = object({
+  anyOf: array(zEnumOption),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zMultiSelectItems = preserveCustomPayload(union([
+  zStringMultiSelectItems.and(object({
+    type: literal("string")
+  })),
+  excludeKnownTags(object({
+    type: string2()
+  }), "type", ["string"]),
+  zTitledMultiSelectItems
+]), "type", ["string"]);
+var zMultiSelectPropertySchema = object({
+  title: defaultOnError(string2().nullish(), () => void 0),
+  description: defaultOnError(string2().nullish(), () => void 0),
+  minItems: number2().nullish(),
+  maxItems: number2().nullish(),
+  items: zMultiSelectItems,
+  default: defaultOnError(vecSkipError(string2()).nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zElicitationPropertySchema = preserveCustomPayload(union([
   zStringPropertySchema.and(object({
     type: literal("string")
   })),
@@ -137435,41 +136530,571 @@ var zElicitationPropertySchema = union([
   })),
   zMultiSelectPropertySchema.and(object({
     type: literal("array")
-  }))
-]);
+  })),
+  excludeKnownTags(object({
+    type: string2()
+  }), "type", ["array", "boolean", "integer", "number", "string"])
+]), "type", ["array", "boolean", "integer", "number", "string"]);
 var zElicitationSchema = object({
-  description: string2().nullish(),
+  type: defaultOnError(zElicitationSchemaType.optional().default("object"), () => "object"),
+  title: defaultOnError(string2().nullish(), () => void 0),
   properties: record2(string2(), zElicitationPropertySchema).optional().default({}),
   required: array(string2()).nullish(),
-  title: string2().nullish(),
-  type: zElicitationSchemaType.optional().default("object")
+  description: defaultOnError(string2().nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
 var zElicitationFormMode = intersection(union([zElicitationSessionScope, zElicitationRequestScope]), object({
   requestedSchema: zElicitationSchema
 }));
-var zCreateElicitationRequest = intersection(union([
+var zElicitationId = string2();
+var zElicitationUrlMode = intersection(union([zElicitationSessionScope, zElicitationRequestScope]), object({
+  elicitationId: zElicitationId,
+  url: url()
+}));
+var zCreateElicitationRequest = preserveCustomPayload(intersection(union([
   zElicitationFormMode.and(object({
     mode: literal("form")
   })),
   zElicitationUrlMode.and(object({
     mode: literal("url")
+  })),
+  excludeKnownTags(intersection(union([zElicitationSessionScope, zElicitationRequestScope]), object({
+    mode: string2()
+  })), "mode", ["form", "url"])
+]), object({
+  message: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+})), "mode", ["form", "url"]);
+var zMcpServerAcpId = string2();
+var zConnectMcpRequest = object({
+  serverId: zMcpServerAcpId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zMcpConnectionId = string2();
+var zMessageMcpRequest = object({
+  connectionId: zMcpConnectionId,
+  method: string2(),
+  params: record2(string2(), unknown()).nullish(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zDisconnectMcpRequest = object({
+  connectionId: zMcpConnectionId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zExtRequest = unknown();
+var zAgentRequest = object({
+  id: zRequestId,
+  method: string2(),
+  params: union([
+    zWriteTextFileRequest,
+    zReadTextFileRequest,
+    zRequestPermissionRequest,
+    zCreateTerminalRequest,
+    zTerminalOutputRequest,
+    zReleaseTerminalRequest,
+    zWaitForTerminalExitRequest,
+    zKillTerminalRequest,
+    zCreateElicitationRequest,
+    zConnectMcpRequest,
+    zMessageMcpRequest,
+    zDisconnectMcpRequest,
+    zExtRequest
+  ]).nullish()
+});
+var zProtocolVersion = int().gte(0).lte(65535);
+var zPromptCapabilities = object({
+  image: defaultOnError(boolean2().optional().default(false), () => false),
+  audio: defaultOnError(boolean2().optional().default(false), () => false),
+  embeddedContext: defaultOnError(boolean2().optional().default(false), () => false),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zMcpCapabilities = object({
+  http: defaultOnError(boolean2().optional().default(false), () => false),
+  sse: defaultOnError(boolean2().optional().default(false), () => false),
+  acp: defaultOnError(boolean2().optional().default(false), () => false),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSessionListCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSessionDeleteCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSessionAdditionalDirectoriesCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSessionForkCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSessionResumeCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSessionCloseCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSessionCapabilities = object({
+  list: defaultOnError(zSessionListCapabilities.nullish(), () => void 0),
+  delete: defaultOnError(zSessionDeleteCapabilities.nullish(), () => void 0),
+  additionalDirectories: defaultOnError(zSessionAdditionalDirectoriesCapabilities.nullish(), () => void 0),
+  fork: defaultOnError(zSessionForkCapabilities.nullish(), () => void 0),
+  resume: defaultOnError(zSessionResumeCapabilities.nullish(), () => void 0),
+  close: defaultOnError(zSessionCloseCapabilities.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zLogoutCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zAgentAuthCapabilities = object({
+  logout: defaultOnError(zLogoutCapabilities.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zProvidersCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesDocumentDidOpenCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zTextDocumentSyncKind = union([
+  literal("full"),
+  literal("incremental")
+]);
+var zNesDocumentDidChangeCapabilities = object({
+  syncKind: zTextDocumentSyncKind,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesDocumentDidCloseCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesDocumentDidSaveCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesDocumentDidFocusCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesDocumentEventCapabilities = object({
+  didOpen: defaultOnError(zNesDocumentDidOpenCapabilities.nullish(), () => void 0),
+  didChange: defaultOnError(zNesDocumentDidChangeCapabilities.nullish(), () => void 0),
+  didClose: defaultOnError(zNesDocumentDidCloseCapabilities.nullish(), () => void 0),
+  didSave: defaultOnError(zNesDocumentDidSaveCapabilities.nullish(), () => void 0),
+  didFocus: defaultOnError(zNesDocumentDidFocusCapabilities.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesEventCapabilities = object({
+  document: defaultOnError(zNesDocumentEventCapabilities.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesRecentFilesCapabilities = object({
+  maxCount: defaultOnError(int().gte(0).max(4294967295, {
+    error: "Invalid value: Expected uint32 to be <= 4294967295"
+  }).nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesRelatedSnippetsCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesEditHistoryCapabilities = object({
+  maxCount: defaultOnError(int().gte(0).max(4294967295, {
+    error: "Invalid value: Expected uint32 to be <= 4294967295"
+  }).nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesUserActionsCapabilities = object({
+  maxCount: defaultOnError(int().gte(0).max(4294967295, {
+    error: "Invalid value: Expected uint32 to be <= 4294967295"
+  }).nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesOpenFilesCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesDiagnosticsCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesContextCapabilities = object({
+  recentFiles: defaultOnError(zNesRecentFilesCapabilities.nullish(), () => void 0),
+  relatedSnippets: defaultOnError(zNesRelatedSnippetsCapabilities.nullish(), () => void 0),
+  editHistory: defaultOnError(zNesEditHistoryCapabilities.nullish(), () => void 0),
+  userActions: defaultOnError(zNesUserActionsCapabilities.nullish(), () => void 0),
+  openFiles: defaultOnError(zNesOpenFilesCapabilities.nullish(), () => void 0),
+  diagnostics: defaultOnError(zNesDiagnosticsCapabilities.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesCapabilities = object({
+  events: defaultOnError(zNesEventCapabilities.nullish(), () => void 0),
+  context: defaultOnError(zNesContextCapabilities.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zPositionEncodingKind = union([
+  literal("utf-16"),
+  literal("utf-32"),
+  literal("utf-8")
+]);
+var zAgentCapabilities = object({
+  loadSession: defaultOnError(boolean2().optional().default(false), () => false),
+  promptCapabilities: defaultOnError(zPromptCapabilities.optional().default({
+    image: false,
+    audio: false,
+    embeddedContext: false
+  }), () => ({
+    image: false,
+    audio: false,
+    embeddedContext: false
+  })),
+  mcpCapabilities: defaultOnError(zMcpCapabilities.optional().default({
+    http: false,
+    sse: false,
+    acp: false
+  }), () => ({
+    http: false,
+    sse: false,
+    acp: false
+  })),
+  sessionCapabilities: defaultOnError(zSessionCapabilities.optional().default({}), () => ({})),
+  auth: defaultOnError(zAgentAuthCapabilities.optional().default({}), () => ({})),
+  providers: defaultOnError(zProvidersCapabilities.nullish(), () => void 0),
+  nes: defaultOnError(zNesCapabilities.nullish(), () => void 0),
+  positionEncoding: defaultOnError(zPositionEncodingKind.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zAuthMethodId = string2();
+var zAuthEnvVar = object({
+  name: string2(),
+  label: defaultOnError(string2().nullish(), () => void 0),
+  secret: defaultOnError(boolean2().optional().default(true), () => true),
+  optional: defaultOnError(boolean2().optional().default(false), () => false),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zAuthMethodEnvVar = object({
+  id: zAuthMethodId,
+  name: string2(),
+  description: defaultOnError(string2().nullish(), () => void 0),
+  vars: requiredDefaultOnError(vecSkipError(zAuthEnvVar), () => []),
+  link: defaultOnError(string2().nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zAuthMethodTerminal = object({
+  id: zAuthMethodId,
+  name: string2(),
+  description: defaultOnError(string2().nullish(), () => void 0),
+  args: defaultOnError(vecSkipError(string2()).optional(), () => []),
+  env: defaultOnError(record2(string2(), string2()).optional(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zAuthMethodAgent = object({
+  id: zAuthMethodId,
+  name: string2(),
+  description: defaultOnError(string2().nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zAuthMethod = union([
+  zAuthMethodEnvVar.and(object({
+    type: literal("env_var")
+  })),
+  zAuthMethodTerminal.and(object({
+    type: literal("terminal")
+  })),
+  zAuthMethodAgent
+]);
+var zImplementation = object({
+  name: string2(),
+  title: defaultOnError(string2().nullish(), () => void 0),
+  version: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zInitializeResponse = object({
+  protocolVersion: zProtocolVersion,
+  agentCapabilities: defaultOnError(zAgentCapabilities.optional().default({
+    loadSession: false,
+    promptCapabilities: {
+      image: false,
+      audio: false,
+      embeddedContext: false
+    },
+    mcpCapabilities: {
+      http: false,
+      sse: false,
+      acp: false
+    },
+    sessionCapabilities: {},
+    auth: {}
+  }), () => ({
+    loadSession: false,
+    promptCapabilities: {
+      image: false,
+      audio: false,
+      embeddedContext: false
+    },
+    mcpCapabilities: {
+      http: false,
+      sse: false,
+      acp: false
+    },
+    sessionCapabilities: {},
+    auth: {}
+  })),
+  authMethods: defaultOnError(vecSkipError(zAuthMethod).optional().default([]), () => []),
+  agentInfo: defaultOnError(zImplementation.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zAuthenticateResponse = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zProviderId = string2();
+var zLlmProtocol = union([
+  literal("anthropic"),
+  literal("openai"),
+  literal("azure"),
+  literal("vertex"),
+  literal("bedrock"),
+  string2()
+]);
+var zProviderCurrentConfig = object({
+  apiType: zLlmProtocol,
+  baseUrl: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zProviderInfo = object({
+  providerId: zProviderId,
+  supported: requiredDefaultOnError(vecSkipError(zLlmProtocol), () => []),
+  required: boolean2(),
+  current: zProviderCurrentConfig.nullish(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zListProvidersResponse = object({
+  providers: array(zProviderInfo),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSetProviderResponse = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zDisableProviderResponse = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zLogoutResponse = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSessionModeId = string2();
+var zSessionMode = object({
+  id: zSessionModeId,
+  name: string2(),
+  description: defaultOnError(string2().nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSessionModeState = object({
+  currentModeId: zSessionModeId,
+  availableModes: requiredDefaultOnError(vecSkipError(zSessionMode), () => []),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSessionConfigId = string2();
+var zSessionConfigOptionCategory = union([
+  literal("mode"),
+  literal("model"),
+  literal("model_config"),
+  literal("thought_level"),
+  string2()
+]);
+var zSessionConfigValueId = string2();
+var zSessionConfigSelectOption = object({
+  value: zSessionConfigValueId,
+  name: string2(),
+  description: defaultOnError(string2().nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSessionConfigGroupId = string2();
+var zSessionConfigSelectGroup = object({
+  group: zSessionConfigGroupId,
+  name: string2(),
+  options: requiredDefaultOnError(vecSkipError(zSessionConfigSelectOption), () => []),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSessionConfigSelectOptions = union([
+  array(zSessionConfigSelectOption),
+  array(zSessionConfigSelectGroup)
+]);
+var zSessionConfigSelect = object({
+  currentValue: zSessionConfigValueId,
+  options: zSessionConfigSelectOptions
+});
+var zSessionConfigBoolean = object({
+  currentValue: boolean2()
+});
+var zSessionConfigOption = intersection(union([
+  zSessionConfigSelect.and(object({
+    type: literal("select")
+  })),
+  zSessionConfigBoolean.and(object({
+    type: literal("boolean")
   }))
 ]), object({
-  _meta: record2(string2(), unknown()).nullish(),
-  message: string2()
+  id: zSessionConfigId,
+  name: string2(),
+  description: defaultOnError(string2().nullish(), () => void 0),
+  category: defaultOnError(zSessionConfigOptionCategory.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 }));
+var zNewSessionResponse = object({
+  sessionId: zSessionId,
+  modes: defaultOnError(zSessionModeState.nullish(), () => void 0),
+  configOptions: defaultOnError(vecSkipError(zSessionConfigOption).nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zLoadSessionResponse = object({
+  modes: defaultOnError(zSessionModeState.nullish(), () => void 0),
+  configOptions: defaultOnError(vecSkipError(zSessionConfigOption).nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSessionInfo = object({
+  sessionId: zSessionId,
+  cwd: string2(),
+  additionalDirectories: defaultOnError(vecSkipError(string2()).optional(), () => []),
+  title: defaultOnError(string2().nullish(), () => void 0),
+  updatedAt: defaultOnError(string2().nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zListSessionsResponse = object({
+  sessions: requiredDefaultOnError(vecSkipError(zSessionInfo), () => []),
+  nextCursor: defaultOnError(string2().nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zDeleteSessionResponse = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zForkSessionResponse = object({
+  sessionId: zSessionId,
+  modes: defaultOnError(zSessionModeState.nullish(), () => void 0),
+  configOptions: defaultOnError(vecSkipError(zSessionConfigOption).nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zResumeSessionResponse = object({
+  modes: defaultOnError(zSessionModeState.nullish(), () => void 0),
+  configOptions: defaultOnError(vecSkipError(zSessionConfigOption).nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zCloseSessionResponse = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSetSessionModeResponse = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSetSessionConfigOptionResponse = object({
+  configOptions: requiredDefaultOnError(vecSkipError(zSessionConfigOption), () => []),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zStopReason = union([
+  literal("end_turn"),
+  literal("max_tokens"),
+  literal("max_turn_requests"),
+  literal("refusal"),
+  literal("cancelled")
+]);
 var zUsage = object({
-  cachedReadTokens: number2().nullish(),
-  cachedWriteTokens: number2().nullish(),
+  totalTokens: number2(),
   inputTokens: number2(),
   outputTokens: number2(),
-  thoughtTokens: number2().nullish(),
-  totalTokens: number2()
+  thoughtTokens: defaultOnError(number2().nullish(), () => void 0),
+  cachedReadTokens: defaultOnError(number2().nullish(), () => void 0),
+  cachedWriteTokens: defaultOnError(number2().nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
 var zPromptResponse = object({
-  _meta: record2(string2(), unknown()).nullish(),
   stopReason: zStopReason,
-  usage: defaultOnError(zUsage.nullish(), () => void 0)
+  usage: defaultOnError(zUsage.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zStartNesResponse = object({
+  sessionId: zSessionId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesSuggestionId = string2();
+var zPosition = object({
+  line: int().gte(0).max(4294967295, {
+    error: "Invalid value: Expected uint32 to be <= 4294967295"
+  }),
+  character: int().gte(0).max(4294967295, {
+    error: "Invalid value: Expected uint32 to be <= 4294967295"
+  }),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zRange = object({
+  start: zPosition,
+  end: zPosition,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesTextEdit = object({
+  range: zRange,
+  newText: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesEditSuggestion = object({
+  id: zNesSuggestionId,
+  uri: string2(),
+  edits: array(zNesTextEdit),
+  cursorPosition: defaultOnError(zPosition.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesJumpSuggestion = object({
+  id: zNesSuggestionId,
+  uri: string2(),
+  position: zPosition,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesRenameSuggestion = object({
+  id: zNesSuggestionId,
+  uri: string2(),
+  position: zPosition,
+  newName: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesSearchAndReplaceSuggestion = object({
+  id: zNesSuggestionId,
+  uri: string2(),
+  search: string2(),
+  replace: string2(),
+  isRegex: boolean2().nullish(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesSuggestion = union([
+  zNesEditSuggestion.and(object({
+    kind: literal("edit")
+  })),
+  zNesJumpSuggestion.and(object({
+    kind: literal("jump")
+  })),
+  zNesRenameSuggestion.and(object({
+    kind: literal("rename")
+  })),
+  zNesSearchAndReplaceSuggestion.and(object({
+    kind: literal("searchAndReplace")
+  }))
+]);
+var zSuggestNesResponse = object({
+  suggestions: array(zNesSuggestion),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zCloseNesResponse = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zExtResponse = unknown();
+var zMessageMcpResponse = unknown();
+var zErrorCode = union([
+  literal(-32700),
+  literal(-32600),
+  literal(-32601),
+  literal(-32602),
+  literal(-32603),
+  literal(-32800),
+  literal(-32e3),
+  literal(-32002),
+  int().min(-2147483648, {
+    error: "Invalid value: Expected int32 to be >= -2147483648"
+  }).max(2147483647, {
+    error: "Invalid value: Expected int32 to be <= 2147483647"
+  })
+]);
+var zError = object({
+  code: zErrorCode,
+  message: string2(),
+  data: defaultOnError(unknown().optional(), () => void 0)
 });
 var zAgentResponse = union([
   object({
@@ -137499,15 +137124,121 @@ var zAgentResponse = union([
     ])
   }),
   object({
-    error: zError,
-    id: zRequestId
+    id: zRequestId,
+    error: zError
   })
 ]);
+var zMessageId = string2();
+var zContentChunk = object({
+  content: zContentBlock,
+  messageId: defaultOnError(zMessageId.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zToolCall = object({
+  toolCallId: zToolCallId,
+  title: string2(),
+  name: defaultOnError(string2().nullish(), () => void 0),
+  kind: defaultOnError(zToolKind.optional(), () => void 0),
+  status: defaultOnError(zToolCallStatus.optional(), () => void 0),
+  content: defaultOnError(vecSkipError(zToolCallContent).optional(), () => []),
+  locations: defaultOnError(vecSkipError(zToolCallLocation).optional(), () => []),
+  rawInput: defaultOnError(unknown().optional(), () => void 0),
+  rawOutput: defaultOnError(unknown().optional(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zPlanEntryPriority = union([
+  literal("high"),
+  literal("medium"),
+  literal("low")
+]);
+var zPlanEntryStatus = union([
+  literal("pending"),
+  literal("in_progress"),
+  literal("completed")
+]);
+var zPlanEntry = object({
+  content: string2(),
+  priority: zPlanEntryPriority,
+  status: zPlanEntryStatus,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zPlan = object({
+  entries: requiredDefaultOnError(vecSkipError(zPlanEntry), () => []),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zPlanId = string2();
+var zPlanItems = object({
+  planId: zPlanId,
+  entries: requiredDefaultOnError(vecSkipError(zPlanEntry), () => []),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zPlanFile = object({
+  planId: zPlanId,
+  uri: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zPlanMarkdown = object({
+  planId: zPlanId,
+  content: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zPlanUpdateContent = union([
+  zPlanItems.and(object({
+    type: literal("items")
+  })),
+  zPlanFile.and(object({
+    type: literal("file")
+  })),
+  zPlanMarkdown.and(object({
+    type: literal("markdown")
+  }))
+]);
+var zPlanUpdate = object({
+  plan: zPlanUpdateContent,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zPlanRemoved = object({
+  planId: zPlanId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zUnstructuredCommandInput = object({
+  hint: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zAvailableCommandInput = zUnstructuredCommandInput;
+var zAvailableCommand = object({
+  name: string2(),
+  description: string2(),
+  input: defaultOnError(zAvailableCommandInput.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zAvailableCommandsUpdate = object({
+  availableCommands: requiredDefaultOnError(vecSkipError(zAvailableCommand), () => []),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zCurrentModeUpdate = object({
+  currentModeId: zSessionModeId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zConfigOptionUpdate = object({
+  configOptions: requiredDefaultOnError(vecSkipError(zSessionConfigOption), () => []),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSessionInfoUpdate = object({
+  title: defaultOnError(string2().nullish(), () => void 0),
+  updatedAt: defaultOnError(string2().nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zCost = object({
+  amount: number2(),
+  currency: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
 var zUsageUpdate = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  cost: defaultOnError(zCost.nullish(), () => void 0),
+  used: number2(),
   size: number2(),
-  used: number2()
+  cost: defaultOnError(zCost.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
 var zSessionUpdate = union([
   zContentChunk.and(object({
@@ -137551,10 +137282,21 @@ var zSessionUpdate = union([
   }))
 ]);
 var zSessionNotification = object({
-  _meta: record2(string2(), unknown()).nullish(),
   sessionId: zSessionId,
-  update: zSessionUpdate
+  update: zSessionUpdate,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
+var zCompleteElicitationNotification = object({
+  elicitationId: zElicitationId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zMessageMcpNotification = object({
+  connectionId: zMcpConnectionId,
+  method: string2(),
+  params: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zExtNotification = unknown();
 var zAgentNotification = object({
   method: string2(),
   params: union([
@@ -137564,27 +137306,302 @@ var zAgentNotification = object({
     zExtNotification
   ]).nullish()
 });
-var zWaitForTerminalExitRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  sessionId: zSessionId,
-  terminalId: string2()
+var zFileSystemCapabilities = object({
+  readTextFile: defaultOnError(boolean2().optional().default(false), () => false),
+  writeTextFile: defaultOnError(boolean2().optional().default(false), () => false),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
-var zWaitForTerminalExitResponse = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  exitCode: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }).nullish(),
-  signal: string2().nullish()
+var zBooleanConfigOptionCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSessionConfigOptionsCapabilities = object({
+  boolean: defaultOnError(zBooleanConfigOptionCapabilities.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zClientSessionCapabilities = object({
+  configOptions: defaultOnError(zSessionConfigOptionsCapabilities.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zPlanCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zAuthCapabilities = object({
+  terminal: defaultOnError(boolean2().optional().default(false), () => false),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zElicitationFormCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zElicitationUrlCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zElicitationCapabilities = object({
+  form: defaultOnError(zElicitationFormCapabilities.nullish(), () => void 0),
+  url: defaultOnError(zElicitationUrlCapabilities.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesJumpCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesRenameCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesSearchAndReplaceCapabilities = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zClientNesCapabilities = object({
+  jump: defaultOnError(zNesJumpCapabilities.nullish(), () => void 0),
+  rename: defaultOnError(zNesRenameCapabilities.nullish(), () => void 0),
+  searchAndReplace: defaultOnError(zNesSearchAndReplaceCapabilities.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zClientCapabilities = object({
+  fs: defaultOnError(zFileSystemCapabilities.optional().default({ readTextFile: false, writeTextFile: false }), () => ({ readTextFile: false, writeTextFile: false })),
+  terminal: defaultOnError(boolean2().optional().default(false), () => false),
+  session: defaultOnError(zClientSessionCapabilities.nullish(), () => void 0),
+  plan: defaultOnError(zPlanCapabilities.nullish(), () => void 0),
+  auth: defaultOnError(zAuthCapabilities.optional().default({ terminal: false }), () => ({ terminal: false })),
+  elicitation: defaultOnError(zElicitationCapabilities.nullish(), () => void 0),
+  nes: defaultOnError(zClientNesCapabilities.nullish(), () => void 0),
+  positionEncodings: defaultOnError(vecSkipError(zPositionEncodingKind).optional(), () => []),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zInitializeRequest = object({
+  protocolVersion: zProtocolVersion,
+  clientCapabilities: defaultOnError(zClientCapabilities.optional().default({
+    fs: { readTextFile: false, writeTextFile: false },
+    terminal: false,
+    auth: { terminal: false }
+  }), () => ({
+    fs: { readTextFile: false, writeTextFile: false },
+    terminal: false,
+    auth: { terminal: false }
+  })),
+  clientInfo: defaultOnError(zImplementation.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zAuthenticateRequest = object({
+  methodId: zAuthMethodId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zListProvidersRequest = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSetProviderRequest = object({
+  providerId: zProviderId,
+  apiType: zLlmProtocol,
+  baseUrl: string2(),
+  headers: record2(string2(), string2()).optional(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zDisableProviderRequest = object({
+  providerId: zProviderId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zLogoutRequest = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zHttpHeader = object({
+  name: string2(),
+  value: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zMcpServerHttp = object({
+  name: string2(),
+  url: string2(),
+  headers: array(zHttpHeader),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zMcpServerSse = object({
+  name: string2(),
+  url: string2(),
+  headers: array(zHttpHeader),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zMcpServerAcp = object({
+  name: string2(),
+  serverId: zMcpServerAcpId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zMcpServerStdio = object({
+  name: string2(),
+  command: string2(),
+  args: array(string2()),
+  env: array(zEnvVariable),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zMcpServer = union([
+  zMcpServerHttp.and(object({
+    type: literal("http")
+  })),
+  zMcpServerSse.and(object({
+    type: literal("sse")
+  })),
+  zMcpServerAcp.and(object({
+    type: literal("acp")
+  })),
+  zMcpServerStdio
+]);
+var zNewSessionRequest = object({
+  cwd: string2(),
+  additionalDirectories: defaultOnError(vecSkipError(string2()).optional(), () => []),
+  mcpServers: requiredDefaultOnError(vecSkipError(zMcpServer), () => []),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zLoadSessionRequest = object({
+  mcpServers: requiredDefaultOnError(vecSkipError(zMcpServer), () => []),
+  cwd: string2(),
+  additionalDirectories: defaultOnError(vecSkipError(string2()).optional(), () => []),
+  sessionId: zSessionId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zListSessionsRequest = object({
+  cwd: string2().nullish(),
+  cursor: string2().nullish(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zDeleteSessionRequest = object({
+  sessionId: zSessionId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zForkSessionRequest = object({
+  sessionId: zSessionId,
+  cwd: string2(),
+  additionalDirectories: defaultOnError(vecSkipError(string2()).optional(), () => []),
+  mcpServers: defaultOnError(vecSkipError(zMcpServer).optional(), () => []),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zResumeSessionRequest = object({
+  sessionId: zSessionId,
+  cwd: string2(),
+  additionalDirectories: defaultOnError(vecSkipError(string2()).optional(), () => []),
+  mcpServers: defaultOnError(vecSkipError(zMcpServer).optional(), () => []),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zCloseSessionRequest = object({
+  sessionId: zSessionId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSetSessionModeRequest = object({
+  sessionId: zSessionId,
+  modeId: zSessionModeId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSetSessionConfigOptionRequest = intersection(union([
+  object({
+    value: boolean2(),
+    type: literal("boolean")
+  }),
+  object({
+    value: zSessionConfigValueId
+  })
+]), object({
+  sessionId: zSessionId,
+  configId: zSessionConfigId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+}));
+var zPromptRequest = object({
+  sessionId: zSessionId,
+  prompt: array(zContentBlock),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
 var zWorkspaceFolder = object({
+  uri: string2(),
   name: string2(),
-  uri: string2()
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesRepository = object({
+  name: string2(),
+  owner: string2(),
+  remoteUrl: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
 var zStartNesRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
+  workspaceUri: defaultOnError(string2().nullish(), () => void 0),
+  workspaceFolders: array(zWorkspaceFolder).nullish(),
   repository: defaultOnError(zNesRepository.nullish(), () => void 0),
-  workspaceFolders: defaultOnError(vecSkipError(zWorkspaceFolder).nullish(), () => void 0),
-  workspaceUri: string2().nullish()
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesTriggerKind = union([
+  literal("automatic"),
+  literal("diagnostic"),
+  literal("manual")
+]);
+var zNesRecentFile = object({
+  uri: string2(),
+  languageId: string2(),
+  text: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesExcerpt = object({
+  startLine: int().gte(0).max(4294967295, {
+    error: "Invalid value: Expected uint32 to be <= 4294967295"
+  }),
+  endLine: int().gte(0).max(4294967295, {
+    error: "Invalid value: Expected uint32 to be <= 4294967295"
+  }),
+  text: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesRelatedSnippet = object({
+  uri: string2(),
+  excerpts: array(zNesExcerpt),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesEditHistoryEntry = object({
+  uri: string2(),
+  diff: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesUserAction = object({
+  action: string2(),
+  uri: string2(),
+  position: zPosition,
+  timestampMs: number2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesOpenFile = object({
+  uri: string2(),
+  languageId: string2(),
+  visibleRange: defaultOnError(zRange.nullish(), () => void 0),
+  lastFocusedMs: defaultOnError(number2().nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesDiagnosticSeverity = union([
+  literal("error"),
+  literal("warning"),
+  literal("information"),
+  literal("hint")
+]);
+var zNesDiagnostic = object({
+  uri: string2(),
+  range: zRange,
+  severity: zNesDiagnosticSeverity,
+  message: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesSuggestContext = object({
+  recentFiles: array(zNesRecentFile).nullish(),
+  relatedSnippets: array(zNesRelatedSnippet).nullish(),
+  editHistory: array(zNesEditHistoryEntry).nullish(),
+  userActions: array(zNesUserAction).nullish(),
+  openFiles: array(zNesOpenFile).nullish(),
+  diagnostics: array(zNesDiagnostic).nullish(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSuggestNesRequest = object({
+  sessionId: zSessionId,
+  uri: string2(),
+  version: number2(),
+  position: zPosition,
+  selection: zRange.nullish(),
+  triggerKind: zNesTriggerKind,
+  context: zNesSuggestContext.nullish(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zCloseNesRequest = object({
+  sessionId: zSessionId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
 var zClientRequest = object({
   id: zRequestId,
@@ -137613,33 +137630,91 @@ var zClientRequest = object({
     zExtRequest
   ]).nullish()
 });
-var zWriteTextFileRequest = object({
-  _meta: record2(string2(), unknown()).nullish(),
-  content: string2(),
-  path: string2(),
-  sessionId: zSessionId
-});
-var zAgentRequest = object({
-  id: zRequestId,
-  method: string2(),
-  params: union([
-    zWriteTextFileRequest,
-    zReadTextFileRequest,
-    zRequestPermissionRequest,
-    zCreateTerminalRequest,
-    zTerminalOutputRequest,
-    zReleaseTerminalRequest,
-    zWaitForTerminalExitRequest,
-    zKillTerminalRequest,
-    zCreateElicitationRequest,
-    zConnectMcpRequest,
-    zMessageMcpRequest,
-    zDisconnectMcpRequest,
-    zExtRequest
-  ]).nullish()
-});
 var zWriteTextFileResponse = object({
-  _meta: record2(string2(), unknown()).nullish()
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zReadTextFileResponse = object({
+  content: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zSelectedPermissionOutcome = object({
+  optionId: zPermissionOptionId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zRequestPermissionOutcome = union([
+  object({
+    outcome: literal("cancelled")
+  }),
+  zSelectedPermissionOutcome.and(object({
+    outcome: literal("selected")
+  }))
+]);
+var zRequestPermissionResponse = object({
+  outcome: zRequestPermissionOutcome,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zCreateTerminalResponse = object({
+  terminalId: zTerminalId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zTerminalExitStatus = object({
+  exitCode: defaultOnError(int().gte(0).max(4294967295, {
+    error: "Invalid value: Expected uint32 to be <= 4294967295"
+  }).nullish(), () => void 0),
+  signal: defaultOnError(string2().nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zTerminalOutputResponse = object({
+  output: string2(),
+  truncated: boolean2(),
+  exitStatus: defaultOnError(zTerminalExitStatus.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zReleaseTerminalResponse = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zWaitForTerminalExitResponse = object({
+  exitCode: defaultOnError(int().gte(0).max(4294967295, {
+    error: "Invalid value: Expected uint32 to be <= 4294967295"
+  }).nullish(), () => void 0),
+  signal: defaultOnError(string2().nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zKillTerminalResponse = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zElicitationContentValue = union([
+  string2(),
+  number2(),
+  number2(),
+  boolean2(),
+  array(string2())
+]);
+var zElicitationAcceptAction = object({
+  content: record2(string2(), zElicitationContentValue).nullish()
+});
+var zCreateElicitationResponse = preserveCustomPayload(intersection(union([
+  zElicitationAcceptAction.and(object({
+    action: literal("accept")
+  })),
+  object({
+    action: literal("decline")
+  }),
+  object({
+    action: literal("cancel")
+  }),
+  excludeKnownTags(object({
+    action: string2()
+  }), "action", ["accept", "cancel", "decline"])
+]), object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+})), "action", ["accept", "cancel", "decline"]);
+var zConnectMcpResponse = object({
+  connectionId: zMcpConnectionId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zDisconnectMcpResponse = object({
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
 });
 var zClientResponse = union([
   object({
@@ -137656,65 +137731,1139 @@ var zClientResponse = union([
       zCreateElicitationResponse,
       zConnectMcpResponse,
       zDisconnectMcpResponse,
-      zExtResponse,
-      zMessageMcpResponse
+      zMessageMcpResponse,
+      zExtResponse
     ])
   }),
   object({
-    error: zError,
-    id: zRequestId
+    id: zRequestId,
+    error: zError
   })
 ]);
+var zCancelNotification = object({
+  sessionId: zSessionId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zDidOpenDocumentNotification = object({
+  sessionId: zSessionId,
+  uri: string2(),
+  languageId: string2(),
+  version: number2(),
+  text: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zTextDocumentContentChangeEvent = object({
+  range: zRange.nullish(),
+  text: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zDidChangeDocumentNotification = object({
+  sessionId: zSessionId,
+  uri: string2(),
+  version: number2(),
+  contentChanges: requiredDefaultOnError(vecSkipError(zTextDocumentContentChangeEvent), () => []),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zDidCloseDocumentNotification = object({
+  sessionId: zSessionId,
+  uri: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zDidSaveDocumentNotification = object({
+  sessionId: zSessionId,
+  uri: string2(),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zDidFocusDocumentNotification = object({
+  sessionId: zSessionId,
+  uri: string2(),
+  version: number2(),
+  position: zPosition,
+  visibleRange: zRange,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zAcceptNesNotification = object({
+  sessionId: zSessionId,
+  id: zNesSuggestionId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zNesRejectReason = union([
+  literal("rejected"),
+  literal("ignored"),
+  literal("replaced"),
+  literal("cancelled")
+]);
+var zRejectNesNotification = object({
+  sessionId: zSessionId,
+  id: zNesSuggestionId,
+  reason: defaultOnError(zNesRejectReason.nullish(), () => void 0),
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
+var zClientNotification = object({
+  method: string2(),
+  params: union([
+    zCancelNotification,
+    zDidOpenDocumentNotification,
+    zDidChangeDocumentNotification,
+    zDidCloseDocumentNotification,
+    zDidSaveDocumentNotification,
+    zDidFocusDocumentNotification,
+    zAcceptNesNotification,
+    zRejectNesNotification,
+    zMessageMcpNotification,
+    zExtNotification
+  ]).nullish()
+});
+var zCancelRequestNotification = object({
+  requestId: zRequestId,
+  _meta: defaultOnError(record2(string2(), unknown()).nullish(), () => void 0)
+});
 
-// ../../node_modules/.pnpm/@agentclientprotocol+sdk@0.25.1_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/stream.js
+// ../../node_modules/.pnpm/@agentclientprotocol+sdk@1.3.0_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/jsonrpc.js
+var CANCEL_REQUEST_METHOD = "$/cancel_request";
+function isRequestMessage(value) {
+  return isJsonRpcEnvelope(value) && "id" in value && typeof value["method"] === "string" && isJsonRpcId(value["id"]);
+}
+function isResponseMessage(value) {
+  if (!isJsonRpcEnvelope(value) || "method" in value) {
+    return false;
+  }
+  if (!("id" in value) || !isJsonRpcId(value["id"])) {
+    return false;
+  }
+  const hasResult = Object.hasOwn(value, "result");
+  const hasError = Object.hasOwn(value, "error");
+  if (hasResult === hasError) {
+    return false;
+  }
+  return !hasError || isErrorResponse(value["error"]);
+}
+function isNotificationMessage(value) {
+  return isJsonRpcEnvelope(value) && !("id" in value) && typeof value["method"] === "string";
+}
+function isRecord14(value) {
+  return typeof value === "object" && value !== null;
+}
+function isJsonRpcEnvelope(value) {
+  return isRecord14(value) && value["jsonrpc"] === "2.0";
+}
+function isJsonRpcId(value) {
+  return value === null || typeof value === "string" || typeof value === "number" && Number.isFinite(value);
+}
+function isResponseShapedMessage(value) {
+  return isRecord14(value) && !("method" in value) && ("id" in value || "result" in value || "error" in value);
+}
+function isResponseBatch(batch) {
+  let hasValidCall = false;
+  let hasValidResponse = false;
+  let hasCallShape = false;
+  let hasResponseShape = false;
+  for (const entry of batch) {
+    hasValidCall ||= isRequestMessage(entry) || isNotificationMessage(entry);
+    hasValidResponse ||= isResponseMessage(entry);
+    if (!isRecord14(entry)) {
+      continue;
+    }
+    hasCallShape ||= "method" in entry;
+    hasResponseShape ||= "result" in entry || "error" in entry;
+  }
+  if (hasValidCall) {
+    return false;
+  }
+  if (hasValidResponse) {
+    return true;
+  }
+  return hasResponseShape && !hasCallShape;
+}
+function cancelRequestId(params) {
+  if (!isRecord14(params) || !isJsonRpcId(params["requestId"])) {
+    return void 0;
+  }
+  return params["requestId"];
+}
+function isErrorResponse(value) {
+  return isRecord14(value) && typeof value["code"] === "number" && Number.isInteger(value["code"]) && typeof value["message"] === "string";
+}
+var Handled = {
+  /**
+   * Marks a message as handled.
+   */
+  yes() {
+    return { handled: true };
+  },
+  /**
+   * Leaves a message unhandled so later handlers can process it.
+   */
+  no(message, retry = false) {
+    return { handled: false, message, retry };
+  }
+};
+function rejectedPromise(error53) {
+  const promise2 = Promise.reject(error53);
+  promise2.catch(() => {
+  });
+  return promise2;
+}
+function errorDetails(error53) {
+  if (error53 instanceof Error) {
+    return error53.message;
+  }
+  if (typeof error53 === "object" && error53 != null && "message" in error53 && typeof error53.message === "string") {
+    return error53.message;
+  }
+  return void 0;
+}
+function isZodError(error53) {
+  return typeof error53 === "object" && error53 !== null && "name" in error53 && error53.name === "ZodError" && "issues" in error53 && Array.isArray(error53.issues) && "format" in error53 && typeof error53.format === "function";
+}
+function errorToResult(error53) {
+  if (error53 instanceof RequestError2) {
+    return error53.toResult();
+  }
+  if (isZodError(error53)) {
+    return RequestError2.invalidParams(error53.format()).toResult();
+  }
+  const details = errorDetails(error53);
+  try {
+    return RequestError2.internalError(details ? JSON.parse(details) : {}).toResult();
+  } catch {
+    return RequestError2.internalError({ details }).toResult();
+  }
+}
+function requestCancelledError(reason) {
+  if (reason instanceof RequestError2 && reason.code === -32800) {
+    return reason;
+  }
+  return RequestError2.requestCancelled(reason);
+}
+function errorToRequestResult(error53, signal) {
+  const requestCancelled = abortErrorToRequestCancelled(error53, signal);
+  return requestCancelled ? requestCancelled.toResult() : errorToResult(error53);
+}
+function abortErrorToRequestCancelled(error53, signal) {
+  if (!signal.aborted || !isAbortError(error53)) {
+    return void 0;
+  }
+  return requestCancelledError(signal.reason);
+}
+function isAbortError(error53) {
+  if (typeof error53 !== "object" || error53 === null) {
+    return false;
+  }
+  const maybeAbortError = error53;
+  return maybeAbortError.name === "AbortError" || maybeAbortError.code === "ABORT_ERR";
+}
+var RequestResponder = class {
+  id;
+  sendResult;
+  signal;
+  finishRequest;
+  didRespond = false;
+  constructor(id2, sendResult, signal = new AbortController().signal, finishRequest) {
+    this.id = id2;
+    this.sendResult = sendResult;
+    this.signal = signal;
+    this.finishRequest = finishRequest;
+  }
+  /**
+   * Whether this request has already received a response.
+   */
+  get responded() {
+    return this.didRespond;
+  }
+  /**
+   * Sends a successful JSON-RPC response.
+   */
+  respond(response) {
+    return this.respondWithResult({ result: response ?? null });
+  }
+  /**
+   * Sends an error JSON-RPC response.
+   */
+  respondWithError(error53) {
+    const errorResponse = error53 instanceof RequestError2 ? error53.toErrorResponse() : error53;
+    return this.respondWithResult({ error: errorResponse });
+  }
+  /**
+   * Sends a complete JSON-RPC result payload.
+   */
+  respondWithResult(result) {
+    if (this.didRespond) {
+      return rejectedPromise(new Error("JSON-RPC request already responded"));
+    }
+    this.didRespond = true;
+    return this.sendResult(result).finally(() => {
+      this.finishRequest?.();
+    });
+  }
+};
+var HandlerRegistration = class {
+  disposeHandler;
+  active = true;
+  constructor(disposeHandler) {
+    this.disposeHandler = disposeHandler;
+  }
+  /**
+   * Unregisters the associated handler.
+   */
+  dispose() {
+    if (!this.active) {
+      return;
+    }
+    this.active = false;
+    this.disposeHandler();
+  }
+  /**
+   * Supports explicit resource management with `using`.
+   */
+  [Symbol.dispose]() {
+    this.dispose();
+  }
+  /**
+   * Returns this registration for call sites that intentionally keep it active.
+   */
+  runIndefinitely() {
+    return this;
+  }
+};
+var ConnectionContext = class {
+  connection;
+  constructor(connection) {
+    this.connection = connection;
+  }
+  /**
+   * Sends a request over the connection.
+   */
+  sendRequest(method, params, mapResponse, options) {
+    return this.connection.sendRequest(method, params, mapResponse, options);
+  }
+  /**
+   * Sends a notification over the connection.
+   */
+  sendNotification(method, params) {
+    return this.connection.sendNotification(method, params);
+  }
+  /**
+   * Sends a non-empty JSON-RPC batch in one transport message.
+   */
+  sendBatch(entries) {
+    return this.connection.sendBatch(entries);
+  }
+  /**
+   * Sends a protocol-level request cancellation notification.
+   */
+  sendCancelRequest(requestId) {
+    return this.connection.sendCancelRequest(requestId);
+  }
+  /**
+   * Registers a handler that can be disposed independently.
+   */
+  addDynamicHandler(handler) {
+    return this.connection.addDynamicHandler(handler);
+  }
+  /**
+   * AbortSignal that aborts when the connection closes.
+   */
+  get signal() {
+    return this.connection.signal;
+  }
+  /**
+   * Promise that resolves when the connection closes.
+   */
+  get closed() {
+    return this.connection.closed;
+  }
+};
+var Connection = class {
+  pendingResponses = /* @__PURE__ */ new Map();
+  incomingRequests = /* @__PURE__ */ new Map();
+  nextRequestId = 0;
+  staticHandlers = [];
+  dynamicHandlers = /* @__PURE__ */ new Set();
+  stream;
+  writeQueue = Promise.resolve();
+  abortController = new AbortController();
+  closedPromise;
+  retryQueue = [];
+  context = new ConnectionContext(this);
+  receiveReader;
+  allowBatches = true;
+  constructor(requestHandlerOrStream, notificationHandlerOrHandlers, streamOrOptions, options) {
+    if (typeof requestHandlerOrStream === "function") {
+      const requestHandler = requestHandlerOrStream;
+      const notificationHandler = notificationHandlerOrHandlers;
+      const stream2 = streamOrOptions;
+      this.initialize(stream2, [
+        ...options?.handlers ?? [],
+        this.legacyHandler(requestHandler, notificationHandler)
+      ], options);
+      return;
+    }
+    const stream = requestHandlerOrStream;
+    const handlers = notificationHandlerOrHandlers;
+    const connectionOptions = streamOrOptions;
+    this.initialize(stream, [...connectionOptions?.handlers ?? [], ...handlers], connectionOptions);
+  }
+  /**
+   * Creates a builder for configuring a handler-based connection.
+   */
+  static builder() {
+    return new ConnectionBuilder();
+  }
+  /**
+   * Runs an operation while the connection is open, then closes the connection.
+   *
+   * If the stream closes before `op` settles, the returned promise rejects with
+   * the connection close reason.
+   */
+  runUntil(op2) {
+    let opSettled = false;
+    const opPromise = Promise.resolve().then(() => op2(this.context)).finally(() => {
+      opSettled = true;
+    });
+    const closedPromise = this.closed.then(() => {
+      if (opSettled) {
+        return new Promise(() => {
+        });
+      }
+      throw this.closedReason();
+    });
+    return Promise.race([opPromise, closedPromise]).finally(() => {
+      opSettled = true;
+      this.close();
+    });
+  }
+  /**
+   * Adds a handler after the connection has started.
+   *
+   * Any messages queued with `Handled.no(message, true)` are retried after the
+   * handler is added.
+   */
+  addDynamicHandler(handler) {
+    this.dynamicHandlers.add(handler);
+    if (this.retryQueue.length > 0) {
+      for (const message of this.retryQueue.splice(0)) {
+        void this.processIncomingMessage(message).catch((error53) => this.close(error53));
+      }
+    }
+    return new HandlerRegistration(() => {
+      this.dynamicHandlers.delete(handler);
+    });
+  }
+  /**
+   * AbortSignal that aborts when the connection closes.
+   */
+  get signal() {
+    return this.abortController.signal;
+  }
+  /**
+   * Promise that resolves when the connection closes.
+   */
+  get closed() {
+    return this.closedPromise;
+  }
+  /** @internal */
+  getContext() {
+    return this.context;
+  }
+  /**
+   * Sends a JSON-RPC request.
+   *
+   * `mapResponse` can convert the raw result before the returned promise
+   * resolves.
+   */
+  sendRequest(method, params, mapResponse, options = {}) {
+    if (this.abortController.signal.aborted) {
+      return rejectedPromise(this.closedReason());
+    }
+    const request = this.prepareRequest(method, params, mapResponse, options);
+    const requestSent = this.sendWireMessage(request.message);
+    void requestSent.catch(() => {
+    });
+    if (options.cancellationSignal?.aborted) {
+      request.cancel();
+    }
+    return request.response;
+  }
+  /**
+   * Sends a non-empty JSON-RPC batch in one transport message.
+   *
+   * Requests and notifications are processed independently by the peer. The
+   * returned tuple preserves the input order: request entries resolve to their
+   * mapped response, while notification entries resolve to `undefined`.
+   */
+  sendBatch(entries) {
+    if (this.abortController.signal.aborted) {
+      return rejectedPromise(this.closedReason());
+    }
+    if (!this.allowBatches) {
+      return rejectedPromise(new TypeError("JSON-RPC batches are not supported on this connection"));
+    }
+    if (entries.length === 0) {
+      return rejectedPromise(new TypeError("JSON-RPC batch must contain at least one entry"));
+    }
+    const messages = [];
+    const cancellations = [];
+    const outputs = [];
+    for (const entry of entries) {
+      if (entry.kind === "notification") {
+        messages.push({
+          jsonrpc: "2.0",
+          method: entry.method,
+          params: entry.params
+        });
+        outputs.push(Promise.resolve(void 0));
+        continue;
+      }
+      const request = this.prepareRequest(entry.method, entry.params, entry.mapResponse, entry.options);
+      messages.push(request.message);
+      outputs.push(request.response);
+      cancellations.push({
+        signal: entry.options?.cancellationSignal,
+        cancel: request.cancel
+      });
+    }
+    const batch = messages;
+    const batchSent = this.sendWireMessage(batch);
+    for (const cancellation of cancellations) {
+      if (cancellation.signal?.aborted) {
+        cancellation.cancel();
+      }
+    }
+    const response = Promise.all([batchSent, ...outputs]).then(([, ...resolved]) => resolved);
+    response.catch(() => {
+    });
+    return response;
+  }
+  /**
+   * Sends a protocol-level request cancellation notification.
+   */
+  sendCancelRequest(requestId) {
+    return this.sendNotification(CANCEL_REQUEST_METHOD, { requestId });
+  }
+  /**
+   * Sends a JSON-RPC notification.
+   */
+  sendNotification(method, params) {
+    if (this.abortController.signal.aborted) {
+      return rejectedPromise(this.closedReason());
+    }
+    return this.sendWireMessage({ jsonrpc: "2.0", method, params });
+  }
+  prepareRequest(method, params, mapResponse, options = {}) {
+    const id2 = this.nextRequestId++;
+    let cancel = () => {
+    };
+    const response = new Promise((resolve18, reject) => {
+      const pendingResponse = {
+        resolve: (value) => {
+          try {
+            resolve18(mapResponse ? mapResponse(value) : value);
+          } catch (error53) {
+            reject(error53);
+          }
+        },
+        reject
+      };
+      cancel = () => {
+        if (pendingResponse.cancellationSent) {
+          return;
+        }
+        pendingResponse.cancellationSent = true;
+        pendingResponse.cleanup?.();
+        void this.sendCancelRequest(id2).catch(() => {
+        });
+      };
+      options.cancellationSignal?.addEventListener("abort", cancel, {
+        once: true
+      });
+      pendingResponse.cleanup = () => {
+        options.cancellationSignal?.removeEventListener("abort", cancel);
+      };
+      this.pendingResponses.set(id2, pendingResponse);
+    });
+    response.catch(() => {
+    });
+    return {
+      message: { jsonrpc: "2.0", id: id2, method, params },
+      response,
+      cancel: () => cancel()
+    };
+  }
+  /**
+   * Closes the connection and rejects pending requests.
+   */
+  close(error53) {
+    if (this.abortController.signal.aborted) {
+      return;
+    }
+    const closeError = error53 ?? new Error("ACP connection closed");
+    this.abortController.abort(closeError);
+    for (const pendingResponse of this.pendingResponses.values()) {
+      pendingResponse.cleanup?.();
+      pendingResponse.reject(closeError);
+    }
+    this.pendingResponses.clear();
+    for (const controller of this.incomingRequests.values()) {
+      controller.abort(closeError);
+    }
+    this.incomingRequests.clear();
+    void this.receiveReader?.cancel(closeError).catch(() => {
+    });
+  }
+  initialize(stream, handlers, options) {
+    this.stream = stream;
+    this.staticHandlers = handlers;
+    this.allowBatches = options?.allowBatches ?? true;
+    this.closedPromise = new Promise((resolve18) => {
+      this.abortController.signal.addEventListener("abort", () => resolve18());
+    });
+    void this.receive();
+  }
+  legacyHandler(requestHandler, notificationHandler) {
+    return {
+      handleMessage: async (message, cx) => {
+        if (message.kind === "request") {
+          const result = await requestHandler(message.method, message.params, cx);
+          await message.responder.respond(result);
+        } else {
+          await notificationHandler(message.method, message.params, cx);
+        }
+        return Handled.yes();
+      }
+    };
+  }
+  async receive() {
+    let closeError = void 0;
+    try {
+      const reader = this.stream.readable.getReader();
+      this.receiveReader = reader;
+      try {
+        while (!this.abortController.signal.aborted) {
+          const { value: message, done } = await reader.read();
+          if (this.abortController.signal.aborted) {
+            break;
+          }
+          if (done) {
+            break;
+          }
+          if (!message) {
+            continue;
+          }
+          this.receiveWireMessage(message);
+        }
+      } finally {
+        if (this.receiveReader === reader) {
+          this.receiveReader = void 0;
+        }
+        reader.releaseLock();
+      }
+    } catch (error53) {
+      closeError = error53;
+    } finally {
+      this.close(closeError);
+    }
+  }
+  receiveWireMessage(message) {
+    if (Array.isArray(message)) {
+      if (!this.allowBatches) {
+        this.close(new TypeError("JSON-RPC batches are not supported on this connection"));
+        return;
+      }
+      this.receiveBatch(message);
+      return;
+    }
+    if (!isRecord14(message)) {
+      console.error("Invalid message", { message });
+      return;
+    }
+    this.receiveMessage(message);
+  }
+  receiveBatch(batch) {
+    if (batch.length === 0) {
+      void this.sendWireMessage({
+        jsonrpc: "2.0",
+        id: null,
+        error: RequestError2.invalidRequest(batch).toErrorResponse()
+      }).catch(() => {
+      });
+      return;
+    }
+    const responseBatch = isResponseBatch(batch);
+    const responseCount = responseBatch ? 0 : batch.reduce((count, message) => count + (isNotificationMessage(message) ? 0 : 1), 0);
+    let remaining = responseCount;
+    let remainingNotifications = batch.reduce((count, message) => count + (isNotificationMessage(message) ? 1 : 0), 0);
+    let responseSent = false;
+    const responses = [];
+    const sendResponsesIfReady = async () => {
+      if (responseSent || remaining !== 0 || remainingNotifications !== 0 || responses.length === 0) {
+        return;
+      }
+      responseSent = true;
+      await this.sendWireMessage(responses);
+    };
+    const collectResponse = async (response) => {
+      responses.push(response);
+      remaining -= 1;
+      await sendResponsesIfReady();
+    };
+    for (const message of batch) {
+      if (responseBatch) {
+        if (isResponseShapedMessage(message)) {
+          this.receiveMessage(message);
+        }
+        continue;
+      }
+      if (!isRequestMessage(message) && !isNotificationMessage(message)) {
+        void collectResponse({
+          jsonrpc: "2.0",
+          id: null,
+          error: RequestError2.invalidRequest(message).toErrorResponse()
+        }).catch(() => {
+        });
+        continue;
+      }
+      const processing = this.receiveMessage(message, isRequestMessage(message) ? collectResponse : void 0);
+      if (isNotificationMessage(message)) {
+        void processing.finally(() => {
+          remainingNotifications -= 1;
+          void sendResponsesIfReady().catch((error53) => this.close(error53));
+        });
+      }
+    }
+  }
+  receiveMessage(message, sendResponse) {
+    if (this.abortController.signal.aborted) {
+      return Promise.resolve();
+    }
+    if (!isRecord14(message)) {
+      console.error("Invalid message", { message });
+      return Promise.resolve();
+    }
+    if ("method" in message) {
+      if (!("id" in message)) {
+        this.handleProtocolNotification(message);
+      }
+      return this.processIncomingMessage(this.toIncomingMessage(message, sendResponse)).catch((error53) => this.close(error53));
+    } else if ("id" in message) {
+      this.handleResponse(message);
+    } else {
+      console.error("Invalid message", { message });
+    }
+    return Promise.resolve();
+  }
+  async processIncomingMessage(message) {
+    if (this.abortController.signal.aborted) {
+      return;
+    }
+    let current = message;
+    let retry = false;
+    try {
+      for (const handler of [
+        ...this.staticHandlers,
+        ...this.dynamicHandlers.values()
+      ]) {
+        if (this.abortController.signal.aborted) {
+          return;
+        }
+        const result = await handler.handleMessage(current, this.context) ?? {
+          handled: true
+        };
+        if (result.handled) {
+          return;
+        }
+        current = result.message ?? current;
+        retry = retry || Boolean(result.retry);
+      }
+      if (retry) {
+        this.retryQueue.push(current);
+      } else if (current.kind === "request") {
+        await current.responder.respondWithError(RequestError2.methodNotFound(current.method));
+      }
+    } catch (error53) {
+      if (this.abortController.signal.aborted) {
+        return;
+      }
+      if (current.kind === "request" && !current.responder.responded) {
+        await current.responder.respondWithResult(errorToRequestResult(error53, current.responder.signal));
+      } else {
+        const response = errorToResult(error53);
+        if ("error" in response) {
+          console.error("Error handling notification", message.raw, response.error);
+        }
+      }
+    }
+  }
+  toIncomingMessage(message, sendResponse) {
+    if ("id" in message) {
+      const abortController = new AbortController();
+      this.incomingRequests.set(message.id, abortController);
+      const finishRequest = () => {
+        if (this.incomingRequests.get(message.id) === abortController) {
+          this.incomingRequests.delete(message.id);
+        }
+      };
+      return {
+        kind: "request",
+        method: message.method,
+        params: message.params,
+        raw: message,
+        signal: abortController.signal,
+        responder: new RequestResponder(message.id, (result) => {
+          const response = {
+            jsonrpc: "2.0",
+            id: message.id,
+            ...result
+          };
+          return sendResponse ? sendResponse(response) : this.sendWireMessage(response);
+        }, abortController.signal, finishRequest)
+      };
+    }
+    return {
+      kind: "notification",
+      method: message.method,
+      params: message.params,
+      raw: message
+    };
+  }
+  handleResponse(response) {
+    const pendingResponse = this.pendingResponses.get(response.id);
+    if (pendingResponse) {
+      this.pendingResponses.delete(response.id);
+      pendingResponse.cleanup?.();
+      if (!isResponseMessage(response)) {
+        pendingResponse.reject(RequestError2.invalidRequest(response));
+      } else if ("result" in response) {
+        pendingResponse.resolve(response.result);
+      } else {
+        const { code, message, data } = response.error;
+        pendingResponse.reject(new RequestError2(code, message, data));
+      }
+    } else {
+      console.error("Got response to unknown request", response.id);
+    }
+  }
+  handleProtocolNotification(message) {
+    if (message.method !== CANCEL_REQUEST_METHOD) {
+      return;
+    }
+    const requestId = cancelRequestId(message.params);
+    if (requestId === void 0) {
+      return;
+    }
+    const controller = this.incomingRequests.get(requestId);
+    if (!controller || controller.signal.aborted) {
+      return;
+    }
+    controller.abort(RequestError2.requestCancelled({ requestId }));
+  }
+  closedReason() {
+    return this.abortController.signal.reason ?? new Error("ACP connection closed");
+  }
+  async sendWireMessage(message) {
+    if (this.abortController.signal.aborted) {
+      return rejectedPromise(this.closedReason());
+    }
+    this.writeQueue = this.writeQueue.then(async () => {
+      if (this.abortController.signal.aborted) {
+        throw this.closedReason();
+      }
+      const writer = this.stream.writable.getWriter();
+      try {
+        await writer.write(message);
+      } finally {
+        writer.releaseLock();
+      }
+    }).catch((error53) => {
+      this.close(error53);
+      throw error53;
+    });
+    return this.writeQueue;
+  }
+};
+var ConnectionBuilder = class {
+  handlers = [];
+  connectionName;
+  /**
+   * Sets a diagnostic name used by handlers created from this builder.
+   */
+  name(name) {
+    this.connectionName = name;
+    return this;
+  }
+  /**
+   * Adds a raw JSON-RPC handler to the handler chain.
+   */
+  withHandler(handler) {
+    this.handlers.push(handler);
+    return this;
+  }
+  /**
+   * Adds a handler that can inspect every incoming request or notification.
+   *
+   * Observer callbacks that return void pass the message through to later
+   * handlers. Return `Handled.yes()` to stop dispatch explicitly.
+   */
+  onReceiveMessage(handler) {
+    return this.withHandler({
+      handleMessage: async (message, cx) => await handler(message, cx) ?? Handled.no(message),
+      describe: () => this.connectionName ?? "onReceiveMessage"
+    });
+  }
+  /**
+   * Adds a typed request handler for one method.
+   */
+  onReceiveRequest(method, parse5, handler) {
+    return this.withHandler({
+      handleMessage: async (message, cx) => {
+        if (message.kind !== "request" || message.method !== method) {
+          return Handled.no(message);
+        }
+        const request = parse5(message.params);
+        return await handler(request, message.responder, cx) ?? Handled.yes();
+      },
+      describe: () => `${this.connectionName ?? "request"}:${method}`
+    });
+  }
+  /**
+   * Adds a typed notification handler for one method.
+   */
+  onReceiveNotification(method, parse5, handler) {
+    return this.withHandler({
+      handleMessage: async (message, cx) => {
+        if (message.kind !== "notification" || message.method !== method) {
+          return Handled.no(message);
+        }
+        const notification = parse5(message.params);
+        return await handler(notification, cx) ?? Handled.yes();
+      },
+      describe: () => `${this.connectionName ?? "notification"}:${method}`
+    });
+  }
+  /**
+   * Connects the configured handlers to a stream.
+   */
+  connect(stream, options) {
+    return new Connection(stream, this.handlers, options);
+  }
+  /**
+   * Connects to a stream for the lifetime of `op`, then closes the connection.
+   */
+  connectWith(stream, op2, options) {
+    return this.connect(stream, options).runUntil(op2);
+  }
+};
+var RequestError2 = class _RequestError extends Error {
+  code;
+  /**
+   * Additional JSON-RPC error data.
+   */
+  data;
+  constructor(code, message, data) {
+    super(message);
+    this.code = code;
+    this.name = "RequestError";
+    this.data = data;
+  }
+  /**
+   * Invalid JSON was received by the server. An error occurred on the server while parsing the JSON text.
+   */
+  static parseError(data, additionalMessage) {
+    return new _RequestError(-32700, `Parse error${additionalMessage ? `: ${additionalMessage}` : ""}`, data);
+  }
+  /**
+   * The JSON sent is not a valid Request object.
+   */
+  static invalidRequest(data, additionalMessage) {
+    return new _RequestError(-32600, `Invalid request${additionalMessage ? `: ${additionalMessage}` : ""}`, data);
+  }
+  /**
+   * The method does not exist / is not available.
+   */
+  static methodNotFound(method) {
+    return new _RequestError(-32601, `"Method not found": ${method}`, {
+      method
+    });
+  }
+  /**
+   * Invalid method parameter(s).
+   */
+  static invalidParams(data, additionalMessage) {
+    return new _RequestError(-32602, `Invalid params${additionalMessage ? `: ${additionalMessage}` : ""}`, data);
+  }
+  /**
+   * Internal JSON-RPC error.
+   */
+  static internalError(data, additionalMessage) {
+    return new _RequestError(-32603, `Internal error${additionalMessage ? `: ${additionalMessage}` : ""}`, data);
+  }
+  /**
+   * Execution of the request was aborted.
+   */
+  static requestCancelled(data, additionalMessage) {
+    return new _RequestError(-32800, `Request cancelled${additionalMessage ? `: ${additionalMessage}` : ""}`, data);
+  }
+  /**
+   * Authentication required.
+   */
+  static authRequired(data, additionalMessage) {
+    return new _RequestError(-32e3, `Authentication required${additionalMessage ? `: ${additionalMessage}` : ""}`, data);
+  }
+  /**
+   * Resource, such as a file, was not found
+   */
+  static resourceNotFound(uri) {
+    return new _RequestError(-32002, `Resource not found${uri ? `: ${uri}` : ""}`, uri && { uri });
+  }
+  /**
+   * Converts this error to a JSON-RPC result object.
+   */
+  toResult() {
+    return {
+      error: {
+        code: this.code,
+        message: this.message,
+        data: this.data
+      }
+    };
+  }
+  /**
+   * Converts this error to a JSON-RPC error response payload.
+   */
+  toErrorResponse() {
+    return {
+      code: this.code,
+      message: this.message,
+      data: this.data
+    };
+  }
+};
+
+// ../../node_modules/.pnpm/@agentclientprotocol+sdk@1.3.0_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/line-buffer.js
+var newline = 10;
+var LineBuffer = class {
+  /** Bytes of the current (incomplete) line, carried across chunks. */
+  #pending = [];
+  /**
+   * Consumes a chunk, returning each complete line without its trailing
+   * newline.
+   */
+  push(chunk) {
+    const lines = [];
+    let start = 0;
+    let newlineIndex = chunk.indexOf(newline, start);
+    while (newlineIndex !== -1) {
+      lines.push(this.#takeLine(chunk.subarray(start, newlineIndex)));
+      start = newlineIndex + 1;
+      newlineIndex = chunk.indexOf(newline, start);
+    }
+    if (start < chunk.byteLength) {
+      this.#pending.push(start === 0 ? chunk : new Uint8Array(chunk.subarray(start)));
+    }
+    return lines;
+  }
+  /**
+   * Returns the trailing unterminated line and resets the buffer, or
+   * undefined if no bytes are buffered.
+   */
+  flush() {
+    if (this.#pending.length === 0) {
+      return void 0;
+    }
+    return this.#takeLine(new Uint8Array(0));
+  }
+  #takeLine(tail) {
+    if (this.#pending.length === 0) {
+      return tail;
+    }
+    let total = tail.byteLength;
+    for (const part of this.#pending) {
+      total += part.byteLength;
+    }
+    const line = new Uint8Array(total);
+    let offset = 0;
+    for (const part of this.#pending) {
+      line.set(part, offset);
+      offset += part.byteLength;
+    }
+    line.set(tail, offset);
+    this.#pending = [];
+    return line;
+  }
+};
+
+// ../../node_modules/.pnpm/@agentclientprotocol+sdk@1.3.0_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/stream.js
 function ndJsonStream(output, input) {
   const textEncoder = new TextEncoder();
   const textDecoder = new TextDecoder();
+  let cancelled = false;
+  let inputReader;
   const readable = new ReadableStream({
     async start(controller) {
-      let content = "";
+      const lines = new LineBuffer();
+      const enqueueLine = (lineBytes) => {
+        const trimmedLine = textDecoder.decode(lineBytes).trim();
+        if (trimmedLine) {
+          try {
+            const message = JSON.parse(trimmedLine);
+            if (isRecord14(message) || Array.isArray(message)) {
+              controller.enqueue(message);
+            } else {
+              console.warn("Skipping JSON line that is not an object:", trimmedLine);
+            }
+          } catch (err) {
+            console.error("Failed to parse JSON message:", trimmedLine, err);
+          }
+        }
+      };
       const reader = input.getReader();
+      inputReader = reader;
       try {
         while (true) {
           const { value, done } = await reader.read();
+          if (cancelled) {
+            return;
+          }
           if (done) {
-            content += textDecoder.decode();
             break;
           }
           if (!value) {
             continue;
           }
-          content += textDecoder.decode(value, { stream: true });
-          const lines = content.split("\n");
-          content = lines.pop() || "";
-          for (const line of lines) {
-            const trimmedLine2 = line.trim();
-            if (trimmedLine2) {
-              try {
-                const message = JSON.parse(trimmedLine2);
-                controller.enqueue(message);
-              } catch (err) {
-                console.error("Failed to parse JSON message:", trimmedLine2, err);
-              }
+          for (const line of lines.push(value)) {
+            enqueueLine(line);
+            if (cancelled) {
+              return;
             }
           }
         }
-        const trimmedLine = content.trim();
-        if (trimmedLine) {
-          try {
-            const message = JSON.parse(trimmedLine);
-            controller.enqueue(message);
-          } catch (err) {
-            console.error("Failed to parse JSON message:", trimmedLine, err);
-          }
+        if (cancelled) {
+          return;
+        }
+        const lastLine = lines.flush();
+        if (lastLine) {
+          enqueueLine(lastLine);
         }
       } catch (err) {
+        if (cancelled) {
+          return;
+        }
         controller.error(err);
         return;
       } finally {
+        if (inputReader === reader) {
+          inputReader = void 0;
+        }
         reader.releaseLock();
       }
+      if (cancelled) {
+        return;
+      }
       controller.close();
+    },
+    cancel(reason) {
+      cancelled = true;
+      return inputReader?.cancel(reason);
     }
   });
   const writable = new WritableStream({
@@ -137731,15 +138880,960 @@ function ndJsonStream(output, input) {
   return { readable, writable };
 }
 
-// ../../node_modules/.pnpm/@agentclientprotocol+sdk@0.25.1_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/acp.js
+// ../../node_modules/.pnpm/@agentclientprotocol+sdk@1.3.0_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/schema/guards.gen.js
+var zGuardCreateElicitationRequestForm = zElicitationFormMode.and(object({ mode: literal("form") })).and(object({ message: string2() }));
+var zGuardCreateElicitationRequestUrl = zElicitationUrlMode.and(object({ mode: literal("url") })).and(object({ message: string2() }));
+var zGuardCreateElicitationRequestCustom = union([zElicitationSessionScope, zElicitationRequestScope]).and(object({ message: string2() }));
+var zGuardElicitationPropertySchemaString = zStringPropertySchema.and(object({ type: literal("string") }));
+var zGuardElicitationPropertySchemaNumber = zNumberPropertySchema.and(object({ type: literal("number") }));
+var zGuardElicitationPropertySchemaInteger = zIntegerPropertySchema.and(object({ type: literal("integer") }));
+var zGuardElicitationPropertySchemaBoolean = zBooleanPropertySchema.and(object({ type: literal("boolean") }));
+var zGuardElicitationPropertySchemaArray = zMultiSelectPropertySchema.and(object({ type: literal("array") }));
+var zGuardMultiSelectItemsString = zStringMultiSelectItems.and(object({ type: literal("string") }));
+var zGuardCreateElicitationResponseAccept = zElicitationAcceptAction.and(object({ action: literal("accept") }));
+var zGuardCreateElicitationResponseDecline = object({
+  action: literal("decline")
+});
+var zGuardCreateElicitationResponseCancel = object({
+  action: literal("cancel")
+});
+
+// ../../node_modules/.pnpm/@agentclientprotocol+sdk@1.3.0_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/acp.js
+function ndJsonStream2(output, input) {
+  return ndJsonStream(output, input);
+}
 function emptyObjectResponse(response) {
   return response ?? {};
 }
-function rejectedPromise(error53) {
-  const promise2 = Promise.reject(error53);
-  promise2.catch(() => {
+function isStream(value) {
+  return typeof value === "object" && value !== null && "readable" in value && "writable" in value;
+}
+function memoryStreamPair() {
+  const leftToRight = new TransformStream();
+  const rightToLeft = new TransformStream();
+  return [
+    {
+      readable: rightToLeft.readable,
+      writable: leftToRight.writable
+    },
+    {
+      readable: leftToRight.readable,
+      writable: rightToLeft.writable
+    }
+  ];
+}
+var methods = {
+  agent: {
+    initialize: AGENT_METHODS.initialize,
+    authenticate: AGENT_METHODS.authenticate,
+    logout: AGENT_METHODS.logout,
+    providers: {
+      list: AGENT_METHODS.providers_list,
+      set: AGENT_METHODS.providers_set,
+      disable: AGENT_METHODS.providers_disable
+    },
+    session: {
+      new: AGENT_METHODS.session_new,
+      load: AGENT_METHODS.session_load,
+      list: AGENT_METHODS.session_list,
+      delete: AGENT_METHODS.session_delete,
+      fork: AGENT_METHODS.session_fork,
+      resume: AGENT_METHODS.session_resume,
+      close: AGENT_METHODS.session_close,
+      setMode: AGENT_METHODS.session_set_mode,
+      setConfigOption: AGENT_METHODS.session_set_config_option,
+      prompt: AGENT_METHODS.session_prompt,
+      cancel: AGENT_METHODS.session_cancel
+    },
+    nes: {
+      start: AGENT_METHODS.nes_start,
+      suggest: AGENT_METHODS.nes_suggest,
+      accept: AGENT_METHODS.nes_accept,
+      reject: AGENT_METHODS.nes_reject,
+      close: AGENT_METHODS.nes_close
+    },
+    document: {
+      didOpen: AGENT_METHODS.document_did_open,
+      didChange: AGENT_METHODS.document_did_change,
+      didClose: AGENT_METHODS.document_did_close,
+      didSave: AGENT_METHODS.document_did_save,
+      didFocus: AGENT_METHODS.document_did_focus
+    }
+  },
+  client: {
+    session: {
+      requestPermission: CLIENT_METHODS.session_request_permission,
+      update: CLIENT_METHODS.session_update
+    },
+    fs: {
+      writeTextFile: CLIENT_METHODS.fs_write_text_file,
+      readTextFile: CLIENT_METHODS.fs_read_text_file
+    },
+    terminal: {
+      create: CLIENT_METHODS.terminal_create,
+      output: CLIENT_METHODS.terminal_output,
+      release: CLIENT_METHODS.terminal_release,
+      waitForExit: CLIENT_METHODS.terminal_wait_for_exit,
+      kill: CLIENT_METHODS.terminal_kill
+    },
+    elicitation: {
+      create: CLIENT_METHODS.elicitation_create,
+      complete: CLIENT_METHODS.elicitation_complete
+    }
+  },
+  protocol: {
+    cancelRequest: PROTOCOL_METHODS.cancel_request
+  }
+};
+var startActiveSession = Symbol("startActiveSession");
+var AcpContext = class {
+  cx;
+  currentRequestId;
+  /** @internal */
+  constructor(cx, currentRequestId) {
+    this.cx = cx;
+    this.currentRequestId = currentRequestId;
+  }
+  /**
+   * JSON-RPC id of the request currently being handled.
+   *
+   * This is `undefined` for notification handlers and for contexts created
+   * outside an inbound request, such as `connect(...)` and `connectWith(...)`.
+   */
+  get requestId() {
+    return this.currentRequestId;
+  }
+  /** @internal */
+  get connectionContext() {
+    return this.cx;
+  }
+  /** @internal */
+  sendRequest(method, params, mapResponse, options) {
+    return this.cx.sendRequest(method, params, mapResponse, options);
+  }
+  /** @internal */
+  sendNotification(method, params) {
+    return this.cx.sendNotification(method, params);
+  }
+  /** @internal */
+  addDynamicHandler(handler) {
+    return this.cx.addDynamicHandler(handler);
+  }
+};
+var AgentContext = class _AgentContext extends AcpContext {
+  constructor(cx, requestId) {
+    super(cx, requestId);
+  }
+  /** @internal */
+  static create(cx, requestId) {
+    return new _AgentContext(cx, requestId);
+  }
+  request(method, params, options) {
+    const spec = clientRequestSpecsByMethod[method];
+    return this.sendRequest(method, params, spec?.mapResponse, options);
+  }
+  notify(method, params) {
+    return this.sendNotification(method, params);
+  }
+};
+var ClientContext = class _ClientContext extends AcpContext {
+  constructor(cx, requestId) {
+    super(cx, requestId);
+  }
+  /** @internal */
+  static create(cx, requestId) {
+    return new _ClientContext(cx, requestId);
+  }
+  /** @internal */
+  [startActiveSession](params, options) {
+    return this.sendRequest(AGENT_METHODS.session_new, params, (response) => this.attachSession(response), options);
+  }
+  buildSession(cwdOrRequest) {
+    if (typeof cwdOrRequest === "string") {
+      return SessionBuilder.create(this, {
+        cwd: cwdOrRequest,
+        mcpServers: []
+      });
+    }
+    return SessionBuilder.create(this, cwdOrRequest);
+  }
+  /**
+   * Builds active-session helpers around a `session/new` response.
+   */
+  attachSession(response) {
+    const updates = new AsyncQueue();
+    const closeSignal = this.connectionContext.signal;
+    const failUpdatesOnClose = () => {
+      updates.fail(closeSignal.reason ?? new Error("ACP connection closed"));
+    };
+    if (closeSignal.aborted) {
+      failUpdatesOnClose();
+    } else {
+      closeSignal.addEventListener("abort", failUpdatesOnClose);
+    }
+    const sessionRegistration = sessionUpdateRouter(this.connectionContext).attach(response, updates);
+    const closeRegistration = new HandlerRegistration(() => {
+      closeSignal.removeEventListener("abort", failUpdatesOnClose);
+    });
+    return ActiveSession.create(this, response, updates, [
+      sessionRegistration,
+      closeRegistration
+    ]);
+  }
+  request(method, params, options) {
+    const spec = agentRequestSpecsByMethod[method];
+    return this.sendRequest(method, params, spec?.mapResponse, options);
+  }
+  notify(method, params) {
+    return this.sendNotification(method, params);
+  }
+};
+var AcpConnectionHandle = class {
+  connection;
+  constructor(connection) {
+    this.connection = connection;
+  }
+  get signal() {
+    return this.connection.signal;
+  }
+  get closed() {
+    return this.connection.closed;
+  }
+  close(error53) {
+    this.connection.close(error53);
+  }
+};
+var AgentConnectionHandle = class extends AcpConnectionHandle {
+  connectHandlers;
+  client;
+  didStartConnectHandlers = false;
+  constructor(connection, connectHandlers = []) {
+    super(connection);
+    this.connectHandlers = connectHandlers;
+    this.client = AgentContext.create(connection.getContext());
+  }
+  /** @internal */
+  startConnectHandlers() {
+    if (this.didStartConnectHandlers) {
+      return;
+    }
+    this.didStartConnectHandlers = true;
+    runConnectHandlers(this, this.connectHandlers);
+  }
+};
+var ClientConnectionHandle = class extends AcpConnectionHandle {
+  connectHandlers;
+  agent;
+  didStartConnectHandlers = false;
+  constructor(connection, connectHandlers = []) {
+    super(connection);
+    this.connectHandlers = connectHandlers;
+    this.agent = ClientContext.create(connection.getContext());
+  }
+  /** @internal */
+  startConnectHandlers() {
+    if (this.didStartConnectHandlers) {
+      return;
+    }
+    this.didStartConnectHandlers = true;
+    runConnectHandlers(this, this.connectHandlers);
+  }
+};
+function agentConnection(connection, connectHandlers = []) {
+  return new AgentConnectionHandle(connection, connectHandlers);
+}
+function clientConnection(connection, connectHandlers = []) {
+  return new ClientConnectionHandle(connection, connectHandlers);
+}
+var AsyncQueue = class {
+  values = [];
+  waiters = [];
+  failed = false;
+  failure;
+  enqueue(value) {
+    if (this.failed) {
+      return;
+    }
+    const waiter = this.waiters.shift();
+    if (waiter) {
+      waiter.resolve(value);
+    } else {
+      this.values.push({ kind: "value", value });
+    }
+  }
+  reject(error53) {
+    if (this.failed) {
+      return;
+    }
+    if (this.waiters.length > 0) {
+      for (const waiter of this.waiters.splice(0)) {
+        waiter.reject(error53);
+      }
+      return;
+    }
+    this.values.push({ kind: "error", error: error53 });
+  }
+  clearErrors() {
+    this.values = this.values.filter((entry) => entry.kind === "value");
+  }
+  fail(error53) {
+    if (this.failed) {
+      return;
+    }
+    this.failed = true;
+    this.failure = error53;
+    for (const waiter of this.waiters.splice(0)) {
+      waiter.reject(error53);
+    }
+  }
+  next() {
+    if (this.values.length > 0) {
+      const entry = this.values.shift();
+      if (entry.kind === "error") {
+        return Promise.reject(entry.error);
+      }
+      return Promise.resolve(entry.value);
+    }
+    if (this.failed) {
+      return Promise.reject(this.failure);
+    }
+    return new Promise((resolve18, reject) => {
+      this.waiters.push({ resolve: resolve18, reject });
+    });
+  }
+};
+function cloneNewSessionRequest(request) {
+  return {
+    ...request,
+    additionalDirectories: request.additionalDirectories ? [...request.additionalDirectories] : void 0,
+    mcpServers: [...request.mcpServers]
+  };
+}
+var SessionBuilder = class _SessionBuilder {
+  cx;
+  request;
+  constructor(cx, request) {
+    this.cx = cx;
+    this.request = cloneNewSessionRequest(request);
+  }
+  /** @internal */
+  static create(cx, request) {
+    return new _SessionBuilder(cx, request);
+  }
+  /**
+   * Returns the `session/new` request that will be sent.
+   *
+   * The returned object is a defensive copy, so mutating it does not change the
+   * builder.
+   */
+  toRequest() {
+    return cloneNewSessionRequest(this.request);
+  }
+  /**
+   * Replaces the additional workspace roots for this session.
+   *
+   * `additionalDirectories` expand the session's file-system scope without
+   * changing `cwd`. Each path should be absolute.
+   */
+  withAdditionalDirectories(additionalDirectories) {
+    this.request = {
+      ...this.request,
+      additionalDirectories: [...additionalDirectories]
+    };
+    return this;
+  }
+  /**
+   * Adds one MCP server to the `session/new` request.
+   */
+  withMcpServer(mcpServer) {
+    this.request = {
+      ...this.request,
+      mcpServers: [...this.request.mcpServers, mcpServer]
+    };
+    return this;
+  }
+  /**
+   * Starts the session and returns an `ActiveSession` for prompting and reading
+   * updates.
+   *
+   * Call `dispose()` on the returned session when you no longer need update
+   * routing, or use `withSession(...)` to scope disposal automatically.
+   */
+  async start(options) {
+    return this.cx[startActiveSession](this.toRequest(), options);
+  }
+  /**
+   * Starts the session, runs `op`, and disposes the active-session update
+   * routing when `op` finishes or throws.
+   */
+  async withSession(op2) {
+    const session = await this.start();
+    try {
+      return await op2(session);
+    } finally {
+      session.dispose();
+    }
+  }
+};
+var ActiveSession = class _ActiveSession {
+  cx;
+  sessionResponse;
+  updates;
+  registrations;
+  constructor(cx, sessionResponse, updates, registrations) {
+    this.cx = cx;
+    this.sessionResponse = sessionResponse;
+    this.updates = updates;
+    this.registrations = registrations;
+  }
+  /** @internal */
+  static create(cx, sessionResponse, updates, registrations) {
+    return new _ActiveSession(cx, sessionResponse, updates, registrations);
+  }
+  /**
+   * Session ID returned by `session/new`.
+   */
+  get sessionId() {
+    return this.sessionResponse.sessionId;
+  }
+  /**
+   * Mode state returned when the session was created, if the agent provided it.
+   */
+  get modes() {
+    return this.sessionResponse.modes;
+  }
+  /**
+   * Metadata returned when the session was created.
+   */
+  get meta() {
+    return this.sessionResponse._meta;
+  }
+  /**
+   * Full response returned by `session/new`.
+   */
+  get newSessionResponse() {
+    return this.sessionResponse;
+  }
+  /**
+   * Sends a prompt to this session.
+   *
+   * Strings are converted to one text content block. A single content block is
+   * wrapped in an array. The returned promise resolves with the final
+   * `PromptResponse`, and the same completion is also queued as a `stop`
+   * message for `nextUpdate()`.
+   */
+  prompt(prompt, options) {
+    this.updates.clearErrors();
+    const response = this.cx.request(AGENT_METHODS.session_prompt, {
+      sessionId: this.sessionId,
+      prompt: this.promptBlocks(prompt)
+    }, options);
+    void response.then((value) => {
+      this.updates.enqueue({
+        kind: "stop",
+        response: value,
+        stopReason: value.stopReason
+      });
+    }, (error53) => {
+      this.updates.reject(error53);
+    });
+    return response;
+  }
+  /**
+   * Reads the next update or stop message for this session.
+   */
+  nextUpdate() {
+    return this.updates.next();
+  }
+  /**
+   * Reads text chunks until the current prompt turn stops.
+   *
+   * Only `agent_message_chunk` updates with text content are appended. Other
+   * update types are ignored by this helper; use `nextUpdate()` when you need
+   * tool calls, plans, or the final `PromptResponse`.
+   */
+  async readText() {
+    let output = "";
+    for (; ; ) {
+      const message = await this.nextUpdate();
+      if (message.kind === "stop") {
+        return output;
+      }
+      const { update } = message;
+      if (update.sessionUpdate === "agent_message_chunk" && update.content.type === "text") {
+        output += update.content.text;
+      }
+    }
+  }
+  /**
+   * Stops routing updates to this active-session helper.
+   *
+   * This does not close the ACP session on the agent. Use `ClientContext`
+   * session lifecycle methods when the protocol session itself should be closed
+   * or deleted.
+   */
+  dispose() {
+    for (const registration of this.registrations.splice(0)) {
+      registration.dispose();
+    }
+    this.updates.fail(new Error("Active session disposed"));
+  }
+  /**
+   * Supports explicit resource management with `using`.
+   */
+  [Symbol.dispose]() {
+    this.dispose();
+  }
+  promptBlocks(prompt) {
+    if (typeof prompt === "string") {
+      return [{ type: "text", text: prompt }];
+    }
+    if (Array.isArray(prompt)) {
+      return prompt;
+    }
+    return [prompt];
+  }
+};
+function parseParams(parser, params) {
+  if (!parser) {
+    return params;
+  }
+  if (typeof parser === "function") {
+    return parser(params);
+  }
+  return parser.parse(params);
+}
+function requestSpec(method, params, mapResponse) {
+  return { method, params, mapResponse };
+}
+function notificationSpec(method, params) {
+  return { method, params };
+}
+function registerAppRequest(builder, spec, context, handler) {
+  builder.onReceiveRequest(spec.method, (params) => parseParams(spec.params, params), async (params, responder, cx) => {
+    const response = await handler(context(params, cx, responder.signal, responder.id));
+    await responder.respond(spec.mapResponse ? spec.mapResponse(response) : response);
   });
-  return promise2;
+}
+function registerAppNotification(builder, spec, context, handler) {
+  builder.onReceiveNotification(spec.method, (params) => parseParams(spec.params, params), (params, cx) => handler(context(params, cx, cx.signal)));
+}
+function specsByMethod(specs) {
+  const byMethod = {};
+  for (const spec of Object.values(specs)) {
+    byMethod[spec.method] = spec;
+  }
+  return byMethod;
+}
+var agentRequestSpecs = {
+  initialize: requestSpec(AGENT_METHODS.initialize, zInitializeRequest),
+  newSession: requestSpec(AGENT_METHODS.session_new, zNewSessionRequest),
+  loadSession: requestSpec(AGENT_METHODS.session_load, zLoadSessionRequest, emptyObjectResponse),
+  unstable_forkSession: requestSpec(AGENT_METHODS.session_fork, zForkSessionRequest),
+  listSessions: requestSpec(AGENT_METHODS.session_list, zListSessionsRequest),
+  deleteSession: requestSpec(AGENT_METHODS.session_delete, zDeleteSessionRequest, emptyObjectResponse),
+  resumeSession: requestSpec(AGENT_METHODS.session_resume, zResumeSessionRequest),
+  closeSession: requestSpec(AGENT_METHODS.session_close, zCloseSessionRequest, emptyObjectResponse),
+  setSessionMode: requestSpec(AGENT_METHODS.session_set_mode, zSetSessionModeRequest, emptyObjectResponse),
+  setSessionConfigOption: requestSpec(AGENT_METHODS.session_set_config_option, zSetSessionConfigOptionRequest),
+  authenticate: requestSpec(AGENT_METHODS.authenticate, zAuthenticateRequest, emptyObjectResponse),
+  unstable_listProviders: requestSpec(AGENT_METHODS.providers_list, zListProvidersRequest),
+  unstable_setProvider: requestSpec(AGENT_METHODS.providers_set, zSetProviderRequest, emptyObjectResponse),
+  unstable_disableProvider: requestSpec(AGENT_METHODS.providers_disable, zDisableProviderRequest, emptyObjectResponse),
+  logout: requestSpec(AGENT_METHODS.logout, zLogoutRequest, emptyObjectResponse),
+  prompt: requestSpec(AGENT_METHODS.session_prompt, zPromptRequest),
+  unstable_startNes: requestSpec(AGENT_METHODS.nes_start, zStartNesRequest),
+  unstable_suggestNes: requestSpec(AGENT_METHODS.nes_suggest, zSuggestNesRequest),
+  unstable_closeNes: requestSpec(AGENT_METHODS.nes_close, zCloseNesRequest, emptyObjectResponse)
+};
+var agentNotificationSpecs = {
+  cancel: notificationSpec(AGENT_METHODS.session_cancel, zCancelNotification),
+  unstable_didOpenDocument: notificationSpec(AGENT_METHODS.document_did_open, zDidOpenDocumentNotification),
+  unstable_didChangeDocument: notificationSpec(AGENT_METHODS.document_did_change, zDidChangeDocumentNotification),
+  unstable_didCloseDocument: notificationSpec(AGENT_METHODS.document_did_close, zDidCloseDocumentNotification),
+  unstable_didSaveDocument: notificationSpec(AGENT_METHODS.document_did_save, zDidSaveDocumentNotification),
+  unstable_didFocusDocument: notificationSpec(AGENT_METHODS.document_did_focus, zDidFocusDocumentNotification),
+  unstable_acceptNes: notificationSpec(AGENT_METHODS.nes_accept, zAcceptNesNotification),
+  unstable_rejectNes: notificationSpec(AGENT_METHODS.nes_reject, zRejectNesNotification)
+};
+var clientRequestSpecs = {
+  requestPermission: requestSpec(CLIENT_METHODS.session_request_permission, zRequestPermissionRequest),
+  writeTextFile: requestSpec(CLIENT_METHODS.fs_write_text_file, zWriteTextFileRequest, emptyObjectResponse),
+  readTextFile: requestSpec(CLIENT_METHODS.fs_read_text_file, zReadTextFileRequest),
+  createTerminal: requestSpec(CLIENT_METHODS.terminal_create, zCreateTerminalRequest),
+  terminalOutput: requestSpec(CLIENT_METHODS.terminal_output, zTerminalOutputRequest),
+  releaseTerminal: requestSpec(CLIENT_METHODS.terminal_release, zReleaseTerminalRequest, emptyObjectResponse),
+  waitForTerminalExit: requestSpec(CLIENT_METHODS.terminal_wait_for_exit, zWaitForTerminalExitRequest),
+  killTerminal: requestSpec(CLIENT_METHODS.terminal_kill, zKillTerminalRequest, emptyObjectResponse),
+  unstable_createElicitation: requestSpec(CLIENT_METHODS.elicitation_create, zCreateElicitationRequest)
+};
+var clientNotificationSpecs = {
+  sessionUpdate: notificationSpec(CLIENT_METHODS.session_update, zSessionNotification),
+  unstable_completeElicitation: notificationSpec(CLIENT_METHODS.elicitation_complete, zCompleteElicitationNotification)
+};
+var agentRequestSpecsByMethod = specsByMethod(agentRequestSpecs);
+var agentNotificationSpecsByMethod = specsByMethod(agentNotificationSpecs);
+var clientRequestSpecsByMethod = specsByMethod(clientRequestSpecs);
+var clientNotificationSpecsByMethod = specsByMethod(clientNotificationSpecs);
+function agentRequestContext(params, client2, signal, requestId) {
+  return {
+    params,
+    requestId,
+    signal,
+    client: client2
+  };
+}
+function agentNotificationContext(params, client2, signal) {
+  return {
+    params,
+    signal,
+    client: client2
+  };
+}
+function clientRequestContext(params, agent2, signal, requestId) {
+  return {
+    params,
+    requestId,
+    signal,
+    agent: agent2
+  };
+}
+function clientNotificationContext(params, agent2, signal) {
+  return {
+    params,
+    signal,
+    agent: agent2
+  };
+}
+var SessionUpdateRouter = class {
+  activeSessions = /* @__PURE__ */ new Map();
+  handleMessage(message) {
+    if (message.kind !== "notification" || message.method !== CLIENT_METHODS.session_update) {
+      return Handled.no(message);
+    }
+    const notification = zSessionNotification.parse(message.params);
+    const update = {
+      kind: "session_update",
+      notification,
+      update: notification.update
+    };
+    const activeSessions = this.activeSessions.get(notification.sessionId);
+    if (activeSessions && activeSessions.size > 0) {
+      for (const session of activeSessions) {
+        session.enqueue(update);
+      }
+    }
+    return Handled.no(message);
+  }
+  attach(response, updates) {
+    const sessions = this.activeSessions.get(response.sessionId) ?? /* @__PURE__ */ new Set();
+    sessions.add(updates);
+    this.activeSessions.set(response.sessionId, sessions);
+    return new HandlerRegistration(() => {
+      sessions.delete(updates);
+      if (sessions.size === 0) {
+        this.activeSessions.delete(response.sessionId);
+      }
+    });
+  }
+};
+var sessionUpdateRouters = /* @__PURE__ */ new WeakMap();
+function sessionUpdateRouter(cx) {
+  let router = sessionUpdateRouters.get(cx);
+  if (!router) {
+    router = new SessionUpdateRouter();
+    sessionUpdateRouters.set(cx, router);
+  }
+  return router;
+}
+function runConnectHandlers(connection, handlers) {
+  for (const handler of handlers) {
+    let result;
+    try {
+      result = handler(connection);
+    } catch (error53) {
+      connection.close(error53);
+      throw error53;
+    }
+    void Promise.resolve(result).catch((error53) => {
+      connection.close(error53);
+    });
+  }
+}
+var appBuilder = Symbol("appBuilder");
+var runAgentConnectHandlers = Symbol("runAgentConnectHandlers");
+var runClientConnectHandlers = Symbol("runClientConnectHandlers");
+var stableConnectionOptions = { allowBatches: false };
+var AgentApp = class {
+  builder = Connection.builder();
+  connectHandlers = [];
+  constructor(options = {}) {
+    if (options.name) {
+      this.builder.name(options.name);
+    }
+  }
+  /** @internal */
+  [appBuilder]() {
+    return this.builder;
+  }
+  /** @internal */
+  [runAgentConnectHandlers](connection) {
+    runConnectHandlers(connection, this.connectHandlers);
+  }
+  connect(target, options = {}) {
+    return this.connectConnection(target, options).connection;
+  }
+  connectWith(target, op2) {
+    const { rawConnection, connection } = this.connectConnection(target);
+    return rawConnection.runUntil(() => op2(connection.client));
+  }
+  /**
+   * Registers a handler that runs when this agent app opens a connection.
+   *
+   * Use this for connection-scoped work that needs to call client-side ACP
+   * methods outside an inbound request handler.
+   */
+  onConnect(handler) {
+    this.connectHandlers.push(handler);
+    return this;
+  }
+  onRequest(method, handlerOrParams, handler) {
+    if (handler) {
+      return this.request({ method, params: handlerOrParams }, handler);
+    }
+    const spec = agentRequestSpecsByMethod[method];
+    if (!spec) {
+      throw new Error(`Unknown ACP request method '${method}'. Pass a params parser for custom methods.`);
+    }
+    return this.request(spec, handlerOrParams);
+  }
+  onNotification(method, handlerOrParams, handler) {
+    if (handler) {
+      return this.notification({ method, params: handlerOrParams }, handler);
+    }
+    const spec = agentNotificationSpecsByMethod[method];
+    if (!spec) {
+      throw new Error(`Unknown ACP notification method '${method}'. Pass a params parser for custom methods.`);
+    }
+    return this.notification(spec, handlerOrParams);
+  }
+  request(spec, handler) {
+    registerAppRequest(this.builder, spec, (params, cx, signal, requestId) => agentRequestContext(params, AgentContext.create(cx, requestId), signal, requestId), handler);
+    return this;
+  }
+  notification(spec, handler) {
+    registerAppNotification(this.builder, spec, (params, cx, signal) => agentNotificationContext(params, AgentContext.create(cx), signal), handler);
+    return this;
+  }
+  connectConnection(target, options = {}) {
+    if (isStream(target)) {
+      const state3 = this.openStreamConnection(target);
+      if (!options.deferConnectHandlers) {
+        this[runAgentConnectHandlers](state3.connection);
+      }
+      return state3;
+    }
+    const [thisStream, peerStream] = memoryStreamPair();
+    const peerRawConnection = target[appBuilder]().connect(peerStream, stableConnectionOptions);
+    const peerConnection = clientConnection(peerRawConnection);
+    const state2 = this.openStreamConnection(thisStream);
+    void state2.rawConnection.closed.then(() => peerConnection.close());
+    void peerRawConnection.closed.then(() => state2.connection.close());
+    try {
+      target[runClientConnectHandlers](peerConnection);
+      this[runAgentConnectHandlers](state2.connection);
+    } catch (error53) {
+      peerConnection.close(error53);
+      state2.connection.close(error53);
+      throw error53;
+    }
+    return state2;
+  }
+  openStreamConnection(stream) {
+    const rawConnection = this.builder.connect(stream, stableConnectionOptions);
+    return {
+      rawConnection,
+      connection: agentConnection(rawConnection, this.connectHandlers)
+    };
+  }
+};
+function client(options) {
+  return new ClientApp(options);
+}
+var ClientApp = class {
+  builder = Connection.builder();
+  connectHandlers = [];
+  constructor(options = {}) {
+    if (options.name) {
+      this.builder.name(options.name);
+    }
+    this.builder.withHandler({
+      handleMessage: (message, cx) => sessionUpdateRouter(cx).handleMessage(message),
+      describe: () => "client-session-update-router"
+    });
+  }
+  /** @internal */
+  [appBuilder]() {
+    return this.builder;
+  }
+  /** @internal */
+  [runClientConnectHandlers](connection) {
+    runConnectHandlers(connection, this.connectHandlers);
+  }
+  connect(target) {
+    return this.connectConnection(target).connection;
+  }
+  connectWith(target, op2) {
+    const { rawConnection, connection } = this.connectConnection(target);
+    return rawConnection.runUntil(() => op2(connection.agent));
+  }
+  /**
+   * Registers a handler that runs when this client app opens a connection.
+   *
+   * Use this for connection-scoped work that needs to call agent-side ACP
+   * methods outside an inbound request handler.
+   */
+  onConnect(handler) {
+    this.connectHandlers.push(handler);
+    return this;
+  }
+  onRequest(method, handlerOrParams, handler) {
+    if (handler) {
+      return this.request({ method, params: handlerOrParams }, handler);
+    }
+    const spec = clientRequestSpecsByMethod[method];
+    if (!spec) {
+      throw new Error(`Unknown ACP request method '${method}'. Pass a params parser for custom methods.`);
+    }
+    return this.request(spec, handlerOrParams);
+  }
+  onNotification(method, handlerOrParams, handler) {
+    if (handler) {
+      return this.notification({ method, params: handlerOrParams }, handler);
+    }
+    const spec = clientNotificationSpecsByMethod[method];
+    if (!spec) {
+      throw new Error(`Unknown ACP notification method '${method}'. Pass a params parser for custom methods.`);
+    }
+    return this.notification(spec, handlerOrParams);
+  }
+  request(spec, handler) {
+    registerAppRequest(this.builder, spec, (params, cx, signal, requestId) => clientRequestContext(params, ClientContext.create(cx, requestId), signal, requestId), handler);
+    return this;
+  }
+  notification(spec, handler) {
+    registerAppNotification(this.builder, spec, (params, cx, signal) => clientNotificationContext(params, ClientContext.create(cx), signal), handler);
+    return this;
+  }
+  connectConnection(target) {
+    if (isStream(target)) {
+      const state3 = this.openStreamConnection(target);
+      this[runClientConnectHandlers](state3.connection);
+      return state3;
+    }
+    const [thisStream, peerStream] = memoryStreamPair();
+    const peerRawConnection = target[appBuilder]().connect(peerStream, stableConnectionOptions);
+    const peerConnection = agentConnection(peerRawConnection);
+    const state2 = this.openStreamConnection(thisStream);
+    void state2.rawConnection.closed.then(() => peerConnection.close());
+    void peerRawConnection.closed.then(() => state2.connection.close());
+    try {
+      target[runAgentConnectHandlers](peerConnection);
+      this[runClientConnectHandlers](state2.connection);
+    } catch (error53) {
+      peerConnection.close(error53);
+      state2.connection.close(error53);
+      throw error53;
+    }
+    return state2;
+  }
+  openStreamConnection(stream) {
+    const rawConnection = this.builder.connect(stream, stableConnectionOptions);
+    return {
+      rawConnection,
+      connection: clientConnection(rawConnection, this.connectHandlers)
+    };
+  }
+};
+var legacyAgentRequestMethods = /* @__PURE__ */ new Set([
+  AGENT_METHODS.initialize,
+  AGENT_METHODS.authenticate,
+  AGENT_METHODS.providers_list,
+  AGENT_METHODS.providers_set,
+  AGENT_METHODS.providers_disable,
+  AGENT_METHODS.session_new,
+  AGENT_METHODS.session_load,
+  AGENT_METHODS.session_set_mode,
+  AGENT_METHODS.session_set_config_option,
+  AGENT_METHODS.session_prompt,
+  AGENT_METHODS.session_list,
+  AGENT_METHODS.session_delete,
+  AGENT_METHODS.session_fork,
+  AGENT_METHODS.session_resume,
+  AGENT_METHODS.session_close,
+  AGENT_METHODS.logout,
+  AGENT_METHODS.nes_start,
+  AGENT_METHODS.nes_suggest,
+  AGENT_METHODS.nes_close
+]);
+var legacyAgentNotificationMethods = /* @__PURE__ */ new Set([
+  AGENT_METHODS.session_cancel,
+  AGENT_METHODS.nes_accept,
+  AGENT_METHODS.nes_reject,
+  AGENT_METHODS.document_did_open,
+  AGENT_METHODS.document_did_change,
+  AGENT_METHODS.document_did_close,
+  AGENT_METHODS.document_did_save,
+  AGENT_METHODS.document_did_focus
+]);
+var legacyClientRequestMethods = /* @__PURE__ */ new Set([
+  CLIENT_METHODS.session_request_permission,
+  CLIENT_METHODS.fs_write_text_file,
+  CLIENT_METHODS.fs_read_text_file,
+  CLIENT_METHODS.terminal_create,
+  CLIENT_METHODS.terminal_output,
+  CLIENT_METHODS.terminal_release,
+  CLIENT_METHODS.terminal_wait_for_exit,
+  CLIENT_METHODS.terminal_kill,
+  CLIENT_METHODS.elicitation_create
+]);
+var legacyClientNotificationMethods = /* @__PURE__ */ new Set([
+  CLIENT_METHODS.session_update,
+  CLIENT_METHODS.elicitation_complete
+]);
+function legacyClientApp(implementation) {
+  const app = client().onRequest(CLIENT_METHODS.session_request_permission, (ctx) => implementation.requestPermission(ctx.params)).onNotification(CLIENT_METHODS.session_update, (ctx) => implementation.sessionUpdate(ctx.params)).onRequest(CLIENT_METHODS.fs_write_text_file, async (ctx) => await implementation.writeTextFile?.(ctx.params) ?? {}).onRequest(CLIENT_METHODS.fs_read_text_file, async (ctx) => await implementation.readTextFile?.(ctx.params)).onRequest(CLIENT_METHODS.terminal_create, async (ctx) => await implementation.createTerminal?.(ctx.params)).onRequest(CLIENT_METHODS.terminal_output, async (ctx) => await implementation.terminalOutput?.(ctx.params)).onRequest(CLIENT_METHODS.terminal_release, async (ctx) => await implementation.releaseTerminal?.(ctx.params) ?? {}).onRequest(CLIENT_METHODS.terminal_wait_for_exit, async (ctx) => await implementation.waitForTerminalExit?.(ctx.params)).onRequest(CLIENT_METHODS.terminal_kill, async (ctx) => await implementation.killTerminal?.(ctx.params) ?? {});
+  if (implementation.unstable_createElicitation) {
+    app.onRequest(CLIENT_METHODS.elicitation_create, (ctx) => implementation.unstable_createElicitation(ctx.params));
+  }
+  if (implementation.unstable_completeElicitation) {
+    app.onNotification(CLIENT_METHODS.elicitation_complete, (ctx) => implementation.unstable_completeElicitation(ctx.params));
+  }
+  if (implementation.extMethod) {
+    app[appBuilder]().withHandler({
+      handleMessage: async (message) => {
+        if (message.kind !== "request" || legacyClientRequestMethods.has(message.method)) {
+          return Handled.no(message);
+        }
+        await message.responder.respond(await implementation.extMethod(message.method, message.params));
+        return Handled.yes();
+      },
+      describe: () => "legacy-client-extension-request"
+    });
+  }
+  if (implementation.extNotification) {
+    app[appBuilder]().withHandler({
+      handleMessage: async (message) => {
+        if (message.kind !== "notification" || legacyClientNotificationMethods.has(message.method)) {
+          return Handled.no(message);
+        }
+        await implementation.extNotification(message.method, message.params);
+        return Handled.yes();
+      },
+      describe: () => "legacy-client-extension-notification"
+    });
+  }
+  return app;
 }
 var ClientSideConnection = class {
   connection;
@@ -137754,80 +139848,11 @@ var ClientSideConnection = class {
    *                 {@link ndJsonStream} for stdio-based connections.
    *
    * See protocol docs: [Communication Model](https://agentclientprotocol.com/protocol/overview#communication-model)
+   *
+   * @deprecated Prefer `client({ name }).connectWith(stream, async (ctx) => ...)`.
    */
   constructor(toClient, stream) {
-    const client2 = toClient(this);
-    const requestHandler = async (method, params) => {
-      switch (method) {
-        case CLIENT_METHODS.fs_write_text_file: {
-          const validatedParams = zWriteTextFileRequest.parse(params);
-          const result = await client2.writeTextFile?.(validatedParams);
-          return result ?? {};
-        }
-        case CLIENT_METHODS.fs_read_text_file: {
-          const validatedParams = zReadTextFileRequest.parse(params);
-          return client2.readTextFile?.(validatedParams);
-        }
-        case CLIENT_METHODS.session_request_permission: {
-          const validatedParams = zRequestPermissionRequest.parse(params);
-          return client2.requestPermission(validatedParams);
-        }
-        case CLIENT_METHODS.terminal_create: {
-          const validatedParams = zCreateTerminalRequest.parse(params);
-          return client2.createTerminal?.(validatedParams);
-        }
-        case CLIENT_METHODS.terminal_output: {
-          const validatedParams = zTerminalOutputRequest.parse(params);
-          return client2.terminalOutput?.(validatedParams);
-        }
-        case CLIENT_METHODS.terminal_release: {
-          const validatedParams = zReleaseTerminalRequest.parse(params);
-          const result = await client2.releaseTerminal?.(validatedParams);
-          return result ?? {};
-        }
-        case CLIENT_METHODS.terminal_wait_for_exit: {
-          const validatedParams = zWaitForTerminalExitRequest.parse(params);
-          return client2.waitForTerminalExit?.(validatedParams);
-        }
-        case CLIENT_METHODS.terminal_kill: {
-          const validatedParams = zKillTerminalRequest.parse(params);
-          const result = await client2.killTerminal?.(validatedParams);
-          return result ?? {};
-        }
-        case CLIENT_METHODS.elicitation_create: {
-          if (!client2.unstable_createElicitation) {
-            throw RequestError2.methodNotFound(method);
-          }
-          const validatedParams = zCreateElicitationRequest.parse(params);
-          return client2.unstable_createElicitation(validatedParams);
-        }
-        default:
-          if (client2.extMethod) {
-            return client2.extMethod(method, params);
-          }
-          throw RequestError2.methodNotFound(method);
-      }
-    };
-    const notificationHandler = async (method, params) => {
-      switch (method) {
-        case CLIENT_METHODS.session_update: {
-          const validatedParams = zSessionNotification.parse(params);
-          return client2.sessionUpdate(validatedParams);
-        }
-        case CLIENT_METHODS.elicitation_complete: {
-          if (!client2.unstable_completeElicitation)
-            return;
-          const validatedParams = zCompleteElicitationNotification.parse(params);
-          return client2.unstable_completeElicitation(validatedParams);
-        }
-        default:
-          if (client2.extNotification) {
-            return client2.extNotification(method, params);
-          }
-          throw RequestError2.methodNotFound(method);
-      }
-    };
-    this.connection = new Connection(requestHandler, notificationHandler, stream);
+    this.connection = legacyClientApp(toClient(this))[appBuilder]().connect(stream, stableConnectionOptions);
   }
   /**
    * Establishes the connection with a client and negotiates protocol capabilities.
@@ -137945,7 +139970,7 @@ var ClientSideConnection = class {
    * and then free up any resources associated with the session.
    */
   closeSession(params) {
-    return this.connection.sendRequest(AGENT_METHODS.session_close, params);
+    return this.connection.sendRequest(AGENT_METHODS.session_close, params, emptyObjectResponse);
   }
   /**
    * Sets the operational mode for a session.
@@ -138168,21 +140193,28 @@ var ClientSideConnection = class {
   unstable_rejectNes(params) {
     return this.connection.sendNotification(AGENT_METHODS.nes_reject, params);
   }
-  /**
-   * Extension method
-   *
-   * Allows the Client to send an arbitrary request that is not part of the ACP spec.
-   */
-  extMethod(method, params) {
-    return this.connection.sendRequest(method, params);
+  request(method, params, options) {
+    const spec = agentRequestSpecsByMethod[method];
+    return this.connection.sendRequest(method, params, spec?.mapResponse, options);
+  }
+  notify(method, params) {
+    return this.connection.sendNotification(method, params);
   }
   /**
-   * Extension notification
+   * Extension method.
    *
-   * Allows the Client to send an arbitrary notification that is not part of the ACP spec.
+   * @deprecated Use {@link request}.
+   */
+  extMethod(method, params) {
+    return this.request(method, params);
+  }
+  /**
+   * Extension notification.
+   *
+   * @deprecated Use {@link notify}.
    */
   extNotification(method, params) {
-    return this.connection.sendNotification(method, params);
+    return this.notify(method, params);
   }
   /**
    * AbortSignal that aborts when the connection closes.
@@ -138234,313 +140266,40 @@ var ClientSideConnection = class {
     return this.connection.closed;
   }
 };
-var Connection = class {
-  pendingResponses = /* @__PURE__ */ new Map();
-  nextRequestId = 0;
-  requestHandler;
-  notificationHandler;
-  stream;
-  writeQueue = Promise.resolve();
-  abortController = new AbortController();
-  closedPromise;
-  constructor(requestHandler, notificationHandler, stream) {
-    this.requestHandler = requestHandler;
-    this.notificationHandler = notificationHandler;
-    this.stream = stream;
-    this.closedPromise = new Promise((resolve18) => {
-      this.abortController.signal.addEventListener("abort", () => resolve18());
-    });
-    void this.receive();
-  }
-  /**
-   * AbortSignal that aborts when the connection closes.
-   *
-   * This signal can be used to:
-   * - Listen for connection closure via event listeners
-   * - Check connection status synchronously with `signal.aborted`
-   * - Pass to other APIs (fetch, setTimeout) for automatic cancellation
-   */
-  get signal() {
-    return this.abortController.signal;
-  }
-  /**
-   * Promise that resolves when the connection closes.
-   *
-   * The connection closes when the underlying stream ends, either normally
-   * or due to an error. Once closed, the connection cannot send or receive
-   * any more messages.
-   *
-   * @example
-   * ```typescript
-   * const connection = new ClientSideConnection(client, stream);
-   * await connection.closed;
-   * console.log('Connection closed - performing cleanup');
-   * ```
-   */
-  get closed() {
-    return this.closedPromise;
-  }
-  async receive() {
-    let closeError = void 0;
-    try {
-      const reader = this.stream.readable.getReader();
-      try {
-        while (!this.abortController.signal.aborted) {
-          const { value: message, done } = await reader.read();
-          if (done) {
-            break;
-          }
-          if (!message) {
-            continue;
-          }
-          try {
-            this.processMessage(message);
-          } catch (err) {
-            console.error("Unexpected error during message processing:", message, err);
-            if ("id" in message && message.id !== void 0) {
-              this.sendMessage({
-                jsonrpc: "2.0",
-                id: message.id,
-                error: {
-                  code: -32700,
-                  message: "Parse error"
-                }
-              });
-            }
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-    } catch (error53) {
-      closeError = error53;
-    } finally {
-      this.close(closeError);
-    }
-  }
-  close(error53) {
-    if (this.abortController.signal.aborted) {
-      return;
-    }
-    const closeError = error53 ?? new Error("ACP connection closed");
-    for (const pendingResponse of this.pendingResponses.values()) {
-      pendingResponse.reject(closeError);
-    }
-    this.pendingResponses.clear();
-    this.abortController.abort(closeError);
-  }
-  async processMessage(message) {
-    if ("method" in message && "id" in message) {
-      const response = await this.tryCallRequestHandler(message.method, message.params);
-      if ("error" in response) {
-        console.error("Error handling request", message, response.error);
-      }
-      await this.sendMessage({
-        jsonrpc: "2.0",
-        id: message.id,
-        ...response
-      });
-    } else if ("method" in message) {
-      const response = await this.tryCallNotificationHandler(message.method, message.params);
-      if ("error" in response) {
-        console.error("Error handling notification", message, response.error);
-      }
-    } else if ("id" in message) {
-      this.handleResponse(message);
-    } else {
-      console.error("Invalid message", { message });
-    }
-  }
-  async tryCallRequestHandler(method, params) {
-    try {
-      const result = await this.requestHandler(method, params);
-      return { result: result ?? null };
-    } catch (error53) {
-      if (error53 instanceof RequestError2) {
-        return error53.toResult();
-      }
-      if (error53 instanceof external_exports.ZodError) {
-        return RequestError2.invalidParams(error53.format()).toResult();
-      }
-      let details;
-      if (error53 instanceof Error) {
-        details = error53.message;
-      } else if (typeof error53 === "object" && error53 != null && "message" in error53 && typeof error53.message === "string") {
-        details = error53.message;
-      }
-      try {
-        return RequestError2.internalError(details ? JSON.parse(details) : {}).toResult();
-      } catch {
-        return RequestError2.internalError({ details }).toResult();
-      }
-    }
-  }
-  async tryCallNotificationHandler(method, params) {
-    try {
-      await this.notificationHandler(method, params);
-      return { result: null };
-    } catch (error53) {
-      if (error53 instanceof RequestError2) {
-        return error53.toResult();
-      }
-      if (error53 instanceof external_exports.ZodError) {
-        return RequestError2.invalidParams(error53.format()).toResult();
-      }
-      let details;
-      if (error53 instanceof Error) {
-        details = error53.message;
-      } else if (typeof error53 === "object" && error53 != null && "message" in error53 && typeof error53.message === "string") {
-        details = error53.message;
-      }
-      try {
-        return RequestError2.internalError(details ? JSON.parse(details) : {}).toResult();
-      } catch {
-        return RequestError2.internalError({ details }).toResult();
-      }
-    }
-  }
-  handleResponse(response) {
-    const pendingResponse = this.pendingResponses.get(response.id);
-    if (pendingResponse) {
-      if ("result" in response) {
-        pendingResponse.resolve(response.result);
-      } else if ("error" in response) {
-        const { code, message, data } = response.error;
-        pendingResponse.reject(new RequestError2(code, message, data));
-      }
-      this.pendingResponses.delete(response.id);
-    } else {
-      console.error("Got response to unknown request", response.id);
-    }
-  }
-  sendRequest(method, params, mapResponse) {
-    if (this.abortController.signal.aborted) {
-      return rejectedPromise(this.closedReason());
-    }
-    const id2 = this.nextRequestId++;
-    const responsePromise = new Promise((resolve18, reject) => {
-      this.pendingResponses.set(id2, {
-        resolve: (response) => {
-          try {
-            resolve18(mapResponse ? mapResponse(response) : response);
-          } catch (error53) {
-            reject(error53);
-          }
-        },
-        reject
-      });
-    });
-    responsePromise.catch(() => {
-    });
-    void this.sendMessage({ jsonrpc: "2.0", id: id2, method, params });
-    return responsePromise;
-  }
-  sendNotification(method, params) {
-    if (this.abortController.signal.aborted) {
-      return rejectedPromise(this.closedReason());
-    }
-    return this.sendMessage({ jsonrpc: "2.0", method, params });
-  }
-  closedReason() {
-    return this.abortController.signal.reason ?? new Error("ACP connection closed");
-  }
-  async sendMessage(message) {
-    this.writeQueue = this.writeQueue.then(async () => {
-      const writer = this.stream.writable.getWriter();
-      try {
-        await writer.write(message);
-      } finally {
-        writer.releaseLock();
-      }
-    }).catch((error53) => {
-      this.close(error53);
-    });
-    return this.writeQueue;
-  }
-};
-var RequestError2 = class _RequestError extends Error {
-  code;
-  data;
-  constructor(code, message, data) {
-    super(message);
-    this.code = code;
-    this.name = "RequestError";
-    this.data = data;
-  }
-  /**
-   * Invalid JSON was received by the server. An error occurred on the server while parsing the JSON text.
-   */
-  static parseError(data, additionalMessage) {
-    return new _RequestError(-32700, `Parse error${additionalMessage ? `: ${additionalMessage}` : ""}`, data);
-  }
-  /**
-   * The JSON sent is not a valid Request object.
-   */
-  static invalidRequest(data, additionalMessage) {
-    return new _RequestError(-32600, `Invalid request${additionalMessage ? `: ${additionalMessage}` : ""}`, data);
-  }
-  /**
-   * The method does not exist / is not available.
-   */
-  static methodNotFound(method) {
-    return new _RequestError(-32601, `"Method not found": ${method}`, {
-      method
-    });
-  }
-  /**
-   * Invalid method parameter(s).
-   */
-  static invalidParams(data, additionalMessage) {
-    return new _RequestError(-32602, `Invalid params${additionalMessage ? `: ${additionalMessage}` : ""}`, data);
-  }
-  /**
-   * Internal JSON-RPC error.
-   */
-  static internalError(data, additionalMessage) {
-    return new _RequestError(-32603, `Internal error${additionalMessage ? `: ${additionalMessage}` : ""}`, data);
-  }
-  /**
-   * Authentication required.
-   */
-  static authRequired(data, additionalMessage) {
-    return new _RequestError(-32e3, `Authentication required${additionalMessage ? `: ${additionalMessage}` : ""}`, data);
-  }
-  /**
-   * Resource, such as a file, was not found
-   */
-  static resourceNotFound(uri) {
-    return new _RequestError(-32002, `Resource not found${uri ? `: ${uri}` : ""}`, uri && { uri });
-  }
-  toResult() {
-    return {
-      error: {
-        code: this.code,
-        message: this.message,
-        data: this.data
-      }
-    };
-  }
-  toErrorResponse() {
-    return {
-      code: this.code,
-      message: this.message,
-      data: this.data
-    };
-  }
-};
 
-// ../../node_modules/.pnpm/@openma+common@https+++codeload.github.com+openma-ai+openma-common+tar.gz+28d93020c85c2_2fe51cb3b18b085048d70b65548de819/node_modules/@openma/common/dist/acp-runtime/session.js
-var NON_TRANSCRIPT_SESSION_UPDATES = /* @__PURE__ */ new Set([
-  "available_commands_update",
-  "current_mode_update",
-  "config_option_update",
-  "session_info_update",
-  "usage_update"
-]);
-var LOAD_REPLAY_QUIET_MS = 30;
-var LOAD_REPLAY_MAX_SETTLE_MS = 300;
-var SESSION_CLOSE_TIMEOUT_MS = 1e3;
+// ../../apps/local-api/dist/runtime/host/_acp-runtime/client-capabilities.js
+var CLASH_ACP_EXTENSION_CAPABILITIES = {
+  "terminal-auth": true,
+  terminal_output: true,
+  // Cursor uses this negotiated flag to expose thought-level and model-config
+  // parameters as standard SessionConfigOption entries. Other agents ignore it.
+  parameterizedModelPicker: true
+};
+function withClashAcpExtensionCapabilities(capabilities) {
+  const extended = capabilities;
+  return {
+    ...capabilities,
+    session: {
+      ...extended.session ?? {},
+      configOptions: {
+        ...extended.session?.configOptions ?? {},
+        boolean: {}
+      }
+    },
+    _meta: {
+      ...capabilities._meta ?? {},
+      ...CLASH_ACP_EXTENSION_CAPABILITIES
+    }
+  };
+}
+
+// ../../apps/local-api/dist/runtime/host/_acp-runtime/errors.js
 var ACP_AUTH_REQUIRED_CODE = -32e3;
+function isAuthRequired(error53) {
+  return Boolean(error53 && typeof error53 === "object" && error53.code === ACP_AUTH_REQUIRED_CODE);
+}
+
+// ../../apps/local-api/dist/runtime/host/_acp-runtime/session-state.js
 var LEGACY_MODEL_META_KEY = "openma.dev/legacy-model-state";
 function legacyModelStateFromResponse(value) {
   if (!value || typeof value !== "object")
@@ -138548,25 +140307,24 @@ function legacyModelStateFromResponse(value) {
   const models = value.models;
   if (!models || typeof models !== "object")
     return null;
-  const currentModelId = models.currentModelId;
-  const availableModels = models.availableModels;
-  if (typeof currentModelId !== "string" || !Array.isArray(availableModels))
+  const { currentModelId, availableModels } = models;
+  if (typeof currentModelId !== "string" || !Array.isArray(availableModels)) {
     return null;
+  }
   const normalized = availableModels.flatMap((model) => {
     if (!model || typeof model !== "object")
       return [];
     const candidate = model;
-    if (typeof candidate.modelId !== "string" || typeof candidate.name !== "string")
+    if (typeof candidate.modelId !== "string" || typeof candidate.name !== "string") {
       return [];
+    }
     return [{
       modelId: candidate.modelId,
       name: candidate.name,
       ...typeof candidate.description === "string" ? { description: candidate.description } : {}
     }];
   });
-  if (normalized.length === 0)
-    return null;
-  return { currentModelId, availableModels: normalized };
+  return normalized.length > 0 ? { currentModelId, availableModels: normalized } : null;
 }
 function isModelConfigOption(option) {
   return option.category === "model" || option.id === "model";
@@ -138590,35 +140348,37 @@ function isLegacyModelConfigOption(option) {
   return option._meta?.[LEGACY_MODEL_META_KEY] === true;
 }
 function sessionConfigOptionsFromResponse(value) {
-  const responseConfigOptions = value && typeof value === "object" ? value.configOptions : void 0;
-  const configOptions = Array.isArray(responseConfigOptions) ? responseConfigOptions.map((option) => structuredClone(option)) : [];
+  const response = value;
+  const configOptions = Array.isArray(response?.configOptions) ? response.configOptions.map((option) => structuredClone(option)) : [];
   const legacyModels = legacyModelStateFromResponse(value);
   if (legacyModels && !configOptions.some(isModelConfigOption)) {
     configOptions.push(legacyModelConfigOption(legacyModels));
   }
   return configOptions;
 }
-function sessionUpdateKind(update) {
-  if (!update || typeof update !== "object")
-    return null;
-  const value = update;
-  if (typeof value.sessionUpdate === "string")
-    return value.sessionUpdate;
-  return typeof value.type === "string" ? value.type : null;
-}
-function isTranscriptReplayUpdate(update) {
-  const kind = sessionUpdateKind(update);
-  return !kind || !NON_TRANSCRIPT_SESSION_UPDATES.has(kind);
-}
-function isIdleSessionUpdate(update) {
-  const kind = sessionUpdateKind(update);
-  return Boolean(kind && NON_TRANSCRIPT_SESSION_UPDATES.has(kind));
-}
-function isAuthRequiredError(error53) {
-  if (!error53 || typeof error53 !== "object")
+function responseHasSessionConfig(value) {
+  if (!value || typeof value !== "object")
     return false;
-  const value = error53;
-  return value.code === ACP_AUTH_REQUIRED_CODE && typeof value.message === "string" && /^Authentication required\b/i.test(value.message);
+  const response = value;
+  return Array.isArray(response.configOptions) || legacyModelStateFromResponse(value) !== null;
+}
+
+// ../../apps/local-api/dist/runtime/host/_acp-runtime/session.js
+var ACP_NOTIFICATION_CONTEXT_KEY = "_openma.acp.notification";
+var LOAD_REPLAY_QUIET_MS = 30;
+var LOAD_REPLAY_MAX_SETTLE_MS = 300;
+var SESSION_CLOSE_TIMEOUT_MS = 1e3;
+function filterMcpServersForCapabilities(servers, capabilities) {
+  return servers.filter((server2) => {
+    const type = "type" in server2 ? server2.type : "stdio";
+    if (type === void 0 || type === "stdio")
+      return true;
+    if (type === "http")
+      return capabilities?.http === true;
+    if (type === "sse")
+      return capabilities?.sse === true;
+    return false;
+  });
 }
 function firstAgentHandledAuthMethod(authMethods) {
   for (const method of authMethods) {
@@ -138633,47 +140393,89 @@ function firstAgentHandledAuthMethod(authMethods) {
   }
   return null;
 }
-function mergeClientCapabilities(callbacks, extra) {
-  const inferred = {
-    fs: {
-      readTextFile: Boolean(callbacks.readTextFile),
-      writeTextFile: Boolean(callbacks.writeTextFile)
-    },
-    terminal: Boolean(callbacks.createTerminal)
-  };
-  if (!extra)
-    return inferred;
+function preserveAcpNotificationContext(params) {
+  if (!params || typeof params !== "object")
+    return params;
+  const notification = params;
+  if (!("update" in notification))
+    return params;
+  const update = notification.update;
+  if (!update || typeof update !== "object")
+    return update;
+  const notificationMeta = notification._meta;
+  if (!notificationMeta || typeof notificationMeta !== "object")
+    return update;
   return {
+    ...update,
+    [ACP_NOTIFICATION_CONTEXT_KEY]: {
+      ...typeof notification.sessionId === "string" ? { session_id: notification.sessionId } : {},
+      meta: notificationMeta
+    }
+  };
+}
+function mergeClientCapabilities(callbacks, inferred, extra) {
+  const inferredSession = inferred.session;
+  const extraSession = extra?.session;
+  const inferredConfigOptions = inferredSession?.configOptions;
+  const extraConfigOptions = extraSession?.configOptions;
+  return withClashAcpExtensionCapabilities({
     ...inferred,
     ...extra,
     fs: {
-      ...inferred.fs,
-      ...extra.fs ?? {}
+      readTextFile: Boolean(callbacks.readTextFile),
+      writeTextFile: Boolean(callbacks.writeTextFile),
+      ...inferred.fs ?? {},
+      ...extra?.fs ?? {}
+    },
+    session: {
+      ...inferredSession ?? {},
+      ...extraSession ?? {},
+      configOptions: {
+        ...inferredConfigOptions ?? {},
+        ...extraConfigOptions ?? {}
+      }
     },
     _meta: {
       ...inferred._meta ?? {},
-      ...extra._meta ?? {}
+      ...extra?._meta ?? {}
     }
-  };
+  });
 }
 var AcpSessionImpl = class {
   id;
   options;
   #child;
+  #childExit = null;
   #agent;
   #sessionId;
   #disposed = false;
   #disposePromise = null;
+  #acceptOutOfBandUpdates = false;
   #activePromptCount = 0;
   #pendingEvents = [];
   #waiters = [];
   #authMethods = [];
+  #protocolVersion = null;
   #agentInfo = null;
+  #agentCapabilities = {};
+  #initializeMeta = null;
+  #sessionSetupMeta = null;
   #configOptions = [];
-  #modes;
+  #modes = null;
   #promptCapabilities = {};
   #supportsSessionFork = false;
+  #supportsSessionList = false;
+  #supportsSessionDelete = false;
+  #supportsSessionResume = false;
   #supportsSessionClose = false;
+  #supportsLogout = false;
+  #supportsProviders = false;
+  #supportsNes = false;
+  #nesCapabilities = null;
+  #positionEncoding = null;
+  #supportsSteering = false;
+  #nextClientRequestId = 1;
+  #outstandingUrlElicitations = /* @__PURE__ */ new Set();
   #loadedReplayEvents = [];
   #suppressLoadedReplay = false;
   #lastSuppressedLoadReplayAt = 0;
@@ -138681,6 +140483,9 @@ var AcpSessionImpl = class {
     this.id = deps.id;
     this.options = deps.options;
     this.#child = deps.child;
+    void deps.child.exited.then((result) => {
+      this.#childExit = result;
+    });
   }
   get acpSessionId() {
     return this.#sessionId ?? "";
@@ -138688,14 +140493,26 @@ var AcpSessionImpl = class {
   get authMethods() {
     return this.#authMethods;
   }
+  get protocolVersion() {
+    return this.#protocolVersion;
+  }
   get agentInfo() {
     return this.#agentInfo;
+  }
+  get agentCapabilities() {
+    return this.#agentCapabilities;
+  }
+  get initializeMeta() {
+    return this.#initializeMeta;
+  }
+  get sessionSetupMeta() {
+    return this.#sessionSetupMeta;
   }
   get configOptions() {
     return this.#configOptions;
   }
   get modes() {
-    return this.#modes ? structuredClone(this.#modes) : void 0;
+    return this.#modes;
   }
   get promptCapabilities() {
     return this.#promptCapabilities;
@@ -138703,38 +140520,117 @@ var AcpSessionImpl = class {
   get supportsSessionFork() {
     return this.#supportsSessionFork;
   }
+  get supportsSessionList() {
+    return this.#supportsSessionList;
+  }
+  get supportsSessionDelete() {
+    return this.#supportsSessionDelete;
+  }
+  get supportsSessionResume() {
+    return this.#supportsSessionResume;
+  }
+  get supportsSessionClose() {
+    return this.#supportsSessionClose;
+  }
+  get supportsLogout() {
+    return this.#supportsLogout;
+  }
+  get supportsProviders() {
+    return this.#supportsProviders;
+  }
+  get supportsNes() {
+    return this.#supportsNes;
+  }
+  get nesCapabilities() {
+    return this.#nesCapabilities;
+  }
+  get positionEncoding() {
+    return this.#positionEncoding;
+  }
+  get supportsSteering() {
+    return this.#supportsSteering;
+  }
   get loadedReplayEvents() {
     return this.#loadedReplayEvents.map((event) => structuredClone(event));
   }
   async init() {
     const initStartedAt = Date.now();
     const callbacks = this.options.clientCallbacks ?? {};
-    const connection = new ClientSideConnection(() => this.#createClient(callbacks), ndJsonStream(this.#child.stdin, this.#child.stdout));
+    const requestedElicitationCapabilities = this.options.clientElicitationCapabilities ?? (callbacks.createElicitation ? {
+      form: {},
+      ...callbacks.completeElicitation ? { url: {} } : {}
+    } : void 0);
+    const elicitationCapabilities = callbacks.createElicitation && requestedElicitationCapabilities && (requestedElicitationCapabilities.form != null || requestedElicitationCapabilities.url != null) ? requestedElicitationCapabilities : void 0;
+    const connection = new ClientSideConnection(() => this.#createClient(callbacks, elicitationCapabilities?.url != null), ndJsonStream2(this.#child.stdin, this.#child.stdout));
     this.#agent = connection;
+    const inferredClientCapabilities = {
+      // The existing OpenMA controls render both boolean config options and
+      // structured/markdown plans. Advertising these capabilities prevents
+      // agents such as codex-acp from degrading them to plain transcript
+      // text even though the canonical event and GUI projections exist.
+      session: {
+        configOptions: {
+          boolean: {}
+        }
+      },
+      plan: {},
+      // Claude Agent ACP uses this ACP-reserved extension capability to
+      // forward nested subagent text, thinking, and tool updates. It is
+      // harmless for agents that do not implement the extension: ACP
+      // clients and agents must treat unknown `_meta` keys as optional.
+      _meta: {
+        "subagent-transcript": true,
+        // claude-agent-acp and codex-acp use this negotiated extension to
+        // send terminal snapshots instead of forcing clients to reconstruct
+        // them from provider-specific delta notifications.
+        terminal_output: true
+      },
+      fs: {
+        readTextFile: Boolean(callbacks.readTextFile),
+        writeTextFile: Boolean(callbacks.writeTextFile)
+      },
+      terminal: Boolean(callbacks.createTerminal),
+      ...elicitationCapabilities ? { elicitation: elicitationCapabilities } : {},
+      ...this.options.clientNesCapabilities ? { nes: this.options.clientNesCapabilities } : {},
+      ...this.options.positionEncodings?.length ? { positionEncodings: this.options.positionEncodings } : {}
+    };
     const initialized = await this.#agent.initialize({
       protocolVersion: PROTOCOL_VERSION,
-      clientCapabilities: mergeClientCapabilities(callbacks, this.options.clientCapabilities)
+      clientCapabilities: mergeClientCapabilities(callbacks, inferredClientCapabilities, this.options.clientCapabilities)
     });
     const initializedAt = Date.now();
     this.#authMethods = initialized.authMethods ?? [];
+    this.#protocolVersion = initialized.protocolVersion;
     this.#agentInfo = initialized.agentInfo ?? null;
-    this.#promptCapabilities = initialized.agentCapabilities?.promptCapabilities ?? {};
+    this.#agentCapabilities = initialized.agentCapabilities ?? {};
+    this.#initializeMeta = initialized._meta ?? null;
+    this.#promptCapabilities = this.#agentCapabilities.promptCapabilities ?? {};
     this.#supportsSessionFork = initialized.agentCapabilities?.sessionCapabilities?.fork != null;
-    this.#supportsSessionClose = initialized.agentCapabilities?.sessionCapabilities?.close != null && typeof this.#agent.closeSession === "function";
+    this.#supportsSessionList = initialized.agentCapabilities?.sessionCapabilities?.list != null;
+    this.#supportsSessionDelete = initialized.agentCapabilities?.sessionCapabilities?.delete != null;
+    this.#supportsSessionResume = initialized.agentCapabilities?.sessionCapabilities?.resume != null;
+    this.#supportsSessionClose = initialized.agentCapabilities?.sessionCapabilities?.close != null;
+    this.#supportsLogout = initialized.agentCapabilities?.auth?.logout != null;
+    this.#supportsProviders = initialized.agentCapabilities?.providers != null;
+    this.#nesCapabilities = initialized.agentCapabilities?.nes ?? null;
+    this.#supportsNes = this.#nesCapabilities != null;
+    this.#positionEncoding = initialized.agentCapabilities?.positionEncoding ?? null;
+    this.#supportsSteering = initialized._meta?.steering?.supported === true;
     const cwd = this.options.agent.cwd ?? process.cwd();
-    const mcpServers = this.options.mcpServers ?? [];
+    const mcpServers = filterMcpServersForCapabilities(this.options.mcpServers ?? [], initialized.agentCapabilities?.mcpCapabilities);
+    const requestMeta = this.options.sessionRequestMeta;
     let attemptedAuth = false;
     const withAuthRetry = async (request) => {
       try {
         return await request();
       } catch (error53) {
         const method = firstAgentHandledAuthMethod(this.#authMethods);
-        if (attemptedAuth || this.options.autoAuthenticate === false || !method || !isAuthRequiredError(error53)) {
+        if (attemptedAuth || this.options.autoAuthenticate === false || !method || !isAuthRequired(error53)) {
           throw error53;
         }
         attemptedAuth = true;
         await this.#agent.authenticate({ methodId: method.id });
-        return request();
+        return await request();
       }
     };
     if (this.options.forkFromAcpSessionId) {
@@ -138744,93 +140640,211 @@ var AcpSessionImpl = class {
       const forked = await withAuthRetry(() => this.#agent.unstable_forkSession({
         sessionId: this.options.forkFromAcpSessionId,
         cwd,
-        mcpServers
+        mcpServers,
+        ...requestMeta ? { _meta: requestMeta } : {}
       }));
       this.#sessionId = forked.sessionId;
       this.#setSessionStateFromResponse(forked);
+      this.#sessionSetupMeta = forked._meta ?? null;
+      this.#acceptOutOfBandUpdates = true;
       this.#logInit("fork", initStartedAt, initializedAt);
       return;
     }
-    const resumeSessionId = this.options.resumeAcpSessionId;
-    const sessionCapabilities = initialized.agentCapabilities?.sessionCapabilities;
-    if (resumeSessionId && sessionCapabilities?.resume != null && this.#agent.resumeSession) {
+    if (this.options.resumeAcpSessionId && this.#supportsSessionResume && this.#agent.resumeSession) {
       try {
         const resumed = await withAuthRetry(() => this.#agent.resumeSession({
-          sessionId: resumeSessionId,
+          sessionId: this.options.resumeAcpSessionId,
           cwd,
-          mcpServers
+          mcpServers,
+          ...requestMeta ? { _meta: requestMeta } : {}
         }));
-        this.#sessionId = resumeSessionId;
+        this.#sessionId = this.options.resumeAcpSessionId;
         this.#setSessionStateFromResponse(resumed);
+        this.#sessionSetupMeta = resumed._meta ?? null;
+        this.#acceptOutOfBandUpdates = true;
         this.#logInit("resume", initStartedAt, initializedAt);
         return;
       } catch (error53) {
-        console.error(`[acp] session/resume(${resumeSessionId}) failed, falling back to load/new:`, error53);
+        console.error(`[acp] session/resume(${this.options.resumeAcpSessionId}) failed, falling back to load/new:`, error53);
       }
     }
-    if (resumeSessionId && initialized.agentCapabilities?.loadSession === true && this.#agent.loadSession) {
+    if (this.options.resumeAcpSessionId && initialized.agentCapabilities?.loadSession === true && this.#agent.loadSession) {
       try {
         this.#loadedReplayEvents = [];
         this.#suppressLoadedReplay = true;
         this.#lastSuppressedLoadReplayAt = 0;
         const loaded = await withAuthRetry(() => this.#agent.loadSession({
-          sessionId: resumeSessionId,
+          sessionId: this.options.resumeAcpSessionId,
           cwd,
-          mcpServers
+          mcpServers,
+          ...requestMeta ? { _meta: requestMeta } : {}
         }));
-        this.#sessionId = resumeSessionId;
+        this.#sessionId = this.options.resumeAcpSessionId;
         this.#setSessionStateFromResponse(loaded);
+        this.#sessionSetupMeta = loaded?._meta ?? null;
         await this.#settleLoadedReplay();
+        this.#acceptOutOfBandUpdates = true;
         this.#logInit("load", initStartedAt, initializedAt);
         return;
       } catch (error53) {
         this.#loadedReplayEvents = [];
-        console.error(`[acp] session/load(${resumeSessionId}) failed, falling back to new:`, error53);
+        console.error(`[acp] session/load(${this.options.resumeAcpSessionId}) failed, falling back to new:`, error53);
       } finally {
         this.#suppressLoadedReplay = false;
       }
     }
-    const created = await withAuthRetry(() => this.#agent.newSession({ cwd, mcpServers }));
+    const created = await withAuthRetry(() => this.#agent.newSession({
+      cwd,
+      mcpServers,
+      ...requestMeta ? { _meta: requestMeta } : {}
+    }));
     this.#sessionId = created.sessionId;
     this.#setSessionStateFromResponse(created);
+    this.#sessionSetupMeta = created._meta ?? null;
+    this.#acceptOutOfBandUpdates = true;
     this.#logInit("new", initStartedAt, initializedAt);
   }
-  #createClient(callbacks) {
+  #createClient(callbacks, supportsUrlElicitation) {
     return {
       sessionUpdate: async (params) => {
-        const inner = params.update;
-        const update = inner === void 0 ? params : inner;
+        const update = preserveAcpNotificationContext(params);
         if (this.#suppressLoadedReplay && isTranscriptReplayUpdate(update)) {
           this.#lastSuppressedLoadReplayAt = Date.now();
           this.#loadedReplayEvents.push(update);
           return;
         }
-        if (this.#activePromptCount === 0 && !isIdleSessionUpdate(update))
-          return;
-        this.#pushEvent(update);
+        this.#receiveInboundEvent(update, isIdleSessionUpdate(update));
       },
       requestPermission: async (params) => {
-        if (this.options.emitPermissionEvents) {
-          this.#pushEvent({ type: "requestPermission", params });
-        }
-        if (!callbacks.requestPermission) {
-          return { outcome: { outcome: "cancelled" } };
-        }
-        try {
-          return await callbacks.requestPermission(params);
-        } catch (error53) {
-          this.#pushEvent({ type: "requestPermissionError", error: String(error53) });
-          return { outcome: { outcome: "cancelled" } };
-        }
+        return this.#runClientRequest("session/request_permission", params, async () => {
+          if (!callbacks.requestPermission) {
+            return { outcome: { outcome: "cancelled" } };
+          }
+          try {
+            return await callbacks.requestPermission(params);
+          } catch (error53) {
+            this.#pushEvent({ type: "requestPermissionError", error: String(error53) });
+            return { outcome: { outcome: "cancelled" } };
+          }
+        });
       },
-      readTextFile: callbacks.readTextFile ? async (params) => callbacks.readTextFile(params) : void 0,
-      writeTextFile: callbacks.writeTextFile ? async (params) => callbacks.writeTextFile(params) : void 0,
-      createTerminal: callbacks.createTerminal ? async (params) => callbacks.createTerminal(params) : void 0,
-      terminalOutput: callbacks.terminalOutput ? async (params) => callbacks.terminalOutput(params) : void 0,
-      releaseTerminal: callbacks.releaseTerminal ? async (params) => callbacks.releaseTerminal(params) : void 0,
-      waitForTerminalExit: callbacks.waitForTerminalExit ? async (params) => callbacks.waitForTerminalExit(params) : void 0,
-      killTerminal: callbacks.killTerminal ? async (params) => callbacks.killTerminal(params) : void 0
+      readTextFile: callbacks.readTextFile ? async (params) => this.#runClientRequest("fs/read_text_file", params, () => callbacks.readTextFile(params)) : void 0,
+      writeTextFile: callbacks.writeTextFile ? async (params) => this.#runClientRequest("fs/write_text_file", params, () => callbacks.writeTextFile(params)) : void 0,
+      createTerminal: callbacks.createTerminal ? async (params) => this.#runClientRequest("terminal/create", params, () => callbacks.createTerminal(params)) : void 0,
+      terminalOutput: callbacks.terminalOutput ? async (params) => this.#runClientRequest("terminal/output", params, () => callbacks.terminalOutput(params)) : void 0,
+      releaseTerminal: callbacks.releaseTerminal ? async (params) => this.#runClientRequest("terminal/release", params, () => callbacks.releaseTerminal(params)) : void 0,
+      waitForTerminalExit: callbacks.waitForTerminalExit ? async (params) => this.#runClientRequest("terminal/wait_for_exit", params, () => callbacks.waitForTerminalExit(params)) : void 0,
+      killTerminal: callbacks.killTerminal ? async (params) => this.#runClientRequest("terminal/kill", params, () => callbacks.killTerminal(params)) : void 0,
+      unstable_createElicitation: callbacks.createElicitation ? async (params) => {
+        const response = await this.#runClientRequest("elicitation/create", params, () => callbacks.createElicitation(params));
+        if (params.mode === "url" && response.action === "accept" && typeof params.elicitationId === "string") {
+          this.#outstandingUrlElicitations.add(params.elicitationId);
+        }
+        return response;
+      } : void 0,
+      unstable_completeElicitation: supportsUrlElicitation ? async (params) => {
+        if (!this.#outstandingUrlElicitations.delete(params.elicitationId))
+          return;
+        this.#receiveClientNotification("elicitation/complete", params);
+        await callbacks.completeElicitation?.(params);
+        this.#receiveInboundEvent({
+          type: "acp.elicitation_complete",
+          method: "elicitation/complete",
+          params
+        });
+      } : void 0,
+      extMethod: async (method, params) => this.#runClientRequest(method, params, async () => {
+        if (method === "mcp/connect" && callbacks.connectMcp) {
+          return callbacks.connectMcp(params);
+        }
+        if (method === "mcp/message" && callbacks.messageMcp) {
+          return await callbacks.messageMcp(params);
+        }
+        if (method === "mcp/disconnect" && callbacks.disconnectMcp) {
+          return await callbacks.disconnectMcp(params) ?? {};
+        }
+        this.#receiveInboundEvent({
+          type: "acp.extension_request",
+          method,
+          params
+        });
+        if (callbacks.extensionRequest) {
+          return callbacks.extensionRequest(method, params);
+        }
+        throw RequestError2.methodNotFound(method);
+      }),
+      extNotification: async (method, params) => {
+        this.#receiveClientNotification(method, params);
+        try {
+          if (method === "mcp/message" && callbacks.notifyMcp) {
+            await callbacks.notifyMcp(params);
+            this.#receiveInboundEvent({
+              type: "acp.mcp_notification",
+              method,
+              params
+            });
+            return;
+          }
+          await callbacks.extensionNotification?.(method, params);
+        } catch (error53) {
+          console.error("[acp] extension notification callback failed:", error53);
+        }
+        this.#receiveInboundEvent({
+          type: "acp.extension_notification",
+          method,
+          params
+        });
+      }
     };
+  }
+  async #runClientRequest(method, params, invoke) {
+    const requestId = `client-request-${this.#nextClientRequestId++}`;
+    this.#receiveInboundEvent({
+      type: "acp.client_request",
+      requestId,
+      method,
+      params
+    });
+    try {
+      const result = await invoke();
+      this.#receiveInboundEvent({
+        type: "acp.client_response",
+        requestId,
+        method,
+        result
+      });
+      return result;
+    } catch (error53) {
+      this.#receiveInboundEvent({
+        type: "acp.client_error",
+        requestId,
+        method,
+        error: clientCallbackError(error53)
+      });
+      throw error53;
+    }
+  }
+  #receiveClientNotification(method, params) {
+    this.#receiveInboundEvent({
+      type: "acp.client_notification",
+      method,
+      params
+    });
+  }
+  #receiveInboundEvent(event, allowedBeforeSessionReady = false) {
+    if (this.#activePromptCount === 0) {
+      if (!this.#acceptOutOfBandUpdates && !allowedBeforeSessionReady)
+        return;
+      if (this.#acceptOutOfBandUpdates && this.options.onOutOfBandSessionUpdate) {
+        try {
+          this.options.onOutOfBandSessionUpdate(event);
+        } catch (error53) {
+          console.error("[acp] out-of-band session update callback failed:", error53);
+        }
+        return;
+      }
+    }
+    this.#pushEvent(event);
   }
   #logInit(mode, startedAt, initializedAt) {
     if (process.env.NODE_ENV === "test")
@@ -138847,13 +140861,16 @@ var AcpSessionImpl = class {
   async setMode(modeId) {
     if (!this.#agent || !this.#sessionId)
       throw new Error("AcpSession not initialized");
-    if (!this.#agent.setSessionMode) {
-      throw new Error("ACP agent does not support session modes");
+    const setSessionMode = this.#agent.setSessionMode;
+    if (typeof setSessionMode !== "function")
+      return;
+    try {
+      await setSessionMode.call(this.#agent, { sessionId: this.#sessionId, modeId });
+      if (this.#modes)
+        this.#modes = { ...this.#modes, currentModeId: modeId };
+    } catch (error53) {
+      console.warn(`[acp] setSessionMode("${modeId}") failed:`, error53);
     }
-    await this.#agent.setSessionMode({ sessionId: this.#sessionId, modeId });
-    if (this.#modes)
-      this.#modes = { ...this.#modes, currentModeId: modeId };
-    return this.modes;
   }
   async setConfigOption(configId, value) {
     if (!this.#agent || !this.#sessionId)
@@ -138877,10 +140894,11 @@ var AcpSessionImpl = class {
       });
       return this.#configOptions;
     }
-    if (!this.#agent.setSessionConfigOption) {
+    const setSessionConfigOption = this.#agent.setSessionConfigOption;
+    if (typeof setSessionConfigOption !== "function") {
       throw new Error("ACP agent does not support session config options");
     }
-    const response = await this.#agent.setSessionConfigOption({
+    const response = await setSessionConfigOption.call(this.#agent, {
       sessionId: this.#sessionId,
       configId,
       ...typeof value === "boolean" ? { type: "boolean", value } : { value }
@@ -138888,10 +140906,149 @@ var AcpSessionImpl = class {
     this.#setSessionStateFromResponse(response);
     return this.#configOptions;
   }
+  async listSessions(params = {}) {
+    if (!this.#supportsSessionList || !this.#agent?.listSessions) {
+      throw new Error("ACP agent does not support session/list");
+    }
+    return this.#agent.listSessions(params);
+  }
+  async deleteSession(sessionId) {
+    if (!this.#supportsSessionDelete || !this.#agent?.deleteSession) {
+      throw new Error("ACP agent does not support session/delete");
+    }
+    await this.#agent.deleteSession({ sessionId });
+  }
+  async logout() {
+    if (!this.#supportsLogout || !this.#agent?.logout) {
+      throw new Error("ACP agent does not support logout");
+    }
+    await this.#agent.logout({});
+  }
+  async listProviders() {
+    if (!this.#supportsProviders || !this.#agent?.unstable_listProviders) {
+      throw new Error("ACP agent does not support providers/list");
+    }
+    return this.#agent.unstable_listProviders({});
+  }
+  async setProvider(params) {
+    if (!this.#supportsProviders || !this.#agent?.unstable_setProvider) {
+      throw new Error("ACP agent does not support providers/set");
+    }
+    await this.#agent.unstable_setProvider(params);
+  }
+  async disableProvider(providerId) {
+    if (!this.#supportsProviders || !this.#agent?.unstable_disableProvider) {
+      throw new Error("ACP agent does not support providers/disable");
+    }
+    await this.#agent.unstable_disableProvider({ providerId });
+  }
+  async requestExtension(method, params = {}) {
+    if (!this.#agent?.extMethod) {
+      throw new Error("ACP connection does not support extension requests");
+    }
+    return this.#agent.extMethod(method, params);
+  }
+  async notifyExtension(method, params = {}) {
+    if (!this.#agent?.extNotification) {
+      throw new Error("ACP connection does not support extension notifications");
+    }
+    await this.#agent.extNotification(method, params);
+  }
+  async startNes(params) {
+    this.#assertNesMethod(this.#agent?.unstable_startNes, "nes/start");
+    return this.#agent.unstable_startNes(params);
+  }
+  async suggestNes(params) {
+    this.#assertNesMethod(this.#agent?.unstable_suggestNes, "nes/suggest");
+    return this.#agent.unstable_suggestNes(params);
+  }
+  async closeNes(params) {
+    this.#assertNesMethod(this.#agent?.unstable_closeNes, "nes/close");
+    return this.#agent.unstable_closeNes(params);
+  }
+  async didOpenDocument(params) {
+    this.#assertNesDocumentEvent("didOpen", this.#agent?.unstable_didOpenDocument);
+    await this.#agent.unstable_didOpenDocument(params);
+  }
+  async didChangeDocument(params) {
+    this.#assertNesDocumentEvent("didChange", this.#agent?.unstable_didChangeDocument);
+    await this.#agent.unstable_didChangeDocument(params);
+  }
+  async didCloseDocument(params) {
+    this.#assertNesDocumentEvent("didClose", this.#agent?.unstable_didCloseDocument);
+    await this.#agent.unstable_didCloseDocument(params);
+  }
+  async didSaveDocument(params) {
+    this.#assertNesDocumentEvent("didSave", this.#agent?.unstable_didSaveDocument);
+    await this.#agent.unstable_didSaveDocument(params);
+  }
+  async didFocusDocument(params) {
+    this.#assertNesDocumentEvent("didFocus", this.#agent?.unstable_didFocusDocument);
+    await this.#agent.unstable_didFocusDocument(params);
+  }
+  async acceptNes(params) {
+    this.#assertNesMethod(this.#agent?.unstable_acceptNes, "nes/accept");
+    await this.#agent.unstable_acceptNes(params);
+  }
+  async rejectNes(params) {
+    this.#assertNesMethod(this.#agent?.unstable_rejectNes, "nes/reject");
+    await this.#agent.unstable_rejectNes(params);
+  }
+  #assertNesMethod(method, name) {
+    if (!this.#supportsNes || typeof method !== "function") {
+      throw new Error(`ACP agent does not support ${name}`);
+    }
+  }
+  #assertNesDocumentEvent(event, method) {
+    const capability2 = this.#nesCapabilities?.events?.document?.[event];
+    if (capability2 == null || typeof method !== "function") {
+      throw new Error(`ACP agent does not support document/${event}`);
+    }
+  }
   prompt(input, options) {
     if (this.#disposed)
       throw new Error(`AcpSession ${this.id} is disposed`);
-    return this.#prompt(input, options);
+    return this.#guardPrompt(this.#prompt(input, options));
+  }
+  async *#guardPrompt(stream) {
+    let promptFailure;
+    for await (const event of stream) {
+      if (event?.type === "promptError") {
+        promptFailure = event.error;
+      }
+      yield event;
+    }
+    if (promptFailure === void 0)
+      return;
+    const exit = this.#childExit ?? await settledChildExit(this.#child.exited);
+    if (exit || isBrokenPipe(promptFailure)) {
+      throw agentProcessExitError(this.options.agent.command, exit, promptFailure);
+    }
+  }
+  async steer(input) {
+    if (!this.#agent || !this.#sessionId)
+      throw new Error("AcpSession not initialized");
+    if (!this.#supportsSteering) {
+      throw new Error("ACP agent did not negotiate _session/steering");
+    }
+    if (!this.#agent.extMethod)
+      throw new Error("ACP connection does not support extensions");
+    const prompt = typeof input === "string" ? [{ type: "text", text: input }] : [...input];
+    const response = await this.#agent.extMethod("_session/steering", {
+      sessionId: this.#sessionId,
+      prompt,
+      _meta: { steering: { idleBehavior: "promptRequired" } }
+    });
+    const outcome = response.outcome;
+    if (outcome !== "injected" && outcome !== "promptRequired" && outcome !== "startedNewTurn" && outcome !== "failed") {
+      throw new Error(`Invalid _session/steering outcome: ${String(outcome)}`);
+    }
+    return outcome;
+  }
+  async cancelCurrentTurn() {
+    if (!this.#agent || !this.#sessionId)
+      throw new Error("AcpSession not initialized");
+    await this.#agent.cancel({ sessionId: this.#sessionId });
   }
   async provideToolResult(toolCallId, result) {
     void toolCallId;
@@ -138902,32 +141059,32 @@ var AcpSessionImpl = class {
     return this.#pendingEvents.splice(0);
   }
   async *#prompt(input, options) {
-    const turnAbort = new AbortController();
+    const timeoutAbort = new AbortController();
     const cancelAgent = () => {
-      void this.#agent.cancel({ sessionId: this.#sessionId }).catch(() => void 0);
+      void Promise.resolve(this.#agent.cancel({ sessionId: this.#sessionId })).catch(() => void 0);
     };
     const abortByCaller = () => cancelAgent();
-    options?.abortSignal?.addEventListener("abort", abortByCaller, { once: true });
-    turnAbort.signal.addEventListener("abort", cancelAgent, { once: true });
-    const timer = this.options.perTurnTimeoutMs ? setTimeout(() => {
-      turnAbort.abort();
-    }, this.options.perTurnTimeoutMs) : void 0;
+    const timer = this.options.perTurnTimeoutMs ? setTimeout(() => timeoutAbort.abort(), this.options.perTurnTimeoutMs) : void 0;
     timer?.unref?.();
+    options?.abortSignal?.addEventListener("abort", abortByCaller, { once: true });
+    timeoutAbort.signal.addEventListener("abort", cancelAgent, { once: true });
     if (options?.abortSignal?.aborted)
       abortByCaller();
     this.#activePromptCount += 1;
     const prompt = typeof input === "string" ? [{ type: "text", text: input }] : [...input];
-    const agentPrompt = this.#agent.prompt({ sessionId: this.#sessionId, prompt });
+    const agentPrompt = Promise.resolve(this.#agent.prompt({ sessionId: this.#sessionId, prompt }));
     void agentPrompt.catch(() => void 0);
-    const abort = new Promise((_, reject) => {
-      turnAbort.signal.addEventListener("abort", () => reject(new Error(`ACP prompt timed out after ${this.options.perTurnTimeoutMs}ms`)), { once: true });
+    const timeout = new Promise((_resolve, reject) => {
+      timeoutAbort.signal.addEventListener("abort", () => {
+        reject(new Error(`ACP prompt timed out after ${this.options.perTurnTimeoutMs}ms`));
+      }, { once: true });
     });
-    const done = Promise.race([agentPrompt, abort]).finally(() => {
+    const done = Promise.race([agentPrompt, timeout]).finally(() => {
       this.#activePromptCount = Math.max(0, this.#activePromptCount - 1);
       if (timer)
         clearTimeout(timer);
       options?.abortSignal?.removeEventListener("abort", abortByCaller);
-      turnAbort.signal.removeEventListener("abort", cancelAgent);
+      timeoutAbort.signal.removeEventListener("abort", cancelAgent);
     });
     let ended = false;
     const endPromise = done.then((response) => {
@@ -138942,18 +141099,18 @@ var AcpSessionImpl = class {
     while (true) {
       if (this.#pendingEvents.length > 0) {
         yield this.#pendingEvents.shift();
-      } else if (ended || this.#disposed) {
+      } else if (ended) {
         break;
       } else {
         await new Promise((resolve18) => {
-          this.#waiters.push(resolve18);
+          this.#waiters.push(() => resolve18());
         });
       }
     }
     await endPromise;
   }
   isAlive() {
-    return !this.#disposed;
+    return !this.#disposed && this.#childExit === null;
   }
   dispose() {
     this.#disposePromise ??= this.#disposeOnce();
@@ -138961,37 +141118,46 @@ var AcpSessionImpl = class {
   }
   async #disposeOnce() {
     this.#disposed = true;
+    this.#outstandingUrlElicitations.clear();
     this.#endStream();
-    if (this.#supportsSessionClose && this.#sessionId && this.#agent.closeSession) {
-      await withTimeout(this.#agent.closeSession({ sessionId: this.#sessionId }), SESSION_CLOSE_TIMEOUT_MS).catch(() => void 0);
+    if (this.#supportsSessionClose && this.#sessionId && this.#agent?.closeSession) {
+      try {
+        await withTimeout(Promise.resolve(this.#agent.closeSession({ sessionId: this.#sessionId })), SESSION_CLOSE_TIMEOUT_MS, `ACP session close timed out after ${SESSION_CLOSE_TIMEOUT_MS}ms`);
+      } catch (error53) {
+        console.warn(`[acp] session/close(${this.#sessionId}) failed:`, error53);
+      }
     }
-    await this.#child.kill("SIGTERM").catch(() => void 0);
+    await this.#child.kill("SIGTERM").catch(() => {
+    });
   }
   #pushEvent(event) {
     this.#setSessionStateFromEvent(event);
     this.#pendingEvents.push(event);
-    this.#waiters.shift()?.();
+    this.#waiters.shift()?.({ value: void 0, done: false });
   }
   #endStream() {
-    while (this.#waiters.length > 0)
-      this.#waiters.shift()?.();
+    while (this.#waiters.length > 0) {
+      this.#waiters.shift()?.({ value: void 0, done: true });
+    }
   }
   #setSessionStateFromResponse(value) {
-    const hasConfigOptions = Array.isArray(value?.configOptions);
-    const hasLegacyModels = legacyModelStateFromResponse(value) !== null;
-    if (hasConfigOptions || hasLegacyModels) {
+    if (responseHasSessionConfig(value)) {
       this.#configOptions = sessionConfigOptionsFromResponse(value);
     }
-    if (value?.modes)
-      this.#modes = structuredClone(value.modes);
+    const modes = value && typeof value === "object" ? value.modes : void 0;
+    if (modes)
+      this.#modes = structuredClone(modes);
   }
   #setSessionStateFromEvent(event) {
-    if (!("sessionUpdate" in event))
+    if (!event || typeof event !== "object")
       return;
-    if (event.sessionUpdate === "config_option_update") {
-      this.#configOptions = event.configOptions;
-    } else if (event.sessionUpdate === "current_mode_update" && this.#modes) {
-      this.#modes = { ...this.#modes, currentModeId: event.currentModeId };
+    const update = event;
+    if (update.sessionUpdate === "config_option_update" && Array.isArray(update.configOptions)) {
+      this.#configOptions = update.configOptions.map((option) => structuredClone(option));
+      return;
+    }
+    if (update.sessionUpdate === "current_mode_update" && this.#modes && typeof update.currentModeId === "string") {
+      this.#modes = { ...this.#modes, currentModeId: update.currentModeId };
     }
   }
   async #settleLoadedReplay() {
@@ -139005,13 +141171,36 @@ var AcpSessionImpl = class {
     }
   }
 };
-async function withTimeout(promise2, timeoutMs) {
+function clientCallbackError(error53) {
+  const code = error53 !== null && typeof error53 === "object" && typeof error53.code === "number" ? error53.code : void 0;
+  const message = code === -32601 ? "Method not found" : error53 instanceof Error ? error53.message : String(error53);
+  return {
+    message,
+    ...code !== void 0 ? { code } : {}
+  };
+}
+var IDLE_SESSION_UPDATES = /* @__PURE__ */ new Set([
+  "available_commands_update",
+  "current_mode_update",
+  "config_option_update",
+  "session_info_update",
+  "usage_update"
+]);
+function isTranscriptReplayUpdate(update) {
+  const tag = update?.sessionUpdate;
+  return typeof tag !== "string" || !IDLE_SESSION_UPDATES.has(tag);
+}
+function isIdleSessionUpdate(update) {
+  const tag = update?.sessionUpdate;
+  return typeof tag === "string" && IDLE_SESSION_UPDATES.has(tag);
+}
+async function withTimeout(promise2, timeoutMs, message) {
   let timer;
   try {
     return await Promise.race([
       promise2,
-      new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`ACP session close timed out after ${timeoutMs}ms`)), timeoutMs);
+      new Promise((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
         timer.unref?.();
       })
     ]);
@@ -139020,8 +141209,32 @@ async function withTimeout(promise2, timeoutMs) {
       clearTimeout(timer);
   }
 }
+async function settledChildExit(exited) {
+  let timer;
+  try {
+    return await Promise.race([
+      exited,
+      new Promise((resolve18) => {
+        timer = setTimeout(() => resolve18(null), 25);
+        timer.unref?.();
+      })
+    ]);
+  } finally {
+    if (timer)
+      clearTimeout(timer);
+  }
+}
+function isBrokenPipe(error53) {
+  const code = error53 && typeof error53 === "object" && "code" in error53 ? String(error53.code ?? "") : "";
+  const message = error53 instanceof Error ? error53.message : String(error53);
+  return code === "EPIPE" || code === "ERR_STREAM_DESTROYED" || /\bEPIPE\b|broken pipe|stream (?:is )?(?:closed|destroyed)/i.test(message);
+}
+function agentProcessExitError(command6, exit, cause) {
+  const status = exit?.signal ? `signal ${exit.signal}` : exit?.code != null ? `exit code ${exit.code}` : "no exit status";
+  return new Error(`The agent process exited before it could accept the prompt (${command6}, ${status}). Reopen the task to restart it, or check this agent's setup and sign-in.`, { cause });
+}
 
-// ../../node_modules/.pnpm/@openma+common@https+++codeload.github.com+openma-ai+openma-common+tar.gz+28d93020c85c2_2fe51cb3b18b085048d70b65548de819/node_modules/@openma/common/dist/acp-runtime/runtime.js
+// ../../apps/local-api/dist/runtime/host/_acp-runtime/runtime.js
 var nextId = 1;
 var DEFAULT_INIT_TIMEOUT_MS = 12e4;
 var AcpRuntimeImpl = class {
@@ -139042,8 +141255,10 @@ var AcpRuntimeImpl = class {
       if (initTimeoutMs > 0) {
         await Promise.race([
           init,
-          new Promise((_, reject) => {
-            timer = setTimeout(() => reject(new Error(`ACP session init timed out after ${initTimeoutMs}ms`)), initTimeoutMs);
+          new Promise((_resolve, reject) => {
+            timer = setTimeout(() => {
+              reject(new Error(`ACP session init timed out after ${initTimeoutMs}ms`));
+            }, initTimeoutMs);
             timer.unref?.();
           })
         ]);
@@ -139065,58 +141280,20 @@ var AcpRuntimeImpl = class {
   }
 };
 
-// ../../node_modules/.pnpm/@openma+common@https+++codeload.github.com+openma-ai+openma-common+tar.gz+28d93020c85c2_2fe51cb3b18b085048d70b65548de819/node_modules/@openma/common/dist/acp-runtime/spawners/node.js
+// ../../node_modules/.pnpm/@openma+common@https+++codeload.github.com+openma-ai+openma-common+tar.gz+e5e6f9e68d49e_d732427ee197aa08d37f709b310e9d87/node_modules/@openma/common/dist/acp-runtime/spawners/node.js
 var import_node_child_process8 = require("node:child_process");
-var activeChildren = /* @__PURE__ */ new Set();
-var cleanupHandlersInstalled = false;
-function killProcessTree(child, signal, detached) {
-  if (child.exitCode !== null || child.signalCode !== null)
-    return;
-  if (detached && child.pid !== void 0) {
-    try {
-      process.kill(-child.pid, signal);
-      return;
-    } catch {
-    }
-  }
-  child.kill(signal);
-}
-function cleanupActiveChildren(signal = "SIGTERM") {
-  for (const managed of activeChildren) {
-    killProcessTree(managed.child, signal, managed.detached);
-  }
-}
-function installProcessCleanupHandlers() {
-  if (cleanupHandlersInstalled)
-    return;
-  cleanupHandlersInstalled = true;
-  process.once("exit", () => cleanupActiveChildren());
-  for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"]) {
-    const handler = () => {
-      cleanupActiveChildren();
-      if (process.listenerCount(signal) === 1) {
-        process.off(signal, handler);
-        process.kill(process.pid, signal);
-      }
-    };
-    process.on(signal, handler);
-  }
-}
 var NodeSpawner = class {
   async spawn(spec) {
-    installProcessCleanupHandlers();
     const merged = { ...process.env, ...spec.env ?? {} };
     const env2 = {};
     for (const [key, value] of Object.entries(merged)) {
       if (typeof value === "string")
         env2[key] = value;
     }
-    const detached = process.platform !== "win32";
     const child = (0, import_node_child_process8.spawn)(spec.command, spec.args ?? [], {
       env: env2,
       cwd: spec.cwd,
-      stdio: ["pipe", "pipe", "pipe"],
-      detached
+      stdio: ["pipe", "pipe", "pipe"]
     });
     if (spec.onDiagnosticLine) {
       let buffer = "";
@@ -139145,17 +141322,14 @@ var NodeSpawner = class {
       child.once("close", settle);
       child.once("error", () => settle(null, null));
     });
-    const managed = { child, detached };
-    activeChildren.add(managed);
-    void exited.finally(() => activeChildren.delete(managed));
     const kill = async (signal = "SIGTERM") => {
       if (child.exitCode !== null || child.signalCode !== null)
         return;
-      killProcessTree(child, signal, detached);
+      child.kill(signal);
       if (await waitForChildExit(exited, 2e3))
         return;
       if (signal !== "SIGKILL") {
-        killProcessTree(child, "SIGKILL", detached);
+        child.kill("SIGKILL");
         await waitForChildExit(exited, 2e3);
       }
     };
@@ -139275,3689 +141449,7 @@ var import_node_fs15 = require("node:fs");
 var import_promises34 = require("node:fs/promises");
 var import_node_os11 = require("node:os");
 var import_node_path38 = require("node:path");
-
-// ../../node_modules/.pnpm/@agentclientprotocol+sdk@0.28.1_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/schema/index.js
-var AGENT_METHODS2 = {
-  initialize: "initialize",
-  authenticate: "authenticate",
-  providers_list: "providers/list",
-  providers_set: "providers/set",
-  providers_disable: "providers/disable",
-  session_new: "session/new",
-  session_load: "session/load",
-  session_set_mode: "session/set_mode",
-  session_set_config_option: "session/set_config_option",
-  session_prompt: "session/prompt",
-  session_cancel: "session/cancel",
-  mcp_message: "mcp/message",
-  session_list: "session/list",
-  session_delete: "session/delete",
-  session_fork: "session/fork",
-  session_resume: "session/resume",
-  session_close: "session/close",
-  logout: "logout",
-  nes_start: "nes/start",
-  nes_suggest: "nes/suggest",
-  nes_accept: "nes/accept",
-  nes_reject: "nes/reject",
-  nes_close: "nes/close",
-  document_did_open: "document/didOpen",
-  document_did_change: "document/didChange",
-  document_did_close: "document/didClose",
-  document_did_save: "document/didSave",
-  document_did_focus: "document/didFocus"
-};
-var CLIENT_METHODS2 = {
-  session_request_permission: "session/request_permission",
-  session_update: "session/update",
-  fs_write_text_file: "fs/write_text_file",
-  fs_read_text_file: "fs/read_text_file",
-  terminal_create: "terminal/create",
-  terminal_output: "terminal/output",
-  terminal_release: "terminal/release",
-  terminal_wait_for_exit: "terminal/wait_for_exit",
-  terminal_kill: "terminal/kill",
-  mcp_connect: "mcp/connect",
-  mcp_message: "mcp/message",
-  mcp_disconnect: "mcp/disconnect",
-  elicitation_create: "elicitation/create",
-  elicitation_complete: "elicitation/complete"
-};
-var PROTOCOL_VERSION2 = 1;
-
-// ../../node_modules/.pnpm/@agentclientprotocol+sdk@0.28.1_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/schema-deserialize.js
-var skippedItem2 = Symbol("skippedItem");
-function defaultOnError2(schema, fallback2) {
-  return schema.catch(fallback2);
-}
-function requiredDefaultOnError2(schema, fallback2) {
-  const schemaWithCatch = schema.catch(fallback2);
-  return external_exports.unknown().transform((value, context) => {
-    if (value !== void 0)
-      return schemaWithCatch.parse(value);
-    context.addIssue({
-      code: "custom",
-      message: "Required value is missing"
-    });
-    return external_exports.NEVER;
-  });
-}
-function vecSkipError2(itemSchema) {
-  return external_exports.array(itemSchema.catch(skippedItem2)).transform((items) => items.filter((item) => item !== skippedItem2));
-}
-
-// ../../node_modules/.pnpm/@agentclientprotocol+sdk@0.28.1_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/schema/zod.gen.js
-var zRequestId2 = union([number2(), string2()]).nullable();
-var zSessionId2 = string2();
-var zWriteTextFileRequest2 = object({
-  sessionId: zSessionId2,
-  path: string2(),
-  content: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zReadTextFileRequest2 = object({
-  sessionId: zSessionId2,
-  path: string2(),
-  line: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }).nullish(),
-  limit: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }).nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zToolCallId2 = string2();
-var zToolKind2 = union([
-  literal("read"),
-  literal("edit"),
-  literal("delete"),
-  literal("move"),
-  literal("search"),
-  literal("execute"),
-  literal("think"),
-  literal("fetch"),
-  literal("switch_mode"),
-  literal("other")
-]);
-var zToolCallStatus2 = union([
-  literal("pending"),
-  literal("in_progress"),
-  literal("completed"),
-  literal("failed")
-]);
-var zRole2 = union([literal("assistant"), literal("user")]);
-var zAnnotations2 = object({
-  audience: defaultOnError2(vecSkipError2(zRole2).nullish(), () => void 0),
-  lastModified: string2().nullish(),
-  priority: number2().nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zTextContent2 = object({
-  annotations: defaultOnError2(zAnnotations2.nullish(), () => void 0),
-  text: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zImageContent2 = object({
-  annotations: defaultOnError2(zAnnotations2.nullish(), () => void 0),
-  data: string2(),
-  mimeType: string2(),
-  uri: string2().nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zAudioContent2 = object({
-  annotations: defaultOnError2(zAnnotations2.nullish(), () => void 0),
-  data: string2(),
-  mimeType: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zResourceLink2 = object({
-  annotations: defaultOnError2(zAnnotations2.nullish(), () => void 0),
-  description: string2().nullish(),
-  mimeType: string2().nullish(),
-  name: string2(),
-  size: number2().nullish(),
-  title: string2().nullish(),
-  uri: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zTextResourceContents2 = object({
-  mimeType: string2().nullish(),
-  text: string2(),
-  uri: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zBlobResourceContents2 = object({
-  blob: string2(),
-  mimeType: string2().nullish(),
-  uri: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zEmbeddedResourceResource2 = union([
-  zTextResourceContents2,
-  zBlobResourceContents2
-]);
-var zEmbeddedResource2 = object({
-  annotations: defaultOnError2(zAnnotations2.nullish(), () => void 0),
-  resource: zEmbeddedResourceResource2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zContentBlock2 = union([
-  zTextContent2.and(object({
-    type: literal("text")
-  })),
-  zImageContent2.and(object({
-    type: literal("image")
-  })),
-  zAudioContent2.and(object({
-    type: literal("audio")
-  })),
-  zResourceLink2.and(object({
-    type: literal("resource_link")
-  })),
-  zEmbeddedResource2.and(object({
-    type: literal("resource")
-  }))
-]);
-var zContent2 = object({
-  content: zContentBlock2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zDiff2 = object({
-  path: string2(),
-  oldText: string2().nullish(),
-  newText: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zTerminalId = string2();
-var zTerminal2 = object({
-  terminalId: zTerminalId,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zToolCallContent2 = union([
-  zContent2.and(object({
-    type: literal("content")
-  })),
-  zDiff2.and(object({
-    type: literal("diff")
-  })),
-  zTerminal2.and(object({
-    type: literal("terminal")
-  }))
-]);
-var zToolCallLocation2 = object({
-  path: string2(),
-  line: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }).nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zToolCallUpdate2 = object({
-  toolCallId: zToolCallId2,
-  kind: defaultOnError2(zToolKind2.nullish(), () => void 0),
-  status: defaultOnError2(zToolCallStatus2.nullish(), () => void 0),
-  title: string2().nullish(),
-  content: defaultOnError2(vecSkipError2(zToolCallContent2).nullish(), () => void 0),
-  locations: defaultOnError2(vecSkipError2(zToolCallLocation2).nullish(), () => void 0),
-  rawInput: unknown().optional(),
-  rawOutput: unknown().optional(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zPermissionOptionId2 = string2();
-var zPermissionOptionKind2 = union([
-  literal("allow_once"),
-  literal("allow_always"),
-  literal("reject_once"),
-  literal("reject_always")
-]);
-var zPermissionOption2 = object({
-  optionId: zPermissionOptionId2,
-  name: string2(),
-  kind: zPermissionOptionKind2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zRequestPermissionRequest2 = object({
-  sessionId: zSessionId2,
-  toolCall: zToolCallUpdate2,
-  options: array(zPermissionOption2),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zEnvVariable2 = object({
-  name: string2(),
-  value: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zCreateTerminalRequest2 = object({
-  sessionId: zSessionId2,
-  command: string2(),
-  args: array(string2()).optional(),
-  env: array(zEnvVariable2).optional(),
-  cwd: string2().nullish(),
-  outputByteLimit: number2().nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zTerminalOutputRequest2 = object({
-  sessionId: zSessionId2,
-  terminalId: zTerminalId,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zReleaseTerminalRequest2 = object({
-  sessionId: zSessionId2,
-  terminalId: zTerminalId,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zWaitForTerminalExitRequest2 = object({
-  sessionId: zSessionId2,
-  terminalId: zTerminalId,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zKillTerminalRequest2 = object({
-  sessionId: zSessionId2,
-  terminalId: zTerminalId,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zElicitationSessionScope2 = object({
-  sessionId: zSessionId2,
-  toolCallId: zToolCallId2.nullish()
-});
-var zElicitationRequestScope2 = object({
-  requestId: zRequestId2
-});
-var zElicitationSchemaType2 = literal("object");
-var zStringFormat2 = union([
-  literal("email"),
-  literal("uri"),
-  literal("date"),
-  literal("date-time")
-]);
-var zEnumOption2 = object({
-  const: string2(),
-  title: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zStringPropertySchema2 = object({
-  title: string2().nullish(),
-  description: string2().nullish(),
-  minLength: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }).nullish(),
-  maxLength: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }).nullish(),
-  pattern: string2().nullish(),
-  format: zStringFormat2.nullish(),
-  default: string2().nullish(),
-  enum: array(string2()).nullish(),
-  oneOf: array(zEnumOption2).nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNumberPropertySchema2 = object({
-  title: string2().nullish(),
-  description: string2().nullish(),
-  minimum: number2().nullish(),
-  maximum: number2().nullish(),
-  default: number2().nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zIntegerPropertySchema2 = object({
-  title: string2().nullish(),
-  description: string2().nullish(),
-  minimum: number2().nullish(),
-  maximum: number2().nullish(),
-  default: number2().nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zBooleanPropertySchema2 = object({
-  title: string2().nullish(),
-  description: string2().nullish(),
-  default: boolean2().nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zElicitationStringType2 = literal("string");
-var zUntitledMultiSelectItems2 = object({
-  type: zElicitationStringType2,
-  enum: array(string2()),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zTitledMultiSelectItems2 = object({
-  anyOf: array(zEnumOption2),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zMultiSelectItems2 = union([
-  zUntitledMultiSelectItems2,
-  zTitledMultiSelectItems2
-]);
-var zMultiSelectPropertySchema2 = object({
-  title: string2().nullish(),
-  description: string2().nullish(),
-  minItems: number2().nullish(),
-  maxItems: number2().nullish(),
-  items: zMultiSelectItems2,
-  default: array(string2()).nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zElicitationPropertySchema2 = union([
-  zStringPropertySchema2.and(object({
-    type: literal("string")
-  })),
-  zNumberPropertySchema2.and(object({
-    type: literal("number")
-  })),
-  zIntegerPropertySchema2.and(object({
-    type: literal("integer")
-  })),
-  zBooleanPropertySchema2.and(object({
-    type: literal("boolean")
-  })),
-  zMultiSelectPropertySchema2.and(object({
-    type: literal("array")
-  }))
-]);
-var zElicitationSchema2 = object({
-  type: zElicitationSchemaType2.optional().default("object"),
-  title: string2().nullish(),
-  properties: record2(string2(), zElicitationPropertySchema2).optional().default({}),
-  required: array(string2()).nullish(),
-  description: string2().nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zElicitationFormMode2 = intersection(union([zElicitationSessionScope2, zElicitationRequestScope2]), object({
-  requestedSchema: zElicitationSchema2
-}));
-var zElicitationId2 = string2();
-var zElicitationUrlMode2 = intersection(union([zElicitationSessionScope2, zElicitationRequestScope2]), object({
-  elicitationId: zElicitationId2,
-  url: url()
-}));
-var zCreateElicitationRequest2 = intersection(union([
-  zElicitationFormMode2.and(object({
-    mode: literal("form")
-  })),
-  zElicitationUrlMode2.and(object({
-    mode: literal("url")
-  }))
-]), object({
-  message: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-}));
-var zMcpServerAcpId2 = string2();
-var zConnectMcpRequest2 = object({
-  acpId: zMcpServerAcpId2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zMcpConnectionId2 = string2();
-var zMessageMcpRequest2 = object({
-  connectionId: zMcpConnectionId2,
-  method: string2(),
-  params: record2(string2(), unknown()).nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zDisconnectMcpRequest2 = object({
-  connectionId: zMcpConnectionId2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zExtRequest2 = unknown();
-var zAgentRequest2 = object({
-  id: zRequestId2,
-  method: string2(),
-  params: union([
-    zWriteTextFileRequest2,
-    zReadTextFileRequest2,
-    zRequestPermissionRequest2,
-    zCreateTerminalRequest2,
-    zTerminalOutputRequest2,
-    zReleaseTerminalRequest2,
-    zWaitForTerminalExitRequest2,
-    zKillTerminalRequest2,
-    zCreateElicitationRequest2,
-    zConnectMcpRequest2,
-    zMessageMcpRequest2,
-    zDisconnectMcpRequest2,
-    zExtRequest2
-  ]).nullish()
-});
-var zProtocolVersion2 = int().gte(0).lte(65535);
-var zPromptCapabilities2 = object({
-  image: boolean2().optional().default(false),
-  audio: boolean2().optional().default(false),
-  embeddedContext: boolean2().optional().default(false),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zMcpCapabilities2 = object({
-  http: boolean2().optional().default(false),
-  sse: boolean2().optional().default(false),
-  acp: boolean2().optional().default(false),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionListCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionDeleteCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionAdditionalDirectoriesCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionForkCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionResumeCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionCloseCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionCapabilities2 = object({
-  list: defaultOnError2(zSessionListCapabilities2.nullish(), () => void 0),
-  delete: defaultOnError2(zSessionDeleteCapabilities2.nullish(), () => void 0),
-  additionalDirectories: defaultOnError2(zSessionAdditionalDirectoriesCapabilities2.nullish(), () => void 0),
-  fork: defaultOnError2(zSessionForkCapabilities2.nullish(), () => void 0),
-  resume: defaultOnError2(zSessionResumeCapabilities2.nullish(), () => void 0),
-  close: defaultOnError2(zSessionCloseCapabilities2.nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zLogoutCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zAgentAuthCapabilities2 = object({
-  logout: defaultOnError2(zLogoutCapabilities2.nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zProvidersCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesDocumentDidOpenCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zTextDocumentSyncKind2 = union([
-  literal("full"),
-  literal("incremental")
-]);
-var zNesDocumentDidChangeCapabilities2 = object({
-  syncKind: zTextDocumentSyncKind2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesDocumentDidCloseCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesDocumentDidSaveCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesDocumentDidFocusCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesDocumentEventCapabilities2 = object({
-  didOpen: defaultOnError2(zNesDocumentDidOpenCapabilities2.nullish(), () => void 0),
-  didChange: defaultOnError2(zNesDocumentDidChangeCapabilities2.nullish(), () => void 0),
-  didClose: defaultOnError2(zNesDocumentDidCloseCapabilities2.nullish(), () => void 0),
-  didSave: defaultOnError2(zNesDocumentDidSaveCapabilities2.nullish(), () => void 0),
-  didFocus: defaultOnError2(zNesDocumentDidFocusCapabilities2.nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesEventCapabilities2 = object({
-  document: defaultOnError2(zNesDocumentEventCapabilities2.nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesRecentFilesCapabilities2 = object({
-  maxCount: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }).nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesRelatedSnippetsCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesEditHistoryCapabilities2 = object({
-  maxCount: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }).nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesUserActionsCapabilities2 = object({
-  maxCount: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }).nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesOpenFilesCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesDiagnosticsCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesContextCapabilities2 = object({
-  recentFiles: defaultOnError2(zNesRecentFilesCapabilities2.nullish(), () => void 0),
-  relatedSnippets: defaultOnError2(zNesRelatedSnippetsCapabilities2.nullish(), () => void 0),
-  editHistory: defaultOnError2(zNesEditHistoryCapabilities2.nullish(), () => void 0),
-  userActions: defaultOnError2(zNesUserActionsCapabilities2.nullish(), () => void 0),
-  openFiles: defaultOnError2(zNesOpenFilesCapabilities2.nullish(), () => void 0),
-  diagnostics: defaultOnError2(zNesDiagnosticsCapabilities2.nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesCapabilities2 = object({
-  events: defaultOnError2(zNesEventCapabilities2.nullish(), () => void 0),
-  context: defaultOnError2(zNesContextCapabilities2.nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zPositionEncodingKind2 = union([
-  literal("utf-16"),
-  literal("utf-32"),
-  literal("utf-8")
-]);
-var zAgentCapabilities2 = object({
-  loadSession: boolean2().optional().default(false),
-  promptCapabilities: zPromptCapabilities2.optional().default({
-    image: false,
-    audio: false,
-    embeddedContext: false
-  }),
-  mcpCapabilities: zMcpCapabilities2.optional().default({
-    http: false,
-    sse: false,
-    acp: false
-  }),
-  sessionCapabilities: zSessionCapabilities2.optional().default({}),
-  auth: zAgentAuthCapabilities2.optional().default({}),
-  providers: defaultOnError2(zProvidersCapabilities2.nullish(), () => void 0),
-  nes: defaultOnError2(zNesCapabilities2.nullish(), () => void 0),
-  positionEncoding: defaultOnError2(zPositionEncodingKind2.nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zAuthMethodId = string2();
-var zAuthEnvVar2 = object({
-  name: string2(),
-  label: string2().nullish(),
-  secret: boolean2().optional().default(true),
-  optional: boolean2().optional().default(false),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zAuthMethodEnvVar2 = object({
-  id: zAuthMethodId,
-  name: string2(),
-  description: string2().nullish(),
-  vars: array(zAuthEnvVar2),
-  link: string2().nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zAuthMethodTerminal2 = object({
-  id: zAuthMethodId,
-  name: string2(),
-  description: string2().nullish(),
-  args: array(string2()).optional(),
-  env: record2(string2(), string2()).optional(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zAuthMethodAgent2 = object({
-  id: zAuthMethodId,
-  name: string2(),
-  description: string2().nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zAuthMethod2 = union([
-  zAuthMethodEnvVar2.and(object({
-    type: literal("env_var")
-  })),
-  zAuthMethodTerminal2.and(object({
-    type: literal("terminal")
-  })),
-  zAuthMethodAgent2
-]);
-var zImplementation2 = object({
-  name: string2(),
-  title: string2().nullish(),
-  version: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zInitializeResponse2 = object({
-  protocolVersion: zProtocolVersion2,
-  agentCapabilities: zAgentCapabilities2.optional().default({
-    loadSession: false,
-    promptCapabilities: {
-      image: false,
-      audio: false,
-      embeddedContext: false
-    },
-    mcpCapabilities: {
-      http: false,
-      sse: false,
-      acp: false
-    },
-    sessionCapabilities: {},
-    auth: {}
-  }),
-  authMethods: defaultOnError2(vecSkipError2(zAuthMethod2).optional().default([]), () => []),
-  agentInfo: defaultOnError2(zImplementation2.nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zAuthenticateResponse2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zLlmProtocol2 = union([
-  literal("anthropic"),
-  literal("openai"),
-  literal("azure"),
-  literal("vertex"),
-  literal("bedrock"),
-  string2()
-]);
-var zProviderCurrentConfig2 = object({
-  apiType: zLlmProtocol2,
-  baseUrl: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zProviderInfo2 = object({
-  id: string2(),
-  supported: requiredDefaultOnError2(vecSkipError2(zLlmProtocol2), () => []),
-  required: boolean2(),
-  current: zProviderCurrentConfig2.nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zListProvidersResponse2 = object({
-  providers: requiredDefaultOnError2(vecSkipError2(zProviderInfo2), () => []),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSetProviderResponse2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zDisableProviderResponse2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zLogoutResponse2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionModeId2 = string2();
-var zSessionMode2 = object({
-  id: zSessionModeId2,
-  name: string2(),
-  description: string2().nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionModeState2 = object({
-  currentModeId: zSessionModeId2,
-  availableModes: requiredDefaultOnError2(vecSkipError2(zSessionMode2), () => []),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionConfigId2 = string2();
-var zSessionConfigOptionCategory2 = union([
-  literal("mode"),
-  literal("model"),
-  literal("model_config"),
-  literal("thought_level"),
-  string2()
-]);
-var zSessionConfigValueId2 = string2();
-var zSessionConfigSelectOption2 = object({
-  value: zSessionConfigValueId2,
-  name: string2(),
-  description: string2().nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionConfigGroupId2 = string2();
-var zSessionConfigSelectGroup2 = object({
-  group: zSessionConfigGroupId2,
-  name: string2(),
-  options: array(zSessionConfigSelectOption2),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionConfigSelectOptions2 = union([
-  array(zSessionConfigSelectOption2),
-  array(zSessionConfigSelectGroup2)
-]);
-var zSessionConfigSelect2 = object({
-  currentValue: zSessionConfigValueId2,
-  options: zSessionConfigSelectOptions2
-});
-var zSessionConfigBoolean2 = object({
-  currentValue: boolean2()
-});
-var zSessionConfigOption2 = intersection(union([
-  zSessionConfigSelect2.and(object({
-    type: literal("select")
-  })),
-  zSessionConfigBoolean2.and(object({
-    type: literal("boolean")
-  }))
-]), object({
-  id: zSessionConfigId2,
-  name: string2(),
-  description: string2().nullish(),
-  category: defaultOnError2(zSessionConfigOptionCategory2.nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-}));
-var zNewSessionResponse2 = object({
-  sessionId: zSessionId2,
-  modes: defaultOnError2(zSessionModeState2.nullish(), () => void 0),
-  configOptions: defaultOnError2(vecSkipError2(zSessionConfigOption2).nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zLoadSessionResponse2 = object({
-  modes: defaultOnError2(zSessionModeState2.nullish(), () => void 0),
-  configOptions: defaultOnError2(vecSkipError2(zSessionConfigOption2).nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionInfo2 = object({
-  sessionId: zSessionId2,
-  cwd: string2(),
-  additionalDirectories: array(string2()).optional(),
-  title: defaultOnError2(string2().nullish(), () => void 0),
-  updatedAt: defaultOnError2(string2().nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zListSessionsResponse2 = object({
-  sessions: requiredDefaultOnError2(vecSkipError2(zSessionInfo2), () => []),
-  nextCursor: string2().nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zDeleteSessionResponse2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zForkSessionResponse2 = object({
-  sessionId: zSessionId2,
-  modes: defaultOnError2(zSessionModeState2.nullish(), () => void 0),
-  configOptions: defaultOnError2(vecSkipError2(zSessionConfigOption2).nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zResumeSessionResponse2 = object({
-  modes: defaultOnError2(zSessionModeState2.nullish(), () => void 0),
-  configOptions: defaultOnError2(vecSkipError2(zSessionConfigOption2).nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zCloseSessionResponse2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSetSessionModeResponse2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSetSessionConfigOptionResponse2 = object({
-  configOptions: requiredDefaultOnError2(vecSkipError2(zSessionConfigOption2), () => []),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zStopReason2 = union([
-  literal("end_turn"),
-  literal("max_tokens"),
-  literal("max_turn_requests"),
-  literal("refusal"),
-  literal("cancelled")
-]);
-var zUsage2 = object({
-  totalTokens: number2(),
-  inputTokens: number2(),
-  outputTokens: number2(),
-  thoughtTokens: number2().nullish(),
-  cachedReadTokens: number2().nullish(),
-  cachedWriteTokens: number2().nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zPromptResponse2 = object({
-  stopReason: zStopReason2,
-  usage: defaultOnError2(zUsage2.nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zStartNesResponse2 = object({
-  sessionId: zSessionId2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zPosition2 = object({
-  line: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }),
-  character: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zRange2 = object({
-  start: zPosition2,
-  end: zPosition2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesTextEdit2 = object({
-  range: zRange2,
-  newText: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesEditSuggestion2 = object({
-  id: string2(),
-  uri: string2(),
-  edits: array(zNesTextEdit2),
-  cursorPosition: defaultOnError2(zPosition2.nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesJumpSuggestion2 = object({
-  id: string2(),
-  uri: string2(),
-  position: zPosition2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesRenameSuggestion2 = object({
-  id: string2(),
-  uri: string2(),
-  position: zPosition2,
-  newName: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesSearchAndReplaceSuggestion2 = object({
-  id: string2(),
-  uri: string2(),
-  search: string2(),
-  replace: string2(),
-  isRegex: boolean2().nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesSuggestion2 = union([
-  zNesEditSuggestion2.and(object({
-    kind: literal("edit")
-  })),
-  zNesJumpSuggestion2.and(object({
-    kind: literal("jump")
-  })),
-  zNesRenameSuggestion2.and(object({
-    kind: literal("rename")
-  })),
-  zNesSearchAndReplaceSuggestion2.and(object({
-    kind: literal("searchAndReplace")
-  }))
-]);
-var zSuggestNesResponse2 = object({
-  suggestions: requiredDefaultOnError2(vecSkipError2(zNesSuggestion2), () => []),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zCloseNesResponse2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zExtResponse2 = unknown();
-var zMessageMcpResponse2 = unknown();
-var zErrorCode2 = union([
-  literal(-32700),
-  literal(-32600),
-  literal(-32601),
-  literal(-32602),
-  literal(-32603),
-  literal(-32800),
-  literal(-32e3),
-  literal(-32002),
-  literal(-32042),
-  int().min(-2147483648, {
-    error: "Invalid value: Expected int32 to be >= -2147483648"
-  }).max(2147483647, {
-    error: "Invalid value: Expected int32 to be <= 2147483647"
-  })
-]);
-var zError2 = object({
-  code: zErrorCode2,
-  message: string2(),
-  data: unknown().optional()
-});
-var zAgentResponse2 = union([
-  object({
-    id: zRequestId2,
-    result: union([
-      zInitializeResponse2,
-      zAuthenticateResponse2,
-      zListProvidersResponse2,
-      zSetProviderResponse2,
-      zDisableProviderResponse2,
-      zLogoutResponse2,
-      zNewSessionResponse2,
-      zLoadSessionResponse2,
-      zListSessionsResponse2,
-      zDeleteSessionResponse2,
-      zForkSessionResponse2,
-      zResumeSessionResponse2,
-      zCloseSessionResponse2,
-      zSetSessionModeResponse2,
-      zSetSessionConfigOptionResponse2,
-      zPromptResponse2,
-      zStartNesResponse2,
-      zSuggestNesResponse2,
-      zCloseNesResponse2,
-      zExtResponse2,
-      zMessageMcpResponse2
-    ])
-  }),
-  object({
-    id: zRequestId2,
-    error: zError2
-  })
-]);
-var zMessageId2 = string2();
-var zContentChunk2 = object({
-  content: zContentBlock2,
-  messageId: zMessageId2.nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zToolCall2 = object({
-  toolCallId: zToolCallId2,
-  title: string2(),
-  kind: zToolKind2.optional(),
-  status: zToolCallStatus2.optional(),
-  content: defaultOnError2(vecSkipError2(zToolCallContent2).optional(), () => []),
-  locations: defaultOnError2(vecSkipError2(zToolCallLocation2).optional(), () => []),
-  rawInput: unknown().optional(),
-  rawOutput: unknown().optional(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zPlanEntryPriority2 = union([
-  literal("high"),
-  literal("medium"),
-  literal("low")
-]);
-var zPlanEntryStatus2 = union([
-  literal("pending"),
-  literal("in_progress"),
-  literal("completed")
-]);
-var zPlanEntry2 = object({
-  content: string2(),
-  priority: zPlanEntryPriority2,
-  status: zPlanEntryStatus2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zPlan2 = object({
-  entries: requiredDefaultOnError2(vecSkipError2(zPlanEntry2), () => []),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zPlanId2 = string2();
-var zPlanItems2 = object({
-  id: zPlanId2,
-  entries: requiredDefaultOnError2(vecSkipError2(zPlanEntry2), () => []),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zPlanFile2 = object({
-  id: zPlanId2,
-  uri: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zPlanMarkdown2 = object({
-  id: zPlanId2,
-  content: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zPlanUpdateContent2 = union([
-  zPlanItems2.and(object({
-    type: literal("items")
-  })),
-  zPlanFile2.and(object({
-    type: literal("file")
-  })),
-  zPlanMarkdown2.and(object({
-    type: literal("markdown")
-  }))
-]);
-var zPlanUpdate2 = object({
-  plan: zPlanUpdateContent2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zPlanRemoved2 = object({
-  id: zPlanId2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zUnstructuredCommandInput2 = object({
-  hint: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zAvailableCommandInput2 = zUnstructuredCommandInput2;
-var zAvailableCommand2 = object({
-  name: string2(),
-  description: string2(),
-  input: defaultOnError2(zAvailableCommandInput2.nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zAvailableCommandsUpdate2 = object({
-  availableCommands: requiredDefaultOnError2(vecSkipError2(zAvailableCommand2), () => []),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zCurrentModeUpdate2 = object({
-  currentModeId: zSessionModeId2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zConfigOptionUpdate2 = object({
-  configOptions: requiredDefaultOnError2(vecSkipError2(zSessionConfigOption2), () => []),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionInfoUpdate2 = object({
-  title: string2().nullish(),
-  updatedAt: string2().nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zCost2 = object({
-  amount: number2(),
-  currency: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zUsageUpdate2 = object({
-  used: number2(),
-  size: number2(),
-  cost: defaultOnError2(zCost2.nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSessionUpdate2 = union([
-  zContentChunk2.and(object({
-    sessionUpdate: literal("user_message_chunk")
-  })),
-  zContentChunk2.and(object({
-    sessionUpdate: literal("agent_message_chunk")
-  })),
-  zContentChunk2.and(object({
-    sessionUpdate: literal("agent_thought_chunk")
-  })),
-  zToolCall2.and(object({
-    sessionUpdate: literal("tool_call")
-  })),
-  zToolCallUpdate2.and(object({
-    sessionUpdate: literal("tool_call_update")
-  })),
-  zPlan2.and(object({
-    sessionUpdate: literal("plan")
-  })),
-  zPlanUpdate2.and(object({
-    sessionUpdate: literal("plan_update")
-  })),
-  zPlanRemoved2.and(object({
-    sessionUpdate: literal("plan_removed")
-  })),
-  zAvailableCommandsUpdate2.and(object({
-    sessionUpdate: literal("available_commands_update")
-  })),
-  zCurrentModeUpdate2.and(object({
-    sessionUpdate: literal("current_mode_update")
-  })),
-  zConfigOptionUpdate2.and(object({
-    sessionUpdate: literal("config_option_update")
-  })),
-  zSessionInfoUpdate2.and(object({
-    sessionUpdate: literal("session_info_update")
-  })),
-  zUsageUpdate2.and(object({
-    sessionUpdate: literal("usage_update")
-  }))
-]);
-var zSessionNotification2 = object({
-  sessionId: zSessionId2,
-  update: zSessionUpdate2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zCompleteElicitationNotification2 = object({
-  elicitationId: zElicitationId2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zMessageMcpNotification2 = object({
-  connectionId: zMcpConnectionId2,
-  method: string2(),
-  params: record2(string2(), unknown()).nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zExtNotification2 = unknown();
-var zAgentNotification2 = object({
-  method: string2(),
-  params: union([
-    zSessionNotification2,
-    zCompleteElicitationNotification2,
-    zMessageMcpNotification2,
-    zExtNotification2
-  ]).nullish()
-});
-var zFileSystemCapabilities2 = object({
-  readTextFile: boolean2().optional().default(false),
-  writeTextFile: boolean2().optional().default(false),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zPlanCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zAuthCapabilities2 = object({
-  terminal: boolean2().optional().default(false),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zElicitationFormCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zElicitationUrlCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zElicitationCapabilities2 = object({
-  form: defaultOnError2(zElicitationFormCapabilities2.nullish(), () => void 0),
-  url: defaultOnError2(zElicitationUrlCapabilities2.nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesJumpCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesRenameCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesSearchAndReplaceCapabilities2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zClientNesCapabilities2 = object({
-  jump: defaultOnError2(zNesJumpCapabilities2.nullish(), () => void 0),
-  rename: defaultOnError2(zNesRenameCapabilities2.nullish(), () => void 0),
-  searchAndReplace: defaultOnError2(zNesSearchAndReplaceCapabilities2.nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zClientCapabilities2 = object({
-  fs: zFileSystemCapabilities2.optional().default({ readTextFile: false, writeTextFile: false }),
-  terminal: boolean2().optional().default(false),
-  plan: defaultOnError2(zPlanCapabilities2.nullish(), () => void 0),
-  auth: zAuthCapabilities2.optional().default({ terminal: false }),
-  elicitation: defaultOnError2(zElicitationCapabilities2.nullish(), () => void 0),
-  nes: defaultOnError2(zClientNesCapabilities2.nullish(), () => void 0),
-  positionEncodings: defaultOnError2(vecSkipError2(zPositionEncodingKind2).optional(), () => []),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zInitializeRequest2 = object({
-  protocolVersion: zProtocolVersion2,
-  clientCapabilities: zClientCapabilities2.optional().default({
-    fs: { readTextFile: false, writeTextFile: false },
-    terminal: false,
-    auth: { terminal: false }
-  }),
-  clientInfo: defaultOnError2(zImplementation2.nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zAuthenticateRequest2 = object({
-  methodId: zAuthMethodId,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zListProvidersRequest2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSetProviderRequest2 = object({
-  id: string2(),
-  apiType: zLlmProtocol2,
-  baseUrl: string2(),
-  headers: record2(string2(), string2()).optional(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zDisableProviderRequest2 = object({
-  id: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zLogoutRequest2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zHttpHeader2 = object({
-  name: string2(),
-  value: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zMcpServerHttp2 = object({
-  name: string2(),
-  url: string2(),
-  headers: array(zHttpHeader2),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zMcpServerSse2 = object({
-  name: string2(),
-  url: string2(),
-  headers: array(zHttpHeader2),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zMcpServerAcp2 = object({
-  name: string2(),
-  id: zMcpServerAcpId2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zMcpServerStdio2 = object({
-  name: string2(),
-  command: string2(),
-  args: array(string2()),
-  env: array(zEnvVariable2),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zMcpServer2 = union([
-  zMcpServerHttp2.and(object({
-    type: literal("http")
-  })),
-  zMcpServerSse2.and(object({
-    type: literal("sse")
-  })),
-  zMcpServerAcp2.and(object({
-    type: literal("acp")
-  })),
-  zMcpServerStdio2
-]);
-var zNewSessionRequest2 = object({
-  cwd: string2(),
-  additionalDirectories: array(string2()).optional(),
-  mcpServers: array(zMcpServer2),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zLoadSessionRequest2 = object({
-  mcpServers: array(zMcpServer2),
-  cwd: string2(),
-  additionalDirectories: array(string2()).optional(),
-  sessionId: zSessionId2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zListSessionsRequest2 = object({
-  cwd: string2().nullish(),
-  cursor: string2().nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zDeleteSessionRequest2 = object({
-  sessionId: zSessionId2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zForkSessionRequest2 = object({
-  sessionId: zSessionId2,
-  cwd: string2(),
-  additionalDirectories: array(string2()).optional(),
-  mcpServers: array(zMcpServer2).optional(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zResumeSessionRequest2 = object({
-  sessionId: zSessionId2,
-  cwd: string2(),
-  additionalDirectories: array(string2()).optional(),
-  mcpServers: array(zMcpServer2).optional(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zCloseSessionRequest2 = object({
-  sessionId: zSessionId2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSetSessionModeRequest2 = object({
-  sessionId: zSessionId2,
-  modeId: zSessionModeId2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSetSessionConfigOptionRequest2 = intersection(union([
-  object({
-    value: boolean2(),
-    type: literal("boolean")
-  }),
-  object({
-    value: zSessionConfigValueId2
-  })
-]), object({
-  sessionId: zSessionId2,
-  configId: zSessionConfigId2,
-  _meta: record2(string2(), unknown()).nullish()
-}));
-var zPromptRequest2 = object({
-  sessionId: zSessionId2,
-  prompt: array(zContentBlock2),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zWorkspaceFolder2 = object({
-  uri: string2(),
-  name: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesRepository2 = object({
-  name: string2(),
-  owner: string2(),
-  remoteUrl: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zStartNesRequest2 = object({
-  workspaceUri: string2().nullish(),
-  workspaceFolders: defaultOnError2(vecSkipError2(zWorkspaceFolder2).nullish(), () => void 0),
-  repository: defaultOnError2(zNesRepository2.nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesTriggerKind2 = union([
-  literal("automatic"),
-  literal("diagnostic"),
-  literal("manual")
-]);
-var zNesRecentFile2 = object({
-  uri: string2(),
-  languageId: string2(),
-  text: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesExcerpt2 = object({
-  startLine: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }),
-  endLine: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }),
-  text: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesRelatedSnippet2 = object({
-  uri: string2(),
-  excerpts: array(zNesExcerpt2),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesEditHistoryEntry2 = object({
-  uri: string2(),
-  diff: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesUserAction2 = object({
-  action: string2(),
-  uri: string2(),
-  position: zPosition2,
-  timestampMs: number2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesOpenFile2 = object({
-  uri: string2(),
-  languageId: string2(),
-  visibleRange: defaultOnError2(zRange2.nullish(), () => void 0),
-  lastFocusedMs: defaultOnError2(number2().nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesDiagnosticSeverity2 = union([
-  literal("error"),
-  literal("warning"),
-  literal("information"),
-  literal("hint")
-]);
-var zNesDiagnostic2 = object({
-  uri: string2(),
-  range: zRange2,
-  severity: zNesDiagnosticSeverity2,
-  message: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesSuggestContext2 = object({
-  recentFiles: defaultOnError2(vecSkipError2(zNesRecentFile2).nullish(), () => void 0),
-  relatedSnippets: defaultOnError2(vecSkipError2(zNesRelatedSnippet2).nullish(), () => void 0),
-  editHistory: defaultOnError2(vecSkipError2(zNesEditHistoryEntry2).nullish(), () => void 0),
-  userActions: defaultOnError2(vecSkipError2(zNesUserAction2).nullish(), () => void 0),
-  openFiles: defaultOnError2(vecSkipError2(zNesOpenFile2).nullish(), () => void 0),
-  diagnostics: defaultOnError2(vecSkipError2(zNesDiagnostic2).nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSuggestNesRequest2 = object({
-  sessionId: zSessionId2,
-  uri: string2(),
-  version: number2(),
-  position: zPosition2,
-  selection: defaultOnError2(zRange2.nullish(), () => void 0),
-  triggerKind: zNesTriggerKind2,
-  context: defaultOnError2(zNesSuggestContext2.nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zCloseNesRequest2 = object({
-  sessionId: zSessionId2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zClientRequest2 = object({
-  id: zRequestId2,
-  method: string2(),
-  params: union([
-    zInitializeRequest2,
-    zAuthenticateRequest2,
-    zListProvidersRequest2,
-    zSetProviderRequest2,
-    zDisableProviderRequest2,
-    zLogoutRequest2,
-    zNewSessionRequest2,
-    zLoadSessionRequest2,
-    zListSessionsRequest2,
-    zDeleteSessionRequest2,
-    zForkSessionRequest2,
-    zResumeSessionRequest2,
-    zCloseSessionRequest2,
-    zSetSessionModeRequest2,
-    zSetSessionConfigOptionRequest2,
-    zPromptRequest2,
-    zStartNesRequest2,
-    zSuggestNesRequest2,
-    zCloseNesRequest2,
-    zMessageMcpRequest2,
-    zExtRequest2
-  ]).nullish()
-});
-var zWriteTextFileResponse2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zReadTextFileResponse2 = object({
-  content: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zSelectedPermissionOutcome2 = object({
-  optionId: zPermissionOptionId2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zRequestPermissionOutcome2 = union([
-  object({
-    outcome: literal("cancelled")
-  }),
-  zSelectedPermissionOutcome2.and(object({
-    outcome: literal("selected")
-  }))
-]);
-var zRequestPermissionResponse2 = object({
-  outcome: zRequestPermissionOutcome2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zCreateTerminalResponse2 = object({
-  terminalId: zTerminalId,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zTerminalExitStatus2 = object({
-  exitCode: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }).nullish(),
-  signal: string2().nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zTerminalOutputResponse2 = object({
-  output: string2(),
-  truncated: boolean2(),
-  exitStatus: zTerminalExitStatus2.nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zReleaseTerminalResponse2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zWaitForTerminalExitResponse2 = object({
-  exitCode: int().gte(0).max(4294967295, {
-    error: "Invalid value: Expected uint32 to be <= 4294967295"
-  }).nullish(),
-  signal: string2().nullish(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zKillTerminalResponse2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zElicitationContentValue2 = union([
-  string2(),
-  number2(),
-  number2(),
-  boolean2(),
-  array(string2())
-]);
-var zElicitationAcceptAction2 = object({
-  content: record2(string2(), zElicitationContentValue2).nullish()
-});
-var zCreateElicitationResponse2 = intersection(union([
-  zElicitationAcceptAction2.and(object({
-    action: literal("accept")
-  })),
-  object({
-    action: literal("decline")
-  }),
-  object({
-    action: literal("cancel")
-  })
-]), object({
-  _meta: record2(string2(), unknown()).nullish()
-}));
-var zConnectMcpResponse2 = object({
-  connectionId: zMcpConnectionId2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zDisconnectMcpResponse2 = object({
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zClientResponse2 = union([
-  object({
-    id: zRequestId2,
-    result: union([
-      zWriteTextFileResponse2,
-      zReadTextFileResponse2,
-      zRequestPermissionResponse2,
-      zCreateTerminalResponse2,
-      zTerminalOutputResponse2,
-      zReleaseTerminalResponse2,
-      zWaitForTerminalExitResponse2,
-      zKillTerminalResponse2,
-      zCreateElicitationResponse2,
-      zConnectMcpResponse2,
-      zDisconnectMcpResponse2,
-      zExtResponse2,
-      zMessageMcpResponse2
-    ])
-  }),
-  object({
-    id: zRequestId2,
-    error: zError2
-  })
-]);
-var zCancelNotification2 = object({
-  sessionId: zSessionId2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zDidOpenDocumentNotification2 = object({
-  sessionId: zSessionId2,
-  uri: string2(),
-  languageId: string2(),
-  version: number2(),
-  text: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zTextDocumentContentChangeEvent2 = object({
-  range: zRange2.nullish(),
-  text: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zDidChangeDocumentNotification2 = object({
-  sessionId: zSessionId2,
-  uri: string2(),
-  version: number2(),
-  contentChanges: array(zTextDocumentContentChangeEvent2),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zDidCloseDocumentNotification2 = object({
-  sessionId: zSessionId2,
-  uri: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zDidSaveDocumentNotification2 = object({
-  sessionId: zSessionId2,
-  uri: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zDidFocusDocumentNotification2 = object({
-  sessionId: zSessionId2,
-  uri: string2(),
-  version: number2(),
-  position: zPosition2,
-  visibleRange: zRange2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zAcceptNesNotification2 = object({
-  sessionId: zSessionId2,
-  id: string2(),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zNesRejectReason2 = union([
-  literal("rejected"),
-  literal("ignored"),
-  literal("replaced"),
-  literal("cancelled")
-]);
-var zRejectNesNotification2 = object({
-  sessionId: zSessionId2,
-  id: string2(),
-  reason: defaultOnError2(zNesRejectReason2.nullish(), () => void 0),
-  _meta: record2(string2(), unknown()).nullish()
-});
-var zClientNotification2 = object({
-  method: string2(),
-  params: union([
-    zCancelNotification2,
-    zDidOpenDocumentNotification2,
-    zDidChangeDocumentNotification2,
-    zDidCloseDocumentNotification2,
-    zDidSaveDocumentNotification2,
-    zDidFocusDocumentNotification2,
-    zAcceptNesNotification2,
-    zRejectNesNotification2,
-    zMessageMcpNotification2,
-    zExtNotification2
-  ]).nullish()
-});
-var zCancelRequestNotification2 = object({
-  requestId: zRequestId2,
-  _meta: record2(string2(), unknown()).nullish()
-});
-
-// ../../node_modules/.pnpm/@agentclientprotocol+sdk@0.28.1_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/stream.js
-function ndJsonStream2(output, input) {
-  const textEncoder = new TextEncoder();
-  const textDecoder = new TextDecoder();
-  let cancelled = false;
-  let inputReader;
-  const readable = new ReadableStream({
-    async start(controller) {
-      let content = "";
-      const reader = input.getReader();
-      inputReader = reader;
-      try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (cancelled) {
-            return;
-          }
-          if (done) {
-            content += textDecoder.decode();
-            break;
-          }
-          if (!value) {
-            continue;
-          }
-          content += textDecoder.decode(value, { stream: true });
-          const lines = content.split("\n");
-          content = lines.pop() || "";
-          for (const line of lines) {
-            if (cancelled) {
-              return;
-            }
-            const trimmedLine2 = line.trim();
-            if (trimmedLine2) {
-              try {
-                const message = JSON.parse(trimmedLine2);
-                controller.enqueue(message);
-              } catch (err) {
-                console.error("Failed to parse JSON message:", trimmedLine2, err);
-              }
-            }
-          }
-        }
-        if (cancelled) {
-          return;
-        }
-        const trimmedLine = content.trim();
-        if (trimmedLine) {
-          try {
-            const message = JSON.parse(trimmedLine);
-            controller.enqueue(message);
-          } catch (err) {
-            console.error("Failed to parse JSON message:", trimmedLine, err);
-          }
-        }
-      } catch (err) {
-        if (cancelled) {
-          return;
-        }
-        controller.error(err);
-        return;
-      } finally {
-        if (inputReader === reader) {
-          inputReader = void 0;
-        }
-        reader.releaseLock();
-      }
-      if (cancelled) {
-        return;
-      }
-      controller.close();
-    },
-    cancel(reason) {
-      cancelled = true;
-      return inputReader?.cancel(reason);
-    }
-  });
-  const writable = new WritableStream({
-    async write(message) {
-      const content = JSON.stringify(message) + "\n";
-      const writer = output.getWriter();
-      try {
-        await writer.write(textEncoder.encode(content));
-      } finally {
-        writer.releaseLock();
-      }
-    }
-  });
-  return { readable, writable };
-}
-
-// ../../node_modules/.pnpm/@agentclientprotocol+sdk@0.28.1_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/jsonrpc.js
-var Handled = {
-  /**
-   * Marks a message as handled.
-   */
-  yes() {
-    return { handled: true };
-  },
-  /**
-   * Leaves a message unhandled so later handlers can process it.
-   */
-  no(message, retry = false) {
-    return { handled: false, message, retry };
-  }
-};
-function rejectedPromise2(error53) {
-  const promise2 = Promise.reject(error53);
-  promise2.catch(() => {
-  });
-  return promise2;
-}
-function errorDetails(error53) {
-  if (error53 instanceof Error) {
-    return error53.message;
-  }
-  if (typeof error53 === "object" && error53 != null && "message" in error53 && typeof error53.message === "string") {
-    return error53.message;
-  }
-  return void 0;
-}
-function isZodError(error53) {
-  return typeof error53 === "object" && error53 !== null && "name" in error53 && error53.name === "ZodError" && "issues" in error53 && Array.isArray(error53.issues) && "format" in error53 && typeof error53.format === "function";
-}
-function errorToResult(error53) {
-  if (error53 instanceof RequestError3) {
-    return error53.toResult();
-  }
-  if (isZodError(error53)) {
-    return RequestError3.invalidParams(error53.format()).toResult();
-  }
-  const details = errorDetails(error53);
-  try {
-    return RequestError3.internalError(details ? JSON.parse(details) : {}).toResult();
-  } catch {
-    return RequestError3.internalError({ details }).toResult();
-  }
-}
-var RequestResponder = class {
-  id;
-  sendResult;
-  didRespond = false;
-  constructor(id2, sendResult) {
-    this.id = id2;
-    this.sendResult = sendResult;
-  }
-  /**
-   * Whether this request has already received a response.
-   */
-  get responded() {
-    return this.didRespond;
-  }
-  /**
-   * Sends a successful JSON-RPC response.
-   */
-  respond(response) {
-    return this.respondWithResult({ result: response ?? null });
-  }
-  /**
-   * Sends an error JSON-RPC response.
-   */
-  respondWithError(error53) {
-    const errorResponse = error53 instanceof RequestError3 ? error53.toErrorResponse() : error53;
-    return this.respondWithResult({ error: errorResponse });
-  }
-  /**
-   * Sends a complete JSON-RPC result payload.
-   */
-  respondWithResult(result) {
-    if (this.didRespond) {
-      return rejectedPromise2(new Error("JSON-RPC request already responded"));
-    }
-    this.didRespond = true;
-    return this.sendResult(result);
-  }
-};
-var HandlerRegistration = class {
-  disposeHandler;
-  active = true;
-  constructor(disposeHandler) {
-    this.disposeHandler = disposeHandler;
-  }
-  /**
-   * Unregisters the associated handler.
-   */
-  dispose() {
-    if (!this.active) {
-      return;
-    }
-    this.active = false;
-    this.disposeHandler();
-  }
-  /**
-   * Supports explicit resource management with `using`.
-   */
-  [Symbol.dispose]() {
-    this.dispose();
-  }
-  /**
-   * Returns this registration for call sites that intentionally keep it active.
-   */
-  runIndefinitely() {
-    return this;
-  }
-};
-var ConnectionContext = class {
-  connection;
-  constructor(connection) {
-    this.connection = connection;
-  }
-  /**
-   * Sends a request over the connection.
-   */
-  sendRequest(method, params, mapResponse) {
-    return this.connection.sendRequest(method, params, mapResponse);
-  }
-  /**
-   * Sends a notification over the connection.
-   */
-  sendNotification(method, params) {
-    return this.connection.sendNotification(method, params);
-  }
-  /**
-   * Registers a handler that can be disposed independently.
-   */
-  addDynamicHandler(handler) {
-    return this.connection.addDynamicHandler(handler);
-  }
-  /**
-   * AbortSignal that aborts when the connection closes.
-   */
-  get signal() {
-    return this.connection.signal;
-  }
-  /**
-   * Promise that resolves when the connection closes.
-   */
-  get closed() {
-    return this.connection.closed;
-  }
-};
-var Connection2 = class {
-  pendingResponses = /* @__PURE__ */ new Map();
-  nextRequestId = 0;
-  staticHandlers = [];
-  dynamicHandlers = /* @__PURE__ */ new Set();
-  stream;
-  writeQueue = Promise.resolve();
-  abortController = new AbortController();
-  closedPromise;
-  retryQueue = [];
-  context = new ConnectionContext(this);
-  receiveReader;
-  constructor(requestHandlerOrStream, notificationHandlerOrHandlers, streamOrOptions, options) {
-    if (typeof requestHandlerOrStream === "function") {
-      const requestHandler = requestHandlerOrStream;
-      const notificationHandler = notificationHandlerOrHandlers;
-      const stream2 = streamOrOptions;
-      this.initialize(stream2, [
-        ...options?.handlers ?? [],
-        this.legacyHandler(requestHandler, notificationHandler)
-      ]);
-      return;
-    }
-    const stream = requestHandlerOrStream;
-    const handlers = notificationHandlerOrHandlers;
-    const connectionOptions = streamOrOptions;
-    this.initialize(stream, [
-      ...connectionOptions?.handlers ?? [],
-      ...handlers
-    ]);
-  }
-  /**
-   * Creates a builder for configuring a handler-based connection.
-   */
-  static builder() {
-    return new ConnectionBuilder();
-  }
-  /**
-   * Runs an operation while the connection is open, then closes the connection.
-   *
-   * If the stream closes before `op` settles, the returned promise rejects with
-   * the connection close reason.
-   */
-  runUntil(op2) {
-    let opSettled = false;
-    const opPromise = Promise.resolve().then(() => op2(this.context)).finally(() => {
-      opSettled = true;
-    });
-    const closedPromise = this.closed.then(() => {
-      if (opSettled) {
-        return new Promise(() => {
-        });
-      }
-      throw this.closedReason();
-    });
-    return Promise.race([opPromise, closedPromise]).finally(() => {
-      opSettled = true;
-      this.close();
-    });
-  }
-  /**
-   * Adds a handler after the connection has started.
-   *
-   * Any messages queued with `Handled.no(message, true)` are retried after the
-   * handler is added.
-   */
-  addDynamicHandler(handler) {
-    this.dynamicHandlers.add(handler);
-    if (this.retryQueue.length > 0) {
-      for (const message of this.retryQueue.splice(0)) {
-        void this.processIncomingMessage(message).catch((error53) => this.close(error53));
-      }
-    }
-    return new HandlerRegistration(() => {
-      this.dynamicHandlers.delete(handler);
-    });
-  }
-  /**
-   * AbortSignal that aborts when the connection closes.
-   */
-  get signal() {
-    return this.abortController.signal;
-  }
-  /**
-   * Promise that resolves when the connection closes.
-   */
-  get closed() {
-    return this.closedPromise;
-  }
-  /** @internal */
-  getContext() {
-    return this.context;
-  }
-  /**
-   * Sends a JSON-RPC request.
-   *
-   * `mapResponse` can convert the raw result before the returned promise
-   * resolves.
-   */
-  sendRequest(method, params, mapResponse) {
-    if (this.abortController.signal.aborted) {
-      return rejectedPromise2(this.closedReason());
-    }
-    const id2 = this.nextRequestId++;
-    const responsePromise = new Promise((resolve18, reject) => {
-      this.pendingResponses.set(id2, {
-        resolve: (response) => {
-          try {
-            const value = mapResponse ? mapResponse(response) : response;
-            resolve18(value);
-          } catch (error53) {
-            reject(error53);
-          }
-        },
-        reject
-      });
-    });
-    responsePromise.catch(() => {
-    });
-    void this.sendMessage({ jsonrpc: "2.0", id: id2, method, params }).catch(() => {
-    });
-    return responsePromise;
-  }
-  /**
-   * Sends a JSON-RPC notification.
-   */
-  sendNotification(method, params) {
-    if (this.abortController.signal.aborted) {
-      return rejectedPromise2(this.closedReason());
-    }
-    return this.sendMessage({ jsonrpc: "2.0", method, params });
-  }
-  /**
-   * Closes the connection and rejects pending requests.
-   */
-  close(error53) {
-    if (this.abortController.signal.aborted) {
-      return;
-    }
-    const closeError = error53 ?? new Error("ACP connection closed");
-    for (const pendingResponse of this.pendingResponses.values()) {
-      pendingResponse.reject(closeError);
-    }
-    this.pendingResponses.clear();
-    this.abortController.abort(closeError);
-    void this.receiveReader?.cancel(closeError).catch(() => {
-    });
-  }
-  initialize(stream, handlers) {
-    this.stream = stream;
-    this.staticHandlers = handlers;
-    this.closedPromise = new Promise((resolve18) => {
-      this.abortController.signal.addEventListener("abort", () => resolve18());
-    });
-    void this.receive();
-  }
-  legacyHandler(requestHandler, notificationHandler) {
-    return {
-      handleMessage: async (message, cx) => {
-        if (message.kind === "request") {
-          const result = await requestHandler(message.method, message.params, cx);
-          await message.responder.respond(result);
-        } else {
-          await notificationHandler(message.method, message.params, cx);
-        }
-        return Handled.yes();
-      }
-    };
-  }
-  async receive() {
-    let closeError = void 0;
-    try {
-      const reader = this.stream.readable.getReader();
-      this.receiveReader = reader;
-      try {
-        while (!this.abortController.signal.aborted) {
-          const { value: message, done } = await reader.read();
-          if (this.abortController.signal.aborted) {
-            break;
-          }
-          if (done) {
-            break;
-          }
-          if (!message) {
-            continue;
-          }
-          this.receiveMessage(message);
-        }
-      } finally {
-        if (this.receiveReader === reader) {
-          this.receiveReader = void 0;
-        }
-        reader.releaseLock();
-      }
-    } catch (error53) {
-      closeError = error53;
-    } finally {
-      this.close(closeError);
-    }
-  }
-  receiveMessage(message) {
-    if (this.abortController.signal.aborted) {
-      return;
-    }
-    if ("method" in message) {
-      void this.processIncomingMessage(this.toIncomingMessage(message)).catch((error53) => this.close(error53));
-    } else if ("id" in message) {
-      this.handleResponse(message);
-    } else {
-      console.error("Invalid message", { message });
-    }
-  }
-  async processIncomingMessage(message) {
-    if (this.abortController.signal.aborted) {
-      return;
-    }
-    let current = message;
-    let retry = false;
-    try {
-      for (const handler of [
-        ...this.staticHandlers,
-        ...this.dynamicHandlers.values()
-      ]) {
-        if (this.abortController.signal.aborted) {
-          return;
-        }
-        const result = await handler.handleMessage(current, this.context) ?? {
-          handled: true
-        };
-        if (result.handled) {
-          return;
-        }
-        current = result.message ?? current;
-        retry = retry || Boolean(result.retry);
-      }
-      if (retry) {
-        this.retryQueue.push(current);
-      } else if (current.kind === "request") {
-        await current.responder.respondWithError(RequestError3.methodNotFound(current.method));
-      }
-    } catch (error53) {
-      if (this.abortController.signal.aborted) {
-        return;
-      }
-      if (current.kind === "request" && !current.responder.responded) {
-        await current.responder.respondWithResult(errorToResult(error53));
-      } else {
-        const response = errorToResult(error53);
-        if ("error" in response) {
-          console.error("Error handling notification", message.raw, response.error);
-        }
-      }
-    }
-  }
-  toIncomingMessage(message) {
-    if ("id" in message) {
-      return {
-        kind: "request",
-        method: message.method,
-        params: message.params,
-        raw: message,
-        responder: new RequestResponder(message.id, (result) => this.sendMessage({
-          jsonrpc: "2.0",
-          id: message.id,
-          ...result
-        }))
-      };
-    }
-    return {
-      kind: "notification",
-      method: message.method,
-      params: message.params,
-      raw: message
-    };
-  }
-  handleResponse(response) {
-    const pendingResponse = this.pendingResponses.get(response.id);
-    if (pendingResponse) {
-      if ("result" in response) {
-        pendingResponse.resolve(response.result);
-      } else if ("error" in response) {
-        const { code, message, data } = response.error;
-        pendingResponse.reject(new RequestError3(code, message, data));
-      } else {
-        pendingResponse.reject(RequestError3.invalidRequest(response));
-      }
-      this.pendingResponses.delete(response.id);
-    } else {
-      console.error("Got response to unknown request", response.id);
-    }
-  }
-  closedReason() {
-    return this.abortController.signal.reason ?? new Error("ACP connection closed");
-  }
-  async sendMessage(message) {
-    if (this.abortController.signal.aborted) {
-      return rejectedPromise2(this.closedReason());
-    }
-    this.writeQueue = this.writeQueue.then(async () => {
-      if (this.abortController.signal.aborted) {
-        throw this.closedReason();
-      }
-      const writer = this.stream.writable.getWriter();
-      try {
-        await writer.write(message);
-      } finally {
-        writer.releaseLock();
-      }
-    }).catch((error53) => {
-      this.close(error53);
-      throw error53;
-    });
-    return this.writeQueue;
-  }
-};
-var ConnectionBuilder = class {
-  handlers = [];
-  connectionName;
-  /**
-   * Sets a diagnostic name used by handlers created from this builder.
-   */
-  name(name) {
-    this.connectionName = name;
-    return this;
-  }
-  /**
-   * Adds a raw JSON-RPC handler to the handler chain.
-   */
-  withHandler(handler) {
-    this.handlers.push(handler);
-    return this;
-  }
-  /**
-   * Adds a handler that can inspect every incoming request or notification.
-   *
-   * Observer callbacks that return void pass the message through to later
-   * handlers. Return `Handled.yes()` to stop dispatch explicitly.
-   */
-  onReceiveMessage(handler) {
-    return this.withHandler({
-      handleMessage: async (message, cx) => await handler(message, cx) ?? Handled.no(message),
-      describe: () => this.connectionName ?? "onReceiveMessage"
-    });
-  }
-  /**
-   * Adds a typed request handler for one method.
-   */
-  onReceiveRequest(method, parse5, handler) {
-    return this.withHandler({
-      handleMessage: async (message, cx) => {
-        if (message.kind !== "request" || message.method !== method) {
-          return Handled.no(message);
-        }
-        const request = parse5(message.params);
-        return await handler(request, message.responder, cx) ?? Handled.yes();
-      },
-      describe: () => `${this.connectionName ?? "request"}:${method}`
-    });
-  }
-  /**
-   * Adds a typed notification handler for one method.
-   */
-  onReceiveNotification(method, parse5, handler) {
-    return this.withHandler({
-      handleMessage: async (message, cx) => {
-        if (message.kind !== "notification" || message.method !== method) {
-          return Handled.no(message);
-        }
-        const notification = parse5(message.params);
-        return await handler(notification, cx) ?? Handled.yes();
-      },
-      describe: () => `${this.connectionName ?? "notification"}:${method}`
-    });
-  }
-  /**
-   * Connects the configured handlers to a stream.
-   */
-  connect(stream, options) {
-    return new Connection2(stream, this.handlers, options);
-  }
-  /**
-   * Connects to a stream for the lifetime of `op`, then closes the connection.
-   */
-  connectWith(stream, op2, options) {
-    return this.connect(stream, options).runUntil(op2);
-  }
-};
-var RequestError3 = class _RequestError extends Error {
-  code;
-  /**
-   * Additional JSON-RPC error data.
-   */
-  data;
-  constructor(code, message, data) {
-    super(message);
-    this.code = code;
-    this.name = "RequestError";
-    this.data = data;
-  }
-  /**
-   * Invalid JSON was received by the server. An error occurred on the server while parsing the JSON text.
-   */
-  static parseError(data, additionalMessage) {
-    return new _RequestError(-32700, `Parse error${additionalMessage ? `: ${additionalMessage}` : ""}`, data);
-  }
-  /**
-   * The JSON sent is not a valid Request object.
-   */
-  static invalidRequest(data, additionalMessage) {
-    return new _RequestError(-32600, `Invalid request${additionalMessage ? `: ${additionalMessage}` : ""}`, data);
-  }
-  /**
-   * The method does not exist / is not available.
-   */
-  static methodNotFound(method) {
-    return new _RequestError(-32601, `"Method not found": ${method}`, {
-      method
-    });
-  }
-  /**
-   * Invalid method parameter(s).
-   */
-  static invalidParams(data, additionalMessage) {
-    return new _RequestError(-32602, `Invalid params${additionalMessage ? `: ${additionalMessage}` : ""}`, data);
-  }
-  /**
-   * Internal JSON-RPC error.
-   */
-  static internalError(data, additionalMessage) {
-    return new _RequestError(-32603, `Internal error${additionalMessage ? `: ${additionalMessage}` : ""}`, data);
-  }
-  /**
-   * Authentication required.
-   */
-  static authRequired(data, additionalMessage) {
-    return new _RequestError(-32e3, `Authentication required${additionalMessage ? `: ${additionalMessage}` : ""}`, data);
-  }
-  /**
-   * Resource, such as a file, was not found
-   */
-  static resourceNotFound(uri) {
-    return new _RequestError(-32002, `Resource not found${uri ? `: ${uri}` : ""}`, uri && { uri });
-  }
-  /**
-   * Converts this error to a JSON-RPC result object.
-   */
-  toResult() {
-    return {
-      error: {
-        code: this.code,
-        message: this.message,
-        data: this.data
-      }
-    };
-  }
-  /**
-   * Converts this error to a JSON-RPC error response payload.
-   */
-  toErrorResponse() {
-    return {
-      code: this.code,
-      message: this.message,
-      data: this.data
-    };
-  }
-};
-
-// ../../node_modules/.pnpm/@agentclientprotocol+sdk@0.28.1_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/acp.js
-function emptyObjectResponse2(response) {
-  return response ?? {};
-}
-function isStream(value) {
-  return typeof value === "object" && value !== null && "readable" in value && "writable" in value;
-}
-function memoryStreamPair() {
-  const leftToRight = new TransformStream();
-  const rightToLeft = new TransformStream();
-  return [
-    {
-      readable: rightToLeft.readable,
-      writable: leftToRight.writable
-    },
-    {
-      readable: leftToRight.readable,
-      writable: rightToLeft.writable
-    }
-  ];
-}
-var methods = {
-  agent: {
-    initialize: AGENT_METHODS2.initialize,
-    authenticate: AGENT_METHODS2.authenticate,
-    logout: AGENT_METHODS2.logout,
-    providers: {
-      list: AGENT_METHODS2.providers_list,
-      set: AGENT_METHODS2.providers_set,
-      disable: AGENT_METHODS2.providers_disable
-    },
-    session: {
-      new: AGENT_METHODS2.session_new,
-      load: AGENT_METHODS2.session_load,
-      list: AGENT_METHODS2.session_list,
-      delete: AGENT_METHODS2.session_delete,
-      fork: AGENT_METHODS2.session_fork,
-      resume: AGENT_METHODS2.session_resume,
-      close: AGENT_METHODS2.session_close,
-      setMode: AGENT_METHODS2.session_set_mode,
-      setConfigOption: AGENT_METHODS2.session_set_config_option,
-      prompt: AGENT_METHODS2.session_prompt,
-      cancel: AGENT_METHODS2.session_cancel
-    },
-    nes: {
-      start: AGENT_METHODS2.nes_start,
-      suggest: AGENT_METHODS2.nes_suggest,
-      accept: AGENT_METHODS2.nes_accept,
-      reject: AGENT_METHODS2.nes_reject,
-      close: AGENT_METHODS2.nes_close
-    },
-    document: {
-      didOpen: AGENT_METHODS2.document_did_open,
-      didChange: AGENT_METHODS2.document_did_change,
-      didClose: AGENT_METHODS2.document_did_close,
-      didSave: AGENT_METHODS2.document_did_save,
-      didFocus: AGENT_METHODS2.document_did_focus
-    }
-  },
-  client: {
-    session: {
-      requestPermission: CLIENT_METHODS2.session_request_permission,
-      update: CLIENT_METHODS2.session_update
-    },
-    fs: {
-      writeTextFile: CLIENT_METHODS2.fs_write_text_file,
-      readTextFile: CLIENT_METHODS2.fs_read_text_file
-    },
-    terminal: {
-      create: CLIENT_METHODS2.terminal_create,
-      output: CLIENT_METHODS2.terminal_output,
-      release: CLIENT_METHODS2.terminal_release,
-      waitForExit: CLIENT_METHODS2.terminal_wait_for_exit,
-      kill: CLIENT_METHODS2.terminal_kill
-    },
-    elicitation: {
-      create: CLIENT_METHODS2.elicitation_create,
-      complete: CLIENT_METHODS2.elicitation_complete
-    }
-  }
-};
-var startActiveSession = Symbol("startActiveSession");
-var AcpContext = class {
-  cx;
-  /** @internal */
-  constructor(cx) {
-    this.cx = cx;
-  }
-  /** @internal */
-  get connectionContext() {
-    return this.cx;
-  }
-  /** @internal */
-  sendRequest(method, params, mapResponse) {
-    return this.cx.sendRequest(method, params, mapResponse);
-  }
-  /** @internal */
-  sendNotification(method, params) {
-    return this.cx.sendNotification(method, params);
-  }
-  /** @internal */
-  addDynamicHandler(handler) {
-    return this.cx.addDynamicHandler(handler);
-  }
-};
-var AgentContext = class _AgentContext extends AcpContext {
-  constructor(cx) {
-    super(cx);
-  }
-  /** @internal */
-  static create(cx) {
-    return new _AgentContext(cx);
-  }
-  request(method, params) {
-    const spec = clientRequestSpecsByMethod[method];
-    return this.sendRequest(method, params, spec?.mapResponse);
-  }
-  notify(method, params) {
-    return this.sendNotification(method, params);
-  }
-};
-var ClientContext = class _ClientContext extends AcpContext {
-  constructor(cx) {
-    super(cx);
-  }
-  /** @internal */
-  static create(cx) {
-    return new _ClientContext(cx);
-  }
-  /** @internal */
-  [startActiveSession](params) {
-    return this.sendRequest(AGENT_METHODS2.session_new, params, (response) => this.attachSession(response));
-  }
-  buildSession(cwdOrRequest) {
-    if (typeof cwdOrRequest === "string") {
-      return SessionBuilder.create(this, {
-        cwd: cwdOrRequest,
-        mcpServers: []
-      });
-    }
-    return SessionBuilder.create(this, cwdOrRequest);
-  }
-  /**
-   * Builds active-session helpers around a `session/new` response.
-   */
-  attachSession(response) {
-    const updates = new AsyncQueue();
-    const closeSignal = this.connectionContext.signal;
-    const failUpdatesOnClose = () => {
-      updates.fail(closeSignal.reason ?? new Error("ACP connection closed"));
-    };
-    if (closeSignal.aborted) {
-      failUpdatesOnClose();
-    } else {
-      closeSignal.addEventListener("abort", failUpdatesOnClose);
-    }
-    const sessionRegistration = sessionUpdateRouter(this.connectionContext).attach(response, updates);
-    const closeRegistration = new HandlerRegistration(() => {
-      closeSignal.removeEventListener("abort", failUpdatesOnClose);
-    });
-    return ActiveSession.create(this, response, updates, [
-      sessionRegistration,
-      closeRegistration
-    ]);
-  }
-  request(method, params) {
-    const spec = agentRequestSpecsByMethod[method];
-    return this.sendRequest(method, params, spec?.mapResponse);
-  }
-  notify(method, params) {
-    return this.sendNotification(method, params);
-  }
-};
-var AcpConnectionHandle = class {
-  connection;
-  constructor(connection) {
-    this.connection = connection;
-  }
-  get signal() {
-    return this.connection.signal;
-  }
-  get closed() {
-    return this.connection.closed;
-  }
-  close(error53) {
-    this.connection.close(error53);
-  }
-};
-var AgentConnectionHandle = class extends AcpConnectionHandle {
-  connectHandlers;
-  client;
-  didStartConnectHandlers = false;
-  constructor(connection, connectHandlers = []) {
-    super(connection);
-    this.connectHandlers = connectHandlers;
-    this.client = AgentContext.create(connection.getContext());
-  }
-  /** @internal */
-  startConnectHandlers() {
-    if (this.didStartConnectHandlers) {
-      return;
-    }
-    this.didStartConnectHandlers = true;
-    runConnectHandlers(this, this.connectHandlers);
-  }
-};
-var ClientConnectionHandle = class extends AcpConnectionHandle {
-  connectHandlers;
-  agent;
-  didStartConnectHandlers = false;
-  constructor(connection, connectHandlers = []) {
-    super(connection);
-    this.connectHandlers = connectHandlers;
-    this.agent = ClientContext.create(connection.getContext());
-  }
-  /** @internal */
-  startConnectHandlers() {
-    if (this.didStartConnectHandlers) {
-      return;
-    }
-    this.didStartConnectHandlers = true;
-    runConnectHandlers(this, this.connectHandlers);
-  }
-};
-function agentConnection(connection, connectHandlers = []) {
-  return new AgentConnectionHandle(connection, connectHandlers);
-}
-function clientConnection(connection, connectHandlers = []) {
-  return new ClientConnectionHandle(connection, connectHandlers);
-}
-var AsyncQueue = class {
-  values = [];
-  waiters = [];
-  failed = false;
-  failure;
-  enqueue(value) {
-    if (this.failed) {
-      return;
-    }
-    const waiter = this.waiters.shift();
-    if (waiter) {
-      waiter.resolve(value);
-    } else {
-      this.values.push({ kind: "value", value });
-    }
-  }
-  reject(error53) {
-    if (this.failed) {
-      return;
-    }
-    if (this.waiters.length > 0) {
-      for (const waiter of this.waiters.splice(0)) {
-        waiter.reject(error53);
-      }
-      return;
-    }
-    this.values.push({ kind: "error", error: error53 });
-  }
-  clearErrors() {
-    this.values = this.values.filter((entry) => entry.kind === "value");
-  }
-  fail(error53) {
-    if (this.failed) {
-      return;
-    }
-    this.failed = true;
-    this.failure = error53;
-    for (const waiter of this.waiters.splice(0)) {
-      waiter.reject(error53);
-    }
-  }
-  next() {
-    if (this.values.length > 0) {
-      const entry = this.values.shift();
-      if (entry.kind === "error") {
-        return Promise.reject(entry.error);
-      }
-      return Promise.resolve(entry.value);
-    }
-    if (this.failed) {
-      return Promise.reject(this.failure);
-    }
-    return new Promise((resolve18, reject) => {
-      this.waiters.push({ resolve: resolve18, reject });
-    });
-  }
-};
-function cloneNewSessionRequest(request) {
-  return {
-    ...request,
-    additionalDirectories: request.additionalDirectories ? [...request.additionalDirectories] : void 0,
-    mcpServers: [...request.mcpServers]
-  };
-}
-var SessionBuilder = class _SessionBuilder {
-  cx;
-  request;
-  constructor(cx, request) {
-    this.cx = cx;
-    this.request = cloneNewSessionRequest(request);
-  }
-  /** @internal */
-  static create(cx, request) {
-    return new _SessionBuilder(cx, request);
-  }
-  /**
-   * Returns the `session/new` request that will be sent.
-   *
-   * The returned object is a defensive copy, so mutating it does not change the
-   * builder.
-   */
-  toRequest() {
-    return cloneNewSessionRequest(this.request);
-  }
-  /**
-   * Replaces the additional workspace roots for this session.
-   *
-   * `additionalDirectories` expand the session's file-system scope without
-   * changing `cwd`. Each path should be absolute.
-   */
-  withAdditionalDirectories(additionalDirectories) {
-    this.request = {
-      ...this.request,
-      additionalDirectories: [...additionalDirectories]
-    };
-    return this;
-  }
-  /**
-   * Adds one MCP server to the `session/new` request.
-   */
-  withMcpServer(mcpServer) {
-    this.request = {
-      ...this.request,
-      mcpServers: [...this.request.mcpServers, mcpServer]
-    };
-    return this;
-  }
-  /**
-   * Starts the session and returns an `ActiveSession` for prompting and reading
-   * updates.
-   *
-   * Call `dispose()` on the returned session when you no longer need update
-   * routing, or use `withSession(...)` to scope disposal automatically.
-   */
-  async start() {
-    return this.cx[startActiveSession](this.toRequest());
-  }
-  /**
-   * Starts the session, runs `op`, and disposes the active-session update
-   * routing when `op` finishes or throws.
-   */
-  async withSession(op2) {
-    const session = await this.start();
-    try {
-      return await op2(session);
-    } finally {
-      session.dispose();
-    }
-  }
-};
-var ActiveSession = class _ActiveSession {
-  cx;
-  sessionResponse;
-  updates;
-  registrations;
-  constructor(cx, sessionResponse, updates, registrations) {
-    this.cx = cx;
-    this.sessionResponse = sessionResponse;
-    this.updates = updates;
-    this.registrations = registrations;
-  }
-  /** @internal */
-  static create(cx, sessionResponse, updates, registrations) {
-    return new _ActiveSession(cx, sessionResponse, updates, registrations);
-  }
-  /**
-   * Session ID returned by `session/new`.
-   */
-  get sessionId() {
-    return this.sessionResponse.sessionId;
-  }
-  /**
-   * Mode state returned when the session was created, if the agent provided it.
-   */
-  get modes() {
-    return this.sessionResponse.modes;
-  }
-  /**
-   * Metadata returned when the session was created.
-   */
-  get meta() {
-    return this.sessionResponse._meta;
-  }
-  /**
-   * Full response returned by `session/new`.
-   */
-  get newSessionResponse() {
-    return this.sessionResponse;
-  }
-  /**
-   * Sends a prompt to this session.
-   *
-   * Strings are converted to one text content block. A single content block is
-   * wrapped in an array. The returned promise resolves with the final
-   * `PromptResponse`, and the same completion is also queued as a `stop`
-   * message for `nextUpdate()`.
-   */
-  prompt(prompt) {
-    this.updates.clearErrors();
-    const response = this.cx.request(AGENT_METHODS2.session_prompt, {
-      sessionId: this.sessionId,
-      prompt: this.promptBlocks(prompt)
-    });
-    void response.then((value) => {
-      this.updates.enqueue({
-        kind: "stop",
-        response: value,
-        stopReason: value.stopReason
-      });
-    }, (error53) => {
-      this.updates.reject(error53);
-    });
-    return response;
-  }
-  /**
-   * Reads the next update or stop message for this session.
-   */
-  nextUpdate() {
-    return this.updates.next();
-  }
-  /**
-   * Reads text chunks until the current prompt turn stops.
-   *
-   * Only `agent_message_chunk` updates with text content are appended. Other
-   * update types are ignored by this helper; use `nextUpdate()` when you need
-   * tool calls, plans, or the final `PromptResponse`.
-   */
-  async readText() {
-    let output = "";
-    for (; ; ) {
-      const message = await this.nextUpdate();
-      if (message.kind === "stop") {
-        return output;
-      }
-      const { update } = message;
-      if (update.sessionUpdate === "agent_message_chunk" && update.content.type === "text") {
-        output += update.content.text;
-      }
-    }
-  }
-  /**
-   * Stops routing updates to this active-session helper.
-   *
-   * This does not close the ACP session on the agent. Use `ClientContext`
-   * session lifecycle methods when the protocol session itself should be closed
-   * or deleted.
-   */
-  dispose() {
-    for (const registration of this.registrations.splice(0)) {
-      registration.dispose();
-    }
-    this.updates.fail(new Error("Active session disposed"));
-  }
-  /**
-   * Supports explicit resource management with `using`.
-   */
-  [Symbol.dispose]() {
-    this.dispose();
-  }
-  promptBlocks(prompt) {
-    if (typeof prompt === "string") {
-      return [{ type: "text", text: prompt }];
-    }
-    if (Array.isArray(prompt)) {
-      return prompt;
-    }
-    return [prompt];
-  }
-};
-function parseParams(parser, params) {
-  if (!parser) {
-    return params;
-  }
-  if (typeof parser === "function") {
-    return parser(params);
-  }
-  return parser.parse(params);
-}
-function requestSpec(method, params, mapResponse) {
-  return { method, params, mapResponse };
-}
-function notificationSpec(method, params) {
-  return { method, params };
-}
-function registerAppRequest(builder, spec, context, handler) {
-  builder.onReceiveRequest(spec.method, (params) => parseParams(spec.params, params), async (params, responder, cx) => {
-    const response = await handler(context(params, cx));
-    await responder.respond(spec.mapResponse ? spec.mapResponse(response) : response);
-  });
-}
-function registerAppNotification(builder, spec, context, handler) {
-  builder.onReceiveNotification(spec.method, (params) => parseParams(spec.params, params), (params, cx) => handler(context(params, cx)));
-}
-function specsByMethod(specs) {
-  const byMethod = {};
-  for (const spec of Object.values(specs)) {
-    byMethod[spec.method] = spec;
-  }
-  return byMethod;
-}
-var agentRequestSpecs = {
-  initialize: requestSpec(AGENT_METHODS2.initialize, zInitializeRequest2),
-  newSession: requestSpec(AGENT_METHODS2.session_new, zNewSessionRequest2),
-  loadSession: requestSpec(AGENT_METHODS2.session_load, zLoadSessionRequest2, emptyObjectResponse2),
-  unstable_forkSession: requestSpec(AGENT_METHODS2.session_fork, zForkSessionRequest2),
-  listSessions: requestSpec(AGENT_METHODS2.session_list, zListSessionsRequest2),
-  deleteSession: requestSpec(AGENT_METHODS2.session_delete, zDeleteSessionRequest2, emptyObjectResponse2),
-  resumeSession: requestSpec(AGENT_METHODS2.session_resume, zResumeSessionRequest2),
-  closeSession: requestSpec(AGENT_METHODS2.session_close, zCloseSessionRequest2, emptyObjectResponse2),
-  setSessionMode: requestSpec(AGENT_METHODS2.session_set_mode, zSetSessionModeRequest2, emptyObjectResponse2),
-  setSessionConfigOption: requestSpec(AGENT_METHODS2.session_set_config_option, zSetSessionConfigOptionRequest2),
-  authenticate: requestSpec(AGENT_METHODS2.authenticate, zAuthenticateRequest2, emptyObjectResponse2),
-  unstable_listProviders: requestSpec(AGENT_METHODS2.providers_list, zListProvidersRequest2),
-  unstable_setProvider: requestSpec(AGENT_METHODS2.providers_set, zSetProviderRequest2, emptyObjectResponse2),
-  unstable_disableProvider: requestSpec(AGENT_METHODS2.providers_disable, zDisableProviderRequest2, emptyObjectResponse2),
-  logout: requestSpec(AGENT_METHODS2.logout, zLogoutRequest2, emptyObjectResponse2),
-  prompt: requestSpec(AGENT_METHODS2.session_prompt, zPromptRequest2),
-  unstable_startNes: requestSpec(AGENT_METHODS2.nes_start, zStartNesRequest2),
-  unstable_suggestNes: requestSpec(AGENT_METHODS2.nes_suggest, zSuggestNesRequest2),
-  unstable_closeNes: requestSpec(AGENT_METHODS2.nes_close, zCloseNesRequest2, emptyObjectResponse2)
-};
-var agentNotificationSpecs = {
-  cancel: notificationSpec(AGENT_METHODS2.session_cancel, zCancelNotification2),
-  unstable_didOpenDocument: notificationSpec(AGENT_METHODS2.document_did_open, zDidOpenDocumentNotification2),
-  unstable_didChangeDocument: notificationSpec(AGENT_METHODS2.document_did_change, zDidChangeDocumentNotification2),
-  unstable_didCloseDocument: notificationSpec(AGENT_METHODS2.document_did_close, zDidCloseDocumentNotification2),
-  unstable_didSaveDocument: notificationSpec(AGENT_METHODS2.document_did_save, zDidSaveDocumentNotification2),
-  unstable_didFocusDocument: notificationSpec(AGENT_METHODS2.document_did_focus, zDidFocusDocumentNotification2),
-  unstable_acceptNes: notificationSpec(AGENT_METHODS2.nes_accept, zAcceptNesNotification2),
-  unstable_rejectNes: notificationSpec(AGENT_METHODS2.nes_reject, zRejectNesNotification2)
-};
-var clientRequestSpecs = {
-  requestPermission: requestSpec(CLIENT_METHODS2.session_request_permission, zRequestPermissionRequest2),
-  writeTextFile: requestSpec(CLIENT_METHODS2.fs_write_text_file, zWriteTextFileRequest2, emptyObjectResponse2),
-  readTextFile: requestSpec(CLIENT_METHODS2.fs_read_text_file, zReadTextFileRequest2),
-  createTerminal: requestSpec(CLIENT_METHODS2.terminal_create, zCreateTerminalRequest2),
-  terminalOutput: requestSpec(CLIENT_METHODS2.terminal_output, zTerminalOutputRequest2),
-  releaseTerminal: requestSpec(CLIENT_METHODS2.terminal_release, zReleaseTerminalRequest2, emptyObjectResponse2),
-  waitForTerminalExit: requestSpec(CLIENT_METHODS2.terminal_wait_for_exit, zWaitForTerminalExitRequest2),
-  killTerminal: requestSpec(CLIENT_METHODS2.terminal_kill, zKillTerminalRequest2, emptyObjectResponse2),
-  unstable_createElicitation: requestSpec(CLIENT_METHODS2.elicitation_create, zCreateElicitationRequest2)
-};
-var clientNotificationSpecs = {
-  sessionUpdate: notificationSpec(CLIENT_METHODS2.session_update, zSessionNotification2),
-  unstable_completeElicitation: notificationSpec(CLIENT_METHODS2.elicitation_complete, zCompleteElicitationNotification2)
-};
-var agentRequestSpecsByMethod = specsByMethod(agentRequestSpecs);
-var agentNotificationSpecsByMethod = specsByMethod(agentNotificationSpecs);
-var clientRequestSpecsByMethod = specsByMethod(clientRequestSpecs);
-var clientNotificationSpecsByMethod = specsByMethod(clientNotificationSpecs);
-function agentHandlerContext(params, client2) {
-  return {
-    params,
-    client: client2
-  };
-}
-function clientHandlerContext(params, agent2) {
-  return {
-    params,
-    agent: agent2
-  };
-}
-var SessionUpdateRouter = class {
-  activeSessions = /* @__PURE__ */ new Map();
-  handleMessage(message) {
-    if (message.kind !== "notification" || message.method !== CLIENT_METHODS2.session_update) {
-      return Handled.no(message);
-    }
-    const notification = zSessionNotification2.parse(message.params);
-    const update = {
-      kind: "session_update",
-      notification,
-      update: notification.update
-    };
-    const activeSessions = this.activeSessions.get(notification.sessionId);
-    if (activeSessions && activeSessions.size > 0) {
-      for (const session of activeSessions) {
-        session.enqueue(update);
-      }
-    }
-    return Handled.no(message);
-  }
-  attach(response, updates) {
-    const sessions = this.activeSessions.get(response.sessionId) ?? /* @__PURE__ */ new Set();
-    sessions.add(updates);
-    this.activeSessions.set(response.sessionId, sessions);
-    return new HandlerRegistration(() => {
-      sessions.delete(updates);
-      if (sessions.size === 0) {
-        this.activeSessions.delete(response.sessionId);
-      }
-    });
-  }
-};
-var sessionUpdateRouters = /* @__PURE__ */ new WeakMap();
-function sessionUpdateRouter(cx) {
-  let router = sessionUpdateRouters.get(cx);
-  if (!router) {
-    router = new SessionUpdateRouter();
-    sessionUpdateRouters.set(cx, router);
-  }
-  return router;
-}
-function runConnectHandlers(connection, handlers) {
-  for (const handler of handlers) {
-    let result;
-    try {
-      result = handler(connection);
-    } catch (error53) {
-      connection.close(error53);
-      throw error53;
-    }
-    void Promise.resolve(result).catch((error53) => {
-      connection.close(error53);
-    });
-  }
-}
-var appBuilder = Symbol("appBuilder");
-var runAgentConnectHandlers = Symbol("runAgentConnectHandlers");
-var runClientConnectHandlers = Symbol("runClientConnectHandlers");
-var AgentApp = class {
-  builder = Connection2.builder();
-  connectHandlers = [];
-  constructor(options = {}) {
-    if (options.name) {
-      this.builder.name(options.name);
-    }
-  }
-  /** @internal */
-  [appBuilder]() {
-    return this.builder;
-  }
-  /** @internal */
-  [runAgentConnectHandlers](connection) {
-    runConnectHandlers(connection, this.connectHandlers);
-  }
-  connect(target, options = {}) {
-    return this.connectConnection(target, options).connection;
-  }
-  connectWith(target, op2) {
-    const { rawConnection, connection } = this.connectConnection(target);
-    return rawConnection.runUntil(() => op2(connection.client));
-  }
-  /**
-   * Registers a handler that runs when this agent app opens a connection.
-   *
-   * Use this for connection-scoped work that needs to call client-side ACP
-   * methods outside an inbound request handler.
-   */
-  onConnect(handler) {
-    this.connectHandlers.push(handler);
-    return this;
-  }
-  onRequest(method, handlerOrParams, handler) {
-    if (handler) {
-      return this.request({ method, params: handlerOrParams }, handler);
-    }
-    const spec = agentRequestSpecsByMethod[method];
-    if (!spec) {
-      throw new Error(`Unknown ACP request method '${method}'. Pass a params parser for custom methods.`);
-    }
-    return this.request(spec, handlerOrParams);
-  }
-  onNotification(method, handlerOrParams, handler) {
-    if (handler) {
-      return this.notification({ method, params: handlerOrParams }, handler);
-    }
-    const spec = agentNotificationSpecsByMethod[method];
-    if (!spec) {
-      throw new Error(`Unknown ACP notification method '${method}'. Pass a params parser for custom methods.`);
-    }
-    return this.notification(spec, handlerOrParams);
-  }
-  request(spec, handler) {
-    registerAppRequest(this.builder, spec, (params, cx) => agentHandlerContext(params, AgentContext.create(cx)), handler);
-    return this;
-  }
-  notification(spec, handler) {
-    registerAppNotification(this.builder, spec, (params, cx) => agentHandlerContext(params, AgentContext.create(cx)), handler);
-    return this;
-  }
-  connectConnection(target, options = {}) {
-    if (isStream(target)) {
-      const state3 = this.openStreamConnection(target);
-      if (!options.deferConnectHandlers) {
-        this[runAgentConnectHandlers](state3.connection);
-      }
-      return state3;
-    }
-    const [thisStream, peerStream] = memoryStreamPair();
-    const peerRawConnection = target[appBuilder]().connect(peerStream);
-    const peerConnection = clientConnection(peerRawConnection);
-    const state2 = this.openStreamConnection(thisStream);
-    void state2.rawConnection.closed.then(() => peerConnection.close());
-    void peerRawConnection.closed.then(() => state2.connection.close());
-    try {
-      target[runClientConnectHandlers](peerConnection);
-      this[runAgentConnectHandlers](state2.connection);
-    } catch (error53) {
-      peerConnection.close(error53);
-      state2.connection.close(error53);
-      throw error53;
-    }
-    return state2;
-  }
-  openStreamConnection(stream) {
-    const rawConnection = this.builder.connect(stream);
-    return {
-      rawConnection,
-      connection: agentConnection(rawConnection, this.connectHandlers)
-    };
-  }
-};
-function client(options) {
-  return new ClientApp(options);
-}
-var ClientApp = class {
-  builder = Connection2.builder();
-  connectHandlers = [];
-  constructor(options = {}) {
-    if (options.name) {
-      this.builder.name(options.name);
-    }
-    this.builder.withHandler({
-      handleMessage: (message, cx) => sessionUpdateRouter(cx).handleMessage(message),
-      describe: () => "client-session-update-router"
-    });
-  }
-  /** @internal */
-  [appBuilder]() {
-    return this.builder;
-  }
-  /** @internal */
-  [runClientConnectHandlers](connection) {
-    runConnectHandlers(connection, this.connectHandlers);
-  }
-  connect(target) {
-    return this.connectConnection(target).connection;
-  }
-  connectWith(target, op2) {
-    const { rawConnection, connection } = this.connectConnection(target);
-    return rawConnection.runUntil(() => op2(connection.agent));
-  }
-  /**
-   * Registers a handler that runs when this client app opens a connection.
-   *
-   * Use this for connection-scoped work that needs to call agent-side ACP
-   * methods outside an inbound request handler.
-   */
-  onConnect(handler) {
-    this.connectHandlers.push(handler);
-    return this;
-  }
-  onRequest(method, handlerOrParams, handler) {
-    if (handler) {
-      return this.request({ method, params: handlerOrParams }, handler);
-    }
-    const spec = clientRequestSpecsByMethod[method];
-    if (!spec) {
-      throw new Error(`Unknown ACP request method '${method}'. Pass a params parser for custom methods.`);
-    }
-    return this.request(spec, handlerOrParams);
-  }
-  onNotification(method, handlerOrParams, handler) {
-    if (handler) {
-      return this.notification({ method, params: handlerOrParams }, handler);
-    }
-    const spec = clientNotificationSpecsByMethod[method];
-    if (!spec) {
-      throw new Error(`Unknown ACP notification method '${method}'. Pass a params parser for custom methods.`);
-    }
-    return this.notification(spec, handlerOrParams);
-  }
-  request(spec, handler) {
-    registerAppRequest(this.builder, spec, (params, cx) => clientHandlerContext(params, ClientContext.create(cx)), handler);
-    return this;
-  }
-  notification(spec, handler) {
-    registerAppNotification(this.builder, spec, (params, cx) => clientHandlerContext(params, ClientContext.create(cx)), handler);
-    return this;
-  }
-  connectConnection(target) {
-    if (isStream(target)) {
-      const state3 = this.openStreamConnection(target);
-      this[runClientConnectHandlers](state3.connection);
-      return state3;
-    }
-    const [thisStream, peerStream] = memoryStreamPair();
-    const peerRawConnection = target[appBuilder]().connect(peerStream);
-    const peerConnection = agentConnection(peerRawConnection);
-    const state2 = this.openStreamConnection(thisStream);
-    void state2.rawConnection.closed.then(() => peerConnection.close());
-    void peerRawConnection.closed.then(() => state2.connection.close());
-    try {
-      target[runAgentConnectHandlers](peerConnection);
-      this[runClientConnectHandlers](state2.connection);
-    } catch (error53) {
-      peerConnection.close(error53);
-      state2.connection.close(error53);
-      throw error53;
-    }
-    return state2;
-  }
-  openStreamConnection(stream) {
-    const rawConnection = this.builder.connect(stream);
-    return {
-      rawConnection,
-      connection: clientConnection(rawConnection, this.connectHandlers)
-    };
-  }
-};
-var legacyAgentRequestMethods = /* @__PURE__ */ new Set([
-  AGENT_METHODS2.initialize,
-  AGENT_METHODS2.authenticate,
-  AGENT_METHODS2.providers_list,
-  AGENT_METHODS2.providers_set,
-  AGENT_METHODS2.providers_disable,
-  AGENT_METHODS2.session_new,
-  AGENT_METHODS2.session_load,
-  AGENT_METHODS2.session_set_mode,
-  AGENT_METHODS2.session_set_config_option,
-  AGENT_METHODS2.session_prompt,
-  AGENT_METHODS2.session_list,
-  AGENT_METHODS2.session_delete,
-  AGENT_METHODS2.session_fork,
-  AGENT_METHODS2.session_resume,
-  AGENT_METHODS2.session_close,
-  AGENT_METHODS2.logout,
-  AGENT_METHODS2.nes_start,
-  AGENT_METHODS2.nes_suggest,
-  AGENT_METHODS2.nes_close
-]);
-var legacyAgentNotificationMethods = /* @__PURE__ */ new Set([
-  AGENT_METHODS2.session_cancel,
-  AGENT_METHODS2.nes_accept,
-  AGENT_METHODS2.nes_reject,
-  AGENT_METHODS2.document_did_open,
-  AGENT_METHODS2.document_did_change,
-  AGENT_METHODS2.document_did_close,
-  AGENT_METHODS2.document_did_save,
-  AGENT_METHODS2.document_did_focus
-]);
-var legacyClientRequestMethods = /* @__PURE__ */ new Set([
-  CLIENT_METHODS2.session_request_permission,
-  CLIENT_METHODS2.fs_write_text_file,
-  CLIENT_METHODS2.fs_read_text_file,
-  CLIENT_METHODS2.terminal_create,
-  CLIENT_METHODS2.terminal_output,
-  CLIENT_METHODS2.terminal_release,
-  CLIENT_METHODS2.terminal_wait_for_exit,
-  CLIENT_METHODS2.terminal_kill,
-  CLIENT_METHODS2.elicitation_create
-]);
-var legacyClientNotificationMethods = /* @__PURE__ */ new Set([
-  CLIENT_METHODS2.session_update,
-  CLIENT_METHODS2.elicitation_complete
-]);
-function legacyClientApp(implementation) {
-  const app = client().onRequest(CLIENT_METHODS2.session_request_permission, (ctx) => implementation.requestPermission(ctx.params)).onNotification(CLIENT_METHODS2.session_update, (ctx) => implementation.sessionUpdate(ctx.params)).onRequest(CLIENT_METHODS2.fs_write_text_file, async (ctx) => await implementation.writeTextFile?.(ctx.params) ?? {}).onRequest(CLIENT_METHODS2.fs_read_text_file, async (ctx) => await implementation.readTextFile?.(ctx.params)).onRequest(CLIENT_METHODS2.terminal_create, async (ctx) => await implementation.createTerminal?.(ctx.params)).onRequest(CLIENT_METHODS2.terminal_output, async (ctx) => await implementation.terminalOutput?.(ctx.params)).onRequest(CLIENT_METHODS2.terminal_release, async (ctx) => await implementation.releaseTerminal?.(ctx.params) ?? {}).onRequest(CLIENT_METHODS2.terminal_wait_for_exit, async (ctx) => await implementation.waitForTerminalExit?.(ctx.params)).onRequest(CLIENT_METHODS2.terminal_kill, async (ctx) => await implementation.killTerminal?.(ctx.params) ?? {});
-  if (implementation.unstable_createElicitation) {
-    app.onRequest(CLIENT_METHODS2.elicitation_create, (ctx) => implementation.unstable_createElicitation(ctx.params));
-  }
-  if (implementation.unstable_completeElicitation) {
-    app.onNotification(CLIENT_METHODS2.elicitation_complete, (ctx) => implementation.unstable_completeElicitation(ctx.params));
-  }
-  if (implementation.extMethod) {
-    app[appBuilder]().withHandler({
-      handleMessage: async (message) => {
-        if (message.kind !== "request" || legacyClientRequestMethods.has(message.method)) {
-          return Handled.no(message);
-        }
-        await message.responder.respond(await implementation.extMethod(message.method, message.params));
-        return Handled.yes();
-      },
-      describe: () => "legacy-client-extension-request"
-    });
-  }
-  if (implementation.extNotification) {
-    app[appBuilder]().withHandler({
-      handleMessage: async (message) => {
-        if (message.kind !== "notification" || legacyClientNotificationMethods.has(message.method)) {
-          return Handled.no(message);
-        }
-        await implementation.extNotification(message.method, message.params);
-        return Handled.yes();
-      },
-      describe: () => "legacy-client-extension-notification"
-    });
-  }
-  return app;
-}
-var ClientSideConnection2 = class {
-  connection;
-  /**
-   * Creates a new client-side connection to an agent.
-   *
-   * This establishes the communication channel between a client and agent
-   * following the ACP specification.
-   *
-   * @param toClient - A function that creates a Client handler to process incoming agent requests
-   * @param stream - The bidirectional message stream for communication. Typically created using
-   *                 {@link ndJsonStream} for stdio-based connections.
-   *
-   * See protocol docs: [Communication Model](https://agentclientprotocol.com/protocol/overview#communication-model)
-   *
-   * @deprecated Prefer `client({ name }).connectWith(stream, async (ctx) => ...)`.
-   */
-  constructor(toClient, stream) {
-    this.connection = legacyClientApp(toClient(this))[appBuilder]().connect(stream);
-  }
-  /**
-   * Establishes the connection with a client and negotiates protocol capabilities.
-   *
-   * This method is called once at the beginning of the connection to:
-   * - Negotiate the protocol version to use
-   * - Exchange capability information between client and agent
-   * - Determine available authentication methods
-   *
-   * The agent should respond with its supported protocol version and capabilities.
-   *
-   * See protocol docs: [Initialization](https://agentclientprotocol.com/protocol/initialization)
-   */
-  initialize(params) {
-    return this.connection.sendRequest(AGENT_METHODS2.initialize, params);
-  }
-  /**
-   * Creates a new conversation session with the agent.
-   *
-   * Sessions represent independent conversation contexts with their own history and state.
-   *
-   * The agent should:
-   * - Create a new session context
-   * - Connect to any specified MCP servers
-   * - Return a unique session ID for future requests
-   *
-   * The request may include `additionalDirectories` to expand the session's filesystem
-   * scope beyond `cwd` without changing the base for relative paths.
-   *
-   * May return an `auth_required` error if the agent requires authentication.
-   *
-   * See protocol docs: [Session Setup](https://agentclientprotocol.com/protocol/session-setup)
-   */
-  newSession(params) {
-    return this.connection.sendRequest(AGENT_METHODS2.session_new, params);
-  }
-  /**
-   * Loads an existing session to resume a previous conversation.
-   *
-   * This method is only available if the agent advertises the `loadSession` capability.
-   *
-   * The agent should:
-   * - Restore the session context and conversation history
-   * - Connect to the specified MCP servers
-   * - Stream the entire conversation history back to the client via notifications
-   *
-   * The request may include `additionalDirectories` to set the complete list of
-   * additional workspace roots for the loaded session.
-   *
-   * See protocol docs: [Loading Sessions](https://agentclientprotocol.com/protocol/session-setup#loading-sessions)
-   */
-  loadSession(params) {
-    return this.connection.sendRequest(AGENT_METHODS2.session_load, params, emptyObjectResponse2);
-  }
-  /**
-   * **UNSTABLE**
-   *
-   * This capability is not part of the spec yet, and may be removed or changed at any point.
-   *
-   * Forks an existing session to create a new independent session.
-   *
-   * Creates a new session based on the context of an existing one, allowing
-   * operations like generating summaries without affecting the original session's history.
-   *
-   * The request may include `additionalDirectories` to set the complete list of
-   * additional workspace roots for the forked session.
-   *
-   * This method is only available if the agent advertises the `session.fork` capability.
-   *
-   * @experimental
-   */
-  unstable_forkSession(params) {
-    return this.connection.sendRequest(AGENT_METHODS2.session_fork, params);
-  }
-  /**
-   * Lists existing sessions from the agent.
-   *
-   * This method is only available if the agent advertises the `listSessions` capability.
-   *
-   * Returns a list of sessions with metadata like session ID, working directory,
-   * title, and last update time. Supports filtering by working directory,
-   * `additionalDirectories`, and cursor-based pagination.
-   */
-  listSessions(params) {
-    return this.connection.sendRequest(AGENT_METHODS2.session_list, params);
-  }
-  /**
-   * Deletes an existing session returned by `session/list`.
-   *
-   * This method is only available if the agent advertises the `sessionCapabilities.delete` capability.
-   */
-  deleteSession(params) {
-    return this.connection.sendRequest(AGENT_METHODS2.session_delete, params, emptyObjectResponse2);
-  }
-  /**
-   * Resumes an existing session without returning previous messages.
-   *
-   * This method is only available if the agent advertises the `session.resume` capability.
-   *
-   * The agent should resume the session context, allowing the conversation to continue
-   * without replaying the message history (unlike `session/load`).
-   *
-   * The request may include `additionalDirectories` to set the complete list of
-   * additional workspace roots for the resumed session.
-   */
-  resumeSession(params) {
-    return this.connection.sendRequest(AGENT_METHODS2.session_resume, params);
-  }
-  /**
-   * Closes an active session and frees up any resources associated with it.
-   *
-   * This method is only available if the agent advertises the `session.close` capability.
-   *
-   * The agent must cancel any ongoing work (as if `session/cancel` was called)
-   * and then free up any resources associated with the session.
-   */
-  closeSession(params) {
-    return this.connection.sendRequest(AGENT_METHODS2.session_close, params, emptyObjectResponse2);
-  }
-  /**
-   * Sets the operational mode for a session.
-   *
-   * Allows switching between different agent modes (e.g., "ask", "architect", "code")
-   * that affect system prompts, tool availability, and permission behaviors.
-   *
-   * The mode must be one of the modes advertised in `availableModes` during session
-   * creation or loading. Agents may also change modes autonomously and notify the
-   * client via `current_mode_update` notifications.
-   *
-   * This method can be called at any time during a session, whether the Agent is
-   * idle or actively generating a turn.
-   *
-   * See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
-   */
-  setSessionMode(params) {
-    return this.connection.sendRequest(AGENT_METHODS2.session_set_mode, params, emptyObjectResponse2);
-  }
-  /**
-   * Set a configuration option for a given session.
-   *
-   * The response contains the full set of configuration options and their current values,
-   * as changing one option may affect the available values or state of other options.
-   */
-  setSessionConfigOption(params) {
-    return this.connection.sendRequest(AGENT_METHODS2.session_set_config_option, params);
-  }
-  /**
-   * Authenticates the client using the specified authentication method.
-   *
-   * Called when the agent requires authentication before allowing session creation.
-   * The client provides the authentication method ID that was advertised during initialization.
-   *
-   * After successful authentication, the client can proceed to create sessions with
-   * `newSession` without receiving an `auth_required` error.
-   *
-   * See protocol docs: [Initialization](https://agentclientprotocol.com/protocol/initialization)
-   */
-  authenticate(params) {
-    return this.connection.sendRequest(AGENT_METHODS2.authenticate, params, emptyObjectResponse2);
-  }
-  /**
-   * **UNSTABLE**
-   *
-   * This capability is not part of the spec yet, and may be removed or changed at any point.
-   *
-   * Lists providers that can be configured by the client.
-   *
-   * This method is only available if the agent advertises the `providers` capability.
-   *
-   * @experimental
-   */
-  unstable_listProviders(params) {
-    return this.connection.sendRequest(AGENT_METHODS2.providers_list, params);
-  }
-  /**
-   * **UNSTABLE**
-   *
-   * This capability is not part of the spec yet, and may be removed or changed at any point.
-   *
-   * Replaces the configuration for a provider.
-   *
-   * This method is only available if the agent advertises the `providers` capability.
-   *
-   * @experimental
-   */
-  unstable_setProvider(params) {
-    return this.connection.sendRequest(AGENT_METHODS2.providers_set, params, emptyObjectResponse2);
-  }
-  /**
-   * **UNSTABLE**
-   *
-   * This capability is not part of the spec yet, and may be removed or changed at any point.
-   *
-   * Disables a provider.
-   *
-   * This method is only available if the agent advertises the `providers` capability.
-   *
-   * @experimental
-   */
-  unstable_disableProvider(params) {
-    return this.connection.sendRequest(AGENT_METHODS2.providers_disable, params, emptyObjectResponse2);
-  }
-  /**
-   * Logout of the current authentication method.
-   */
-  logout(params) {
-    return this.connection.sendRequest(AGENT_METHODS2.logout, params, emptyObjectResponse2);
-  }
-  /**
-   * Processes a user prompt within a session.
-   *
-   * This method handles the whole lifecycle of a prompt:
-   * - Receives user messages with optional context (files, images, etc.)
-   * - Processes the prompt using language models
-   * - Reports language model content and tool calls to the Clients
-   * - Requests permission to run tools
-   * - Executes any requested tool calls
-   * - Returns when the turn is complete with a stop reason
-   *
-   * See protocol docs: [Prompt Turn](https://agentclientprotocol.com/protocol/prompt-turn)
-   */
-  prompt(params) {
-    return this.connection.sendRequest(AGENT_METHODS2.session_prompt, params);
-  }
-  /**
-   * Cancels ongoing operations for a session.
-   *
-   * This is a notification sent by the client to cancel an ongoing prompt turn.
-   *
-   * Upon receiving this notification, the Agent SHOULD:
-   * - Stop all language model requests as soon as possible
-   * - Abort all tool call invocations in progress
-   * - Send any pending `session/update` notifications
-   * - Respond to the original `session/prompt` request with `StopReason::Cancelled`
-   *
-   * See protocol docs: [Cancellation](https://agentclientprotocol.com/protocol/prompt-turn#cancellation)
-   */
-  cancel(params) {
-    return this.connection.sendNotification(AGENT_METHODS2.session_cancel, params);
-  }
-  /**
-   * **UNSTABLE**: This capability is not part of the spec yet, and may be removed or changed at any point.
-   *
-   * Starts a NES (Next Edit Suggestions) session.
-   *
-   * @experimental
-   */
-  unstable_startNes(params) {
-    return this.connection.sendRequest(AGENT_METHODS2.nes_start, params);
-  }
-  /**
-   * **UNSTABLE**: This capability is not part of the spec yet, and may be removed or changed at any point.
-   *
-   * Sends a NES suggestion request.
-   *
-   * @experimental
-   */
-  unstable_suggestNes(params) {
-    return this.connection.sendRequest(AGENT_METHODS2.nes_suggest, params);
-  }
-  /**
-   * **UNSTABLE**: This capability is not part of the spec yet, and may be removed or changed at any point.
-   *
-   * Closes a NES session.
-   *
-   * @experimental
-   */
-  unstable_closeNes(params) {
-    return this.connection.sendRequest(AGENT_METHODS2.nes_close, params, emptyObjectResponse2);
-  }
-  /**
-   * **UNSTABLE**: This capability is not part of the spec yet, and may be removed or changed at any point.
-   *
-   * Notifies the agent that a document was opened.
-   *
-   * @experimental
-   */
-  unstable_didOpenDocument(params) {
-    return this.connection.sendNotification(AGENT_METHODS2.document_did_open, params);
-  }
-  /**
-   * **UNSTABLE**: This capability is not part of the spec yet, and may be removed or changed at any point.
-   *
-   * Notifies the agent that a document was changed.
-   *
-   * @experimental
-   */
-  unstable_didChangeDocument(params) {
-    return this.connection.sendNotification(AGENT_METHODS2.document_did_change, params);
-  }
-  /**
-   * **UNSTABLE**: This capability is not part of the spec yet, and may be removed or changed at any point.
-   *
-   * Notifies the agent that a document was closed.
-   *
-   * @experimental
-   */
-  unstable_didCloseDocument(params) {
-    return this.connection.sendNotification(AGENT_METHODS2.document_did_close, params);
-  }
-  /**
-   * **UNSTABLE**: This capability is not part of the spec yet, and may be removed or changed at any point.
-   *
-   * Notifies the agent that a document was saved.
-   *
-   * @experimental
-   */
-  unstable_didSaveDocument(params) {
-    return this.connection.sendNotification(AGENT_METHODS2.document_did_save, params);
-  }
-  /**
-   * **UNSTABLE**: This capability is not part of the spec yet, and may be removed or changed at any point.
-   *
-   * Notifies the agent that a document received focus.
-   *
-   * @experimental
-   */
-  unstable_didFocusDocument(params) {
-    return this.connection.sendNotification(AGENT_METHODS2.document_did_focus, params);
-  }
-  /**
-   * **UNSTABLE**: This capability is not part of the spec yet, and may be removed or changed at any point.
-   *
-   * Notifies the agent that a NES suggestion was accepted.
-   *
-   * @experimental
-   */
-  unstable_acceptNes(params) {
-    return this.connection.sendNotification(AGENT_METHODS2.nes_accept, params);
-  }
-  /**
-   * **UNSTABLE**: This capability is not part of the spec yet, and may be removed or changed at any point.
-   *
-   * Notifies the agent that a NES suggestion was rejected.
-   *
-   * @experimental
-   */
-  unstable_rejectNes(params) {
-    return this.connection.sendNotification(AGENT_METHODS2.nes_reject, params);
-  }
-  request(method, params) {
-    const spec = agentRequestSpecsByMethod[method];
-    return this.connection.sendRequest(method, params, spec?.mapResponse);
-  }
-  notify(method, params) {
-    return this.connection.sendNotification(method, params);
-  }
-  /**
-   * Extension method.
-   *
-   * @deprecated Use {@link request}.
-   */
-  extMethod(method, params) {
-    return this.request(method, params);
-  }
-  /**
-   * Extension notification.
-   *
-   * @deprecated Use {@link notify}.
-   */
-  extNotification(method, params) {
-    return this.notify(method, params);
-  }
-  /**
-   * AbortSignal that aborts when the connection closes.
-   *
-   * This signal can be used to:
-   * - Listen for connection closure: `connection.signal.addEventListener('abort', () => {...})`
-   * - Check connection status synchronously: `if (connection.signal.aborted) {...}`
-   * - Pass to other APIs (fetch, setTimeout) for automatic cancellation
-   *
-   * The connection closes when the underlying stream ends, either normally or due to an error.
-   *
-   * @example
-   * ```typescript
-   * const connection = new ClientSideConnection(client, stream);
-   *
-   * // Listen for closure
-   * connection.signal.addEventListener('abort', () => {
-   *   console.log('Connection closed - performing cleanup');
-   * });
-   *
-   * // Check status
-   * if (connection.signal.aborted) {
-   *   console.log('Connection is already closed');
-   * }
-   *
-   * // Pass to other APIs
-   * fetch(url, { signal: connection.signal });
-   * ```
-   */
-  get signal() {
-    return this.connection.signal;
-  }
-  /**
-   * Promise that resolves when the connection closes.
-   *
-   * The connection closes when the underlying stream ends, either normally or due to an error.
-   * Once closed, the connection cannot send or receive any more messages.
-   *
-   * This is useful for async/await style cleanup:
-   *
-   * @example
-   * ```typescript
-   * const connection = new ClientSideConnection(client, stream);
-   * await connection.closed;
-   * console.log('Connection closed - performing cleanup');
-   * ```
-   */
-  get closed() {
-    return this.connection.closed;
-  }
-};
-
-// ../../apps/local-api/dist/runtime/host/_acp-runtime/client-capabilities.js
-var CLASH_ACP_EXTENSION_CAPABILITIES = {
-  "terminal-auth": true,
-  terminal_output: true,
-  // Cursor uses this negotiated flag to expose thought-level and model-config
-  // parameters as standard SessionConfigOption entries. Other agents ignore it.
-  parameterizedModelPicker: true
-};
-function withClashAcpExtensionCapabilities(capabilities) {
-  const extended = capabilities;
-  return {
-    ...capabilities,
-    session: {
-      ...extended.session ?? {},
-      configOptions: {
-        ...extended.session?.configOptions ?? {},
-        boolean: {}
-      }
-    },
-    _meta: {
-      ...capabilities._meta ?? {},
-      ...CLASH_ACP_EXTENSION_CAPABILITIES
-    }
-  };
-}
-
-// ../../apps/local-api/dist/runtime/host/_acp-runtime/probe.js
-var ACP_AUTH_REQUIRED_CODE3 = -32e3;
+var ACP_AUTH_REQUIRED_CODE2 = -32e3;
 var activeSetupConnections = /* @__PURE__ */ new Set();
 var ACP_CLIENT_CAPABILITIES = withClashAcpExtensionCapabilities({
   fs: {
@@ -143004,28 +141496,28 @@ function declaredAuthMethods(authMethods) {
 function unsupportedAuthMethodTypes(methods2) {
   return [...new Set(methods2.filter((method) => !isSupportedAuthMethod(method)).map(authMethodType).filter((type) => type.length > 0))];
 }
-function isRecord14(value) {
+function isRecord15(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 function stringArray2(value) {
   return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
 }
 function stringRecord(value) {
-  if (!isRecord14(value))
+  if (!isRecord15(value))
     return void 0;
   const entries = Object.entries(value).filter((entry) => typeof entry[1] === "string");
   return entries.length > 0 ? Object.fromEntries(entries) : void 0;
 }
 function authMethodMeta(method) {
   const meta3 = method._meta ?? method.meta;
-  return isRecord14(meta3) ? meta3 : null;
+  return isRecord15(meta3) ? meta3 : null;
 }
 function terminalAuthMeta(method) {
   const meta3 = authMethodMeta(method);
   if (!meta3)
     return null;
   const terminalAuth = meta3["terminal-auth"];
-  if (!isRecord14(terminalAuth))
+  if (!isRecord15(terminalAuth))
     return null;
   if (typeof terminalAuth.command !== "string" || terminalAuth.command.length === 0)
     return null;
@@ -143106,11 +141598,11 @@ function selectAuthMethod(authMethods, methodId) {
     return methods2[0] ?? null;
   return methods2.find((method) => method.id === methodId) ?? null;
 }
-function isAuthRequiredError2(error53) {
+function isAuthRequiredError(error53) {
   if (!error53 || typeof error53 !== "object")
     return false;
   const typed = error53;
-  return typed.code === ACP_AUTH_REQUIRED_CODE3 && typeof typed.message === "string" && /^Authentication required\b/i.test(typed.message);
+  return typed.code === ACP_AUTH_REQUIRED_CODE2 && typeof typed.message === "string" && /^Authentication required\b/i.test(typed.message);
 }
 function authMethodName(method) {
   if (!method)
@@ -143168,7 +141660,7 @@ function publicAuthMethods(methods2, agent2, env2, cwd) {
 function acpErrorMessage(error53) {
   if (error53 && typeof error53 === "object") {
     const data = error53.data;
-    if (isRecord14(data)) {
+    if (isRecord15(data)) {
       const details = data.details;
       if (typeof details === "string" && details.length > 0)
         return details;
@@ -143304,7 +141796,7 @@ async function spawnAcpProbeAgent(options) {
     }
   });
   const stream = ndJsonStream2(child.stdin, child.stdout);
-  const agent2 = new ClientSideConnection2(() => options.client ?? {
+  const agent2 = new ClientSideConnection(() => options.client ?? {
     sessionUpdate: async () => void 0,
     requestPermission: async () => ({ outcome: { outcome: "cancelled" } })
   }, stream);
@@ -143329,7 +141821,7 @@ async function disposeAllAcpSetupProcesses() {
 }
 function initializeAcpAgent(agent2) {
   return Promise.resolve(agent2.initialize({
-    protocolVersion: PROTOCOL_VERSION2,
+    protocolVersion: PROTOCOL_VERSION,
     clientCapabilities: ACP_CLIENT_CAPABILITIES
   }));
 }
@@ -143441,7 +141933,7 @@ async function probeAgentSessionConfig(options) {
           } : method ? { status: "configured", ...methodFields } : { status: "none" }
         };
       } catch (error53) {
-        if (isAuthRequiredError2(error53)) {
+        if (isAuthRequiredError(error53)) {
           return {
             configOptions: [],
             availableCommands: [],
@@ -143647,7 +142139,7 @@ async function probeAgentAuthStatus(options) {
           ...methodFields
         };
       } catch (error53) {
-        if (!isAuthRequiredError2(error53)) {
+        if (!isAuthRequiredError(error53)) {
           return {
             status: "unknown",
             message: acpErrorMessage(error53),
@@ -143690,9 +142182,9 @@ async function listAgentSessions(spawner, options) {
         return { outcome: { outcome: "cancelled" } };
       }
     };
-    const agent2 = new ClientSideConnection2(() => client2, ndJsonStream2(child.stdin, child.stdout));
+    const agent2 = new ClientSideConnection(() => client2, ndJsonStream2(child.stdin, child.stdout));
     const init = await agent2.initialize({
-      protocolVersion: PROTOCOL_VERSION2,
+      protocolVersion: PROTOCOL_VERSION,
       clientCapabilities: {}
     });
     if (!init.agentCapabilities?.sessionCapabilities?.list || !agent2.listSessions) {
@@ -144107,7 +142599,7 @@ function decodeCcProjectDir(name) {
   return "/" + name.slice(1).replace(/-/g, "/");
 }
 
-// ../../node_modules/.pnpm/@openma+common@https+++codeload.github.com+openma-ai+openma-common+tar.gz+28d93020c85c2_2fe51cb3b18b085048d70b65548de819/node_modules/@openma/common/dist/session-kernel/index.js
+// ../../node_modules/.pnpm/@openma+common@https+++codeload.github.com+openma-ai+openma-common+tar.gz+e5e6f9e68d49e_d732427ee197aa08d37f709b310e9d87/node_modules/@openma/common/dist/session-kernel/index.js
 function initialSessionLifecycle(sessionId) {
   return { sessionId, status: "draft" };
 }
@@ -144211,7 +142703,7 @@ async function readAgentRuntime(agentTemplateId) {
     return null;
   }
 }
-function isRecord15(value) {
+function isRecord16(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 function assertInside(root5, candidate, label) {
@@ -144230,9 +142722,9 @@ function configuredEnv(value) {
   if (value === void 0)
     return [];
   if (Array.isArray(value)) {
-    return value.flatMap((entry) => isRecord15(entry) && typeof entry.name === "string" && typeof entry.value === "string" ? [{ name: entry.name, value: entry.value }] : []);
+    return value.flatMap((entry) => isRecord16(entry) && typeof entry.name === "string" && typeof entry.value === "string" ? [{ name: entry.name, value: entry.value }] : []);
   }
-  if (!isRecord15(value))
+  if (!isRecord16(value))
     return [];
   return Object.entries(value).flatMap(([name, entry]) => typeof entry === "string" ? [{ name, value: entry }] : []);
 }
@@ -144258,10 +142750,10 @@ async function resolvePluginMcpServers(pluginRoot, runtimeEnv) {
   }
   const mcpPath = resolvePluginPath(pluginRoot, pluginRoot, mcpManifestPath);
   const mcpConfig = JSON.parse(await (0, import_promises37.readFile)(mcpPath, "utf8"));
-  const wrapped = isRecord15(mcpConfig.mcpServers) ? mcpConfig.mcpServers : isRecord15(mcpConfig.mcp_servers) ? mcpConfig.mcp_servers : mcpConfig;
+  const wrapped = isRecord16(mcpConfig.mcpServers) ? mcpConfig.mcpServers : isRecord16(mcpConfig.mcp_servers) ? mcpConfig.mcp_servers : mcpConfig;
   const servers = [];
   for (const [serverName, rawServer] of Object.entries(wrapped)) {
-    if (!isRecord15(rawServer) || rawServer.enabled === false)
+    if (!isRecord16(rawServer) || rawServer.enabled === false)
       continue;
     if (typeof rawServer.command !== "string") {
       throw new Error(`built-in MCP '${serverName}' must use stdio`);
@@ -144281,7 +142773,7 @@ async function resolvePluginMcpServers(pluginRoot, runtimeEnv) {
           host: pluginName,
           mimeTypes: ["text/html;profile=mcp-app"]
         },
-        ...pluginName === "clash" ? {
+        ...pluginName === "clash" && serverName === "clash" ? {
           "clash.plugin": "builtin",
           "clash.renderer": "product"
         } : {}
@@ -144415,6 +142907,651 @@ async function writeProjectMarker(cwd, projectId) {
   ].join("\n"), "utf-8");
 }
 
+// ../../apps/local-api/dist/runtime/host/lib/agent-event-adapter.js
+var import_node_crypto34 = require("node:crypto");
+var OPENMA_EVENT_SCHEMA_VERSION = "oma.event.v1";
+var AgentEventAdapter = class {
+  #sessionId;
+  #harnessId;
+  #provider;
+  #now;
+  #tools = /* @__PURE__ */ new Map();
+  #workItems = /* @__PURE__ */ new Map();
+  #childByParentTool = /* @__PURE__ */ new Map();
+  #sequence = 0;
+  constructor(options) {
+    this.#sessionId = options.sessionId;
+    this.#harnessId = options.harnessId;
+    this.#provider = providerForHarness(options.harnessId);
+    this.#now = options.now ?? (() => (/* @__PURE__ */ new Date()).toISOString());
+  }
+  ingest(turnId, event) {
+    const inner = unwrapEvent(event);
+    const callback = this.#callbackEvent(turnId, inner, event);
+    if (callback)
+      return [callback];
+    if (this.#provider === "claude") {
+      const transcript = this.#claudeTranscript(turnId, inner, event);
+      if (transcript)
+        return [transcript];
+    }
+    if (this.#provider === "codex") {
+      const rawUpdates = codexRawLifecycle(inner, event);
+      if (rawUpdates.length > 0) {
+        return rawUpdates.flatMap((update) => this.#lifecycleEvents(turnId, update));
+      }
+    }
+    if (this.#provider === "cursor") {
+      const extension2 = cursorExtensionLifecycle(inner, event);
+      if (extension2)
+        return this.#lifecycleEvents(turnId, extension2);
+    }
+    const tool = this.#mergeTool(inner);
+    if (!tool)
+      return [];
+    const updates = this.#provider === "codex" ? codexToolLifecycle(tool, event) : this.#provider === "claude" ? claudeToolLifecycle(tool, event) : this.#provider === "opencode" || this.#provider === "kilo" ? openCodeFamilyLifecycle(this.#provider, tool, event) : [];
+    return updates.flatMap((update) => this.#lifecycleEvents(turnId, update));
+  }
+  finishTurn(turnId, stopReason) {
+    if (this.#provider !== "codex" && this.#provider !== "claude" && this.#provider !== "opencode" && this.#provider !== "kilo") {
+      return [];
+    }
+    const cancelled = stopReason === "cancelled";
+    return [...this.#workItems.entries()].flatMap(([childId, state2]) => {
+      if (state2.turnId !== turnId || state2.status !== "running")
+        return [];
+      const occurredAt = this.#now();
+      state2.status = cancelled ? "cancelled" : "unknown";
+      return [this.#event({
+        type: cancelled ? "work_item.cancelled" : "work_item.missing_terminal",
+        turnId,
+        childId,
+        parentId: state2.parentId,
+        occurredAt,
+        data: cancelled ? { kind: "agent", reason: "parent_turn_cancelled" } : { reason: "parent_turn_ended_without_child_terminal" }
+      })];
+    });
+  }
+  #mergeTool(inner) {
+    const kind = stringValue2(inner.sessionUpdate) ?? stringValue2(inner.type);
+    if (kind !== "tool_call" && kind !== "tool_call_update")
+      return null;
+    const toolCallId = stringValue2(inner.toolCallId) ?? stringValue2(inner.tool_call_id) ?? stringValue2(inner.id);
+    if (!toolCallId)
+      return null;
+    const previous = this.#tools.get(toolCallId);
+    const incomingMeta = recordValue(inner._meta ?? inner.meta);
+    const rawInput = inner.rawInput ?? inner.raw_input;
+    const next = {
+      toolCallId,
+      title: stringValue2(inner.title) ?? previous?.title,
+      toolName: stringValue2(inner.toolName) ?? stringValue2(inner.tool_name) ?? previous?.toolName,
+      status: stringValue2(inner.status) ?? previous?.status,
+      rawInput: isEmptyRecord(rawInput) && !isEmptyRecord(previous?.rawInput) ? previous?.rawInput : rawInput ?? previous?.rawInput,
+      rawOutput: inner.rawOutput ?? inner.raw_output ?? previous?.rawOutput,
+      meta: mergeRecords(previous?.meta, incomingMeta)
+    };
+    this.#tools.set(toolCallId, next);
+    return next;
+  }
+  #lifecycleEvents(turnId, update) {
+    const occurredAt = this.#now();
+    let previous = this.#workItems.get(update.childId);
+    const events = [];
+    if (update.toolCallId) {
+      const oldChild = this.#childByParentTool.get(update.toolCallId);
+      if (oldChild && oldChild !== update.childId) {
+        const oldState = this.#workItems.get(oldChild);
+        if (oldState) {
+          this.#workItems.delete(oldChild);
+          this.#workItems.set(update.childId, oldState);
+          previous = oldState;
+        }
+        events.push(this.#event({
+          type: "work_item.reidentified",
+          turnId,
+          childId: update.childId,
+          parentId: update.toolCallId,
+          occurredAt,
+          data: { previous_work_item_id: oldChild },
+          raw: update.raw
+        }));
+      }
+      this.#childByParentTool.set(update.toolCallId, update.childId);
+    }
+    if (update.progress !== void 0) {
+      if (!previous) {
+        events.push(this.#startedEvent(turnId, update, occurredAt));
+      }
+      events.push(this.#event({
+        type: "work_item.progress",
+        turnId,
+        childId: update.childId,
+        parentId: update.toolCallId,
+        occurredAt,
+        data: { output: update.progress },
+        raw: update.raw
+      }));
+      this.#workItems.set(update.childId, {
+        turnId,
+        status: "running",
+        ...update.toolCallId ? { parentId: update.toolCallId } : {}
+      });
+      return events;
+    }
+    if (update.status === "running") {
+      if (!previous || previous.status !== "running") {
+        events.push(this.#startedEvent(turnId, update, occurredAt));
+      }
+      this.#workItems.set(update.childId, {
+        turnId,
+        status: "running",
+        ...update.toolCallId ? { parentId: update.toolCallId } : {}
+      });
+      return events;
+    }
+    if (!previous)
+      events.push(this.#startedEvent(turnId, update, occurredAt));
+    if (previous?.status === update.status)
+      return events;
+    const type = update.status === "completed" ? "work_item.completed" : update.status === "cancelled" ? "work_item.cancelled" : update.status === "unknown" ? "work_item.missing_terminal" : "work_item.failed";
+    const data = {
+      kind: "agent",
+      ...update.result !== void 0 ? { result: update.result } : {},
+      ...update.error ? { error: update.error } : {},
+      ...update.reason ? { reason: update.reason } : {},
+      ...update.status === "unknown" && !update.reason ? { reason: "provider_terminal_state_unknown" } : {}
+    };
+    events.push(this.#event({
+      type,
+      turnId,
+      childId: update.childId,
+      parentId: update.toolCallId,
+      occurredAt,
+      data,
+      raw: update.raw
+    }));
+    this.#workItems.set(update.childId, {
+      turnId,
+      status: update.status,
+      ...update.toolCallId ? { parentId: update.toolCallId } : {}
+    });
+    return events;
+  }
+  #startedEvent(turnId, update, occurredAt) {
+    return this.#event({
+      type: "work_item.started",
+      turnId,
+      childId: update.childId,
+      parentId: update.toolCallId,
+      occurredAt,
+      data: {
+        kind: "agent",
+        ...update.task ? { title: update.task } : {},
+        ...update.agentType ? { agent_type: update.agentType } : {},
+        ...update.forkContext !== void 0 ? { fork_context: update.forkContext } : {},
+        ...update.toolCallId ? { tool_call_id: update.toolCallId } : {}
+      },
+      raw: update.raw
+    });
+  }
+  #claudeTranscript(turnId, inner, raw2) {
+    const claudeMeta = recordValue(recordValue(inner._meta).claudeCode);
+    const parentToolUseId = stringValue2(claudeMeta.parentToolUseId) ?? stringValue2(inner.parentToolUseId) ?? stringValue2(inner.parent_tool_use_id);
+    if (!parentToolUseId)
+      return null;
+    const childId = this.#childByParentTool.get(parentToolUseId) ?? `claude:${parentToolUseId}`;
+    const kind = stringValue2(inner.sessionUpdate) ?? stringValue2(inner.type);
+    const occurredAt = this.#now();
+    if (kind === "agent_message_chunk" || kind === "agent_thought_chunk") {
+      const content = recordValue(inner.content);
+      const text = stringValue2(content.text) ?? stringValue2(inner.text) ?? stringValue2(inner.delta) ?? stringValue2(inner.content);
+      if (!text)
+        return null;
+      return this.#event({
+        type: kind === "agent_thought_chunk" ? "agent.thinking" : "agent.message_chunk",
+        turnId,
+        childId,
+        parentId: parentToolUseId,
+        occurredAt,
+        data: {
+          text,
+          ...stringValue2(inner.messageId) ?? stringValue2(inner.message_id) ? { message_id: stringValue2(inner.messageId) ?? stringValue2(inner.message_id) } : {}
+        },
+        raw: raw2,
+        rawMethod: "nested_transcript"
+      });
+    }
+    if (kind === "usage_update") {
+      const usage = normalizedUsage(inner.usage ?? inner._usage);
+      if (!usage)
+        return null;
+      return this.#event({
+        type: "usage.updated",
+        turnId,
+        childId,
+        parentId: parentToolUseId,
+        occurredAt,
+        data: usage,
+        raw: raw2,
+        rawMethod: "nested_transcript"
+      });
+    }
+    if (kind === "tool_call" || kind === "tool_call_update") {
+      const toolCallId = stringValue2(inner.toolCallId) ?? stringValue2(inner.tool_call_id) ?? stringValue2(inner.id);
+      if (!toolCallId)
+        return null;
+      return this.#event({
+        type: "work_item.progress",
+        turnId,
+        childId,
+        parentId: parentToolUseId,
+        occurredAt,
+        data: {
+          output: {
+            kind: "child_tool",
+            tool_call_id: toolCallId,
+            tool_name: stringValue2(claudeMeta.toolName) ?? stringValue2(inner.toolName) ?? stringValue2(inner.title)
+          }
+        },
+        raw: raw2,
+        rawMethod: "nested_transcript"
+      });
+    }
+    return null;
+  }
+  #callbackEvent(turnId, inner, raw2) {
+    const kind = stringValue2(inner.type);
+    if (kind !== "acp.client_request" && kind !== "acp.client_response" && kind !== "acp.client_error" && kind !== "acp.client_notification") {
+      return null;
+    }
+    const method = stringValue2(inner.method);
+    if (!method)
+      return null;
+    const requestId = stringValue2(inner.requestId);
+    const type = kind === "acp.client_request" ? "callback.requested" : kind === "acp.client_response" ? "callback.completed" : kind === "acp.client_error" ? "callback.failed" : "callback.notification";
+    const data = {
+      ...requestId ? { callback_id: requestId } : {},
+      method,
+      category: callbackCategory(method),
+      ...inner.params !== void 0 ? { params: inner.params } : {},
+      ...inner.result !== void 0 ? { result: inner.result } : {},
+      ...inner.error !== void 0 ? { error: inner.error } : {}
+    };
+    return this.#event({
+      type,
+      turnId,
+      occurredAt: this.#now(),
+      data,
+      raw: raw2,
+      rawMethod: method
+    });
+  }
+  #event(input) {
+    const seq = ++this.#sequence;
+    const identity = {
+      sessionId: this.#sessionId,
+      seq,
+      turnId: input.turnId,
+      type: input.type,
+      childId: input.childId,
+      parentId: input.parentId,
+      data: input.data,
+      raw: input.raw
+    };
+    const eventId = (0, import_node_crypto34.createHash)("sha256").update(stableJson3(identity)).digest("hex").slice(0, 32);
+    return {
+      schema: OPENMA_EVENT_SCHEMA_VERSION,
+      schema_version: OPENMA_EVENT_SCHEMA_VERSION,
+      event_id: eventId,
+      seq,
+      type: input.type,
+      session_id: this.#sessionId,
+      ...input.turnId ? { turn_id: input.turnId } : {},
+      ...input.childId ? { work_item_id: input.childId } : {},
+      ...input.parentId ? { parent_id: input.parentId } : {},
+      source: {
+        kind: "harness",
+        harness: this.#harnessId,
+        adapter: this.#provider
+      },
+      occurred_at: input.occurredAt,
+      data: input.data,
+      ...input.raw !== void 0 ? {
+        raw: {
+          kind: "raw",
+          source: "adapter",
+          ...input.rawMethod ? { method: input.rawMethod } : {},
+          event_type: input.type,
+          payload: input.raw,
+          received_at: input.occurredAt,
+          reason: "unknown"
+        }
+      } : {}
+    };
+  }
+};
+function providerForHarness(harnessId) {
+  const normalized = harnessId.trim().toLowerCase();
+  if (normalized.includes("codex"))
+    return "codex";
+  if (normalized.includes("claude") || normalized === "cc" || normalized.startsWith("cc-")) {
+    return "claude";
+  }
+  if (normalized === "opencode" || normalized.includes("opencode"))
+    return "opencode";
+  if (normalized === "kilo" || normalized.includes("kilo"))
+    return "kilo";
+  if (normalized.includes("cursor"))
+    return "cursor";
+  if (normalized === "pi" || normalized.includes("pi-acp"))
+    return "pi";
+  if (normalized.includes("kimi"))
+    return "kimi";
+  return "generic-acp";
+}
+function codexRawLifecycle(inner, raw2) {
+  if (inner.type !== "collab_tool_call")
+    return [];
+  const tool = normalizeToolName(inner.tool);
+  const children = stringArray3(inner.receiver_thread_ids);
+  if (tool === "spawn_agent") {
+    return children.map((childId) => ({
+      childId,
+      status: "running",
+      task: stringValue2(inner.prompt),
+      raw: raw2
+    }));
+  }
+  if (tool === "wait" || tool === "wait_agent") {
+    return codexStateUpdates(children, inner.agents_states, raw2);
+  }
+  if (tool === "close_agent") {
+    return children.map((childId) => ({ childId, status: "completed", raw: raw2 }));
+  }
+  return [];
+}
+function codexToolLifecycle(tool, raw2) {
+  const meta3 = recordValue(tool.meta.codex);
+  const subagent = recordValue(meta3.subagent);
+  const subagentChild = stringValue2(subagent.threadId);
+  const activity = stringValue2(subagent.activity);
+  if (subagentChild && activity) {
+    return [{
+      childId: subagentChild,
+      toolCallId: tool.toolCallId,
+      status: activity === "interrupted" ? "cancelled" : "running",
+      task: stringValue2(subagent.path),
+      reason: activity === "interrupted" ? "provider_interrupted" : void 0,
+      raw: raw2
+    }];
+  }
+  const collaboration = recordValue(meta3.collaboration);
+  const collaborationTool = stringValue2(collaboration.tool);
+  const children = stringArray3(collaboration.receiverThreadIds);
+  const input = recordValue(tool.rawInput);
+  if (!collaborationTool || children.length === 0)
+    return [];
+  if (collaborationTool === "spawnAgent") {
+    const states = codexStateUpdates(children, input.agentsStates, raw2);
+    return children.map((childId) => {
+      const state2 = states.find((candidate) => candidate.childId === childId);
+      return {
+        childId,
+        toolCallId: tool.toolCallId,
+        status: state2?.status ?? (tool.status === "failed" ? "failed" : "running"),
+        task: stringValue2(input.message) ?? stringValue2(input.prompt) ?? stringValue2(input.task),
+        agentType: stringValue2(input.agent_type) ?? stringValue2(input.agentType),
+        forkContext: booleanValue(input.fork_context) ?? booleanValue(input.forkContext),
+        result: state2?.result,
+        error: state2?.error,
+        raw: raw2
+      };
+    });
+  }
+  if (collaborationTool === "wait" || collaborationTool === "sendInput" || collaborationTool === "resumeAgent") {
+    return codexStateUpdates(children, input.agentsStates, raw2).map((update) => ({
+      ...update,
+      toolCallId: tool.toolCallId
+    }));
+  }
+  if (collaborationTool === "closeAgent") {
+    return children.map((childId) => ({
+      childId,
+      toolCallId: tool.toolCallId,
+      status: "completed",
+      raw: raw2
+    }));
+  }
+  return [];
+}
+function codexStateUpdates(childIds, states, raw2) {
+  const records = recordValue(states);
+  const ids = childIds.length > 0 ? childIds : Object.keys(records);
+  const fallback2 = ids.length === 1 ? Object.values(records).find((value) => isRecord17(value)) : void 0;
+  return ids.map((childId) => {
+    const state2 = recordValue(records[childId] ?? fallback2);
+    const status = stringValue2(state2.status) ?? stringValue2(state2.state);
+    const message = stringifyResult(state2.message);
+    if (status === "completed" || status === "shutdown") {
+      return { childId, status: "completed", result: message, raw: raw2 };
+    }
+    if (["failed", "error", "errored", "notFound"].includes(status ?? "")) {
+      return { childId, status: "failed", error: message, raw: raw2 };
+    }
+    if (["cancelled", "canceled", "interrupted"].includes(status ?? "")) {
+      return { childId, status: "cancelled", reason: status, raw: raw2 };
+    }
+    return { childId, status: "running", raw: raw2 };
+  });
+}
+function claudeToolLifecycle(tool, raw2) {
+  const claudeMeta = recordValue(tool.meta.claudeCode);
+  const name = normalizeToolName(claudeMeta.toolName ?? tool.toolName ?? tool.title);
+  if (name !== "task" && name !== "agent")
+    return [];
+  const input = recordValue(tool.rawInput);
+  const response = recordValue(claudeMeta.toolResponse);
+  const childId = stringValue2(response.agentId) ?? stringValue2(response.agent_id) ?? stringValue2(claudeMeta.agentId) ?? `claude:${tool.toolCallId}`;
+  const retry = recordValue(response.subagentRetry);
+  const elapsedTimeSeconds = numberValue2(response.elapsedTimeSeconds);
+  const subagentType = stringValue2(response.subagentType);
+  if (Object.keys(retry).length > 0 || elapsedTimeSeconds !== void 0 || subagentType) {
+    return [{
+      childId,
+      toolCallId: tool.toolCallId,
+      status: "running",
+      task: stringValue2(input.description) ?? stringValue2(input.prompt),
+      agentType: stringValue2(input.subagent_type) ?? subagentType,
+      progress: {
+        kind: Object.keys(retry).length > 0 ? "subagent_retry" : "subagent_progress",
+        ...elapsedTimeSeconds !== void 0 ? { elapsed_time_seconds: elapsedTimeSeconds } : {},
+        ...subagentType ? { subagent_type: subagentType } : {},
+        ...Object.keys(retry).length > 0 ? { retry } : {}
+      },
+      raw: raw2
+    }];
+  }
+  const failed = tool.status === "failed" || tool.status === "error";
+  const nonExecutionKind = stringValue2(claudeMeta.nonExecutionKind);
+  const asyncLaunch = booleanValue(response.isAsync) === true || stringValue2(response.status) === "async_launched";
+  const completed = !asyncLaunch && (tool.status === "completed" || stringValue2(response.status) === "completed");
+  return [{
+    childId,
+    toolCallId: tool.toolCallId,
+    status: failed ? nonExecutionKind ? "cancelled" : "failed" : completed ? "completed" : "running",
+    task: stringValue2(input.description) ?? stringValue2(input.activeForm) ?? stringValue2(input.prompt) ?? stringValue2(response.description) ?? name,
+    agentType: stringValue2(input.subagent_type) ?? stringValue2(input.agent_type) ?? stringValue2(response.agentType) ?? stringValue2(response.agent_type),
+    result: completed ? stringifyResult(response.content) ?? stringifyResult(tool.rawOutput) : void 0,
+    error: failed ? stringValue2(claudeMeta.userFeedback) ?? stringifyResult(tool.rawOutput) : void 0,
+    reason: nonExecutionKind,
+    raw: raw2
+  }];
+}
+function openCodeFamilyLifecycle(provider, tool, raw2) {
+  if (normalizeToolName(tool.toolName ?? tool.title) !== "task")
+    return [];
+  const input = recordValue(tool.rawInput);
+  const output = recordValue(tool.rawOutput);
+  const metadata = recordValue(output.metadata);
+  const description = stringValue2(input.description);
+  const prompt = stringValue2(input.prompt);
+  const agentType = stringValue2(input.subagent_type);
+  if (!description || !prompt || !agentType)
+    return [];
+  if (input.background !== void 0 && typeof input.background !== "boolean")
+    return [];
+  const parentSessionId = stringValue2(metadata.parentSessionId);
+  const structuredChildId = stringValue2(metadata.sessionId);
+  if ((!parentSessionId || !structuredChildId) && (parentSessionId || structuredChildId)) {
+    return [];
+  }
+  if (!structuredChildId && input.background === true)
+    return [];
+  const childId = structuredChildId ?? `${provider}:${tool.toolCallId}`;
+  const error53 = stringValue2(output.error);
+  const background = input.background === true || metadata.background === true;
+  return [{
+    childId,
+    toolCallId: tool.toolCallId,
+    status: tool.status === "failed" || error53 ? "failed" : tool.status === "pending" || tool.status === "in_progress" || background ? "running" : "completed",
+    task: description,
+    agentType,
+    error: error53,
+    result: !background && tool.status === "completed" ? tool.rawOutput : void 0,
+    raw: raw2
+  }];
+}
+function cursorExtensionLifecycle(inner, raw2) {
+  if (inner.type !== "acp.extension_request" || inner.method !== "cursor/task")
+    return null;
+  const params = recordValue(inner.params);
+  const toolCallId = stringValue2(params.toolCallId);
+  const childId = stringValue2(params.agentId);
+  if (!toolCallId || !childId)
+    return null;
+  const agentType = stringValue2(params.subagentType) ?? stringValue2(recordValue(params.subagentType).custom);
+  return {
+    childId,
+    toolCallId,
+    status: "running",
+    task: stringValue2(params.description),
+    agentType,
+    raw: raw2
+  };
+}
+function callbackCategory(method) {
+  if (method === "session/request_permission")
+    return "permission";
+  if (method.startsWith("fs/"))
+    return "filesystem";
+  if (method.startsWith("terminal/"))
+    return "terminal";
+  if (method.startsWith("elicitation/"))
+    return "elicitation";
+  if (method.startsWith("mcp/"))
+    return "mcp";
+  return "extension";
+}
+function normalizedUsage(value) {
+  const usage = recordValue(value);
+  const input = numberValue2(usage.inputTokens) ?? numberValue2(usage.input_tokens);
+  const output = numberValue2(usage.outputTokens) ?? numberValue2(usage.output_tokens);
+  if (input === void 0 || output === void 0)
+    return null;
+  const cacheRead = numberValue2(usage.cachedReadTokens) ?? numberValue2(usage.cache_read_input_tokens);
+  const cacheWrite = numberValue2(usage.cachedWriteTokens) ?? numberValue2(usage.cache_creation_input_tokens);
+  const total = numberValue2(usage.totalTokens) ?? numberValue2(usage.total_tokens) ?? input + output + (cacheRead ?? 0) + (cacheWrite ?? 0);
+  return {
+    input_tokens: input,
+    output_tokens: output,
+    ...cacheRead !== void 0 ? { cache_read_input_tokens: cacheRead } : {},
+    ...cacheWrite !== void 0 ? { cache_creation_input_tokens: cacheWrite } : {},
+    total_tokens: total
+  };
+}
+function unwrapEvent(value) {
+  const record3 = recordValue(value);
+  const update = recordValue(record3.update);
+  if (Object.keys(update).length > 0)
+    return update;
+  const item = recordValue(record3.item);
+  return Object.keys(item).length > 0 ? item : record3;
+}
+function mergeRecords(previous, incoming) {
+  const merged = { ...previous ?? {}, ...incoming };
+  for (const key of ["codex", "claudeCode"]) {
+    if (isRecord17(previous?.[key]) || isRecord17(incoming[key])) {
+      merged[key] = {
+        ...recordValue(previous?.[key]),
+        ...recordValue(incoming[key])
+      };
+    }
+  }
+  return merged;
+}
+function stableJson3(value) {
+  const normalize2 = (candidate) => {
+    if (Array.isArray(candidate))
+      return candidate.map(normalize2);
+    if (!isRecord17(candidate))
+      return candidate;
+    return Object.fromEntries(Object.keys(candidate).sort().map((key) => [key, normalize2(candidate[key])]));
+  };
+  return JSON.stringify(normalize2(value));
+}
+function recordValue(value) {
+  if (typeof value === "string" && value.trim().startsWith("{")) {
+    try {
+      const parsed = JSON.parse(value);
+      return isRecord17(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return isRecord17(value) ? value : {};
+}
+function isRecord17(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function isEmptyRecord(value) {
+  return value === void 0 || value === null || isRecord17(value) && Object.keys(value).length === 0;
+}
+function stringValue2(value) {
+  return typeof value === "string" && value.length > 0 ? value : void 0;
+}
+function booleanValue(value) {
+  return typeof value === "boolean" ? value : void 0;
+}
+function numberValue2(value) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : void 0;
+}
+function stringArray3(value) {
+  return Array.isArray(value) ? value.filter((item) => typeof item === "string" && item.length > 0) : [];
+}
+function stringifyResult(value) {
+  if (typeof value === "string")
+    return value;
+  if (value === void 0 || value === null)
+    return void 0;
+  if (Array.isArray(value)) {
+    const text = value.map((part) => {
+      const block = recordValue(part);
+      return stringValue2(block.text) ?? stringValue2(block.content) ?? "";
+    }).join("");
+    return text || void 0;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return void 0;
+  }
+}
+function normalizeToolName(value) {
+  const name = stringValue2(value);
+  return name?.trim().split(/[./:]/).pop()?.toLowerCase() ?? "";
+}
+
 // ../../apps/local-api/dist/runtime/host/lib/session-manager.js
 var DEFAULT_SESSION_CONTEXT_ID = "clash";
 function applyPermissionModeToAgentSpec(agentId, spec, permissionMode) {
@@ -144434,14 +143571,46 @@ function selectAcpPermissionOutcome(params) {
 function composeClashPromptContent(text) {
   return [{ type: "text", text }];
 }
-function recordValue(value) {
+function recordValue2(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+var CODEX_TURN_ACTIVITY_UPDATES = /* @__PURE__ */ new Set([
+  "agent_message_chunk",
+  "agent_thought_chunk",
+  "tool_call",
+  "tool_call_update",
+  "plan",
+  "plan_update",
+  "usage_update"
+]);
+function outOfBandUpdate(event) {
+  const outer = recordValue2(event) ?? {};
+  return recordValue2(outer.update) ?? outer;
+}
+function codexThreadStatus(event) {
+  const update = outOfBandUpdate(event);
+  if (update.sessionUpdate !== "session_info_update")
+    return void 0;
+  const codex = recordValue2(recordValue2(update._meta)?.codex);
+  const status = recordValue2(codex?.threadStatus)?.type;
+  return typeof status === "string" ? status.toLowerCase() : void 0;
+}
+function isHarnessTurnActivity(harnessId, event) {
+  if (harnessId !== "codex-acp")
+    return false;
+  if (codexThreadStatus(event) === "active")
+    return true;
+  const updateType = outOfBandUpdate(event).sessionUpdate;
+  return typeof updateType === "string" && CODEX_TURN_ACTIVITY_UPDATES.has(updateType);
+}
+function isHarnessTurnIdle(harnessId, event) {
+  return harnessId === "codex-acp" && codexThreadStatus(event) === "idle";
 }
 function trustedMcpRenderersFromServers(servers) {
   const renderers = /* @__PURE__ */ new Map();
   for (const server2 of servers) {
-    const descriptor = recordValue(server2);
-    const meta3 = recordValue(descriptor?._meta);
+    const descriptor = recordValue2(server2);
+    const meta3 = recordValue2(descriptor?._meta);
     if (typeof descriptor?.name === "string" && meta3?.["clash.plugin"] === "builtin" && typeof meta3["clash.renderer"] === "string") {
       renderers.set(descriptor.name, meta3["clash.renderer"]);
     }
@@ -144451,16 +143620,16 @@ function trustedMcpRenderersFromServers(servers) {
 function annotateTrustedMcpEvent(event, renderers) {
   if (renderers.size === 0)
     return event;
-  const outer = recordValue(event);
+  const outer = recordValue2(event);
   if (!outer)
     return event;
-  const nested = recordValue(outer.update);
+  const nested = recordValue2(outer.update);
   const update = nested ?? outer;
   const updateType = update.sessionUpdate ?? outer.sessionUpdate;
   if (updateType !== "tool_call" && updateType !== "tool_call_update")
     return event;
-  const meta3 = recordValue(update._meta) ?? {};
-  const rawInput = recordValue(update.rawInput ?? update.raw_input ?? update.input);
+  const meta3 = recordValue2(update._meta) ?? {};
+  const rawInput = recordValue2(update.rawInput ?? update.raw_input ?? update.input);
   const explicitMcp = meta3.is_mcp_tool_call === true || typeof meta3.mcp_server_name === "string" || typeof meta3.mcpServerName === "string";
   if (!explicitMcp)
     return event;
@@ -144585,6 +143754,23 @@ var SessionManager = class {
       acp_session_id: session.acp.acpSessionId,
       config_options: [...session.acp.configOptions],
       ...modes ? { modes } : {},
+      ...session.acp.protocolVersion !== null ? { protocol_version: session.acp.protocolVersion } : {},
+      ...session.acp.agentInfo ? { agent_info: session.acp.agentInfo } : {},
+      agent_capabilities: session.acp.agentCapabilities,
+      ...session.acp.initializeMeta ? { initialize_meta: session.acp.initializeMeta } : {},
+      ...session.acp.sessionSetupMeta ? { session_setup_meta: session.acp.sessionSetupMeta } : {},
+      prompt_capabilities: session.acp.promptCapabilities,
+      supports_session_fork: session.acp.supportsSessionFork,
+      supports_session_list: session.acp.supportsSessionList,
+      supports_session_delete: session.acp.supportsSessionDelete,
+      supports_session_resume: session.acp.supportsSessionResume,
+      supports_session_close: session.acp.supportsSessionClose,
+      supports_logout: session.acp.supportsLogout,
+      supports_providers: session.acp.supportsProviders,
+      supports_nes: session.acp.supportsNes,
+      ...session.acp.nesCapabilities ? { nes_capabilities: session.acp.nesCapabilities } : {},
+      ...session.acp.positionEncoding ? { position_encoding: session.acp.positionEncoding } : {},
+      supports_steering: session.acp.supportsSteering,
       ...(session.acp.loadedReplayEvents?.length ?? 0) > 0 ? {
         replay_events: session.acp.loadedReplayEvents.map((event) => annotateTrustedMcpEvent(event, session.trustedMcpRenderers))
       } : {}
@@ -144594,11 +143780,32 @@ var SessionManager = class {
     if (session.disposed)
       return;
     for (const event of session.acp.drainPendingEvents()) {
+      this.#sendSessionEvent(sessionId, session, "", event);
+    }
+  }
+  #sendSessionEvent(sessionId, session, turnId, event) {
+    this.#send({
+      type: "session.event",
+      session_id: sessionId,
+      turn_id: turnId,
+      event: annotateTrustedMcpEvent(event, session.trustedMcpRenderers)
+    });
+    for (const canonical of session.agentEvents.ingest(turnId, event)) {
       this.#send({
         type: "session.event",
         session_id: sessionId,
-        turn_id: "",
-        event: annotateTrustedMcpEvent(event, session.trustedMcpRenderers)
+        turn_id: turnId,
+        event: canonical
+      });
+    }
+  }
+  #finishAgentEvents(sessionId, session, turnId, stopReason) {
+    for (const canonical of session.agentEvents.finishTurn(turnId, stopReason)) {
+      this.#send({
+        type: "session.event",
+        session_id: sessionId,
+        turn_id: turnId,
+        event: canonical
       });
     }
   }
@@ -144669,6 +143876,7 @@ var SessionManager = class {
         spawnEnv.CLASH_AGENT_MEMBER_ID = p3.agent_member_id;
       if (p3.project_id)
         spawnEnv.CLASH_PROJECT_ID = p3.project_id;
+      spawnEnv.CLASH_SESSION_ID = p3.session_id;
       spawnEnv.CLASH_WORKSPACE_ROOT = sessionCwd;
       const agentSpec = applyPermissionModeToAgentSpec(resolvedAgentId, agent2.spec, p3.permission_mode);
       const runtimeEnv = { ...agentSpec.env ?? {}, ...spawnEnv };
@@ -144677,6 +143885,17 @@ var SessionManager = class {
       if (trustedMcpRenderers.get("clash") !== "product") {
         throw new Error("The bundled Clash MCP is unavailable. Self-host sessions require the built-in Clash MCP and cannot fall back to the shell CLI.");
       }
+      let activeSession = null;
+      const pendingOutOfBandEvents = [];
+      const onOutOfBandSessionUpdate = (event) => {
+        if (!activeSession) {
+          pendingOutOfBandEvents.push(event);
+          return;
+        }
+        if (activeSession.disposed || this.#sessions.get(p3.session_id) !== activeSession)
+          return;
+        this.#handleOutOfBandSessionUpdate(p3.session_id, activeSession, event);
+      };
       const session = await this.#runtime.start({
         agent: {
           ...agentSpec,
@@ -144691,7 +143910,8 @@ var SessionManager = class {
         }),
         clientCallbacks: {
           requestPermission: (params) => this.#requestPermission(p3.session_id, params)
-        }
+        },
+        onOutOfBandSessionUpdate
       });
       if (this.#cancelledStarts.has(p3.session_id)) {
         await session.dispose().catch(() => void 0);
@@ -144706,7 +143926,8 @@ var SessionManager = class {
       }
       let modes = session.modes;
       if (p3.permission_mode && modes?.availableModes.some((mode) => mode.id === p3.permission_mode)) {
-        modes = await session.setMode(p3.permission_mode);
+        await session.setMode(p3.permission_mode);
+        modes = session.modes;
       }
       if (this.#cancelledStarts.has(p3.session_id)) {
         await session.dispose().catch(() => void 0);
@@ -144714,15 +143935,25 @@ var SessionManager = class {
       }
       process.stderr.write(`  \u2713 agent ready, session id=${session.id}
 `);
-      const activeSession = {
+      activeSession = {
         acp: session,
+        harnessId: resolvedAgentId,
+        agentEvents: new AgentEventAdapter({
+          sessionId: p3.session_id,
+          harnessId: resolvedAgentId
+        }),
         trustedMcpRenderers,
         turns: /* @__PURE__ */ new Map(),
         promptQueue: Promise.resolve(),
+        pendingOutOfBandSteering: null,
+        outOfBandSteeringTurn: null,
         disposed: false
       };
       this.#sessions.set(p3.session_id, activeSession);
       this.#sendReady(p3.session_id, activeSession, modes);
+      for (const event of pendingOutOfBandEvents.splice(0)) {
+        onOutOfBandSessionUpdate(event);
+      }
       this.#flushPendingSessionState(p3.session_id, activeSession);
       setTimeout(() => {
         if (this.#sessions.get(p3.session_id) === activeSession) {
@@ -144769,6 +144000,7 @@ var SessionManager = class {
   }
   async #runPrompt(sess, p3) {
     const ctrl = new AbortController();
+    let promptResponse = null;
     this.#transition(p3.session_id, { type: "prompt.requested", turnId: p3.turn_id });
     sess.turns.set(p3.turn_id, ctrl);
     this.#activeTurnBySession.set(p3.session_id, p3.turn_id);
@@ -144779,8 +144011,26 @@ var SessionManager = class {
         if (ctrl.signal.aborted || sess.disposed)
           break;
         const t = ev?.type;
-        if (t === "promptComplete" || t === "promptError")
+        if (t === "promptError") {
+          const message = "Agent prompt failed";
+          this.#finishAgentEvents(p3.session_id, sess, p3.turn_id, "error");
+          this.#transition(p3.session_id, {
+            type: "session.error",
+            turnId: p3.turn_id,
+            message
+          });
+          this.#send({
+            type: "session.error",
+            session_id: p3.session_id,
+            turn_id: p3.turn_id,
+            message
+          });
+          return;
+        }
+        if (t === "promptComplete") {
+          promptResponse = recordValue2(ev.response);
           continue;
+        }
         if (process.env.CLASH_ACP_TAP) {
           try {
             const { appendFileSync } = await import("node:fs");
@@ -144788,21 +144038,28 @@ var SessionManager = class {
           } catch {
           }
         }
-        this.#send({
-          type: "session.event",
-          session_id: p3.session_id,
-          turn_id: p3.turn_id,
-          event: annotateTrustedMcpEvent(ev, sess.trustedMcpRenderers)
-        });
+        this.#sendSessionEvent(p3.session_id, sess, p3.turn_id, ev);
       }
       if (sess.disposed)
         return;
       this.#transition(p3.session_id, { type: "session.complete", turnId: p3.turn_id });
-      this.#send({ type: "session.complete", session_id: p3.session_id, turn_id: p3.turn_id });
+      const stopReason = ctrl.signal.aborted ? "cancelled" : typeof promptResponse?.stopReason === "string" ? promptResponse.stopReason : void 0;
+      const usage = recordValue2(promptResponse?.usage);
+      const meta3 = recordValue2(promptResponse?._meta);
+      this.#finishAgentEvents(p3.session_id, sess, p3.turn_id, stopReason);
+      this.#send({
+        type: "session.complete",
+        session_id: p3.session_id,
+        turn_id: p3.turn_id,
+        ...stopReason ? { stop_reason: stopReason } : {},
+        ...usage ? { usage } : {},
+        ...meta3 ? { meta: meta3 } : {}
+      });
     } catch (e5) {
       if (sess.disposed)
         return;
       const message = e5 instanceof Error ? e5.message : String(e5);
+      this.#finishAgentEvents(p3.session_id, sess, p3.turn_id, ctrl.signal.aborted ? "cancelled" : "error");
       this.#transition(p3.session_id, { type: "session.error", turnId: p3.turn_id, message });
       this.#send({
         type: "session.error",
@@ -144839,10 +144096,98 @@ var SessionManager = class {
     if (!sess)
       return;
     const turn = sess.turns.get(turn_id);
-    if (!turn)
+    if (!turn) {
+      const outOfBandTurn = sess.outOfBandSteeringTurn;
+      if (!outOfBandTurn || outOfBandTurn.turnId !== turn_id || outOfBandTurn.settled || outOfBandTurn.cancelRequested)
+        return;
+      outOfBandTurn.cancelRequested = true;
+      void sess.acp.cancelCurrentTurn().catch(() => void 0);
       return;
+    }
     turn.abort();
     this.#transition(session_id, { type: "prompt.cancelled", turnId: turn_id });
+  }
+  async steer(session_id, text, turn_id) {
+    const pending = this.#starting.get(session_id);
+    if (pending)
+      await pending;
+    const sess = this.#sessions.get(session_id);
+    if (!sess || sess.disposed)
+      throw new Error("no such session");
+    if (!turn_id)
+      return sess.acp.steer(composeClashPromptContent(text));
+    const pendingSteering = { turnId: turn_id, updates: [] };
+    sess.pendingOutOfBandSteering = pendingSteering;
+    let outcome;
+    try {
+      outcome = await sess.acp.steer(composeClashPromptContent(text));
+    } catch (error53) {
+      if (sess.pendingOutOfBandSteering === pendingSteering) {
+        sess.pendingOutOfBandSteering = null;
+      }
+      for (const event of pendingSteering.updates) {
+        this.#sendSessionEvent(session_id, sess, "", event);
+      }
+      throw error53;
+    }
+    if (sess.pendingOutOfBandSteering === pendingSteering) {
+      sess.pendingOutOfBandSteering = null;
+    }
+    if (outcome !== "startedNewTurn") {
+      for (const event of pendingSteering.updates) {
+        this.#sendSessionEvent(session_id, sess, "", event);
+      }
+      return outcome;
+    }
+    let resolveCompletion;
+    const completion = new Promise((resolve18) => {
+      resolveCompletion = resolve18;
+    });
+    const outOfBandTurn = {
+      turnId: turn_id,
+      completion,
+      resolveCompletion,
+      cancelRequested: false,
+      sawActivity: false,
+      settled: false
+    };
+    sess.outOfBandSteeringTurn = outOfBandTurn;
+    for (const event of pendingSteering.updates) {
+      this.#handleOutOfBandSessionUpdate(session_id, sess, event);
+    }
+    if (!outOfBandTurn.settled)
+      outOfBandTurn.sawActivity = true;
+    await completion;
+    if (sess.outOfBandSteeringTurn === outOfBandTurn) {
+      sess.outOfBandSteeringTurn = null;
+    }
+    return outcome;
+  }
+  #handleOutOfBandSessionUpdate(sessionId, session, event) {
+    const turn = session.outOfBandSteeringTurn;
+    if (turn && !turn.settled) {
+      this.#sendSessionEvent(sessionId, session, turn.turnId, event);
+      if (isHarnessTurnActivity(session.harnessId, event))
+        turn.sawActivity = true;
+      if (turn.sawActivity && isHarnessTurnIdle(session.harnessId, event)) {
+        turn.settled = true;
+        const stopReason = turn.cancelRequested ? "cancelled" : void 0;
+        this.#finishAgentEvents(sessionId, session, turn.turnId, stopReason);
+        this.#send({
+          type: "session.complete",
+          session_id: sessionId,
+          turn_id: turn.turnId,
+          ...stopReason ? { stop_reason: stopReason } : {}
+        });
+        turn.resolveCompletion();
+      }
+      return;
+    }
+    if (session.pendingOutOfBandSteering) {
+      session.pendingOutOfBandSteering.updates.push(event);
+      return;
+    }
+    this.#sendSessionEvent(sessionId, session, "", event);
   }
   async setConfigOption(session_id, config_id, value) {
     const pending = this.#starting.get(session_id);
@@ -144894,7 +144239,8 @@ var SessionManager = class {
       return;
     }
     try {
-      const modes = await sess.acp.setMode(mode_id);
+      await sess.acp.setMode(mode_id);
+      const modes = sess.acp.modes;
       if (modes) {
         this.#send({
           type: "session.mode",
@@ -144928,6 +144274,7 @@ var SessionManager = class {
     if (!session)
       return;
     session.disposed = true;
+    session.outOfBandSteeringTurn?.resolveCompletion();
     for (const controller of session.turns.values())
       controller.abort();
     await session.acp.dispose().catch(() => void 0);
@@ -144947,7 +144294,7 @@ var SessionManager = class {
 
 // ../../apps/local-api/dist/acp-registry-installer.js
 var import_node_child_process9 = require("node:child_process");
-var import_node_crypto34 = require("node:crypto");
+var import_node_crypto35 = require("node:crypto");
 var import_promises38 = require("node:fs/promises");
 var import_node_path42 = require("node:path");
 var import_node_util11 = require("node:util");
@@ -145081,7 +144428,7 @@ function rawBinaryFileName(url2) {
 }
 function versionedInstallDir(root5, registryId, version2, archiveUrl) {
   const versionLabel = sanitizePathComponent(version2 ?? "unknown");
-  const hash2 = (0, import_node_crypto34.createHash)("sha256").update(`${version2 ?? ""}\0${archiveUrl}`).digest("hex").slice(0, 16);
+  const hash2 = (0, import_node_crypto35.createHash)("sha256").update(`${version2 ?? ""}\0${archiveUrl}`).digest("hex").slice(0, 16);
   return (0, import_node_path42.join)(root5, "registry", sanitizePathComponent(registryId), `v_${versionLabel}_${hash2}`);
 }
 function registryInstallMetadataPath(root5, registryId) {
@@ -145117,7 +144464,7 @@ function verifySha256(bytes, expected) {
   if (!expected)
     return;
   const normalized = expected.startsWith("sha256:") ? expected.slice("sha256:".length) : expected;
-  const actual = (0, import_node_crypto34.createHash)("sha256").update(bytes).digest("hex");
+  const actual = (0, import_node_crypto35.createHash)("sha256").update(bytes).digest("hex");
   if (actual.toLowerCase() !== normalized.toLowerCase()) {
     throw new Error(`ACP registry archive checksum mismatch: expected ${normalized}, got ${actual}`);
   }
@@ -145772,6 +145119,13 @@ function isSessionErrorMessage(msg) {
 function isSessionCompleteMessage(msg) {
   return !!msg && typeof msg === "object" && msg.type === "session.complete" && typeof msg.session_id === "string";
 }
+function promptCompletionFromSessionComplete(msg) {
+  return {
+    ...typeof msg.stop_reason === "string" ? { stopReason: msg.stop_reason } : {},
+    ...isPlainObject2(msg.usage) ? { usage: msg.usage } : {},
+    ...isPlainObject2(msg.meta) ? { _meta: msg.meta } : {}
+  };
+}
 function agentTextFromSessionEvent(event) {
   if (!event || typeof event !== "object")
     return null;
@@ -145784,7 +145138,7 @@ function agentTextFromSessionEvent(event) {
     return null;
   return extractAcpContentText(inner.content);
 }
-var NON_TRANSCRIPT_SESSION_UPDATES2 = /* @__PURE__ */ new Set([
+var NON_TRANSCRIPT_SESSION_UPDATES = /* @__PURE__ */ new Set([
   "available_commands_update",
   "current_mode_update",
   "config_option_update",
@@ -145814,7 +145168,7 @@ function publicSessionMessage(msg) {
 }
 function shouldPersistSessionEvent(event) {
   const update = getSessionUpdateType(event);
-  return !update || !NON_TRANSCRIPT_SESSION_UPDATES2.has(update);
+  return !update || !NON_TRANSCRIPT_SESSION_UPDATES.has(update);
 }
 function replayCapabilityEvents(msg) {
   if (!isSessionReadyMessage(msg) || !Array.isArray(msg.replay_events))
@@ -146108,7 +145462,7 @@ var LocalAcpRuntimeAdapter = class {
         ...Object.fromEntries(Object.entries(this.spawnEnv).filter((entry) => typeof entry[1] === "string"))
       }
     }));
-    this.createSessionId = options.createSessionId ?? import_node_crypto35.randomUUID;
+    this.createSessionId = options.createSessionId ?? import_node_crypto36.randomUUID;
     this.createSessionManager = options.createSessionManager ?? createDefaultSessionManager;
     this.harnessConfig = options.harnessConfig ?? null;
     this.runPreferences = options.runPreferences ?? null;
@@ -146913,7 +146267,7 @@ var LocalAcpRuntimeAdapter = class {
     if (entry.id !== sessionId) {
       return Promise.resolve({ outcome: { outcome: "cancelled" } });
     }
-    const requestId = (0, import_node_crypto35.randomUUID)();
+    const requestId = (0, import_node_crypto36.randomUUID)();
     return new Promise((resolve18) => {
       const message = {
         type: "session.permission_request",
@@ -146974,7 +146328,7 @@ var LocalAcpRuntimeAdapter = class {
     const entry = this.sessions.get(sessionId);
     if (!entry)
       throw new Error("Local ACP text session failed to start.");
-    const turnId = `text-gen-${(0, import_node_crypto35.randomUUID)().slice(0, 8)}`;
+    const turnId = `text-gen-${(0, import_node_crypto36.randomUUID)().slice(0, 8)}`;
     const chunks = [];
     const prompt = [
       params.systemPrompt ? `System instructions:
@@ -147130,11 +146484,14 @@ ${params.systemPrompt}` : "",
     this.sendPromptQueueUpdate(entry);
     void (async () => {
       try {
-        await Promise.resolve(entry.manager.prompt({
-          session_id: entry.id,
-          turn_id: turnId,
-          text
-        }));
+        const outcome = entry.manager.steer && entry.activePromptTurnId ? await entry.manager.steer(entry.id, text, turnId).catch(() => "failed") : "promptRequired";
+        if (outcome === "promptRequired" || outcome === "failed") {
+          await Promise.resolve(entry.manager.prompt({
+            session_id: entry.id,
+            turn_id: turnId,
+            text
+          }));
+        }
       } catch (error53) {
         const message = error53 instanceof Error ? error53.message : String(error53);
         const errorAfterPersist = this.persistTurnError(entry, turnId, message) ?? Promise.resolve();
@@ -147159,13 +146516,6 @@ ${params.systemPrompt}` : "",
     }
     this.appendUserPrompt(entry, turnId, text);
     return this.schedulePrompt(entry, turnId, text);
-  }
-  markPromptCancelled(entry, turnId) {
-    if (entry.activePromptTurnId !== turnId)
-      return;
-    entry.activePromptTurnId = null;
-    entry.scheduledPromptCount = Math.max(0, entry.scheduledPromptCount - 1);
-    this.sendPromptQueueUpdate(entry);
   }
   drainQueuedPrompts(entry) {
     if (entry.queuedPrompts.length === 0)
@@ -147261,8 +146611,13 @@ ${params.systemPrompt}` : "",
       });
     });
   }
-  persistTurnComplete(entry, turnId) {
-    return this.sessionMessageStore?.markTurnComplete ? this.enqueuePersistence(entry, () => this.sessionMessageStore?.markTurnComplete?.(entry.id, turnId)) : null;
+  persistTurnComplete(entry, turnId, response) {
+    const hasResponse = Object.keys(response).length > 0;
+    const eventPersisted = hasResponse ? this.appendAgentEvent(entry, turnId, {
+      type: "promptComplete",
+      response
+    }) : null;
+    return this.sessionMessageStore?.markTurnComplete ? this.enqueuePersistence(entry, () => this.sessionMessageStore?.markTurnComplete?.(entry.id, turnId, hasResponse ? response : void 0)) : eventPersisted;
   }
   persistTurnError(entry, turnId, message) {
     return this.sessionMessageStore?.appendTurnError ? this.enqueuePersistence(entry, () => this.sessionMessageStore?.appendTurnError?.(entry.id, turnId, message)) : null;
@@ -147280,7 +146635,7 @@ ${params.systemPrompt}` : "",
       return this.persistTurnError(entry, msg.turn_id ?? null, msg.message);
     }
     if (isSessionCompleteMessage(msg) && msg.turn_id) {
-      return this.persistTurnComplete(entry, msg.turn_id);
+      return this.persistTurnComplete(entry, msg.turn_id, promptCompletionFromSessionComplete(msg));
     }
     return null;
   }
@@ -147524,7 +146879,6 @@ ${params.systemPrompt}` : "",
           return;
         case "cancel":
           if (msg.turn_id) {
-            this.markPromptCancelled(entry, msg.turn_id);
             entry.manager.cancel(sessionId, msg.turn_id);
           }
           return;
@@ -147580,10 +146934,10 @@ function attachLocalAcpSessions(server2, adapter) {
 }
 
 // ../../apps/local-api/dist/local-processor.js
-var import_node_crypto37 = require("node:crypto");
+var import_node_crypto38 = require("node:crypto");
 
 // ../../apps/local-api/dist/local-durable-output-staging.js
-var import_node_crypto36 = require("node:crypto");
+var import_node_crypto37 = require("node:crypto");
 var import_node_module12 = require("node:module");
 var import_promises40 = require("node:fs/promises");
 var import_node_path44 = require("node:path");
@@ -147598,7 +146952,7 @@ function normalizedContentType2(value) {
   return required3(value, "contentType").toLowerCase();
 }
 function projectAssetId(input) {
-  const digest3 = (0, import_node_crypto36.createHash)("sha256").update(input.projectId).update("\0").update(input.actionRunId).update("\0").update(input.outputSlot).digest("hex");
+  const digest3 = (0, import_node_crypto37.createHash)("sha256").update(input.projectId).update("\0").update(input.actionRunId).update("\0").update(input.outputSlot).digest("hex");
   return `local-output:${digest3}`;
 }
 function openDatabase8(path) {
@@ -147788,7 +147142,7 @@ var LOCAL_EXECUTOR_BINDING = ExecutablePluginBindingSchema.parse({
   pluginId: "clash.local-executor",
   version: "1.0.0",
   exportId: "execute",
-  schemaHash: `sha256:${(0, import_node_crypto37.createHash)("sha256").update("clash.local-executor/v1").digest("hex")}`
+  schemaHash: `sha256:${(0, import_node_crypto38.createHash)("sha256").update("clash.local-executor/v1").digest("hex")}`
 });
 var REMOTION_RENDER_PLUGIN_ID = "clash.remotion";
 var REMOTION_RENDER_EXPORT_ID = "render-timeline";
@@ -147918,7 +147272,7 @@ function canvasNodeProjectionRevisionId(input) {
     duration: input.nodeData.duration ?? modelParams(input.nodeData).duration,
     referenceMode: input.nodeData.referenceMode
   };
-  const digest3 = (0, import_node_crypto37.createHash)("sha256").update(canonicalJson4(semanticProjection)).digest("hex");
+  const digest3 = (0, import_node_crypto38.createHash)("sha256").update(canonicalJson4(semanticProjection)).digest("hex");
   return `sha256:${digest3}`;
 }
 function canvasExecutorActionRevisionId(executor) {
@@ -147936,7 +147290,7 @@ function canvasExecutorActionRevisionId(executor) {
       };
     }
   }
-  const digest3 = (0, import_node_crypto37.createHash)("sha256").update(canonicalJson4({
+  const digest3 = (0, import_node_crypto38.createHash)("sha256").update(canonicalJson4({
     schemaVersion: 1,
     targetKind: executor.targetKind ?? "provider-executor",
     binding: executor.binding,
@@ -147980,7 +147334,7 @@ function durableActionOwner(frozen, actionRunId) {
     ...frozen.modelEndpoint ? { modelEndpoint: frozen.modelEndpoint } : {},
     input: frozen.input
   };
-  const digest3 = (0, import_node_crypto37.createHash)("sha256").update(JSON.stringify(publicRevision)).digest("hex");
+  const digest3 = (0, import_node_crypto38.createHash)("sha256").update(JSON.stringify(publicRevision)).digest("hex");
   return {
     kind: "run",
     actionId,
@@ -148110,7 +147464,7 @@ function mixedContentReferences(input) {
   return ordered.map((entry, index) => "text" in entry ? { slot: "content", index, text: entry.text } : assetReference(entry.asset, "content", index));
 }
 function textHash2(content) {
-  return (0, import_node_crypto37.createHash)("sha256").update(content).digest("hex").slice(0, 16);
+  return (0, import_node_crypto38.createHash)("sha256").update(content).digest("hex").slice(0, 16);
 }
 function textRevisionActor(nodeData, userId) {
   if (nodeData.actorType !== "user" && nodeData.actorType !== "agent")
@@ -148133,7 +147487,7 @@ function generatedTextRevision(options) {
     createdAt,
     actor: actor ?? null
   });
-  const suffix = (0, import_node_crypto37.createHash)("sha256").update(seed).digest("hex").slice(0, 12);
+  const suffix = (0, import_node_crypto38.createHash)("sha256").update(seed).digest("hex").slice(0, 12);
   return {
     schemaVersion: 1,
     kind: "clash.text.revision",
@@ -148161,7 +147515,7 @@ async function recordGeneratedTextRevision(options) {
   }, { resultEntityId: revision.revisionId });
   await storeTextRevisionContentBlob(options.dataDir, revision, options.content);
   await metadataStore.upsertTextRevision(revision, {
-    id: options.auditId ?? (0, import_node_crypto37.randomUUID)(),
+    id: options.auditId ?? (0, import_node_crypto38.randomUUID)(),
     createdAt: Date.now(),
     operation: mutation.operation,
     entity: mutation.entity,
@@ -149424,7 +148778,7 @@ async function fetchIntoSlot(url2, options = {}) {
 }
 
 // ../../apps/local-api/dist/executor-asset-capability.js
-var import_node_crypto38 = require("node:crypto");
+var import_node_crypto39 = require("node:crypto");
 var import_promises41 = require("node:fs/promises");
 var import_node_http = require("node:http");
 function parseSingleRange(value, byteLength) {
@@ -149578,7 +148932,7 @@ function createLocalExecutorAssetCapabilityIssuer(options = {}) {
           throw new Error("Executor Asset immutable Resource length no longer matches its projection.");
         }
         const port2 = await ensureListening();
-        const token = (0, import_node_crypto38.randomBytes)(32).toString("base64url");
+        const token = (0, import_node_crypto39.randomBytes)(32).toString("base64url");
         const expiresAt = now() + ttlMs;
         let released = false;
         let expiryTimer;
@@ -150909,7 +150263,7 @@ var registry_default = {
 };
 
 // ../../apps/local-api/dist/director-stage-renderer.js
-var import_node_crypto39 = require("node:crypto");
+var import_node_crypto40 = require("node:crypto");
 var import_node_http2 = require("node:http");
 var import_promises43 = require("node:fs/promises");
 var import_node_path46 = require("node:path");
@@ -150924,7 +150278,7 @@ var MIME_TYPES = {
   ".wasm": "application/wasm"
 };
 function sha2564(value) {
-  return (0, import_node_crypto39.createHash)("sha256").update(value).digest("hex");
+  return (0, import_node_crypto40.createHash)("sha256").update(value).digest("hex");
 }
 function validatedRequest(input) {
   const state2 = DirectorStageStateSchema.parse(input.state);
@@ -151101,12 +150455,17 @@ function workspaceRoot() {
 async function buildPluginPackage(plugin) {
   const packageManager = process.env.npm_execpath;
   const scriptEntrypoint = packageManager?.match(/\.[cm]?js$/i);
-  const executable = scriptEntrypoint ? process.execPath : packageManager ?? "pnpm";
+  const nodeExecutable = process.env.CLASH_NODE_EXEC_PATH?.trim() || process.execPath;
+  const executable = scriptEntrypoint ? nodeExecutable : packageManager ?? "pnpm";
   const args = scriptEntrypoint ? [packageManager, "run", "build"] : ["run", "build"];
+  const childEnv = {
+    ...process.env,
+    PATH: [(0, import_node_path47.dirname)(nodeExecutable), process.env.PATH].filter((part) => Boolean(part)).join(import_node_path47.delimiter)
+  };
   try {
     await execFileAsync7(executable, args, {
       cwd: plugin.pluginRoot,
-      env: process.env
+      env: childEnv
     });
   } catch (error53) {
     const details = error53;
@@ -151375,10 +150734,13 @@ function createMockMissingReadProofPatch(turnId) {
     ]
   };
 }
-function createMockAcpSessionManager(send) {
-  const delayMs = Number(process.env.CLASH_E2E_STUB_ACP_DELAY_MS ?? "0");
+function createMockAcpSessionManager(send, env2 = process.env) {
+  const delayMs = Number(env2.CLASH_E2E_STUB_ACP_DELAY_MS ?? "0");
   const promptDelayMs = Number.isFinite(delayMs) && delayMs > 0 ? delayMs : 0;
+  const subagentDelayValue = Number(env2.CLASH_E2E_STUB_ACP_SUBAGENT_DELAY_MS ?? "900");
+  const subagentDelayMs = Number.isFinite(subagentDelayValue) ? Math.max(0, subagentDelayValue) : 900;
   const waitForPromptDelay = () => promptDelayMs > 0 ? new Promise((resolve18) => setTimeout(resolve18, promptDelayMs)) : Promise.resolve();
+  const waitForSubagentStep = () => subagentDelayMs > 0 ? new Promise((resolve18) => setTimeout(resolve18, subagentDelayMs)) : Promise.resolve();
   return {
     start: ({ session_id }) => {
       send({
@@ -151400,6 +150762,119 @@ function createMockAcpSessionManager(send) {
         });
       }
       await waitForPromptDelay();
+      if (env2.CLASH_E2E_STUB_ACP_SUBAGENT === "1") {
+        const parentToolCallId = `mock-subagent-spawn-${turn_id}`;
+        const workItemId = `mock-child-${turn_id}`;
+        const canonicalEvent = (type, eventId, data) => ({
+          schema: "oma.event.v1",
+          schema_version: "oma.event.v1",
+          event_id: eventId,
+          type,
+          session_id,
+          turn_id,
+          work_item_id: workItemId,
+          parent_id: parentToolCallId,
+          data
+        });
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: {
+            sessionUpdate: "tool_call",
+            toolCallId: parentToolCallId,
+            title: "Delegate agent GUI review",
+            kind: "other",
+            status: "in_progress",
+            rawInput: { task: "Review agent GUI parity" }
+          }
+        });
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: canonicalEvent("work_item.started", `${workItemId}-started`, {
+            title: "Review agent GUI parity",
+            agent_type: "reviewer"
+          })
+        });
+        await waitForSubagentStep();
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: canonicalEvent("agent.thinking", `${workItemId}-thinking`, {
+            text: "Inspecting the Copilot activity hierarchy and interaction states."
+          })
+        });
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: canonicalEvent("work_item.progress", `${workItemId}-progress`, {
+            output: { detail: "Checking parent turn placement and running activity" }
+          })
+        });
+        await waitForSubagentStep();
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: canonicalEvent("work_item.progress", `${workItemId}-tool-started`, {
+            output: {
+              kind: "child_tool",
+              tool_call_id: `${workItemId}-read-ui`,
+              tool_name: "Inspect Copilot UI",
+              status: "in_progress"
+            }
+          })
+        });
+        await waitForSubagentStep();
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: canonicalEvent("agent.message_chunk", `${workItemId}-message`, {
+            text: "The child activity row, running dock, and transcript detail are connected to the canonical work item."
+          })
+        });
+        await waitForSubagentStep();
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: canonicalEvent("work_item.progress", `${workItemId}-tool-completed`, {
+            output: {
+              kind: "child_tool",
+              tool_call_id: `${workItemId}-read-ui`,
+              tool_name: "Inspect Copilot UI",
+              status: "completed"
+            }
+          })
+        });
+        await waitForSubagentStep();
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: canonicalEvent("work_item.completed", `${workItemId}-completed`, {
+            result: "Agent GUI parity verified"
+          })
+        });
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: {
+            sessionUpdate: "tool_call_update",
+            toolCallId: parentToolCallId,
+            title: "Delegate agent GUI review",
+            kind: "other",
+            status: "completed",
+            rawOutput: { result: "Agent GUI parity verified" }
+          }
+        });
+      }
       if (text.includes("\u5217\u51FA\u753B\u5E03\u4E0A\u7684\u8282\u70B9")) {
         send({
           type: "session.event",
@@ -151557,7 +151032,7 @@ function createConfiguredLocalAcpAdapter(env2 = process.env, options = {}) {
         }
       ],
       listResumeSessions: async () => [],
-      createSessionManager: createMockAcpSessionManager,
+      createSessionManager: (send) => createMockAcpSessionManager(send, env2),
       runPreferences: createLocalAcpRunPreferencesStore(localDataDir),
       hostname: () => "Mock Desktop",
       osTag: () => "mock/e2e"
@@ -151788,7 +151263,7 @@ function createLocalPluginBrokerServices(options) {
      * plugin makes the same two calls either way.
      */
     openUploadSlot: async ({ pluginId, pluginVersion, projectId, invocationId, taskId, slot, kind, byteLength, mediaType, url: url2 }) => {
-      const token = (0, import_node_crypto40.randomUUID)();
+      const token = (0, import_node_crypto41.randomUUID)();
       const assetId = `upload-${token}`;
       if (url2) {
         const fetched = await fetchIntoSlot(url2, {
@@ -151833,7 +151308,7 @@ function createLocalPluginBrokerServices(options) {
     },
     writeAsset: writeAssetBytes,
     audit: (record3) => metadataStore.appendPluginBrokerAudit({
-      id: (0, import_node_crypto40.randomUUID)(),
+      id: (0, import_node_crypto41.randomUUID)(),
       ...record3
     })
   });
@@ -151857,7 +151332,7 @@ function startLocalApiServer(options) {
   const clashHome = clashHomeForLocalDataDir(options.dataDir);
   const actionsRoot = (0, import_node_path48.join)(clashHome, "actions");
   const discoveryEnabled = options.discovery?.enabled !== false;
-  const pendingDiscoveryHostId = discoveryEnabled ? (0, import_node_crypto40.randomUUID)() : void 0;
+  const pendingDiscoveryHostId = discoveryEnabled ? (0, import_node_crypto41.randomUUID)() : void 0;
   const discoveryProfile = resolveClashProfile(process.env);
   const codexImagegenMarketplace = createCodexImagegenMarketplace({
     actionsRoot
@@ -152317,7 +151792,7 @@ if (__clash_import_meta_url === directRunUrl && !process.env.CLASH_LOCAL_API_WRA
 }
 
 // src/development-browser-assets.ts
-var import_node_crypto41 = require("node:crypto");
+var import_node_crypto42 = require("node:crypto");
 var import_promises46 = require("node:fs/promises");
 var import_node_os13 = require("node:os");
 var import_node_path49 = require("node:path");
@@ -152332,7 +151807,7 @@ var DIRECTOR_SOURCE_PACKAGES = [
   "shared-types"
 ];
 async function sourceFingerprint(paths2) {
-  const hash2 = (0, import_node_crypto41.createHash)("sha256");
+  const hash2 = (0, import_node_crypto42.createHash)("sha256");
   const visit = async (path) => {
     const metadata = await (0, import_promises46.stat)(path);
     hash2.update(path);
@@ -152357,7 +151832,7 @@ function packageInputs(repoRoot, packageNames) {
 }
 function createDevelopmentBrowserAssets(options) {
   const repoRoot = (0, import_node_path49.resolve)(options.repoRoot);
-  const cacheKey2 = (0, import_node_crypto41.createHash)("sha256").update(repoRoot).digest("hex").slice(0, 12);
+  const cacheKey2 = (0, import_node_crypto42.createHash)("sha256").update(repoRoot).digest("hex").slice(0, 12);
   const cacheRoot = (0, import_node_path49.resolve)(
     options.cacheRoot ?? (0, import_node_path49.join)((0, import_node_os13.tmpdir)(), `clash-browser-assets-${cacheKey2}`)
   );

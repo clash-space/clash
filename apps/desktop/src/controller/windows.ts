@@ -28,10 +28,12 @@ import {
   authorizeProviderInWindow,
   type ProviderOAuthAuthorizationRequest,
 } from "../provider-oauth-window";
+import { showDesktopSystemNotification } from "../system-notifications";
 import type { DesktopRuntime } from "../runtime";
 import {
   createWindowRegistry,
   ensureNativeWindowControlsVisible,
+  parseDesktopRecordingViewport,
   resolveDesktopWindowOptions,
   shouldCreateWindowOnActivate,
 } from "../windowing";
@@ -151,8 +153,15 @@ export function createDesktopWindowController({
   }
 
   async function createWindow(): Promise<BrowserWindow> {
+    const recordingViewport = parseDesktopRecordingViewport(
+      process.env.CLASH_DESKTOP_RECORDING_VIEWPORT,
+    );
     const window = new BrowserWindow({
-      ...resolveDesktopWindowOptions(windowRegistry.count(), nativeTheme.shouldUseDarkColors),
+      ...resolveDesktopWindowOptions(
+        windowRegistry.count(),
+        nativeTheme.shouldUseDarkColors,
+        recordingViewport,
+      ),
       webPreferences: {
         preload: join(moduleDir, "preload.js"),
         contextIsolation: true,
@@ -219,6 +228,12 @@ export function createDesktopWindowController({
       const window = await createWindow();
       return { windowId: window.id, windowCount: windowRegistry.count() };
     });
+    ipcMain.handle("clash:notify", (event, request: unknown) => ({
+      shown: showDesktopSystemNotification(
+        request,
+        BrowserWindow.fromWebContents(event.sender) ?? undefined,
+      ),
+    }));
     ipcMain.handle("clash:get-nle-availability", async () => detectNleAvailability());
     ipcMain.handle("clash:authorize-provider", async (event, request: ProviderOAuthAuthorizationRequest) => {
       const parent = BrowserWindow.fromWebContents(event.sender) ?? undefined;

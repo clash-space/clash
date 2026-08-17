@@ -1,7 +1,14 @@
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import {
+  link,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 
 import { expect, it, vi } from "vitest";
 
@@ -170,4 +177,67 @@ it("uses each plugin package build so generic post-build resources are produced"
   await expect(
     readFile(join(pluginRoot, "dist", "browser-bundle", "index.html"), "utf8"),
   ).resolves.toBe("<!doctype html>");
+});
+
+it("runs a JavaScript package manager and its nested node script with the verified daemon Node", async () => {
+  const root = await mkdtemp(join(tmpdir(), "clash-development-node-runtime-"));
+  const pluginRoot = join(root, "plugins", "google");
+  const runtimeBin = join(root, "verified-runtime", "bin");
+  const verifiedNodePath = join(
+    runtimeBin,
+    process.platform === "win32" ? "node.exe" : "node",
+  );
+  const packageManagerPath = join(root, "fixture-package-manager.mjs");
+  const runtimeRecordPath = join(root, "runtime-record.ndjson");
+  await writeDevelopmentPluginFixture(root, "google", "clash.google");
+  await mkdir(join(pluginRoot, "scripts"), { recursive: true });
+  await mkdir(runtimeBin, { recursive: true });
+  await link(process.execPath, verifiedNodePath);
+  await writeFile(
+    packageManagerPath,
+    [
+      'import { appendFileSync, realpathSync } from "node:fs";',
+      'import { spawnSync } from "node:child_process";',
+      'if (process.argv[2] !== "run" || process.argv[3] !== "build") process.exit(64);',
+      'appendFileSync(process.env.CLASH_TEST_RUNTIME_RECORD, JSON.stringify({ stage: "package-manager", execPath: realpathSync(process.execPath) }) + "\\n");',
+      'const child = spawnSync("node", ["scripts/build.mjs"], { env: process.env, stdio: "inherit" });',
+      "process.exit(child.status ?? 1);",
+    ].join("\n"),
+  );
+  await writeFile(
+    join(pluginRoot, "scripts", "build.mjs"),
+    [
+      'import { appendFile, mkdir, realpath, writeFile } from "node:fs/promises";',
+      'await appendFile(process.env.CLASH_TEST_RUNTIME_RECORD, JSON.stringify({ stage: "build-script", execPath: await realpath(process.execPath) }) + "\\n");',
+      'await mkdir("dist", { recursive: true });',
+      'await writeFile("dist/stdio.mjs", "export const plugin = {};\\n");',
+    ].join("\n"),
+  );
+
+  vi.stubEnv("npm_execpath", packageManagerPath);
+  vi.stubEnv("CLASH_NODE_EXEC_PATH", verifiedNodePath);
+  vi.stubEnv("CLASH_TEST_RUNTIME_RECORD", runtimeRecordPath);
+  vi.stubEnv("PATH", process.env.PATH ?? "");
+  try {
+    await expect(
+      prepareDevelopmentBundledPlugins({
+        actionsRoot: join(root, "profile", "actions"),
+        root,
+        pluginIds: ["clash.google"],
+      }),
+    ).resolves.toEqual({ rebuilt: ["clash.google"] });
+
+    const verifiedRuntime = await realpath(verifiedNodePath);
+    const records = (await readFile(runtimeRecordPath, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(records).toEqual([
+      { stage: "package-manager", execPath: verifiedRuntime },
+      { stage: "build-script", execPath: verifiedRuntime },
+    ]);
+    expect(process.env.PATH?.split(delimiter)).not.toContain(runtimeBin);
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });

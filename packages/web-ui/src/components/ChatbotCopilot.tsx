@@ -28,6 +28,11 @@ import { CopilotRailSlot } from './copilot/CopilotRail';
 import { MessageErrorBoundary } from './copilot/MessageErrorBoundary';
 import { RuntimePickerDialog } from './copilot/RuntimePickerDialog';
 import { SessionHarnessUpdateControl } from './copilot/SessionHarnessUpdateControl';
+import {
+    SubagentActivityDock,
+    SubagentActivityRow,
+    SubagentDetailPanel,
+} from './copilot/SubagentActivity';
 import { Dialog } from './ui/dialog';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
@@ -48,6 +53,7 @@ import {
     type PlanEntry,
     type RuntimeGoalState,
 } from '@clash/web-ui/lib/acpEvents';
+import type { RuntimeSubagentWorkItem } from '@clash/web-ui/lib/runtimeSubagents';
 import { applyAgentAttribution, parseAgentCanvasPatch } from '@clash/web-ui/lib/agentCanvasPatch';
 import type { Node as RFNode, Edge as RFEdge, Connection as RFConnection } from '@xyflow/react';
 import ReactMarkdown from 'react-markdown';
@@ -694,6 +700,12 @@ function ChatbotCopilot({
     /** When set, the runtime picker dialog is open for this runtime. */
     const [runtimePicker, setRuntimePicker] = useState<Runtime | null>(null);
     const clashRt = useClashRuntime();
+    const runtimeSubagents = clashRt.subagents ?? [];
+    const [selectedSubagentId, setSelectedSubagentId] = useState<string | null>(null);
+    const selectedSubagent = runtimeSubagents.find((item) => item.id === selectedSubagentId) ?? null;
+    useEffect(() => {
+        if (selectedSubagentId && !selectedSubagent) setSelectedSubagentId(null);
+    }, [selectedSubagent, selectedSubagentId]);
     const slashCommandQuery = useMemo(() => {
         if (chatMode === 'cloud') return null;
         const draft = input.replace(/[\r\n]+$/g, '');
@@ -1063,6 +1075,7 @@ function ChatbotCopilot({
     }, []);
     const historyButtonRef = useRef<HTMLButtonElement | null>(null);
     const panelRef = useRef<HTMLElement | null>(null);
+    const getPanelElement = useCallback(() => panelRef.current, []);
     const resizeStartWidthRef = useRef(width);
     const resizeFrameRef = useRef<number | null>(null);
     const pendingResizeWidthRef = useRef(width);
@@ -2344,6 +2357,8 @@ function ChatbotCopilot({
                                             )}
                                             <RuntimeMessageList
                                                 messages={clashRt.messages}
+                                                subagents={runtimeSubagents}
+                                                onOpenSubagent={(item) => setSelectedSubagentId(item.id)}
                                                 ready={clashRt.ready}
                                                 startupPending={desktopRuntimeStartupPending}
                                                 desktopLocalMode={isDesktopLocalMode}
@@ -2441,6 +2456,16 @@ function ChatbotCopilot({
                                         )}
                                     />
                                 )}
+                                {chatMode === 'runtime' ? (
+                                    <div className="relative z-20 mx-auto w-full max-w-[68rem] px-4 pb-1 sm:px-6">
+                                        <SubagentActivityDock
+                                            items={runtimeSubagents}
+                                            onOpen={(item) => setSelectedSubagentId(item.id)}
+                                            portalContainer={panelRef.current}
+                                            getPortalContainer={getPanelElement}
+                                        />
+                                    </div>
+                                ) : null}
                                 {chatMode === 'runtime' && clashRt.promptQueueEnabled && visibleRuntimePromptQueue.length > 0 && (
                                     <RuntimePromptQueueBar
                                         items={visibleRuntimePromptQueue}
@@ -2557,6 +2582,24 @@ function ChatbotCopilot({
                                 </div>
                             </div>
                             )}
+
+                            <SubagentDetailPanel
+                                open={selectedSubagent !== null}
+                                item={selectedSubagent}
+                                onClose={() => setSelectedSubagentId(null)}
+                                portalContainer={panelRef.current}
+                                getPortalContainer={getPanelElement}
+                            >
+                                {selectedSubagent ? (
+                                    <AcpMessageList
+                                        messages={selectedSubagent.transcript}
+                                        clashEntities={clashProjectEntities}
+                                        onOpenClashEntity={onOpenClashEntity}
+                                        agentId={clashRt.currentSession?.agentId ?? clashRt.selectedAgentId}
+                                        isStreaming={selectedSubagent.status === 'running'}
+                                    />
+                                ) : null}
+                            </SubagentDetailPanel>
                             {(desktopRuntimeNeedsSetup || desktopRuntimeStartupFailed) && (
                                 <div className="absolute bottom-0 left-0 right-0 z-20 px-4 pb-4 sm:px-6">
                                     <div className="mx-auto flex w-full max-w-[68rem] items-center gap-3 rounded-2xl border border-warm-border bg-warm-surface/95 p-4 shadow-lg backdrop-blur">
@@ -3550,6 +3593,8 @@ function RuntimeMenuRow({
 
 const RuntimeMessageRow = memo(function RuntimeMessageRow({
     message,
+    subagents,
+    onOpenSubagent,
     mentionableNodes,
     clashEntities,
     onOpenClashEntity,
@@ -3557,12 +3602,25 @@ const RuntimeMessageRow = memo(function RuntimeMessageRow({
     isStreaming,
 }: {
     message: RuntimeMessage;
+    subagents: RuntimeSubagentWorkItem[];
+    onOpenSubagent: (item: RuntimeSubagentWorkItem) => void;
     mentionableNodes: MentionNodeRef[];
     clashEntities: readonly ClashProjectEntity[];
     onOpenClashEntity?: (entity: ClashProjectEntity) => void;
     agentId?: string | null;
     isStreaming?: boolean;
 }) {
+    const toolCallIds = new Set(
+        message.parts
+            .filter((part) => part.type === 'tool_call')
+            .map((part) => part.toolCallId),
+    );
+    const linkedSubagents = message.role === 'assistant'
+        ? subagents.filter((item) => (
+            (item.parentToolCallId && toolCallIds.has(item.parentToolCallId))
+            || (item.turnId && message.id.startsWith(`asst-${item.turnId}`))
+        ))
+        : [];
     const userContent = message.role === 'user'
         ? message.parts
             .filter((part) => part.type === 'text')
@@ -3586,13 +3644,26 @@ const RuntimeMessageRow = memo(function RuntimeMessageRow({
                     mentionNodes={mentionableNodes}
                 />
             ) : (
-                <AcpMessageList
-                    messages={[message]}
-                    clashEntities={clashEntities}
-                    onOpenClashEntity={onOpenClashEntity}
-                    agentId={agentId}
-                    isStreaming={isStreaming}
-                />
+                <div className="min-w-0">
+                    <AcpMessageList
+                        messages={[message]}
+                        clashEntities={clashEntities}
+                        onOpenClashEntity={onOpenClashEntity}
+                        agentId={agentId}
+                        isStreaming={isStreaming}
+                    />
+                    {linkedSubagents.length > 0 ? (
+                        <div className="mt-1 space-y-0.5 border-l border-warm-border/80 pl-2">
+                            {linkedSubagents.map((item) => (
+                                <SubagentActivityRow
+                                    key={item.id}
+                                    item={item}
+                                    onOpen={() => onOpenSubagent(item)}
+                                />
+                            ))}
+                        </div>
+                    ) : null}
+                </div>
             )}
         </motion.div>
     );
@@ -3606,6 +3677,8 @@ const RuntimeMessageRow = memo(function RuntimeMessageRow({
  */
 function RuntimeMessageList({
     messages,
+    subagents,
+    onOpenSubagent,
     ready,
     startupPending = false,
     desktopLocalMode,
@@ -3621,6 +3694,8 @@ function RuntimeMessageList({
     renderEmptyActivity = true,
 }: {
     messages: RuntimeMessage[];
+    subagents: RuntimeSubagentWorkItem[];
+    onOpenSubagent: (item: RuntimeSubagentWorkItem) => void;
     ready: boolean;
     startupPending?: boolean;
     desktopLocalMode?: boolean;
@@ -3694,6 +3769,8 @@ function RuntimeMessageList({
                 <RuntimeMessageRow
                     key={message.id}
                     message={message}
+                    subagents={subagents}
+                    onOpenSubagent={onOpenSubagent}
                     mentionableNodes={mentionableNodes}
                     clashEntities={clashEntities}
                     onOpenClashEntity={onOpenClashEntity}

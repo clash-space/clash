@@ -71,10 +71,12 @@ test("MCP sends a typed command directly to the ensured local-api endpoint", asy
 
 test("an explicit API URL bypasses daemon startup and forwards its API token", async () => {
   const { createMcpProjectHostClient } = await import("./host-runner.js");
+  const cwd = await workspace("project-env");
   let ensures = 0;
   let authorization = "";
   const client = createMcpProjectHostClient({
     env: {
+      CLASH_WORKSPACE_ROOT: cwd,
       CLASH_API_URL: "https://clash.example.test",
       CLASH_API_KEY: "clsh_direct",
       CLASH_PROJECT_ID: "project-env",

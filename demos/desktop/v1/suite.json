@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "clash-desktop-demos-v1",
+  "defaults": {
+    "viewport": { "width": 1440, "height": 900 },
+    "locale": "en-US",
+    "theme": "light",
+    "timeoutMs": 360000
+  },
+  "cases": [
+    {
+      "id": "real-pi-canvas-stage-timeline-v1",
+      "title": "Pi builds an editable previsualization",
+      "kind": "agent",
+      "driver": "./cases/real-pi-canvas-stage-timeline.ts",
+      "chapters": [
+        { "id": "project-ready", "title": "Open a clean Project" },
+        { "id": "brief", "title": "Give Pi the creative brief" },
+        { "id": "agent-work", "title": "Watch product tools execute" },
+        { "id": "product-result", "title": "Review persisted Canvas, Stage, and Timeline" }
+      ]
+    },
+    {
+      "id": "feature-workspace-surfaces-v1",
+      "title": "Create first-class Timeline and Director Stage surfaces",
+      "kind": "feature",
+      "driver": "./cases/feature-workspace-surfaces.ts",
+      "timeoutMs": 120000,
+      "chapters": [
+        { "id": "project-ready", "title": "Open a clean Project" },
+        { "id": "timeline", "title": "Create and open a Timeline" },
+        { "id": "director-stage", "title": "Create and open a Director Stage" },
+        { "id": "product-result", "title": "Return to Canvas and verify product state" }
+      ]
+    }
+  ]
+}

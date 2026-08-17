@@ -120,6 +120,7 @@ import {
   ACTION_BADGE_NODE_SIZE,
 } from "@clash/web-ui/lib/layout";
 import { useLoroSync } from "@clash/web-ui/hooks/useLoroSync";
+import { useLongActionNotifications } from "@clash/web-ui/hooks/useLongActionNotifications";
 import { actionIsCheckpointLocked } from "@clash/web-ui/lib/actionCheckpoint";
 import {
   annotationLocateSelector,
@@ -188,7 +189,6 @@ import {
 } from "@clash/web-ui/lib/projectNavigatorChrome";
 import { dispatchHostMutationEvent } from "@clash/web-ui/lib/hostMutationEvents";
 import {
-  averageRectCenters,
   collapseVelocityFromPointer,
   DEFAULT_MINIMAP_SIZE,
   isExpandedMinimapSize,
@@ -968,6 +968,7 @@ export default function ProjectEditor({
   // the project still owns media assets.
   const [nodes, setNodesInternal] = useNodesState<AppNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  useLongActionNotifications(nodes);
   const nodesRef = useRef<AppNode[]>(nodes);
   const edgesRef = useRef<Edge[]>(edges);
   const copilotNodesRef = useRef<CopilotCanvasNode[]>([]);
@@ -4503,19 +4504,18 @@ export default function ProjectEditor({
     [setNodesInternal, stopFollowingAgent],
   );
 
-  const centerViewportOnAverageNodePosition = useCallback(() => {
+  const fitAllNodesIntoViewport = useCallback(() => {
     const instance = reactFlowInstanceRef.current;
     if (!instance) return;
     const allNodes = nodesRef.current;
-    const center = averageRectCenters(
-      allNodes.map((node) => getAbsoluteRect(node, allNodes)),
-    );
-    if (!center) return;
+    if (allNodes.length === 0) return;
     stopFollowingAgent();
     transientUiStore.dismiss();
-    reactFlowInstanceRef.current?.setCenter(center.x, center.y, {
-      zoom: instance.getZoom(),
+    instance.fitView({
+      nodes: allNodes,
+      padding: 0.16,
       duration: 240,
+      maxZoom: 1,
     });
   }, [stopFollowingAgent, transientUiStore]);
 
@@ -7172,7 +7172,7 @@ export default function ProjectEditor({
                                                       />
                                                     }
                                                     onClick={
-                                                      centerViewportOnAverageNodePosition
+                                                      fitAllNodesIntoViewport
                                                     }
                                                     disabled={
                                                       nodes.length === 0

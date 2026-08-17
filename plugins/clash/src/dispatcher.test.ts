@@ -22,8 +22,12 @@ test("the dispatcher reads the public version from the distribution manifest", a
   assert.equal(resolveClashDistributionVersion(), packageJson.version);
 });
 
-test("the single clash executable reserves only the mcp subcommand for stdio", () => {
+test("the single clash executable reserves bundled Clash and OpenMA MCP subcommands for stdio", () => {
   assert.equal(selectClashEntrypoint(["node", "clash", "mcp"]), "mcp");
+  assert.equal(
+    selectClashEntrypoint(["node", "clash", "openma-mcp"]),
+    "openma-mcp",
+  );
   assert.equal(
     selectClashEntrypoint(["node", "clash", "--profile", "dev", "mcp"]),
     "mcp",
@@ -70,6 +74,7 @@ test("the dispatcher loads exactly one peer runtime", async () => {
   const loaders = {
     cli: async () => loaded.push("cli"),
     mcp: async () => loaded.push("mcp"),
+    "openma-mcp": async () => loaded.push("openma-mcp"),
   };
 
   await runClashEntrypoint(["node", "clash", "mcp"], loaders);
@@ -78,6 +83,10 @@ test("the dispatcher loads exactly one peer runtime", async () => {
   loaded.length = 0;
   await runClashEntrypoint(["node", "clash", "canvas", "list"], loaders);
   assert.deepEqual(loaded, ["cli"]);
+
+  loaded.length = 0;
+  await runClashEntrypoint(["node", "clash", "openma-mcp"], loaders);
+  assert.deepEqual(loaded, ["openma-mcp"]);
 });
 
 test("the packaged MCP loader starts stdio instead of only importing its library", async () => {

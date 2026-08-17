@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import type { ProjectTimeline } from "@clash/shared-types";
 
 function projectHostClient() {
   return {
@@ -137,7 +138,7 @@ test("one Clash plugin server quarantines every MCP App while keeping headless t
     assert.notEqual(menu.isError, true, JSON.stringify(menu));
     const selectedOperations = (
       menu.structuredContent as { operations: unknown[] }
-    ).operations;
+    ).operations as Array<Record<string, unknown>>;
     assert.ok(
       selectedOperations.length > 0,
       `${command} must reveal live operations`,
@@ -146,7 +147,40 @@ test("one Clash plugin server quarantines every MCP App while keeping headless t
       (await client.listTools()).tools.map(({ name }) => name).sort(),
       fixedToolNames,
     );
-    operations.push(...selectedOperations);
+    if (command === "plugin") {
+      operations.push(...selectedOperations);
+      continue;
+    }
+
+    for (const operation of selectedOperations) {
+      assert.deepEqual(
+        Object.keys(operation).sort(),
+        ["destructive", "name", "operation", "readOnly", "title"],
+        `${command} bare dispatch must stay a lightweight operation index`,
+      );
+      assert.equal(typeof operation.name, "string");
+      assert.equal(typeof operation.operation, "string");
+      assert.equal(typeof operation.title, "string");
+      assert.equal(typeof operation.readOnly, "boolean");
+      assert.equal(typeof operation.destructive, "boolean");
+
+      const disclosed = await client.callTool({
+        name: command === "canvas" ? "clash_canvas" : "clash_composition",
+        arguments: {
+          ...(command === "timeline"
+            ? { kind: "timeline" }
+            : command === "director"
+              ? { kind: "director-stage" }
+              : {}),
+          contract: operation.operation,
+        },
+      });
+      assert.notEqual(disclosed.isError, true, JSON.stringify(disclosed));
+      const contract = (disclosed.structuredContent as { contract?: unknown })
+        .contract;
+      assert.ok(contract, `${command}.${operation.operation} contract missing`);
+      operations.push(contract);
+    }
   }
   const tools = operations.map((operation) => operation.name);
   for (const name of [
@@ -288,4 +322,131 @@ test("plugin runtime closes the host manager exactly once", async () => {
   await runtime.close();
   await runtime.server.close();
   assert.equal(closes, 1);
+});
+
+test("Timeline entity mutations satisfy their output contracts through the shared dispatcher", async (t) => {
+  const module = (await import("./server.js")) as Record<string, unknown>;
+  const create = module.createClashPluginServer as (
+    options: Record<string, unknown>,
+  ) => { connect(transport: unknown): Promise<void>; close(): Promise<void> };
+  let timeline: ProjectTimeline = {
+    id: "signal-garden-timeline",
+    name: "Signal Garden Cut",
+    owner: { kind: "project" },
+    revisionId: "revision-1",
+    state: { tracks: [] },
+  };
+  const server = create({
+    client: {
+      resolveContext: async () => ({ projectId: "project-test", source: "explicit" }),
+      async request({ command }: { command: { action: string } }) {
+        switch (command.action) {
+          case "create_timeline":
+            return { projectId: "project-test", value: { timeline, readToken: "timeline-receipt-1" } };
+          case "list_timelines":
+            return {
+              projectId: "project-test",
+              value: { timelines: [timeline], versions: { [timeline.id]: "timeline-receipt-1" } },
+            };
+          case "attach_timeline":
+            timeline = {
+              ...timeline,
+              owner: { kind: "canvas-action", canvasId: "main", actionNodeId: "timeline-action" },
+              revisionId: "revision-2",
+            };
+            return { projectId: "project-test", value: { timeline, readToken: "timeline-receipt-2" } };
+          case "detach_timeline":
+            timeline = { ...timeline, owner: { kind: "project" }, revisionId: "revision-3" };
+            return { projectId: "project-test", value: { timeline, readToken: "timeline-receipt-3" } };
+          case "copy_timeline_action":
+            return {
+              projectId: "project-test",
+              value: {
+                timeline: {
+                  ...timeline,
+                  id: "signal-garden-copy",
+                  owner: { kind: "canvas-action", canvasId: "review", actionNodeId: "copy-action" },
+                  revisionId: "revision-4",
+                },
+                readToken: "timeline-receipt-4",
+              },
+            };
+          default:
+            return { projectId: "project-test", value: { nodes: [], versions: {} } };
+        }
+      },
+    },
+    appBundles: { canvas: "", studio: "", timeline: "", director: "" },
+  });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "timeline-entity-output-test", version: "1.0.0" });
+  t.after(async () => {
+    await client.close().catch(() => undefined);
+    await server.close().catch(() => undefined);
+  });
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const created = await client.callTool({
+    name: "clash_composition",
+    arguments: {
+      kind: "timeline",
+      operation: "create",
+      arguments: { id: timeline.id, name: timeline.name },
+    },
+  });
+  assert.notEqual(created.isError, true, JSON.stringify(created));
+  assert.deepEqual(created.structuredContent, timeline);
+
+  const attached = await client.callTool({
+    name: "clash_composition",
+    arguments: {
+      kind: "timeline",
+      operation: "attach",
+      arguments: { timelineId: timeline.id, canvasId: "main" },
+    },
+  });
+  assert.notEqual(attached.isError, true, JSON.stringify(attached));
+  assert.deepEqual(attached.structuredContent, timeline);
+
+  const detached = await client.callTool({
+    name: "clash_composition",
+    arguments: {
+      kind: "timeline",
+      operation: "detach",
+      arguments: { timelineId: timeline.id },
+    },
+  });
+  assert.notEqual(detached.isError, true, JSON.stringify(detached));
+  assert.deepEqual(detached.structuredContent, timeline);
+
+  const copied = await client.callTool({
+    name: "clash_composition",
+    arguments: {
+      kind: "timeline",
+      operation: "copy",
+      arguments: { sourceTimelineId: timeline.id, targetCanvasId: "review", newTimelineId: "signal-garden-copy" },
+    },
+  });
+  assert.notEqual(copied.isError, true, JSON.stringify(copied));
+  assert.deepEqual(copied.structuredContent, {
+    ...timeline,
+    id: "signal-garden-copy",
+    owner: { kind: "canvas-action", canvasId: "review", actionNodeId: "copy-action" },
+    revisionId: "revision-4",
+  });
+
+  const readback = await client.callTool({
+    name: "clash_composition",
+    arguments: {
+      kind: "timeline",
+      operation: "get",
+      arguments: { timelineId: timeline.id },
+    },
+  });
+  assert.notEqual(readback.isError, true, JSON.stringify(readback));
+  assert.deepEqual(
+    (readback.structuredContent as { timeline?: unknown }).timeline,
+    timeline,
+  );
 });

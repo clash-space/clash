@@ -1,4 +1,6 @@
 import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createClashMcpServer } from "@clash/mcp-server/server";
@@ -14,6 +16,14 @@ import {
   type PluginHostManager,
 } from "./plugin-host.js";
 import { createPluginMcpGateway } from "./plugin-mcp-gateway.js";
+import {
+  createOpenMaMcpServer,
+  type OpenMaNativeTools,
+} from "./openma-server.js";
+import {
+  createOpenMaNativeTools,
+  type OpenMaPluginRoot,
+} from "./openma-tools.js";
 
 export type ClashPluginAppBundles = {
   studio: string;
@@ -34,6 +44,16 @@ export type ClashPluginServerOptions = {
   hostManager?: PluginHostManager;
   appBundles?: ClashPluginAppBundles;
   pluginGateway?: PluginMcpGateway;
+};
+
+export type OpenMaPluginServerOptions = {
+  client?: ProjectHostClient;
+  hostManager?: PluginHostManager;
+  tools?: OpenMaNativeTools;
+  taskId?: string;
+  pluginRoots?: readonly OpenMaPluginRoot[];
+  workspace?: string;
+  runBrowser?: (args: readonly string[]) => Promise<string>;
 };
 
 // Temporary quarantine: keep the MCP App implementations in-tree, but do not
@@ -122,6 +142,107 @@ export async function serveClashPluginStdio(
   options: ClashPluginServerOptions = {},
 ): Promise<void> {
   const runtime = createClashPluginRuntime(options);
+  const transport = new StdioServerTransport();
+  transport.onclose = () => {
+    void runtime.closeHost();
+  };
+  const shutdown = () => {
+    void runtime.close().finally(() => process.exit(0));
+  };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+  await runtime.server.connect(transport);
+}
+
+function defaultPluginRoot(): string {
+  return process.env.CLASH_BUILTIN_PLUGIN_ROOT?.trim()
+    || resolve(dirname(fileURLToPath(import.meta.url)), "..");
+}
+
+function createHostRequest(client: ProjectHostClient) {
+  return async (path: string, init: RequestInit = {}): Promise<unknown> => {
+    if (!client.resolveConnection) {
+      throw new Error("OpenMA native tools require a resolvable local Host connection.");
+    }
+    const connection = await client.resolveConnection();
+    const response = await fetch(
+      new URL(path, `${connection.endpoint.replace(/\/$/u, "")}/`),
+      {
+        ...init,
+        headers: {
+          ...(connection.token
+            ? { authorization: `Bearer ${connection.token}` }
+            : {}),
+          ...Object.fromEntries(new Headers(init.headers).entries()),
+        },
+      },
+    );
+    const body = await response.json().catch(() => undefined) as unknown;
+    if (!response.ok) {
+      const message = body && typeof body === "object" && "error" in body
+        ? String((body as { error: unknown }).error)
+        : `Host request failed with HTTP ${response.status}`;
+      throw new Error(message);
+    }
+    return body;
+  };
+}
+
+export function createOpenMaPluginRuntime(
+  options: OpenMaPluginServerOptions = {},
+): {
+  server: McpServer;
+  hostManager?: PluginHostManager;
+  close(): Promise<void>;
+  closeHost(): Promise<void>;
+} {
+  const taskId = options.taskId ?? process.env.CLASH_SESSION_ID?.trim();
+  if (!taskId) throw new Error("OpenMA native tools require CLASH_SESSION_ID");
+  const hostManager = options.hostManager
+    ?? (options.client ? undefined : createPluginHostManager());
+  const client = options.client ?? createMcpProjectHostClient({ hostManager });
+  const tools = options.tools ?? createOpenMaNativeTools({
+    taskId,
+    pluginRoots: options.pluginRoots ?? [{ name: "clash", root: defaultPluginRoot() }],
+    workspace:
+      options.workspace
+      ?? process.env.CLASH_WORKSPACE_ROOT?.trim()
+      ?? process.cwd(),
+    hostRequest: createHostRequest(client),
+    ...(options.runBrowser ? { runBrowser: options.runBrowser } : {}),
+  });
+  const server = createOpenMaMcpServer({ taskId, tools });
+  const originalClose = server.close.bind(server);
+  let closingHost: Promise<void> | undefined;
+  let closingRuntime: Promise<void> | undefined;
+  const closeHost = () => {
+    closingHost ??= hostManager?.close() ?? Promise.resolve();
+    return closingHost;
+  };
+  const close = () => {
+    closingRuntime ??= (async () => {
+      try {
+        await originalClose();
+      } finally {
+        await closeHost();
+      }
+    })();
+    return closingRuntime;
+  };
+  server.close = close;
+  return { server, hostManager, close, closeHost };
+}
+
+export function createOpenMaPluginServer(
+  options: OpenMaPluginServerOptions = {},
+): McpServer {
+  return createOpenMaPluginRuntime(options).server;
+}
+
+export async function serveOpenMaPluginStdio(
+  options: OpenMaPluginServerOptions = {},
+): Promise<void> {
+  const runtime = createOpenMaPluginRuntime(options);
   const transport = new StdioServerTransport();
   transport.onclose = () => {
     void runtime.closeHost();

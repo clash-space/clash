@@ -525,7 +525,11 @@ export interface LocalAcpSessionMessageStore {
     sessionId: string,
     message: LocalAcpSessionMessage,
   ): Promise<void> | void;
-  markTurnComplete?(sessionId: string, turnId: string): Promise<void> | void;
+  markTurnComplete?(
+    sessionId: string,
+    turnId: string,
+    response?: Record<string, unknown>,
+  ): Promise<void> | void;
   appendTurnError?(
     sessionId: string,
     turnId: string | null,
@@ -1408,23 +1412,26 @@ function createLocalSessionMessageStore(
     });
   }
 
-  async function touch(
-    sessionId: string,
-    patch?: Partial<Pick<LocalSession, "status">>,
-  ): Promise<void> {
-    await db.update((state) => {
-      const session = state.sessions.find(
-        (candidate) => candidate.id === sessionId,
-      );
-      if (session) Object.assign(session, patch ?? {}, { updatedAt: nowIso() });
-    });
-  }
-
   return {
     appendUserPrompt: append,
     appendAgentEvent: append,
-    async markTurnComplete(sessionId) {
-      await touch(sessionId);
+    async markTurnComplete(sessionId, turnId, response) {
+      await db.update((state) => {
+        if (response) {
+          appendPersistedSessionMessage(state, sessionId, {
+            id: `${turnId}-agent`,
+            sender_kind: "agent",
+            sender_id: "local-agent",
+            turn_id: turnId,
+            events: [{ type: "promptComplete", response }],
+            created_at: Math.floor(Date.now() / 1000),
+          });
+        }
+        const session = state.sessions.find(
+          (candidate) => candidate.id === sessionId,
+        );
+        if (session) Object.assign(session, { updatedAt: nowIso() });
+      });
     },
     async appendTurnError(sessionId, turnId, message) {
       await db.update((state) => {

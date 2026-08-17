@@ -113,6 +113,23 @@ describe("local daemon bootstrap", () => {
     expect(spawnOptions?.detached).toBe(true);
   });
 
+  it("can expose detached Host stdio to an instrumented launcher", () => {
+    let spawnOptions: import("node:child_process").SpawnOptions | undefined;
+    launchDetachedLocalDaemon({
+      entryPath: "/app/local-api.cjs",
+      dataDir: "/tmp/clash/local-api",
+      runDir: "/tmp/clash/run",
+      cliEntryPath: "/app/dispatcher.js",
+      stdio: "inherit",
+      spawnProcess: (_command, _args, options) => {
+        spawnOptions = options;
+        return { pid: 4245, unref() {} } as never;
+      },
+    });
+
+    expect(spawnOptions?.stdio).toBe("inherit");
+  });
+
   it("rejects Electron Node mode outside the verified Node 24 range", () => {
     expect(() =>
       launchDetachedLocalDaemon({

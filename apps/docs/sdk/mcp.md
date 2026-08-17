@@ -17,6 +17,20 @@ Configure an MCP client to run the same package users install for the CLI:
 The package's bundled Codex plugin config enters the same dispatcher locally.
 `clash mcp serve` and the standalone Streamable HTTP server are retired.
 
+Bundled agent sessions receive two peer stdio servers from that plugin:
+
+- `clash` owns Assets, Canvas, Timeline, Director, and the trusted Clash tool
+  renderer.
+- `openma` owns task-scoped agent utilities such as plugin-skill discovery,
+  browser control, and persisted session history. It intentionally uses the
+  standard MCP renderer.
+
+Keeping these servers separate prevents a third-party or utility tool from
+acquiring Clash's product renderer merely by looking like a Clash tool. The ACP
+runtime still accepts normal MCP server descriptors and filters transports by
+the harness's negotiated MCP capabilities; MCP Server support was not replaced
+by a private tool protocol.
+
 MCP and CLI are peer clients. For Assets, Canvas, Timeline, and Director, an
 agent can choose either surface and receives the same Host-owned semantics.
 Host/project/component lifecycle commands and working-tree projection
@@ -30,6 +44,9 @@ clash mcp ─┐
            ├─> local-api
 clash CLI ─┘
 ```
+
+See [Agent/Backchat parity](./agent-backchat-parity.md) for the agent-runtime
+alignment boundary and intentional exclusions.
 
 ### Current parity boundary
 
@@ -50,16 +67,22 @@ clash CLI ─┘
 The advertised MCP surface stays compact: `clash` is the root menu,
 `clash_assets` dispatches Project Asset operations, `clash_canvas` dispatches
 Canvas operations, and `clash_composition` dispatches Timeline or Director
-Stage operations. Calling `clash_assets` without arguments returns a lightweight
-operation index. Request exactly one full live contract with
-`{ "contract": "import_file" }`, or request the small set needed for a flow in
-one ordered batch with
-`{ "contracts": ["import_file", "list", "get"] }`. Batch entries must be
-distinct and are bounded; an unknown entry rejects the whole batch without a
-partial response. Execute each operation with the existing
-`{ "operation": "import_file", "arguments": { ... } }` shape. Contract
-disclosure never invokes the operation. Other dispatchers continue to return
-their live contracts when `operation` is omitted.
+Stage operations. Calling the Assets, Canvas, or Composition dispatcher without
+`operation` returns a lightweight operation index; `clash_composition` also requires
+`kind: "timeline"` or `kind: "director-stage"`. Request exactly one full live
+contract with `{ "contract": "<operation>" }`, or request the small set needed
+for a flow in one ordered batch with
+`{ "contracts": ["<operation>", "<operation>"] }`. Batch entries must be
+distinct and are bounded; an unknown or cross-kind entry rejects the whole
+batch without a partial response. Execute each operation with the existing
+`{ "operation": "<operation>", "arguments": { ... } }` shape. Contract
+disclosure never invokes the operation. The plugin dispatcher and compatible
+hidden legacy group tools keep their existing bare full-contract disclosure.
+
+Compatibility note: bare `clash_canvas` and `clash_composition` calls now
+return lightweight indexes instead of every full contract. Follow the index
+with `contract` or `contracts` when schemas are needed; the execution shape is
+unchanged.
 
 ## Project Asset tool surface
 

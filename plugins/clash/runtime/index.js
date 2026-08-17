@@ -18157,7 +18157,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve16.call(this, root, ref);
+      let _sch = resolve18.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a6 = root.localRefs) === null || _a6 === void 0 ? void 0 : _a6[ref];
         const { schemaId } = this.opts;
@@ -18184,7 +18184,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve16(root, ref) {
+    function resolve18(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -18815,55 +18815,55 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve16(baseURI, relativeURI, options) {
+    function resolve18(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse8(baseURI, schemelessOptions), parse8(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative7, options, skipNormalization) {
+    function resolveComponent(base, relative8, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse8(serialize(base, options), options);
-        relative7 = parse8(serialize(relative7, options), options);
+        relative8 = parse8(serialize(relative8, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative7.scheme) {
-        target.scheme = relative7.scheme;
-        target.userinfo = relative7.userinfo;
-        target.host = relative7.host;
-        target.port = relative7.port;
-        target.path = removeDotSegments(relative7.path || "");
-        target.query = relative7.query;
+      if (!options.tolerant && relative8.scheme) {
+        target.scheme = relative8.scheme;
+        target.userinfo = relative8.userinfo;
+        target.host = relative8.host;
+        target.port = relative8.port;
+        target.path = removeDotSegments(relative8.path || "");
+        target.query = relative8.query;
       } else {
-        if (relative7.userinfo !== void 0 || relative7.host !== void 0 || relative7.port !== void 0) {
-          target.userinfo = relative7.userinfo;
-          target.host = relative7.host;
-          target.port = relative7.port;
-          target.path = removeDotSegments(relative7.path || "");
-          target.query = relative7.query;
+        if (relative8.userinfo !== void 0 || relative8.host !== void 0 || relative8.port !== void 0) {
+          target.userinfo = relative8.userinfo;
+          target.host = relative8.host;
+          target.port = relative8.port;
+          target.path = removeDotSegments(relative8.path || "");
+          target.query = relative8.query;
         } else {
-          if (!relative7.path) {
+          if (!relative8.path) {
             target.path = base.path;
-            if (relative7.query !== void 0) {
-              target.query = relative7.query;
+            if (relative8.query !== void 0) {
+              target.query = relative8.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative7.path[0] === "/") {
-              target.path = removeDotSegments(relative7.path);
+            if (relative8.path[0] === "/") {
+              target.path = removeDotSegments(relative8.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative7.path;
+                target.path = "/" + relative8.path;
               } else if (!base.path) {
-                target.path = relative7.path;
+                target.path = relative8.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative7.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative8.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative7.query;
+            target.query = relative8.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -18871,7 +18871,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative7.fragment;
+      target.fragment = relative8.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -19073,7 +19073,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve16,
+      resolve: resolve18,
       resolveComponent,
       equal,
       serialize,
@@ -22063,11 +22063,13 @@ var require_dist = __commonJS({
 });
 
 // src/index.ts
-import { resolve as resolve15 } from "path";
+import { resolve as resolve17 } from "path";
 import { pathToFileURL } from "url";
 
 // src/server.ts
 import { readFileSync as readFileSync3 } from "fs";
+import { dirname as dirname14, resolve as resolve16 } from "path";
+import { fileURLToPath as fileURLToPath2 } from "url";
 
 // ../../node_modules/.pnpm/@modelcontextprotocol+sdk@1.29.0_@cfworker+json-schema@4.1.1_zod@4.4.3/node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js
 import process3 from "process";
@@ -23682,12 +23684,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve16) => {
+    return new Promise((resolve18) => {
       const json5 = serializeMessage(message);
       if (this._stdout.write(json5)) {
-        resolve16();
+        resolve18();
       } else {
-        this._stdout.once("drain", resolve16);
+        this._stdout.once("drain", resolve18);
       }
     });
   }
@@ -29602,7 +29604,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve16) => setTimeout(resolve16, pollInterval));
+        await new Promise((resolve18) => setTimeout(resolve18, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error57) {
@@ -29619,7 +29621,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve16, reject) => {
+    return new Promise((resolve18, reject) => {
       const earlyReject = (error57) => {
         reject(error57);
       };
@@ -29697,7 +29699,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve16(parseResult.data);
+            resolve18(parseResult.data);
           }
         } catch (error57) {
           reject(error57);
@@ -29958,12 +29960,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve16, reject) => {
+    return new Promise((resolve18, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve16, interval);
+      const timeoutId = setTimeout(resolve18, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -31398,7 +31400,7 @@ var McpServer = class {
     let task = createTaskResult.task;
     const pollInterval = task.pollInterval ?? 5e3;
     while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-      await new Promise((resolve16) => setTimeout(resolve16, pollInterval));
+      await new Promise((resolve18) => setTimeout(resolve18, pollInterval));
       const updatedTask = await extra.taskStore.getTask(taskId);
       if (!updatedTask) {
         throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -52835,7 +52837,7 @@ var CLASH_PLUGIN_TOOL_NAME = "clash_plugin";
 var CLASH_ASSETS_TOOL_NAME = "clash_assets";
 var CLASH_CANVAS_TOOL_NAME = "clash_canvas";
 var CLASH_COMPOSITION_TOOL_NAME = "clash_composition";
-var MAX_ASSET_CONTRACT_BATCH_SIZE = 8;
+var MAX_CONTRACT_BATCH_SIZE = 8;
 var LEGACY_CLASH_GROUP_TOOL_NAMES = {
   director: "clash_director",
   timeline: "clash_timeline"
@@ -52844,7 +52846,7 @@ var CLASH_MCP_INSTRUCTIONS = [
   "Clash discloses product operations progressively.",
   `Use the root ${CLASH_ROOT_TOOL_NAME} tool for command navigation, ${CLASH_PLUGIN_TOOL_NAME} for executable plugin lifecycle, ${CLASH_ASSETS_TOOL_NAME} for Project and personal Global Assets, ${CLASH_CANVAS_TOOL_NAME} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME} for Timeline or Director Stage composition.`,
   "Timeline is temporal composition; Director Stage is spatial composition.",
-  "Call clash_assets without operation for its lightweight index, then pass contracts for the small set of live Asset contracts needed together; contract remains available for one. Other dispatchers reveal live contracts when operation is omitted.",
+  "Call the Assets, Canvas, and Composition dispatchers without operation for their lightweight indexes, then pass contracts for the small set of live contracts needed together; contract remains available for one.",
   "Composition disclosure and short operations require kind=timeline or kind=director-stage; a complete clash_* leaf name remains accepted for compatibility.",
   "The advertised tool list stays fixed and does not require a tools/list refresh.",
   "Within a selected command, tool descriptions, schemas, structured results, and recovery guidance are the operational source of truth."
@@ -52881,6 +52883,21 @@ function clashMetadata(meta6) {
     return void 0;
   const entries = Object.entries(meta6).filter(([key]) => key.startsWith("clash/"));
   return entries.length ? Object.fromEntries(entries) : void 0;
+}
+function withStructuredContentTextFallback(result) {
+  if (result.structuredContent === void 0)
+    return result;
+  return {
+    ...result,
+    content: [
+      ...result.content,
+      {
+        type: "text",
+        text: `Structured result:
+${JSON.stringify(result.structuredContent)}`
+      }
+    ]
+  };
 }
 var ClashMcpServer = class extends McpServer {
   #registeredClashTools = /* @__PURE__ */ new Set();
@@ -52923,7 +52940,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       const selected = selectedCommand ? view.commands.find(({ id: id5 }) => id5 === selectedCommand) : void 0;
       const operationCount = selected?.availableOperations ?? 0;
       if (selectedCommand && operationCount === 0) {
-        return {
+        return withStructuredContentTextFallback({
           content: [
             {
               type: "text",
@@ -52932,9 +52949,9 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
           ],
           structuredContent: view,
           isError: true
-        };
+        });
       }
-      return {
+      return withStructuredContentTextFallback({
         content: [
           {
             type: "text",
@@ -52942,7 +52959,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
           }
         ],
         structuredContent: view
-      };
+      });
     });
     const pluginDefinition = getClashMcpCommand("plugin");
     super.registerTool(CLASH_PLUGIN_TOOL_NAME, {
@@ -52981,7 +52998,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       inputSchema: {
         operation: external_exports.string().min(1).optional().describe("Pass a command-local Assets operation or complete clash_assets_* leaf name to execute it; omit to inspect the lightweight index or requested contracts"),
         contract: external_exports.string().min(1).optional().describe("Command-local Assets operation or complete clash_assets_* leaf name whose full live contract should be returned without execution"),
-        contracts: external_exports.array(external_exports.string().min(1)).min(1).max(MAX_ASSET_CONTRACT_BATCH_SIZE, `Asset contract batches accept at most ${MAX_ASSET_CONTRACT_BATCH_SIZE} operations`).optional().describe("Distinct ordered Assets operations whose full live contracts should be returned together without execution"),
+        contracts: external_exports.array(external_exports.string().min(1)).min(1).max(MAX_CONTRACT_BATCH_SIZE, `Asset contract batches accept at most ${MAX_CONTRACT_BATCH_SIZE} operations`).optional().describe("Distinct ordered Assets operations whose full live contracts should be returned together without execution"),
         arguments: external_exports.record(external_exports.string(), external_exports.unknown()).optional().describe("Arguments validated against the selected operation's live input schema")
       },
       _meta: { ui: { visibility: ["model"] } }
@@ -53008,16 +53025,25 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       title: canvasDefinition.title,
       description: describeClashTool({
         useWhen: "you need to inspect or execute Canvas node operations",
-        effect: "returns live Canvas contracts when operation is omitted, or validates and executes one Canvas leaf exactly once",
-        returns: "typed Canvas operation contracts or the selected leaf operation's exact result",
-        next: "choose the smallest matching operation, then call clash_canvas with operation and arguments"
+        effect: "returns a lightweight Canvas operation index, reveals a requested bounded set of live contracts, or validates and executes one Canvas leaf exactly once",
+        returns: "an operation index, the requested typed Canvas contracts, or the selected leaf operation's exact result",
+        next: "choose the smallest matching operations, request their contracts together, then call clash_canvas with operation and arguments for each execution"
       }),
       inputSchema: {
-        operation: external_exports.string().min(1).optional().describe("Omit this field entirely to reveal live contracts; never send an empty string, list_operations, or contracts. Otherwise pass a command-local Canvas operation or complete clash_canvas_* leaf name"),
+        operation: external_exports.string().min(1).optional().describe("Pass a command-local Canvas operation or complete clash_canvas_* leaf name to execute it; omit to inspect the lightweight index or requested contracts"),
+        contract: external_exports.string().min(1).optional().describe("Command-local Canvas operation or complete clash_canvas_* leaf name whose full live contract should be returned without execution"),
+        contracts: external_exports.array(external_exports.string().min(1)).min(1).max(MAX_CONTRACT_BATCH_SIZE, `Canvas contract batches accept at most ${MAX_CONTRACT_BATCH_SIZE} operations`).optional().describe("Distinct ordered Canvas operations whose full live contracts should be returned together without execution"),
         arguments: external_exports.record(external_exports.string(), external_exports.unknown()).optional().describe("Arguments validated against the selected operation's live input schema")
       },
       _meta: { ui: { visibility: ["model"] } }
-    }, async ({ operation, arguments: operationArguments }, extra) => {
+    }, async ({ operation, contract, contracts, arguments: operationArguments }, extra) => {
+      if ([operation, contract, contracts].filter((value) => value !== void 0).length > 1) {
+        throw new Error("Clash Canvas accepts one disclosure mode or operation execution, not a combination.");
+      }
+      if (contracts)
+        return this.#contractBatchResult("canvas", contracts);
+      if (contract)
+        return this.#contractResult("canvas", contract);
       if (operation) {
         return this.#dispatchOperation({
           operation,
@@ -53026,24 +53052,38 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
           extra
         });
       }
-      return this.#commandResult("canvas");
+      return this.#commandResult("canvas", { lightweight: true });
     });
     super.registerTool(CLASH_COMPOSITION_TOOL_NAME, {
       title: "Composition",
       description: describeClashTool({
         useWhen: "you need Timeline temporal composition or Director Stage spatial composition operations",
-        effect: "returns live contracts for one composition kind, or validates and executes one matching composition leaf exactly once",
-        returns: "typed Timeline or Director Stage contracts, or the selected leaf operation's exact result",
-        next: "set kind to timeline or director-stage, choose the smallest matching operation, then pass operation and arguments"
+        effect: "returns a lightweight operation index for one composition kind, reveals a requested bounded set of live contracts, or validates and executes one matching composition leaf exactly once",
+        returns: "an operation index, the requested typed Timeline or Director Stage contracts, or the selected leaf operation's exact result",
+        next: "set kind to timeline or director-stage, choose the smallest matching operations, request their contracts together, then pass operation and arguments for each execution"
       }),
       inputSchema: {
-        kind: external_exports.enum(["timeline", "director-stage"]).optional().describe("Required for contract disclosure and command-local short operations; complete leaf names may infer it"),
-        operation: external_exports.string().min(1).optional().describe("Omit this field entirely to reveal live contracts for the selected kind; never send an empty string, list_operations, or contracts. Otherwise pass a command-local operation or complete clash_timeline_* or clash_director_* leaf name"),
+        kind: external_exports.enum(["timeline", "director-stage"]).optional().describe("Required for the operation index, contract disclosure, and command-local short operations; complete leaf names may infer it only for execution"),
+        operation: external_exports.string().min(1).optional().describe("Pass a command-local operation or complete clash_timeline_* or clash_director_* leaf name to execute it; omit to inspect the selected kind's lightweight index or requested contracts"),
+        contract: external_exports.string().min(1).optional().describe("Command-local operation or complete clash_timeline_* or clash_director_* leaf name whose full live contract should be returned without execution"),
+        contracts: external_exports.array(external_exports.string().min(1)).min(1).max(MAX_CONTRACT_BATCH_SIZE, `Composition contract batches accept at most ${MAX_CONTRACT_BATCH_SIZE} operations`).optional().describe("Distinct ordered operations for the selected composition kind whose full live contracts should be returned together without execution"),
         arguments: external_exports.record(external_exports.string(), external_exports.unknown()).optional().describe("Arguments validated against the selected operation's live input schema")
       },
       _meta: { ui: { visibility: ["model"] } }
-    }, async ({ kind, operation, arguments: operationArguments }, extra) => {
+    }, async ({ kind, operation, contract, contracts, arguments: operationArguments }, extra) => {
       const selectedCommand = kind === "timeline" ? "timeline" : kind === "director-stage" ? "director" : void 0;
+      if ([operation, contract, contracts].filter((value) => value !== void 0).length > 1) {
+        throw new Error("Clash Composition accepts one disclosure mode or operation execution, not a combination.");
+      }
+      if (contract || contracts) {
+        if (!selectedCommand) {
+          throw new Error("Clash composition disclosure requires kind=timeline or kind=director-stage.");
+        }
+        if (contracts) {
+          return this.#contractBatchResult(selectedCommand, contracts);
+        }
+        return this.#contractResult(selectedCommand, contract);
+      }
       if (operation) {
         if (!selectedCommand && !operation.startsWith("clash_")) {
           throw new Error(`Clash composition short operation ${operation} requires kind.`);
@@ -53059,7 +53099,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       if (!selectedCommand) {
         throw new Error("Clash composition disclosure requires kind=timeline or kind=director-stage.");
       }
-      return this.#commandResult(selectedCommand);
+      return this.#commandResult(selectedCommand, { lightweight: true });
     });
     for (const command5 of Object.keys(LEGACY_CLASH_GROUP_TOOL_NAMES)) {
       const commandDefinition = getClashMcpCommand(command5);
@@ -53141,7 +53181,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
     const view = this.#commandView(command5);
     const operationCount = view.operations?.length ?? 0;
     if (operationCount === 0) {
-      return {
+      return withStructuredContentTextFallback({
         content: [
           {
             type: "text",
@@ -53150,7 +53190,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         ],
         structuredContent: view,
         isError: true
-      };
+      });
     }
     const operations = options.lightweight ? (view.operations ?? []).map(({ name, operation, title, readOnly, destructive }) => ({
       name,
@@ -53159,7 +53199,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       readOnly,
       destructive
     })) : view.operations ?? [];
-    return {
+    return withStructuredContentTextFallback({
       content: [
         {
           type: "text",
@@ -53167,7 +53207,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         }
       ],
       structuredContent: { ...view, operations }
-    };
+    });
   }
   #contractResult(command5, requestedOperation) {
     const operationName = this.#resolveOperationName(requestedOperation, command5);
@@ -53175,7 +53215,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
     if (!contract) {
       throw new Error(`Clash ${command5} operation ${requestedOperation} has no live contract in this host.`);
     }
-    return {
+    return withStructuredContentTextFallback({
       content: [
         {
           type: "text",
@@ -53187,7 +53227,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         selectedCommand: command5,
         contract
       }
-    };
+    });
   }
   #contractBatchResult(command5, requestedOperations) {
     const liveContracts = this.#commandView(command5).operations ?? [];
@@ -53202,7 +53242,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       }
       return contract;
     });
-    return {
+    return withStructuredContentTextFallback({
       content: [
         {
           type: "text",
@@ -53214,7 +53254,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         selectedCommand: command5,
         contracts
       }
-    };
+    });
   }
   #rootView(selectedCommand) {
     const menu = this.#commandView();
@@ -53311,7 +53351,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         throw new Error(`Invalid structured content from Clash operation ${registered.name}: ${getParseErrorMessage(parsed.error)}`);
       }
     }
-    return result;
+    return withStructuredContentTextFallback(result);
   }
   #visibleTools(tools) {
     return tools.filter((tool) => {
@@ -97360,49 +97400,49 @@ var require_fast_uri2 = __commonJS2({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative7, options, skipNormalization) {
+    function resolveComponent(base, relative8, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse42(serialize(base, options), options);
-        relative7 = parse42(serialize(relative7, options), options);
+        relative8 = parse42(serialize(relative8, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative7.scheme) {
-        target.scheme = relative7.scheme;
-        target.userinfo = relative7.userinfo;
-        target.host = relative7.host;
-        target.port = relative7.port;
-        target.path = removeDotSegments(relative7.path || "");
-        target.query = relative7.query;
+      if (!options.tolerant && relative8.scheme) {
+        target.scheme = relative8.scheme;
+        target.userinfo = relative8.userinfo;
+        target.host = relative8.host;
+        target.port = relative8.port;
+        target.path = removeDotSegments(relative8.path || "");
+        target.query = relative8.query;
       } else {
-        if (relative7.userinfo !== void 0 || relative7.host !== void 0 || relative7.port !== void 0) {
-          target.userinfo = relative7.userinfo;
-          target.host = relative7.host;
-          target.port = relative7.port;
-          target.path = removeDotSegments(relative7.path || "");
-          target.query = relative7.query;
+        if (relative8.userinfo !== void 0 || relative8.host !== void 0 || relative8.port !== void 0) {
+          target.userinfo = relative8.userinfo;
+          target.host = relative8.host;
+          target.port = relative8.port;
+          target.path = removeDotSegments(relative8.path || "");
+          target.query = relative8.query;
         } else {
-          if (!relative7.path) {
+          if (!relative8.path) {
             target.path = base.path;
-            if (relative7.query !== void 0) {
-              target.query = relative7.query;
+            if (relative8.query !== void 0) {
+              target.query = relative8.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative7.path[0] === "/") {
-              target.path = removeDotSegments(relative7.path);
+            if (relative8.path[0] === "/") {
+              target.path = removeDotSegments(relative8.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative7.path;
+                target.path = "/" + relative8.path;
               } else if (!base.path) {
-                target.path = relative7.path;
+                target.path = relative8.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative7.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative8.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative7.query;
+            target.query = relative8.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -97410,7 +97450,7 @@ var require_fast_uri2 = __commonJS2({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative7.fragment;
+      target.fragment = relative8.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -105645,7 +105685,7 @@ var CLASH_MCP_INSTRUCTIONS2 = [
   "Clash discloses product operations progressively.",
   `Use the root ${CLASH_ROOT_TOOL_NAME2} tool for command navigation, ${CLASH_PLUGIN_TOOL_NAME2} for executable plugin lifecycle, ${CLASH_ASSETS_TOOL_NAME2} for Project and personal Global Assets, ${CLASH_CANVAS_TOOL_NAME2} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME2} for Timeline or Director Stage composition.`,
   "Timeline is temporal composition; Director Stage is spatial composition.",
-  "Call clash_assets without operation for its lightweight index, then pass contracts for the small set of live Asset contracts needed together; contract remains available for one. Other dispatchers reveal live contracts when operation is omitted.",
+  "Call the Assets, Canvas, and Composition dispatchers without operation for their lightweight indexes, then pass contracts for the small set of live contracts needed together; contract remains available for one.",
   "Composition disclosure and short operations require kind=timeline or kind=director-stage; a complete clash_* leaf name remains accepted for compatibility.",
   "The advertised tool list stays fixed and does not require a tools/list refresh.",
   "Within a selected command, tool descriptions, schemas, structured results, and recovery guidance are the operational source of truth."
@@ -114970,6 +115010,11 @@ function transportScope(input) {
     ...input.projectId === void 0 ? {} : { projectId: input.projectId }
   };
 }
+function timelineEntity(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const timeline = value.timeline;
+  return timeline && typeof timeline === "object" && !Array.isArray(timeline) ? timeline : value;
+}
 var TIMELINE_MCP_EXECUTORS = {
   "timeline.open": {
     title: "Open Clash Timeline",
@@ -115048,7 +115093,7 @@ var TIMELINE_MCP_EXECUTORS = {
         name: input.name
       };
       const created = await adapter.create(transportInput);
-      if (!input.state) return created;
+      if (!input.state) return timelineEntity(created);
       const current = await adapter.get(transportInput);
       if (!current.revisionId) {
         throw new Error(`Timeline ${input.id} did not expose a revisionId after creation`);
@@ -115076,34 +115121,40 @@ var TIMELINE_MCP_EXECUTORS = {
     title: "Attach timeline to Canvas",
     inputSchema: timelineOperationInputSchema("timeline.attach"),
     outputSchema: timelineOperationOutputSchema2("timeline.attach"),
-    execute: (input, adapter) => adapter.attach({
-      ...transportScope(input),
-      timelineId: input.timelineId,
-      canvasId: input.canvasId,
-      ...input.actionNodeId === void 0 ? {} : { nodeId: input.actionNodeId },
-      ...input.position === void 0 ? {} : { position: input.position }
-    }),
+    async execute(input, adapter) {
+      return timelineEntity(await adapter.attach({
+        ...transportScope(input),
+        timelineId: input.timelineId,
+        canvasId: input.canvasId,
+        ...input.actionNodeId === void 0 ? {} : { nodeId: input.actionNodeId },
+        ...input.position === void 0 ? {} : { position: input.position }
+      }));
+    },
     summary: jsonSummary
   },
   "timeline.detach": {
     title: "Detach timeline",
     inputSchema: timelineOperationInputSchema("timeline.detach"),
     outputSchema: timelineOperationOutputSchema2("timeline.detach"),
-    execute: (input, adapter) => adapter.detach(input),
+    async execute(input, adapter) {
+      return timelineEntity(await adapter.detach(input));
+    },
     summary: jsonSummary
   },
   "timeline.copy": {
     title: "Copy timeline",
     inputSchema: timelineOperationInputSchema("timeline.copy"),
     outputSchema: timelineOperationOutputSchema2("timeline.copy"),
-    execute: (input, adapter) => adapter.copy({
-      ...transportScope(input),
-      timelineId: input.sourceTimelineId,
-      canvasId: input.targetCanvasId,
-      ...input.newTimelineId === void 0 ? {} : { newTimelineId: input.newTimelineId },
-      ...input.newActionNodeId === void 0 ? {} : { newNodeId: input.newActionNodeId },
-      ...input.position === void 0 ? {} : { position: input.position }
-    }),
+    async execute(input, adapter) {
+      return timelineEntity(await adapter.copy({
+        ...transportScope(input),
+        timelineId: input.sourceTimelineId,
+        canvasId: input.targetCanvasId,
+        ...input.newTimelineId === void 0 ? {} : { newTimelineId: input.newTimelineId },
+        ...input.newActionNodeId === void 0 ? {} : { newNodeId: input.newActionNodeId },
+        ...input.position === void 0 ? {} : { position: input.position }
+      }));
+    },
     summary: jsonSummary
   },
   "timeline.render": {
@@ -177653,7 +177704,7 @@ var CLASH_MCP_INSTRUCTIONS3 = [
   "Clash discloses product operations progressively.",
   `Use the root ${CLASH_ROOT_TOOL_NAME3} tool for command navigation, ${CLASH_PLUGIN_TOOL_NAME3} for executable plugin lifecycle, ${CLASH_ASSETS_TOOL_NAME3} for Project and personal Global Assets, ${CLASH_CANVAS_TOOL_NAME3} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME3} for Timeline or Director Stage composition.`,
   "Timeline is temporal composition; Director Stage is spatial composition.",
-  "Call clash_assets without operation for its lightweight index, then pass contracts for the small set of live Asset contracts needed together; contract remains available for one. Other dispatchers reveal live contracts when operation is omitted.",
+  "Call the Assets, Canvas, and Composition dispatchers without operation for their lightweight indexes, then pass contracts for the small set of live contracts needed together; contract remains available for one.",
   "Composition disclosure and short operations require kind=timeline or kind=director-stage; a complete clash_* leaf name remains accepted for compatibility.",
   "The advertised tool list stays fixed and does not require a tools/list refresh.",
   "Within a selected command, tool descriptions, schemas, structured results, and recovery guidance are the operational source of truth."
@@ -197848,7 +197899,7 @@ function launchDetachedLocalDaemon(options) {
       CLASH_DAEMON_NODE_PATH: runtime.nodePath,
       PORT: "0"
     },
-    stdio: "ignore"
+    stdio: options.stdio ?? "ignore"
   });
   if (!child.pid)
     throw new Error("Failed to start Clash daemon process");
@@ -197871,7 +197922,7 @@ function launchDetachedLocalDaemon(options) {
   };
 }
 function delay2(ms) {
-  return new Promise((resolve16) => setTimeout(resolve16, ms));
+  return new Promise((resolve18) => setTimeout(resolve18, ms));
 }
 async function defaultHealthProbe(record5) {
   try {
@@ -218946,6 +218997,512 @@ function createPluginMcpGateway(options) {
   };
 }
 
+// src/openma-server.ts
+function textResult(value) {
+  return {
+    content: [{
+      type: "text",
+      text: typeof value === "string" ? value : JSON.stringify(value, null, 2)
+    }]
+  };
+}
+function createOpenMaMcpServer(options) {
+  const { taskId, tools } = options;
+  const server = new McpServer({ name: "openma-native-tools", version: "1.0.0" });
+  server.registerTool("plugin_search_skills", {
+    title: "Search installed plugin skills",
+    description: "Search Codex-compatible plugin workflows before starting work that may match an installed skill. Read a matching skill before following it.",
+    inputSchema: {
+      query: external_exports.string().default(""),
+      limit: external_exports.number().int().positive().max(50).optional().default(20)
+    },
+    annotations: { readOnlyHint: true }
+  }, async (input) => textResult(await tools.searchSkills(input)));
+  server.registerTool("plugin_read_skill", {
+    title: "Read an installed plugin skill",
+    description: "Read the complete SKILL.md instructions for a matching Codex-compatible plugin skill.",
+    inputSchema: { skill: external_exports.string() },
+    annotations: { readOnlyHint: true }
+  }, async (input) => textResult(await tools.readSkill(input)));
+  server.registerTool("plugin_read_file", {
+    title: "Read a plugin skill file",
+    description: "Read a relative reference, script, template, or asset text file from an installed plugin after its SKILL.md asks for it.",
+    inputSchema: {
+      plugin: external_exports.string(),
+      path: external_exports.string()
+    },
+    annotations: { readOnlyHint: true }
+  }, async (input) => textResult(await tools.readPluginFile(input)));
+  server.registerTool("browser_tabs", {
+    title: "Browser tabs",
+    description: "List, open, select, or close tabs in this task's browser.",
+    inputSchema: {
+      action: external_exports.enum(["list", "new", "select", "close"]),
+      url: external_exports.string().optional(),
+      tab_id: external_exports.string().optional(),
+      index: external_exports.number().int().nonnegative().optional()
+    }
+  }, async (input) => textResult(await tools.browserTabs(input)));
+  server.registerTool("browser_navigate", {
+    title: "Navigate browser",
+    description: "Navigate the active tab in this task's browser.",
+    inputSchema: { url: external_exports.string() }
+  }, async (input) => textResult(await tools.browserNavigate(input)));
+  server.registerTool("browser_screenshot", {
+    title: "Screenshot browser",
+    description: "Capture the active browser tab as PNG.",
+    inputSchema: { full_page: external_exports.boolean().optional().default(false) },
+    annotations: { readOnlyHint: true }
+  }, async (input) => {
+    const result = await tools.browserScreenshot(input);
+    return {
+      content: [
+        { type: "image", mimeType: result.media_type, data: result.data },
+        {
+          type: "text",
+          text: JSON.stringify({ tab_id: result.tab_id, url: result.url })
+        }
+      ]
+    };
+  });
+  server.registerTool("browser_click", {
+    title: "Click browser element",
+    description: "Click a CSS selector, text= label, or :has-text() match in the active tab.",
+    inputSchema: { selector: external_exports.string() }
+  }, async (input) => textResult(await tools.browserClick(input)));
+  server.registerTool("browser_type", {
+    title: "Type in browser",
+    description: "Type into an editable element in the active browser tab.",
+    inputSchema: {
+      selector: external_exports.string(),
+      text: external_exports.string(),
+      submit: external_exports.boolean().optional().default(false)
+    }
+  }, async (input) => textResult(await tools.browserType(input)));
+  server.registerTool("browser_get_text", {
+    title: "Read browser text",
+    description: "Read visible text from the active browser tab or a matching element.",
+    inputSchema: {
+      selector: external_exports.string().optional(),
+      max_chars: external_exports.number().int().positive().max(1e5).optional().default(3e4)
+    },
+    annotations: { readOnlyHint: true }
+  }, async (input) => ({
+    content: [{ type: "text", text: await tools.browserGetText(input) }]
+  }));
+  server.registerTool("browser_eval", {
+    title: "Evaluate browser JavaScript",
+    description: "Evaluate JavaScript in the active browser tab and return its result.",
+    inputSchema: { expression: external_exports.string() }
+  }, async (input) => textResult(await tools.browserEval(input)));
+  server.registerTool("browser_close", {
+    title: "Close browser tab",
+    description: "Close the active tab in this task's browser.",
+    inputSchema: {}
+  }, async () => textResult(await tools.browserClose()));
+  server.registerTool("openma_sessions_list", {
+    title: "List OpenMA sessions",
+    description: "List other local sessions that can be referenced from the current task.",
+    inputSchema: {
+      query: external_exports.string().trim().min(1).optional(),
+      limit: external_exports.number().int().positive().max(100).optional()
+    },
+    annotations: { readOnlyHint: true }
+  }, async (input) => textResult(await tools.listSessions(input)));
+  server.registerTool("openma_sessions_read", {
+    title: "Read an OpenMA session",
+    description: "Read the user and assistant conversation from another local session by its stable session ID.",
+    inputSchema: {
+      session_id: external_exports.string().min(1),
+      after_seq: external_exports.number().int().nonnegative().optional(),
+      max_chars: external_exports.number().int().positive().max(1e5).optional(),
+      include_activity: external_exports.boolean().optional()
+    },
+    annotations: { readOnlyHint: true }
+  }, async (input) => {
+    if (input.session_id === taskId) {
+      throw new Error("Use the current conversation context instead of reading the current session");
+    }
+    return textResult(await tools.readSession(input));
+  });
+  return server;
+}
+
+// src/openma-tools.ts
+import { execFile } from "child_process";
+import { createRequire as createRequire4 } from "module";
+import {
+  mkdtemp,
+  readFile as readFile9,
+  readdir as readdir3,
+  realpath as realpath3,
+  rm as rm4,
+  stat as stat4
+} from "fs/promises";
+import { tmpdir } from "os";
+import { dirname as dirname13, isAbsolute as isAbsolute7, join as join15, relative as relative7, resolve as resolve15, sep as sep6 } from "path";
+import { promisify } from "util";
+var execFileAsync = promisify(execFile);
+var nodeRequire = createRequire4(import.meta.url);
+function resolveAgentBrowserLaunch(env = process.env) {
+  const override = env.CLASH_AGENT_BROWSER_COMMAND?.trim();
+  if (override) return { command: override, args: [] };
+  const packageJson = nodeRequire.resolve("agent-browser/package.json");
+  return {
+    command: process.execPath,
+    args: [join15(dirname13(packageJson), "bin", "agent-browser.js")]
+  };
+}
+function objectValue(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+function textValue(value) {
+  return typeof value === "string" && value.trim() ? value : void 0;
+}
+function frontmatterValue(source, key) {
+  const match = new RegExp(`^${key}:\\s*(.+)$`, "mu").exec(source);
+  return match?.[1]?.trim().replace(/^['"]|['"]$/gu, "");
+}
+async function discoverSkills(roots) {
+  const skills = [];
+  for (const plugin of roots) {
+    const directory = join15(plugin.root, "skills");
+    let entries;
+    try {
+      entries = await readdir3(directory, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const file5 = join15(directory, entry.name, "SKILL.md");
+      let source;
+      try {
+        source = await readFile9(file5, "utf8");
+      } catch {
+        continue;
+      }
+      skills.push({
+        pluginName: plugin.name,
+        name: frontmatterValue(source, "name") ?? entry.name,
+        description: frontmatterValue(source, "description") ?? "",
+        file: file5,
+        pluginRoot: plugin.root
+      });
+    }
+  }
+  return skills;
+}
+async function resolveReadablePluginFile(rootPath, path) {
+  if (!path.startsWith("./")) {
+    throw new Error('Plugin file path must start with "./"');
+  }
+  const root = await realpath3(rootPath);
+  const candidate = await realpath3(resolve15(root, path));
+  const fromRoot = relative7(root, candidate);
+  if (fromRoot === ".." || fromRoot.startsWith(`..${sep6}`) || isAbsolute7(fromRoot)) {
+    throw new Error("Plugin file path must stay inside the plugin root");
+  }
+  const info = await stat4(candidate);
+  if (!info.isFile()) throw new Error("Plugin path is not a file");
+  if (info.size > 1024 * 1024) throw new Error("Plugin file is larger than 1 MiB");
+  return candidate;
+}
+function jsonResult(text) {
+  const trimmed = text.trim();
+  if (!trimmed) return {};
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return trimmed;
+  }
+}
+function agentBrowserData(value) {
+  const envelope = objectValue(value);
+  const data = objectValue(envelope.data);
+  return Object.keys(data).length > 0 ? data : value;
+}
+function normalizeBrowserTabs(value) {
+  const result = objectValue(agentBrowserData(value));
+  const rawTabs = Array.isArray(result.tabs) ? result.tabs : [];
+  const tabs = rawTabs.flatMap((raw, index) => {
+    const tab = objectValue(raw);
+    const tabId = textValue(tab.tabId) ?? textValue(tab.tab_id) ?? textValue(tab.id);
+    if (!tabId) return [];
+    return [{
+      index,
+      tab_id: tabId,
+      active: tab.active === true,
+      url: textValue(tab.url) ?? "about:blank",
+      title: typeof tab.title === "string" ? tab.title : ""
+    }];
+  });
+  return {
+    active_tab_id: tabs.find((tab) => tab.active)?.tab_id ?? null,
+    tabs
+  };
+}
+function eventText(value) {
+  const event = objectValue(value);
+  if (event.type === "text") return textValue(event.text) ?? "";
+  const inner = Object.keys(objectValue(event.update)).length > 0 ? objectValue(event.update) : event;
+  const content = objectValue(inner.content);
+  return textValue(content.text) ?? "";
+}
+function historyEvents(messages) {
+  const events = [];
+  let seq = 0;
+  for (const message of messages) {
+    for (const raw of message.events ?? []) {
+      seq += 1;
+      const event = objectValue(raw);
+      const inner = Object.keys(objectValue(event.update)).length > 0 ? objectValue(event.update) : event;
+      const updateType = textValue(inner.sessionUpdate) ?? textValue(inner.type);
+      const text = eventText(raw);
+      if (message.sender_kind === "user" && text) {
+        events.push({ seq, kind: "user", text });
+      } else if (message.sender_kind === "agent" && (updateType === "agent_message" || updateType === "agent_message_chunk" || event.type === "text") && text) {
+        events.push({ seq, kind: "assistant", text });
+      } else if (updateType === "agent_thought" || updateType === "agent_thought_chunk") {
+        if (text) events.push({ seq, kind: "thought", text });
+      } else if (updateType === "tool_call" || updateType === "tool_call_update") {
+        events.push({
+          seq,
+          kind: "activity",
+          text: textValue(inner.title) ?? updateType
+        });
+      }
+    }
+  }
+  return events;
+}
+function renderHistory(session, blocks, assistant) {
+  const pending = assistant ? [`## Assistant
+${assistant.trim()}`] : [];
+  const body = [...blocks, ...pending].join("\n\n");
+  return [
+    `# ${session.title || session.id}`,
+    `- session_id: ${session.id}`,
+    `- agent: ${session.agent_id}`,
+    `- workspace: ${session.workspace}`,
+    "",
+    body || "(No readable conversation messages.)"
+  ].join("\n");
+}
+function formatHistory(session, events, options) {
+  const fromSeq = Math.max(0, options.after_seq ?? 0);
+  const maxChars = Math.max(1e3, Math.min(1e5, options.max_chars ?? 3e4));
+  const selected = events.filter((event) => event.seq > fromSeq);
+  const blocks = [];
+  let assistant = "";
+  let lastSeq = fromSeq;
+  const flushAssistant = () => {
+    if (!assistant) return;
+    blocks.push(`## Assistant
+${assistant.trim()}`);
+    assistant = "";
+  };
+  for (const event of selected) {
+    const previousBlocks = blocks.length;
+    const previousAssistant = assistant;
+    if (event.kind === "user") {
+      flushAssistant();
+      blocks.push(`## User
+${event.text.trim()}`);
+    } else if (event.kind === "assistant") {
+      assistant += event.text;
+    } else if (options.include_activity && event.kind === "thought") {
+      flushAssistant();
+      blocks.push(`### Agent thought
+${event.text.trim()}`);
+    } else if (options.include_activity && event.kind === "activity") {
+      flushAssistant();
+      blocks.push(`### Activity
+${event.text}`);
+    }
+    if (renderHistory(session, blocks, assistant).length > maxChars) {
+      blocks.length = previousBlocks;
+      assistant = previousAssistant;
+      return {
+        session,
+        from_seq: fromSeq,
+        next_after_seq: lastSeq,
+        has_more: true,
+        content: renderHistory(session, blocks, assistant)
+      };
+    }
+    lastSeq = event.seq;
+  }
+  flushAssistant();
+  return {
+    session,
+    from_seq: fromSeq,
+    next_after_seq: selected.at(-1)?.seq ?? fromSeq,
+    has_more: false,
+    content: renderHistory(session, blocks, assistant)
+  };
+}
+function createOpenMaNativeTools(options) {
+  const taskId = options.taskId;
+  const sessionArgs = ["--session", taskId, "--namespace", "clash", "--json", "--headed"];
+  const runBrowser = options.runBrowser ?? (async (args) => {
+    const launch = resolveAgentBrowserLaunch();
+    const result = await execFileAsync(launch.command, [...launch.args, ...args], {
+      maxBuffer: 4 * 1024 * 1024
+    });
+    return result.stdout;
+  });
+  const browser = async (args) => agentBrowserData(jsonResult(await runBrowser([...sessionArgs, ...args])));
+  const listBrowserTabs = async () => normalizeBrowserTabs(await browser(["tab", "list"]));
+  const sessions = async () => {
+    const result = objectValue(await options.hostRequest("/api/v1/sessions"));
+    return Array.isArray(result.sessions) ? result.sessions : [];
+  };
+  return {
+    async searchSkills({ query, limit }) {
+      const terms = query.toLocaleLowerCase().split(/\s+/u).filter(Boolean);
+      return (await discoverSkills(options.pluginRoots)).map((skill) => {
+        const name = `${skill.pluginName} ${skill.name}`.toLocaleLowerCase();
+        const description = skill.description.toLocaleLowerCase();
+        const score = terms.length === 0 ? 1 : terms.reduce(
+          (total, term) => total + (name.includes(term) ? 3 : 0) + (description.includes(term) ? 1 : 0),
+          0
+        );
+        return { skill, score };
+      }).filter(({ score }) => score > 0).sort((left, right) => right.score - left.score || `${left.skill.pluginName}:${left.skill.name}`.localeCompare(
+        `${right.skill.pluginName}:${right.skill.name}`
+      )).slice(0, limit).map(({ skill }) => ({
+        id: `${skill.pluginName}:${skill.name}`,
+        description: skill.description
+      }));
+    },
+    async readSkill({ skill }) {
+      const match = (await discoverSkills(options.pluginRoots)).find(
+        (entry) => `${entry.pluginName}:${entry.name}` === skill
+      );
+      if (!match) throw new Error(`Unknown plugin skill: ${skill}`);
+      return readFile9(match.file, "utf8");
+    },
+    async readPluginFile({ plugin, path }) {
+      const root = options.pluginRoots.find((entry) => entry.name === plugin)?.root;
+      if (!root) throw new Error(`Unknown plugin: ${plugin}`);
+      return readFile9(await resolveReadablePluginFile(root, path), "utf8");
+    },
+    async browserTabs(input) {
+      if (input.action === "list") return listBrowserTabs();
+      if (input.action === "new") {
+        await browser(["tab", "new", ...input.url ? [input.url] : []]);
+        return listBrowserTabs();
+      }
+      const listed = await listBrowserTabs();
+      const selected = input.tab_id ? listed.tabs.find((tab) => tab.tab_id === input.tab_id) : input.index === void 0 ? void 0 : listed.tabs[input.index];
+      if (!selected) {
+        throw new Error(
+          input.tab_id ? `Unknown browser tab: ${input.tab_id}` : `Browser tab index is out of range: ${String(input.index)}`
+        );
+      }
+      if (input.action === "select") {
+        await browser(["tab", selected.tab_id]);
+      } else {
+        await browser(["tab", "close", selected.tab_id]);
+      }
+      return listBrowserTabs();
+    },
+    async browserNavigate({ url: url5 }) {
+      await browser(["open", url5]);
+      const listed = await listBrowserTabs();
+      const active = listed.tabs.find((tab) => tab.active);
+      if (!active) throw new Error("No browser tab is open for this task");
+      return {
+        tab_id: active.tab_id,
+        url: active.url,
+        title: active.title
+      };
+    },
+    async browserScreenshot({ full_page }) {
+      const directory = await mkdtemp(join15(tmpdir(), "clash-browser-"));
+      const path = join15(directory, "screenshot.png");
+      try {
+        await browser(["screenshot", ...full_page ? ["--full"] : [], path]);
+        const listed = await listBrowserTabs();
+        const active = listed.tabs.find((tab) => tab.active) ?? listed.tabs[0];
+        return {
+          media_type: "image/png",
+          data: (await readFile9(path)).toString("base64"),
+          tab_id: active?.tab_id ?? "active",
+          url: active?.url ?? "about:blank"
+        };
+      } finally {
+        await rm4(directory, { recursive: true, force: true });
+      }
+    },
+    async browserClick({ selector }) {
+      await browser(["click", selector]);
+      return `Clicked ${selector}`;
+    },
+    async browserType({ selector, text, submit }) {
+      await browser(["type", selector, text]);
+      if (submit) await browser(["press", "Enter"]);
+      return `Typed ${text.length} chars into ${selector}${submit ? " and submitted" : ""}`;
+    },
+    async browserGetText({ selector, max_chars }) {
+      const result = objectValue(agentBrowserData(jsonResult(await runBrowser([
+        ...sessionArgs,
+        "get",
+        "text",
+        selector ?? "body"
+      ]))));
+      const value = typeof result.text === "string" ? result.text : "";
+      if (!value) return "(empty)";
+      if (value.length <= max_chars) return value;
+      return `${value.slice(0, max_chars)}
+
+...[truncated; ${value.length - max_chars} more chars]`;
+    },
+    async browserEval({ expression }) {
+      const result = await browser(["eval", expression]);
+      const record5 = objectValue(result);
+      return Object.hasOwn(record5, "result") ? record5.result : result;
+    },
+    async browserClose() {
+      const listed = await listBrowserTabs();
+      const active = listed.tabs.find((tab) => tab.active);
+      if (!active) throw new Error("No browser tab is open for this task");
+      await browser(["tab", "close", active.tab_id]);
+      return listBrowserTabs();
+    },
+    async listSessions({ query, limit }) {
+      const normalized = query?.trim().toLocaleLowerCase() ?? "";
+      return {
+        sessions: (await sessions()).filter((session) => session.id !== taskId).filter((session) => !normalized || [session.title, session.id, session.agentId, session.agent_id].some((value) => value?.toLocaleLowerCase().includes(normalized))).slice(0, Math.min(100, Math.max(1, limit ?? 20))).map((session) => ({
+          id: session.id,
+          title: session.title || session.id,
+          agent_id: session.agentId ?? session.agent_id ?? "unknown",
+          last_used_at: session.updatedAt ?? session.last_used_at
+        }))
+      };
+    },
+    async readSession(input) {
+      const session = (await sessions()).find((candidate) => candidate.id === input.session_id);
+      if (!session) throw new Error(`Unknown OpenMA session: ${input.session_id}`);
+      const result = objectValue(await options.hostRequest(
+        `/api/v1/local-sessions/${encodeURIComponent(input.session_id)}/messages`
+      ));
+      const messages = Array.isArray(result.messages) ? result.messages : [];
+      return formatHistory(
+        {
+          id: session.id,
+          title: session.title || session.id,
+          agent_id: session.agentId ?? session.agent_id ?? "unknown",
+          workspace: options.workspace
+        },
+        historyEvents(messages),
+        input
+      );
+    }
+  };
+}
+
 // src/server.ts
 function bundledApp(name) {
   return readFileSync3(
@@ -219026,19 +219583,98 @@ async function serveClashPluginStdio(options = {}) {
   process.once("SIGTERM", shutdown);
   await runtime.server.connect(transport);
 }
+function defaultPluginRoot() {
+  return process.env.CLASH_BUILTIN_PLUGIN_ROOT?.trim() || resolve16(dirname14(fileURLToPath2(import.meta.url)), "..");
+}
+function createHostRequest(client) {
+  return async (path, init = {}) => {
+    if (!client.resolveConnection) {
+      throw new Error("OpenMA native tools require a resolvable local Host connection.");
+    }
+    const connection = await client.resolveConnection();
+    const response = await fetch(
+      new URL(path, `${connection.endpoint.replace(/\/$/u, "")}/`),
+      {
+        ...init,
+        headers: {
+          ...connection.token ? { authorization: `Bearer ${connection.token}` } : {},
+          ...Object.fromEntries(new Headers(init.headers).entries())
+        }
+      }
+    );
+    const body = await response.json().catch(() => void 0);
+    if (!response.ok) {
+      const message = body && typeof body === "object" && "error" in body ? String(body.error) : `Host request failed with HTTP ${response.status}`;
+      throw new Error(message);
+    }
+    return body;
+  };
+}
+function createOpenMaPluginRuntime(options = {}) {
+  const taskId = options.taskId ?? process.env.CLASH_SESSION_ID?.trim();
+  if (!taskId) throw new Error("OpenMA native tools require CLASH_SESSION_ID");
+  const hostManager = options.hostManager ?? (options.client ? void 0 : createPluginHostManager());
+  const client = options.client ?? createMcpProjectHostClient({ hostManager });
+  const tools = options.tools ?? createOpenMaNativeTools({
+    taskId,
+    pluginRoots: options.pluginRoots ?? [{ name: "clash", root: defaultPluginRoot() }],
+    workspace: options.workspace ?? process.env.CLASH_WORKSPACE_ROOT?.trim() ?? process.cwd(),
+    hostRequest: createHostRequest(client),
+    ...options.runBrowser ? { runBrowser: options.runBrowser } : {}
+  });
+  const server = createOpenMaMcpServer({ taskId, tools });
+  const originalClose = server.close.bind(server);
+  let closingHost;
+  let closingRuntime;
+  const closeHost = () => {
+    closingHost ??= hostManager?.close() ?? Promise.resolve();
+    return closingHost;
+  };
+  const close = () => {
+    closingRuntime ??= (async () => {
+      try {
+        await originalClose();
+      } finally {
+        await closeHost();
+      }
+    })();
+    return closingRuntime;
+  };
+  server.close = close;
+  return { server, hostManager, close, closeHost };
+}
+function createOpenMaPluginServer(options = {}) {
+  return createOpenMaPluginRuntime(options).server;
+}
+async function serveOpenMaPluginStdio(options = {}) {
+  const runtime = createOpenMaPluginRuntime(options);
+  const transport = new StdioServerTransport();
+  transport.onclose = () => {
+    void runtime.closeHost();
+  };
+  const shutdown = () => {
+    void runtime.close().finally(() => process.exit(0));
+  };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+  await runtime.server.connect(transport);
+}
 
 // src/index.ts
 function isDirectExecution(moduleUrl, argvEntry = process.argv[1], cwd = process.cwd()) {
-  return Boolean(argvEntry && pathToFileURL(resolve15(cwd, argvEntry)).href === moduleUrl);
+  return Boolean(argvEntry && pathToFileURL(resolve17(cwd, argvEntry)).href === moduleUrl);
 }
 if (isDirectExecution(import.meta.url)) await serveClashPluginStdio();
 export {
   createClashPluginRuntime,
   createClashPluginServer,
   createMcpProjectHostClient,
+  createOpenMaPluginRuntime,
+  createOpenMaPluginServer,
   createPluginHostManager,
   isDirectExecution,
   readActivePluginHost,
   resolvePluginHostRuntimeLayout,
-  serveClashPluginStdio
+  serveClashPluginStdio,
+  serveOpenMaPluginStdio
 };

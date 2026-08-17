@@ -177,6 +177,55 @@ describe("usageStateFromAcpEvent", () => {
 });
 
 describe("appendAcpEvent", () => {
+  it("keeps canonical OpenMA lifecycle events out of the transcript until the subagent UI consumes them", () => {
+    const messages: ByoMessage[] = [{
+      id: "asst-turn-canonical",
+      role: "assistant",
+      parts: [{ type: "text", text: "Existing reply" }],
+    }];
+
+    const result = appendAcpEvent(messages, "turn-canonical", 0, {
+      schema: "oma.event.v1",
+      schema_version: "oma.event.v1",
+      event_id: "event-1",
+      type: "work_item.started",
+      session_id: "session-1",
+      turn_id: "turn-canonical",
+      work_item_id: "child-1",
+      source: { kind: "harness", harness: "codex-acp", adapter: "codex" },
+      occurred_at: "2026-08-16T00:00:00.000Z",
+      data: { kind: "agent", title: "Audit runtime" },
+    });
+
+    expect(result).toEqual({ idx: 0 });
+    expect(messages).toEqual([{
+      id: "asst-turn-canonical",
+      role: "assistant",
+      parts: [{ type: "text", text: "Existing reply" }],
+    }]);
+  });
+
+  it("does not render ACP client callback transport frames as chat events", () => {
+    const messages: ByoMessage[] = [];
+
+    const request = appendAcpEvent(messages, "turn-callback", undefined, {
+      type: "acp.client_request",
+      requestId: "callback-1",
+      method: "terminal/create",
+      params: { command: "pwd" },
+    });
+    const response = appendAcpEvent(messages, "turn-callback", request.idx, {
+      type: "acp.client_response",
+      requestId: "callback-1",
+      method: "terminal/create",
+      result: { terminalId: "terminal-1" },
+    });
+
+    expect(request).toEqual({ idx: -1 });
+    expect(response).toEqual({ idx: -1 });
+    expect(messages).toEqual([]);
+  });
+
   it("renders simplified local runtime text events", () => {
     const messages: ByoMessage[] = [];
 
@@ -585,6 +634,45 @@ describe("appendAcpEvent", () => {
       title: "agent crashed",
       tone: "error",
     }]);
+  });
+
+  it("distinguishes truncated and refused ACP completions from a normal end turn", () => {
+    const messages: ByoMessage[] = [];
+
+    appendAcpEvent(messages, "turn-limited", undefined, {
+      type: "promptComplete",
+      response: { stopReason: "max_tokens" },
+    });
+    appendAcpEvent(messages, "turn-refused", undefined, {
+      type: "promptComplete",
+      response: { stopReason: "refusal" },
+    });
+    const normal = appendAcpEvent(messages, "turn-complete", undefined, {
+      type: "promptComplete",
+      response: { stopReason: "end_turn" },
+    });
+
+    expect(messages).toEqual([
+      {
+        id: "asst-turn-limited",
+        role: "assistant",
+        parts: [{
+          type: "event_note",
+          title: "Response stopped at the token limit",
+          tone: "warning",
+        }],
+      },
+      {
+        id: "asst-turn-refused",
+        role: "assistant",
+        parts: [{
+          type: "event_note",
+          title: "The agent declined to answer",
+          tone: "warning",
+        }],
+      },
+    ]);
+    expect(normal.idx).toBe(-1);
   });
 
   it("extracts the actionable message from noisy JSON prompt errors", () => {

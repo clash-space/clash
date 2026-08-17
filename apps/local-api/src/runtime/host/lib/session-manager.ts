@@ -18,7 +18,7 @@
  *     session.ready    { session_id, acp_session_id }
  *     session.event    { session_id, turn_id, event }
  *     session.diagnostic { session_id, turn_id?, diagnostic }
- *     session.complete { session_id, turn_id }
+ *     session.complete { session_id, turn_id, stop_reason?, usage?, meta? }
  *     session.error    { session_id, turn_id?, message }
  *     session.disposed { session_id }
  */
@@ -37,12 +37,17 @@ import { AcpRuntimeImpl } from "../_acp-runtime/index.js";
 import { withClashAcpExtensionCapabilities } from "../_acp-runtime/client-capabilities.js";
 import { NodeSpawner } from "../_acp-runtime/spawners/node.js";
 import { detect } from "../_acp-runtime/registry.js";
-import type { AcpSession, AgentSpec } from "../_acp-runtime/types.js";
+import type {
+  AcpSession,
+  AgentSpec,
+  SteeringOutcome,
+} from "../_acp-runtime/types.js";
 import {
   ensureAgentCwd,
   readAgentRuntime,
   resolveAgentMcpServers,
 } from "./session-cwd.js";
+import { AgentEventAdapter } from "./agent-event-adapter.js";
 
 const DEFAULT_SESSION_CONTEXT_ID = "clash";
 
@@ -136,6 +141,40 @@ function recordValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
+}
+
+const CODEX_TURN_ACTIVITY_UPDATES = new Set([
+  "agent_message_chunk",
+  "agent_thought_chunk",
+  "tool_call",
+  "tool_call_update",
+  "plan",
+  "plan_update",
+  "usage_update",
+]);
+
+function outOfBandUpdate(event: unknown): Record<string, unknown> {
+  const outer = recordValue(event) ?? {};
+  return recordValue(outer.update) ?? outer;
+}
+
+function codexThreadStatus(event: unknown): string | undefined {
+  const update = outOfBandUpdate(event);
+  if (update.sessionUpdate !== "session_info_update") return undefined;
+  const codex = recordValue(recordValue(update._meta)?.codex);
+  const status = recordValue(codex?.threadStatus)?.type;
+  return typeof status === "string" ? status.toLowerCase() : undefined;
+}
+
+function isHarnessTurnActivity(harnessId: string, event: unknown): boolean {
+  if (harnessId !== "codex-acp") return false;
+  if (codexThreadStatus(event) === "active") return true;
+  const updateType = outOfBandUpdate(event).sessionUpdate;
+  return typeof updateType === "string" && CODEX_TURN_ACTIVITY_UPDATES.has(updateType);
+}
+
+function isHarnessTurnIdle(harnessId: string, event: unknown): boolean {
+  return harnessId === "codex-acp" && codexThreadStatus(event) === "idle";
 }
 
 function trustedMcpRenderersFromServers(servers: readonly unknown[]): Map<string, string> {
@@ -292,6 +331,23 @@ export type ManagerOut =
       config_options?: unknown[];
       modes?: unknown;
       replay_events?: unknown[];
+      protocol_version?: unknown;
+      agent_info?: unknown;
+      agent_capabilities?: unknown;
+      initialize_meta?: Record<string, unknown>;
+      session_setup_meta?: Record<string, unknown>;
+      prompt_capabilities?: unknown;
+      supports_session_fork?: boolean;
+      supports_session_list?: boolean;
+      supports_session_delete?: boolean;
+      supports_session_resume?: boolean;
+      supports_session_close?: boolean;
+      supports_logout?: boolean;
+      supports_providers?: boolean;
+      supports_nes?: boolean;
+      nes_capabilities?: unknown;
+      position_encoding?: unknown;
+      supports_steering?: boolean;
     }
   | { type: "session.config_options"; session_id: string; config_options: unknown[] }
   | { type: "session.mode"; session_id: string; modes: unknown }
@@ -312,7 +368,14 @@ export type ManagerOut =
       maxAttempts?: number;
     }
   | { type: "session.event"; session_id: string; turn_id: string; event: unknown }
-  | { type: "session.complete"; session_id: string; turn_id: string }
+  | {
+      type: "session.complete";
+      session_id: string;
+      turn_id: string;
+      stop_reason?: string;
+      usage?: Record<string, unknown>;
+      meta?: Record<string, unknown>;
+    }
   | { type: "session.error"; session_id: string; turn_id?: string; message: string }
   | { type: "session.disposed"; session_id: string };
 
@@ -328,14 +391,30 @@ export interface SessionManagerOptions {
 
 interface ActiveSession {
   acp: AcpSession;
+  harnessId: string;
+  agentEvents: AgentEventAdapter;
   trustedMcpRenderers: TrustedMcpRenderers;
   /** turnId → abort controller for cancel. */
   turns: Map<string, AbortController>;
   /** ACP prompt turns are request/response transactions and must not overlap
    * within one session. */
   promptQueue: Promise<void>;
+  pendingOutOfBandSteering: {
+    turnId: string;
+    updates: unknown[];
+  } | null;
+  outOfBandSteeringTurn: OutOfBandSteeringTurn | null;
   /** Disposal wins over every late prompt/start continuation. */
   disposed: boolean;
+}
+
+interface OutOfBandSteeringTurn {
+  turnId: string;
+  completion: Promise<void>;
+  resolveCompletion: () => void;
+  cancelRequested: boolean;
+  sawActivity: boolean;
+  settled: boolean;
 }
 
 export interface SessionManagerEnv extends Record<string, string | undefined> {
@@ -404,6 +483,33 @@ export class SessionManager {
       acp_session_id: session.acp.acpSessionId,
       config_options: [...session.acp.configOptions],
       ...(modes ? { modes } : {}),
+      ...(session.acp.protocolVersion !== null
+        ? { protocol_version: session.acp.protocolVersion }
+        : {}),
+      ...(session.acp.agentInfo ? { agent_info: session.acp.agentInfo } : {}),
+      agent_capabilities: session.acp.agentCapabilities,
+      ...(session.acp.initializeMeta
+        ? { initialize_meta: session.acp.initializeMeta }
+        : {}),
+      ...(session.acp.sessionSetupMeta
+        ? { session_setup_meta: session.acp.sessionSetupMeta }
+        : {}),
+      prompt_capabilities: session.acp.promptCapabilities,
+      supports_session_fork: session.acp.supportsSessionFork,
+      supports_session_list: session.acp.supportsSessionList,
+      supports_session_delete: session.acp.supportsSessionDelete,
+      supports_session_resume: session.acp.supportsSessionResume,
+      supports_session_close: session.acp.supportsSessionClose,
+      supports_logout: session.acp.supportsLogout,
+      supports_providers: session.acp.supportsProviders,
+      supports_nes: session.acp.supportsNes,
+      ...(session.acp.nesCapabilities
+        ? { nes_capabilities: session.acp.nesCapabilities }
+        : {}),
+      ...(session.acp.positionEncoding
+        ? { position_encoding: session.acp.positionEncoding }
+        : {}),
+      supports_steering: session.acp.supportsSteering,
       ...((session.acp.loadedReplayEvents?.length ?? 0) > 0
         ? {
             replay_events: session.acp.loadedReplayEvents!.map((event) =>
@@ -416,11 +522,44 @@ export class SessionManager {
   #flushPendingSessionState(sessionId: string, session: ActiveSession): void {
     if (session.disposed) return;
     for (const event of session.acp.drainPendingEvents()) {
+      this.#sendSessionEvent(sessionId, session, "", event);
+    }
+  }
+
+  #sendSessionEvent(
+    sessionId: string,
+    session: ActiveSession,
+    turnId: string,
+    event: unknown,
+  ): void {
+    this.#send({
+      type: "session.event",
+      session_id: sessionId,
+      turn_id: turnId,
+      event: annotateTrustedMcpEvent(event, session.trustedMcpRenderers),
+    });
+    for (const canonical of session.agentEvents.ingest(turnId, event)) {
       this.#send({
         type: "session.event",
         session_id: sessionId,
-        turn_id: "",
-        event: annotateTrustedMcpEvent(event, session.trustedMcpRenderers),
+        turn_id: turnId,
+        event: canonical,
+      });
+    }
+  }
+
+  #finishAgentEvents(
+    sessionId: string,
+    session: ActiveSession,
+    turnId: string,
+    stopReason?: string,
+  ): void {
+    for (const canonical of session.agentEvents.finishTurn(turnId, stopReason)) {
+      this.#send({
+        type: "session.event",
+        session_id: sessionId,
+        turn_id: turnId,
+        event: canonical,
       });
     }
   }
@@ -515,6 +654,7 @@ export class SessionManager {
       // these values for attribution.
       if (p.agent_member_id) spawnEnv.CLASH_AGENT_MEMBER_ID = p.agent_member_id;
       if (p.project_id) spawnEnv.CLASH_PROJECT_ID = p.project_id;
+      spawnEnv.CLASH_SESSION_ID = p.session_id;
       // ACP harnesses may launch MCP subprocesses from their own directory.
       // Bind bundled Clash tools to this session's canonical working tree;
       // .clash/project.toml inside that tree remains the project authority.
@@ -528,6 +668,16 @@ export class SessionManager {
           "The bundled Clash MCP is unavailable. Self-host sessions require the built-in Clash MCP and cannot fall back to the shell CLI.",
         );
       }
+      let activeSession: ActiveSession | null = null;
+      const pendingOutOfBandEvents: unknown[] = [];
+      const onOutOfBandSessionUpdate = (event: unknown) => {
+        if (!activeSession) {
+          pendingOutOfBandEvents.push(event);
+          return;
+        }
+        if (activeSession.disposed || this.#sessions.get(p.session_id) !== activeSession) return;
+        this.#handleOutOfBandSessionUpdate(p.session_id, activeSession, event);
+      };
       const session = await this.#runtime.start({
         agent: {
           ...agentSpec,
@@ -543,6 +693,7 @@ export class SessionManager {
         clientCallbacks: {
           requestPermission: (params) => this.#requestPermission(p.session_id, params),
         },
+        onOutOfBandSessionUpdate,
       });
       if (this.#cancelledStarts.has(p.session_id)) {
         await session.dispose().catch(() => undefined);
@@ -557,18 +708,26 @@ export class SessionManager {
       }
       let modes = session.modes;
       if (p.permission_mode && modes?.availableModes.some((mode) => mode.id === p.permission_mode)) {
-        modes = await session.setMode(p.permission_mode);
+        await session.setMode(p.permission_mode);
+        modes = session.modes;
       }
       if (this.#cancelledStarts.has(p.session_id)) {
         await session.dispose().catch(() => undefined);
         return;
       }
       process.stderr.write(`  ✓ agent ready, session id=${(session as unknown as { id?: string }).id}\n`);
-      const activeSession: ActiveSession = {
+      activeSession = {
         acp: session,
+        harnessId: resolvedAgentId,
+        agentEvents: new AgentEventAdapter({
+          sessionId: p.session_id,
+          harnessId: resolvedAgentId,
+        }),
         trustedMcpRenderers,
         turns: new Map(),
         promptQueue: Promise.resolve(),
+        pendingOutOfBandSteering: null,
+        outOfBandSteeringTurn: null,
         disposed: false,
       };
       this.#sessions.set(p.session_id, activeSession);
@@ -576,6 +735,9 @@ export class SessionManager {
       // (or echoed back via session/load). Server persists it to
       // runtime_session.acp_session_id so a future resume can re-attach.
       this.#sendReady(p.session_id, activeSession, modes);
+      for (const event of pendingOutOfBandEvents.splice(0)) {
+        onOutOfBandSessionUpdate(event);
+      }
       this.#flushPendingSessionState(p.session_id, activeSession);
       setTimeout(() => {
         if (this.#sessions.get(p.session_id) === activeSession) {
@@ -625,6 +787,7 @@ export class SessionManager {
 
   async #runPrompt(sess: ActiveSession, p: SessionPromptParams): Promise<void> {
     const ctrl = new AbortController();
+    let promptResponse: Record<string, unknown> | null = null;
     this.#transition(p.session_id, { type: "prompt.requested", turnId: p.turn_id });
     sess.turns.set(p.turn_id, ctrl);
     this.#activeTurnBySession.set(p.session_id, p.turn_id);
@@ -641,7 +804,26 @@ export class SessionManager {
         // (b) confuse the parser that's looking for sessionUpdate-shaped
         // events.
         const t = (ev as { type?: string } | null | undefined)?.type;
-        if (t === "promptComplete" || t === "promptError") continue;
+        if (t === "promptError") {
+          const message = "Agent prompt failed";
+          this.#finishAgentEvents(p.session_id, sess, p.turn_id, "error");
+          this.#transition(p.session_id, {
+            type: "session.error",
+            turnId: p.turn_id,
+            message,
+          });
+          this.#send({
+            type: "session.error",
+            session_id: p.session_id,
+            turn_id: p.turn_id,
+            message,
+          });
+          return;
+        }
+        if (t === "promptComplete") {
+          promptResponse = recordValue((ev as { response?: unknown }).response);
+          continue;
+        }
         // DEV-ONLY raw event tap. Writes every ACP notification to a
         // JSONL file so we can ground-truth the wire shape without
         // round-tripping through the UI. Drop the import + this block
@@ -658,19 +840,35 @@ export class SessionManager {
             );
           } catch { /* tap is best-effort */ }
         }
-        this.#send({
-          type: "session.event",
-          session_id: p.session_id,
-          turn_id: p.turn_id,
-          event: annotateTrustedMcpEvent(ev, sess.trustedMcpRenderers),
-        });
+        this.#sendSessionEvent(p.session_id, sess, p.turn_id, ev);
       }
       if (sess.disposed) return;
       this.#transition(p.session_id, { type: "session.complete", turnId: p.turn_id });
-      this.#send({ type: "session.complete", session_id: p.session_id, turn_id: p.turn_id });
+      const stopReason = ctrl.signal.aborted
+        ? "cancelled"
+        : typeof promptResponse?.stopReason === "string"
+          ? promptResponse.stopReason
+          : undefined;
+      const usage = recordValue(promptResponse?.usage);
+      const meta = recordValue(promptResponse?._meta);
+      this.#finishAgentEvents(p.session_id, sess, p.turn_id, stopReason);
+      this.#send({
+        type: "session.complete",
+        session_id: p.session_id,
+        turn_id: p.turn_id,
+        ...(stopReason ? { stop_reason: stopReason } : {}),
+        ...(usage ? { usage } : {}),
+        ...(meta ? { meta } : {}),
+      });
     } catch (e) {
       if (sess.disposed) return;
       const message = e instanceof Error ? e.message : String(e);
+      this.#finishAgentEvents(
+        p.session_id,
+        sess,
+        p.turn_id,
+        ctrl.signal.aborted ? "cancelled" : "error",
+      );
       this.#transition(p.session_id, { type: "session.error", turnId: p.turn_id, message });
       this.#send({
         type: "session.error",
@@ -706,9 +904,109 @@ export class SessionManager {
     const sess = this.#sessions.get(session_id);
     if (!sess) return;
     const turn = sess.turns.get(turn_id);
-    if (!turn) return;
+    if (!turn) {
+      const outOfBandTurn = sess.outOfBandSteeringTurn;
+      if (
+        !outOfBandTurn
+        || outOfBandTurn.turnId !== turn_id
+        || outOfBandTurn.settled
+        || outOfBandTurn.cancelRequested
+      ) return;
+      outOfBandTurn.cancelRequested = true;
+      void sess.acp.cancelCurrentTurn().catch(() => undefined);
+      return;
+    }
     turn.abort();
     this.#transition(session_id, { type: "prompt.cancelled", turnId: turn_id });
+  }
+
+  async steer(
+    session_id: string,
+    text: string,
+    turn_id?: string,
+  ): Promise<SteeringOutcome> {
+    const pending = this.#starting.get(session_id);
+    if (pending) await pending;
+    const sess = this.#sessions.get(session_id);
+    if (!sess || sess.disposed) throw new Error("no such session");
+    if (!turn_id) return sess.acp.steer(composeClashPromptContent(text));
+
+    const pendingSteering = { turnId: turn_id, updates: [] as unknown[] };
+    sess.pendingOutOfBandSteering = pendingSteering;
+    let outcome: SteeringOutcome;
+    try {
+      outcome = await sess.acp.steer(composeClashPromptContent(text));
+    } catch (error) {
+      if (sess.pendingOutOfBandSteering === pendingSteering) {
+        sess.pendingOutOfBandSteering = null;
+      }
+      for (const event of pendingSteering.updates) {
+        this.#sendSessionEvent(session_id, sess, "", event);
+      }
+      throw error;
+    }
+    if (sess.pendingOutOfBandSteering === pendingSteering) {
+      sess.pendingOutOfBandSteering = null;
+    }
+    if (outcome !== "startedNewTurn") {
+      for (const event of pendingSteering.updates) {
+        this.#sendSessionEvent(session_id, sess, "", event);
+      }
+      return outcome;
+    }
+
+    let resolveCompletion!: () => void;
+    const completion = new Promise<void>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    const outOfBandTurn: OutOfBandSteeringTurn = {
+      turnId: turn_id,
+      completion,
+      resolveCompletion,
+      cancelRequested: false,
+      sawActivity: false,
+      settled: false,
+    };
+    sess.outOfBandSteeringTurn = outOfBandTurn;
+    for (const event of pendingSteering.updates) {
+      this.#handleOutOfBandSessionUpdate(session_id, sess, event);
+    }
+    if (!outOfBandTurn.settled) outOfBandTurn.sawActivity = true;
+    await completion;
+    if (sess.outOfBandSteeringTurn === outOfBandTurn) {
+      sess.outOfBandSteeringTurn = null;
+    }
+    return outcome;
+  }
+
+  #handleOutOfBandSessionUpdate(
+    sessionId: string,
+    session: ActiveSession,
+    event: unknown,
+  ): void {
+    const turn = session.outOfBandSteeringTurn;
+    if (turn && !turn.settled) {
+      this.#sendSessionEvent(sessionId, session, turn.turnId, event);
+      if (isHarnessTurnActivity(session.harnessId, event)) turn.sawActivity = true;
+      if (turn.sawActivity && isHarnessTurnIdle(session.harnessId, event)) {
+        turn.settled = true;
+        const stopReason = turn.cancelRequested ? "cancelled" : undefined;
+        this.#finishAgentEvents(sessionId, session, turn.turnId, stopReason);
+        this.#send({
+          type: "session.complete",
+          session_id: sessionId,
+          turn_id: turn.turnId,
+          ...(stopReason ? { stop_reason: stopReason } : {}),
+        });
+        turn.resolveCompletion();
+      }
+      return;
+    }
+    if (session.pendingOutOfBandSteering) {
+      session.pendingOutOfBandSteering.updates.push(event);
+      return;
+    }
+    this.#sendSessionEvent(sessionId, session, "", event);
   }
 
   async setConfigOption(session_id: string, config_id: string, value: string | boolean): Promise<void> {
@@ -756,7 +1054,8 @@ export class SessionManager {
       return;
     }
     try {
-      const modes = await sess.acp.setMode(mode_id);
+      await sess.acp.setMode(mode_id);
+      const modes = sess.acp.modes;
       if (modes) {
         this.#send({
           type: "session.mode",
@@ -788,6 +1087,7 @@ export class SessionManager {
     const session = this.#sessions.get(sessionId);
     if (!session) return;
     session.disposed = true;
+    session.outOfBandSteeringTurn?.resolveCompletion();
     for (const controller of session.turns.values()) controller.abort();
     await session.acp.dispose().catch(() => undefined);
     if (this.#sessions.get(sessionId) === session) {

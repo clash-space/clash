@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld("__CLASH_RUNTIME_CONFIG__", {
 contextBridge.exposeInMainWorld("__CLASH_DESKTOP__", {
   isDesktop: true,
   newWindow: () => ipcRenderer.invoke("clash:new-window"),
+  notify: (request: unknown) => ipcRenderer.invoke("clash:notify", request),
   authorizeProvider: (request: unknown) => ipcRenderer.invoke("clash:authorize-provider", request),
   getNleAvailability: () => ipcRenderer.invoke("clash:get-nle-availability"),
   exportDirectorVideo: (request: unknown) => ipcRenderer.invoke("clash:export-director-video", request),

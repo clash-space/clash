@@ -256,7 +256,7 @@ async function resolvePluginMcpServers(
           host: pluginName,
           mimeTypes: ["text/html;profile=mcp-app"],
         },
-        ...(pluginName === "clash"
+        ...(pluginName === "clash" && serverName === "clash"
           ? {
               "clash.plugin": "builtin",
               "clash.renderer": "product",

@@ -5,6 +5,12 @@
       "args": ["./runtime/dispatcher.js", "mcp"],
       "cwd": ".",
       "env": { "CLASH_PROFILE": "prod" }
+    },
+    "openma": {
+      "command": "node",
+      "args": ["./runtime/dispatcher.js", "openma-mcp"],
+      "cwd": ".",
+      "env": { "CLASH_PROFILE": "prod" }
     }
   }
 }

@@ -539,7 +539,7 @@ export function attachTimelineToCanvas(
     timelineId: string;
     canvasId: string;
     actionNodeId: string;
-    position: { x: number; y: number };
+    position?: { x: number; y: number };
   },
 ): ProjectTimelineMutationResult {
   const timelines = doc.getMap("timelines");
@@ -571,12 +571,20 @@ export function attachTimelineToCanvas(
   const bindingError = rehomeProjectTimelineAssetInputs(doc, timeline, next);
   if (bindingError) return bindingError;
   ensureTimelineFields(doc, input.timelineId, timeline).set("owner", next.owner);
-  nodes.set(input.actionNodeId, {
-    canvasId: input.canvasId,
-    type: "video-editor",
-    data: { timelineId: input.timelineId, label: timeline.name },
-    position: input.position,
-  });
+  const created = new Canvas(doc, () => {}, input.canvasId).createNode(
+    input.actionNodeId,
+    "video-editor",
+    { timelineId: input.timelineId, label: timeline.name },
+    input.position,
+  );
+  if (created.error) {
+    ensureTimelineFields(doc, input.timelineId, timeline).set(
+      "owner",
+      timeline.owner,
+    );
+    rehomeProjectTimelineAssetInputs(doc, next, timeline);
+    return { ok: false, error: created.error };
+  }
   return { ok: true, timeline: next };
 }
 

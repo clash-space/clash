@@ -429,12 +429,25 @@ function createMockMissingReadProofPatch(turnId: string) {
   };
 }
 
-function createMockAcpSessionManager(send: SessionSender): SessionManagerLike {
-  const delayMs = Number(process.env.CLASH_E2E_STUB_ACP_DELAY_MS ?? "0");
+function createMockAcpSessionManager(
+  send: SessionSender,
+  env: Record<string, string | undefined> = process.env,
+): SessionManagerLike {
+  const delayMs = Number(env.CLASH_E2E_STUB_ACP_DELAY_MS ?? "0");
   const promptDelayMs = Number.isFinite(delayMs) && delayMs > 0 ? delayMs : 0;
+  const subagentDelayValue = Number(
+    env.CLASH_E2E_STUB_ACP_SUBAGENT_DELAY_MS ?? "900",
+  );
+  const subagentDelayMs = Number.isFinite(subagentDelayValue)
+    ? Math.max(0, subagentDelayValue)
+    : 900;
   const waitForPromptDelay = () =>
     promptDelayMs > 0
       ? new Promise<void>((resolve) => setTimeout(resolve, promptDelayMs))
+      : Promise.resolve();
+  const waitForSubagentStep = () =>
+    subagentDelayMs > 0
+      ? new Promise<void>((resolve) => setTimeout(resolve, subagentDelayMs))
       : Promise.resolve();
 
   return {
@@ -458,6 +471,123 @@ function createMockAcpSessionManager(send: SessionSender): SessionManagerLike {
         });
       }
       await waitForPromptDelay();
+      if (env.CLASH_E2E_STUB_ACP_SUBAGENT === "1") {
+        const parentToolCallId = `mock-subagent-spawn-${turn_id}`;
+        const workItemId = `mock-child-${turn_id}`;
+        const canonicalEvent = (
+          type: string,
+          eventId: string,
+          data: Record<string, unknown>,
+        ) => ({
+          schema: "oma.event.v1",
+          schema_version: "oma.event.v1",
+          event_id: eventId,
+          type,
+          session_id,
+          turn_id,
+          work_item_id: workItemId,
+          parent_id: parentToolCallId,
+          data,
+        });
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: {
+            sessionUpdate: "tool_call",
+            toolCallId: parentToolCallId,
+            title: "Delegate agent GUI review",
+            kind: "other",
+            status: "in_progress",
+            rawInput: { task: "Review agent GUI parity" },
+          },
+        });
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: canonicalEvent("work_item.started", `${workItemId}-started`, {
+            title: "Review agent GUI parity",
+            agent_type: "reviewer",
+          }),
+        });
+        await waitForSubagentStep();
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: canonicalEvent("agent.thinking", `${workItemId}-thinking`, {
+            text: "Inspecting the Copilot activity hierarchy and interaction states.",
+          }),
+        });
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: canonicalEvent("work_item.progress", `${workItemId}-progress`, {
+            output: { detail: "Checking parent turn placement and running activity" },
+          }),
+        });
+        await waitForSubagentStep();
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: canonicalEvent("work_item.progress", `${workItemId}-tool-started`, {
+            output: {
+              kind: "child_tool",
+              tool_call_id: `${workItemId}-read-ui`,
+              tool_name: "Inspect Copilot UI",
+              status: "in_progress",
+            },
+          }),
+        });
+        await waitForSubagentStep();
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: canonicalEvent("agent.message_chunk", `${workItemId}-message`, {
+            text: "The child activity row, running dock, and transcript detail are connected to the canonical work item.",
+          }),
+        });
+        await waitForSubagentStep();
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: canonicalEvent("work_item.progress", `${workItemId}-tool-completed`, {
+            output: {
+              kind: "child_tool",
+              tool_call_id: `${workItemId}-read-ui`,
+              tool_name: "Inspect Copilot UI",
+              status: "completed",
+            },
+          }),
+        });
+        await waitForSubagentStep();
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: canonicalEvent("work_item.completed", `${workItemId}-completed`, {
+            result: "Agent GUI parity verified",
+          }),
+        });
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: {
+            sessionUpdate: "tool_call_update",
+            toolCallId: parentToolCallId,
+            title: "Delegate agent GUI review",
+            kind: "other",
+            status: "completed",
+            rawOutput: { result: "Agent GUI parity verified" },
+          },
+        });
+      }
       if (text.includes("列出画布上的节点")) {
         send({
           type: "session.event",
@@ -619,7 +749,7 @@ export function createConfiguredLocalAcpAdapter(
         },
       ],
       listResumeSessions: async () => [],
-      createSessionManager: createMockAcpSessionManager,
+      createSessionManager: (send) => createMockAcpSessionManager(send, env),
       runPreferences: createLocalAcpRunPreferencesStore(localDataDir),
       hostname: () => "Mock Desktop",
       osTag: () => "mock/e2e",

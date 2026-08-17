@@ -35,7 +35,7 @@ async function relativeFiles(root: URL, prefix = ""): Promise<string[]> {
   return files.sort();
 }
 
-test("plugin manifest starts one bundled MCP runtime and keeps product state in the shared local host", async () => {
+test("plugin manifest starts product and agent-native MCP peers against the shared local host", async () => {
   const manifest = JSON.parse(
     await readFile(
       new URL("../.codex-plugin/plugin.json", import.meta.url),
@@ -58,6 +58,12 @@ test("plugin manifest starts one bundled MCP runtime and keeps product state in 
   assert.deepEqual(mcp.mcpServers.clash, {
     command: "node",
     args: ["./runtime/dispatcher.js", "mcp"],
+    cwd: ".",
+    env: { CLASH_PROFILE: "prod" },
+  });
+  assert.deepEqual(mcp.mcpServers.openma, {
+    command: "node",
+    args: ["./runtime/dispatcher.js", "openma-mcp"],
     cwd: ".",
     env: { CLASH_PROFILE: "prod" },
   });

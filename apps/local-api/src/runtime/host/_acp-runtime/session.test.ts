@@ -34,7 +34,7 @@ function makeStreamPair(): { child: ChildHandle; agentInput: ReadableStream<Uint
       stdout: agentToClient.readable,
       stderr: new ReadableStream<Uint8Array>({ start(controller) { controller.close(); } }),
       kill: async () => undefined,
-      exited: Promise.resolve({ code: 0, signal: null }),
+      exited: new Promise(() => undefined),
     },
     agentInput: clientToAgent.readable,
     agentOutput: agentToClient.writable,
@@ -340,6 +340,35 @@ class NewSessionCapabilityAgent implements Agent {
 }
 
 describe("AcpSessionImpl resume", () => {
+  it("turns a first-prompt broken pipe into an actionable process-exit error", async () => {
+    const child = createChildThatExitsOnFirstPrompt();
+    const session = new AcpSessionImpl({
+      child,
+      id: "test-first-prompt-exit",
+      options: {
+        agent: { command: "fake-agent", cwd: "/work/app" },
+        mcpServers: [],
+      },
+    });
+
+    await session.init();
+
+    const consumePrompt = async () => {
+      for await (const _event of session.prompt("hello")) {
+        // The child exits before producing a prompt response.
+      }
+    };
+
+    const error = await consumePrompt().catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain(
+      "The agent process exited before it could accept the prompt",
+    );
+    expect((error as Error).message).not.toMatch(/EPIPE/i);
+    expect(session.isAlive()).toBe(false);
+    await session.dispose();
+  });
+
   it("surfaces capability updates emitted while creating a new session before the first prompt", async () => {
     const pair = makeStreamPair();
     new AgentSideConnection(
@@ -554,7 +583,8 @@ describe("AcpSessionImpl resume", () => {
       ],
     });
 
-    await expect(session.setMode("codex:full-access")).resolves.toEqual({
+    await session.setMode("codex:full-access");
+    expect(session.modes).toEqual({
       currentModeId: "codex:full-access",
       availableModes: [
         { id: "codex:review", name: "Review" },
@@ -563,3 +593,73 @@ describe("AcpSessionImpl resume", () => {
     });
   });
 });
+
+function createChildThatExitsOnFirstPrompt(): ChildHandle {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  let stdoutController!: ReadableStreamDefaultController<Uint8Array>;
+  let resolveExit!: (result: { code: number | null; signal: string | null }) => void;
+  const exited = new Promise<{ code: number | null; signal: string | null }>(
+    (resolve) => {
+      resolveExit = resolve;
+    },
+  );
+  const stdout = new ReadableStream<Uint8Array>({
+    start(controller) {
+      stdoutController = controller;
+    },
+  });
+  let buffered = "";
+  let exitedAlready = false;
+
+  const respond = (id: number | string, result: unknown) => {
+    stdoutController.enqueue(
+      encoder.encode(`${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`),
+    );
+  };
+
+  return {
+    stdin: new WritableStream<Uint8Array>({
+      write(chunk) {
+        buffered += decoder.decode(chunk, { stream: true });
+        const lines = buffered.split("\n");
+        buffered = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const message = JSON.parse(line) as {
+            id?: number | string;
+            method?: string;
+          };
+          if (message.id === undefined) continue;
+          if (message.method === "initialize") {
+            respond(message.id, { protocolVersion: PROTOCOL_VERSION });
+          } else if (message.method === "session/new") {
+            respond(message.id, { sessionId: "first-prompt-exit" });
+          } else if (message.method === "session/prompt") {
+            exitedAlready = true;
+            resolveExit({ code: 1, signal: null });
+            throw Object.assign(new Error("write EPIPE"), { code: "EPIPE" });
+          }
+        }
+      },
+    }),
+    stdout,
+    stderr: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.close();
+      },
+    }),
+    exited,
+    async kill() {
+      if (!exitedAlready) {
+        exitedAlready = true;
+        resolveExit({ code: 0, signal: "SIGTERM" });
+      }
+      try {
+        stdoutController.close();
+      } catch {
+        // The protocol stream may already have closed it.
+      }
+    },
+  };
+}

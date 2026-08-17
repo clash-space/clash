@@ -24,7 +24,13 @@ import {
   resolveClashHostEntryPath,
   resolveClashSdkPythonPath,
 } from "../paths";
-import { resolveDesktopRuntime, type DesktopRuntime } from "../runtime";
+import {
+  resolveDesktopHostStdio,
+  resolveDesktopHostStartupTimeoutMs,
+  resolveDesktopRuntime,
+  useDesktopSourceHostWatch,
+  type DesktopRuntime,
+} from "../runtime";
 import type { DesktopControllerLogger } from "./types";
 
 const require = createRequire(import.meta.url);
@@ -101,19 +107,23 @@ export function createDesktopRuntimeController({
         resourcesPath: process.resourcesPath,
       });
       const sourceHost = hostEntryPath.endsWith(".ts");
+      const watchSourceHost = useDesktopSourceHostWatch(process.env);
       const daemon = createLocalDaemonBootstrap({
         runDir,
         profile: resolveClashProfile(process.env),
+        startupTimeoutMs: resolveDesktopHostStartupTimeoutMs(process.env),
         launch: async () =>
           launchDetachedLocalDaemon({
             entryPath: hostEntryPath,
             nodeArgs: sourceHost
-              ? [
+              ? watchSourceHost
+                ? [
                   require.resolve("tsx/cli"),
                   "watch",
                   "--tsconfig",
                   resolveClashDevTsconfigPath(moduleDir),
-                ]
+                  ]
+                : ["--import", require.resolve("tsx")]
               : undefined,
             cliEntryPath: resolveClashCliEntryPath({
               isPackaged: app.isPackaged,
@@ -126,9 +136,10 @@ export function createDesktopRuntimeController({
             nodePath: process.execPath,
             nodeVersion: process.versions.node,
             electronRunAsNode: true,
+            stdio: resolveDesktopHostStdio(process.env),
             daemonEnv: {
               CLASH_DAEMON_STARTED_BY: "desktop",
-              CLASH_NODE_EXEC_PATH: process.execPath,
+              CLASH_NODE_EXEC_PATH: process.env.CLASH_NODE_EXEC_PATH,
               CLASH_AGENT_BUNDLE_ROOT: resolveAgentBundleRoot({
                 isPackaged: app.isPackaged,
                 moduleDir,

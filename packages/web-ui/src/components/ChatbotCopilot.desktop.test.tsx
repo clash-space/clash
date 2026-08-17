@@ -97,6 +97,16 @@ vi.mock("react-i18next", () => ({
       if (key === "copilot.actions.openAgents") return "Open Agents";
       if (key === "copilot.errors.warningPrefix") return "Warning";
       if (key === "copilot.slash.noCommands") return "This agent has no slash commands.";
+      if (key === "copilot.subagent.activityTitle") return "Subagents";
+      if (key === "copilot.subagent.back") return "Back to conversation";
+      if (key === "copilot.subagent.close") return "Close subagent details";
+      if (key === "copilot.subagent.status.running") return "Working";
+      if (key === "copilot.subagent.status.completed") return "Completed";
+      if (key === "copilot.subagent.status.failed") return "Failed";
+      if (key === "copilot.subagent.status.cancelled") return "Cancelled";
+      if (key === "copilot.subagent.status.unknown") return "Status unknown";
+      if (key === "copilot.subagent.workingCount") return `${values?.count ?? 0} Working`;
+      if (key === "copilot.subagent.openTask") return `Open ${values?.title ?? "subagent"}`;
       return key;
     },
   }),
@@ -236,6 +246,7 @@ function runtimeState(overrides: Partial<UseClashRuntimeReturn> & Record<string,
     goal: null,
     transientStatus: null,
     diagnostics: [],
+    subagents: [],
     ready: false,
     sessionModes: null,
     permissionRequests: [],
@@ -364,6 +375,72 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(toggle);
     expect(onFollowingAgentChange).toHaveBeenCalledWith(true);
+  });
+
+  it("projects runtime subagents beside their parent turn and opens their real transcript", async () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const childTranscript: ByoMessage[] = [{
+      id: "subagent-child-reviewer",
+      role: "assistant",
+      parts: [{ type: "text", text: "I found the missing GUI connection." }],
+    }];
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      status: "streaming",
+      ready: true,
+      messages: [{
+        id: "asst-turn-review",
+        role: "assistant",
+        parts: [{
+          type: "tool_call",
+          toolCallId: "spawn-reviewer",
+          title: "Spawn reviewer",
+          status: "in_progress",
+        }],
+      }],
+      subagents: [{
+        id: "child-reviewer",
+        title: "Audit the agent GUI",
+        status: "running",
+        agentType: "reviewer",
+        detail: "Inspecting the Copilot wiring",
+        turnId: "turn-review",
+        parentToolCallId: "spawn-reviewer",
+        transcript: childTranscript,
+        sourceEventIds: [],
+      }],
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+
+    expect(screen.getByRole("button", { name: "Open Audit the agent GUI" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1 Working" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Audit the agent GUI" }));
+
+    const sheet = await screen.findByRole("dialog", { name: "Audit the agent GUI" });
+    expect(sheet).toHaveClass("right-0", "w-3/4", "max-w-sm");
+    expect(sheet).not.toHaveClass("w-[calc(100%-1rem)]");
+    expect(screen.getByRole("button", {
+      name: "Open Audit the agent GUI",
+      hidden: true,
+    })).toBeInTheDocument();
+    expect(mocks.AcpMessageList).toHaveBeenLastCalledWith(expect.objectContaining({
+      messages: childTranscript,
+      agentId: "codex-acp",
+    }));
   });
 
   it("reports the latest structured Canvas patch target for follow mode", async () => {

@@ -421,13 +421,9 @@ describe("ProjectEditor canvas minimap", () => {
     ).toBe(false);
   });
 
-  it("recenters the viewport on the average center of all nodes", () => {
+  it("fits every node into the viewport instead of preserving an oversized zoom", () => {
     expect(
-      sourceContains(source, "averageRectCenters("),
-      "mechanism missing",
-    ).toBe(true);
-    expect(
-      sourceContains(source, "centerViewportOnAverageNodePosition"),
+      sourceContains(source, "fitAllNodesIntoViewport"),
       "mechanism missing",
     ).toBe(true);
     expect(
@@ -435,9 +431,16 @@ describe("ProjectEditor canvas minimap", () => {
       "must not reappear",
     ).toBe(false);
     expect(
-      sourceContains(source, "reactFlowInstanceRef.current?.setCenter("),
+      sourceMatches(
+        source,
+        /instance\.fitView\(\{\s*nodes:\s*allNodes,\s*padding:/,
+      ),
       "mechanism missing",
     ).toBe(true);
+    expect(
+      sourceContains(source, "reactFlowInstanceRef.current?.setCenter("),
+      "must not preserve an oversized zoom",
+    ).toBe(false);
     expect(
       sourceContains(source, 'label="Center view on nodes"'),
       "mechanism missing",

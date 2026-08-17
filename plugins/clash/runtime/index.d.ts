@@ -53,6 +53,68 @@ declare function createMcpProjectHostClient(options?: {
     hostManager?: Pick<PluginHostManager, "ensureHost">;
 }): ProjectHostClient;
 
+interface OpenMaNativeTools {
+    searchSkills(input: {
+        query: string;
+        limit: number;
+    }): Promise<unknown>;
+    readSkill(input: {
+        skill: string;
+    }): Promise<unknown>;
+    readPluginFile(input: {
+        plugin: string;
+        path: string;
+    }): Promise<unknown>;
+    browserTabs(input: {
+        action: "list" | "new" | "select" | "close";
+        url?: string;
+        tab_id?: string;
+        index?: number;
+    }): Promise<unknown>;
+    browserNavigate(input: {
+        url: string;
+    }): Promise<unknown>;
+    browserScreenshot(input: {
+        full_page: boolean;
+    }): Promise<{
+        media_type: "image/png";
+        data: string;
+        tab_id: string;
+        url: string;
+    }>;
+    browserClick(input: {
+        selector: string;
+    }): Promise<unknown>;
+    browserType(input: {
+        selector: string;
+        text: string;
+        submit: boolean;
+    }): Promise<unknown>;
+    browserGetText(input: {
+        selector?: string;
+        max_chars: number;
+    }): Promise<string>;
+    browserEval(input: {
+        expression: string;
+    }): Promise<unknown>;
+    browserClose(): Promise<unknown>;
+    listSessions(input: {
+        query?: string;
+        limit?: number;
+    }): Promise<unknown>;
+    readSession(input: {
+        session_id: string;
+        after_seq?: number;
+        max_chars?: number;
+        include_activity?: boolean;
+    }): Promise<unknown>;
+}
+
+interface OpenMaPluginRoot {
+    name: string;
+    root: string;
+}
+
 type ClashPluginAppBundles = {
     studio: string;
     canvas: string;
@@ -65,6 +127,15 @@ type ClashPluginServerOptions = {
     appBundles?: ClashPluginAppBundles;
     pluginGateway?: PluginMcpGateway;
 };
+type OpenMaPluginServerOptions = {
+    client?: ProjectHostClient;
+    hostManager?: PluginHostManager;
+    tools?: OpenMaNativeTools;
+    taskId?: string;
+    pluginRoots?: readonly OpenMaPluginRoot[];
+    workspace?: string;
+    runBrowser?: (args: readonly string[]) => Promise<string>;
+};
 declare function createClashPluginRuntime(options?: ClashPluginServerOptions): {
     server: McpServer;
     hostManager?: PluginHostManager;
@@ -73,7 +144,15 @@ declare function createClashPluginRuntime(options?: ClashPluginServerOptions): {
 };
 declare function createClashPluginServer(options?: ClashPluginServerOptions): McpServer;
 declare function serveClashPluginStdio(options?: ClashPluginServerOptions): Promise<void>;
+declare function createOpenMaPluginRuntime(options?: OpenMaPluginServerOptions): {
+    server: McpServer;
+    hostManager?: PluginHostManager;
+    close(): Promise<void>;
+    closeHost(): Promise<void>;
+};
+declare function createOpenMaPluginServer(options?: OpenMaPluginServerOptions): McpServer;
+declare function serveOpenMaPluginStdio(options?: OpenMaPluginServerOptions): Promise<void>;
 
 declare function isDirectExecution(moduleUrl: string, argvEntry?: string, cwd?: string): boolean;
 
-export { type ClashPluginAppBundles, type ClashPluginServerOptions, type PluginHostManager, type PluginHostRecord, type PluginHostRuntimeLayout, createClashPluginRuntime, createClashPluginServer, createMcpProjectHostClient, createPluginHostManager, isDirectExecution, readActivePluginHost, resolvePluginHostRuntimeLayout, serveClashPluginStdio };
+export { type ClashPluginAppBundles, type ClashPluginServerOptions, type OpenMaPluginServerOptions, type PluginHostManager, type PluginHostRecord, type PluginHostRuntimeLayout, createClashPluginRuntime, createClashPluginServer, createMcpProjectHostClient, createOpenMaPluginRuntime, createOpenMaPluginServer, createPluginHostManager, isDirectExecution, readActivePluginHost, resolvePluginHostRuntimeLayout, serveClashPluginStdio, serveOpenMaPluginStdio };

@@ -74,6 +74,11 @@ export interface SessionManagerLike {
   setSpawnEnv?(env: Record<string, string | undefined>): void;
   start(params: SessionStartParamsLike): Promise<void> | void;
   prompt(params: SessionPromptParamsLike): Promise<void> | void;
+  steer?(
+    sessionId: string,
+    text: string,
+    turnId: string,
+  ): Promise<"injected" | "promptRequired" | "startedNewTurn" | "failed">;
   setConfigOption?(sessionId: string, configId: string, value: string | boolean): Promise<void> | void;
   setMode?(sessionId: string, modeId: string): Promise<void> | void;
   cancel(sessionId: string, turnId: string): void;
@@ -947,11 +952,26 @@ function isSessionCompleteMessage(msg: unknown): msg is {
   type: "session.complete";
   session_id: string;
   turn_id?: string;
+  stop_reason?: string;
+  usage?: Record<string, unknown>;
+  meta?: Record<string, unknown>;
 } {
   return !!msg &&
     typeof msg === "object" &&
     (msg as { type?: unknown }).type === "session.complete" &&
     typeof (msg as { session_id?: unknown }).session_id === "string";
+}
+
+function promptCompletionFromSessionComplete(msg: {
+  stop_reason?: string;
+  usage?: Record<string, unknown>;
+  meta?: Record<string, unknown>;
+}): Record<string, unknown> {
+  return {
+    ...(typeof msg.stop_reason === "string" ? { stopReason: msg.stop_reason } : {}),
+    ...(isPlainObject(msg.usage) ? { usage: msg.usage } : {}),
+    ...(isPlainObject(msg.meta) ? { _meta: msg.meta } : {}),
+  };
 }
 
 function agentTextFromSessionEvent(event: unknown): string | null {
@@ -2528,11 +2548,16 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
 
     void (async () => {
       try {
-        await Promise.resolve(entry.manager.prompt({
-          session_id: entry.id,
-          turn_id: turnId,
-          text,
-        }));
+        const outcome = entry.manager.steer && entry.activePromptTurnId
+          ? await entry.manager.steer(entry.id, text, turnId).catch(() => "failed" as const)
+          : "promptRequired" as const;
+        if (outcome === "promptRequired" || outcome === "failed") {
+          await Promise.resolve(entry.manager.prompt({
+            session_id: entry.id,
+            turn_id: turnId,
+            text,
+          }));
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const errorAfterPersist = this.persistTurnError(entry, turnId, message) ?? Promise.resolve();
@@ -2563,13 +2588,6 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     }
     this.appendUserPrompt(entry, turnId, text);
     return this.schedulePrompt(entry, turnId, text);
-  }
-
-  private markPromptCancelled(entry: LocalAcpSession, turnId: string): void {
-    if (entry.activePromptTurnId !== turnId) return;
-    entry.activePromptTurnId = null;
-    entry.scheduledPromptCount = Math.max(0, entry.scheduledPromptCount - 1);
-    this.sendPromptQueueUpdate(entry);
   }
 
   private drainQueuedPrompts(entry: LocalAcpSession): boolean {
@@ -2675,10 +2693,27 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     });
   }
 
-  private persistTurnComplete(entry: LocalAcpSession, turnId: string): Promise<void> | null {
-    return this.sessionMessageStore?.markTurnComplete
-      ? this.enqueuePersistence(entry, () => this.sessionMessageStore?.markTurnComplete?.(entry.id, turnId))
+  private persistTurnComplete(
+    entry: LocalAcpSession,
+    turnId: string,
+    response: Record<string, unknown>,
+  ): Promise<void> | null {
+    const hasResponse = Object.keys(response).length > 0;
+    const eventPersisted = hasResponse
+      ? this.appendAgentEvent(entry, turnId, {
+          type: "promptComplete",
+          response,
+        })
       : null;
+    return this.sessionMessageStore?.markTurnComplete
+      ? this.enqueuePersistence(entry, () =>
+          this.sessionMessageStore?.markTurnComplete?.(
+            entry.id,
+            turnId,
+            hasResponse ? response : undefined,
+          )
+        )
+      : eventPersisted;
   }
 
   private persistTurnError(entry: LocalAcpSession, turnId: string | null, message: string): Promise<void> | null {
@@ -2699,7 +2734,11 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
       return this.persistTurnError(entry, msg.turn_id ?? null, msg.message);
     }
     if (isSessionCompleteMessage(msg) && msg.turn_id) {
-      return this.persistTurnComplete(entry, msg.turn_id);
+      return this.persistTurnComplete(
+        entry,
+        msg.turn_id,
+        promptCompletionFromSessionComplete(msg),
+      );
     }
     return null;
   }
@@ -2960,7 +2999,6 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
           return;
         case "cancel":
           if (msg.turn_id) {
-            this.markPromptCancelled(entry, msg.turn_id);
             entry.manager.cancel(sessionId, msg.turn_id);
           }
           return;

@@ -208,6 +208,11 @@ type ParsedKind =
 
 interface ParsedEvent {
   kind: ParsedKind;
+  /** Full canonical message replacing previously streamed deltas. */
+  snapshot?: true;
+  /** ACP prompt terminal. Used to settle tool cards even when the terminal
+   * itself has no user-visible notice (for example `end_turn`). */
+  terminal?: true;
   /** For text / thought. */
   text?: string;
   messageId?: string;
@@ -222,6 +227,21 @@ interface ParsedEvent {
   note?: { title: string; detail?: string; tone?: 'neutral' | 'warning' | 'error' };
   /** Original event, used for the raw_event fallback. */
   event: unknown;
+}
+
+function promptCompleteNote(response: unknown): ParsedEvent['note'] {
+  if (!response || typeof response !== 'object' || Array.isArray(response)) return undefined;
+  const stopReason = (response as Record<string, unknown>).stopReason;
+  switch (stopReason) {
+    case 'max_tokens':
+      return { title: 'Response stopped at the token limit', tone: 'warning' };
+    case 'max_turn_requests':
+      return { title: 'Response stopped at the turn limit', tone: 'warning' };
+    case 'refusal':
+      return { title: 'The agent declined to answer', tone: 'warning' };
+    default:
+      return undefined;
+  }
 }
 
 function sessionUpdateInner(event: unknown): Record<string, unknown> {
@@ -438,6 +458,13 @@ const ACP_SESSION_UPDATE_TYPES = new Set([
   'plan_removed',
   'available_commands_update',
   ...SILENT_SESSION_UPDATES,
+]);
+
+const ACP_CLIENT_CALLBACK_TYPES = new Set([
+  'acp.client_request',
+  'acp.client_response',
+  'acp.client_error',
+  'acp.client_notification',
 ]);
 
 /** Normalize a wire ToolCall(Update) object into our ParsedEvent.tool shape.
@@ -662,10 +689,13 @@ function parseClashAcpEventFallback(event: unknown): ParsedEvent {
       return { kind: 'tool_call', tool: normalizeToolCall(inner), event };
     }
     if (inner.type === 'promptError' && typeof inner.error === 'string' && inner.error.length > 0) {
-      return { kind: 'note', note: promptErrorNote(inner.error), event };
+      return { kind: 'note', note: promptErrorNote(inner.error), terminal: true, event };
     }
     if (inner.type === 'promptComplete') {
-      return { kind: 'note', note: { title: 'Turn complete', tone: 'neutral' }, event };
+      const note = promptCompleteNote(inner.response);
+      return note
+        ? { kind: 'note', note, terminal: true, event }
+        : { kind: 'silent', terminal: true, event };
     }
     return { kind: 'raw', event };
   }
@@ -791,9 +821,19 @@ function parseClashAcpEventFallback(event: unknown): ParsedEvent {
 export function parseAcpEvent(event: unknown): ParsedEvent {
   const inner = sessionUpdateInner(event);
 
+  // Canonical OpenMA lifecycle events are persisted alongside the raw ACP
+  // stream for subagent/callback consumers. Until that dedicated UI lands,
+  // they must not fall through as duplicate raw transcript cards.
+  if (inner.schema_version === 'oma.event.v1') {
+    return { kind: 'silent', event };
+  }
+  if (typeof inner.type === 'string' && ACP_CLIENT_CALLBACK_TYPES.has(inner.type)) {
+    return { kind: 'silent', event };
+  }
+
   // Clash keeps richer actionable error copy. Everything in the ACP protocol
   // itself is normalized by @openma/common so Backchat and Clash cannot drift.
-  if (inner.type === 'promptError') {
+  if (inner.type === 'promptError' || inner.type === 'promptComplete') {
     return parseClashAcpEventFallback(event);
   }
 
@@ -804,6 +844,7 @@ export function parseAcpEvent(event: unknown): ParsedEvent {
       return {
         kind: 'text',
         text: parsed.text,
+        ...(inner.type === 'agent.message' ? { snapshot: true as const } : {}),
         ...(parsed.messageId ? { messageId: parsed.messageId } : {}),
         ...(parsed.phase ? { phase: parsed.phase } : {}),
         event,
@@ -873,6 +914,31 @@ export interface AppendResult {
   commands?: AvailableCommand[];
 }
 
+/** Settle tool cards that never received their own terminal update before the
+ * enclosing ACP turn ended. The caller supplies message indexes so tools from
+ * other concurrent/restored turns are left untouched. */
+export function settleUnfinishedToolCalls(
+  messages: ByoMessage[],
+  messageIndexes: Iterable<number>,
+): void {
+  for (const index of new Set(messageIndexes)) {
+    const message = messages[index];
+    if (!message || message.role !== 'assistant') continue;
+    let changed = false;
+    const parts = message.parts.map((part) => {
+      if (
+        part.type !== 'tool_call'
+        || (part.status !== undefined && part.status !== 'pending' && part.status !== 'in_progress')
+      ) {
+        return part;
+      }
+      changed = true;
+      return { ...part, status: 'interrupted' };
+    });
+    if (changed) messages[index] = { ...message, parts };
+  }
+}
+
 /**
  * Append a parsed event to the right message bubble. Returns the
  * bubble index (or -1 when the event was silently dropped — caller
@@ -890,7 +956,12 @@ export function appendAcpEvent(
   messageId = `asst-${turnId}`,
 ): AppendResult {
   const parsed = parseAcpEvent(event);
-  if (parsed.kind === 'silent') return { idx: knownIdx ?? -1 };
+  if (parsed.kind === 'silent') {
+    if (parsed.terminal && knownIdx !== undefined) {
+      settleUnfinishedToolCalls(messages, [knownIdx]);
+    }
+    return { idx: knownIdx ?? -1 };
+  }
   if (parsed.kind === 'commands') {
     return { idx: knownIdx ?? -1, commands: parsed.commands };
   }
@@ -936,6 +1007,7 @@ export function appendAcpEvent(
 
   if (parsed.kind === 'note' && parsed.note) {
     const i = ensure();
+    if (parsed.terminal) settleUnfinishedToolCalls(messages, [i]);
     messages[i] = {
       ...messages[i],
       parts: [...messages[i].parts, { type: 'event_note', ...parsed.note } as ByoMessage['parts'][number]],
@@ -963,7 +1035,9 @@ export function appendAcpEvent(
       ...(partType === 'text' && parsed.phase ? { phase: parsed.phase } : {}),
     } as ByoMessage['parts'][number];
     if (sameStream && (last.type === 'text' || last.type === 'thought')) {
-      const merged = mergeStreamingText(last.text, parsed.text);
+      const merged = parsed.snapshot
+        ? parsed.text
+        : mergeStreamingText(last.text, parsed.text);
       messages[i] = {
         ...messages[i],
         parts: [
@@ -1074,5 +1148,17 @@ const MIN_OVERLAP = 8;
 const SNAPSHOT_HEAD_PROBE = 16;
 
 export function mergeStreamingText(accumulated: string, incoming: string): string {
+  // Short ACP deltas can legitimately repeat the accumulator suffix ("3",
+  // "3" or two spaces). Treating every suffix match as a cumulative snapshot
+  // drops model output; snapshot overlap is only reliable at the same minimum
+  // span used by the shared merger.
+  if (
+    accumulated.length > 0
+    && incoming.length > 0
+    && incoming.length < MIN_OVERLAP
+    && accumulated.endsWith(incoming)
+  ) {
+    return accumulated + incoming;
+  }
   return mergeOpenMaStreamingText(accumulated, incoming);
 }

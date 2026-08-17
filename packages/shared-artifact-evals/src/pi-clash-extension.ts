@@ -75,11 +75,98 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
+function projectOperationForPi(value: unknown): unknown {
+  const candidate = asRecord(value);
+  if (!candidate) return value;
+  return Object.fromEntries(
+    [
+      "name",
+      "operation",
+      "title",
+      "description",
+      "readOnly",
+      "destructive",
+      "inputSchema",
+      "recovery",
+    ]
+      .filter((key) => candidate[key] !== undefined)
+      .map((key) => [key, candidate[key]]),
+  );
+}
+
+const DISCLOSURE_OPERATION_PREFIXES = {
+  assets: "clash_assets_",
+  canvas: "clash_canvas_",
+  timeline: "clash_timeline_",
+  director: "clash_director_",
+} as const;
+
+function dispatcherOperationPrefix(selectedCommand: unknown):
+  | string
+  | undefined {
+  return typeof selectedCommand === "string"
+    ? DISCLOSURE_OPERATION_PREFIXES[
+        selectedCommand as keyof typeof DISCLOSURE_OPERATION_PREFIXES
+      ]
+    : undefined;
+}
+
+function isDispatcherContract(
+  selectedCommand: unknown,
+  value: unknown,
+): boolean {
+  const candidate = asRecord(value);
+  const prefix = dispatcherOperationPrefix(selectedCommand);
+  return (
+    candidate !== undefined &&
+    typeof candidate.name === "string" &&
+    prefix !== undefined &&
+    candidate.name.startsWith(prefix) &&
+    typeof candidate.operation === "string" &&
+    asRecord(candidate.inputSchema) !== undefined
+  );
+}
+
+function isDispatcherOperationIndexEntry(
+  selectedCommand: unknown,
+  value: unknown,
+): boolean {
+  const candidate = asRecord(value);
+  const prefix = dispatcherOperationPrefix(selectedCommand);
+  return (
+    candidate !== undefined &&
+    typeof candidate.name === "string" &&
+    prefix !== undefined &&
+    candidate.name.startsWith(prefix) &&
+    typeof candidate.operation === "string" &&
+    typeof candidate.title === "string" &&
+    typeof candidate.readOnly === "boolean" &&
+    typeof candidate.destructive === "boolean"
+  );
+}
+
+function isDispatcherDisclosureEnvelope(
+  record: Record<string, unknown>,
+): boolean {
+  return (
+    record.schemaVersion === 1 &&
+    typeof record.selectedCommand === "string" &&
+    record.selectedCommand.length > 0
+  );
+}
+
 export function projectStructuredContentForPi(value: unknown): unknown {
   const record = asRecord(value);
   if (!record) return value;
 
-  if (Array.isArray(record.operations)) {
+  if (
+    isDispatcherDisclosureEnvelope(record) &&
+    Array.isArray(record.operations) &&
+    record.operations.length > 0 &&
+    record.operations.every((operation) =>
+      isDispatcherOperationIndexEntry(record.selectedCommand, operation),
+    )
+  ) {
     return {
       ...(record.schemaVersion === undefined
         ? {}
@@ -88,24 +175,41 @@ export function projectStructuredContentForPi(value: unknown): unknown {
       ...(record.selectedCommand === undefined
         ? {}
         : { selectedCommand: record.selectedCommand }),
-      operations: record.operations.map((operation) => {
-        const candidate = asRecord(operation);
-        if (!candidate) return operation;
-        return Object.fromEntries(
-          [
-            "name",
-            "operation",
-            "title",
-            "description",
-            "readOnly",
-            "destructive",
-            "inputSchema",
-            "recovery",
-          ]
-            .filter((key) => candidate[key] !== undefined)
-            .map((key) => [key, candidate[key]]),
-        );
-      }),
+      operations: record.operations.map(projectOperationForPi),
+    };
+  }
+
+  if (
+    isDispatcherDisclosureEnvelope(record) &&
+    isDispatcherContract(record.selectedCommand, record.contract)
+  ) {
+    return {
+      ...(record.schemaVersion === undefined
+        ? {}
+        : { schemaVersion: record.schemaVersion }),
+      ...(record.selectedCommand === undefined
+        ? {}
+        : { selectedCommand: record.selectedCommand }),
+      contract: projectOperationForPi(record.contract),
+    };
+  }
+
+  if (
+    isDispatcherDisclosureEnvelope(record) &&
+    Array.isArray(record.contracts) &&
+    record.contracts.length > 0 &&
+    record.contracts.every((contract) =>
+      isDispatcherContract(record.selectedCommand, contract),
+    )
+  ) {
+    return {
+      ...(record.schemaVersion === undefined
+        ? {}
+        : { schemaVersion: record.schemaVersion }),
+      ...(record.selectedCommand === undefined
+        ? {}
+        : { selectedCommand: record.selectedCommand }),
+      contracts: record.contracts.map(projectOperationForPi),
     };
   }
 

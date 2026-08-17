@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { resolveDesktopRuntime } from "./runtime";
+import {
+  resolveDesktopHostStartupTimeoutMs,
+  resolveDesktopRuntime,
+  useDesktopSourceHostWatch,
+} from "./runtime";
+import * as desktopRuntime from "./runtime";
 
 describe("desktop runtime", () => {
   it("derives local API and WebSocket endpoints from the API port", () => {
@@ -35,5 +40,46 @@ describe("desktop runtime", () => {
         auth: { mode: "local-user" },
       },
     });
+  });
+
+  it("keeps daemon startup tuning opt-in and validates the E2E override", () => {
+    expect(resolveDesktopHostStartupTimeoutMs({})).toBeUndefined();
+    expect(
+      resolveDesktopHostStartupTimeoutMs({
+        CLASH_DESKTOP_HOST_STARTUP_TIMEOUT_MS: "60000",
+      }),
+    ).toBe(60_000);
+    expect(() =>
+      resolveDesktopHostStartupTimeoutMs({
+        CLASH_DESKTOP_HOST_STARTUP_TIMEOUT_MS: "eventually",
+      }),
+    ).toThrow(/startup timeout/iu);
+  });
+
+  it("allows an isolated smoke run to disable the source-host watch wrapper", () => {
+    expect(useDesktopSourceHostWatch({})).toBe(true);
+    expect(useDesktopSourceHostWatch({ CLASH_DESKTOP_SOURCE_HOST_WATCH: "0" })).toBe(false);
+  });
+
+  it("validates the opt-in detached Host stdio instrumentation", () => {
+    const resolveDesktopHostStdio = (
+      desktopRuntime as unknown as {
+        resolveDesktopHostStdio?: (
+          env: Record<string, string | undefined>,
+        ) => "ignore" | "inherit" | undefined;
+      }
+    ).resolveDesktopHostStdio;
+
+    expect(typeof resolveDesktopHostStdio).toBe("function");
+    expect(resolveDesktopHostStdio?.({})).toBeUndefined();
+    expect(
+      resolveDesktopHostStdio?.({ CLASH_DESKTOP_HOST_STDIO: "inherit" }),
+    ).toBe("inherit");
+    expect(
+      resolveDesktopHostStdio?.({ CLASH_DESKTOP_HOST_STDIO: "ignore" }),
+    ).toBe("ignore");
+    expect(() =>
+      resolveDesktopHostStdio?.({ CLASH_DESKTOP_HOST_STDIO: "pipe" }),
+    ).toThrow(/Host stdio/iu);
   });
 });

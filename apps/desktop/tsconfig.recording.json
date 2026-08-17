@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.dev.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true
+  },
+  "include": [
+    "e2e/recording/**/*.ts",
+    "e2e/startup-shared.mjs",
+    "../../demos/desktop/v1/**/*.ts"
+  ]
+}

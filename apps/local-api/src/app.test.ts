@@ -9930,6 +9930,26 @@ describe("local API app", () => {
       ],
       created_at: 1_700_000_001,
     });
+    const canonicalChildEvent = {
+      schema: "oma.event.v1",
+      schema_version: "oma.event.v1",
+      event_id: "canonical-child-complete",
+      type: "work_item.completed",
+      session_id: "local-session-persisted",
+      turn_id: "turn-1",
+      work_item_id: "child-1",
+      source: { kind: "harness", harness: "codex-acp", adapter: "codex" },
+      occurred_at: "2026-08-16T00:00:00.000Z",
+      data: { kind: "agent", result: "audit complete" },
+    };
+    await messageStore.appendAgentEvent("local-session-persisted", {
+      id: "turn-1-agent",
+      sender_kind: "agent",
+      sender_id: "local-clash",
+      turn_id: "turn-1",
+      events: [canonicalChildEvent],
+      created_at: 1_700_000_001,
+    });
     await messageStore.appendAgentEvent("local-session-persisted", {
       id: "turn-1-agent",
       sender_kind: "agent",
@@ -9970,6 +9990,7 @@ describe("local API app", () => {
               type: "agent_message_chunk",
               content: { type: "text", text: "hello human" },
             },
+            canonicalChildEvent,
             { sessionUpdate: "session_info_update", title: "Generated title" },
           ],
           created_at: 1_700_000_001,
@@ -9978,6 +9999,65 @@ describe("local API app", () => {
     });
     expect(await sessions.json()).toMatchObject({
       sessions: [{ id: "local-session-persisted", title: "Generated title" }],
+    });
+  });
+
+  it("persists a non-success ACP stop reason for cold transcript restore", async () => {
+    let messageStore: any = null;
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      localAcp: {
+        async listRuntimes() {
+          return { runtimes: [] };
+        },
+        async createSession() {
+          return { session_id: "local-session-stop-reason" };
+        },
+        async listResumeSessions() {
+          return { sessions: [] };
+        },
+        setSessionMessageStore(store: any) {
+          messageStore = store;
+        },
+      } as any,
+    });
+
+    await app.request("/api/v1/runtimes/desktop-local/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        agent_id: "codex-acp",
+        project_id: "project-stop-reason",
+      }),
+    });
+    await messageStore.markTurnComplete(
+      "local-session-stop-reason",
+      "turn-limited",
+      { stopReason: "max_tokens" },
+    );
+
+    const reopened = createLocalApiApp({ dataDir, userId: "local-user" });
+    const restored = await reopened.request(
+      "/api/v1/local-sessions/local-session-stop-reason/messages",
+    );
+
+    expect(await restored.json()).toEqual({
+      messages: [
+        {
+          id: "turn-limited-agent",
+          sender_kind: "agent",
+          sender_id: "local-agent",
+          turn_id: "turn-limited",
+          events: [
+            {
+              type: "promptComplete",
+              response: { stopReason: "max_tokens" },
+            },
+          ],
+          created_at: expect.any(Number),
+        },
+      ],
     });
   });
 

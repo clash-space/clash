@@ -59,6 +59,14 @@ function transportScope(input: TimelineToolInput): TimelineToolInput {
   };
 }
 
+function timelineEntity(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const timeline = (value as { timeline?: unknown }).timeline;
+  return timeline && typeof timeline === "object" && !Array.isArray(timeline)
+    ? timeline
+    : value;
+}
+
 export const TIMELINE_MCP_EXECUTORS = {
   "timeline.open": {
     title: "Open Clash Timeline",
@@ -146,7 +154,7 @@ export const TIMELINE_MCP_EXECUTORS = {
         name: input.name,
       };
       const created = await adapter.create(transportInput);
-      if (!input.state) return created;
+      if (!input.state) return timelineEntity(created);
       const current = await adapter.get(transportInput);
       if (!current.revisionId) {
         throw new Error(`Timeline ${input.id} did not expose a revisionId after creation`);
@@ -174,34 +182,40 @@ export const TIMELINE_MCP_EXECUTORS = {
     title: "Attach timeline to Canvas",
     inputSchema: timelineOperationInputSchema("timeline.attach"),
     outputSchema: timelineOperationOutputSchema("timeline.attach"),
-    execute: (input, adapter) => adapter.attach({
-      ...transportScope(input),
-      timelineId: input.timelineId,
-      canvasId: input.canvasId,
-      ...(input.actionNodeId === undefined ? {} : { nodeId: input.actionNodeId }),
-      ...(input.position === undefined ? {} : { position: input.position }),
-    }),
+    async execute(input, adapter) {
+      return timelineEntity(await adapter.attach({
+        ...transportScope(input),
+        timelineId: input.timelineId,
+        canvasId: input.canvasId,
+        ...(input.actionNodeId === undefined ? {} : { nodeId: input.actionNodeId }),
+        ...(input.position === undefined ? {} : { position: input.position }),
+      }));
+    },
     summary: jsonSummary,
   },
   "timeline.detach": {
     title: "Detach timeline",
     inputSchema: timelineOperationInputSchema("timeline.detach"),
     outputSchema: timelineOperationOutputSchema("timeline.detach"),
-    execute: (input, adapter) => adapter.detach(input),
+    async execute(input, adapter) {
+      return timelineEntity(await adapter.detach(input));
+    },
     summary: jsonSummary,
   },
   "timeline.copy": {
     title: "Copy timeline",
     inputSchema: timelineOperationInputSchema("timeline.copy"),
     outputSchema: timelineOperationOutputSchema("timeline.copy"),
-    execute: (input, adapter) => adapter.copy({
-      ...transportScope(input),
-      timelineId: input.sourceTimelineId,
-      canvasId: input.targetCanvasId,
-      ...(input.newTimelineId === undefined ? {} : { newTimelineId: input.newTimelineId }),
-      ...(input.newActionNodeId === undefined ? {} : { newNodeId: input.newActionNodeId }),
-      ...(input.position === undefined ? {} : { position: input.position }),
-    }),
+    async execute(input, adapter) {
+      return timelineEntity(await adapter.copy({
+        ...transportScope(input),
+        timelineId: input.sourceTimelineId,
+        canvasId: input.targetCanvasId,
+        ...(input.newTimelineId === undefined ? {} : { newTimelineId: input.newTimelineId }),
+        ...(input.newActionNodeId === undefined ? {} : { newNodeId: input.newActionNodeId }),
+        ...(input.position === undefined ? {} : { position: input.position }),
+      }));
+    },
     summary: jsonSummary,
   },
   "timeline.render": {

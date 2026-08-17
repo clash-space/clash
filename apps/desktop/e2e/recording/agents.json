@@ -1,0 +1,9 @@
+{
+  "summary": "Opt-in Electron demo recorder driven by real product UI and real Agent sessions.",
+  "architecture_notes": [
+    "Session WebSocket events control recording cadence; persisted session messages are consumed only in memory while trusted tool aggregates and whitelisted Project Host readback prove outcomes.",
+    "DOM state is used only to operate and frame the product UI, never as product-state authority.",
+    "Every case keeps video, sanitized event journal, count/id-only product readback, screenshots, and a structured aggregate result; raw messages, reasoning, tool I/O, credentials, and local paths are never artifacts.",
+    "Real Agent runs remain explicit and never join the default unit or E2E suite."
+  ]
+}

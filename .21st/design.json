@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "project": {
+    "name": "@clash/workspace",
+    "productType": null,
+    "stack": []
+  },
+  "sources": {
+    "tokens": [],
+    "components": [],
+    "assets": [],
+    "instructions": [
+      "AGENTS.md"
+    ]
+  },
+  "design": {
+    "colorMode": "unknown",
+    "colors": {},
+    "typography": {},
+    "spacing": {},
+    "radius": {},
+    "shadows": {},
+    "motion": {},
+    "density": "unknown"
+  },
+  "components": {
+    "installed": [],
+    "preferredPrimitives": [],
+    "patterns": []
+  },
+  "constraints": {
+    "must": [],
+    "avoid": []
+  },
+  "decisions": [
+    "Multi-agent activity stays spatially attached to the main Copilot: an inline work-item row in the transcript, a compact running dock above the composer, and a modal right-side Radix Sheet portaled inside the Copilot shell. Following the 21st sean0205/sheet proportion, the Sheet uses three quarters of its host with a 24rem cap so at least one quarter of the parent conversation stays visibly exposed; it uses a neutral scrim and one close affordance, not route-style Back navigation. Opening child details never changes route or unmounts the parent conversation. Runtime-backed actions only; existing Clash ACP and product-tool renderers remain the transcript source of truth.",
+    "Live reasoning follows Backchat's tail projection: only a thought that is still the newest event in the newest streaming assistant turn is presented as live. Every explicit line gets one truncated header row, while the full formatted body stays mounted behind the Radix disclosure so expanding it does not restart the stream. Thought detail uses the transcript's main scroll instead of nesting another vertical viewport. Runtime upgrades replace their action button with a non-interactive status spinner until the package operation settles."
+  ],
+  "evidence": [
+    {
+      "fact": "project.instructions",
+      "source": "AGENTS.md"
+    }
+  ],
+  "generatedAt": "2026-08-15T18:34:40.550Z"
+}

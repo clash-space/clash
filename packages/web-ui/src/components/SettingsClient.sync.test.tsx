@@ -2598,7 +2598,7 @@ describe("SettingsClient runtime harnesses", () => {
     const updateTrigger = await screen.findByRole("button", { name: "1 ACP update available" });
     fireEvent.click(await screen.findByRole("button", { name: "Upgrade Codex" }));
     fireEvent.click(updateTrigger);
-    expect(await screen.findByRole("button", { name: "Updating Codex" })).toBeTruthy();
+    expect(await screen.findByRole("status", { name: "Updating Codex" })).toBeTruthy();
 
     await act(async () => {
       resolveUpgrade(new Response(JSON.stringify({
@@ -2613,7 +2613,7 @@ describe("SettingsClient runtime harnesses", () => {
 
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: "Upgrade Codex" })).toBeNull();
-      expect(screen.queryByRole("button", { name: "Updating Codex" })).toBeNull();
+      expect(screen.queryByRole("status", { name: "Updating Codex" })).toBeNull();
       expect(screen.getByText("Codex updated to 0.60.0")).toBeTruthy();
     });
   });

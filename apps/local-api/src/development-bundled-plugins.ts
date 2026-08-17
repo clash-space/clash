@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
@@ -43,16 +43,24 @@ async function buildPluginPackage(
 ): Promise<void> {
   const packageManager = process.env.npm_execpath;
   const scriptEntrypoint = packageManager?.match(/\.[cm]?js$/i);
+  const nodeExecutable =
+    process.env.CLASH_NODE_EXEC_PATH?.trim() || process.execPath;
   const executable = scriptEntrypoint
-    ? process.execPath
+    ? nodeExecutable
     : (packageManager ?? "pnpm");
   const args = scriptEntrypoint
     ? [packageManager!, "run", "build"]
     : ["run", "build"];
+  const childEnv = {
+    ...process.env,
+    PATH: [dirname(nodeExecutable), process.env.PATH]
+      .filter((part): part is string => Boolean(part))
+      .join(delimiter),
+  };
   try {
     await execFileAsync(executable, args, {
       cwd: plugin.pluginRoot,
-      env: process.env,
+      env: childEnv,
     });
   } catch (error) {
     const details = error as Error & { stderr?: string; stdout?: string };

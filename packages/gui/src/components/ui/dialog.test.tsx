@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Dialog } from "./dialog";
@@ -41,5 +41,30 @@ describe("Dialog", () => {
 
         fireEvent.click(screen.getByRole("button", { name: "Close" }));
         expect(onClose).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps a non-modal local portal inside its accessible ancestor surface", () => {
+        const portalContainer = document.createElement("section");
+        portalContainer.setAttribute("aria-label", "Copilot surface");
+        document.body.appendChild(portalContainer);
+
+        render(
+            <Dialog
+                open
+                modal={false}
+                portalContainer={portalContainer}
+                onClose={vi.fn()}
+                ariaLabel="Child agent transcript"
+            >
+                <div>Nested transcript</div>
+            </Dialog>,
+        );
+
+        expect(portalContainer).not.toHaveAttribute("aria-hidden");
+        expect(
+            within(portalContainer).getByRole("dialog", { name: "Child agent transcript" }),
+        ).toBeInTheDocument();
+
+        portalContainer.remove();
     });
 });

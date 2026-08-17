@@ -73,6 +73,10 @@ export const DEV_WATCH_IGNORES = ["**/dist/**", "**/release/**", "**/.tmp/**"];
 // the project's own wrangler.toml — or the wrapper wrangler.toml in
 // clash-hosted/apps/web-hosted) bundles workers/app.ts itself.
 export default defineConfig(async ({ command, isPreview }) => {
+  const freezeE2eSource =
+    command === "serve" &&
+    !isPreview &&
+    process.env.CLASH_WEB_E2E_FREEZE_SOURCE === "1";
   const cloudflarePlugins =
     command === "serve" &&
     !isPreview &&
@@ -144,6 +148,9 @@ export default defineConfig(async ({ command, isPreview }) => {
     server: {
       port: 3000,
       host: "0.0.0.0",
+      // Long-running recordings load the current source once, then keep that
+      // renderer stable while other agents continue editing the shared tree.
+      hmr: freezeE2eSource ? false : undefined,
       // Vite restricts dev fs to cwd by default; in our pnpm monorepo,
       // workspace packages (packages/web-ui, etc.) live above apps/web/.
       // Without this, dynamic imports of those files 403 in dev.
@@ -151,7 +158,7 @@ export default defineConfig(async ({ command, isPreview }) => {
       // Tests and package builds rewrite workspace dist files. They are not
       // runtime inputs in dev (the aliases above point at source), so watching
       // them only causes expensive full-page reloads and lost editor state.
-      watch: { ignored: DEV_WATCH_IGNORES },
+      watch: freezeE2eSource ? null : { ignored: DEV_WATCH_IGNORES },
     },
     preview: {
       port: 3000,

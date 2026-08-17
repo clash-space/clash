@@ -343,35 +343,33 @@ export function HarnessUpdateNotifier() {
                       </p>
                     ) : null}
                   </div>
-                  <Button
-                    aria-label={
-                      updating
-                        ? `Updating ${harness.label}`
-                        : error
-                          ? `Retry ${harness.label} update`
-                          : `Update ${harness.label}`
-                    }
-                    disabled={updating}
-                    onClick={() => void startUpgrade(harness)}
-                    size={null}
-                    shape={null}
-                    className="mt-0.5 h-8 min-h-0 rounded-lg px-2.5 text-xs shadow-none"
-                  >
-                    {updating ? (
-                      <>
-                        <CircleNotch
-                          className="h-3.5 w-3.5 animate-spin"
-                          weight="bold"
-                          aria-hidden="true"
-                        />
-                        Updating
-                      </>
-                    ) : error ? (
-                      "Retry"
-                    ) : (
-                      "Update"
-                    )}
-                  </Button>
+                  {updating ? (
+                    <div
+                      role="status"
+                      aria-label={`Updating ${harness.label}`}
+                      data-harness-update-spinner="true"
+                      className="mt-0.5 inline-flex h-8 w-20 items-center justify-center gap-1.5 text-xs text-stone-500 dark:text-stone-400"
+                    >
+                      <CircleNotch
+                        className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+                        weight="bold"
+                        aria-hidden="true"
+                      />
+                      <span>Updating</span>
+                    </div>
+                  ) : (
+                    <Button
+                      aria-label={error
+                        ? `Retry ${harness.label} update`
+                        : `Update ${harness.label}`}
+                      onClick={() => void startUpgrade(harness)}
+                      size={null}
+                      shape={null}
+                      className="mt-0.5 h-8 min-h-0 rounded-lg px-2.5 text-xs shadow-none"
+                    >
+                      {error ? "Retry" : "Update"}
+                    </Button>
+                  )}
                 </div>
               );
             })}

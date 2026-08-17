@@ -2444,6 +2444,24 @@ describe("local ACP adapter", () => {
       turn_id: "turn-store",
       event: { type: "agent_message_chunk", content: { type: "text", text: "hi" } },
     });
+    const canonicalChildEvent = {
+      schema: "oma.event.v1",
+      schema_version: "oma.event.v1",
+      event_id: "canonical-child-started",
+      type: "work_item.started",
+      session_id: "local-acp-store",
+      turn_id: "turn-store",
+      work_item_id: "child-1",
+      source: { kind: "harness", harness: "codex-acp", adapter: "codex" },
+      occurred_at: "2026-08-16T00:00:00.000Z",
+      data: { kind: "agent", title: "Audit persistence" },
+    };
+    sendFromManager({
+      type: "session.event",
+      session_id: "local-acp-store",
+      turn_id: "turn-store",
+      event: canonicalChildEvent,
+    });
 
     await vi.waitFor(() => {
       expect(store.appendAgentEvent).toHaveBeenCalledWith("local-acp-store", {
@@ -2451,7 +2469,10 @@ describe("local ACP adapter", () => {
         sender_kind: "agent",
         sender_id: "local-clash",
         turn_id: "turn-store",
-        events: [{ type: "agent_message_chunk", content: { type: "text", text: "hi" } }],
+        events: [
+          { type: "agent_message_chunk", content: { type: "text", text: "hi" } },
+          canonicalChildEvent,
+        ],
         created_at: 1_700_000_000,
       });
     });
@@ -3609,7 +3630,65 @@ describe("local ACP adapter", () => {
     firstRelease.resolve();
   });
 
-  it("does not keep a cancelled turn busy for the next prompt", async () => {
+  it("uses negotiated ACP steering for a queued prompt instead of a second prompt transaction", async () => {
+    const firstRelease = deferred();
+    const prompt = vi.fn<SessionManagerLike["prompt"]>(async (params) => {
+      if (params.turn_id === "turn-1") await firstRelease.promise;
+    });
+    const steer = vi.fn(async () => "injected" as const);
+    const adapter = createLocalAcpAdapter({
+      detectAgents: async () => [
+        {
+          id: "codex-acp",
+          label: "Codex",
+          spec: { command: "codex-acp" },
+        },
+      ],
+      createSessionId: () => "local-acp-native-steering",
+      createSessionManager: () => ({
+        start: vi.fn(),
+        prompt,
+        steer,
+        cancel: vi.fn(),
+        dispose: vi.fn(),
+      }),
+    });
+
+    await adapter.createSession({
+      runtimeId: "desktop-local",
+      agentTemplateId: "clash",
+    });
+    const socket = new FakeSocket();
+    adapter.bindSessionSocket("local-acp-native-steering", socket as never);
+    socket.emit("message", JSON.stringify({
+      type: "prompt",
+      turn_id: "turn-1",
+      text: "first",
+    }));
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
+
+    socket.emit("message", JSON.stringify({
+      type: "prompt",
+      turn_id: "turn-steer",
+      text: "use that output next",
+    }));
+    socket.emit("message", JSON.stringify({
+      type: "steer_queued_prompt",
+      turn_id: "turn-steer",
+    }));
+
+    await vi.waitFor(() => {
+      expect(steer).toHaveBeenCalledWith(
+        "local-acp-native-steering",
+        "use that output next",
+        "turn-steer",
+      );
+    });
+    expect(prompt).toHaveBeenCalledTimes(1);
+    firstRelease.resolve();
+  });
+
+  it("keeps a cancelled turn busy until the ACP prompt request settles", async () => {
     const firstRelease = deferred();
     const prompt = vi.fn<SessionManagerLike["prompt"]>(async (params) => {
       if (params.turn_id === "turn-1") await firstRelease.promise;
@@ -3656,13 +3735,16 @@ describe("local ACP adapter", () => {
       text: "after stop",
     }));
 
-    const queueUpdates = socket.sent
-      .map((frame) => JSON.parse(frame))
-      .filter((frame) => frame.type === "session.queue_update");
-    expect(queueUpdates.at(-1)).toMatchObject({
-      active_turn_id: null,
-      queued: [],
+    await vi.waitFor(() => {
+      const queueUpdates = socket.sent
+        .map((frame) => JSON.parse(frame))
+        .filter((frame) => frame.type === "session.queue_update");
+      expect(queueUpdates.at(-1)).toMatchObject({
+        active_turn_id: "turn-1",
+        queued: [{ turn_id: "turn-2", text: "after stop" }],
+      });
     });
+    expect(prompt).toHaveBeenCalledTimes(1);
     expect(cancel).toHaveBeenCalledWith("local-acp-cancel-next", "turn-1");
 
     firstRelease.resolve();

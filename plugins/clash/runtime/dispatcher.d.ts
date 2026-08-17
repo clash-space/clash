@@ -1,7 +1,8 @@
-type ClashEntrypoint = "cli" | "mcp";
+type ClashEntrypoint = "cli" | "mcp" | "openma-mcp";
 type ClashEntrypointLoaders = {
     cli(): Promise<unknown>;
     mcp(): Promise<unknown>;
+    "openma-mcp"(): Promise<unknown>;
 };
 declare function resolveClashDistributionVersion(moduleUrl?: string): string | undefined;
 declare function normalizeClashArgv(argv?: readonly string[]): string[];

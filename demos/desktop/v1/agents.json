@@ -1,0 +1,8 @@
+{
+  "summary": "Versioned declarative Desktop demo suite and TypeScript case drivers.",
+  "architecture_notes": [
+    "suite.json defines stable case identity, chapters, viewport, locale, theme, timeout, and the in-directory TypeScript driver.",
+    "Agent drivers declare a real brief and independent trajectory plus product-readback requirements; they do not write product state directly.",
+    "Feature drivers may operate the UI through the recorder context but must keep product concepts and persisted behavior intact."
+  ]
+}

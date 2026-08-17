@@ -7,6 +7,7 @@ import {
   mergeSessionInfoMetadata,
   parseAcpEvent,
   sessionInfoStateFromAcpEvent,
+  settleUnfinishedToolCalls,
   usageStateFromAcpEvent,
   type ByoMessage,
   type AvailableCommand,
@@ -14,6 +15,11 @@ import {
   type RuntimeSessionUsage,
 } from '@clash/web-ui/lib/acpEvents';
 import type { RuntimeResumeSession } from '@clash/web-ui/lib/runtimeResume';
+import {
+  reduceRuntimeSubagentEvent,
+  runtimeSubagentsFromEvents,
+  type RuntimeSubagentWorkItem,
+} from '@clash/web-ui/lib/runtimeSubagents';
 import { runtimeApiUrl, runtimeWebSocketUrl } from '../lib/runtimeConfig';
 import {
   HARNESS_UPDATED_EVENT,
@@ -29,6 +35,10 @@ import {
   preferredRecentAgentId,
   type RunConfigValue,
 } from '../lib/recentRunPreferences';
+import {
+  notificationForAgentEvent,
+  sendSystemNotification,
+} from '../lib/systemNotifications';
 
 /**
  * useClashRuntime — chat through a registered local-runtime daemon.
@@ -226,6 +236,8 @@ export interface UseClashRuntimeReturn {
   transientStatus: RuntimeTransientStatus | null;
   diagnostics: RuntimeDiagnostic[];
   messages: ByoMessage[];
+  /** Canonical task-scoped agent work items, including their nested transcript. */
+  subagents: RuntimeSubagentWorkItem[];
   /** Slash commands the agent currently advertises (replaced per
    *  available_commands_update event). UI uses this for the `/` picker. */
   availableCommands: AvailableCommand[];
@@ -333,7 +345,12 @@ interface CreateSessionResponse {
   session_id: string;
 }
 
-async function fetchRuntimeSessionMessages(sessionId: string): Promise<ByoMessage[] | null> {
+interface RuntimeSessionHistory {
+  messages: ByoMessage[];
+  subagents: RuntimeSubagentWorkItem[];
+}
+
+async function fetchRuntimeSessionMessages(sessionId: string): Promise<RuntimeSessionHistory | null> {
   let res: Response;
   try {
     res = await fetch(runtimeApiUrl(`${SESSIONS_BASE}/${encodeURIComponent(sessionId)}/messages`), {
@@ -359,7 +376,9 @@ async function fetchRuntimeSessionMessages(sessionId: string): Promise<ByoMessag
     return null;
   }
   const bubbles: ByoMessage[] = [];
+  const canonicalEvents: unknown[] = [];
   for (const row of json.messages ?? []) {
+    canonicalEvents.push(...(row.events ?? []));
     if (row.sender_kind === 'user') {
       const parts = (row.events ?? [])
         .map((part) => part as { type?: string; text?: string })
@@ -380,7 +399,10 @@ async function fetchRuntimeSessionMessages(sessionId: string): Promise<ByoMessag
       if (knownIdx === undefined && result.idx >= 0) knownIdx = result.idx;
     }
   }
-  return bubbles;
+  return {
+    messages: bubbles,
+    subagents: runtimeSubagentsFromEvents(canonicalEvents),
+  };
 }
 
 function runtimeTranscriptCompleteness(messages: ByoMessage[]) {
@@ -683,6 +705,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const [transientStatus, setTransientStatus] = useState<RuntimeTransientStatus | null>(null);
   const [diagnostics, setDiagnostics] = useState<RuntimeDiagnostic[]>([]);
   const [messages, setMessages] = useState<ByoMessage[]>([]);
+  const [subagents, setSubagents] = useState<RuntimeSubagentWorkItem[]>([]);
   const [availableCommands, setAvailableCommands] = useState<AvailableCommand[]>([]);
   const [promptQueue, setPromptQueue] = useState<RuntimeQueuedPrompt[]>([]);
   const [promptQueueEnabled, setPromptQueueEnabledState] = useState(readPromptQueueEnabled);
@@ -701,6 +724,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const statusRef = useRef<ClashRuntimeStatus>('idle');
   const acpSessionIdRef = useRef<string | null>(null);
   const messagesRef = useRef<ByoMessage[]>([]);
+  const subagentsRef = useRef<RuntimeSubagentWorkItem[]>([]);
   const promptQueueRef = useRef<RuntimeQueuedPrompt[]>([]);
   const queuedPromptLookupRef = useRef(new Map<string, RuntimeQueuedPrompt>());
   const promptQueueEnabledRef = useRef(readPromptQueueEnabled());
@@ -735,10 +759,13 @@ export function useClashRuntime(): UseClashRuntimeReturn {
 
   const hydrateMessagesFromStore = useCallback(async (targetSessionId: string) => {
     const history = await fetchRuntimeSessionMessages(targetSessionId);
-    if (!history || sessionIdRef.current !== targetSessionId || history.length === 0) return;
-    if (!persistedTranscriptCanReplaceLive(history, messagesRef.current)) return;
-    messagesRef.current = history;
-    setMessages(history);
+    if (!history || sessionIdRef.current !== targetSessionId) return;
+    subagentsRef.current = history.subagents;
+    setSubagents(history.subagents);
+    if (history.messages.length === 0) return;
+    if (!persistedTranscriptCanReplaceLive(history.messages, messagesRef.current)) return;
+    messagesRef.current = history.messages;
+    setMessages(history.messages);
   }, []);
 
   const setRuntimeStatus = useCallback((next: ClashRuntimeStatus | ((prev: ClashRuntimeStatus) => ClashRuntimeStatus)) => {
@@ -888,6 +915,22 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     });
   }, []);
 
+  const settleTurnToolCalls = useCallback((turnId: string) => {
+    const messageIndexes = new Set<number>();
+    const turnIndex = turnToMsgIdx.current.get(turnId);
+    if (turnIndex !== undefined) messageIndexes.add(turnIndex);
+    for (const [key, index] of toolCallToMsgIdx.current) {
+      if (key.startsWith(`${turnId}:`)) messageIndexes.add(index);
+    }
+    if (messageIndexes.size === 0) return;
+    setMessages((prev) => {
+      const next = prev.slice();
+      settleUnfinishedToolCalls(next, messageIndexes);
+      messagesRef.current = next;
+      return next;
+    });
+  }, []);
+
   const replacePromptQueue = useCallback((next: RuntimeQueuedPrompt[]) => {
     for (const prompt of next) queuedPromptLookupRef.current.set(prompt.turnId, prompt);
     promptQueueRef.current = next;
@@ -1007,6 +1050,8 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     runtimeSnapshotErrorRef.current = null;
     messagesRef.current = [];
     setMessages([]);
+    subagentsRef.current = [];
+    setSubagents([]);
     setAvailableCommands([]);
     replacePromptQueue([]);
     setSessionConfigOptions([]);
@@ -1049,6 +1094,9 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       tool_call?: unknown;
       options?: unknown;
       option_id?: string | null;
+      stop_reason?: string;
+      usage?: unknown;
+      meta?: unknown;
     };
     try { msg = JSON.parse(typeof data === 'string' ? data : ''); }
     catch { return; }
@@ -1158,6 +1206,8 @@ export function useClashRuntime(): UseClashRuntimeReturn {
               ...current.filter((candidate) => candidate.requestId !== request.requestId),
               request,
             ]);
+            const notification = notificationForAgentEvent(msg);
+            if (notification) void sendSystemNotification(notification);
           }
         }
         return;
@@ -1222,6 +1272,14 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         return;
       case 'session.event':
         {
+          const nextSubagents = reduceRuntimeSubagentEvent(subagentsRef.current, msg.event);
+          if (
+            nextSubagents.length !== subagentsRef.current.length
+            || nextSubagents.some((item, index) => item !== subagentsRef.current[index])
+          ) {
+            subagentsRef.current = nextSubagents;
+            setSubagents(nextSubagents);
+          }
           const configOptions = configOptionsFromAcpEvent(msg.event);
           if (configOptions) setSessionConfigOptions(configOptions);
           const currentModeId = modeIdFromAcpEvent(msg.event);
@@ -1266,7 +1324,20 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         setRuntimeStatus('streaming');
         return;
       case 'session.complete':
+        if (msg.turn_id && activeTurnIds.current.has(msg.turn_id)) {
+          const notification = notificationForAgentEvent(msg);
+          if (notification) void sendSystemNotification(notification);
+        }
         if (msg.turn_id) {
+          handleAcpEvent(msg.turn_id, {
+            type: 'promptComplete',
+            response: {
+              ...(typeof msg.stop_reason === 'string' ? { stopReason: msg.stop_reason } : {}),
+              ...(msg.usage !== undefined ? { usage: msg.usage } : {}),
+              ...(msg.meta !== undefined ? { _meta: msg.meta } : {}),
+            },
+          });
+          settleTurnToolCalls(msg.turn_id);
           turnToMsgIdx.current.delete(msg.turn_id);
           turnAssistantSegment.current.delete(msg.turn_id);
           for (const key of toolCallToMsgIdx.current.keys()) {
@@ -1292,7 +1363,19 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       case 'session.error':
         {
           const message = msg.message ?? 'unknown error';
-          if (msg.turn_id) activeTurnIds.current.delete(msg.turn_id);
+          if (msg.turn_id && activeTurnIds.current.has(msg.turn_id)) {
+            const notification = notificationForAgentEvent(msg);
+            if (notification) void sendSystemNotification(notification);
+          }
+          if (msg.turn_id) {
+            settleTurnToolCalls(msg.turn_id);
+            turnToMsgIdx.current.delete(msg.turn_id);
+            turnAssistantSegment.current.delete(msg.turn_id);
+            for (const key of toolCallToMsgIdx.current.keys()) {
+              if (key.startsWith(`${msg.turn_id}:`)) toolCallToMsgIdx.current.delete(key);
+            }
+            activeTurnIds.current.delete(msg.turn_id);
+          }
           setErrorMessage(message);
           if (msg.code === 'auth_required') {
             void refresh({ probe: 'config', refresh: true });
@@ -1322,7 +1405,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         // No state change — we'd need to re-select to start a new session.
         return;
     }
-  }, [appendUserMessage, handleAcpEvent, hydrateMessagesFromStore, refresh, replacePromptQueue, sendPromptFrame]);
+  }, [appendUserMessage, handleAcpEvent, hydrateMessagesFromStore, refresh, replacePromptQueue, sendPromptFrame, settleTurnToolCalls]);
 
   const openSessionStream = useCallback((id: string, opts: { replayBacklog?: boolean } = {}) => {
     const replayQuery = opts.replayBacklog === false ? '?replay=0' : '';
@@ -1407,6 +1490,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
             : option;
         })
       : [];
+    const initialConfigValues = configValuesFromOptions(effectiveConfigOptions);
     const effectiveModes = runtimeId
       ? seedSessionModesForAgent(runtime, resolvedAgentId)
       : null;
@@ -1433,14 +1517,6 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       return;
     }
 
-    for (const option of effectiveConfigOptions) {
-      if (
-        typeof option.currentValue === 'string'
-        || typeof option.currentValue === 'boolean'
-      ) {
-        pendingConfigOptionsRef.current.set(option.id, option.currentValue);
-      }
-    }
     setRuntimeStatus('connecting');
     try {
       const sessionContextId = agentMemberId?.trim() || undefined;
@@ -1453,8 +1529,8 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         body: JSON.stringify({
           ...(sessionContextId ? { agent_member_id: sessionContextId } : {}),
           ...(resolvedOpts?.agentId ? { agent_id: resolvedOpts.agentId } : {}),
-          ...(effectiveConfigOptions.length > 0
-            ? { config_values: configValuesFromOptions(effectiveConfigOptions) }
+          ...(Object.keys(initialConfigValues).length > 0
+            ? { config_values: initialConfigValues }
             : {}),
           ...(resolvedOpts?.permissionModeId ? { permission_mode: resolvedOpts.permissionModeId } : {}),
           ...(resolvedOpts?.projectId ? { project_id: resolvedOpts.projectId } : {}),
@@ -1473,6 +1549,11 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       }
       const json = (await res.json()) as CreateSessionResponse;
       if (sessionOperationSeq.current !== operation) return;
+      for (const [configId, value] of Object.entries(initialConfigValues)) {
+        if (pendingConfigOptionsRef.current.get(configId) === value) {
+          pendingConfigOptionsRef.current.delete(configId);
+        }
+      }
       setRuntimeSessionId(json.session_id);
       setCurrentSession({
         id: json.session_id,
@@ -1567,8 +1648,10 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     if (sessionOperationSeq.current !== operation) return;
     const historyLoaded = history !== null;
     if (historyLoaded) {
-      messagesRef.current = history;
-      setMessages(history);
+      messagesRef.current = history.messages;
+      setMessages(history.messages);
+      subagentsRef.current = history.subagents;
+      setSubagents(history.subagents);
       setRuntimeStatus('connected');
     }
 
@@ -1814,6 +1897,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     transientStatus,
     diagnostics,
     messages,
+    subagents,
     availableCommands,
     promptQueue,
     promptQueueEnabled,

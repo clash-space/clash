@@ -39,7 +39,7 @@ export const CLASH_ASSETS_TOOL_NAME = "clash_assets";
 export const CLASH_CANVAS_TOOL_NAME = "clash_canvas";
 export const CLASH_COMPOSITION_TOOL_NAME = "clash_composition";
 
-const MAX_ASSET_CONTRACT_BATCH_SIZE = 8;
+const MAX_CONTRACT_BATCH_SIZE = 8;
 
 export const LEGACY_CLASH_GROUP_TOOL_NAMES = {
   director: "clash_director",
@@ -53,7 +53,7 @@ export const CLASH_MCP_INSTRUCTIONS = [
   "Clash discloses product operations progressively.",
   `Use the root ${CLASH_ROOT_TOOL_NAME} tool for command navigation, ${CLASH_PLUGIN_TOOL_NAME} for executable plugin lifecycle, ${CLASH_ASSETS_TOOL_NAME} for Project and personal Global Assets, ${CLASH_CANVAS_TOOL_NAME} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME} for Timeline or Director Stage composition.`,
   "Timeline is temporal composition; Director Stage is spatial composition.",
-  "Call clash_assets without operation for its lightweight index, then pass contracts for the small set of live Asset contracts needed together; contract remains available for one. Other dispatchers reveal live contracts when operation is omitted.",
+  "Call the Assets, Canvas, and Composition dispatchers without operation for their lightweight indexes, then pass contracts for the small set of live contracts needed together; contract remains available for one.",
   "Composition disclosure and short operations require kind=timeline or kind=director-stage; a complete clash_* leaf name remains accepted for compatibility.",
   "The advertised tool list stays fixed and does not require a tools/list refresh.",
   "Within a selected command, tool descriptions, schemas, structured results, and recovery guidance are the operational source of truth.",
@@ -140,6 +140,27 @@ function clashMetadata(
   return entries.length ? Object.fromEntries(entries) : undefined;
 }
 
+/**
+ * MCP structuredContent is the canonical machine result. Text serialization is
+ * retained for clients that implement tool content but do not yet surface the
+ * structured channel to their model.
+ */
+function withStructuredContentTextFallback(
+  result: CallToolResult,
+): CallToolResult {
+  if (result.structuredContent === undefined) return result;
+  return {
+    ...result,
+    content: [
+      ...result.content,
+      {
+        type: "text" as const,
+        text: `Structured result:\n${JSON.stringify(result.structuredContent)}`,
+      },
+    ],
+  };
+}
+
 /** One server implementation shared by every Clash MCP transport and plugin. */
 export class ClashMcpServer extends McpServer {
   readonly #registeredClashTools = new Set<RegisteredClashTool>();
@@ -213,7 +234,7 @@ export class ClashMcpServer extends McpServer {
           : undefined;
         const operationCount = selected?.availableOperations ?? 0;
         if (selectedCommand && operationCount === 0) {
-          return {
+          return withStructuredContentTextFallback({
             content: [
               {
                 type: "text" as const,
@@ -222,9 +243,9 @@ export class ClashMcpServer extends McpServer {
             ],
             structuredContent: view,
             isError: true,
-          };
+          });
         }
-        return {
+        return withStructuredContentTextFallback({
           content: [
             {
               type: "text" as const,
@@ -234,7 +255,7 @@ export class ClashMcpServer extends McpServer {
             },
           ],
           structuredContent: view,
-        };
+        });
       },
     );
 
@@ -315,8 +336,8 @@ export class ClashMcpServer extends McpServer {
             .array(z.string().min(1))
             .min(1)
             .max(
-              MAX_ASSET_CONTRACT_BATCH_SIZE,
-              `Asset contract batches accept at most ${MAX_ASSET_CONTRACT_BATCH_SIZE} operations`,
+              MAX_CONTRACT_BATCH_SIZE,
+              `Asset contract batches accept at most ${MAX_CONTRACT_BATCH_SIZE} operations`,
             )
             .optional()
             .describe(
@@ -366,10 +387,10 @@ export class ClashMcpServer extends McpServer {
         description: describeClashTool({
           useWhen: "you need to inspect or execute Canvas node operations",
           effect:
-            "returns live Canvas contracts when operation is omitted, or validates and executes one Canvas leaf exactly once",
+            "returns a lightweight Canvas operation index, reveals a requested bounded set of live contracts, or validates and executes one Canvas leaf exactly once",
           returns:
-            "typed Canvas operation contracts or the selected leaf operation's exact result",
-          next: "choose the smallest matching operation, then call clash_canvas with operation and arguments",
+            "an operation index, the requested typed Canvas contracts, or the selected leaf operation's exact result",
+          next: "choose the smallest matching operations, request their contracts together, then call clash_canvas with operation and arguments for each execution",
         }),
         inputSchema: {
           operation: z
@@ -377,7 +398,25 @@ export class ClashMcpServer extends McpServer {
             .min(1)
             .optional()
             .describe(
-              "Omit this field entirely to reveal live contracts; never send an empty string, list_operations, or contracts. Otherwise pass a command-local Canvas operation or complete clash_canvas_* leaf name",
+              "Pass a command-local Canvas operation or complete clash_canvas_* leaf name to execute it; omit to inspect the lightweight index or requested contracts",
+            ),
+          contract: z
+            .string()
+            .min(1)
+            .optional()
+            .describe(
+              "Command-local Canvas operation or complete clash_canvas_* leaf name whose full live contract should be returned without execution",
+            ),
+          contracts: z
+            .array(z.string().min(1))
+            .min(1)
+            .max(
+              MAX_CONTRACT_BATCH_SIZE,
+              `Canvas contract batches accept at most ${MAX_CONTRACT_BATCH_SIZE} operations`,
+            )
+            .optional()
+            .describe(
+              "Distinct ordered Canvas operations whose full live contracts should be returned together without execution",
             ),
           arguments: z
             .record(z.string(), z.unknown())
@@ -388,7 +427,21 @@ export class ClashMcpServer extends McpServer {
         },
         _meta: { ui: { visibility: ["model"] } },
       },
-      async ({ operation, arguments: operationArguments }, extra) => {
+      async (
+        { operation, contract, contracts, arguments: operationArguments },
+        extra,
+      ) => {
+        if (
+          [operation, contract, contracts].filter(
+            (value) => value !== undefined,
+          ).length > 1
+        ) {
+          throw new Error(
+            "Clash Canvas accepts one disclosure mode or operation execution, not a combination.",
+          );
+        }
+        if (contracts) return this.#contractBatchResult("canvas", contracts);
+        if (contract) return this.#contractResult("canvas", contract);
         if (operation) {
           return this.#dispatchOperation({
             operation,
@@ -397,7 +450,7 @@ export class ClashMcpServer extends McpServer {
             extra,
           });
         }
-        return this.#commandResult("canvas");
+        return this.#commandResult("canvas", { lightweight: true });
       },
     );
 
@@ -409,24 +462,42 @@ export class ClashMcpServer extends McpServer {
           useWhen:
             "you need Timeline temporal composition or Director Stage spatial composition operations",
           effect:
-            "returns live contracts for one composition kind, or validates and executes one matching composition leaf exactly once",
+            "returns a lightweight operation index for one composition kind, reveals a requested bounded set of live contracts, or validates and executes one matching composition leaf exactly once",
           returns:
-            "typed Timeline or Director Stage contracts, or the selected leaf operation's exact result",
-          next: "set kind to timeline or director-stage, choose the smallest matching operation, then pass operation and arguments",
+            "an operation index, the requested typed Timeline or Director Stage contracts, or the selected leaf operation's exact result",
+          next: "set kind to timeline or director-stage, choose the smallest matching operations, request their contracts together, then pass operation and arguments for each execution",
         }),
         inputSchema: {
           kind: z
             .enum(["timeline", "director-stage"])
             .optional()
             .describe(
-              "Required for contract disclosure and command-local short operations; complete leaf names may infer it",
+              "Required for the operation index, contract disclosure, and command-local short operations; complete leaf names may infer it only for execution",
             ),
           operation: z
             .string()
             .min(1)
             .optional()
             .describe(
-              "Omit this field entirely to reveal live contracts for the selected kind; never send an empty string, list_operations, or contracts. Otherwise pass a command-local operation or complete clash_timeline_* or clash_director_* leaf name",
+              "Pass a command-local operation or complete clash_timeline_* or clash_director_* leaf name to execute it; omit to inspect the selected kind's lightweight index or requested contracts",
+            ),
+          contract: z
+            .string()
+            .min(1)
+            .optional()
+            .describe(
+              "Command-local operation or complete clash_timeline_* or clash_director_* leaf name whose full live contract should be returned without execution",
+            ),
+          contracts: z
+            .array(z.string().min(1))
+            .min(1)
+            .max(
+              MAX_CONTRACT_BATCH_SIZE,
+              `Composition contract batches accept at most ${MAX_CONTRACT_BATCH_SIZE} operations`,
+            )
+            .optional()
+            .describe(
+              "Distinct ordered operations for the selected composition kind whose full live contracts should be returned together without execution",
             ),
           arguments: z
             .record(z.string(), z.unknown())
@@ -437,13 +508,36 @@ export class ClashMcpServer extends McpServer {
         },
         _meta: { ui: { visibility: ["model"] } },
       },
-      async ({ kind, operation, arguments: operationArguments }, extra) => {
+      async (
+        { kind, operation, contract, contracts, arguments: operationArguments },
+        extra,
+      ) => {
         const selectedCommand =
           kind === "timeline"
             ? "timeline"
             : kind === "director-stage"
               ? "director"
               : undefined;
+        if (
+          [operation, contract, contracts].filter(
+            (value) => value !== undefined,
+          ).length > 1
+        ) {
+          throw new Error(
+            "Clash Composition accepts one disclosure mode or operation execution, not a combination.",
+          );
+        }
+        if (contract || contracts) {
+          if (!selectedCommand) {
+            throw new Error(
+              "Clash composition disclosure requires kind=timeline or kind=director-stage.",
+            );
+          }
+          if (contracts) {
+            return this.#contractBatchResult(selectedCommand, contracts);
+          }
+          return this.#contractResult(selectedCommand, contract!);
+        }
         if (operation) {
           if (!selectedCommand && !operation.startsWith("clash_")) {
             throw new Error(
@@ -463,7 +557,7 @@ export class ClashMcpServer extends McpServer {
             "Clash composition disclosure requires kind=timeline or kind=director-stage.",
           );
         }
-        return this.#commandResult(selectedCommand);
+        return this.#commandResult(selectedCommand, { lightweight: true });
       },
     );
 
@@ -612,7 +706,7 @@ export class ClashMcpServer extends McpServer {
     const view = this.#commandView(command);
     const operationCount = view.operations?.length ?? 0;
     if (operationCount === 0) {
-      return {
+      return withStructuredContentTextFallback({
         content: [
           {
             type: "text" as const,
@@ -621,7 +715,7 @@ export class ClashMcpServer extends McpServer {
         ],
         structuredContent: view,
         isError: true,
-      };
+      });
     }
     const operations: ClashOperationView[] | ClashOperationIndexEntry[] =
       options.lightweight
@@ -635,7 +729,7 @@ export class ClashMcpServer extends McpServer {
             }),
           )
         : (view.operations ?? []);
-    return {
+    return withStructuredContentTextFallback({
       content: [
         {
           type: "text" as const,
@@ -645,7 +739,7 @@ export class ClashMcpServer extends McpServer {
         },
       ],
       structuredContent: { ...view, operations },
-    };
+    });
   }
 
   #contractResult(
@@ -664,7 +758,7 @@ export class ClashMcpServer extends McpServer {
         `Clash ${command} operation ${requestedOperation} has no live contract in this host.`,
       );
     }
-    return {
+    return withStructuredContentTextFallback({
       content: [
         {
           type: "text" as const,
@@ -676,7 +770,7 @@ export class ClashMcpServer extends McpServer {
         selectedCommand: command,
         contract,
       },
-    };
+    });
   }
 
   #contractBatchResult(
@@ -701,7 +795,7 @@ export class ClashMcpServer extends McpServer {
       }
       return contract;
     });
-    return {
+    return withStructuredContentTextFallback({
       content: [
         {
           type: "text" as const,
@@ -713,7 +807,7 @@ export class ClashMcpServer extends McpServer {
         selectedCommand: command,
         contracts,
       },
-    };
+    });
   }
 
   #rootView(selectedCommand?: ClashMcpCommandId): {
@@ -896,7 +990,7 @@ export class ClashMcpServer extends McpServer {
         );
       }
     }
-    return result;
+    return withStructuredContentTextFallback(result);
   }
 
   #visibleTools(

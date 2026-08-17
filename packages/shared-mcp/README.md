@@ -14,7 +14,7 @@ authoritative product schemas
           |       |
           |       +---- root `clash` menu
           |             command -> dispatcher navigation
-          |             Assets -> operation index -> bounded live contracts
+          |             dispatcher -> operation index -> bounded live contracts
           |             command + operation -> leaf execution
           v
   registered leaf handlers
@@ -32,16 +32,23 @@ CLI and MCP are peer product interfaces. The CLI discloses commands through
 stable `clash_assets`, `clash_canvas`, and `clash_composition` dispatchers,
 and, when present, the bootstrap `clash_workspace_init`. Calling `clash`
 without arguments returns command counts. Adding `command` selects the stable
-dispatcher. For Assets, calling `clash_assets` without arguments returns a
-lightweight index containing operation identity, title, and safety flags; pass
-`contracts: ["import_file", "list", "get"]` to fetch a distinct, ordered,
+dispatcher. Calling an Assets or Canvas dispatcher without arguments returns a
+lightweight index containing operation identity, title, and safety flags;
+Composition returns the same bounded index for the requested `kind`. Pass
+`contracts: ["<operation>", "<operation>"]` to fetch a distinct, ordered,
 bounded set of live descriptions, input/output schemas, product metadata, and
-recovery paths without executing them. Unknown or duplicate operations reject
-the whole batch; no partial contracts are returned. `contract: "<operation>"`
-remains compatible for one. Existing `operation` plus `arguments` calls still
-validate against the leaf schema and invoke its handler exactly once. Canvas,
-composition, and plugin dispatchers retain their full-contract disclosure when
-`operation` is omitted.
+recovery paths without executing them. Unknown, duplicate, or cross-kind
+operations reject the whole batch; no partial contracts are returned.
+`contract: "<operation>"` remains available for one. Existing `operation` plus
+`arguments` calls still validate against the leaf schema and invoke its handler
+exactly once. The plugin dispatcher and hidden legacy group tools retain their
+full-contract disclosure when `operation` is omitted.
+
+Compatibility note: bare `clash_canvas` and `clash_composition` calls now
+return lightweight indexes instead of every full contract. Clients that need
+schemas must follow the index with `contract` or `contracts`; execution keeps
+the existing `operation` plus `arguments` shape.
+
 The underlying leaf and former group tools stay registered for compatible
 known-name calls, but never expand `tools/list` and are not the model's
 discovery surface. There is deliberately no `clash_menu`,

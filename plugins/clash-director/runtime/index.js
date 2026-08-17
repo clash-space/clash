@@ -39316,7 +39316,7 @@ var CLASH_PLUGIN_TOOL_NAME = "clash_plugin";
 var CLASH_ASSETS_TOOL_NAME = "clash_assets";
 var CLASH_CANVAS_TOOL_NAME = "clash_canvas";
 var CLASH_COMPOSITION_TOOL_NAME = "clash_composition";
-var MAX_ASSET_CONTRACT_BATCH_SIZE = 8;
+var MAX_CONTRACT_BATCH_SIZE = 8;
 var LEGACY_CLASH_GROUP_TOOL_NAMES = {
   director: "clash_director",
   timeline: "clash_timeline"
@@ -39325,7 +39325,7 @@ var CLASH_MCP_INSTRUCTIONS = [
   "Clash discloses product operations progressively.",
   `Use the root ${CLASH_ROOT_TOOL_NAME} tool for command navigation, ${CLASH_PLUGIN_TOOL_NAME} for executable plugin lifecycle, ${CLASH_ASSETS_TOOL_NAME} for Project and personal Global Assets, ${CLASH_CANVAS_TOOL_NAME} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME} for Timeline or Director Stage composition.`,
   "Timeline is temporal composition; Director Stage is spatial composition.",
-  "Call clash_assets without operation for its lightweight index, then pass contracts for the small set of live Asset contracts needed together; contract remains available for one. Other dispatchers reveal live contracts when operation is omitted.",
+  "Call the Assets, Canvas, and Composition dispatchers without operation for their lightweight indexes, then pass contracts for the small set of live contracts needed together; contract remains available for one.",
   "Composition disclosure and short operations require kind=timeline or kind=director-stage; a complete clash_* leaf name remains accepted for compatibility.",
   "The advertised tool list stays fixed and does not require a tools/list refresh.",
   "Within a selected command, tool descriptions, schemas, structured results, and recovery guidance are the operational source of truth."
@@ -39362,6 +39362,21 @@ function clashMetadata(meta3) {
     return void 0;
   const entries = Object.entries(meta3).filter(([key]) => key.startsWith("clash/"));
   return entries.length ? Object.fromEntries(entries) : void 0;
+}
+function withStructuredContentTextFallback(result) {
+  if (result.structuredContent === void 0)
+    return result;
+  return {
+    ...result,
+    content: [
+      ...result.content,
+      {
+        type: "text",
+        text: `Structured result:
+${JSON.stringify(result.structuredContent)}`
+      }
+    ]
+  };
 }
 var ClashMcpServer = class extends McpServer {
   #registeredClashTools = /* @__PURE__ */ new Set();
@@ -39404,7 +39419,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       const selected = selectedCommand ? view.commands.find(({ id: id2 }) => id2 === selectedCommand) : void 0;
       const operationCount = selected?.availableOperations ?? 0;
       if (selectedCommand && operationCount === 0) {
-        return {
+        return withStructuredContentTextFallback({
           content: [
             {
               type: "text",
@@ -39413,9 +39428,9 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
           ],
           structuredContent: view,
           isError: true
-        };
+        });
       }
-      return {
+      return withStructuredContentTextFallback({
         content: [
           {
             type: "text",
@@ -39423,7 +39438,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
           }
         ],
         structuredContent: view
-      };
+      });
     });
     const pluginDefinition = getClashMcpCommand("plugin");
     super.registerTool(CLASH_PLUGIN_TOOL_NAME, {
@@ -39462,7 +39477,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       inputSchema: {
         operation: external_exports.string().min(1).optional().describe("Pass a command-local Assets operation or complete clash_assets_* leaf name to execute it; omit to inspect the lightweight index or requested contracts"),
         contract: external_exports.string().min(1).optional().describe("Command-local Assets operation or complete clash_assets_* leaf name whose full live contract should be returned without execution"),
-        contracts: external_exports.array(external_exports.string().min(1)).min(1).max(MAX_ASSET_CONTRACT_BATCH_SIZE, `Asset contract batches accept at most ${MAX_ASSET_CONTRACT_BATCH_SIZE} operations`).optional().describe("Distinct ordered Assets operations whose full live contracts should be returned together without execution"),
+        contracts: external_exports.array(external_exports.string().min(1)).min(1).max(MAX_CONTRACT_BATCH_SIZE, `Asset contract batches accept at most ${MAX_CONTRACT_BATCH_SIZE} operations`).optional().describe("Distinct ordered Assets operations whose full live contracts should be returned together without execution"),
         arguments: external_exports.record(external_exports.string(), external_exports.unknown()).optional().describe("Arguments validated against the selected operation's live input schema")
       },
       _meta: { ui: { visibility: ["model"] } }
@@ -39489,16 +39504,25 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       title: canvasDefinition.title,
       description: describeClashTool({
         useWhen: "you need to inspect or execute Canvas node operations",
-        effect: "returns live Canvas contracts when operation is omitted, or validates and executes one Canvas leaf exactly once",
-        returns: "typed Canvas operation contracts or the selected leaf operation's exact result",
-        next: "choose the smallest matching operation, then call clash_canvas with operation and arguments"
+        effect: "returns a lightweight Canvas operation index, reveals a requested bounded set of live contracts, or validates and executes one Canvas leaf exactly once",
+        returns: "an operation index, the requested typed Canvas contracts, or the selected leaf operation's exact result",
+        next: "choose the smallest matching operations, request their contracts together, then call clash_canvas with operation and arguments for each execution"
       }),
       inputSchema: {
-        operation: external_exports.string().min(1).optional().describe("Omit this field entirely to reveal live contracts; never send an empty string, list_operations, or contracts. Otherwise pass a command-local Canvas operation or complete clash_canvas_* leaf name"),
+        operation: external_exports.string().min(1).optional().describe("Pass a command-local Canvas operation or complete clash_canvas_* leaf name to execute it; omit to inspect the lightweight index or requested contracts"),
+        contract: external_exports.string().min(1).optional().describe("Command-local Canvas operation or complete clash_canvas_* leaf name whose full live contract should be returned without execution"),
+        contracts: external_exports.array(external_exports.string().min(1)).min(1).max(MAX_CONTRACT_BATCH_SIZE, `Canvas contract batches accept at most ${MAX_CONTRACT_BATCH_SIZE} operations`).optional().describe("Distinct ordered Canvas operations whose full live contracts should be returned together without execution"),
         arguments: external_exports.record(external_exports.string(), external_exports.unknown()).optional().describe("Arguments validated against the selected operation's live input schema")
       },
       _meta: { ui: { visibility: ["model"] } }
-    }, async ({ operation, arguments: operationArguments }, extra) => {
+    }, async ({ operation, contract, contracts, arguments: operationArguments }, extra) => {
+      if ([operation, contract, contracts].filter((value) => value !== void 0).length > 1) {
+        throw new Error("Clash Canvas accepts one disclosure mode or operation execution, not a combination.");
+      }
+      if (contracts)
+        return this.#contractBatchResult("canvas", contracts);
+      if (contract)
+        return this.#contractResult("canvas", contract);
       if (operation) {
         return this.#dispatchOperation({
           operation,
@@ -39507,24 +39531,38 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
           extra
         });
       }
-      return this.#commandResult("canvas");
+      return this.#commandResult("canvas", { lightweight: true });
     });
     super.registerTool(CLASH_COMPOSITION_TOOL_NAME, {
       title: "Composition",
       description: describeClashTool({
         useWhen: "you need Timeline temporal composition or Director Stage spatial composition operations",
-        effect: "returns live contracts for one composition kind, or validates and executes one matching composition leaf exactly once",
-        returns: "typed Timeline or Director Stage contracts, or the selected leaf operation's exact result",
-        next: "set kind to timeline or director-stage, choose the smallest matching operation, then pass operation and arguments"
+        effect: "returns a lightweight operation index for one composition kind, reveals a requested bounded set of live contracts, or validates and executes one matching composition leaf exactly once",
+        returns: "an operation index, the requested typed Timeline or Director Stage contracts, or the selected leaf operation's exact result",
+        next: "set kind to timeline or director-stage, choose the smallest matching operations, request their contracts together, then pass operation and arguments for each execution"
       }),
       inputSchema: {
-        kind: external_exports.enum(["timeline", "director-stage"]).optional().describe("Required for contract disclosure and command-local short operations; complete leaf names may infer it"),
-        operation: external_exports.string().min(1).optional().describe("Omit this field entirely to reveal live contracts for the selected kind; never send an empty string, list_operations, or contracts. Otherwise pass a command-local operation or complete clash_timeline_* or clash_director_* leaf name"),
+        kind: external_exports.enum(["timeline", "director-stage"]).optional().describe("Required for the operation index, contract disclosure, and command-local short operations; complete leaf names may infer it only for execution"),
+        operation: external_exports.string().min(1).optional().describe("Pass a command-local operation or complete clash_timeline_* or clash_director_* leaf name to execute it; omit to inspect the selected kind's lightweight index or requested contracts"),
+        contract: external_exports.string().min(1).optional().describe("Command-local operation or complete clash_timeline_* or clash_director_* leaf name whose full live contract should be returned without execution"),
+        contracts: external_exports.array(external_exports.string().min(1)).min(1).max(MAX_CONTRACT_BATCH_SIZE, `Composition contract batches accept at most ${MAX_CONTRACT_BATCH_SIZE} operations`).optional().describe("Distinct ordered operations for the selected composition kind whose full live contracts should be returned together without execution"),
         arguments: external_exports.record(external_exports.string(), external_exports.unknown()).optional().describe("Arguments validated against the selected operation's live input schema")
       },
       _meta: { ui: { visibility: ["model"] } }
-    }, async ({ kind, operation, arguments: operationArguments }, extra) => {
+    }, async ({ kind, operation, contract, contracts, arguments: operationArguments }, extra) => {
       const selectedCommand = kind === "timeline" ? "timeline" : kind === "director-stage" ? "director" : void 0;
+      if ([operation, contract, contracts].filter((value) => value !== void 0).length > 1) {
+        throw new Error("Clash Composition accepts one disclosure mode or operation execution, not a combination.");
+      }
+      if (contract || contracts) {
+        if (!selectedCommand) {
+          throw new Error("Clash composition disclosure requires kind=timeline or kind=director-stage.");
+        }
+        if (contracts) {
+          return this.#contractBatchResult(selectedCommand, contracts);
+        }
+        return this.#contractResult(selectedCommand, contract);
+      }
       if (operation) {
         if (!selectedCommand && !operation.startsWith("clash_")) {
           throw new Error(`Clash composition short operation ${operation} requires kind.`);
@@ -39540,7 +39578,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       if (!selectedCommand) {
         throw new Error("Clash composition disclosure requires kind=timeline or kind=director-stage.");
       }
-      return this.#commandResult(selectedCommand);
+      return this.#commandResult(selectedCommand, { lightweight: true });
     });
     for (const command2 of Object.keys(LEGACY_CLASH_GROUP_TOOL_NAMES)) {
       const commandDefinition = getClashMcpCommand(command2);
@@ -39622,7 +39660,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
     const view = this.#commandView(command2);
     const operationCount = view.operations?.length ?? 0;
     if (operationCount === 0) {
-      return {
+      return withStructuredContentTextFallback({
         content: [
           {
             type: "text",
@@ -39631,7 +39669,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         ],
         structuredContent: view,
         isError: true
-      };
+      });
     }
     const operations = options.lightweight ? (view.operations ?? []).map(({ name, operation, title, readOnly, destructive }) => ({
       name,
@@ -39640,7 +39678,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       readOnly,
       destructive
     })) : view.operations ?? [];
-    return {
+    return withStructuredContentTextFallback({
       content: [
         {
           type: "text",
@@ -39648,7 +39686,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         }
       ],
       structuredContent: { ...view, operations }
-    };
+    });
   }
   #contractResult(command2, requestedOperation) {
     const operationName = this.#resolveOperationName(requestedOperation, command2);
@@ -39656,7 +39694,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
     if (!contract) {
       throw new Error(`Clash ${command2} operation ${requestedOperation} has no live contract in this host.`);
     }
-    return {
+    return withStructuredContentTextFallback({
       content: [
         {
           type: "text",
@@ -39668,7 +39706,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         selectedCommand: command2,
         contract
       }
-    };
+    });
   }
   #contractBatchResult(command2, requestedOperations) {
     const liveContracts = this.#commandView(command2).operations ?? [];
@@ -39683,7 +39721,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       }
       return contract;
     });
-    return {
+    return withStructuredContentTextFallback({
       content: [
         {
           type: "text",
@@ -39695,7 +39733,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         selectedCommand: command2,
         contracts
       }
-    };
+    });
   }
   #rootView(selectedCommand) {
     const menu = this.#commandView();
@@ -39792,7 +39830,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         throw new Error(`Invalid structured content from Clash operation ${registered.name}: ${getParseErrorMessage(parsed.error)}`);
       }
     }
-    return result;
+    return withStructuredContentTextFallback(result);
   }
   #visibleTools(tools) {
     return tools.filter((tool) => {

@@ -1056,16 +1056,28 @@ function ShellCommandGroup({
   );
 }
 
+function thoughtProjectionLines(text: string, fallback: string): string[] {
+  const lines = text
+    .replace(/\r\n?/g, '\n')
+    .split(/\n+/)
+    .map((line) => line.replace(/[\t ]+/g, ' ').trim())
+    .filter(Boolean);
+  return lines.length > 0 ? lines : [fallback];
+}
+
 function ThoughtRow({
   text,
   defaultOpen = false,
   label = '已思考',
+  live = false,
 }: {
   text: string;
   defaultOpen?: boolean;
   label?: string;
+  live?: boolean;
 }) {
   const hasBody = text.trim().length > 0;
+  const projectionLines = thoughtProjectionLines(text, label);
   return (
     <Collapsible
       key={hasBody ? 'with-body' : 'empty'}
@@ -1082,19 +1094,32 @@ function ThoughtRow({
             hasBody ? 'cursor-pointer focus-visible:underline focus-visible:decoration-neutral-300 focus-visible:underline-offset-4' : 'cursor-default',
           )}
         >
-          <AcpEventIcon />
-          <span className="min-w-0 truncate font-medium text-neutral-500 dark:text-stone-300">
-            {label}
+          {live ? null : <AcpEventIcon />}
+          <span className="min-w-0 flex-1 text-left font-medium text-neutral-500 dark:text-stone-300">
+            {live ? (
+              <span className="block min-w-0" data-thought-projection="lines">
+                {projectionLines.map((line, index) => (
+                  <span
+                    key={`${index}-${line}`}
+                    data-testid="acp-thought-projection-line"
+                    className="block min-w-0 truncate leading-6"
+                  >
+                    {line}
+                  </span>
+                ))}
+              </span>
+            ) : label}
           </span>
           {hasBody ? (
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform group-data-[state=open]/acp-event:rotate-90" />
           ) : null}
         </Button>
       </CollapsibleTrigger>
-      <CollapsibleContent asChild>
+      <CollapsibleContent forceMount={live || undefined} asChild>
         <div
           data-testid="acp-thought-details"
-          className="mt-1 max-h-[min(420px,45vh)] w-full overflow-y-auto bg-transparent text-[12px] leading-5 text-neutral-500"
+          data-thought-stream-body={live ? 'true' : undefined}
+          className="mt-1 w-full bg-transparent text-[12px] leading-5 text-neutral-500 data-[state=closed]:hidden"
         >
           <Response className="font-sans text-[12px] leading-5 text-neutral-500 prose-p:text-neutral-500 prose-li:text-neutral-500 prose-strong:text-neutral-600 dark:text-stone-300 dark:prose-p:text-stone-300 dark:prose-li:text-stone-300 dark:prose-strong:text-stone-200">
             {text}
@@ -1394,13 +1419,20 @@ export function AcpMessageList({
   if (messages.length === 0) {
     return <EmptyState tone="muted">{emptyHint ?? 'No messages yet.'}</EmptyState>;
   }
+  const liveAssistantMessageIndex = isStreaming
+    ? messages.reduce(
+      (latest, message, index) => message.role === 'assistant' ? index : latest,
+      -1,
+    )
+    : -1;
   return (
     <>
-      {messages.map((m) => {
+      {messages.map((m, messageIndex) => {
         const displayItems = buildDisplayItems(m.parts);
         const codexThoughtPolicy = typeof agentId === 'string' && /(?:^|[-_])codex(?:[-_]|$)/i.test(agentId);
-        const latestThoughtIndex = codexThoughtPolicy && isStreaming
-          ? m.parts.reduce((latest, part, index) => part.type === 'thought' ? index : latest, -1)
+        const liveThoughtIndex = messageIndex === liveAssistantMessageIndex
+          && m.parts.at(-1)?.type === 'thought'
+          ? m.parts.length - 1
           : -1;
         return (
           <motion.div
@@ -1444,10 +1476,9 @@ export function AcpMessageList({
                     return <AssistantText key={i} text={p.text} />;
                   }
                   if (p.type === 'thought') {
-                    // Keep the live Codex thought in one stable slot after
-                    // the latest visible turn content. Rendering it inline
-                    // makes each following commentary/tool fragment jump
-                    // below an older thought position.
+                    if (i === liveThoughtIndex) {
+                      return <ThoughtRow key={i} text={p.text} label="思考中" live />;
+                    }
                     if (codexThoughtPolicy) return null;
                     return <ThoughtRow key={i} text={p.text} />;
                   }
@@ -1521,14 +1552,6 @@ export function AcpMessageList({
                     </Collapsible>
                   );
                 })}
-                {latestThoughtIndex >= 0 &&
-                m.parts[latestThoughtIndex]?.type === 'thought' ? (
-                  <ThoughtRow
-                    key={`active-thought-${latestThoughtIndex}`}
-                    text={m.parts[latestThoughtIndex].text}
-                    label="思考中"
-                  />
-                ) : null}
               </MessageContent>
             </Message>
           </motion.div>
