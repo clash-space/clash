@@ -15,6 +15,39 @@ afterEach(() => {
 });
 
 describe("GlobalAssetsClient", () => {
+  it("teaches the first upload with the Clash assets artwork", () => {
+    render(<GlobalAssetsClient initialAssets={[]} />);
+
+    const emptyUpload = screen.getByRole("button", {
+      name: /Build your reusable library/i,
+    });
+    const artwork = emptyUpload.querySelector("img");
+    expect(artwork).toHaveAttribute(
+      "src",
+      "/brand/avatar-assets.png",
+    );
+    expect(artwork).toHaveAttribute("data-ui", "brand-asset");
+    expect(artwork).toHaveAttribute("data-asset-role", "feature");
+    expect(
+      emptyUpload.querySelector('[data-slot="assets-empty-artwork"]'),
+    ).toHaveAttribute("data-ui", "artwork-slot");
+    expect(screen.getByRole("button", { name: "Add assets" })).toBeTruthy();
+  });
+
+  it("renders import failures through the shared feedback surface", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("Upload failed"));
+
+    render(<GlobalAssetsClient initialAssets={[]} />);
+    const input = screen.getByLabelText("Upload global assets");
+    fireEvent.change(input, {
+      target: { files: [new File(["image"], "broken.png", { type: "image/png" })] },
+    });
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveAttribute("data-ui", "feedback");
+    expect(alert).toHaveAttribute("data-tone", "error");
+  });
+
   it("uploads a local file into the global library without requiring a project", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(

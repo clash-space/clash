@@ -13,6 +13,7 @@ import type {
   ProviderExecutor,
 } from "./executor-contract";
 import { ProviderExecutionError } from "@clash/action-sdk";
+import { valueOutput } from "./executor-contract";
 
 /**
  * The credential, read by the key this plugin's own declaration names.
@@ -47,12 +48,13 @@ async function requireAccessToken(
 function hubRequest(
   context: ExecutorContext,
   operation: "submit" | "poll",
+  origin?: string,
 ) {
   return requireAccessToken(
     context,
     operation === "submit" ? "rejected" : "accepted",
   ).then((accessToken) =>
-    createHubRequest(globalThis.fetch, accessToken, operation),
+    createHubRequest(globalThis.fetch, accessToken, operation, origin),
   );
 }
 
@@ -62,7 +64,74 @@ function references(
 ): Promise<HubReferences> {
   // `context.reference` tells us whether bytes are already local or must first be fetched from a
   // public URL. Upload-based Hub families normalize both forms through the upload endpoint.
-  return collectReferences(invocation, context.reference);
+  return collectReferences(invocation, (reference) =>
+    context.reference(
+      reference as Parameters<ExecutorContext["reference"]>[0],
+    ),
+  );
+}
+
+function isMediaAnalysis(
+  invocation: Parameters<ProviderExecutor["submit"]>[0],
+): boolean {
+  return invocation.input.values.apiShape === "hub-analyse-media";
+}
+
+async function analyzeMedia(
+  invocation: Parameters<ProviderExecutor["submit"]>[0],
+  context: ExecutorContext,
+): Promise<ExecutorStep> {
+  const prompt = invocation.input.values.prompt;
+  if (typeof prompt !== "string" || !prompt.trim()) {
+    throw new ProviderExecutionError({
+      code: "invalid_request",
+      message: "Hilo media analysis requires a question.",
+      retryable: false,
+      requestState: "rejected",
+    });
+  }
+  const mediaReferences = invocation.input.references.filter(
+    (reference) => "asset" in reference,
+  );
+  if (mediaReferences.length !== 1) {
+    throw new ProviderExecutionError({
+      code: "invalid_request",
+      message: "Hilo media analysis requires exactly one media reference.",
+      retryable: false,
+      requestState: "rejected",
+    });
+  }
+  const resolved = await context.reference(mediaReferences[0]!);
+  if (resolved.form !== "bytes" || !resolved.mediaType) {
+    throw new ProviderExecutionError({
+      code: "invalid_request",
+      message: "Hilo media analysis requires media bytes with a MIME type.",
+      retryable: false,
+      requestState: "rejected",
+    });
+  }
+  const response = await (await hubRequest(
+    context,
+    "submit",
+    "https://design.minimax.io",
+  ))(
+    "/api/v1/tool/analyze_media",
+    "POST",
+    {
+      media_data: Buffer.from(resolved.bytes).toString("base64"),
+      mime_type: resolved.mediaType,
+      question: prompt.trim(),
+    },
+  );
+  if (typeof response.text !== "string" || !response.text.trim()) {
+    throw new ProviderExecutionError({
+      code: "invalid_response",
+      message: "Hilo media analysis returned no text.",
+      retryable: false,
+      requestState: "accepted",
+    });
+  }
+  return { status: "completed", outputs: valueOutput(response.text, "text") };
 }
 
 /**
@@ -74,6 +143,9 @@ function references(
  */
 export const hubAdapter: ProviderExecutor = {
   async submit(invocation, context: ExecutorContext): Promise<ExecutorStep> {
+    if (isMediaAnalysis(invocation)) {
+      return analyzeMedia(invocation, context);
+    }
     // The route first, then the token. An unsupported model is a wiring fault that no credential
     // fixes, and answering it with "no accessToken" sends the reader to the account screen for a
     // problem that is not there.

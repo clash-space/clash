@@ -24,32 +24,36 @@ const invocation: ExecutablePluginInvocation = {
   input: {
     values: {
       outputSlot: "render:output",
-      timelineDsl: {
-        compositionWidth: 720,
-        compositionHeight: 1280,
-        fps: 24,
-        durationInFrames: 96,
-        tracks: [
-          {
-            id: "visuals",
-            items: [
-              {
-                id: "hero",
-                type: "image",
-                assetId: "project-asset-image",
-                from: 0,
-                durationInFrames: 48,
-              },
-              {
-                id: "demo",
-                type: "video",
-                assetId: "project-asset-video",
-                from: 48,
-                durationInFrames: 48,
-              },
-            ],
-          },
-        ],
+      timeline: {
+        name: "Rough cut",
+        owner: { kind: "project" },
+        state: {
+          compositionWidth: 720,
+          compositionHeight: 1280,
+          fps: 24,
+          durationInFrames: 96,
+          tracks: [
+            {
+              id: "visuals",
+              items: [
+                {
+                  id: "hero",
+                  type: "image",
+                  assetId: "project-asset-image",
+                  from: 0,
+                  durationInFrames: 48,
+                },
+                {
+                  id: "demo",
+                  type: "video",
+                  assetId: "project-asset-video",
+                  from: 48,
+                  durationInFrames: 48,
+                },
+              ],
+            },
+          ],
+        },
       },
     },
     references: [
@@ -191,8 +195,10 @@ describe("Remotion bundled Action", () => {
       "http://127.0.0.1:43111/capabilities/demo",
     ]);
     expect(
-      (invocation.input.values.timelineDsl as Record<string, any>).tracks[0]
-        .items,
+      (
+        (invocation.input.values.timeline as Record<string, any>)
+          .state as Record<string, any>
+      ).tracks[0].items,
     ).toEqual([
       {
         id: "hero",

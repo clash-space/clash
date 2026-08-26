@@ -5,6 +5,7 @@ import {
   Cube,
   DotsThree,
   FilmSlate,
+  GlobeSimple,
   Image as ImageIcon,
   Images,
   MagnifyingGlass,
@@ -68,7 +69,14 @@ export type ProjectWorkspaceSurface =
   | {
       kind: "asset";
       assetId: string;
-    };
+    }
+  | { kind: "browser"; browserId: string };
+
+export interface ProjectBrowserTab {
+  id: string;
+  title: string;
+  url: string;
+}
 
 export interface ProjectTextAsset {
   id: string;
@@ -79,19 +87,20 @@ export interface ProjectTextAsset {
 interface ProjectWorkspaceNavigatorProps {
   header?: ReactNode;
   footer?: ReactNode;
-  collapsed?: boolean;
   canvases: ProjectCanvas[];
   timelines: ProjectTimeline[];
   directorStages?: ProjectDirectorStage[];
   assets: ResolvedAsset[];
   textAssets?: ProjectTextAsset[];
   globalAssets?: ResolvedAsset[];
+  browsers?: ProjectBrowserTab[];
   surface: ProjectWorkspaceSurface;
   onSelectCanvas: (canvasId: string) => void;
   onSelectTimeline: (timelineId: string) => void;
   onSelectDirectorStage?: (stageId: string) => void;
   onSelectAsset: (assetId: string) => void;
   onSelectTextAsset?: (asset: ProjectTextAsset) => void;
+  onSelectBrowser?: (browserId: string) => void;
   onCreateCanvas: () => void;
   onRenameCanvas: (canvas: ProjectCanvas) => void;
   onDeleteCanvas: (canvas: ProjectCanvas) => void;
@@ -101,6 +110,8 @@ interface ProjectWorkspaceNavigatorProps {
   onCreateDirectorStage?: () => void;
   onAttachDirectorStage?: (stage: ProjectDirectorStage) => void;
   onAddAsset: () => void;
+  onCreateBrowser?: () => void;
+  onCloseBrowser?: (browserId: string) => void;
   onAddGlobalAsset?: (assetId: string) => void | Promise<void>;
   onAddAssetToLibrary?: (assetId: string) => void;
   onTrashAsset?: (assetId: string) => void | Promise<void>;
@@ -116,13 +127,13 @@ const sectionHeadingClass =
 const sidebarActionSlotClass =
   "clash-project-sidebar-action-slot h-6 min-h-6 w-6 min-w-6";
 
-type ProjectFolderId = "canvases" | "timelines" | "director-stages" | "assets";
+type ProjectFolderId =
+  "canvases" | "browsers" | "timelines" | "director-stages" | "assets";
 
 interface ProjectFolderSectionProps {
   id: ProjectFolderId;
   label: string;
   open: boolean;
-  collapsed: boolean;
   addLabel?: string;
   onToggle: () => void;
   onAdd?: () => void;
@@ -134,7 +145,6 @@ function ProjectFolderSection({
   id,
   label,
   open,
-  collapsed,
   addLabel,
   onToggle,
   onAdd,
@@ -147,47 +157,44 @@ function ProjectFolderSection({
   return (
     <section
       data-project-folder={id}
-      aria-label={collapsed ? label : undefined}
-      aria-labelledby={collapsed ? undefined : headingId}
+      aria-labelledby={headingId}
       className="mt-[var(--clash-project-action-phase,0.5rem)] first:mt-0"
     >
-      {!collapsed ? (
-        <div data-project-folder-header className={sectionHeaderClass}>
-          <h2 className="min-w-0 flex-1">
-            <Button
-              aria-label={label}
-              aria-expanded={open}
-              aria-controls={contentId}
-              variant={null}
-              size={null}
-              shape={null}
-              onClick={onToggle}
-              className="flex h-[var(--clash-project-control-rhythm,2rem)] w-full min-w-0 items-center justify-start gap-1.5 rounded-md bg-transparent px-1 text-left shadow-none hover:bg-warm-hover focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-0"
-            >
-              <CaretRight
-                className={`h-3 w-3 shrink-0 text-stone-400 transition-transform ${open ? "rotate-90" : ""}`}
-                weight="bold"
+      <div data-project-folder-header className={sectionHeaderClass}>
+        <h2 className="min-w-0 flex-1">
+          <Button
+            aria-label={label}
+            aria-expanded={open}
+            aria-controls={contentId}
+            variant={null}
+            size={null}
+            shape={null}
+            onClick={onToggle}
+            className="flex h-[var(--clash-project-control-rhythm,2rem)] w-full min-w-0 items-center justify-start gap-1.5 rounded-md bg-transparent px-1 text-left shadow-none hover:bg-warm-hover focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-0"
+          >
+            <CaretRight
+              className={`h-3 w-3 shrink-0 text-stone-400 transition-transform ${open ? "rotate-90" : ""}`}
+              weight="bold"
+            />
+            <span id={headingId} className={sectionHeadingClass}>
+              {label}
+            </span>
+          </Button>
+        </h2>
+        {addControl ??
+          (addLabel && onAdd ? (
+            <Tooltip label={addLabel}>
+              <IconButton
+                label={addLabel}
+                icon={<Plus className="h-3 w-3" weight="bold" />}
+                size="sm"
+                shape="rounded"
+                onClick={onAdd}
+                className={`${sidebarActionSlotClass} rounded-md bg-transparent text-content-muted hover:bg-warm-hover hover:text-content-primary`}
               />
-              <span id={headingId} className={sectionHeadingClass}>
-                {label}
-              </span>
-            </Button>
-          </h2>
-          {addControl ??
-            (addLabel && onAdd ? (
-              <Tooltip label={addLabel}>
-                <IconButton
-                  label={addLabel}
-                  icon={<Plus className="h-3 w-3" weight="bold" />}
-                  size="sm"
-                  shape="rounded"
-                  onClick={onAdd}
-                  className={`${sidebarActionSlotClass} rounded-md bg-transparent text-content-muted hover:bg-warm-hover hover:text-content-primary`}
-                />
-              </Tooltip>
-            ) : null)}
-        </div>
-      ) : null}
+            </Tooltip>
+          ) : null)}
+      </div>
       {open ? (
         <div id={contentId} data-project-folder-content className="space-y-0">
           {children}
@@ -259,6 +266,7 @@ function SidebarItemContextMenu({
 
 type ProjectSearchResult =
   | { kind: "canvas"; id: string; label: string; searchText: string }
+  | { kind: "browser"; id: string; label: string; searchText: string }
   | { kind: "timeline"; id: string; label: string; searchText: string }
   | { kind: "director-stage"; id: string; label: string; searchText: string }
   | {
@@ -274,12 +282,9 @@ type ProjectSearchResult =
       searchText: string;
     };
 
-function rowClass(active: boolean, collapsed: boolean): string {
+function rowClass(active: boolean): string {
   return [
-    "group/menu-button relative flex h-[var(--clash-project-control-rhythm,2rem)] w-full min-w-0 items-center rounded-md text-[13px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50",
-    collapsed
-      ? "justify-center gap-0 px-0 text-center"
-      : "gap-2 px-2 pr-8 text-left",
+    "group/menu-button relative flex h-[var(--clash-project-control-rhythm,2rem)] w-full min-w-0 items-center gap-2 rounded-md px-2 pr-8 text-left text-[13px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
     active
       ? "bg-brand/[0.09] font-semibold text-slate-950 dark:text-neutral-100"
       : "text-stone-600 hover:bg-black/[0.035] hover:text-slate-950 dark:text-neutral-400 dark:hover:bg-white/[0.045] dark:hover:text-neutral-100",
@@ -292,6 +297,10 @@ function canvasTabId(canvasId: string): string {
 
 function timelineTabId(timelineId: string): string {
   return `project-timeline-${timelineId}`;
+}
+
+function browserTabId(browserId: string): string {
+  return `project-browser-${browserId}`;
 }
 
 function directorStageTabId(stageId: string): string {
@@ -308,6 +317,7 @@ function textAssetTabId(nodeId: string): string {
 
 function selectedTabId(surface: ProjectWorkspaceSurface): string {
   if (surface.kind === "canvas") return canvasTabId(surface.canvasId);
+  if (surface.kind === "browser") return browserTabId(surface.browserId);
   if (surface.kind === "timeline") return timelineTabId(surface.timelineId);
   if (surface.kind === "director-stage")
     return directorStageTabId(surface.stageId);
@@ -327,19 +337,20 @@ function assetNavigationLabel(asset: ResolvedAsset): {
 export default function ProjectWorkspaceNavigator({
   header,
   footer,
-  collapsed = false,
   canvases,
   timelines,
   directorStages = [],
   assets,
   textAssets = [],
   globalAssets = [],
+  browsers = [],
   surface,
   onSelectCanvas,
   onSelectTimeline,
   onSelectDirectorStage,
   onSelectAsset,
   onSelectTextAsset,
+  onSelectBrowser,
   onCreateCanvas,
   onRenameCanvas,
   onDeleteCanvas,
@@ -349,6 +360,8 @@ export default function ProjectWorkspaceNavigator({
   onCreateDirectorStage,
   onAttachDirectorStage,
   onAddAsset,
+  onCreateBrowser,
+  onCloseBrowser,
   onAddGlobalAsset,
   onAddAssetToLibrary,
   onTrashAsset,
@@ -370,6 +383,7 @@ export default function ProjectWorkspaceNavigator({
     Record<ProjectFolderId, boolean>
   >({
     canvases: true,
+    browsers: true,
     timelines: true,
     "director-stages": true,
     assets: true,
@@ -382,6 +396,12 @@ export default function ProjectWorkspaceNavigator({
         id: canvas.id,
         label: canvas.name,
         searchText: `${canvas.name} canvas canvases`,
+      })),
+      ...browsers.map((browser) => ({
+        kind: "browser" as const,
+        id: browser.id,
+        label: browser.title,
+        searchText: `${browser.title} ${browser.url} browser web page`,
       })),
       ...timelines.map((timeline) => ({
         kind: "timeline" as const,
@@ -420,6 +440,7 @@ export default function ProjectWorkspaceNavigator({
     );
   }, [
     activeAssets,
+    browsers,
     canvases,
     directorStages,
     searchQuery,
@@ -437,6 +458,7 @@ export default function ProjectWorkspaceNavigator({
       const [kind, ...idParts] = selectedValue.split(":");
       const id = idParts.join(":");
       if (kind === "canvas") onSelectCanvas(id);
+      if (kind === "browser") onSelectBrowser?.(id);
       if (kind === "timeline") onSelectTimeline(id);
       if (kind === "director-stage") onSelectDirectorStage?.(id);
       if (kind === "asset") onSelectAsset(id);
@@ -450,6 +472,7 @@ export default function ProjectWorkspaceNavigator({
       closeSearch,
       onSelectAsset,
       onSelectCanvas,
+      onSelectBrowser,
       onSelectDirectorStage,
       onSelectTextAsset,
       onSelectTimeline,
@@ -490,11 +513,13 @@ export default function ProjectWorkspaceNavigator({
     const folderId: ProjectFolderId =
       surface.kind === "canvas"
         ? "canvases"
-        : surface.kind === "timeline"
-          ? "timelines"
-          : surface.kind === "director-stage"
-            ? "director-stages"
-            : "assets";
+        : surface.kind === "browser"
+          ? "browsers"
+          : surface.kind === "timeline"
+            ? "timelines"
+            : surface.kind === "director-stage"
+              ? "director-stages"
+              : "assets";
     setOpenFolders((current) =>
       current[folderId] ? current : { ...current, [folderId]: true },
     );
@@ -514,6 +539,13 @@ export default function ProjectWorkspaceNavigator({
     );
     if (canvas) {
       onSelectCanvas(canvas.id);
+      return;
+    }
+    const browser = browsers.find(
+      (candidate) => browserTabId(candidate.id) === tabId,
+    );
+    if (browser) {
+      onSelectBrowser?.(browser.id);
       return;
     }
     const timeline = timelines.find(
@@ -550,250 +582,593 @@ export default function ProjectWorkspaceNavigator({
       size={null}
       shape={null}
       onClick={() => setSearchOpen(true)}
-      className={[
-        "h-[var(--clash-project-control-rhythm,2rem)] justify-start rounded-md border border-warm-border/80 bg-warm-surface text-[12px] font-normal text-stone-500 shadow-none hover:bg-warm-muted focus-visible:ring-1 focus-visible:ring-brand/60 focus-visible:ring-offset-0 dark:text-neutral-400 dark:hover:text-neutral-200",
-        collapsed ? "w-8 justify-center px-0" : "w-full gap-2 px-2",
-      ].join(" ")}
+      className="h-[var(--clash-project-control-rhythm,2rem)] w-full justify-start gap-2 rounded-md border border-warm-border/80 bg-warm-surface px-2 text-[12px] font-normal text-stone-500 shadow-none hover:bg-warm-muted focus-visible:ring-1 focus-visible:ring-ring/60 focus-visible:ring-offset-0 dark:text-neutral-400 dark:hover:text-neutral-200"
       leftIcon={<MagnifyingGlass className="h-3.5 w-3.5" weight="regular" />}
     >
-      {!collapsed ? (
-        <>
-          <span className="min-w-0 flex-1 truncate text-left">Search</span>
-          <kbd className="font-sans text-[10px] font-medium text-stone-400">
-            ⌘K
-          </kbd>
-        </>
-      ) : null}
+      <span className="min-w-0 flex-1 truncate text-left">Search</span>
+      <kbd className="font-sans text-[10px] font-medium text-stone-400">⌘K</kbd>
     </Button>
   );
   return (
-    <aside
-      aria-label="Project navigator"
-      aria-hidden={collapsed || undefined}
-      data-collapsed={collapsed}
-      className={[
-        "relative z-20 flex h-full min-h-0 w-full flex-col overflow-hidden bg-warm-page transition-[opacity,visibility] duration-150",
-        collapsed
-          ? "invisible pointer-events-none opacity-0"
-          : "visible opacity-100",
-      ].join(" ")}
+    <div
+      data-project-navigator-body="true"
+      className="relative z-20 flex h-full min-h-0 w-full flex-col overflow-hidden bg-warm-page"
     >
-      {!collapsed ? (
-        <>
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-y-0 right-0 z-30 w-px bg-warm-border"
-          />
-          {header ? (
-            <div className="clash-project-sidebar-header flex h-10 shrink-0 items-center px-2">
-              {header}
-            </div>
-          ) : null}
-          <div className="clash-project-sidebar-search flex h-[var(--clash-project-search-row-height,2.5rem)] shrink-0 items-start px-2 pt-[var(--clash-project-action-phase,0.5rem)]">
-            {searchButton}
-          </div>
-          <TabProvider
-            selectedId={selectedTabId(surface)}
-            setSelectedId={handleSelectedTabChange}
-            orientation="vertical"
-            focusLoop
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-y-0 right-0 z-30 w-px bg-warm-border"
+      />
+      {header ? (
+        <div className="clash-project-sidebar-header flex h-10 shrink-0 items-center px-2">
+          {header}
+        </div>
+      ) : null}
+      <div className="clash-project-sidebar-search flex h-[var(--clash-project-search-row-height,2.5rem)] shrink-0 items-start px-2 pt-[var(--clash-project-action-phase,0.5rem)]">
+        {searchButton}
+      </div>
+      <TabProvider
+        selectedId={selectedTabId(surface)}
+        setSelectedId={handleSelectedTabChange}
+        orientation="vertical"
+        focusLoop
+      >
+        <TabList
+          aria-label="Project surfaces"
+          className="min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-[var(--clash-project-action-phase,0.5rem)]"
+        >
+          <ProjectFolderSection
+            id="canvases"
+            label="Canvases"
+            open={openFolders.canvases}
+            addLabel="New Canvas"
+            onToggle={() => toggleFolder("canvases")}
+            onAdd={onCreateCanvas}
           >
-            <TabList
-              aria-label="Project surfaces"
-              className="min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-[var(--clash-project-action-phase,0.5rem)]"
+            {canvases.map((canvas) => {
+              const active =
+                surface.kind === "canvas" && surface.canvasId === canvas.id;
+              const tab = (
+                <Tab
+                  id={canvasTabId(canvas.id)}
+                  aria-label={canvas.name}
+                  className={rowClass(active)}
+                >
+                  <CanvasIcon
+                    className={
+                      active
+                        ? "h-3.5 w-3.5 text-brand"
+                        : "h-3.5 w-3.5 text-stone-400"
+                    }
+                    weight={active ? "fill" : "regular"}
+                  />
+                  <span className="truncate">{canvas.name}</span>
+                </Tab>
+              );
+              return (
+                <SidebarItemContextMenu
+                  key={canvas.id}
+                  label={canvas.name}
+                  onAnnotate={
+                    onAnnotate
+                      ? () =>
+                          onAnnotate({
+                            surface: "canvas",
+                            surfaceId: canvas.id,
+                            surfaceLabel: canvas.name,
+                            objectId: canvas.id,
+                            objectType: "canvas",
+                            objectLabel: canvas.name,
+                            objectPath: `canvases/${canvas.id}`,
+                            capabilities: ["read", "modify"],
+                          })
+                      : undefined
+                  }
+                  actions={[
+                    {
+                      key: "rename",
+                      label: "Rename",
+                      onSelect: () => onRenameCanvas(canvas),
+                    },
+                    {
+                      key: "delete",
+                      label: "Delete",
+                      danger: true,
+                      icon: <Trash className="h-4 w-4 shrink-0" />,
+                      onSelect: () => onDeleteCanvas(canvas),
+                    },
+                  ]}
+                >
+                  <div className="group/menu-item relative min-w-0">
+                    {tab}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <IconButton
+                          label={`Canvas actions for ${canvas.name}`}
+                          icon={<DotsThree className="h-4 w-4" weight="bold" />}
+                          size="sm"
+                          shape="rounded"
+                          className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-content-muted opacity-0 hover:bg-warm-hover hover:text-content-primary group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
+                        />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        side="right"
+                        align="start"
+                        className="min-w-36 rounded-md p-1"
+                      >
+                        <DropdownMenuItem
+                          onSelect={() => onRenameCanvas(canvas)}
+                        >
+                          Rename
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() => onDeleteCanvas(canvas)}
+                        >
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </SidebarItemContextMenu>
+              );
+            })}
+          </ProjectFolderSection>
+
+          {onCreateBrowser ? (
+            <ProjectFolderSection
+              id="browsers"
+              label="Browsers"
+              open={openFolders.browsers}
+              addLabel="Open Browser"
+              onToggle={() => toggleFolder("browsers")}
+              onAdd={onCreateBrowser}
             >
-              <ProjectFolderSection
-                id="canvases"
-                label="Canvases"
-                open={openFolders.canvases}
-                collapsed={collapsed}
-                addLabel="New Canvas"
-                onToggle={() => toggleFolder("canvases")}
-                onAdd={onCreateCanvas}
-              >
-                {canvases.map((canvas) => {
+              {browsers.map((browser) => {
+                const active =
+                  surface.kind === "browser" &&
+                  surface.browserId === browser.id;
+                const tab = (
+                  <Tab
+                    id={browserTabId(browser.id)}
+                    aria-label={browser.title}
+                    title={browser.url}
+                    className={rowClass(active)}
+                  >
+                    <GlobeSimple
+                      className={
+                        active
+                          ? "h-3.5 w-3.5 shrink-0 text-brand"
+                          : "h-3.5 w-3.5 shrink-0 text-stone-400"
+                      }
+                      weight={active ? "fill" : "regular"}
+                    />
+                    <span className="truncate">{browser.title}</span>
+                  </Tab>
+                );
+                const closeAction: SidebarContextAction[] = onCloseBrowser
+                  ? [
+                      {
+                        key: "close",
+                        label: "Close Browser",
+                        onSelect: () => onCloseBrowser(browser.id),
+                      },
+                    ]
+                  : [];
+                return (
+                  <SidebarItemContextMenu
+                    key={browser.id}
+                    label={browser.title}
+                    actions={closeAction}
+                  >
+                    <div className="group/menu-item relative min-w-0">
+                      {tab}
+                      {onCloseBrowser ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <IconButton
+                              label={`Browser actions for ${browser.title}`}
+                              icon={
+                                <DotsThree className="h-4 w-4" weight="bold" />
+                              }
+                              size="sm"
+                              shape="rounded"
+                              className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-content-muted opacity-0 hover:bg-warm-hover hover:text-content-primary group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
+                            />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent
+                            side="right"
+                            align="start"
+                            className="min-w-36 rounded-md p-1"
+                          >
+                            <DropdownMenuItem
+                              onSelect={() => onCloseBrowser(browser.id)}
+                            >
+                              Close Browser
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : null}
+                    </div>
+                  </SidebarItemContextMenu>
+                );
+              })}
+            </ProjectFolderSection>
+          ) : null}
+
+          <ProjectFolderSection
+            id="timelines"
+            label="Timelines"
+            open={openFolders.timelines}
+            addLabel="New Timeline"
+            onToggle={() => toggleFolder("timelines")}
+            onAdd={onCreateTimeline}
+          >
+            {timelines.map((timeline) => {
+              const active =
+                surface.kind === "timeline" &&
+                surface.timelineId === timeline.id;
+              const tab = (
+                <Tab
+                  id={timelineTabId(timeline.id)}
+                  aria-label={timeline.name}
+                  className={rowClass(active)}
+                >
+                  <FilmSlate
+                    className={
+                      active
+                        ? "h-3.5 w-3.5 text-brand"
+                        : "h-3.5 w-3.5 text-stone-400"
+                    }
+                    weight={active ? "fill" : "regular"}
+                  />
+                  <span className="truncate">{timeline.name}</span>
+                </Tab>
+              );
+              return (
+                <SidebarItemContextMenu
+                  key={timeline.id}
+                  label={timeline.name}
+                  onAnnotate={
+                    onAnnotate
+                      ? () =>
+                          onAnnotate({
+                            surface: "timeline",
+                            surfaceId: timeline.id,
+                            surfaceLabel: timeline.name,
+                            objectId: timeline.id,
+                            objectType: "timeline",
+                            objectLabel: timeline.name,
+                            objectPath: `timelines/${timeline.id}`,
+                            capabilities: ["read", "modify"],
+                          })
+                      : undefined
+                  }
+                  actions={[
+                    {
+                      key: "attach",
+                      label: "Move to current Canvas",
+                      onSelect: () => onAttachTimeline(timeline),
+                    },
+                    ...(onDeleteTimeline
+                      ? [
+                          {
+                            key: "delete",
+                            label: "Delete",
+                            danger: true,
+                            icon: <Trash className="h-4 w-4 shrink-0" />,
+                            onSelect: () => onDeleteTimeline(timeline),
+                          },
+                        ]
+                      : []),
+                  ]}
+                >
+                  <div className="group/menu-item relative min-w-0">
+                    {tab}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <IconButton
+                          label={`Timeline actions for ${timeline.name}`}
+                          icon={<DotsThree className="h-4 w-4" weight="bold" />}
+                          size="sm"
+                          shape="rounded"
+                          className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-content-muted opacity-0 hover:bg-warm-hover hover:text-content-primary group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
+                        />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        side="right"
+                        align="start"
+                        className="min-w-44 rounded-md p-1"
+                      >
+                        <DropdownMenuItem
+                          onSelect={() => onAttachTimeline(timeline)}
+                        >
+                          Move to current Canvas
+                        </DropdownMenuItem>
+                        {onDeleteTimeline ? (
+                          <DropdownMenuItem
+                            className="text-red-600 focus:text-red-700"
+                            onSelect={() => onDeleteTimeline(timeline)}
+                          >
+                            Delete
+                          </DropdownMenuItem>
+                        ) : null}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </SidebarItemContextMenu>
+              );
+            })}
+          </ProjectFolderSection>
+
+          <ProjectFolderSection
+            id="director-stages"
+            label="Director Stages"
+            open={openFolders["director-stages"]}
+            addLabel={onCreateDirectorStage ? "New Director Stage" : undefined}
+            onToggle={() => toggleFolder("director-stages")}
+            onAdd={onCreateDirectorStage}
+          >
+            {directorStages.map((stage) => {
+              const active =
+                surface.kind === "director-stage" &&
+                surface.stageId === stage.id;
+              const tab = (
+                <Tab
+                  id={directorStageTabId(stage.id)}
+                  aria-label={stage.name}
+                  className={rowClass(active)}
+                >
+                  <Cube
+                    className={
+                      active
+                        ? "h-3.5 w-3.5 text-brand"
+                        : "h-3.5 w-3.5 text-stone-400"
+                    }
+                    weight={active ? "fill" : "regular"}
+                  />
+                  <span className="truncate">{stage.name}</span>
+                </Tab>
+              );
+              return (
+                <SidebarItemContextMenu
+                  key={stage.id}
+                  label={stage.name}
+                  onAnnotate={
+                    onAnnotate
+                      ? () =>
+                          onAnnotate({
+                            surface: "director-stage",
+                            surfaceId: stage.id,
+                            surfaceLabel: stage.name,
+                            objectId: stage.id,
+                            objectType: "director-stage",
+                            objectLabel: stage.name,
+                            objectPath: `director-stages/${stage.id}`,
+                            capabilities: ["read", "modify"],
+                          })
+                      : undefined
+                  }
+                  actions={
+                    onAttachDirectorStage
+                      ? [
+                          {
+                            key: "attach",
+                            label: "Move to current Canvas",
+                            onSelect: () => onAttachDirectorStage(stage),
+                          },
+                        ]
+                      : []
+                  }
+                >
+                  <div className="group/menu-item relative min-w-0">
+                    {tab}
+                    {onAttachDirectorStage ? (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <IconButton
+                            label={`Director Stage actions for ${stage.name}`}
+                            icon={
+                              <DotsThree className="h-4 w-4" weight="bold" />
+                            }
+                            size="sm"
+                            shape="rounded"
+                            className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-content-muted opacity-0 hover:bg-warm-hover hover:text-content-primary group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
+                          />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          side="right"
+                          align="start"
+                          className="min-w-44 rounded-md p-1"
+                        >
+                          <DropdownMenuItem
+                            onSelect={() => onAttachDirectorStage(stage)}
+                          >
+                            Move to current Canvas
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : null}
+                  </div>
+                </SidebarItemContextMenu>
+              );
+            })}
+          </ProjectFolderSection>
+
+          <ProjectFolderSection
+            id="assets"
+            label="Assets"
+            open={openFolders.assets}
+            onToggle={() => toggleFolder("assets")}
+            addControl={
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <IconButton
+                    label="Add Asset"
+                    icon={<Plus className="h-3 w-3" weight="bold" />}
+                    size="sm"
+                    shape="rounded"
+                    className={`${sidebarActionSlotClass} rounded-md bg-transparent text-content-muted hover:bg-warm-hover hover:text-content-primary`}
+                  />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  side="right"
+                  align="start"
+                  className="min-w-52 rounded-xl p-1"
+                >
+                  <DropdownMenuItem onSelect={onAddAsset}>
+                    <UploadSimple className="h-4 w-4 text-stone-500" />
+                    Upload from Mac
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setLibraryPickerOpen(true)}>
+                    <Images className="h-4 w-4 text-stone-500" />
+                    Add from Global Assets
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            }
+          >
+            {activeAssets.length > 0 || textAssets.length > 0 ? (
+              <ul aria-label="Project assets" className="space-y-0">
+                {textAssets.map((asset) => {
                   const active =
-                    surface.kind === "canvas" && surface.canvasId === canvas.id;
+                    surface.kind === "text-asset" &&
+                    surface.nodeId === asset.id;
                   const tab = (
                     <Tab
-                      id={canvasTabId(canvas.id)}
-                      aria-label={canvas.name}
-                      className={rowClass(active, collapsed)}
+                      id={textAssetTabId(asset.id)}
+                      aria-label={asset.label}
+                      title={asset.label}
+                      className={rowClass(active)}
                     >
-                      <CanvasIcon
+                      <TextT
+                        data-project-text-asset-icon="true"
                         className={
                           active
-                            ? "h-3.5 w-3.5 text-brand"
-                            : "h-3.5 w-3.5 text-stone-400"
+                            ? "h-3.5 w-3.5 shrink-0 text-brand"
+                            : "h-3.5 w-3.5 shrink-0 text-stone-400"
                         }
-                        weight={active ? "fill" : "regular"}
+                        weight={active ? "bold" : "regular"}
                       />
-                      <span className={collapsed ? "sr-only" : "truncate"}>
-                        {canvas.name}
+                      <span className="min-w-0 flex-1 truncate">
+                        {asset.label}
                       </span>
                     </Tab>
                   );
                   return (
                     <SidebarItemContextMenu
-                      key={canvas.id}
-                      label={canvas.name}
+                      key={`text-${asset.id}`}
+                      label={asset.label}
                       onAnnotate={
                         onAnnotate
                           ? () =>
                               onAnnotate({
                                 surface: "canvas",
-                                surfaceId: canvas.id,
-                                surfaceLabel: canvas.name,
-                                objectId: canvas.id,
-                                objectType: "canvas",
-                                objectLabel: canvas.name,
-                                objectPath: `canvases/${canvas.id}`,
+                                surfaceId: asset.canvasId,
+                                surfaceLabel:
+                                  canvases.find(
+                                    (canvas) => canvas.id === asset.canvasId,
+                                  )?.name ?? asset.canvasId,
+                                objectId: asset.id,
+                                objectType: "canvas-text",
+                                objectLabel: asset.label,
+                                objectPath: `canvases/${asset.canvasId}/nodes/${asset.id}`,
                                 capabilities: ["read", "modify"],
                               })
                           : undefined
                       }
-                      actions={[
-                        {
-                          key: "rename",
-                          label: "Rename",
-                          onSelect: () => onRenameCanvas(canvas),
-                        },
-                        {
-                          key: "delete",
-                          label: "Delete",
-                          danger: true,
-                          icon: <Trash className="h-4 w-4 shrink-0" />,
-                          onSelect: () => onDeleteCanvas(canvas),
-                        },
-                      ]}
+                      actions={[]}
                     >
-                      <div className="group/menu-item relative min-w-0">
-                        {collapsed ? (
-                          <Tooltip label={canvas.name}>{tab}</Tooltip>
-                        ) : (
-                          tab
-                        )}
-                        {!collapsed ? (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <IconButton
-                                label={`Canvas actions for ${canvas.name}`}
-                                icon={
-                                  <DotsThree
-                                    className="h-4 w-4"
-                                    weight="bold"
-                                  />
-                                }
-                                size="sm"
-                                shape="rounded"
-                                className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-content-muted opacity-0 hover:bg-warm-hover hover:text-content-primary group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
-                              />
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                              side="right"
-                              align="start"
-                              className="min-w-36 rounded-md p-1"
-                            >
-                              <DropdownMenuItem
-                                onSelect={() => onRenameCanvas(canvas)}
-                              >
-                                Rename
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onSelect={() => onDeleteCanvas(canvas)}
-                              >
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        ) : null}
-                      </div>
+                      <li
+                        data-agent-annotation-object-id={asset.id}
+                        className="group/menu-item relative min-w-0"
+                      >
+                        {tab}
+                      </li>
                     </SidebarItemContextMenu>
                   );
                 })}
-              </ProjectFolderSection>
-
-              <ProjectFolderSection
-                id="timelines"
-                label="Timelines"
-                open={openFolders.timelines}
-                collapsed={collapsed}
-                addLabel="New Timeline"
-                onToggle={() => toggleFolder("timelines")}
-                onAdd={onCreateTimeline}
-              >
-                {timelines.map((timeline) => {
+                {activeAssets.map((asset) => {
+                  const { label } = assetNavigationLabel(asset);
                   const active =
-                    surface.kind === "timeline" &&
-                    surface.timelineId === timeline.id;
+                    surface.kind === "asset" && surface.assetId === asset.id;
                   const tab = (
                     <Tab
-                      id={timelineTabId(timeline.id)}
-                      aria-label={timeline.name}
-                      className={rowClass(active, collapsed)}
+                      id={assetTabId(asset.id)}
+                      aria-label={label}
+                      title={label}
+                      draggable
+                      onDragStart={(event) =>
+                        writeProjectAssetDrag(event.dataTransfer, asset)
+                      }
+                      className={`${rowClass(active)} cursor-grab active:cursor-grabbing`}
                     >
-                      <FilmSlate
-                        className={
-                          active
-                            ? "h-3.5 w-3.5 text-brand"
-                            : "h-3.5 w-3.5 text-stone-400"
-                        }
-                        weight={active ? "fill" : "regular"}
+                      <AssetThumbnail
+                        kind={asset.kind}
+                        src={projectAssetPlaybackUrl(asset) ?? ""}
+                        thumbnailSrc={asset.thumbnailUrl}
+                        status={asset.status}
+                        label={label}
+                        active={active}
                       />
-                      <span className={collapsed ? "sr-only" : "truncate"}>
-                        {timeline.name}
-                      </span>
+                      <span className="min-w-0 flex-1 truncate">{label}</span>
                     </Tab>
                   );
+                  const assetRowId = asset.id;
+                  const canAddToLibrary = Boolean(onAddAssetToLibrary);
+                  const actions: SidebarContextAction[] = [];
+                  if (canAddToLibrary && onAddAssetToLibrary) {
+                    actions.push({
+                      key: "add-to-library",
+                      label: "Add to Global Assets",
+                      icon: (
+                        <Images className="h-4 w-4 shrink-0 text-stone-500" />
+                      ),
+                      onSelect: () => onAddAssetToLibrary(assetRowId),
+                    });
+                  }
+                  if (onTrashAsset) {
+                    actions.push({
+                      key: "trash",
+                      label: "Move to Trash",
+                      icon: <Trash className="h-4 w-4 shrink-0 text-red-500" />,
+                      danger: true,
+                      onSelect: () => void onTrashAsset(assetRowId),
+                    });
+                  }
                   return (
                     <SidebarItemContextMenu
-                      key={timeline.id}
-                      label={timeline.name}
+                      key={asset.id}
+                      label={label}
                       onAnnotate={
                         onAnnotate
                           ? () =>
                               onAnnotate({
-                                surface: "timeline",
-                                surfaceId: timeline.id,
-                                surfaceLabel: timeline.name,
-                                objectId: timeline.id,
-                                objectType: "timeline",
-                                objectLabel: timeline.name,
-                                objectPath: `timelines/${timeline.id}`,
+                                surface: "asset",
+                                surfaceId: asset.id,
+                                surfaceLabel: label,
+                                objectId: assetRowId,
+                                objectType: `asset-${asset.kind}`,
+                                objectLabel: label,
+                                objectPath: `assets/${assetRowId}`,
                                 capabilities: ["read", "modify"],
+                                ...(asset.kind === "image" ||
+                                asset.kind === "video"
+                                  ? { previewAssetId: assetRowId }
+                                  : {}),
                               })
                           : undefined
                       }
-                      actions={[
-                        {
-                          key: "attach",
-                          label: "Move to current Canvas",
-                          onSelect: () => onAttachTimeline(timeline),
-                        },
-                        ...(onDeleteTimeline
-                          ? [
-                              {
-                                key: "delete",
-                                label: "Delete",
-                                danger: true,
-                                icon: <Trash className="h-4 w-4 shrink-0" />,
-                                onSelect: () => onDeleteTimeline(timeline),
-                              },
-                            ]
-                          : []),
-                      ]}
+                      actions={actions}
                     >
-                      <div className="group/menu-item relative min-w-0">
-                        {collapsed ? (
-                          <Tooltip label={timeline.name}>{tab}</Tooltip>
-                        ) : (
-                          tab
-                        )}
-                        {!collapsed ? (
+                      <li
+                        data-agent-annotation-object-id={assetRowId}
+                        className="group/menu-item relative min-w-0"
+                      >
+                        {tab}
+                        {canAddToLibrary || onTrashAsset ? (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <IconButton
-                                label={`Timeline actions for ${timeline.name}`}
+                                label={`More options for ${label}`}
                                 icon={
                                   <DotsThree
                                     className="h-4 w-4"
@@ -808,436 +1183,77 @@ export default function ProjectWorkspaceNavigator({
                             <DropdownMenuContent
                               side="right"
                               align="start"
-                              className="min-w-44 rounded-md p-1"
+                              className="min-w-48 rounded-xl p-1"
                             >
-                              <DropdownMenuItem
-                                onSelect={() => onAttachTimeline(timeline)}
-                              >
-                                Move to current Canvas
-                              </DropdownMenuItem>
-                              {onDeleteTimeline ? (
+                              {canAddToLibrary && onAddAssetToLibrary ? (
                                 <DropdownMenuItem
-                                  className="text-red-600 focus:text-red-700"
-                                  onSelect={() => onDeleteTimeline(timeline)}
+                                  onSelect={() => onAddAssetToLibrary(asset.id)}
                                 >
-                                  Delete
+                                  <Images className="h-4 w-4 text-stone-500" />
+                                  Add to Global Assets
+                                </DropdownMenuItem>
+                              ) : null}
+                              {onTrashAsset ? (
+                                <DropdownMenuItem
+                                  onSelect={() => void onTrashAsset(asset.id)}
+                                  className="text-red-600 data-[highlighted]:text-red-700 dark:text-red-400"
+                                >
+                                  <Trash className="h-4 w-4" />
+                                  Move to Trash
                                 </DropdownMenuItem>
                               ) : null}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         ) : null}
-                      </div>
+                      </li>
                     </SidebarItemContextMenu>
                   );
                 })}
-              </ProjectFolderSection>
-
-              <ProjectFolderSection
-                id="director-stages"
-                label="Director Stages"
-                open={openFolders["director-stages"]}
-                collapsed={collapsed}
-                addLabel={
-                  onCreateDirectorStage ? "New Director Stage" : undefined
-                }
-                onToggle={() => toggleFolder("director-stages")}
-                onAdd={onCreateDirectorStage}
-              >
-                {directorStages.map((stage) => {
-                  const active =
-                    surface.kind === "director-stage" &&
-                    surface.stageId === stage.id;
-                  const tab = (
-                    <Tab
-                      id={directorStageTabId(stage.id)}
-                      aria-label={stage.name}
-                      className={rowClass(active, collapsed)}
-                    >
-                      <Cube
-                        className={
-                          active
-                            ? "h-3.5 w-3.5 text-brand"
-                            : "h-3.5 w-3.5 text-stone-400"
-                        }
-                        weight={active ? "fill" : "regular"}
-                      />
-                      <span className={collapsed ? "sr-only" : "truncate"}>
-                        {stage.name}
-                      </span>
-                    </Tab>
-                  );
-                  return (
-                    <SidebarItemContextMenu
-                      key={stage.id}
-                      label={stage.name}
-                      onAnnotate={
-                        onAnnotate
-                          ? () =>
-                              onAnnotate({
-                                surface: "director-stage",
-                                surfaceId: stage.id,
-                                surfaceLabel: stage.name,
-                                objectId: stage.id,
-                                objectType: "director-stage",
-                                objectLabel: stage.name,
-                                objectPath: `director-stages/${stage.id}`,
-                                capabilities: ["read", "modify"],
-                              })
-                          : undefined
-                      }
-                      actions={
-                        onAttachDirectorStage
-                          ? [
-                              {
-                                key: "attach",
-                                label: "Move to current Canvas",
-                                onSelect: () => onAttachDirectorStage(stage),
-                              },
-                            ]
-                          : []
-                      }
-                    >
-                      <div className="group/menu-item relative min-w-0">
-                        {collapsed ? (
-                          <Tooltip label={stage.name}>{tab}</Tooltip>
-                        ) : (
-                          tab
-                        )}
-                        {!collapsed && onAttachDirectorStage ? (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <IconButton
-                                label={`Director Stage actions for ${stage.name}`}
-                                icon={
-                                  <DotsThree
-                                    className="h-4 w-4"
-                                    weight="bold"
-                                  />
-                                }
-                                size="sm"
-                                shape="rounded"
-                                className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-content-muted opacity-0 hover:bg-warm-hover hover:text-content-primary group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
-                              />
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                              side="right"
-                              align="start"
-                              className="min-w-44 rounded-md p-1"
-                            >
-                              <DropdownMenuItem
-                                onSelect={() => onAttachDirectorStage(stage)}
-                              >
-                                Move to current Canvas
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        ) : null}
-                      </div>
-                    </SidebarItemContextMenu>
-                  );
-                })}
-              </ProjectFolderSection>
-
-              <ProjectFolderSection
-                id="assets"
-                label="Assets"
-                open={openFolders.assets}
-                collapsed={collapsed}
-                onToggle={() => toggleFolder("assets")}
-                addControl={
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <IconButton
-                        label="Add Asset"
-                        icon={<Plus className="h-3 w-3" weight="bold" />}
-                        size="sm"
-                        shape="rounded"
-                        className={`${sidebarActionSlotClass} rounded-md bg-transparent text-content-muted hover:bg-warm-hover hover:text-content-primary`}
-                      />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent
-                      side="right"
-                      align="start"
-                      className="min-w-52 rounded-xl p-1"
-                    >
-                      <DropdownMenuItem onSelect={onAddAsset}>
-                        <UploadSimple className="h-4 w-4 text-stone-500" />
-                        Upload from Mac
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onSelect={() => setLibraryPickerOpen(true)}
-                      >
-                        <Images className="h-4 w-4 text-stone-500" />
-                        Add from Global Assets
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                }
-              >
-                {activeAssets.length > 0 || textAssets.length > 0 ? (
-                  <ul aria-label="Project assets" className="space-y-0">
-                    {textAssets.map((asset) => {
-                      const active =
-                        surface.kind === "text-asset" &&
-                        surface.nodeId === asset.id;
-                      const tab = (
-                        <Tab
-                          id={textAssetTabId(asset.id)}
-                          aria-label={asset.label}
-                          title={asset.label}
-                          className={rowClass(active, collapsed)}
-                        >
-                          <TextT
-                            data-project-text-asset-icon="true"
-                            className={
-                              active
-                                ? "h-3.5 w-3.5 shrink-0 text-brand"
-                                : "h-3.5 w-3.5 shrink-0 text-stone-400"
-                            }
-                            weight={active ? "bold" : "regular"}
-                          />
-                          <span
-                            className={
-                              collapsed ? "sr-only" : "min-w-0 flex-1 truncate"
-                            }
-                          >
-                            {asset.label}
-                          </span>
-                        </Tab>
-                      );
-                      return (
-                        <SidebarItemContextMenu
-                          key={`text-${asset.id}`}
-                          label={asset.label}
-                          onAnnotate={
-                            onAnnotate
-                              ? () =>
-                                  onAnnotate({
-                                    surface: "canvas",
-                                    surfaceId: asset.canvasId,
-                                    surfaceLabel:
-                                      canvases.find(
-                                        (canvas) =>
-                                          canvas.id === asset.canvasId,
-                                      )?.name ?? asset.canvasId,
-                                    objectId: asset.id,
-                                    objectType: "canvas-text",
-                                    objectLabel: asset.label,
-                                    objectPath: `canvases/${asset.canvasId}/nodes/${asset.id}`,
-                                    capabilities: ["read", "modify"],
-                                  })
-                              : undefined
+              </ul>
+            ) : null}
+            {trashedAssets.length > 0 ? (
+              <div className="mt-2 border-t border-warm-border/75 pt-2">
+                <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-content-muted">
+                  Trash
+                </p>
+                <ul aria-label="Project asset trash" className="space-y-0">
+                  {trashedAssets.map((asset) => {
+                    const { label } = assetNavigationLabel(asset);
+                    return (
+                      <li key={asset.id} className="relative min-w-0">
+                        <Button
+                          variant={null}
+                          size={null}
+                          shape={null}
+                          aria-label={`Restore ${label}`}
+                          onClick={() => void onRestoreAsset?.(asset.id)}
+                          disabled={!onRestoreAsset}
+                          className={`${rowClass(false)} bg-transparent shadow-none`}
+                          leftIcon={
+                            <ArrowCounterClockwise className="h-3.5 w-3.5 text-content-muted" />
                           }
-                          actions={[]}
                         >
-                          <li
-                            data-agent-annotation-object-id={asset.id}
-                            className="group/menu-item relative min-w-0"
-                          >
-                            {collapsed ? (
-                              <Tooltip label={asset.label}>{tab}</Tooltip>
-                            ) : (
-                              tab
-                            )}
-                          </li>
-                        </SidebarItemContextMenu>
-                      );
-                    })}
-                    {activeAssets.map((asset) => {
-                      const { label } = assetNavigationLabel(asset);
-                      const active =
-                        surface.kind === "asset" &&
-                        surface.assetId === asset.id;
-                      const tab = (
-                        <Tab
-                          id={assetTabId(asset.id)}
-                          aria-label={label}
-                          title={label}
-                          draggable
-                          onDragStart={(event) =>
-                            writeProjectAssetDrag(event.dataTransfer, asset)
-                          }
-                          className={`${rowClass(active, collapsed)} cursor-grab active:cursor-grabbing`}
-                        >
-                          <AssetThumbnail
-                            kind={asset.kind}
-                            src={projectAssetPlaybackUrl(asset) ?? ""}
-                            thumbnailSrc={asset.thumbnailUrl}
-                            status={asset.status}
-                            label={label}
-                            active={active}
-                          />
-                          <span
-                            className={
-                              collapsed ? "sr-only" : "min-w-0 flex-1 truncate"
-                            }
-                          >
+                          <span className="min-w-0 flex-1 truncate">
                             {label}
                           </span>
-                        </Tab>
-                      );
-                      const assetRowId = asset.id;
-                      const canAddToLibrary = Boolean(onAddAssetToLibrary);
-                      const actions: SidebarContextAction[] = [];
-                      if (canAddToLibrary && onAddAssetToLibrary) {
-                        actions.push({
-                          key: "add-to-library",
-                          label: "Add to Global Assets",
-                          icon: (
-                            <Images className="h-4 w-4 shrink-0 text-stone-500" />
-                          ),
-                          onSelect: () => onAddAssetToLibrary(assetRowId),
-                        });
-                      }
-                      if (onTrashAsset) {
-                        actions.push({
-                          key: "trash",
-                          label: "Move to Trash",
-                          icon: (
-                            <Trash className="h-4 w-4 shrink-0 text-red-500" />
-                          ),
-                          danger: true,
-                          onSelect: () => void onTrashAsset(assetRowId),
-                        });
-                      }
-                      return (
-                        <SidebarItemContextMenu
-                          key={asset.id}
-                          label={label}
-                          onAnnotate={
-                            onAnnotate
-                              ? () =>
-                                  onAnnotate({
-                                    surface: "asset",
-                                    surfaceId: asset.id,
-                                    surfaceLabel: label,
-                                    objectId: assetRowId,
-                                    objectType: `asset-${asset.kind}`,
-                                    objectLabel: label,
-                                    objectPath: `assets/${assetRowId}`,
-                                    capabilities: ["read", "modify"],
-                                    ...(asset.kind === "image" ||
-                                    asset.kind === "video"
-                                      ? { previewAssetId: assetRowId }
-                                      : {}),
-                                  })
-                              : undefined
-                          }
-                          actions={actions}
-                        >
-                          <li
-                            data-agent-annotation-object-id={assetRowId}
-                            className="group/menu-item relative min-w-0"
-                          >
-                            {collapsed ? (
-                              <Tooltip label={label}>{tab}</Tooltip>
-                            ) : (
-                              tab
-                            )}
-                            {!collapsed && (canAddToLibrary || onTrashAsset) ? (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <IconButton
-                                    label={`More options for ${label}`}
-                                    icon={
-                                      <DotsThree
-                                        className="h-4 w-4"
-                                        weight="bold"
-                                      />
-                                    }
-                                    size="sm"
-                                    shape="rounded"
-                                    className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-content-muted opacity-0 hover:bg-warm-hover hover:text-content-primary group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
-                                  />
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent
-                                  side="right"
-                                  align="start"
-                                  className="min-w-48 rounded-xl p-1"
-                                >
-                                  {canAddToLibrary && onAddAssetToLibrary ? (
-                                    <DropdownMenuItem
-                                      onSelect={() =>
-                                        onAddAssetToLibrary(asset.id)
-                                      }
-                                    >
-                                      <Images className="h-4 w-4 text-stone-500" />
-                                      Add to Global Assets
-                                    </DropdownMenuItem>
-                                  ) : null}
-                                  {onTrashAsset ? (
-                                    <DropdownMenuItem
-                                      onSelect={() =>
-                                        void onTrashAsset(asset.id)
-                                      }
-                                      className="text-red-600 data-[highlighted]:text-red-700 dark:text-red-400"
-                                    >
-                                      <Trash className="h-4 w-4" />
-                                      Move to Trash
-                                    </DropdownMenuItem>
-                                  ) : null}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            ) : null}
-                          </li>
-                        </SidebarItemContextMenu>
-                      );
-                    })}
-                  </ul>
-                ) : null}
-                {trashedAssets.length > 0 ? (
-                  <div className="mt-2 border-t border-warm-border/75 pt-2">
-                    {!collapsed ? (
-                      <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-content-muted">
-                        Trash
-                      </p>
-                    ) : null}
-                    <ul aria-label="Project asset trash" className="space-y-0">
-                      {trashedAssets.map((asset) => {
-                        const { label } = assetNavigationLabel(asset);
-                        return (
-                          <li key={asset.id} className="relative min-w-0">
-                            <Button
-                              variant={null}
-                              size={null}
-                              shape={null}
-                              aria-label={`Restore ${label}`}
-                              onClick={() => void onRestoreAsset?.(asset.id)}
-                              disabled={!onRestoreAsset}
-                              className={`${rowClass(false, collapsed)} bg-transparent shadow-none`}
-                              leftIcon={
-                                <ArrowCounterClockwise className="h-3.5 w-3.5 text-content-muted" />
-                              }
-                            >
-                              <span
-                                className={
-                                  collapsed
-                                    ? "sr-only"
-                                    : "min-w-0 flex-1 truncate"
-                                }
-                              >
-                                {label}
-                              </span>
-                            </Button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                ) : null}
-              </ProjectFolderSection>
-            </TabList>
-          </TabProvider>
-          {footer ? (
-            <div
-              role="group"
-              aria-label="Project controls"
-              className="clash-project-sidebar-footer flex h-12 shrink-0 items-center border-t border-warm-border/75 px-2"
-            >
-              {footer}
-            </div>
-          ) : null}
-        </>
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
+          </ProjectFolderSection>
+        </TabList>
+      </TabProvider>
+      {footer ? (
+        <div
+          role="group"
+          aria-label="Project controls"
+          className="clash-project-sidebar-footer flex h-12 shrink-0 items-center border-t border-warm-border/75 px-2"
+        >
+          {footer}
+        </div>
       ) : null}
       <Dialog
         open={libraryPickerOpen}
@@ -1263,7 +1279,7 @@ export default function ProjectWorkspaceNavigator({
                         () => setLibraryPickerOpen(false),
                       );
                     }}
-                    className="group w-full rounded-xl border border-warm-border bg-warm-page/50 p-2 text-left transition-colors hover:border-brand/30 hover:bg-brand/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+                    className="group w-full rounded-xl border border-warm-border bg-warm-page/50 p-2 text-left transition-colors hover:border-brand/30 hover:bg-brand/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
                     <span className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg bg-warm-muted">
                       <AssetThumbnail
@@ -1294,7 +1310,7 @@ export default function ProjectWorkspaceNavigator({
             </p>
             <Link
               to="/assets"
-              className="mt-4 inline-flex min-h-9 items-center justify-center rounded-lg border border-warm-border bg-warm-surface px-3 text-sm font-semibold text-content-primary shadow-sm hover:bg-warm-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+              className="mt-4 inline-flex min-h-9 items-center justify-center rounded-lg border border-warm-border bg-warm-surface px-3 text-sm font-semibold text-content-primary shadow-sm hover:bg-warm-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             >
               Open Global Assets
             </Link>
@@ -1309,7 +1325,7 @@ export default function ProjectWorkspaceNavigator({
         hideCloseButton
         unstyled
         containerClassName="items-start pt-[12vh]"
-        contentClassName="w-full max-w-lg overflow-hidden rounded-lg border border-warm-border bg-warm-surface shadow-[0_18px_54px_rgba(35,31,25,0.18)]"
+        contentClassName="w-full max-w-lg overflow-hidden rounded-lg border border-warm-border bg-warm-surface shadow-lg"
       >
         <ComboboxProvider store={searchStore}>
           <div className="relative border-b border-warm-border/80">
@@ -1322,7 +1338,7 @@ export default function ProjectWorkspaceNavigator({
               autoComplete="list"
               autoSelect
               autoFocus
-              placeholder="Search canvases, stages, timelines, and assets"
+              placeholder="Search canvases, browsers, stages, timelines, and assets"
               className="h-12 w-full bg-transparent pl-10 pr-4 text-sm text-slate-950 outline-none placeholder:text-stone-400 focus-visible:ring-0 dark:text-neutral-100 dark:placeholder:text-neutral-500"
             />
           </div>
@@ -1346,17 +1362,21 @@ export default function ProjectWorkspaceNavigator({
                     ? "Asset"
                     : result.kind === "canvas"
                       ? "Canvas"
-                      : result.kind === "director-stage"
-                        ? "Director Stage"
-                        : "Timeline";
+                      : result.kind === "browser"
+                        ? "Browser"
+                        : result.kind === "director-stage"
+                          ? "Director Stage"
+                          : "Timeline";
                 const ResultIcon =
                   result.kind === "asset"
                     ? ImageIcon
                     : result.kind === "canvas"
                       ? CanvasIcon
-                      : result.kind === "director-stage"
-                        ? Cube
-                        : FilmSlate;
+                      : result.kind === "browser"
+                        ? GlobeSimple
+                        : result.kind === "director-stage"
+                          ? Cube
+                          : FilmSlate;
                 return (
                   <ComboboxItem
                     key={value}
@@ -1383,6 +1403,6 @@ export default function ProjectWorkspaceNavigator({
           </ComboboxList>
         </ComboboxProvider>
       </Dialog>
-    </aside>
+    </div>
   );
 }

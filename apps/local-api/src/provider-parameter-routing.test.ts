@@ -200,6 +200,7 @@ describe("provider parameter routing", () => {
         values: {
           modelId: model.id,
           upstreamModel: "audio-v1",
+          apiShape: "speech-full",
           prompt: "Read this line.",
           modelParams: { voice_id: "speaker-123" },
         },

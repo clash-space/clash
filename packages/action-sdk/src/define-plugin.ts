@@ -4,7 +4,10 @@ import {
   ExecutablePluginBrokerResolvedReferenceSchema,
   ExecutablePluginAssetHandleSchema,
   ExecutablePluginOutputSchema,
+  ExecutableMediaAnalysisResultSchema,
+  ExecutableDirectorStageCaptureResultSchema,
   ExecutableSpeechTranscriptionResultSchema,
+  ExecutableVideoEnhanceResultSchema,
   type ExecutablePluginBrokerResolvedReference,
   type ExecutablePluginReference,
   type ExecutablePluginAssetHandle,
@@ -13,8 +16,14 @@ import {
   type ExecutablePluginJsonValue,
   type ExecutablePluginOutput,
   type ExecutablePluginResult,
+  type ExecutableMediaAnalysisOperation,
+  type ExecutableMediaAnalysisResult,
+  type ExecutableDirectorStageCaptureOperation,
+  type ExecutableDirectorStageCaptureResult,
   type ExecutableSpeechTranscriptionOperation,
   type ExecutableSpeechTranscriptionResult,
+  type ExecutableVideoEnhanceOperation,
+  type ExecutableVideoEnhanceResult,
 } from "@clash/shared-types/executable-plugin";
 
 import {
@@ -167,11 +176,27 @@ export interface CodexImageGenerateRequest {
   references?: ExecutablePluginAssetHandle[];
 }
 
+export type MediaAnalyzeRequest = Omit<
+  ExecutableMediaAnalysisOperation,
+  "kind"
+>;
+export type MediaAnalyzeResult = ExecutableMediaAnalysisResult;
+
 export type SpeechTranscribeRequest = Omit<
   ExecutableSpeechTranscriptionOperation,
   "kind"
 >;
 export type SpeechTranscribeResult = ExecutableSpeechTranscriptionResult;
+
+/** Credential-free request to the generic video-enhance Host tool; never names a Provider. */
+export type VideoEnhanceRequest = Omit<ExecutableVideoEnhanceOperation, "kind">;
+export type VideoEnhanceResult = ExecutableVideoEnhanceResult;
+
+export type DirectorStageCaptureRequest = Omit<
+  ExecutableDirectorStageCaptureOperation,
+  "kind"
+>;
+export type DirectorStageCaptureResult = ExecutableDirectorStageCaptureResult;
 
 export interface PluginHostTools {
   codexImagegen: {
@@ -179,9 +204,15 @@ export interface PluginHostTools {
       request: CodexImageGenerateRequest,
     ): Promise<ExecutablePluginAssetHandle>;
   };
+  directorStageCaptureFrame(
+    request: DirectorStageCaptureRequest,
+  ): Promise<DirectorStageCaptureResult>;
+  mediaAnalyze(request: MediaAnalyzeRequest): Promise<MediaAnalyzeResult>;
   speechTranscribe(
     request: SpeechTranscribeRequest,
   ): Promise<SpeechTranscribeResult>;
+  /** Host-frozen route dispatch: enhance one video through whichever Provider was selected. */
+  videoEnhance(request: VideoEnhanceRequest): Promise<VideoEnhanceResult>;
 }
 
 /**
@@ -553,6 +584,30 @@ export function createExecutorContext(
             } as never),
           ),
       },
+      directorStageCaptureFrame:
+        merged.hostTools?.directorStageCaptureFrame ??
+        (async (request) => {
+          try {
+            return ExecutableDirectorStageCaptureResultSchema.parse(
+              await host({ kind: "director.stage.capture-frame", ...request }),
+            );
+          } catch (error) {
+            throw new Error("The Host returned an invalid Director Stage capture.", { cause: error });
+          }
+        }),
+      mediaAnalyze:
+        merged.hostTools?.mediaAnalyze ??
+        (async (request) => {
+          try {
+            return ExecutableMediaAnalysisResultSchema.parse(
+              await host({ kind: "media.analyze", ...request }),
+            );
+          } catch (error) {
+            throw new Error("The Host returned an invalid media analysis result.", {
+              cause: error,
+            });
+          }
+        }),
       speechTranscribe:
         merged.hostTools?.speechTranscribe ??
         (async (request) => {
@@ -565,6 +620,19 @@ export function createExecutorContext(
               "The Host returned an invalid speech transcription result.",
               { cause: error },
             );
+          }
+        }),
+      videoEnhance:
+        merged.hostTools?.videoEnhance ??
+        (async (request) => {
+          try {
+            return ExecutableVideoEnhanceResultSchema.parse(
+              await host({ kind: "video.enhance", ...request }),
+            );
+          } catch (error) {
+            throw new Error("The Host returned an invalid video enhancement result.", {
+              cause: error,
+            });
           }
         }),
     },

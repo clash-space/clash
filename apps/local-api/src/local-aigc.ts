@@ -4,8 +4,10 @@ import {
   applyModelProviderImplementation,
   MODEL_CARDS,
   resolveModelUpstreamRoute,
+  resolvePinnedModelUpstreamRoute,
   validateModelCardConfiguration,
   coerceModelParameterInput,
+  type FrozenModelRoutePin,
   type ModelCard,
   type ModelKind,
   type ModelUpstreamRoute,
@@ -51,6 +53,12 @@ export interface MockMediaGenerationInput {
   actorAgentId?: string;
   prompt: string;
   model: string;
+  /** Consumer context controls declarative plugin-private Card visibility. */
+  modelConsumer?: {
+    pluginId: string;
+    definitionId?: string;
+    actionId?: string;
+  };
   aspectRatio?: string;
   /**
    * Seconds, or a sentinel the Card offers.
@@ -64,6 +72,11 @@ export interface MockMediaGenerationInput {
   modelParams?: Record<string, unknown>;
   /** Host-private account selection. It is never copied into plugin-visible modelParams. */
   providerAccountId?: string;
+  /**
+   * Exact Provider implementation frozen with the Run authority. Execution must
+   * use this implementation or fail; it never falls back to another route.
+   */
+  providerRoute?: FrozenModelRoutePin;
   /** Frozen typed inputs. Media bytes/URLs are resolved only through context.reference. */
   references?: ExecutablePluginReference[];
   /** Exact plugin contract selected when the node was authored. */
@@ -209,7 +222,7 @@ export interface MockFalExternalAigcServiceOptions {
   fal?: FalMockQueueService;
   origin?: string;
   providerAccounts?: () => Promise<RuntimeProviderAccountAvailability[]>;
-  modelCards?: () => Promise<ModelCard[]>;
+  modelCards?: (consumer?: MockMediaGenerationInput["modelConsumer"]) => Promise<ModelCard[]>;
   localTts?: (
     input: MockMediaGenerationInput,
   ) => Promise<MockMediaGenerationResult>;
@@ -380,6 +393,47 @@ function resolveMockFalModelId(
   return route?.upstreamModel ?? fallback;
 }
 
+function resolvePinnedLocalRoute(
+  model: string,
+  kind: ModelKind,
+  pin: FrozenModelRoutePin,
+  providerAccounts?: RuntimeProviderAccountAvailability[],
+  models?: ModelCard[],
+  requestedParameterIds: readonly string[] = [],
+): ModelUpstreamRoute {
+  const pinned = resolvePinnedModelUpstreamRoute(
+    providerAccounts
+      ? {
+          modelCode: model,
+          kind,
+          allowMock: providerAccounts.some(
+            (account) =>
+              account.providerId === "mock" && account.enabled !== false,
+          ),
+          configuredProviders: providerAccounts,
+          requestedParameterIds,
+          ...(models ? { models } : {}),
+        }
+      : {
+          modelCode: model,
+          kind,
+          allowMock: true,
+          configuredUpstreams: [{ upstreamId: "mock", enabled: true }],
+          requestedParameterIds,
+          ...(models ? { models } : {}),
+        },
+    pin,
+  );
+  if (!pinned) {
+    throw new Error(
+      `The Provider route frozen for ${model} ` +
+        `(${pin.providerId ?? pin.upstreamId}, ${pin.apiShape}) is no longer available. ` +
+        "Reconnect that provider or select the model again; the run will not fall back to another implementation.",
+    );
+  }
+  return pinned;
+}
+
 function resolveLocalRoute(
   model: string,
   kind: ModelKind,
@@ -505,6 +559,7 @@ function providerPluginExecutorRequest(
       values: {
         modelId: route.modelCode,
         upstreamModel: route.upstreamModel,
+        apiShape: route.apiShape,
         prompt: promptForRoute(input, route),
         ...(input.aspectRatio !== undefined
           ? { aspectRatio: input.aspectRatio }
@@ -732,7 +787,9 @@ export function createMockExternalAigcService(
     const providerAccounts = loadProviderAccounts
       ? await loadProviderAccounts()
       : undefined;
-    const modelCards = loadModelCards ? await loadModelCards() : undefined;
+    const modelCards = loadModelCards
+      ? await loadModelCards(input.modelConsumer)
+      : undefined;
     const preferredProviderId =
       input.providerAccountId ?? stringParam(input.modelParams, "provider_id");
     const requireRealProvider =
@@ -787,14 +844,23 @@ export function createMockExternalAigcService(
       ...(input.duration !== undefined ? { duration: input.duration } : {}),
       ...(input.aspectRatio ? { aspect_ratio: input.aspectRatio } : {}),
     }).filter((parameterId) => declaredParameterIds.has(parameterId));
-    const route = resolveLocalRoute(
-      input.model,
-      kind,
-      providerAccounts,
-      preferredProviderId,
-      modelCards,
-      requestedParameterIds,
-    );
+    const route = input.providerRoute
+      ? resolvePinnedLocalRoute(
+          input.model,
+          kind,
+          input.providerRoute,
+          providerAccounts,
+          modelCards,
+          requestedParameterIds,
+        )
+      : resolveLocalRoute(
+          input.model,
+          kind,
+          providerAccounts,
+          preferredProviderId,
+          modelCards,
+          requestedParameterIds,
+        );
     if (process.env.CLASH_TRACE_ROUTE) {
       console.log(
         `[route] ${input.model} -> provider=${route?.providerId} upstream=${route?.upstreamId} shape=${route?.apiShape} account=${route?.accountId}`,

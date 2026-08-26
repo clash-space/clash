@@ -1,7 +1,10 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from "react";
 import { LoroDoc, UndoManager } from "loro-crdt";
 import { Node, Edge } from "@xyflow/react";
-import { runtimeSyncWebSocketUrl } from "../lib/runtimeConfig";
+import {
+  refreshRuntimeConfig,
+  runtimeSyncWebSocketUrl,
+} from "../lib/runtimeConfig";
 import type {
   PresenceClient,
   ActivityMessage,
@@ -55,6 +58,7 @@ import {
   validateAgentObservation,
   type HostMutationEnvelope,
   type HostMutationRecord,
+  type CreateLinkedNodeResult,
   type ProjectCanvas,
   type ProjectCanvasDeleteResult,
   type ProjectCanvasMutationResult,
@@ -158,6 +162,16 @@ export interface UseLoroSyncReturn {
   ) => boolean;
   addNodeToCanvas: (canvasId: string, nodeId: string, nodeData: any) => boolean;
   addNode: (nodeId: string, nodeData: any) => boolean;
+  createLinkedNode: (input: {
+    nodeId: string;
+    nodeType: string;
+    data: Record<string, unknown>;
+    parentId: string | null;
+    sourceNodeId: string;
+    edgeId?: string;
+    edgeType?: string;
+    canvasId?: string;
+  }) => CreateLinkedNodeResult | null;
   updateNode: (
     nodeId: string,
     nodeData: any,
@@ -701,7 +715,8 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
   // Send a JSON sideband message (presence-style) on the same WS. Best-effort:
   // if the socket isn't open we silently drop. The server treats absence of
   // presence updates as "no lock held", which is the right semantic for a
-  // soft-lock — a disconnected client cannot be editing.
+  // soft-lock. A disconnected client may keep editing its local replica, but
+  // it cannot advertise or hold a remote presence lock until reconnect.
   const sendSideband = useCallback((msg: object) => {
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -721,10 +736,24 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     const delay = Math.min(500 * Math.pow(1.5, retryCountRef.current), 5000);
     reconnectTimeoutRef.current = setTimeout(() => {
       retryCountRef.current++;
-      // Call the latest connect function via ref to avoid circular dependency
-      connectRef.current();
+      void (async () => {
+        if (!syncServerUrl) {
+          try {
+            await refreshRuntimeConfig();
+          } catch (error) {
+            console.error(
+              "[useLoroSync] Failed to refresh Desktop Host before reconnect:",
+              error,
+            );
+          }
+        }
+        // Recompute the runtime WebSocket URL after Host discovery refresh.
+        // onopen sends the full local snapshot, so offline local commits are
+        // merged into the replacement Host instead of remaining UI-only.
+        connectRef.current();
+      })();
     }, delay);
-  }, []);
+  }, [syncServerUrl]);
 
   // Connect function - only called after initialization
   const connect = useCallback(() => {
@@ -918,6 +947,9 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
         return false;
       }
       doc.commit(); // Commit to trigger subscribeLocalUpdate
+      const projection = readStateFromLoro();
+      callbacksRef.current.onNodesChange?.(projection.nodes);
+      callbacksRef.current.onEdgesChange?.(projection.edges);
       updateUndoRedoState();
       callbacksRef.current.onMutation?.(
         hostMutationSucceeded(
@@ -933,13 +965,56 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       );
       return true;
     },
-    [doc, updateUndoRedoState],
+    [doc, readStateFromLoro, updateUndoRedoState],
   );
 
   const addNode = useCallback(
     (nodeId: string, nodeData: any) =>
       addNodeToCanvas(canvasId, nodeId, nodeData),
     [addNodeToCanvas, canvasId],
+  );
+
+  const createLinkedNode = useCallback(
+    (input: {
+      nodeId: string;
+      nodeType: string;
+      data: Record<string, unknown>;
+      parentId: string | null;
+      sourceNodeId: string;
+      edgeId?: string;
+      edgeType?: string;
+      canvasId?: string;
+    }): CreateLinkedNodeResult | null => {
+      const targetCanvasId = input.canvasId ?? canvasIdRef.current;
+      try {
+        const result = new Canvas(
+          doc,
+          () => {},
+          targetCanvasId,
+        ).createLinkedNode({
+          nodeId: input.nodeId,
+          nodeType: input.nodeType,
+          data: projectVisibleNodeData(input.data),
+          parentId: input.parentId,
+          sourceNodeId: input.sourceNodeId,
+          ...(input.edgeId ? { edgeId: input.edgeId } : {}),
+          ...(input.edgeType ? { edgeType: input.edgeType } : {}),
+        });
+        doc.commit();
+        const projection = readStateFromLoro();
+        callbacksRef.current.onNodesChange?.(projection.nodes);
+        callbacksRef.current.onEdgesChange?.(projection.edges);
+        updateUndoRedoState();
+        return result;
+      } catch (error) {
+        console.warn(
+          `[useLoroSync] Blocked linked node creation for ${input.nodeId}:`,
+          error,
+        );
+        return null;
+      }
+    },
+    [doc, readStateFromLoro, updateUndoRedoState],
   );
 
   const createCanvas = useCallback(
@@ -1246,6 +1321,9 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
         }
       }
       doc.commit(); // Commit to trigger subscribeLocalUpdate
+      const projection = readStateFromLoro();
+      callbacksRef.current.onNodesChange?.(projection.nodes);
+      callbacksRef.current.onEdgesChange?.(projection.edges);
       updateUndoRedoState();
       const updatedNode = nodesMap.get(nodeId);
       callbacksRef.current.onMutation?.(
@@ -1685,6 +1763,9 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
         return false;
       }
       doc.commit(); // Commit to trigger subscribeLocalUpdate
+      const projection = readStateFromLoro();
+      callbacksRef.current.onNodesChange?.(projection.nodes);
+      callbacksRef.current.onEdgesChange?.(projection.edges);
       callbacksRef.current.onMutation?.(
         hostMutationSucceeded(
           {
@@ -1931,6 +2012,7 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       applyDirectorStageState,
       addNodeToCanvas,
       addNode,
+      createLinkedNode,
       updateNode,
       applyTimelineState,
       applyTimelineDsl,
@@ -1950,6 +2032,7 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       addEdge,
       addNode,
       addNodeToCanvas,
+      createLinkedNode,
       applyTimelineDsl,
       applyTimelineState,
       requestTimelineRender,

@@ -1,0 +1,10 @@
+{
+  "name": "clash.video-enhance",
+  "summary": "Generic, headless video-enhancement Generator dispatched by Host-frozen modelRoute; recognizes no Provider by name.",
+  "rules": [
+    "This Generator declares semanticShape=video_enhancement and must not recognize any Provider or vendor (e.g. Volcengine) implementation by name.",
+    "The enhance action never picks a Provider itself; it forwards the Host-frozen modelId/modelRoute to hostTools.videoEnhance and returns whatever that Host tool answers.",
+    "Completed output crosses only as the Host-issued canonical Asset handle the selected Provider executor's own single upload produced; this plugin never re-fetches a Provider URL.",
+    "Importing src/stdio.ts must never start enhancement or stdio serving."
+  ]
+}

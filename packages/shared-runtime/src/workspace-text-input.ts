@@ -39,7 +39,9 @@ export async function resolveWorkspaceTextInput(input: {
 
   const bytes = await readFile(realCandidate);
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(
+      bytes,
+    );
   } catch {
     throw new Error("Content file must contain valid UTF-8");
   }

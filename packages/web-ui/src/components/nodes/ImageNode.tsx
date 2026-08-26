@@ -30,6 +30,7 @@ import { IconButton } from "../ui/icon-button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { Tooltip } from "../ui/tooltip";
+import { PendingAssetConnectionHint } from "./PendingAssetConnectionHint";
 
 const MEDIA_NODE_CONTROL_CLASS =
   "nodrag nopan bg-black/50 text-white backdrop-blur-sm hover:bg-black/70 focus-visible:ring-white/80 focus-visible:ring-offset-black/20";
@@ -56,6 +57,8 @@ const ImageNode = ({
   const asset = useAsset(projectId, data.assetId);
   const imageUrl = asset?.url;
   const [description, setDescription] = useState(data.description || "");
+  const pendingAwaitingConnection =
+    data.status === "pending" && loroSync?.connected === false;
 
   const aspectRatioDimensions = calculateDimensionsFromAspectRatio(
     data.aspectRatio,
@@ -124,7 +127,7 @@ const ImageNode = ({
         };
       }),
     );
-    if (loroSync?.connected) {
+    if (loroSync) {
       loroSync.updateNode(id, { width: target.width, height: target.height });
     }
   }, [
@@ -282,12 +285,16 @@ const ImageNode = ({
             className="flex items-center justify-center bg-warm-muted text-slate-700 dark:text-slate-300"
             style={{ width: "100%", height: "100%" }}
           >
-            <div className="flex flex-col items-center gap-3">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-warm-border border-t-image" />
-              <span className="text-xs font-medium animate-pulse">
-                Generating Image...
-              </span>
-            </div>
+            {pendingAwaitingConnection ? (
+              <PendingAssetConnectionHint />
+            ) : (
+              <div className="flex flex-col items-center gap-3">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-warm-border border-t-image" />
+                <span className="text-xs font-medium animate-pulse">
+                  Generating Image...
+                </span>
+              </div>
+            )}
           </div>
         ) : status === "failed" ? (
           <div

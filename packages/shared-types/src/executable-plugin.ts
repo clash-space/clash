@@ -10,11 +10,26 @@ import {
   GeneratorDefinitionSpecSchema,
   type GeneratorDefinition,
 } from "./generator-v2.js";
+export {
+  GeneratorDefinitionSpecSchema,
+  type GeneratorDefinition,
+} from "./generator-v2.js";
+import {
+  MediaAnalysisCategorySchema,
+  MediaAnalysisDocumentSchemas,
+  type MediaAnalysisCategory,
+} from "./media-analysis-documents.js";
+
+export {
+  MEDIA_ANALYSIS_DOCUMENT_KIND_BY_CATEGORY,
+  MediaAnalysisCategorySchema,
+  MediaAnalysisDocumentSchemas,
+  type MediaAnalysisCategory,
+} from "./media-analysis-documents.js";
 import {
   ExecutablePluginJsonValueSchema,
   type ExecutablePluginJsonValue,
 } from "./plugin-json-value.js";
-
 export {
   ExecutablePluginJsonValueSchema,
   type ExecutablePluginJsonValue,
@@ -1167,6 +1182,97 @@ export const ExecutablePluginResultSchema = z.discriminatedUnion("status", [
     .strict(),
 ]);
 
+export const ExecutableMediaAnalysisReferenceSchema =
+  ExecutablePluginReferenceBaseSchema.extend({
+    asset: ExecutablePluginAssetHandleObjectSchema.extend({
+      kind: z.enum(["image", "video", "audio"]),
+    }).strict(),
+  }).strict();
+
+/** Credential-free request from the media-analysis plugin to Host routing. */
+export const ExecutableMediaAnalysisOperationSchema = z
+  .object({
+    kind: z.literal("media.analyze"),
+    reference: ExecutableMediaAnalysisReferenceSchema,
+    modelId: z.string().trim().min(1),
+    category: z.string().trim().min(1),
+    prompt: z.string().trim().min(1),
+    promptVersion: z.string().trim().min(1),
+  })
+  .strict();
+
+export const ExecutableMediaAnalysisResultSchema = z.discriminatedUnion(
+  "status",
+  [
+    z
+      .object({
+        status: z.literal("completed"),
+        provider: z.string().trim().min(1),
+        route: z.string().trim().min(1),
+        underlyingModel: z.string().trim().min(1),
+        result: ExecutablePluginJsonValueSchema,
+      })
+      .strict(),
+    z
+      .object({
+        status: z.literal("accepted"),
+        poll: ExecutablePluginJsonValueSchema,
+        retryAfterMs: z.number().int().positive().optional(),
+      })
+      .strict(),
+  ],
+);
+
+/** The exact immutable video input accepted by the generic video-enhance Host tool. */
+export const ExecutableVideoEnhanceReferenceSchema =
+  ExecutablePluginReferenceBaseSchema.extend({
+    asset: ExecutablePluginAssetHandleObjectSchema.extend({
+      kind: z.literal("video"),
+    }).strict(),
+  }).strict();
+
+/**
+ * Credential-free request from the generic video-enhance plugin to Host routing. The Host
+ * dispatches this to whichever Provider implementation the frozen `route` names; this plugin
+ * never recognizes a Provider by name.
+ */
+export const ExecutableVideoEnhanceOperationSchema = z
+  .object({
+    kind: z.literal("video.enhance"),
+    reference: ExecutableVideoEnhanceReferenceSchema,
+    modelId: z.string().trim().min(1),
+    params: ExecutablePluginJsonValueSchema,
+    /** Present only when resuming Host-owned asynchronous enhancement work. */
+    poll: ExecutablePluginJsonValueSchema.optional(),
+  })
+  .strict();
+
+export const ExecutableVideoEnhanceResultSchema = z.discriminatedUnion("status", [
+  z
+    .object({
+      status: z.literal("completed"),
+      provider: z.string().trim().min(1),
+      route: z.string().trim().min(1),
+      underlyingModel: z.string().trim().min(1),
+      /**
+       * A Host staging receipt from the Provider implementation's own single upload -- not yet
+       * a published, immutable Project Asset. Publication requires the Host to verify this
+       * receipt's plugin/version/account/slot/task against the frozen Run authority first.
+       */
+      asset: ExecutablePluginAssetHandleObjectSchema.extend({
+        kind: z.literal("video"),
+      }).strict(),
+    })
+    .strict(),
+  z
+    .object({
+      status: z.literal("accepted"),
+      poll: ExecutablePluginJsonValueSchema,
+      retryAfterMs: z.number().int().positive().optional(),
+    })
+    .strict(),
+]);
+
 /** Credential-free request from an ASR plugin to the Host-owned speech runtime. */
 export const ExecutableSpeechTranscriptionOperationSchema = z
   .object({
@@ -1198,7 +1304,35 @@ export const ExecutableSpeechTranscriptionResultSchema = z.discriminatedUnion(
   ],
 );
 
+export const ExecutableDirectorStageCaptureOperationSchema = z
+  .object({
+    kind: z.literal("director.stage.capture-frame"),
+    stage: z.object({
+      name: z.string(),
+      owner: z.union([
+        z.object({ kind: z.literal("project") }).strict(),
+        z.object({ kind: z.literal("canvas-action"), canvasId: z.string().min(1), actionNodeId: z.string().min(1) }).strict(),
+      ]),
+      state: ExecutablePluginJsonValueSchema.refine(
+        (value) => value !== null && typeof value === "object" && !Array.isArray(value),
+        "Director Stage state must be an object.",
+      ),
+    }).strict(),
+    label: z.string().trim().min(1),
+    timeSeconds: z.number().finite().nonnegative(),
+    aspectRatio: z.enum(["16:9", "9:16", "4:3", "3:4", "1:1"]),
+    longEdge: z.number().int().min(256).max(4096),
+  }).strict();
+
+export const ExecutableDirectorStageCaptureResultSchema = z.object({
+  mediaType: z.literal("image/png"),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  bytesBase64: z.string().min(1),
+}).strict();
+
 export const ExecutablePluginBrokerOperationSchema = z.union([
+  ExecutableDirectorStageCaptureOperationSchema,
   z
     .object({
       kind: z.literal("asset.resolve"),
@@ -1351,6 +1485,8 @@ export const ExecutablePluginBrokerOperationSchema = z.union([
     })
     .strict(),
   ExecutableSpeechTranscriptionOperationSchema,
+  ExecutableMediaAnalysisOperationSchema,
+  ExecutableVideoEnhanceOperationSchema,
 ]);
 
 export const ExecutablePluginBrokerRequestSchema = z
@@ -1517,7 +1653,7 @@ export const ExecutablePluginContributionsSchema = z
     generators: z.array(ExecutablePluginGeneratorExportSchema).default([]),
     functions: z.array(ExecutablePluginFunctionExportSchema).default([]),
     hostTools: z
-      .array(z.enum(["codex.imagegen", "speech.transcribe"]))
+      .array(z.enum(["codex.imagegen", "speech.transcribe", "media.analyze", "director.stage.capture-frame", "video.enhance"]))
       .default([]),
   })
   .strict();
@@ -1647,6 +1783,30 @@ export function executablePluginDependencyError(
     return capabilities.assets
       ? null
       : `Plugin ${manifest.id} does not contribute anything that reads assets.`;
+  }
+
+  if (operation.kind === "media.analyze") {
+    if (!capabilities.hostTools.includes("media.analyze")) {
+      return `Plugin ${manifest.id} does not contribute media analysis.`;
+    }
+    return capabilities.assets
+      ? null
+      : `Plugin ${manifest.id} does not contribute anything that reads assets.`;
+  }
+
+  if (operation.kind === "video.enhance") {
+    if (!capabilities.hostTools.includes("video.enhance")) {
+      return `Plugin ${manifest.id} does not contribute video enhancement.`;
+    }
+    return capabilities.assets
+      ? null
+      : `Plugin ${manifest.id} does not contribute anything that reads assets.`;
+  }
+
+  if (operation.kind === "director.stage.capture-frame") {
+    return capabilities.hostTools.includes("director.stage.capture-frame")
+      ? null
+      : `Plugin ${manifest.id} does not contribute Director Stage capture.`;
   }
 
   if (operation.kind === "store.get" || operation.kind === "store.put") {
@@ -1951,8 +2111,32 @@ export type ExecutablePluginBinding = z.infer<
 export type ExecutablePluginAssetHandle = z.infer<
   typeof ExecutablePluginAssetHandleSchema
 >;
+export type ExecutableMediaAnalysisReference = z.infer<
+  typeof ExecutableMediaAnalysisReferenceSchema
+>;
+export type ExecutableMediaAnalysisOperation = z.infer<
+  typeof ExecutableMediaAnalysisOperationSchema
+>;
+export type ExecutableMediaAnalysisResult = z.infer<
+  typeof ExecutableMediaAnalysisResultSchema
+>;
+export type ExecutableVideoEnhanceReference = z.infer<
+  typeof ExecutableVideoEnhanceReferenceSchema
+>;
+export type ExecutableVideoEnhanceOperation = z.infer<
+  typeof ExecutableVideoEnhanceOperationSchema
+>;
+export type ExecutableVideoEnhanceResult = z.infer<
+  typeof ExecutableVideoEnhanceResultSchema
+>;
 export type ExecutableSpeechTranscriptionReference = z.infer<
   typeof ExecutableSpeechTranscriptionReferenceSchema
+>;
+export type ExecutableDirectorStageCaptureOperation = z.infer<
+  typeof ExecutableDirectorStageCaptureOperationSchema
+>;
+export type ExecutableDirectorStageCaptureResult = z.infer<
+  typeof ExecutableDirectorStageCaptureResultSchema
 >;
 export type ExecutableSpeechTranscriptionOperation = z.infer<
   typeof ExecutableSpeechTranscriptionOperationSchema

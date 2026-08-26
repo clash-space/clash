@@ -4,6 +4,7 @@ import {
   assetRefReadToken,
   AssetKindSchema,
   AssetMetadataSchema,
+  ProjectAssetMetadataSchema,
   ProjectAssetPublicationMetadataSchema,
   type Asset,
 } from "./assets.js";
@@ -55,6 +56,19 @@ describe("asset metadata", () => {
       channelCount: 2,
       channelLayout: "stereo",
     });
+  });
+
+  it("records normalized rig/deform capability without inventing a rig kind", () => {
+    // 0 is explicit: a static/rigid model with no rig/deform capability. 1 means fully
+    // rigged/deformable. This is a normalized capability, not a bone count or physical degree of
+    // freedom, and it never becomes a `rig` kind of its own -- static and rigged 3-D assets are
+    // both `model`.
+    expect(ProjectAssetMetadataSchema.parse({ flexibility: 0 }).flexibility).toBe(0);
+    expect(ProjectAssetMetadataSchema.parse({ flexibility: 1 }).flexibility).toBe(1);
+    expect(ProjectAssetMetadataSchema.parse({}).flexibility).toBeUndefined();
+    expect(ProjectAssetMetadataSchema.safeParse({ flexibility: -1 }).success).toBe(false);
+    expect(ProjectAssetMetadataSchema.safeParse({ flexibility: 1.01 }).success).toBe(false);
+    expect(ProjectAssetMetadataSchema.safeParse({ flexibility: 32 }).success).toBe(false);
   });
 
   it("derives read tokens from persistent asset state only", () => {

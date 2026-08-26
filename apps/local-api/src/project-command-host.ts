@@ -5,6 +5,7 @@
 
 import { createHmac, randomBytes } from "node:crypto";
 import type { LoroDoc } from "loro-crdt";
+import Ajv from "ajv";
 import {
   agentReadReceiptToken,
   AGENT_NODE_TYPE_MAP,
@@ -24,8 +25,7 @@ import {
   projectDirectorStageReadToken,
   projectCanvasReadToken,
   projectTimelineReadToken,
-  readProjectTimeline,
-  requestTimelineRender,
+  readProjectAsset,
   TIMELINE_DSL_DEFINITION,
   validateTimelineDsl,
   validateAgentObservation,
@@ -46,10 +46,29 @@ import {
   validateCanvasUpdateDataFields,
   type CanvasReadProofEdgeLike,
   type ModelCard,
+  type GeneratorDefinition,
   hostMutationRejected,
   hostMutationSucceeded,
   validateHostMutationEnvelope,
 } from "@clash/shared-types";
+import {
+  advanceLocalTimelineGenerator,
+  attachLocalTimelineGeneratorToCanvas,
+  copyLocalTimelineGeneratorActionToCanvas,
+  createLocalTimelineGenerator,
+  detachLocalTimelineGeneratorFromCanvas,
+  listLocalTimelineGenerators,
+  listLocalTimelineGeneratorRuns,
+  readLocalTimelineGenerator,
+} from "./local-timeline-generator-product.js";
+import {
+  advanceLocalDirectorStageGenerator,
+  attachLocalDirectorStageGeneratorToCanvas,
+  createLocalDirectorStageGenerator,
+  detachLocalDirectorStageGeneratorFromCanvas,
+  listLocalDirectorStageGenerators,
+  readLocalDirectorStageGenerator,
+} from "./local-director-stage-generator-product.js";
 import {
   createTextAppliedRevision,
   createTextCowNodeData,
@@ -358,10 +377,11 @@ function resolveCanvasReferenceNodeIds(
   return { refNodeIds, unresolvedReferences };
 }
 
-function generationOutputType(nodeType: string): "image" | "video" | "audio" | "text" {
+function generationOutputType(nodeType: string): "image" | "video" | "audio" | "text" | "model" {
   if (nodeType === "video_gen") return "video";
   if (nodeType === "audio_gen") return "audio";
   if (nodeType === "text_gen") return "text";
+  if (nodeType === "model_gen") return "model";
   return "image";
 }
 
@@ -371,6 +391,8 @@ export type ProjectCommandHostContext = {
   trustedCustomActions?: readonly Record<string, unknown>[];
   /** Host-private pending output identity, preallocated before the Project snapshot commits. */
   generationId?: () => string;
+  timelineGeneratorDefinition?: GeneratorDefinition;
+  directorStageGeneratorDefinition?: GeneratorDefinition;
 };
 
 export function handleProjectCommand(
@@ -424,6 +446,17 @@ export function handleCommandForTest(
     ...context,
     effectiveModelCards: context.effectiveModelCards ?? MODEL_CARDS,
   });
+}
+
+function generatorSurfaceNotInstalled(): object {
+  return {
+    code: "GENERATOR_PROJECTION_SURFACE_NOT_INSTALLED",
+    error: "The clash.timeline Generator projection surface is not installed.",
+  };
+}
+
+function generatorProductError(error: { code: string; message: string }): object {
+  return { code: error.code, error: error.message };
 }
 
 function handleCommand(
@@ -545,11 +578,14 @@ function handleCommand(
     }
 
     case "list_timelines": {
-      const timelines = client.listTimelines();
+      const definition = context.timelineGeneratorDefinition;
+      if (!definition) return generatorSurfaceNotInstalled();
+      const result = listLocalTimelineGenerators(client.doc, definition);
+      if (!result.ok) return generatorProductError(result.error);
       return {
-        timelines,
+        timelines: result.timelines,
         versions: Object.fromEntries(
-          timelines.map((timeline) => [timeline.id, projectTimelineReceiptReadToken(timeline)]),
+          result.timelines.map((timeline) => [timeline.id, projectTimelineReceiptReadToken(timeline)]),
         ),
       };
     }
@@ -570,85 +606,88 @@ function handleCommand(
     }
 
     case "list_timeline_renders": {
+      const definition = context.timelineGeneratorDefinition;
+      if (!definition) return generatorSurfaceNotInstalled();
       const status = cmd.status ?? "completed";
       if (status !== "completed" && status !== "all") {
-        return {
-          error: "Timeline render status must be 'completed' or 'all'",
-        };
+        return { error: "Timeline render status must be 'completed' or 'all'" };
       }
-      const renders = client
-        .canvasFor(PROJECT_ASSET_RENDER_CANVAS_ID)
-        .listNodes("video")
-        .filter((node) => status === "all" || node.data.status === "completed")
-        .sort((left, right) => left.id.localeCompare(right.id))
-        .map((node) => {
-          const version = canvasNodeReadToken(node);
-          return {
-            node,
-            lineage: {
-              sourceTimelineId:
-                typeof node.data.sourceTimelineId === "string"
-                  ? node.data.sourceTimelineId
-                  : null,
-              sourceTimelineRevisionId:
-                typeof node.data.sourceTimelineRevisionId === "string"
-                  ? node.data.sourceTimelineRevisionId
-                  : null,
-              renderTarget: node.data.renderTarget ?? null,
-              assetId:
-                typeof node.data.assetId === "string" ? node.data.assetId : null,
-              status:
-                typeof node.data.status === "string" ? node.data.status : null,
-            },
-            version,
-            readToken: canvasNodeReceiptReadToken(node),
-          };
-        });
-      return {
-        canvasId: PROJECT_ASSET_RENDER_CANVAS_ID,
-        status,
-        renders,
-      };
+      const listed = listLocalTimelineGeneratorRuns(client.doc, definition, status);
+      if (!listed.ok) return generatorProductError(listed.error);
+      const renders = listed.runs.map((run) => {
+        const projectedStatus = run.status === "succeeded"
+          ? "completed"
+          : run.status === "failed" ? "failed" : "generating";
+        const node = {
+          id: run.actionRunId,
+          type: "video",
+          position: { x: 0, y: 0 },
+          parent_id: null,
+          data: {
+            status: projectedStatus,
+            sourceTimelineId: run.timelineId,
+            sourceTimelineRevisionId: run.sourceTimelineRevisionId,
+            ...(run.outputCommit ? { assetId: run.assetId } : {}),
+          },
+        };
+        const version = canvasNodeReadToken(node);
+        return {
+          node,
+          lineage: {
+            sourceTimelineId: run.timelineId,
+            sourceTimelineRevisionId: run.sourceTimelineRevisionId,
+            renderTarget: null,
+            assetId: run.assetId ?? null,
+            status: projectedStatus,
+          },
+          version,
+          readToken: canvasNodeReceiptReadToken(node),
+        };
+      });
+      return { canvasId: PROJECT_ASSET_RENDER_CANVAS_ID, status, renders };
     }
 
     case "request_timeline_render": {
+      const definition = context.timelineGeneratorDefinition;
+      if (!definition) return generatorSurfaceNotInstalled();
       if (typeof cmd.timelineId !== "string" || !cmd.timelineId.trim()) {
         return { error: "request_timeline_render requires timelineId" };
       }
       const timelineId = cmd.timelineId.trim();
-      const current = readProjectTimeline(client.doc, timelineId);
-      if (!current) return { error: `Timeline ${timelineId} not found` };
+      const read = readLocalTimelineGenerator(client.doc, definition, timelineId);
+      if (!read.ok) return generatorProductError(read.error);
+      const current = read.timeline;
       const guard = validateHostProjectTimelineRead({
         cmd,
         operation: "Timeline render",
         currentVersion: projectTimelineReadToken(current),
       });
       if (!guard.ok) return guardError(guard);
-      const actorUserId = context.actorUserId?.trim();
-      if (!actorUserId) return { error: "Timeline render requires an authenticated host user" };
-      const requested = requestTimelineRender(client.doc, {
-        timelineId,
-        actorUserId,
-        ...(typeof cmd.actorAgentId === "string" && cmd.actorAgentId.trim()
-          ? { actorAgentId: cmd.actorAgentId.trim() }
-          : {}),
-        generateId: () => crypto.randomUUID().slice(0, 8),
-      });
-      if (!requested.ok) return { error: requested.error };
-      client.doc.commit({ origin: "local-api:timeline-render" });
+      const actionRunId = context.generationId?.() ?? crypto.randomUUID();
+      const target = current.owner.kind === "canvas-action"
+        ? { kind: "canvas", canvasId: current.owner.canvasId, actionNodeId: current.owner.actionNodeId }
+        : { kind: "project-assets" };
       return {
-        submitted: true,
-        timelineId,
+        kind: "timeline-generator-action-plan",
+        actionRunId,
+        generatorId: current.id,
+        generatorRevisionId: current.revisionId,
+        actionId: definition.projectionSurface!.primaryActionId,
+        timelineId: current.id,
         sourceTimelineRevisionId: current.revisionId,
-        renderNodeId: requested.renderNodeId,
-        target: requested.target,
+        renderNodeId: actionRunId,
+        target,
       };
     }
 
     case "create_timeline": {
-      const result = client.createTimeline({
+      const definition = context.timelineGeneratorDefinition;
+      if (!definition) return generatorSurfaceNotInstalled();
+      const result = createLocalTimelineGenerator(client.doc, definition, {
         id: cmd.timelineId,
         name: cmd.name,
+        owner: { kind: "project" },
+        revisionId: "genesis",
         state: cmd.state ?? { tracks: [] },
       });
       return result.ok
@@ -657,38 +696,47 @@ function handleCommand(
             version: projectTimelineReadToken(result.timeline),
             readToken: projectTimelineReceiptReadToken(result.timeline),
           }
-        : { error: result.error };
+        : generatorProductError(result.error);
     }
 
     case "update_timeline_state": {
-      const current = client.listTimelines().find((timeline) => timeline.id === cmd.timelineId);
-      if (!current) return { error: `Timeline ${cmd.timelineId} not found` };
+      const definition = context.timelineGeneratorDefinition;
+      if (!definition) return generatorSurfaceNotInstalled();
+      const read = readLocalTimelineGenerator(client.doc, definition, cmd.timelineId);
+      if (!read.ok) return generatorProductError(read.error);
+      const current = read.timeline;
       const guard = validateHostProjectTimelineRead({
         cmd,
         operation: "Timeline apply",
         currentVersion: projectTimelineReadToken(current),
       });
       if (!guard.ok) return guardError(guard);
-      const result = client.updateTimelineState(cmd.timelineId, cmd.state);
+      const result = advanceLocalTimelineGenerator(client.doc, definition, {
+        ...current,
+        state: cmd.state,
+      });
       return result.ok
         ? {
             timeline: result.timeline,
             version: projectTimelineReadToken(result.timeline),
             readToken: projectTimelineReceiptReadToken(result.timeline),
           }
-        : { error: result.error };
+        : generatorProductError(result.error);
     }
 
     case "attach_timeline": {
-      const current = client.listTimelines().find((timeline) => timeline.id === cmd.timelineId);
-      if (!current) return { error: `Timeline ${cmd.timelineId} not found` };
+      const definition = context.timelineGeneratorDefinition;
+      if (!definition) return generatorSurfaceNotInstalled();
+      const read = readLocalTimelineGenerator(client.doc, definition, cmd.timelineId);
+      if (!read.ok) return generatorProductError(read.error);
+      const current = read.timeline;
       const guard = validateHostProjectTimelineRead({
         cmd,
         operation: "Timeline attach",
         currentVersion: projectTimelineReadToken(current),
       });
       if (!guard.ok) return guardError(guard);
-      const result = client.attachTimeline({
+      const result = attachLocalTimelineGeneratorToCanvas(client.doc, definition, {
         timelineId: cmd.timelineId,
         canvasId: cmd.canvasId,
         actionNodeId: typeof cmd.actionNodeId === "string" && cmd.actionNodeId.trim()
@@ -702,33 +750,37 @@ function handleCommand(
             version: projectTimelineReadToken(result.timeline),
             readToken: projectTimelineReceiptReadToken(result.timeline),
           }
-        : { error: result.error };
+        : generatorProductError(result.error);
     }
 
     case "detach_timeline": {
-      const current = client.listTimelines().find((timeline) => timeline.id === cmd.timelineId);
-      if (!current) return { error: `Timeline ${cmd.timelineId} not found` };
+      const definition = context.timelineGeneratorDefinition;
+      if (!definition) return generatorSurfaceNotInstalled();
+      const read = readLocalTimelineGenerator(client.doc, definition, cmd.timelineId);
+      if (!read.ok) return generatorProductError(read.error);
+      const current = read.timeline;
       const guard = validateHostProjectTimelineRead({
         cmd,
         operation: "Timeline detach",
         currentVersion: projectTimelineReadToken(current),
       });
       if (!guard.ok) return guardError(guard);
-      const result = client.detachTimeline(cmd.timelineId);
+      const result = detachLocalTimelineGeneratorFromCanvas(client.doc, definition, cmd.timelineId);
       return result.ok
         ? {
             timeline: result.timeline,
             version: projectTimelineReadToken(result.timeline),
             readToken: projectTimelineReceiptReadToken(result.timeline),
           }
-        : { error: result.error };
+        : generatorProductError(result.error);
     }
 
     case "copy_timeline_action": {
-      const current = client.listTimelines().find(
-        (timeline) => timeline.id === cmd.sourceTimelineId,
-      );
-      if (!current) return { error: `Timeline ${cmd.sourceTimelineId} not found` };
+      const definition = context.timelineGeneratorDefinition;
+      if (!definition) return generatorSurfaceNotInstalled();
+      const read = readLocalTimelineGenerator(client.doc, definition, cmd.sourceTimelineId);
+      if (!read.ok) return generatorProductError(read.error);
+      const current = read.timeline;
       const sourceVersion = projectTimelineReadToken(current);
       const guard = validateHostProjectTimelineRead({
         cmd,
@@ -736,7 +788,7 @@ function handleCommand(
         currentVersion: sourceVersion,
       });
       if (!guard.ok) return guardError(guard);
-      const result = client.copyTimelineAction({
+      const result = copyLocalTimelineGeneratorActionToCanvas(client.doc, definition, {
         sourceTimelineId: cmd.sourceTimelineId,
         targetCanvasId: cmd.targetCanvasId,
         newTimelineId: typeof cmd.newTimelineId === "string" && cmd.newTimelineId.trim()
@@ -754,11 +806,15 @@ function handleCommand(
             readToken: projectTimelineReceiptReadToken(result.timeline),
             sourceVersion,
           }
-        : { error: result.error };
+        : generatorProductError(result.error);
     }
 
     case "list_director_stages": {
-      const stages = client.listDirectorStages();
+      const definition = context.directorStageGeneratorDefinition;
+      if (!definition) return generatorSurfaceNotInstalled();
+      const listed = listLocalDirectorStageGenerators(client.doc, definition);
+      if (!listed.ok) return generatorProductError(listed.error);
+      const stages = listed.stages;
       return {
         stages,
         versions: Object.fromEntries(
@@ -768,9 +824,13 @@ function handleCommand(
     }
 
     case "create_director_stage": {
-      const result = client.createDirectorStage({
+      const definition = context.directorStageGeneratorDefinition;
+      if (!definition) return generatorSurfaceNotInstalled();
+      const result = createLocalDirectorStageGenerator(client.doc, definition, {
         id: cmd.stageId,
         name: cmd.name,
+        owner: { kind: "project" },
+        revisionId: "",
         state: cmd.state ?? createDefaultDirectorStageState(),
       });
       return result.ok
@@ -783,15 +843,18 @@ function handleCommand(
     }
 
     case "update_director_stage_state": {
-      const current = client.listDirectorStages().find((stage) => stage.id === cmd.stageId);
-      if (!current) return { error: `Director Stage ${cmd.stageId} not found` };
+      const definition = context.directorStageGeneratorDefinition;
+      if (!definition) return generatorSurfaceNotInstalled();
+      const read = readLocalDirectorStageGenerator(client.doc, definition, cmd.stageId);
+      if (!read.ok) return generatorProductError(read.error);
+      const current = read.stage;
       const guard = validateHostProjectDirectorStageRead({
         cmd,
         operation: "Director Stage apply",
         currentVersion: projectDirectorStageReadToken(current),
       });
       if (!guard.ok) return guardError(guard);
-      const result = client.updateDirectorStageState(cmd.stageId, cmd.state);
+      const result = advanceLocalDirectorStageGenerator(client.doc, definition, { ...current, state: cmd.state });
       return result.ok
         ? {
             stage: result.stage,
@@ -802,15 +865,18 @@ function handleCommand(
     }
 
     case "attach_director_stage": {
-      const current = client.listDirectorStages().find((stage) => stage.id === cmd.stageId);
-      if (!current) return { error: `Director Stage ${cmd.stageId} not found` };
+      const definition = context.directorStageGeneratorDefinition;
+      if (!definition) return generatorSurfaceNotInstalled();
+      const read = readLocalDirectorStageGenerator(client.doc, definition, cmd.stageId);
+      if (!read.ok) return generatorProductError(read.error);
+      const current = read.stage;
       const guard = validateHostProjectDirectorStageRead({
         cmd,
         operation: "Director Stage attach",
         currentVersion: projectDirectorStageReadToken(current),
       });
       if (!guard.ok) return guardError(guard);
-      const result = client.attachDirectorStage({
+      const result = attachLocalDirectorStageGeneratorToCanvas(client.doc, definition, {
         stageId: cmd.stageId,
         canvasId: cmd.canvasId,
         actionNodeId: typeof cmd.actionNodeId === "string" && cmd.actionNodeId.trim()
@@ -828,15 +894,18 @@ function handleCommand(
     }
 
     case "detach_director_stage": {
-      const current = client.listDirectorStages().find((stage) => stage.id === cmd.stageId);
-      if (!current) return { error: `Director Stage ${cmd.stageId} not found` };
+      const definition = context.directorStageGeneratorDefinition;
+      if (!definition) return generatorSurfaceNotInstalled();
+      const read = readLocalDirectorStageGenerator(client.doc, definition, cmd.stageId);
+      if (!read.ok) return generatorProductError(read.error);
+      const current = read.stage;
       const guard = validateHostProjectDirectorStageRead({
         cmd,
         operation: "Director Stage detach",
         currentVersion: projectDirectorStageReadToken(current),
       });
       if (!guard.ok) return guardError(guard);
-      const result = client.detachDirectorStage(cmd.stageId);
+      const result = detachLocalDirectorStageGeneratorFromCanvas(client.doc, definition, cmd.stageId);
       return result.ok
         ? {
             stage: result.stage,
@@ -847,20 +916,48 @@ function handleCommand(
     }
 
     case "capture_director_stage": {
-      const current = client.listDirectorStages().find((stage) => stage.id === cmd.stageId);
-      if (!current) return { error: `Director Stage ${cmd.stageId} not found` };
+      const definition = context.directorStageGeneratorDefinition;
+      if (!definition) return generatorSurfaceNotInstalled();
+      const read = readLocalDirectorStageGenerator(client.doc, definition, cmd.stageId);
+      if (!read.ok) return generatorProductError(read.error);
+      const current = read.stage;
       const guard = validateHostProjectDirectorStageRead({
         cmd,
         operation: "Director Stage capture",
         currentVersion: projectDirectorStageReadToken(current),
       });
       if (!guard.ok) return guardError(guard);
-      return {
-        stage: current,
-        sourceStageRevisionId: current.revisionId,
-        version: projectDirectorStageReadToken(current),
-        readToken: projectDirectorStageReceiptReadToken(current),
-      };
+      if (!Array.isArray(cmd.frames) || cmd.frames.length === 0) return { code: "INVALID_CAPTURE_FRAMES", error: "Director Stage capture requires frames" };
+      const action = definition.actions.find((candidate) => candidate.id === definition.projectionSurface!.primaryActionId);
+      if (!action) return { code: "INVALID_CAPTURE_PARAMETERS", error: "Director Stage primary action is not installed" };
+      let validateParameters: ReturnType<Ajv["compile"]>;
+      try {
+        validateParameters = new Ajv({ allErrors: true, strict: true }).compile(action.parametersSchema);
+      } catch {
+        return { code: "INVALID_CAPTURE_PARAMETERS", error: "Director Stage capture parameter schema is invalid" };
+      }
+      const labels = new Set<string>();
+      const normalized: Array<{ label: string; timeSeconds: number; aspectRatio: string; longEdge: number }> = [];
+      for (const raw of cmd.frames) {
+        const label = typeof raw?.label === "string" ? raw.label.trim() : "";
+        const parameters = { label, timeSeconds: raw?.timeSeconds, aspectRatio: raw?.aspectRatio, longEdge: cmd.longEdge };
+        if (!label || labels.has(label)) return { code: "INVALID_CAPTURE_FRAMES", error: "Director capture frame labels must be non-blank and unique after normalization" };
+        if (!validateParameters(parameters)) return { code: "INVALID_CAPTURE_PARAMETERS", error: `Invalid Director capture frame ${label}: ${validateParameters.errors?.[0]?.message ?? "invalid parameters"}` };
+        labels.add(label);
+        normalized.push(parameters as typeof normalized[number]);
+      }
+      const runs = normalized.map((frame) => {
+        const key = `${current.id}:${current.revisionId}:${frame.label}:${frame.timeSeconds}:${frame.aspectRatio}:${frame.longEdge}`;
+        const actionRunId = `director-capture:${Buffer.from(key).toString("base64url")}`;
+        return {
+          actionRunId,
+          generatorId: current.id,
+          generatorRevisionId: current.revisionId,
+          actionId: definition.projectionSurface!.primaryActionId,
+          parameters: frame,
+        };
+      });
+      return { kind: "director-stage-capture-plan", stageId: current.id, sourceStageRevisionId: current.revisionId, runs };
     }
 
     case "list": {
@@ -916,6 +1013,9 @@ function handleCommand(
         ? generationOutputType(requestedNodeType)
         : undefined;
       const isGenerationNode = outputKind !== undefined;
+      const isProjectAssetNode = requestedNodeType === "image"
+        || requestedNodeType === "video"
+        || requestedNodeType === "audio";
       const data: Record<string, unknown> = { label: cmd.label };
 
       if (typeof cmd.parentId === "string") {
@@ -929,6 +1029,39 @@ function handleCommand(
         || cmd.refs !== undefined || cmd.params !== undefined
       )) {
         return { error: `Generation fields are not valid for Canvas node type ${requestedNodeType}` };
+      }
+      if (!isProjectAssetNode && cmd.assetId !== undefined) {
+        return { error: `assetId is only valid when projecting an image, video, or audio Project Asset` };
+      }
+      if (isProjectAssetNode) {
+        const assetId = typeof cmd.assetId === "string" ? cmd.assetId.trim() : "";
+        if (!assetId) {
+          return {
+            code: "PROJECT_ASSET_REQUIRED",
+            error: `Canvas node type ${requestedNodeType} requires an existing Project Asset ID`,
+          };
+        }
+        const asset = readProjectAsset(client.doc, assetId);
+        if (!asset) {
+          return {
+            code: "PROJECT_ASSET_NOT_FOUND",
+            error: `Project Asset not found: ${assetId}`,
+          };
+        }
+        if (asset.lifecycle.state !== "active") {
+          return {
+            code: "PROJECT_ASSET_NOT_ACTIVE",
+            error: `Project Asset ${assetId} is ${asset.lifecycle.state}, not active`,
+          };
+        }
+        if (asset.kind !== requestedNodeType) {
+          return {
+            code: "PROJECT_ASSET_KIND_MISMATCH",
+            error: `Project Asset ${assetId} has kind ${asset.kind}, expected ${requestedNodeType}`,
+          };
+        }
+        data.assetId = asset.id;
+        data.status = "completed";
       }
       if (cmd.actionId !== undefined && cmd.modelId !== undefined) {
         return { error: "Canvas add accepts either actionId or modelId, not both" };
@@ -985,6 +1118,7 @@ function handleCommand(
           );
           data.outputType = definition?.outputType === "image" || definition?.outputType === "video"
             || definition?.outputType === "audio" || definition?.outputType === "text"
+            || definition?.outputType === "model"
             ? definition.outputType
             : generationOutputType(requestedNodeType);
           const pluginBinding = ExecutablePluginBindingSchema.safeParse(definition?.pluginBinding);
@@ -1625,6 +1759,18 @@ function handleCommand(
         guard: readProof,
       });
       if (!hostMutation.ok) return { error: hostMutation.error, mutation: hostMutation.mutation };
+      if (!isCanvasNodeImmutable({
+        nodeId: cmd.nodeId,
+        edges: client.canvas.listEdges(),
+      })) {
+        const code = "NODE_NOT_IMMUTABLE";
+        const error = "Copy-on-write replacement is only valid for an immutable media node with downstream references; add an independent Project Asset to the Canvas instead";
+        return {
+          code,
+          error,
+          mutation: hostMutationRejected(hostMutation.envelope, error),
+        };
+      }
       const newNodeId = typeof cmd.newNodeId === "string" && cmd.newNodeId.length > 0
         ? cmd.newNodeId
         : crypto.randomUUID().slice(0, 8);

@@ -381,8 +381,8 @@ describe("Seedance and H3 unified model cards", () => {
         kind: "video",
         configuredProviders: [
           {
-            providerId: "volcengine",
-            upstreamId: "volcengine",
+            providerId: "volcengine-modelark",
+            upstreamId: "volcengine-modelark",
             enabled: true,
             configuredCredentials: ["apiKey"],
           },
@@ -444,8 +444,8 @@ describe("Seedance and H3 unified model cards", () => {
         kind: "video",
         configuredProviders: [
           {
-            providerId: "volcengine",
-            upstreamId: "volcengine",
+            providerId: "volcengine-modelark",
+            upstreamId: "volcengine-modelark",
             enabled: true,
             configuredCredentials: ["apiKey"],
           },
@@ -470,8 +470,8 @@ describe("Seedance and H3 unified model cards", () => {
   it("executes every Volcengine Seedance capability through the bundled Provider plugin", () => {
     const configuredProviders = [
       {
-        providerId: "volcengine" as const,
-        upstreamId: "volcengine" as const,
+        providerId: "volcengine-modelark" as const,
+        upstreamId: "volcengine-modelark" as const,
         enabled: true,
         configuredCredentials: ["apiKey"],
       },
@@ -502,15 +502,15 @@ describe("Seedance and H3 unified model cards", () => {
 
   it("routes the verified Volcengine Seedance 2.5 implementation without guessed providers", () => {
     const model = card("seedance-2.5-ref");
-    expect(model.availableProviders).toEqual(["volcengine"]);
+    expect(model.availableProviders).toEqual(["volcengine-modelark"]);
 
     const routes = listModelUpstreamRoutes({
       modelCode: model.id,
       kind: "video",
       configuredProviders: [
         {
-          providerId: "volcengine",
-          upstreamId: "volcengine",
+          providerId: "volcengine-modelark",
+          upstreamId: "volcengine-modelark",
           enabled: true,
           configuredCredentials: ["apiKey"],
         },
@@ -518,7 +518,7 @@ describe("Seedance and H3 unified model cards", () => {
     });
     expect(
       routes.map((route) => [route.providerId, route.upstreamModel]),
-    ).toEqual([["volcengine", "doubao-seedance-2-5-260628"]]);
+    ).toEqual([["volcengine-modelark", "doubao-seedance-2-5-260628"]]);
     expect(routes[0]?.referenceBinding).toMatchObject({
       type: "positional-tokens",
       tokens: { image: "@图像{n}", video: "@视频{n}", audio: "@音频{n}" },
@@ -528,8 +528,8 @@ describe("Seedance and H3 unified model cards", () => {
   it("routes both extension cards to the documented Volcengine model ids", () => {
     const configuredProviders = [
       {
-        providerId: "volcengine" as const,
-        upstreamId: "volcengine" as const,
+        providerId: "volcengine-modelark" as const,
+        upstreamId: "volcengine-modelark" as const,
         enabled: true,
         configuredCredentials: ["apiKey"],
       },

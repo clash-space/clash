@@ -226,6 +226,7 @@ export interface BuildLocalGeneratorActionRunInput {
   generatorRevision: GeneratorRevisionRef;
   actionId: string;
   parameters: ActionRunRequest["parameters"];
+  modelSelection?: NonNullable<ActionRunRequest["modelSelection"]>;
   invocationInputRefs: GeneratorInputRef[];
 }
 
@@ -279,6 +280,51 @@ export function buildLocalGeneratorActionRun(
     input.invocationInputRefs,
     "Action invocation",
   );
+  const outputContract = (() => {
+    if (!action.selectOutputsByParameter) return action.outputs;
+    const selected = (input.parameters as Record<string, unknown>)[
+      action.selectOutputsByParameter
+    ];
+    if (!Array.isArray(selected)) {
+      contractError(
+        `Action parameter ${action.selectOutputsByParameter} must select output slots.`,
+      );
+    }
+    const slots = selected.map((value) => {
+      if (typeof value !== "string") {
+        contractError(
+          `Action parameter ${action.selectOutputsByParameter} must contain output slot strings.`,
+        );
+      }
+      return value;
+    });
+    if (new Set(slots).size !== slots.length) {
+      contractError("Action output selection has duplicate categories.");
+    }
+    const declared = new Map(action.outputs.map((output) => [output.slot, output]));
+    const sourceKinds = invocationInputRefs.flatMap((ref) => {
+      if (!("kind" in ref.target) || ref.target.kind !== "media") return [];
+      const asset = readProjectAsset(input.doc, ref.target.projectAssetId);
+      return asset ? [asset.kind] : [];
+    });
+    return slots.map((slot) => {
+      const output = declared.get(slot);
+      if (!output) contractError(`Action output selection has unknown category ${slot}.`);
+      if (
+        output.sourceMediaKinds &&
+        sourceKinds.some(
+          (kind) =>
+            kind === "model" || !output.sourceMediaKinds!.includes(kind),
+        )
+      ) {
+        contractError(`Action output category ${slot} is not applicable to the source media kind.`);
+      }
+      return {
+        ...output,
+        cardinality: { minItems: 1 as const, maxItems: 1 as const },
+      };
+    });
+  })();
   const executor = {
     pluginId: definition.pluginId,
     version: definition.version,
@@ -291,8 +337,9 @@ export function buildLocalGeneratorActionRun(
     actionId: action.id,
     executor,
     parameters: input.parameters,
+    ...(input.modelSelection ? { modelSelection: input.modelSelection } : {}),
     invocationInputRefs,
-    outputContract: action.outputs,
+    outputContract,
   };
   const invocationFingerprint = `sha256:${createHash("sha256")
     .update(canonicalJson(semanticInvocation))
@@ -308,8 +355,9 @@ export function buildLocalGeneratorActionRun(
       executor,
       invocationFingerprint,
       parameters: input.parameters,
+      ...(input.modelSelection ? { modelSelection: input.modelSelection } : {}),
       invocationInputRefs,
-      outputContract: action.outputs,
+      outputContract,
     },
   };
 }

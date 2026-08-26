@@ -6,6 +6,10 @@ const source = readFileSync(
   new URL("./ProjectEditor.tsx", import.meta.url),
   "utf8",
 );
+const globalsSource = readFileSync(
+  new URL("../../../../apps/web/app/globals.css", import.meta.url),
+  "utf8",
+);
 
 describe("ProjectEditor workspace model", () => {
   it("projects one Project Loro replica into a selected concrete Canvas", () => {
@@ -42,7 +46,10 @@ describe("ProjectEditor workspace model", () => {
       "mechanism missing",
     ).toBe(true);
     expect(
-      sourceContains(source, "grid-cols-[12rem_minmax(0,1fr)]"),
+      sourceContains(
+        source,
+        "grid-cols-[var(--clash-app-sidebar-expanded-width,16rem)_minmax(0,1fr)]",
+      ),
       "mechanism missing",
     ).toBe(true);
     expect(sourceContains(source, "header={"), "mechanism missing").toBe(true);
@@ -50,6 +57,10 @@ describe("ProjectEditor workspace model", () => {
       sourceContains(source, "footer={<UserControls compact />}"),
       "mechanism missing",
     ).toBe(true);
+    expect(
+      sourceContains(source, "sidebarExpanded={!isProjectNavigatorCollapsed}"),
+      "must not reappear",
+    ).toBe(false);
     expect(
       sourceContains(source, 'id="project-top-actions"'),
       "must not reappear",
@@ -67,7 +78,7 @@ describe("ProjectEditor workspace model", () => {
     ).toBe(false);
   });
 
-  it("persists a fully collapsible project navigator with one workspace-owned toggle", () => {
+  it("persists the project navigator through the shared workspace shell", () => {
     expect(source).toMatch(
       /localStorage\.getItem\(["']project-navigator-collapsed["']\)/,
     );
@@ -85,16 +96,31 @@ describe("ProjectEditor workspace model", () => {
       "mechanism missing",
     ).toBe(true);
     expect(
+      sourceContains(source, "--clash-app-sidebar-collapsed-width"),
+      "must not reappear",
+    ).toBe(false);
+    expect(
       sourceMatches(source, /collapsed=\{\s*isProjectNavigatorCollapsed\s*\}/),
       "mechanism missing",
     ).toBe(true);
     expect(
-      sourceContains(
+      sourceMatches(
         source,
-        "onCollapsedChange={setIsProjectNavigatorCollapsed}",
+        /onCollapsedChange=\{\s*setIsProjectNavigatorCollapsed\s*\}/,
       ),
-      "must not reappear",
-    ).toBe(false);
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, 'widthStorageKey="project-navigator-width"'),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceMatches(
+        source,
+        /header=\{[\s\S]{0,2200}<DesktopSidebarCollapseButton/,
+      ),
+      "mechanism missing",
+    ).toBe(true);
     expect(
       sourceContains(source, "clash-project-sidebar-toggle-button"),
       "must not reappear",
@@ -112,6 +138,84 @@ describe("ProjectEditor workspace model", () => {
     ).toBe(true);
     expect(
       sourceContains(source, "data-project-workspace-toolbar"),
+      "mechanism missing",
+    ).toBe(true);
+  });
+
+  it("publishes the real project name to the retained desktop tab", () => {
+    expect(sourceContains(source, "DESKTOP_TAB_TITLE_EVENT")).toBe(true);
+    expect(
+      sourceMatches(
+        source,
+        /title:\s*projectName\s*\|\|\s*project\.name\s*\|\|\s*["']Untitled["']/,
+      ),
+    ).toBe(true);
+    expect(
+      sourceMatches(
+        source,
+        /window\.dispatchEvent\(\s*new CustomEvent\(DESKTOP_TAB_TITLE_EVENT,\s*\{\s*detail\s*\}\)/,
+      ),
+    ).toBe(true);
+  });
+
+  it("hosts the full project navigator body inside the shared auto-hide sidebar", () => {
+    expect(
+      sourceMatches(
+        source,
+        /import DesktopAutoHideSidebar,\s*\{[\s\S]*?DesktopSidebarCollapseButton[\s\S]*?\}\s*from "\.\/DesktopAutoHideSidebar"/,
+      ),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, "<DesktopAutoHideSidebar"),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(source, 'label="Project navigator"'),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(
+        source,
+        'expandedWidth="var(--clash-app-sidebar-expanded-width)"',
+      ),
+      "mechanism missing",
+    ).toBe(true);
+    // The shared component owns the aside, the edge preview, and the scrim.
+    expect(
+      sourceMatches(
+        source,
+        /<DesktopAutoHideSidebar[\s\S]{0,400}<ProjectWorkspaceNavigator/,
+      ),
+      "mechanism missing",
+    ).toBe(true);
+    // The navigator renders one full body; it has no collapsed variant.
+    expect(
+      sourceMatches(
+        source,
+        /<ProjectWorkspaceNavigator[^>]*\bcollapsed=/,
+      ),
+      "must not reappear",
+    ).toBe(false);
+    expect(
+      sourceMatches(
+        source,
+        /\{!isProjectNavigatorCollapsed \?[\s\S]{0,40}<form/,
+      ),
+      "must not reappear",
+    ).toBe(false);
+    expect(
+      sourceMatches(source, /clash-auto-hide-sidebar-host/),
+      "mechanism missing",
+    ).toBe(true);
+  });
+
+  it("keeps the auto-hide sidebar host elevated during collapsed preview", () => {
+    expect(
+      sourceMatches(
+        globalsSource,
+        /\.clash-auto-hide-sidebar-host:has\(> aside\[data-state="preview"\]\)\s*\{[\s\S]*?z-index:\s*40;[\s\S]*?overflow:\s*visible;/,
+      ),
       "mechanism missing",
     ).toBe(true);
   });

@@ -28,7 +28,10 @@ import {
   readGeneratorRevision,
   validateReferenceMedia,
   validateRefs,
+  MEDIA_REFERENCE_FIELDS,
+  MEDIA_REFERENCE_MODALITIES,
 } from "@clash/shared-types";
+import { expectedProviderReceiptOwner } from "./local-provider-receipt-ownership.js";
 import type {
   ExecutablePluginJsonValue,
   ExecutablePluginReference,
@@ -40,6 +43,7 @@ import type {
   ReferenceMediaMetadata,
   TextAppliedRevision,
   DocumentAssetRevision,
+  MediaReferenceModality,
 } from "@clash/shared-types";
 import type { AssetKind } from "@clash/shared-types/assets";
 import {
@@ -78,6 +82,26 @@ export interface LocalWorkflowProcessorInput {
   checkpoint?: () => Promise<void>;
 }
 
+/** Static/rigid vs. rigged/deformable 3-D output models, by provider model id. `0` is
+ *  static/rigid, `1` is rigged/deformable -- a normalized rig/deform capability, not a bone
+ *  count or physical degree of freedom. Only meaningful for the `model` asset kind. */
+const STATIC_RIGID_MODEL_IDS = new Set(["meshy-6", "meshy-7", "tripo-h3.1"]);
+const RIGGED_DEFORMABLE_MODEL_IDS = new Set([
+  "meshy-auto-rig",
+  "tripo-auto-rig",
+  "move-ai-s2",
+]);
+
+export function modelOutputFlexibility(
+  kind: string,
+  modelId: unknown,
+): 0 | 1 | undefined {
+  if (kind !== "model" || typeof modelId !== "string") return undefined;
+  if (STATIC_RIGID_MODEL_IDS.has(modelId)) return 0;
+  if (RIGGED_DEFORMABLE_MODEL_IDS.has(modelId)) return 1;
+  return undefined;
+}
+
 export interface LocalWorkflowProcessor {
   process(input: LocalWorkflowProcessorInput): Promise<boolean>;
   /** Earliest owner-private durable wake time; Project Loro is never scanned for scheduling. */
@@ -100,6 +124,17 @@ export interface LocalWorkflowProcessorOptions {
     pluginId: string,
     exportId: string,
     kind: "action",
+  ) => Promise<ReturnType<typeof ExecutablePluginBindingSchema.parse>>;
+  /**
+   * Resolve the exact Provider executor binding a frozen `modelRoute` names.
+   *
+   * Used only to verify a generic model-consumer Action's staged media receipt was produced by
+   * the same Provider executor plugin/version the Host froze at Run submission -- never to widen
+   * ownership to an arbitrary cross-plugin handle.
+   */
+  resolveProviderExecutorBinding?: (
+    pluginId: string,
+    exportId: string,
   ) => Promise<ReturnType<typeof ExecutablePluginBindingSchema.parse>>;
   durableProviderRuns?: {
     ownerId: string;
@@ -157,7 +192,7 @@ function canonicalJson(value: unknown): string {
   return serialized;
 }
 
-type ProcessableKind = Extract<AssetKind, "image" | "video" | "audio">;
+type ProcessableKind = Extract<AssetKind, "image" | "video" | "audio" | "model">;
 type ProcessableNodeKind = ProcessableKind | "text";
 
 function sanitizeStorageSegment(value: string): string {
@@ -341,9 +376,15 @@ function canvasNodeProjectionRevisionId(input: {
     kind: input.kind,
     actionType: input.nodeData.actionType,
     prompt,
-    referenceImageAssetIds: stringList(input.nodeData.referenceImageAssetIds),
-    referenceVideoAssetIds: stringList(input.nodeData.referenceVideoAssetIds),
-    referenceAudioAssetIds: stringList(input.nodeData.referenceAudioAssetIds),
+    // One projected field per `MEDIA_REFERENCE_FIELDS` registry entry
+    // (image / video / audio / model today) so a new reference modality
+    // only needs a registry entry, not a new field here.
+    ...Object.fromEntries(
+      MEDIA_REFERENCE_FIELDS.map((field) => [
+        field.pendingField,
+        stringList(input.nodeData[field.pendingField]),
+      ]),
+    ),
     mentions,
     ...(parsedBinding.success ? { pluginBinding: parsedBinding.data } : {}),
   };
@@ -492,7 +533,6 @@ function isCurrentProviderNodeRevision(input: {
 }): boolean {
   const { frozen } = input;
   if (!frozen.nodeId) return true;
-  if (frozen.kind === "model") return false;
   if (frozen.publicOwner) {
     const owner = timelineRenderInputOwner(input.nodeData);
     if (owner) {
@@ -820,6 +860,7 @@ function pendingKindForNode(
     node.type !== "image" &&
     node.type !== "video" &&
     node.type !== "audio" &&
+    node.type !== "model" &&
     node.type !== "text"
   )
     return null;
@@ -1440,17 +1481,28 @@ export function createLocalWorkflowProcessor(
               frozen.targetKind === "generator-action"
                 ? run.actionRunId
                 : idempotencyKey;
+            const expectedOwner = await expectedProviderReceiptOwner({
+              frozen,
+              resolveProviderExecutorBinding:
+                options.resolveProviderExecutorBinding,
+            });
             if (
               staged.taskId !== expectedReceiptTaskId ||
               staged.slot !== run.outputSlot ||
-              staged.pluginId !== frozen.binding.pluginId ||
-              staged.pluginVersion !== frozen.binding.version
+              staged.pluginId !== expectedOwner.pluginId ||
+              staged.pluginVersion !== expectedOwner.pluginVersion ||
+              (expectedOwner.accountId !== undefined &&
+                staged.accountId !== expectedOwner.accountId)
             ) {
               throw new Error(
                 "Durable Provider media output staging receipt is not owned by the frozen run and binding.",
               );
             }
             const assetId = staged.projectAssetId;
+            const flexibility = modelOutputFlexibility(
+              frozen.kind,
+              frozen.input.values.modelId,
+            );
             const projectAsset = await projectAssets.prepareStagedOwnedEntry({
               projectAssetId: assetId,
               kind: frozen.kind,
@@ -1458,6 +1510,7 @@ export function createLocalWorkflowProcessor(
               ...(frozen.delivery?.name ? { name: frozen.delivery.name } : {}),
               metadata: {
                 ...(staged.mediaType ? { contentType: staged.mediaType } : {}),
+                ...(flexibility !== undefined ? { flexibility } : {}),
               },
               provenance: {
                 kind:
@@ -1559,6 +1612,58 @@ export function createLocalWorkflowProcessor(
                 descriptor.schemaVersion,
                 body,
               );
+              const publicRun = readProjectActionRun(doc, run.actionRunId);
+              if (!publicRun) {
+                throw new Error(
+                  `Generator Action Run ${run.actionRunId} is missing.`,
+                );
+              }
+              if (publicRun.outputContract.length > 1) {
+                const batchOutputs: Array<{
+                  outputSlot: string;
+                  revision: DocumentAssetRevision;
+                }> = [];
+                for (const port of publicRun.outputContract) {
+                  if (port.cardinality.minItems === 0) continue;
+                  const sibling = await durableJournal.load({
+                    actionRunId: run.actionRunId,
+                    outputSlot: port.slot,
+                  });
+                  const siblingStaged = sibling?.stagedOutput;
+                  if (
+                    !siblingStaged ||
+                    typeof siblingStaged !== "object" ||
+                    Array.isArray(siblingStaged) ||
+                    siblingStaged.kind !== "document"
+                  ) {
+                    // Publication is deliberately deferred. This private task
+                    // may finish, but no public metadata exists until the last
+                    // required slot has staged successfully.
+                    return;
+                  }
+                  batchOutputs.push({
+                    outputSlot: port.slot,
+                    revision: DocumentAssetRevisionSchema.parse(
+                      siblingStaged.revision,
+                    ),
+                  });
+                }
+                const batch = await generatorRuns.publishDocumentBatchSuccess({
+                  doc,
+                  actionRunId: run.actionRunId,
+                  outputs: batchOutputs,
+                  checkpoint: async () => {
+                    if (!input.checkpoint) {
+                      throw new Error(
+                        "Generator Document batch publication requires a Project checkpoint.",
+                      );
+                    }
+                    await input.checkpoint();
+                  },
+                });
+                changed = batch.changed || changed;
+                return;
+              }
               const publication = await generatorRuns.publishDocumentSuccess({
                 doc,
                 actionRunId: run.actionRunId,
@@ -1620,7 +1725,6 @@ export function createLocalWorkflowProcessor(
                       actionRunId: run.actionRunId,
                       outputSlot: run.outputSlot,
                       entry: verified,
-                      legacyBinding: outputBinding,
                       checkpoint: async () => {
                         if (!input.checkpoint) {
                           throw new Error(
@@ -1675,18 +1779,15 @@ export function createLocalWorkflowProcessor(
                 frozen,
                 actionRunId: run.actionRunId,
                 nodeData: current,
-                currentProjectionRevisionId:
-                  frozen.kind === "model"
-                    ? ""
-                    : nodeProjectionRevisionId(
-                        frozen.nodeId,
-                        frozen.kind,
-                        current,
-                        frozen.targetKind === "action"
-                          ? customActionPromptFromData(current)
-                          : undefined,
-                        frozen.targetKind === "action" ? "action" : undefined,
-                      ),
+                currentProjectionRevisionId: nodeProjectionRevisionId(
+                  frozen.nodeId,
+                  frozen.kind,
+                  current,
+                  frozen.targetKind === "action"
+                    ? customActionPromptFromData(current)
+                    : undefined,
+                  frozen.targetKind === "action" ? "action" : undefined,
+                ),
               })
             ) {
               // Asset + binding publication is the durable consumer-CAS boundary. A stale
@@ -1742,18 +1843,15 @@ export function createLocalWorkflowProcessor(
                 frozen,
                 actionRunId: run.actionRunId,
                 nodeData: current,
-                currentProjectionRevisionId:
-                  frozen.kind === "model"
-                    ? ""
-                    : nodeProjectionRevisionId(
-                        frozen.nodeId,
-                        frozen.kind,
-                        current,
-                        frozen.targetKind === "action"
-                          ? customActionPromptFromData(current)
-                          : undefined,
-                        frozen.targetKind === "action" ? "action" : undefined,
-                      ),
+                currentProjectionRevisionId: nodeProjectionRevisionId(
+                  frozen.nodeId,
+                  frozen.kind,
+                  current,
+                  frozen.targetKind === "action"
+                    ? customActionPromptFromData(current)
+                    : undefined,
+                  frozen.targetKind === "action" ? "action" : undefined,
+                ),
               })
             ) {
               await input.checkpoint?.();
@@ -1956,41 +2054,20 @@ export function createLocalWorkflowProcessor(
             durableJournal
           ) {
             try {
-              const references = [
-                ...stringList(data.referenceImageAssetIds).map(
-                  (assetId, index) => ({
-                    slot: "image",
-                    index,
-                    asset: {
-                      assetId,
-                      uri: `clash-asset://${assetId}`,
-                      kind: "image" as const,
-                    },
-                  }),
-                ),
-                ...stringList(data.referenceVideoAssetIds).map(
-                  (assetId, index) => ({
-                    slot: "video",
-                    index,
-                    asset: {
-                      assetId,
-                      uri: `clash-asset://${assetId}`,
-                      kind: "video" as const,
-                    },
-                  }),
-                ),
-                ...stringList(data.referenceAudioAssetIds).map(
-                  (assetId, index) => ({
-                    slot: "audio",
-                    index,
-                    asset: {
-                      assetId,
-                      uri: `clash-asset://${assetId}`,
-                      kind: "audio" as const,
-                    },
-                  }),
-                ),
-              ];
+              // One reference slot per `MEDIA_REFERENCE_FIELDS` registry
+              // entry (image / video / audio / model today) so a new
+              // modality only needs a registry entry, not a new branch here.
+              const references = MEDIA_REFERENCE_FIELDS.flatMap((field) =>
+                stringList(data[field.pendingField]).map((assetId, index) => ({
+                  slot: field.modality,
+                  index,
+                  asset: {
+                    assetId,
+                    uri: `clash-asset://${assetId}`,
+                    kind: field.modality,
+                  },
+                })),
+              );
               const prompt = customActionPromptFromData(data);
               const params =
                 data.customActionParams &&
@@ -2272,23 +2349,24 @@ export function createLocalWorkflowProcessor(
           );
           const effectiveModelParams = modelParams(data);
           const isStartEnd = !!modelCard?.input.inputMode.startEnd;
-          const referenceImageAssetIds = stringList(
-            data.referenceImageAssetIds,
-          );
-          const referenceVideoAssetIds = stringList(
-            data.referenceVideoAssetIds,
-          );
-          const referenceAudioAssetIds = stringList(
-            data.referenceAudioAssetIds,
-          );
+          // One asset-id bucket per `MEDIA_REFERENCE_FIELDS` registry entry
+          // (image / video / audio / model today) so a new reference
+          // modality only needs a registry entry, not a new branch here.
+          const referenceAssetIdsByModality = Object.fromEntries(
+            MEDIA_REFERENCE_FIELDS.map((field) => [
+              field.modality,
+              stringList(data[field.pendingField]),
+            ]),
+          ) as Record<MediaReferenceModality, string[]>;
           if (modelCard) {
             const referenceError = validateRefs(
               modelCard,
-              {
-                image: referenceImageAssetIds.length,
-                video: referenceVideoAssetIds.length,
-                audio: referenceAudioAssetIds.length,
-              },
+              Object.fromEntries(
+                MEDIA_REFERENCE_MODALITIES.map((modality) => [
+                  modality,
+                  referenceAssetIdsByModality[modality].length,
+                ]),
+              ),
               { prompt, modelParams: effectiveModelParams },
             );
             if (referenceError) throw new Error(referenceError);
@@ -2314,45 +2392,32 @@ export function createLocalWorkflowProcessor(
               }
               return asset;
             });
-          const referenceImageEntries = referenceEntries(
-            referenceImageAssetIds,
-            "image",
-          );
-          const referenceVideoEntries = referenceEntries(
-            referenceVideoAssetIds,
-            "video",
-          );
-          const referenceAudioEntries = referenceEntries(
-            referenceAudioAssetIds,
-            "audio",
-          );
-          if (modelCard) {
-            const mediaReferences: ReferenceMediaMetadata[] = [
-              ...referenceImageEntries.map((asset) => ({
-                asset,
-                modality: "image" as const,
-              })),
-              ...referenceVideoEntries.map((asset) => ({
-                asset,
-                modality: "video" as const,
-              })),
-              ...referenceAudioEntries.map((asset) => ({
-                asset,
-                modality: "audio" as const,
-              })),
-            ].map(({ asset, modality }) => ({
+          const referenceEntriesByModality = Object.fromEntries(
+            MEDIA_REFERENCE_MODALITIES.map((modality) => [
               modality,
-              contentType: asset.metadata.contentType,
-              fileName: asset.metadata.originalName ?? asset.name,
-              bytes: asset.metadata.bytes,
-              width: asset.metadata.width,
-              height: asset.metadata.height,
-              durationMs: asset.metadata.durationMs,
-              frameRate: asset.metadata.frameRate,
-              videoCodec: asset.metadata.videoCodec,
-              audioCodec: asset.metadata.audioCodec,
-              embedded: !!options.mediaBaseUrl,
-            }));
+              referenceEntries(
+                referenceAssetIdsByModality[modality],
+                modality as ProcessableKind,
+              ),
+            ]),
+          ) as Record<MediaReferenceModality, ProjectAssetEntry[]>;
+          if (modelCard) {
+            const mediaReferences: ReferenceMediaMetadata[] =
+              MEDIA_REFERENCE_MODALITIES.flatMap((modality) =>
+                referenceEntriesByModality[modality].map((asset) => ({
+                  modality,
+                  contentType: asset.metadata.contentType,
+                  fileName: asset.metadata.originalName ?? asset.name,
+                  bytes: asset.metadata.bytes,
+                  width: asset.metadata.width,
+                  height: asset.metadata.height,
+                  durationMs: asset.metadata.durationMs,
+                  frameRate: asset.metadata.frameRate,
+                  videoCodec: asset.metadata.videoCodec,
+                  audioCodec: asset.metadata.audioCodec,
+                  embedded: !!options.mediaBaseUrl,
+                })),
+              );
             const mediaError = validateReferenceMedia(
               modelCard,
               mediaReferences,
@@ -2360,41 +2425,39 @@ export function createLocalWorkflowProcessor(
             );
             if (mediaError) throw new Error(mediaError);
           }
-          const globalReferences: ProviderMediaReference[] = [
-            ...referenceImageEntries.map((asset) => ({
-              asset,
-              kind: "image" as const,
-            })),
-            ...referenceVideoEntries.map((asset) => ({
-              asset,
-              kind: "video" as const,
-            })),
-            ...referenceAudioEntries.map((asset) => ({
-              asset,
-              kind: "audio" as const,
-            })),
-          ];
+          const globalReferences: ProviderMediaReference[] =
+            MEDIA_REFERENCE_MODALITIES.flatMap((modality) =>
+              referenceEntriesByModality[modality].map((asset) => ({
+                asset,
+                kind: modality as ProcessableKind,
+              })),
+            );
           let references: ExecutablePluginReference[];
           const referenceBindingType = modelCard?.input.referenceBinding?.type;
-          if (isStartEnd) {
-            references = [
-              ...referenceImageEntries.flatMap((asset, index) =>
-                index === 0
-                  ? [assetReference(asset, "startFrame", 0)]
-                  : index === 1
-                    ? [assetReference(asset, "endFrame", 0)]
-                    : [assetReference(asset, "image", index - 2)],
-              ),
-              ...referenceVideoEntries.map((asset, index) =>
-                assetReference(asset, "video", index),
-              ),
-              ...referenceAudioEntries.map((asset, index) =>
-                assetReference(asset, "audio", index),
-              ),
-            ];
-          } else if (
-            referenceBindingType === "ordered-content-parts" ||
-            referenceBindingType === "positional-tokens"
+          // Image is the one modality with a structural exception in
+          // start/end-frame models (first ref -> startFrame, second ->
+          // endFrame); every other modality binds positionally regardless
+          // of whether the card uses start/end frames.
+          const buildPositionalReferences = (): ExecutablePluginReference[] =>
+            MEDIA_REFERENCE_MODALITIES.flatMap((modality) => {
+              const entries = referenceEntriesByModality[modality];
+              if (isStartEnd && modality === "image") {
+                return entries.flatMap((asset, index) =>
+                  index === 0
+                    ? [assetReference(asset, "startFrame", 0)]
+                    : index === 1
+                      ? [assetReference(asset, "endFrame", 0)]
+                      : [assetReference(asset, "image", index - 2)],
+                );
+              }
+              return entries.map((asset, index) =>
+                assetReference(asset, modality, index),
+              );
+            });
+          if (
+            !isStartEnd &&
+            (referenceBindingType === "ordered-content-parts" ||
+              referenceBindingType === "positional-tokens")
           ) {
             references = mixedContentReferences({
               nodeId,
@@ -2410,27 +2473,20 @@ export function createLocalWorkflowProcessor(
                 const modality = referencedNode?.type;
                 if (
                   !assetId ||
-                  (modality !== "image" &&
-                    modality !== "video" &&
-                    modality !== "audio")
+                  !(MEDIA_REFERENCE_MODALITIES as readonly string[]).includes(
+                    modality,
+                  )
                 ) {
                   return undefined;
                 }
-                return { assetId, kind: modality };
+                return {
+                  assetId,
+                  kind: modality as ProcessableKind,
+                };
               },
             });
           } else {
-            references = [
-              ...referenceImageEntries.map((asset, index) =>
-                assetReference(asset, "image", index),
-              ),
-              ...referenceVideoEntries.map((asset, index) =>
-                assetReference(asset, "video", index),
-              ),
-              ...referenceAudioEntries.map((asset, index) =>
-                assetReference(asset, "audio", index),
-              ),
-            ];
+            references = buildPositionalReferences();
           }
           const requestedAspectRatio =
             kind === "image" || kind === "video"

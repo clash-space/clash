@@ -73,6 +73,7 @@ test("development resolves the host, CLI, and agents from workspace source", asy
     moduleUrl: string;
     env: Record<string, string>;
     tsxCliPath: string;
+    tsxLoaderPath: string;
   }) => {
     source: boolean;
     localApiEntry: string;
@@ -86,6 +87,7 @@ test("development resolves the host, CLI, and agents from workspace source", asy
       moduleUrl: "file:///repo/plugins/clash/src/plugin-host.ts",
       env: { CLASH_SOURCE_RUNTIME: "1" },
       tsxCliPath: "/repo/node_modules/tsx/cli.mjs",
+      tsxLoaderPath: "/repo/node_modules/tsx/loader.mjs",
     }),
     {
       source: true,
@@ -94,16 +96,42 @@ test("development resolves the host, CLI, and agents from workspace source", asy
       agentBundleRoot: "/repo/packages/cli/assets/agents",
       builtinPluginRoot: "/repo/plugins/clash",
       nodeArgs: [
-        "/repo/node_modules/tsx/cli.mjs",
-        "watch",
-        "--tsconfig",
-        "/repo/plugins/clash/tsconfig.dev.json",
+        "--import",
+        "/repo/node_modules/tsx/loader.mjs",
       ],
       daemonEnv: {
         CLASH_SOURCE_RUNTIME: "1",
         TSX_TSCONFIG_PATH: "/repo/plugins/clash/tsconfig.dev.json",
       },
     },
+  );
+});
+
+test("development source watching is an explicit opt-in", async () => {
+  const module = await loadHostModule();
+  const resolveLayout = module.resolvePluginHostRuntimeLayout as (options: {
+    moduleUrl: string;
+    env: Record<string, string>;
+    tsxCliPath: string;
+    tsxLoaderPath: string;
+  }) => { nodeArgs?: readonly string[] };
+
+  assert.deepEqual(
+    resolveLayout({
+      moduleUrl: "file:///repo/plugins/clash/src/plugin-host.ts",
+      env: {
+        CLASH_SOURCE_RUNTIME: "1",
+        CLASH_SOURCE_HOST_WATCH: "1",
+      },
+      tsxCliPath: "/repo/node_modules/tsx/cli.mjs",
+      tsxLoaderPath: "/repo/node_modules/tsx/loader.mjs",
+    }).nodeArgs,
+    [
+      "/repo/node_modules/tsx/cli.mjs",
+      "watch",
+      "--tsconfig",
+      "/repo/plugins/clash/tsconfig.dev.json",
+    ],
   );
 });
 

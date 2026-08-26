@@ -1,0 +1,28 @@
+{
+  "summary": "Third-party executable Provider plugin binding Tripo3D to the built-in tripo-h3.1 and tripo-auto-rig model Cards. Contributes zero cards.",
+  "context_hints": [
+    "This plugin never contributes a Card. tripo-h3.1 and tripo-auto-rig are Clash built-in Cards owned by a separate integration task in packages/shared-types; this package only ships the Provider, the two model-provider bindings, and the executor that serves them.",
+    "tripo-h3.1 is one Card for both text-to-3D and image-to-3D: the executor reads the invocation references for a reference in slot 'image' and calls POST /v3/generation/image-to-model when present, otherwise POST /v3/generation/text-to-model with the prompt. tripo-auto-rig always calls POST /v3/animations/rig against a required reference in slot 'model'.",
+    "Every upstream generation and rig request is pinned to the exact model version fixed by contract: v3.1-20260211 for text/image-to-model, v1.0-20240301 (biped) for auto-rig. Auto-rig always requests rig_type=biped, spec=mixamo, out_format=glb -- no other rig topology is offered.",
+    "The Provider account carries a `region` choice, `international` (default) or `china`, resolved once per submit/poll to a fixed host: openapi.tripo3d.ai/v3 or openapi.tripo3d.com/v3 -- see src/tripo-region.ts. Region is an account/plugin-store fact, never a model Card parameter, so neither binding file mentions it. An illegal stored region is a structured, non-retryable ProviderExecutionError (invalid_request) raised before any request is built; there is no automatic fallback to the other host and no cross-region key trial within one invocation. There is no Provider account baseUrl override: region is the only account/plugin-store fact that selects a host.",
+    "Image and model references are resolved through context.reference before any Provider request is built. A provider-url or a bytes/executor-url payload uploaded through Tripo's own POST /v3/files is what reaches Tripo -- a clash-asset:// URI is never sent upstream. Upload, submit, and poll for one invocation always share the single base URL resolved from that invocation's account.",
+    "The v1 request surface forwards exactly five card parameters to Tripo: pbr, textureQuality (texture_quality), geometryQuality (geometry_quality), faceLimit (face_limit), autoSize (auto_size). No other Tripo parameter is exposed yet.",
+    "Task polling is one shared GET /v3/tasks/{task_id} regardless of route, called against the same account-resolved base URL as submit. queued/running stay an accepted poll; success completes with a model/gltf-binary media output; failed and cancelled become terminal Provider failures. HTTP failure and a non-zero envelope code are both handled, and each is distinct from a task-level failed status."
+  ],
+  "subdirectories": {
+    "providers": "Tripo3D Provider declaration, secure API-key form, and the region choice field (international default, china).",
+    "bindings": "model-provider-binding documents routing tripo-h3.1 and tripo-auto-rig to this Provider.",
+    "src": "Typed stdio entrypoint, Tripo v3 HTTP client, region-to-base-URL resolution, reference resolution, and the submit/poll executor.",
+    "contract-tests": "Declarative activation-gating ABI fixtures."
+  },
+  "key_files": {
+    "manifest.json": "Versioned executable package and contribution declarations; contributes.cards is empty by contract.",
+    "providers/tripo.json": "Provider metadata, Bearer API-key authentication form with the region choice (international default -> openapi.tripo3d.ai, china -> openapi.tripo3d.com), and default asset-input representations.",
+    "bindings/tripo-h3.1.json": "Binds tripo-h3.1 to Tripo's v3.1-20260211 text/image-to-model routes.",
+    "bindings/tripo-auto-rig.json": "Binds tripo-auto-rig to Tripo's v1.0-20240301 biped auto-rig route.",
+    "src/tripo-region.ts": "Pure region-to-base-URL resolution (international/china), throwing a structured ProviderExecutionError on an unrecognised region.",
+    "src/tripo-client.ts": "Pure Tripo v3 HTTP layer: request builders, envelope/HTTP error mapping, submit, task poll, file upload -- every call accepts the caller-resolved baseUrl.",
+    "src/tripo-adapter.ts": "Route selection (text-to-model vs image-to-model vs auto-rig), account region resolution, reference resolution, and the submit/poll Executor."
+  },
+  "verification": ["pnpm --filter @clash-plugin/tripo test", "pnpm --filter @clash-plugin/tripo build"]
+}

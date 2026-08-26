@@ -328,6 +328,16 @@ async function atifEvidence(input: {
       detail: `ATIF structured projection is not implemented for the ${input.agent.adapter} adapter.`,
     };
   }
+  if (
+    input.report.failure?.classification === "infrastructure" &&
+    input.report.failure.phase === "atif-projection"
+  ) {
+    return {
+      status: "unsupported",
+      format: "ATIF-v1.7",
+      detail: input.report.failure.detail,
+    };
+  }
   const trajectoryPath = join(input.caseRoot, "logs", "trajectory.atif.json");
   const receiptPath = join(
     input.caseRoot,

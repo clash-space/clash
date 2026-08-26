@@ -31,8 +31,8 @@ describe('PropertiesPanel caption defaults', () => {
       </EditorProvider>,
     );
 
-    expect((screen.getByRole('combobox', { name: 'Caption position' }) as HTMLSelectElement).value)
-      .toBe(TIMELINE_CAPTION_STYLE_DEFAULTS.position);
+    expect(screen.getByRole('combobox', { name: 'Caption position' }).textContent)
+      .toContain('Bottom');
     expect((screen.getByRole('spinbutton', { name: 'Caption font size' }) as HTMLInputElement).value)
       .toBe(String(TIMELINE_CAPTION_STYLE_DEFAULTS.fontSize));
     expect((screen.getByRole('textbox', { name: 'Caption text color' }) as HTMLInputElement).value)
@@ -41,7 +41,7 @@ describe('PropertiesPanel caption defaults', () => {
       .toBe(TIMELINE_CAPTION_STYLE_DEFAULTS.backgroundColor);
     expect((screen.getByRole('textbox', { name: 'Caption font family' }) as HTMLInputElement).value)
       .toBe(TIMELINE_CAPTION_STYLE_DEFAULTS.fontFamily);
-    expect((screen.getByRole('combobox', { name: 'Caption font weight' }) as HTMLSelectElement).value)
-      .toBe(String(TIMELINE_CAPTION_STYLE_DEFAULTS.fontWeight));
+    expect(screen.getByRole('combobox', { name: 'Caption font weight' }).textContent)
+      .toContain('Bold');
   });
 });

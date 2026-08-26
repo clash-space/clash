@@ -129,4 +129,58 @@ describe("provider plugin text output", () => {
     expect(requests[0]?.input.values).not.toHaveProperty("referenceAudioUrls");
     expect(requests[0]?.input.values).not.toHaveProperty("orderedContentParts");
   });
+
+  it("passes the selected implementation apiShape as route metadata", async () => {
+    const requests: Array<Record<string, any>> = [];
+    const service = createMockExternalAigcService({
+      modelCards: async () => [{
+        id: "dummy-analysis",
+        aliases: [],
+        name: "Dummy analysis",
+        provider: "dummy-provider",
+        kind: "text",
+        semanticShape: "media_analysis",
+        visibility: { scope: "public" },
+        parameters: [],
+        defaultParams: {},
+        defaultAspectRatio: "1:1",
+        input: {
+          requiresPrompt: true,
+          inputMode: { audios: { max: 1 } },
+          promptModalities: ["text", "audio"],
+        },
+        providerImplementations: [{
+          providerId: "dummy-provider",
+          upstreamId: "dummy-provider",
+          upstreamModel: "provider-managed",
+          apiShape: "dummy-analyse-media",
+          executorPluginId: "dummy.plugin",
+          executorExportId: "execute",
+        }],
+      }],
+      providerAccounts: async () => [{
+        id: "dummy-account",
+        providerId: "dummy-provider",
+        upstreamId: "dummy-provider",
+        enabled: true,
+        configuredCredentials: [],
+      }],
+      providerPluginExecutor: async (request) => {
+        requests.push(request as unknown as Record<string, any>);
+        return {
+          status: "completed",
+          binding: {
+            pluginId: request.pluginId,
+            version: "0.1.0",
+            exportId: request.exportId,
+            schemaHash: `sha256:${"e".repeat(64)}`,
+          },
+          output: { slot: "text", kind: "value", value: "{}" },
+        };
+      },
+    });
+
+    await service.generateText({ taskId: "analysis-task", model: "dummy-analysis", prompt: "inspect" });
+    expect(requests[0]?.input.values).toMatchObject({ apiShape: "dummy-analyse-media" });
+  });
 });

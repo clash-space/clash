@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@clash/action-sdk": ["../../packages/action-sdk/src/index.ts"],
+      "@clash/render-server": ["../../apps/render-server/src/index.ts"],
+      "@clash/shared-types": ["../../packages/shared-types/src/index.ts"],
+      "@clash/shared-types/*": ["../../packages/shared-types/src/*.ts"]
+    }
+  }
+}

@@ -10,6 +10,15 @@ export interface NativeWindowControls {
   setWindowButtonVisibility(visible: boolean): unknown;
 }
 
+export interface RecoverableDesktopWindow {
+  isDestroyed(): boolean;
+  isMinimized(): boolean;
+  loadURL(url: string): Promise<unknown>;
+  restore(): unknown;
+  show(): unknown;
+  focus(): unknown;
+}
+
 export interface WindowRegistry<TWindow extends TrackableWindow> {
   register(window: TWindow): void;
   count(): number;
@@ -18,6 +27,20 @@ export interface WindowRegistry<TWindow extends TrackableWindow> {
 
 const windowOffset = 28;
 const initialWindowPosition = { x: 96, y: 48 };
+
+export function resolveDesktopWebPreferences(
+  preload: string,
+): NonNullable<BrowserWindowConstructorOptions["webPreferences"]> {
+  return {
+    preload,
+    contextIsolation: true,
+    nodeIntegration: false,
+    backgroundThrottling: false,
+    sandbox: false,
+    webviewTag: true,
+    additionalArguments: [],
+  };
+}
 
 export function resolveDesktopWindowOptions(
   windowIndex: number,
@@ -41,7 +64,9 @@ export function resolveDesktopWindowOptions(
   };
 }
 
-export function createWindowRegistry<TWindow extends TrackableWindow>(): WindowRegistry<TWindow> {
+export function createWindowRegistry<
+  TWindow extends TrackableWindow,
+>(): WindowRegistry<TWindow> {
   const windows = new Set<TWindow>();
 
   return {
@@ -62,6 +87,18 @@ export function createWindowRegistry<TWindow extends TrackableWindow>(): WindowR
 
 export function shouldCreateWindowOnActivate(openWindowCount: number): boolean {
   return openWindowCount === 0;
+}
+
+export async function recoverDesktopWindow(
+  window: RecoverableDesktopWindow,
+  url: string,
+): Promise<void> {
+  if (window.isDestroyed()) return;
+  await window.loadURL(url);
+  if (window.isDestroyed()) return;
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
 }
 
 export function ensureNativeWindowControlsVisible(

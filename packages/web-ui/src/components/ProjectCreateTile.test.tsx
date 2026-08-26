@@ -10,17 +10,44 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import ProjectCreateTile from "./ProjectCreateTile";
 
-vi.mock("@phosphor-icons/react", () => ({
-  Plus: ({ className, ...props }: any) => (
-    <span data-testid="plus-icon" className={className} {...props} />
-  ),
-  X: ({ className, ...props }: any) => (
-    <span data-testid="close-icon" className={className} {...props} />
-  ),
-}));
+vi.mock("@phosphor-icons/react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@phosphor-icons/react")>();
+  return {
+    ...actual,
+    Plus: ({ className, ...props }: any) => (
+      <span data-testid="plus-icon" className={className} {...props} />
+    ),
+    X: ({ className, ...props }: any) => (
+      <span data-testid="close-icon" className={className} {...props} />
+    ),
+  };
+});
 
 describe("ProjectCreateTile", () => {
   afterEach(cleanup);
+
+  it("keeps project creation visually direct without decorative artwork", () => {
+    const { container, rerender } = render(
+      <ProjectCreateTile ariaLabel="Start a new project" onCreate={vi.fn()} />,
+    );
+
+    expect(container.querySelector('[data-ui="brand-asset"]')).toBeNull();
+    expect(screen.getByTestId("plus-icon")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Start a new project" })).toHaveTextContent(
+      "New Project",
+    );
+
+    rerender(
+      <ProjectCreateTile
+        ariaLabel="Start a new project"
+        presentation="header-action"
+        onCreate={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector('[data-ui="brand-asset"]')).toBeNull();
+    expect(screen.getByTestId("plus-icon")).toBeTruthy();
+  });
 
   it("collects a project name before creating", async () => {
     const onCreate = vi.fn().mockResolvedValue(undefined);
@@ -64,5 +91,25 @@ describe("ProjectCreateTile", () => {
     expect(document.activeElement).toBe(
       screen.getByRole("textbox", { name: /project name/i }),
     );
+  });
+
+  it("renders creation failures through the shared feedback contract", async () => {
+    const onCreate = vi.fn().mockRejectedValue(new Error("offline"));
+
+    render(
+      <ProjectCreateTile ariaLabel="Start a new project" onCreate={onCreate} />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /start a new project/i }),
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: /project name/i }), {
+      target: { value: "Summer launch" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveAttribute("data-ui", "feedback");
+    expect(alert).toHaveAttribute("data-tone", "error");
+    expect(alert).toHaveTextContent("Could not create this project. Try again.");
   });
 });

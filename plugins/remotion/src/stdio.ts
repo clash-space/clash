@@ -58,12 +58,41 @@ function positiveNumber(
   return candidate;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return (
+    value !== null && typeof value === "object" && !Array.isArray(value)
+  );
+}
+
 function frozenTimelineValue(invocation: ExecutablePluginInvocation) {
-  const value = invocation.input.values.timelineDsl;
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Remotion render requires a frozen timelineDsl object.");
+  const envelope = invocation.input.values.timeline;
+  if (!isPlainObject(envelope)) {
+    throw new Error(
+      "Remotion render requires a frozen timeline state envelope object.",
+    );
   }
-  const timeline = structuredClone(value) as TimelineRenderInput;
+  if (typeof envelope.name !== "string" || !envelope.name.trim()) {
+    throw new Error(
+      "Remotion render requires a frozen timeline envelope with a non-empty name.",
+    );
+  }
+  if (!isPlainObject(envelope.owner)) {
+    throw new Error(
+      "Remotion render requires a frozen timeline envelope with an owner.",
+    );
+  }
+  const ownerKind = envelope.owner.kind;
+  if (ownerKind !== "project" && ownerKind !== "canvas-action") {
+    throw new Error(
+      "Remotion render requires a timeline envelope owner of kind project or canvas-action.",
+    );
+  }
+  if (!isPlainObject(envelope.state)) {
+    throw new Error(
+      "Remotion render requires a frozen timeline envelope with a state object.",
+    );
+  }
+  const timeline = structuredClone(envelope.state) as TimelineRenderInput;
   if (!Array.isArray(timeline.tracks)) {
     throw new Error("Remotion render requires a Timeline tracks array.");
   }

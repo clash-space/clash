@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ScopedAssetPicker } from "./ScopedAssetPicker";
 
@@ -52,10 +59,17 @@ describe("ScopedAssetPicker", () => {
     expect(
       screen.getByRole("searchbox", { name: "Search media" }),
     ).toBeTruthy();
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Filter" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Scope" }));
     expect(
-      screen.getByRole("tab", { name: "All" }).getAttribute("aria-selected"),
-    ).toBe("true");
-    expect(screen.getByRole("tab", { name: "Current Canvas" })).toBeTruthy();
+      screen.getByRole("menuitemcheckbox", { name: "Current Canvas" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("menuitemcheckbox", { name: "More sources" }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Add Opening frame" }));
     expect(onSelect).toHaveBeenCalledWith(
       expect.objectContaining({ assetId: "asset-1", sourceNodeId: "node-1" }),
@@ -65,7 +79,7 @@ describe("ScopedAssetPicker", () => {
     ).toBeTruthy();
   });
 
-  it("filters the command grid by query and scope", () => {
+  it("combines full-text media search with independent AND scope chips", () => {
     render(
       <ScopedAssetPicker
         open
@@ -124,11 +138,149 @@ describe("ScopedAssetPicker", () => {
     fireEvent.change(screen.getByRole("searchbox", { name: "Search media" }), {
       target: { value: "" },
     });
-    fireEvent.click(screen.getByRole("tab", { name: "Current Canvas" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Filter" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Scope" }));
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Current Canvas" }),
+    );
     expect(
       screen.getByRole("button", { name: "Add Opening frame" }),
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Add Voice over" })).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Project" }),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Add Opening frame" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add Voice over" })).toBeNull();
+    expect(screen.getByText("Scope · Current Canvas")).toBeTruthy();
+    expect(screen.getByText("Scope · Project")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Remove Scope filter: Current Canvas",
+      }),
+    );
+    expect(screen.getByRole("button", { name: "Add Voice over" })).toBeTruthy();
+  });
+
+  it("updates the shared media filter and results region together", async () => {
+    render(
+      <ScopedAssetPicker
+        open
+        onClose={vi.fn()}
+        onSelect={vi.fn()}
+        onUpload={vi.fn()}
+        sections={[
+          {
+            scope: "current-canvas",
+            label: "Current Canvas",
+            description: "Already here.",
+            assets: [
+              {
+                assetId: "asset-frame",
+                sourceNodeId: "node-frame",
+                name: "Opening frame",
+                type: "image",
+                src: "/opening.png",
+                status: "ready",
+                source: {
+                  kind: "current-canvas",
+                  assetId: "asset-frame",
+                  sourceNodeId: "node-frame",
+                  canvasId: "main",
+                },
+              },
+            ],
+          },
+          {
+            scope: "project",
+            label: "Project",
+            description: "Project media.",
+            assets: [
+              {
+                assetId: "asset-voice",
+                name: "Voice over",
+                type: "audio",
+                src: "/voice.wav",
+                status: "ready",
+                source: { kind: "project", assetId: "asset-voice" },
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    const results = screen.getByRole("region", { name: "Media results" });
+    expect(
+      within(results).getByRole("button", { name: "Add Opening frame" }),
+    ).toBeTruthy();
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Filter" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Scope" }));
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Current Canvas" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Scope · Current Canvas")).toBeTruthy();
+    });
+    expect(
+      screen.getByRole("button", { name: "Add Opening frame" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Add Voice over" })).toBeNull();
+  });
+
+  it("renders search through the shared control contract", () => {
+    render(
+      <ScopedAssetPicker
+        open
+        onClose={vi.fn()}
+        onSelect={vi.fn()}
+        onUpload={vi.fn()}
+        sections={[]}
+      />,
+    );
+
+    expect(
+      screen.getByRole("searchbox", { name: "Search media" }),
+    ).toHaveAttribute("data-slot", "input");
+  });
+
+  it("uses the shared dialog search-filter toolbar", () => {
+    render(
+      <ScopedAssetPicker
+        open
+        onClose={vi.fn()}
+        onSelect={vi.fn()}
+        onUpload={vi.fn()}
+        sections={[
+          {
+            scope: "project",
+            label: "Project",
+            description: "Project media.",
+            assets: [],
+          },
+        ]}
+      />,
+    );
+
+    const toolbar = document.querySelector(
+      '[data-slot="search-filter-toolbar"][data-context="dialog"]',
+    );
+    expect(toolbar).toBeTruthy();
+    expect(
+      within(toolbar as HTMLElement).getByRole("button", { name: "Filter" }),
+    ).toBeTruthy();
   });
 
   it("does not render private paths as visible or accessible copy", () => {

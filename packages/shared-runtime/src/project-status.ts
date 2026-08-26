@@ -238,11 +238,6 @@ export interface ProjectStatusActionGates {
 
 export interface ProjectStatusTracePolicy {
   schemaVersion: 1;
-  roomMessages: {
-    kind: "project-chat";
-    syncDefault: "sync-when-project-sync-enabled";
-    rawAgentTrace: false;
-  };
   agentSessionMetadata: {
     kind: "public-session-metadata";
     syncDefault: "sync-when-project-sync-enabled";
@@ -924,11 +919,6 @@ function deniedGate(
 function projectTracePolicy(): ProjectStatusTracePolicy {
   return {
     schemaVersion: 1,
-    roomMessages: {
-      kind: "project-chat",
-      syncDefault: "sync-when-project-sync-enabled",
-      rawAgentTrace: false,
-    },
     agentSessionMetadata: {
       kind: "public-session-metadata",
       syncDefault: "sync-when-project-sync-enabled",

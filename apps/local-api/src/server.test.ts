@@ -320,11 +320,101 @@ describe("local API server configuration", () => {
         new Set([
           "clash.fal",
           "clash.google",
+          "clash.meshy",
           "clash.minimax",
           "clash.pika",
+          "clash.tripo",
           "clash.volcengine",
         ]),
       );
+
+      // The bundled clash.meshy/clash.tripo modules just proved trusted above.
+      // Confirm the model catalog actually synthesizes their manifest-declared
+      // provider + binding + executor data into executable routes for every
+      // built-in card they bind, rather than merely registering the plugin.
+      const modelsCatalog = await fetch(
+        `http://127.0.0.1:${address.port}/api/v1/models/catalog`,
+      );
+      expect(modelsCatalog.status, await modelsCatalog.clone().text()).toBe(
+        200,
+      );
+      const catalogBody = (await modelsCatalog.json()) as {
+        models: Array<{
+          model: {
+            id: string;
+            kind: string;
+            providerImplementations?: Array<{
+              providerId?: string;
+              executorPluginId?: string;
+              executorExportId?: string;
+            }>;
+          };
+          routes: Array<{
+            providerId?: string;
+            executorPluginId?: string;
+            executorExportId?: string;
+          }>;
+        }>;
+      };
+      const expectedBundledModelExecutors = [
+        {
+          modelId: "meshy-6",
+          providerId: "meshy",
+          pluginId: "clash.meshy",
+          exportId: "meshy-execute",
+        },
+        {
+          modelId: "meshy-7",
+          providerId: "meshy",
+          pluginId: "clash.meshy",
+          exportId: "meshy-execute",
+        },
+        {
+          modelId: "meshy-auto-rig",
+          providerId: "meshy",
+          pluginId: "clash.meshy",
+          exportId: "meshy-execute",
+        },
+        {
+          modelId: "tripo-h3.1",
+          providerId: "tripo",
+          pluginId: "clash.tripo",
+          exportId: "tripo-execute",
+        },
+        {
+          modelId: "tripo-auto-rig",
+          providerId: "tripo",
+          pluginId: "clash.tripo",
+          exportId: "tripo-execute",
+        },
+      ] as const;
+      for (const expected of expectedBundledModelExecutors) {
+        const entry = catalogBody.models.find(
+          (candidate) => candidate.model.id === expected.modelId,
+        );
+        expect(
+          entry,
+          `models/catalog is missing an entry for ${expected.modelId}`,
+        ).toBeDefined();
+        expect(entry!.model.kind).toBe("model");
+        // No provider account is configured in this test (no credentials), so
+        // `routes` (account-gated) stays empty and `selectedRoute` stays null;
+        // the manifest-declared implementation still surfaces on the card.
+        const implementations = [
+          ...(entry!.model.providerImplementations ?? []),
+          ...entry!.routes,
+        ];
+        const binding = implementations.find(
+          (candidate) => candidate.providerId === expected.providerId,
+        );
+        expect(
+          binding,
+          `${expected.modelId} has no "${expected.providerId}" provider implementation ` +
+            `synthesized from the bundled ${expected.pluginId} plugin`,
+        ).toBeDefined();
+        expect(binding!.executorPluginId).toBe(expected.pluginId);
+        expect(binding!.executorExportId).toBe(expected.exportId);
+      }
 
       const generatorDefinitions = await fetch(
         `http://127.0.0.1:${address.port}/api/v1/generator-definitions`,
@@ -1819,6 +1909,24 @@ describe("local API server configuration", () => {
     expect(shimText).toContain('exec "$CLASH_NODE_EXEC_PATH"');
   });
 
+  it("preserves the host-owned Clash runtime roots for ACP session setup", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-agent-tools-"));
+    const childEnv = createLocalAgentToolEnv({
+      dataDir,
+      apiBaseUrl: "http://127.0.0.1:49397",
+      env: {
+        PATH: "/usr/bin:/bin",
+        CLASH_AGENT_BUNDLE_ROOT: "/opt/clash/runtime/agents",
+        CLASH_BUILTIN_PLUGIN_ROOT: "/opt/clash",
+      },
+    });
+
+    expect(childEnv).toMatchObject({
+      CLASH_AGENT_BUNDLE_ROOT: "/opt/clash/runtime/agents",
+      CLASH_BUILTIN_PLUGIN_ROOT: "/opt/clash",
+    });
+  });
+
   it("uses an explicit Clash CLI entry path for child-process-safe packaged apps", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "clash-local-agent-tools-"));
     const childEnv = createLocalAgentToolEnv({
@@ -2018,31 +2126,26 @@ describe("local API server configuration", () => {
       ]),
     );
 
-    const persisted = await adapter.listSessionMessages(created.session_id);
+    const persisted = await adapter.listSessionEvents(created.session_id);
     expect(persisted).not.toBeNull();
     if (!persisted)
-      throw new Error("expected persisted local session messages");
-    expect(persisted.messages).toEqual(
+      throw new Error("expected persisted local session events");
+    expect(persisted.events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "turn-smoke-user",
-          sender_kind: "user",
-          sender_id: "local-user",
-          turn_id: "turn-smoke",
-          events: [{ type: "text", text: "hello local agent" }],
+          type: "user_prompt",
+          data: { turn_id: "turn-smoke", text: "hello local agent" },
         }),
         expect.objectContaining({
-          id: "turn-smoke-agent",
-          sender_kind: "agent",
-          sender_id: "mock-agent",
-          turn_id: "turn-smoke",
+          type: "session.event",
+          data: expect.objectContaining({ turn_id: "turn-smoke" }),
         }),
       ]),
     );
-    const agentMessage = persisted.messages.find(
-      (message) => message.id === "turn-smoke-agent",
-    );
-    expect(agentMessage?.events).toEqual(
+    const agentEvents = persisted.events
+      .filter((row) => row.type === "session.event")
+      .map((row) => (row.data as { event?: unknown }).event);
+    expect(agentEvents).toEqual(
       expect.arrayContaining([
         { type: "text", text: "Mock ACP reply: hello local agent" },
         expect.objectContaining({ sessionUpdate: "clash.canvas.patch" }),

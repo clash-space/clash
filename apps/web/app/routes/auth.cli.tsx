@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router";
 import betterAuthClient from "@clash/web-ui/lib/betterAuthClient";
 import Background from "@clash/gui/components/Background";
 import { Button } from "@clash/gui/components/ui/button";
+import { InlineAlert } from "@clash/gui/components/ui/feedback";
 
 export type CliAuthorizationParams = {
   response_type: "code";
@@ -119,7 +120,7 @@ export async function requestCliAuthorization(
 const authPanelClass =
   "clash-auth-panel w-full max-w-sm rounded-[28px] px-6 py-7 text-center sm:px-8 sm:py-8";
 const authPrimaryClass =
-  "clash-auth-primary mt-4 inline-flex min-h-11 items-center justify-center rounded-2xl px-6 py-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page";
+  "clash-auth-primary mt-4 inline-flex min-h-11 items-center justify-center rounded-2xl px-6 py-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page";
 
 export default function AuthCliRoute() {
   const [params] = useSearchParams();
@@ -205,10 +206,12 @@ export default function AuthCliRoute() {
             </p>
           )}
           {status === "error" && (
-            <div className="clash-auth-alert clash-auth-alert-error mt-4 break-words rounded-2xl px-4 py-3 text-sm">
-              <div className="mb-1 font-medium">Could not authorize CLI</div>
-              <div className="font-mono text-xs">{error}</div>
-            </div>
+            <InlineAlert
+              tone="error"
+              title="Could not authorize CLI"
+              message={<span className="break-words font-mono text-xs">{error}</span>}
+              className="mt-4 text-left"
+            />
           )}
         </div>
       </div>

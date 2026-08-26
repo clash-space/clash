@@ -12,6 +12,9 @@ import {
   ACTION_TYPE,
   AGENT_NODE_TYPE_MAP,
   RF_NODE_TYPE,
+  NodeType,
+  GENERATION_NODE_TYPES,
+  isGenerationNodeType,
   isCustomActionType,
   getCustomActionId,
 } from "./canvas.js";
@@ -62,6 +65,10 @@ const directorStageOutputWrites: Array<[string, unknown]> = [
 ];
 
 describe("ACTION_TYPE", () => {
+  it("names model-gen as the model-first-class generation action type", () => {
+    expect(ACTION_TYPE.ModelGen).toBe("model-gen");
+  });
+
   it("has Custom type", () => {
     expect(ACTION_TYPE.Custom).toBe("custom");
   });
@@ -96,6 +103,24 @@ describe("validateGenerationInput", () => {
 });
 
 describe("Remotion component canvas node contract", () => {
+  it("model is a first-class Canvas node type mapped to itself", () => {
+    expect(AGENT_NODE_TYPE_MAP.model).toEqual({ rfType: RF_NODE_TYPE.Model });
+    expect(RF_NODE_TYPE.Model).toBe("model");
+  });
+
+  it("model_gen maps to the action-badge with the model-gen action type", () => {
+    expect(AGENT_NODE_TYPE_MAP.model_gen).toEqual({
+      rfType: RF_NODE_TYPE.ActionBadge,
+      actionType: ACTION_TYPE.ModelGen,
+    });
+  });
+
+  it("model_gen is a recognized agent-facing generation node type", () => {
+    expect(NodeType.ModelGen).toBe("model_gen");
+    expect(GENERATION_NODE_TYPES).toContain(NodeType.ModelGen);
+    expect(isGenerationNodeType("model_gen")).toBe(true);
+  });
+
   it("exposes a distinct agent and ReactFlow node type", () => {
     expect(RF_NODE_TYPE.RemotionComponent).toBe("remotion-component");
     expect(AGENT_NODE_TYPE_MAP.remotion).toEqual({
@@ -1278,6 +1303,37 @@ describe("buildPendingAssetNode", () => {
       modelId: "gpt-5.4",
     });
   });
+  it("builds a pending model node for model generation (e.g. mesh/auto-rig)", () => {
+    const node = buildPendingAssetNode({
+      nodeId: "mdl-1",
+      prompt: "Generate a low-poly fox mesh",
+      modelId: "meshy-mesh-gen",
+      modelParams: {},
+      actionType: ACTION_TYPE.ModelGen,
+    });
+
+    expect(node.type).toBe(RF_NODE_TYPE.Model);
+    expect(node.data).toMatchObject({
+      label: "Generate a low-poly fox mesh",
+      status: "pending",
+      prompt: "Generate a low-poly fox mesh",
+      model: "meshy-mesh-gen",
+      modelId: "meshy-mesh-gen",
+    });
+  });
+
+  it("keeps a referenced model asset id on a chained model-gen node (e.g. auto-rig from a generated mesh)", () => {
+    const node = buildPendingAssetNode({
+      nodeId: "mdl-rig-1",
+      prompt: "Auto-rig this mesh",
+      modelId: "meshy-auto-rig",
+      modelParams: {},
+      actionType: ACTION_TYPE.ModelGen,
+    });
+
+    expect(node.type).toBe("model");
+    expect(node.data.status).toBe("pending");
+  });
 });
 
 describe("Canvas Project mutation privacy", () => {
@@ -1468,6 +1524,106 @@ describe("Canvas.execute", () => {
     expect(JSON.stringify(doc.getMap("nodes").toJSON())).not.toContain(
       "private-provider-account",
     );
+  });
+
+  it("executes a model-gen action-badge (Tripo H3.1 text-to-3D) instead of rejecting it as 'not a generation node'", () => {
+    // Regression test: `executeGeneration`'s built-in-actionType gate used to
+    // enumerate only image/video/audio/text-gen, so every `model-gen`
+    // action-badge (Tripo H3.1, Tripo Auto-Rig, Meshy, ...) failed before
+    // ever reaching the provider with "Node ... is not a generation node".
+    const doc = new LoroDoc();
+    const canvas = new Canvas(doc, () => {});
+
+    canvas.insertNode(
+      "mesh-action",
+      RF_NODE_TYPE.ActionBadge,
+      {
+        actionType: ACTION_TYPE.ModelGen,
+        modelId: "tripo-h3.1",
+        prompt: "Generate a low-poly fox mesh",
+      },
+      null,
+      { x: 0, y: 0 },
+    );
+
+    const result = canvas.execute("mesh-action", () => "pending-mesh");
+
+    expect(result.error).toBeNull();
+    expect(result.kind).toBe("generation");
+    expect(result.childNodeId).toBe("pending-mesh");
+
+    const pending = canvas.readNode("pending-mesh");
+    expect(pending?.type).toBe(RF_NODE_TYPE.Model);
+    expect(pending?.data.status).toBe("pending");
+    expect(pending?.data.modelId).toBe("tripo-h3.1");
+  });
+
+  it("does not reject a model-gen action-badge with no prompt when the selected card declares requiresPrompt: false (Tripo Auto-Rig)", () => {
+    // Second half of the same regression: once model-gen actionTypes are
+    // accepted, the built-in "No prompt provided" gate must respect each
+    // card's own `requiresPrompt` declaration instead of blanket-requiring
+    // text for every built-in actionType. Tripo Auto-Rig is model-to-model
+    // (`requiresPrompt: false`) and has no prompt at all.
+    const doc = new LoroDoc();
+    const canvas = new Canvas(doc, () => {});
+
+    canvas.insertNode(
+      "rig-action",
+      RF_NODE_TYPE.ActionBadge,
+      {
+        actionType: ACTION_TYPE.ModelGen,
+        modelId: "tripo-auto-rig",
+      },
+      null,
+      { x: 160, y: 0 },
+    );
+
+    const result = canvas.execute("rig-action", () => "pending-rig");
+
+    expect(result.error).not.toBe("No prompt provided");
+    expect(result.error).not.toBe("Node rig-action is not a generation node");
+  });
+
+  it("resolves an edge-attached model reference node into buildGenerationPayload's model asset bucket for a chained model-gen action (e.g. auto-rig from a generated mesh)", () => {
+    // Verifies the reference-model-asset-ids wiring `executeGeneration` feeds
+    // into `buildGenerationPayload`: the edge-attached `model` ref node must
+    // land in `partition.modelAssetIds`, proving `resolvedRefNodes` and the
+    // `model` reference modality both reach the shared payload builder for
+    // model-to-model actions.
+    const doc = new LoroDoc();
+    const canvas = new Canvas(doc, () => {});
+
+    canvas.insertNode(
+      "source-mesh",
+      RF_NODE_TYPE.Model,
+      { assetId: "asset-mesh", label: "Mesh" },
+      null,
+      { x: 0, y: 0 },
+    );
+    canvas.insertNode(
+      "rig-action",
+      RF_NODE_TYPE.ActionBadge,
+      {
+        actionType: ACTION_TYPE.ModelGen,
+        modelId: "tripo-auto-rig",
+        referenceImageOrder: ["source-mesh"],
+      },
+      null,
+      { x: 160, y: 0 },
+    );
+    canvas.insertEdge("source-mesh-rig-action", "source-mesh", "rig-action");
+
+    const refNode = canvas.readNode("source-mesh")!;
+    const card = MODEL_CARDS.find((c) => c.id === "tripo-auto-rig")!;
+    const payload = buildGenerationPayload({
+      prompt: "",
+      refNodes: [refNode],
+      configId: card.id,
+      config: { kind: "model", modelCard: card, modelParams: {} },
+      actionType: ACTION_TYPE.ModelGen,
+    });
+
+    expect(payload.partition.modelAssetIds).toEqual(["asset-mesh"]);
   });
 
   it("keeps Prompt and Lyrics Text references separate during Canvas execution", () => {

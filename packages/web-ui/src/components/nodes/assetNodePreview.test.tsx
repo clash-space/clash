@@ -12,6 +12,7 @@ const assetProjection = vi.hoisted(() => ({
   status: "ready" as
     "uploading" | "ready" | "downloading" | "unavailable" | "failed",
 }));
+const loroConnection = vi.hoisted(() => ({ connected: true }));
 
 vi.mock("@xyflow/react", () => ({
   Handle: () => null,
@@ -27,7 +28,7 @@ vi.mock("../PresenceAwarenessContext", () => ({
   usePeersSelectingNode: () => [],
 }));
 vi.mock("../LoroSyncContext", () => ({
-  useOptionalLoroSyncContext: () => null,
+  useOptionalLoroSyncContext: () => loroConnection,
 }));
 vi.mock("../MediaViewerContext", () => ({
   useMediaViewer: () => ({
@@ -80,9 +81,44 @@ afterEach(() => {
   openAssetPreview.mockClear();
   assetProjection.enabled = true;
   assetProjection.status = "ready";
+  loroConnection.connected = true;
 });
 
 describe("asset node preview navigation", () => {
+  it.each([
+    ["image", ImageNode],
+    ["video", VideoNode],
+    ["audio", AudioNode],
+  ] as const)(
+    "explains that a pending %s node is waiting for the Project Host while Loro is disconnected",
+    (kind, Component) => {
+      loroConnection.connected = false;
+
+      const { unmount } = render(
+        <Component
+          {...baseNodeProps}
+          id={`${kind}-pending-node`}
+          type={kind}
+          width={320}
+          height={180}
+          data={{
+            label: `Pending ${kind}`,
+            status: "pending",
+          }}
+        />,
+      );
+
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Waiting for connection",
+      );
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Starts automatically after reconnection",
+      );
+      expect(screen.queryByText(/Generating/i)).toBeNull();
+      unmount();
+    },
+  );
+
   it("keeps a single click on an audio node from opening the enlarged player", () => {
     const { container } = render(
       <AudioNode

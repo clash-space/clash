@@ -534,44 +534,25 @@ timelineCommand
     const deadline = Date.now() + timeoutMs;
     let receipt: TimelineRenderReceipt = { ...base, completed: false, status: "pending" };
     while (true) {
-      let data: Record<string, unknown>;
-      if (submitted.target.kind === "project-assets") {
-        const result = await sendProjectCommand<{
-          renders?: Array<{
-            node?: { id?: string; data?: Record<string, unknown> };
-          }>;
-          error?: string;
-        }>(context.projectId, {
-          action: "list_timeline_renders",
-          status: "all",
-        });
-        if (result.error) throw new Error(result.error);
-        const renderNode = result.renders
-          ?.map((entry) => entry.node)
-          .find((node) => node?.id === submitted.renderNodeId);
-        if (!renderNode) {
-          throw new Error(
-            `Timeline render node ${submitted.renderNodeId} was not returned by Host readback`,
-          );
-        }
-        data = renderNode.data ?? {};
-      } else {
-        const result: {
+      const result = await sendProjectCommand<{
+        renders?: Array<{
           node?: { id?: string; data?: Record<string, unknown> };
-          error?: string;
-        } = await sendProjectCommand(context.projectId, {
-          action: "get",
-          canvasId: submitted.target.canvasId,
-          nodeId: submitted.renderNodeId,
-        });
-        if (result.error) throw new Error(result.error);
-        if (!result.node || result.node.id !== submitted.renderNodeId) {
-          throw new Error(
-            `Timeline render node ${submitted.renderNodeId} was not returned by Host readback`,
-          );
-        }
-        data = result.node.data ?? {};
+        }>;
+        error?: string;
+      }>(context.projectId, {
+        action: "list_timeline_renders",
+        status: "all",
+      });
+      if (result.error) throw new Error(result.error);
+      const renderNode = result.renders
+        ?.map((entry) => entry.node)
+        .find((node) => node?.id === submitted.renderNodeId);
+      if (!renderNode) {
+        throw new Error(
+          `Timeline native render ${submitted.renderNodeId} was not returned by Host readback`,
+        );
       }
+      const data = renderNode.data ?? {};
       if (data.status === "completed") {
         if (typeof data.assetId !== "string" || !data.assetId.trim()) {
           receipt = { ...base, completed: false, status: "failed", error: "Timeline render completed without an immutable Asset id" };

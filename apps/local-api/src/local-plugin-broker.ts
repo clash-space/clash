@@ -5,15 +5,23 @@ import {
   type PluginBroker,
 } from "./runtime/host/lib/actions-loader.js";
 import {
+  ActionRunModelRouteSchema,
   ExecutablePluginBrokerResolvedReferenceSchema,
+  ExecutableMediaAnalysisResultSchema,
   ExecutableSpeechTranscriptionResultSchema,
+  ExecutableVideoEnhanceResultSchema,
 } from "@clash/shared-types";
 import type {
+  ActionRunModelRoute,
   AssetKind,
   ExecutablePluginAssetHandle,
   ExecutablePluginJsonValue,
+  ExecutableMediaAnalysisReference,
+  ExecutableMediaAnalysisResult,
   ExecutableSpeechTranscriptionReference,
   ExecutableSpeechTranscriptionResult,
+  ExecutableVideoEnhanceReference,
+  ExecutableVideoEnhanceResult,
 } from "@clash/shared-types";
 
 import type { RuntimeProviderAccountAvailability } from "./provider-accounts.js";
@@ -31,7 +39,10 @@ export interface LocalPluginBrokerAuditRecord {
     | "store.get"
     | "store.put"
     | "codex.image.generate"
-    | "speech.transcribe";
+    | "media.analyze"
+    | "speech.transcribe"
+    | "video.enhance"
+    | "director.stage.capture-frame";
   target: string;
   status: "ok" | "error";
   error?: string;
@@ -116,6 +127,8 @@ export interface LocalExecutablePluginBrokerOptions {
     slot: string;
     kind: AssetKind;
     mediaType?: string;
+    /** Host-selected Provider account this invocation ran under, when it had one. */
+    accountId?: string;
     bytes: Uint8Array;
   }) => Promise<ExecutablePluginAssetHandle>;
   /**
@@ -133,6 +146,8 @@ export interface LocalExecutablePluginBrokerOptions {
     slot: string;
     kind: AssetKind;
     mediaType?: string;
+    /** Host-selected Provider account this invocation ran under, when it had one. */
+    accountId?: string;
     /** How many bytes are coming, when the plugin holds them. */
     byteLength?: number;
     /** Where they are, when the vendor answered with a link and there is nothing to count yet. */
@@ -152,6 +167,8 @@ export interface LocalExecutablePluginBrokerOptions {
     slot: string;
     kind: AssetKind;
     mediaType?: string;
+    /** Host-selected Provider account this invocation ran under, when it had one. */
+    accountId?: string;
     assetId: string;
   }) => Promise<ExecutablePluginAssetHandle>;
   /**
@@ -183,6 +200,27 @@ export interface LocalExecutablePluginBrokerOptions {
       bytes: Uint8Array;
     }>;
   }) => Promise<{ mediaType: string; bytes: Uint8Array }>;
+  captureDirectorStageFrame?: (input: {
+    projectId: string;
+    invocationId: string;
+    taskId: string;
+    stage: { name: string; owner: unknown; state: unknown };
+    label: string;
+    timeSeconds: number;
+    aspectRatio: "16:9" | "9:16" | "4:3" | "3:4" | "1:1";
+    longEdge: number;
+  }) => Promise<{ mediaType: "image/png"; width: number; height: number; bytesBase64: string }>;
+  analyzeMedia?: (input: {
+    projectId: string;
+    invocationId: string;
+    taskId: string;
+    reference: ExecutableMediaAnalysisReference;
+    modelId: string;
+    route: ActionRunModelRoute;
+    category: string;
+    prompt: string;
+    promptVersion: string;
+  }) => Promise<ExecutableMediaAnalysisResult>;
   transcribeSpeech?: (input: {
     projectId: string;
     invocationId: string;
@@ -192,6 +230,21 @@ export interface LocalExecutablePluginBrokerOptions {
     language?: string;
     poll?: ExecutablePluginJsonValue;
   }) => Promise<ExecutableSpeechTranscriptionResult>;
+  /**
+   * Generic dispatch to whichever Provider implementation the Host froze with the Run authority.
+   * This callback never recognizes a Provider by name; it forwards `route` and `accountId`
+   * verbatim to the Host's provider-executor invocation.
+   */
+  enhanceVideo?: (input: {
+    projectId: string;
+    invocationId: string;
+    taskId: string;
+    reference: ExecutableVideoEnhanceReference;
+    modelId: string;
+    route: ActionRunModelRoute;
+    params: ExecutablePluginJsonValue;
+    poll?: ExecutablePluginJsonValue;
+  }) => Promise<ExecutableVideoEnhanceResult>;
   audit?: (record: LocalPluginBrokerAuditRecord) => Promise<void> | void;
   now?: () => number;
 }
@@ -216,7 +269,14 @@ function requestTarget(
   )
     return operation.slot;
   if (operation.kind === "codex.image.generate") return "codex.imagegen";
+  if (operation.kind === "director.stage.capture-frame") return operation.label;
+  if (operation.kind === "media.analyze") {
+    return operation.reference.asset.assetId;
+  }
   if (operation.kind === "speech.transcribe") {
+    return operation.reference.asset.assetId;
+  }
+  if (operation.kind === "video.enhance") {
     return operation.reference.asset.assetId;
   }
   throw new Error(
@@ -547,6 +607,111 @@ export function createLocalExecutablePluginBroker(
             `Provider binding requires a public URL for ${reference.slot}, but the Host cannot provide one.`,
           );
         }
+      } else if (operation.kind === "director.stage.capture-frame") {
+        if (
+          context.manifest.id !== "clash.director" ||
+          context.invocation.target.pluginId !== "clash.director" ||
+          context.invocation.target.kind !== "action" ||
+          context.invocation.target.exportId !== "capture-frame"
+        ) {
+          throw new Error(
+            "The Director Stage capture Host tool is reserved for clash.director/capture-frame.",
+          );
+        }
+        const frozen = context.invocation.input.values;
+        if (
+          !isDeepStrictEqual(operation.stage, frozen.stage) ||
+          !isDeepStrictEqual(operation.label, frozen.label) ||
+          !isDeepStrictEqual(operation.timeSeconds, frozen.timeSeconds) ||
+          !isDeepStrictEqual(operation.aspectRatio, frozen.aspectRatio) ||
+          !isDeepStrictEqual(operation.longEdge, frozen.longEdge)
+        ) {
+          throw new Error(
+            "Director Stage capture request does not match the frozen invocation input.",
+          );
+        }
+        if (!options.captureDirectorStageFrame) throw new Error("Director Stage capture broker is unavailable.");
+        result = await options.captureDirectorStageFrame({
+          projectId: context.invocation.projectId,
+          invocationId: context.invocation.invocationId,
+          taskId: context.invocation.taskId,
+          stage: operation.stage,
+          label: operation.label,
+          timeSeconds: operation.timeSeconds,
+          aspectRatio: operation.aspectRatio,
+          longEdge: operation.longEdge,
+        });
+      } else if (operation.kind === "media.analyze") {
+        if (!context.manifest.contributes.hostTools.includes("media.analyze")) {
+          throw new Error(
+            `Plugin ${context.manifest.id} did not declare media.analyze.`,
+          );
+        }
+        if (!options.analyzeMedia) {
+          throw new Error("Media analysis is unavailable in this Clash runtime.");
+        }
+        const frozenValues = context.invocation.input.values;
+        const frozenConsumer = frozenValues.modelConsumer;
+        const frozenOutputs =
+          frozenConsumer &&
+          typeof frozenConsumer === "object" &&
+          !Array.isArray(frozenConsumer) &&
+          Array.isArray(frozenConsumer.outputs)
+            ? frozenConsumer.outputs
+            : [];
+        const frozenOutput = frozenOutputs.find(
+          (candidate) =>
+            candidate &&
+            typeof candidate === "object" &&
+            !Array.isArray(candidate) &&
+            candidate.slot === operation.category,
+        );
+        const frozenCategories = frozenValues.categories;
+        if (
+          frozenValues.modelId !== operation.modelId ||
+          !Array.isArray(frozenCategories) ||
+          frozenCategories.length !== 1 ||
+          frozenCategories[0] !== operation.category ||
+          !frozenOutput ||
+          typeof frozenOutput !== "object" ||
+          Array.isArray(frozenOutput) ||
+          frozenOutput.prompt !== operation.prompt ||
+          frozenOutput.promptVersion !== operation.promptVersion
+        ) {
+          throw new Error(
+            "Media analysis request does not match the frozen invocation model, category, prompt, or prompt version.",
+          );
+        }
+        const frozenRouteParse = ActionRunModelRouteSchema.safeParse(
+          frozenValues.modelRoute,
+        );
+        if (!frozenRouteParse.success) {
+          throw new Error(
+            "Media analysis invocation is missing the Host-frozen Provider route.",
+          );
+        }
+        const authorized = context.invocation.input.references.some(
+          (candidate) => isDeepStrictEqual(candidate, operation.reference),
+        );
+        if (!authorized) {
+          throw new LocalPluginBrokerAuthorizationError(
+            operation.reference.slot,
+            operation.reference.index,
+          );
+        }
+        result = ExecutableMediaAnalysisResultSchema.parse(
+          await options.analyzeMedia({
+            projectId: context.invocation.projectId,
+            invocationId: context.invocation.invocationId,
+            taskId: context.invocation.taskId,
+            reference: operation.reference,
+            modelId: operation.modelId,
+            route: frozenRouteParse.data,
+            category: operation.category,
+            prompt: operation.prompt,
+            promptVersion: operation.promptVersion,
+          }),
+        ) as ExecutablePluginJsonValue;
       } else if (operation.kind === "speech.transcribe") {
         if (context.manifest.id !== "clash.asr") {
           throw new Error(
@@ -581,6 +746,50 @@ export function createLocalExecutablePluginBroker(
           }),
         );
         result = transcription as ExecutablePluginJsonValue;
+      } else if (operation.kind === "video.enhance") {
+        if (!context.manifest.contributes.hostTools.includes("video.enhance")) {
+          throw new Error(
+            `Plugin ${context.manifest.id} did not declare video.enhance.`,
+          );
+        }
+        if (!options.enhanceVideo) {
+          throw new Error("Video enhancement is unavailable in this Clash runtime.");
+        }
+        const frozenValues = context.invocation.input.values;
+        if (frozenValues.modelId !== operation.modelId) {
+          throw new Error(
+            "Video enhancement request does not match the frozen invocation model.",
+          );
+        }
+        const frozenRouteParse = ActionRunModelRouteSchema.safeParse(
+          frozenValues.modelRoute,
+        );
+        if (!frozenRouteParse.success) {
+          throw new Error(
+            "Video enhancement invocation is missing the Host-frozen Provider route.",
+          );
+        }
+        const authorized = context.invocation.input.references.some(
+          (candidate) => isDeepStrictEqual(candidate, operation.reference),
+        );
+        if (!authorized) {
+          throw new LocalPluginBrokerAuthorizationError(
+            operation.reference.slot,
+            operation.reference.index,
+          );
+        }
+        result = ExecutableVideoEnhanceResultSchema.parse(
+          await options.enhanceVideo({
+            projectId: context.invocation.projectId,
+            invocationId: context.invocation.invocationId,
+            taskId: context.invocation.taskId,
+            reference: operation.reference,
+            modelId: operation.modelId,
+            route: frozenRouteParse.data,
+            params: operation.params,
+            ...(operation.poll === undefined ? {} : { poll: operation.poll }),
+          }),
+        ) as ExecutablePluginJsonValue;
       } else if (operation.kind === "store.get") {
         if (!options.storeGet)
           throw new Error("Local plugin store is unavailable.");
@@ -648,6 +857,7 @@ export function createLocalExecutablePluginBroker(
           slot: operation.slot,
           kind: operation.assetKind,
           ...(operation.mediaType ? { mediaType: operation.mediaType } : {}),
+          ...(context.accountId ? { accountId: context.accountId } : {}),
           // Only what the plugin actually said. A url has no byte count until someone fetches it,
           // and inventing a zero here would announce a size the host would then enforce.
           ...(operation.byteLength === undefined
@@ -669,6 +879,7 @@ export function createLocalExecutablePluginBroker(
             slot: operation.slot,
             kind: operation.assetKind,
             ...(operation.mediaType ? { mediaType: operation.mediaType } : {}),
+            ...(context.accountId ? { accountId: context.accountId } : {}),
             assetId: operation.assetId,
           })) as never;
           await audit("ok");
@@ -686,6 +897,7 @@ export function createLocalExecutablePluginBroker(
             slot: operation.slot,
             kind: operation.assetKind,
             ...(operation.mediaType ? { mediaType: operation.mediaType } : {}),
+            ...(context.accountId ? { accountId: context.accountId } : {}),
             url: operation.url,
           })) as never;
           await audit("ok");
@@ -710,6 +922,7 @@ export function createLocalExecutablePluginBroker(
           slot: operation.slot,
           kind: operation.assetKind,
           ...(operation.mediaType ? { mediaType: operation.mediaType } : {}),
+          ...(context.accountId ? { accountId: context.accountId } : {}),
           bytes,
         });
       } else if (operation.kind === "codex.image.generate") {

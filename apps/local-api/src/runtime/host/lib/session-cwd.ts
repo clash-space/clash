@@ -8,7 +8,7 @@
  * stores the canonical project id.
  *
  * Each agent template has its own chosen ACP runtime (claude-agent-acp by default; could be
- * openclaw / hermes / … per `dist/agents/<id>/runtime.json`).
+ * custom ACP agents per `dist/agents/<id>/runtime.json`).
  *
  * Per-project directories keep project files, local artifacts, agent tool
  * state, and transcripts pointed at the same stable root. Sessions remain
@@ -278,12 +278,19 @@ export async function resolveAgentMcpServers(
   runtimeEnv: Record<string, string | undefined>,
 ): Promise<McpServer[]> {
   const runtime = await readAgentRuntime(agentTemplateId);
-  if (!runtime?.plugins?.length) return [];
+  if (!runtime) return [];
   const agentRoot = join(bundledAgentsDir(), sanitize(agentTemplateId));
+  const pluginResolutionEnv = { ...process.env, ...runtimeEnv };
+  // The Clash MCP belongs to the host, not to an agent template. Always
+  // inject it into ACP session setup; template-declared plugins are additive.
+  const pluginIds = [
+    "clash",
+    ...(runtime.plugins ?? []).filter((pluginId) => pluginId !== "clash"),
+  ];
   const resolved = await Promise.all(
-    runtime.plugins.map((pluginId) =>
+    pluginIds.map((pluginId) =>
       resolvePluginMcpServers(
-        resolveAgentPluginRoot(agentRoot, pluginId, runtimeEnv),
+        resolveAgentPluginRoot(agentRoot, pluginId, pluginResolutionEnv),
         runtimeEnv,
       ),
     ),
@@ -304,6 +311,7 @@ export async function ensureAgentCwd(
   agentTemplateId: string,
   projectId?: string,
   capabilities: AgentWorkspaceCapabilities = {},
+  runtimeEnv: Record<string, string | undefined> = process.env,
 ): Promise<string> {
   const canonicalProjectId =
     projectId && projectId.length > 0 ? projectId : DEFAULT_PROJECT;
@@ -316,6 +324,7 @@ export async function ensureAgentCwd(
     agentTemplateId,
     resolveHarnessProjectSkillDirectory(capabilities.harnessId ?? ""),
     cwd,
+    { ...process.env, ...runtimeEnv },
   );
   await writeProjectMarker(cwd, canonicalProjectId);
   return cwd;
@@ -346,15 +355,31 @@ function resolveAgentPluginRoot(
   pluginId: string,
   runtimeEnv: Record<string, string | undefined>,
 ): string {
-  if (pluginId === "clash" && runtimeEnv.CLASH_BUILTIN_PLUGIN_ROOT) {
+  const packaged = join(agentRoot, "plugins", sanitize(pluginId));
+  if (pluginId !== "clash") return packaged;
+  if (runtimeEnv.CLASH_BUILTIN_PLUGIN_ROOT) {
     return resolve(runtimeEnv.CLASH_BUILTIN_PLUGIN_ROOT);
   }
-  const packaged = join(agentRoot, "plugins", sanitize(pluginId));
-  if (existsSync(packaged) || pluginId !== "clash") return packaged;
+
+  // Clash is host-owned and must never be discovered below an agent template.
+  // Source, npm, and flattened Desktop layouts place the canonical plugin at
+  // different distances from this module, so accept only candidates that are
+  // actual Codex plugin roots.
   const workspaceSource = fileURLToPath(
     new URL("../../../../../../plugins/clash/", import.meta.url),
   );
-  return existsSync(workspaceSource) ? workspaceSource : packaged;
+  for (const candidate of [
+    workspaceSource,
+    fileURLToPath(new URL("./", import.meta.url)),
+    fileURLToPath(new URL("../", import.meta.url)),
+  ]) {
+    if (existsSync(join(candidate, ".codex-plugin", "plugin.json"))) {
+      return candidate;
+    }
+  }
+  throw new Error(
+    "CLASH_BUILTIN_PLUGIN_ROOT is required when the canonical Clash plugin is not colocated with the local host",
+  );
 }
 
 /** Validate the selected runtime without writing repository instructions. */
@@ -421,6 +446,7 @@ async function installNativeAgentSkills(
   agentTemplateId: string,
   workspaceSkillDirectory: string | undefined,
   cwd: string,
+  runtimeEnv: Record<string, string | undefined>,
 ): Promise<void> {
   const root = resolveWorkspaceSkillRoot(cwd, workspaceSkillDirectory);
   if (!root) return;
@@ -430,7 +456,7 @@ async function installNativeAgentSkills(
 
   for (const pluginId of runtime.plugins) {
     const agentRoot = join(bundledAgentsDir(), sanitize(agentTemplateId));
-    const pluginRoot = resolveAgentPluginRoot(agentRoot, pluginId, process.env);
+    const pluginRoot = resolveAgentPluginRoot(agentRoot, pluginId, runtimeEnv);
     const manifest = JSON.parse(
       await readFile(join(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"),
     ) as JsonRecord;

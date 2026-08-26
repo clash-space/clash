@@ -1,6 +1,10 @@
 import type { DraftActionAssetInput } from "./action-asset-bindings.js";
 import type { CanvasNode } from "./canvas.js";
 import { DirectorReferencePacketSchema } from "./director-reference.js";
+import {
+  MEDIA_REFERENCE_FIELDS,
+  type MediaReferenceModality,
+} from "./model-capabilities.js";
 import { extractAssetRefs, parsePromptParts } from "./prompt.js";
 
 export type CanvasActionAssetInputNode = Pick<
@@ -13,7 +17,7 @@ export interface CanvasActionAssetInputEdge {
   target: string;
 }
 
-type MediaModality = "image" | "video" | "audio";
+type MediaModality = MediaReferenceModality;
 
 interface AssetInputCandidate {
   modality: MediaModality;
@@ -39,14 +43,13 @@ function stringList(value: unknown): string[] {
 function mediaModality(
   node: CanvasActionAssetInputNode,
 ): MediaModality | undefined {
-  if (node.type === "image" || node.type === "video" || node.type === "audio") {
-    return node.type;
+  const mediaTypes = MEDIA_REFERENCE_FIELDS.map((field) => field.modality);
+  if (mediaTypes.includes(node.type as MediaModality)) {
+    return node.type as MediaModality;
   }
   const outputType = nonEmptyString(node.data.outputType);
-  return outputType === "image" ||
-    outputType === "video" ||
-    outputType === "audio"
-    ? outputType
+  return outputType && mediaTypes.includes(outputType as MediaModality)
+    ? (outputType as MediaModality)
     : undefined;
 }
 
@@ -86,11 +89,9 @@ export function canvasActionAssetInputs(input: {
   const nodesById = new Map(input.nodes.map((node) => [node.id, node]));
   const inputs: DraftActionAssetInput[] = [];
   const mergedMultiplicity = new Map<string, number>();
-  const nextIndex: Record<MediaModality, number> = {
-    image: 0,
-    video: 0,
-    audio: 0,
-  };
+  const nextIndex: Record<MediaModality, number> = Object.fromEntries(
+    MEDIA_REFERENCE_FIELDS.map((field) => [field.modality, 0]),
+  ) as Record<MediaModality, number>;
   const mergeProjectedSource = (
     candidates: readonly AssetInputCandidate[],
   ): void => {
@@ -113,14 +114,8 @@ export function canvasActionAssetInputs(input: {
   };
 
   mergeProjectedSource(
-    (
-      [
-        ["referenceImageAssetIds", "image"],
-        ["referenceVideoAssetIds", "video"],
-        ["referenceAudioAssetIds", "audio"],
-      ] as const
-    ).flatMap(([field, modality]) =>
-      stringList(input.node.data[field]).map((projectAssetId) => ({
+    MEDIA_REFERENCE_FIELDS.flatMap(({ pendingField, modality }) =>
+      stringList(input.node.data[pendingField]).map((projectAssetId) => ({
         modality,
         projectAssetId,
       })),

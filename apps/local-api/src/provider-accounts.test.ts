@@ -29,6 +29,21 @@ function readSqlitePragma(dataDir: string, pragma: string): string | number | un
   }
 }
 
+function readMigrationMarker(dataDir: string, id: string): boolean {
+  const { DatabaseSync } = require("node:sqlite") as {
+    DatabaseSync: new (path: string) => {
+      prepare(sql: string): { get(value: string): Record<string, unknown> | undefined };
+      close(): void;
+    };
+  };
+  const db = new DatabaseSync(join(dataDir, "local.sqlite"));
+  try {
+    return Boolean(db.prepare("SELECT id FROM local_migration WHERE id = ?").get(id));
+  } finally {
+    db.close();
+  }
+}
+
 function createPartialProviderSqlite(dataDir: string): void {
   const { DatabaseSync } = require("node:sqlite") as {
     DatabaseSync: new (path: string) => {
@@ -581,6 +596,147 @@ describe("provider accounts", () => {
         enabled: true,
         availableOAuth: ["example-oauth"],
       }),
+    ]);
+  });
+
+  it("migrates legacy bare volcengine ModelArk accounts to the canonical id on first load", async () => {
+    const dataDir = await tempProviderDir();
+    const seed = createLocalProviderStore(dataDir);
+    await seed.saveProviderAccounts([
+      {
+        userId: "user-1",
+        id: "volc-primary",
+        providerId: "volcengine",
+        upstreamId: "volcengine",
+        label: "Ark Prod",
+        enabled: false,
+        priority: 3,
+        weight: 7,
+        credentials: { apiKey: "volc-key", baseUrl: "https://ark.example/v3" },
+        supportedModelIds: ["seedance-2-ref"],
+        modelPriorities: { "seedance-2-ref": 2 },
+      },
+      {
+        userId: "user-1",
+        providerId: "volcengine",
+        upstreamId: "volcengine",
+        region: "cn-beijing",
+        enabled: true,
+        credentials: { apiKey: "volc-keyless-id" },
+      },
+      {
+        userId: "user-1",
+        id: "speech-1",
+        providerId: "volcengine-speech",
+        upstreamId: "volcengine-speech",
+        enabled: true,
+        credentials: { apiKey: "speech-key" },
+      },
+      {
+        userId: "user-1",
+        id: "mediakit-1",
+        providerId: "volcengine-mediakit",
+        upstreamId: "volcengine-mediakit",
+        enabled: true,
+      },
+      {
+        userId: "user-1",
+        id: "provider-only-1",
+        providerId: "volcengine",
+        upstreamId: "volcengine-mediakit",
+        enabled: true,
+      },
+      {
+        userId: "user-1",
+        id: "upstream-only-1",
+        providerId: "volcengine-speech",
+        upstreamId: "volcengine",
+        enabled: true,
+      },
+    ]);
+
+    const migrated = await createLocalProviderStore(dataDir).loadProviderAccounts();
+    const byId = (id: string) => migrated.find((account) => account.id === id);
+
+    expect(byId("volc-primary")).toEqual({
+      userId: "user-1",
+      id: "volc-primary",
+      providerId: "volcengine-modelark",
+      upstreamId: "volcengine-modelark",
+      label: "Ark Prod",
+      enabled: false,
+      priority: 3,
+      weight: 7,
+      credentials: { apiKey: "volc-key", baseUrl: "https://ark.example/v3" },
+      supportedModelIds: ["seedance-2-ref"],
+      modelPriorities: { "seedance-2-ref": 2 },
+    });
+
+    const keyless = migrated.find((account) => account.region === "cn-beijing");
+    expect(keyless).toEqual({
+      userId: "user-1",
+      providerId: "volcengine-modelark",
+      upstreamId: "volcengine-modelark",
+      region: "cn-beijing",
+      enabled: true,
+      credentials: { apiKey: "volc-keyless-id" },
+    });
+
+    expect(byId("speech-1")).toMatchObject({
+      providerId: "volcengine-speech",
+      upstreamId: "volcengine-speech",
+      credentials: { apiKey: "speech-key" },
+    });
+    expect(byId("mediakit-1")).toMatchObject({
+      providerId: "volcengine-mediakit",
+      upstreamId: "volcengine-mediakit",
+    });
+    expect(byId("provider-only-1")).toMatchObject({
+      providerId: "volcengine",
+      upstreamId: "volcengine-mediakit",
+    });
+    expect(byId("upstream-only-1")).toMatchObject({
+      providerId: "volcengine-speech",
+      upstreamId: "volcengine",
+    });
+  });
+
+  it("runs the volcengine ModelArk account migration once via a local_migration marker", async () => {
+    const dataDir = await tempProviderDir();
+    const store = createLocalProviderStore(dataDir);
+    await store.saveProviderAccounts([
+      {
+        userId: "user-1",
+        id: "volc-primary",
+        providerId: "volcengine",
+        upstreamId: "volcengine",
+        enabled: true,
+        credentials: { apiKey: "volc-key" },
+      },
+    ]);
+
+    const first = await createLocalProviderStore(dataDir).loadProviderAccounts();
+    const second = await createLocalProviderStore(dataDir).loadProviderAccounts();
+    expect(second).toEqual(first);
+    expect(readMigrationMarker(dataDir, "provider-accounts-volcengine-modelark-v1")).toBe(true);
+
+    await store.saveProviderAccounts([
+      {
+        userId: "user-1",
+        id: "volc-late",
+        providerId: "volcengine",
+        upstreamId: "volcengine",
+        enabled: true,
+      },
+    ]);
+    await expect(createLocalProviderStore(dataDir).loadProviderAccounts()).resolves.toEqual([
+      {
+        userId: "user-1",
+        id: "volc-late",
+        providerId: "volcengine",
+        upstreamId: "volcengine",
+        enabled: true,
+      },
     ]);
   });
 

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { sourceContains } from "../../../packages/gui/test-support/source-match.js";
 import { describe, expect, it } from "vitest";
 
 const desktopRoot = new URL("..", import.meta.url);
@@ -57,7 +58,7 @@ describe("desktop startup test suite", () => {
       "pnpm test:startup:static && pnpm test:startup:ui",
     );
     expect(pkg.scripts["test:startup:static"]).toBe(
-      "node scripts/prepare-clash-cli.mjs && pnpm prepare:harnesses && node e2e/startup-static.mjs",
+      "node scripts/prepare-clash-cli.mjs && pnpm prepare:harnesses && tsx e2e/startup-static.ts",
     );
     expect(pkg.scripts["test:startup:api"]).toBeUndefined();
     expect(pkg.scripts["test:startup:ui"]).toContain("startup-ui-smoke.ts");
@@ -166,9 +167,10 @@ describe("desktop startup test suite", () => {
     expect(source).toContain("clashHomeForLocalDataDir(dataDir)");
   });
 
-  it("runs the development host and CLI from watched TypeScript sources", () => {
+  it("runs TypeScript sources and enables Host watching in desktop development", () => {
     const paths = readText("src/paths.ts");
     const runtime = readText("src/controller/runtime.ts");
+    const dev = readText("src/dev.ts");
 
     expect(paths).toContain('"../../../plugins/clash/src/local-api-entry.ts"');
     expect(paths).toContain('"../../../packages/cli/src/index.ts"');
@@ -179,8 +181,12 @@ describe("desktop startup test suite", () => {
       '"../../../plugins/clash/runtime/dispatcher.js"',
     );
     expect(runtime).toContain('require.resolve("tsx/cli")');
-    expect(runtime).toContain('"watch"');
+    expect(runtime).toContain("resolveDesktopSourceHostNodeArgs");
+    expect(runtime).toContain("CLASH_DESKTOP_SOURCE_HOST_WATCH");
     expect(runtime).toContain("resolveClashDevTsconfigPath(moduleDir)");
+    expect(dev).toContain(
+      'process.env.CLASH_DESKTOP_SOURCE_HOST_WATCH ?? "1"',
+    );
   });
 
   it("injects the packaged Python SDK into local-model subprocess discovery", () => {
@@ -202,17 +208,78 @@ describe("desktop startup test suite", () => {
     );
   });
 
-  it("provides the Timeline renderer through the unified local host without a renderer IPC", () => {
-    const hostEntry = readRootText("plugins/clash/src/local-api-entry.ts");
+  it("lets the renderer refresh a replaced local Host without restarting Desktop", () => {
+    const main = readText("src/main.ts");
     const windows = readText("src/controller/windows.ts");
     const preload = readText("src/preload.ts");
 
-    expect(hostEntry).toContain("createRemotionTimelineRenderer");
-    expect(hostEntry).toContain("timelineRenderer,");
-    expect(windows).not.toContain(
-      'ipcMain.handle("clash:export-timeline-video"',
+    expect(main).toContain("refreshRuntime: () => runtimeController.initialize(dataDir)");
+    expect(windows).toContain('ipcMain.handle("clash:refresh-runtime"');
+    expect(preload).toContain(
+      'refreshRuntime: () => ipcRenderer.invoke("clash:refresh-runtime")',
     );
-    expect(preload).not.toContain("exportTimelineVideo");
+  });
+
+  it("provides Timeline rendering through the bundled Remotion generator without a renderer IPC", () => {
+    const hostEntry = readRootText("plugins/clash/src/local-api-entry.ts");
+    const remotionManifest = JSON.parse(
+      readRootText("plugins/remotion/manifest.json"),
+    ) as {
+      contributes?: {
+        functions?: Array<{ id: string; kind: string }>;
+        generators?: Array<{ id: string; kind: string; path: string }>;
+      };
+    };
+    const timelineContribution = remotionManifest.contributes?.generators?.find(
+      ({ id, kind }) => id === "timeline" && kind === "generator",
+    );
+    expect(timelineContribution).toBeDefined();
+    if (!timelineContribution) return;
+
+    const timelineGenerator = JSON.parse(
+      readRootText(`plugins/remotion/${timelineContribution.path}`),
+    ) as {
+      spec?: {
+        actions?: Array<{ id: string; executorExportId: string }>;
+        projectionSurface?: { primaryActionId: string };
+      };
+    };
+    const primaryAction = timelineGenerator.spec?.actions?.find(
+      ({ id }) =>
+        id === timelineGenerator.spec?.projectionSurface?.primaryActionId,
+    );
+    const runtimeExport = remotionManifest.contributes?.functions?.find(
+      ({ id, kind }) =>
+        id === primaryAction?.executorExportId && kind === "action",
+    );
+    const remotionRuntime = readRootText("plugins/remotion/src/stdio.ts");
+    const runtimeActionId = remotionRuntime.match(
+      /export const REMOTION_RENDER_ACTION_ID\s*=\s*["']([^"']+)["']/,
+    )?.[1];
+    const windows = readText("src/controller/windows.ts");
+    const preload = readText("src/preload.ts");
+
+    expect(primaryAction).toBeDefined();
+    expect(runtimeExport).toBeDefined();
+    expect(runtimeActionId).toBe(runtimeExport?.id);
+    expect(
+      sourceContains(
+        remotionRuntime,
+        "[REMOTION_RENDER_ACTION_ID]: defineAction({",
+      ),
+    ).toBe(true);
+    expect(
+      sourceContains(hostEntry, "createHeadlessDirectorStageRenderer"),
+    ).toBe(true);
+    expect(sourceContains(hostEntry, "directorStageRenderer,")).toBe(true);
+    expect(sourceContains(hostEntry, "createRemotionTimelineRenderer")).toBe(
+      false,
+    );
+    expect(sourceContains(hostEntry, "timelineRenderer,")).toBe(false);
+    expect(
+      sourceContains(windows, 'ipcMain.handle("clash:export-timeline-video"'),
+    ).toBe(false);
+    expect(sourceContains(preload, "exportTimelineVideo")).toBe(false);
   });
 
   it("exports a recorded Director camera video through the desktop bridge", () => {
@@ -245,7 +312,7 @@ describe("desktop startup test suite", () => {
 
   it("keeps startup levels as checked-in runnable scripts", () => {
     for (const relativePath of [
-      "e2e/startup-static.mjs",
+      "e2e/startup-static.ts",
       "e2e/startup-ui-smoke.ts",
       "e2e/real-codex-acp-backend.mjs",
       "e2e/real-codex-agent-browser.mjs",
@@ -725,6 +792,51 @@ describe("desktop startup test suite", () => {
 
     expect(source).toContain("CLASH_E2E_STUB_ACP");
     expect(source).not.toContain("CLASH_LOCAL_ACP_MOCK");
+  });
+
+  it("retries attachment to the existing Electron page instead of requiring CDP target creation", () => {
+    const source = readText("e2e/agent-browser-smoke.ts");
+    const agentBrowserSource = source.slice(
+      source.indexOf("function agentBrowser"),
+      source.indexOf("function parseEvalOutput"),
+    );
+    const cdpReadyIndex = source.indexOf(
+      "`http://127.0.0.1:${cdpPort}/json/version`",
+    );
+    const homeReadyIndex = source.indexOf(
+      'await waitForEval(`document.body.innerText.includes("Home")`',
+      cdpReadyIndex,
+    );
+
+    expect(cdpReadyIndex).toBeGreaterThanOrEqual(0);
+    expect(homeReadyIndex).toBeGreaterThan(cdpReadyIndex);
+    expect(
+      sourceContains(agentBrowserSource, '"--cdp", String(electronCdpPort)'),
+    ).toBe(true);
+    const attachment = source.slice(cdpReadyIndex, homeReadyIndex);
+    expect(
+      sourceContains(
+        attachment,
+        "await waitForCdpPageTarget(cdpPort, electronTargetRecovery.expectedUrlPrefix)",
+      ),
+    ).toBe(true);
+    expect(
+      sourceContains(
+        attachment,
+        "recoverAgentBrowserTarget(agentBrowser, electronTargetRecovery)",
+      ),
+    ).toBe(true);
+    expect(
+      sourceContains(attachment, 'agentBrowser(["connect", String(cdpPort)])'),
+    ).toBe(false);
+  });
+
+  it("selects seeded assets by a quoted id attribute when product ids contain colons", () => {
+    const source = readText("e2e/agent-browser-smoke.ts");
+
+    expect(source).toContain("seededAssetSelector");
+    expect(source).toContain("JSON.stringify(seededAssetElementId)");
+    expect(source).not.toContain("#project-asset-${seededAsset.id}");
   });
 
   it("starts every desktop UI smoke with an isolated local-only Vite shell", () => {

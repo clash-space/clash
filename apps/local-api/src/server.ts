@@ -21,6 +21,8 @@ import {
 import {
   buildEffectiveModelCards,
   composeExecutablePluginModelCards,
+  listConsumerModelCatalogEntries,
+  modelCardVisibleToConsumer,
   ExecutablePluginBindingSchema,
   ExecutablePluginJsonValueSchema,
   parseDocumentBody,
@@ -38,10 +40,24 @@ import {
 } from "./host-discovery.js";
 import { resolveMediaBaseUrl } from "./media-base-url.js";
 import { createMockExternalAigcService } from "./local-aigc.js";
+import {
+  createLocalMediaAnalysisService,
+  type LocalMediaAnalysisService,
+} from "./local-media-analysis.js";
+import {
+  createLocalMediaAnalysisConfigStore,
+  mediaAnalysisModelOptionFromCatalogEntry,
+  type MediaAnalysisSourceKind,
+} from "./media-analysis-config.js";
+import {
+  createLocalVideoEnhanceService,
+  type LocalVideoEnhanceService,
+} from "./local-video-enhance.js";
 import { createProviderPluginProjector } from "./provider-plugin-projector.js";
 import { createProviderPluginExecutor } from "./provider-plugin-executor.js";
 import { createExecutablePluginActionInvoker } from "./plugin-action-runtime.js";
 import { createCodexImagegenMarketplace } from "./bundled-plugins.js";
+import { selectMarketplaceFeed } from "./marketplace-feed.js";
 import {
   TRUSTED_BUNDLED_PLUGIN_MODULES,
   loadTrustedBundledPluginModule,
@@ -112,7 +128,10 @@ import {
   defaultLocalApiDataDir,
   resolveClashProfile,
 } from "./local-paths.js";
-import { watchClashUserConfig } from "./user-config.js";
+import {
+  createClashUserConfigStore,
+  watchClashUserConfig,
+} from "./user-config.js";
 import {
   createPublicAssetStorageService,
   type PublicAssetStorageService,
@@ -277,6 +296,12 @@ export function createLocalAgentToolEnv({
       : {}),
     ...(env.CLASH_CLI_NODE_PATH
       ? { CLASH_CLI_NODE_PATH: env.CLASH_CLI_NODE_PATH }
+      : {}),
+    ...(env.CLASH_AGENT_BUNDLE_ROOT
+      ? { CLASH_AGENT_BUNDLE_ROOT: env.CLASH_AGENT_BUNDLE_ROOT }
+      : {}),
+    ...(env.CLASH_BUILTIN_PLUGIN_ROOT
+      ? { CLASH_BUILTIN_PLUGIN_ROOT: env.CLASH_BUILTIN_PLUGIN_ROOT }
       : {}),
     ...(env.TSX_TSCONFIG_PATH
       ? { TSX_TSCONFIG_PATH: env.TSX_TSCONFIG_PATH }
@@ -665,6 +690,7 @@ async function loadLocalModelCards(
   userId = "local-user",
   pluginCards: readonly ExecutablePluginCardRegistration[] = [],
   pluginModelBindings: readonly ExecutablePluginModelBindingRegistration[] = [],
+  consumer?: { pluginId: string; definitionId?: string; actionId?: string },
 ) {
   const store = createLocalProviderStore(dataDir);
   const [providerAccounts, providerOAuth, modelCardConfigs] = await Promise.all(
@@ -679,15 +705,18 @@ async function loadLocalModelCards(
     userId,
     providerOAuth,
   );
+  const composed = composeExecutablePluginModelCards(
+    MODEL_CARDS,
+    pluginCards,
+    pluginModelBindings,
+  );
   return buildEffectiveModelCards({
     configs: modelCardConfigs
       .filter((config) => (config.userId ?? userId) === userId)
       .map(({ userId: _userId, ...config }) => config),
     providers,
-    baseModels: composeExecutablePluginModelCards(
-      MODEL_CARDS,
-      pluginCards,
-      pluginModelBindings,
+    baseModels: composed.filter((model) =>
+      modelCardVisibleToConsumer(model, consumer),
     ),
   });
 }
@@ -741,6 +770,9 @@ export function createLocalPluginBrokerServices(options: {
   uploadOrigin?: string | (() => string);
   assetFetch?: typeof fetch;
   publicAssetStorage?: PublicAssetStorageService;
+  directorStageRenderer?: LocalDirectorStageRenderer;
+  analyzeMedia?: LocalExecutablePluginBrokerOptions["analyzeMedia"];
+  enhanceVideo?: LocalExecutablePluginBrokerOptions["enhanceVideo"];
 }) {
   const providerStore = createLocalProviderStore(options.dataDir);
   const metadataStore = createLocalMetadataStore(options.dataDir);
@@ -813,6 +845,7 @@ export function createLocalPluginBrokerServices(options: {
     slot,
     kind,
     mediaType,
+    accountId,
     bytes,
   }: {
     pluginId: string;
@@ -823,6 +856,7 @@ export function createLocalPluginBrokerServices(options: {
     slot: string;
     kind: "image" | "video" | "audio" | "model";
     mediaType?: string;
+    accountId?: string;
     bytes: Uint8Array;
   }) {
     const staged = await stagedAssets.stage({
@@ -834,6 +868,7 @@ export function createLocalPluginBrokerServices(options: {
       slot,
       kind,
       ...(mediaType ? { mediaType } : {}),
+      ...(accountId ? { accountId } : {}),
       bytes,
     });
     return {
@@ -860,7 +895,38 @@ export function createLocalPluginBrokerServices(options: {
       return providerAccountsForRuntime(accounts, "local-user", oauthRecords);
     },
     generateCodexImage: createCodexImageGenerator(),
+    ...(options.directorStageRenderer
+      ? {
+          captureDirectorStageFrame: async ({
+            stage,
+            label,
+            timeSeconds,
+            aspectRatio,
+            longEdge,
+          }) => {
+            const rendered = await options.directorStageRenderer!.render({
+              state:
+                stage.state as import("@clash/shared-types").DirectorStageState,
+              longEdge,
+              frames: [{ label, timeSeconds, aspectRatio }],
+            });
+            if (rendered.frames.length !== 1)
+              throw new Error(
+                "Director renderer must return exactly one frame.",
+              );
+            const frame = rendered.frames[0]!;
+            return {
+              mediaType: frame.mimeType,
+              width: frame.width,
+              height: frame.height,
+              bytesBase64: frame.dataBase64,
+            };
+          },
+        }
+      : {}),
     ...(transcribeSpeech ? { transcribeSpeech } : {}),
+    ...(options.analyzeMedia ? { analyzeMedia: options.analyzeMedia } : {}),
+    ...(options.enhanceVideo ? { enhanceVideo: options.enhanceVideo } : {}),
     openExecutorAsset: async ({ projectId, invocationId, assetId, kind }) => {
       const staged = await stagedAssets.resolve({
         projectId,
@@ -1022,6 +1088,7 @@ export function createLocalPluginBrokerServices(options: {
       kind,
       byteLength,
       mediaType,
+      accountId,
       url,
     }) => {
       const token = randomUUID();
@@ -1045,6 +1112,7 @@ export function createLocalPluginBrokerServices(options: {
           slot,
           kind,
           ...(fetched.mediaType ? { mediaType: fetched.mediaType } : {}),
+          ...(accountId ? { accountId } : {}),
           bytes: fetched.bytes,
         });
       }
@@ -1140,6 +1208,12 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
   const npxSkillsMarketplace = createNpxSkillsMarketplace({
     registry: skillMarketplaceRegistry,
   });
+  const marketplaceActions = [...codexImagegenMarketplace.actions];
+  const marketplaceSkills = [...npxSkillsMarketplace.skills];
+  const marketplaceFeed = selectMarketplaceFeed({
+    actions: marketplaceActions,
+    skills: marketplaceSkills,
+  });
   const projectAssetFileReplica = new FileReplicaStore(
     join(options.dataDir, "projects"),
   );
@@ -1184,6 +1258,8 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       error instanceof Error ? error.message : String(error),
     );
   });
+  let mediaAnalysisService: LocalMediaAnalysisService | undefined;
+  let videoEnhanceService: LocalVideoEnhanceService | undefined;
   const pluginBroker = createLocalPluginBrokerServices({
     dataDir: options.dataDir,
     assetStaging: pluginAssetStaging,
@@ -1201,6 +1277,19 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     },
     uploadOrigin: localOrigin,
     publicAssetStorage,
+    directorStageRenderer: options.directorStageRenderer,
+    analyzeMedia: async (input) => {
+      if (!mediaAnalysisService) {
+        throw new Error("Media analysis runtime is not ready.");
+      }
+      return mediaAnalysisService.analyze(input);
+    },
+    enhanceVideo: async (input) => {
+      if (!videoEnhanceService) {
+        throw new Error("Video enhancement runtime is not ready.");
+      }
+      return videoEnhanceService.enhance(input);
+    },
     ...(options.providerAssetFetch
       ? { assetFetch: options.providerAssetFetch }
       : {}),
@@ -1326,6 +1415,9 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     await ensurePluginRuntime();
     return pluginHostProviderExecutor(request);
   }) satisfies import("./local-aigc.js").ProviderPluginExecutor;
+  videoEnhanceService = createLocalVideoEnhanceService({
+    providerPluginExecutor,
+  });
   const resolveProviderPluginBinding = async (
     pluginId: string,
     exportId: string,
@@ -1368,6 +1460,21 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       pluginId,
       definitionId,
     );
+  };
+  const resolveGeneratorConsumerForShape = async (semanticShape: string) => {
+    const registrations = await listPluginGenerators();
+    for (const registration of registrations) {
+      for (const action of registration.document.spec.actions) {
+        if (action.modelConsumer?.semanticShape === semanticShape) {
+          return {
+            pluginId: registration.pluginId,
+            definitionId: registration.document.spec.definitionId,
+            actionId: action.id,
+          };
+        }
+      }
+    }
+    return undefined;
   };
   const discoveryRunDir = options.discovery?.runDir ?? join(clashHome, "run");
   const localAcp =
@@ -1419,6 +1526,142 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     clashRoot: clashHome,
     ...(inspectAssetResource ? { inspectResource: inspectAssetResource } : {}),
   });
+  const externalAigcOptions = {
+    fal: falMock,
+    origin: `http://127.0.0.1:${options.port}`,
+    providerAccounts: () => loadLocalProviderAccounts(options.dataDir),
+    providerPluginProjector,
+    providerPluginExecutor,
+    resolveProviderPluginStagedAsset: async ({
+      projectId,
+      projectAssetId,
+    }: {
+      projectId: string;
+      projectAssetId: string;
+    }) => {
+      const staged = await pluginAssetStaging.resolve({
+        projectId,
+        projectAssetId,
+      });
+      if (!staged) return undefined;
+      return {
+        bytes: new Uint8Array(await readFile(staged.projection.path)),
+        kind: staged.kind,
+        ...(staged.mediaType ? { contentType: staged.mediaType } : {}),
+      };
+    },
+    resolveProviderPluginBinding,
+    localTts,
+  };
+  const externalAigc = createMockExternalAigcService({
+    ...externalAigcOptions,
+    modelCards: async (consumer) =>
+      loadLocalModelCards(
+        options.dataDir,
+        "local-user",
+        await listPluginCards(),
+        await listPluginModelBindings(),
+        consumer,
+      ),
+  });
+  /**
+   * Shared, semantic-shape-generic runnable-model discovery for every Settings-driven Generator
+   * model consumer (media_analysis, video_enhancement, ...). Each executable candidate route is
+   * proven executable and its exact resolved Provider executor binding (version/schemaHash) is
+   * frozen into the returned option's `implementation`, alongside the route's own declared
+   * `assetInputs` -- the same Run authority a durable poll later checks for drift.
+   */
+  const resolveExecutableModelOptions = async (input: {
+    semanticShape: string;
+    outputKind: import("@clash/shared-types").ModelKind;
+    sourceKind: MediaAnalysisSourceKind;
+  }) => {
+    const consumer = await resolveGeneratorConsumerForShape(
+      input.semanticShape,
+    );
+    if (!consumer) return [];
+    const [registrations, bindings, configuredProviders] = await Promise.all([
+      listPluginCards(),
+      listPluginModelBindings(),
+      loadLocalProviderAccounts(options.dataDir),
+    ]);
+    const cards = await loadLocalModelCards(
+      options.dataDir,
+      "local-user",
+      registrations,
+      bindings,
+      consumer,
+    );
+    const executableBindings = new Map<
+      string,
+      import("@clash/shared-types").ExecutablePluginBinding
+    >();
+    await Promise.all(
+      cards.flatMap((card) =>
+        (card.providerImplementations ?? []).map(async (route) => {
+          if (!route.executorPluginId || !route.executorExportId) return;
+          try {
+            const resolved = await resolveProviderPluginBinding(
+              route.executorPluginId,
+              route.executorExportId,
+              "provider-executor",
+            );
+            executableBindings.set(
+              `${route.executorPluginId}:${route.executorExportId}`,
+              resolved,
+            );
+          } catch {
+            // Inactive/untrusted executors make only this exact route unavailable.
+          }
+        }),
+      ),
+    );
+    return listConsumerModelCatalogEntries({
+      consumer,
+      semanticShape: input.semanticShape,
+      outputKind: input.outputKind,
+      sourceKind: input.sourceKind,
+      referenceCounts: { [input.sourceKind]: 1 },
+      models: cards,
+      configuredProviders,
+      isRouteExecutable: (route) =>
+        !!route.executorPluginId &&
+        !!route.executorExportId &&
+        executableBindings.has(
+          `${route.executorPluginId}:${route.executorExportId}`,
+        ),
+    }).flatMap((entry) =>
+      entry.selectedRoute
+        ? [
+            mediaAnalysisModelOptionFromCatalogEntry(
+              { ...entry, selectedRoute: entry.selectedRoute },
+              consumer,
+              input.sourceKind,
+              entry.selectedRoute.executorPluginId &&
+                entry.selectedRoute.executorExportId
+                ? executableBindings.get(
+                    `${entry.selectedRoute.executorPluginId}:${entry.selectedRoute.executorExportId}`,
+                  )
+                : undefined,
+            ),
+          ]
+        : [],
+    );
+  };
+  const clashUserConfigStore = createClashUserConfigStore(options.dataDir);
+  const mediaAnalysisConfig = createLocalMediaAnalysisConfigStore({
+    dataDir: options.dataDir,
+    resolveOptions: (sourceKind) =>
+      resolveExecutableModelOptions({
+        semanticShape: "media_analysis",
+        outputKind: "text",
+        sourceKind,
+      }),
+  });
+  mediaAnalysisService = createLocalMediaAnalysisService({
+    config: mediaAnalysisConfig,
+    aigc: externalAigc,
+  });
   const app = createLocalApiApp({
     dataDir: options.dataDir,
     projectAssetProjectionOrigin: localOrigin,
@@ -1430,6 +1673,12 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
           pid: process.pid,
           profile: discoveryProfile,
           protocolVersion: LOCAL_HOST_PROTOCOL_VERSION,
+          ...(process.env.CLASH_DAEMON_RUNTIME_FINGERPRINT
+            ? {
+                runtimeFingerprint:
+                  process.env.CLASH_DAEMON_RUNTIME_FINGERPRINT,
+              }
+            : {}),
         }
       : undefined,
     localAcp,
@@ -1438,6 +1687,58 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     syncConfig,
     publicAssetStorage,
     audioConfig,
+    mediaAnalysisConfig,
+    resolveGeneratorModelConsumer: async ({ semanticShape, sourceKind }) => {
+      const consumer = await resolveGeneratorConsumerForShape(semanticShape);
+      if (!consumer) {
+        throw new Error(
+          `No active Generator consumer is registered for semantic shape ${semanticShape}.`,
+        );
+      }
+      if (semanticShape === "video_enhancement") {
+        const stored = await clashUserConfigStore.getSection<{
+          model_id?: string | null;
+        }>("video_enhancement");
+        const settingsModelId =
+          typeof stored?.model_id === "string" && stored.model_id.trim()
+            ? stored.model_id.trim()
+            : null;
+        const videoEnhanceOptions = await resolveExecutableModelOptions({
+          semanticShape,
+          outputKind: "video",
+          sourceKind,
+        });
+        const selected = settingsModelId
+          ? videoEnhanceOptions.find((option) => option.id === settingsModelId)
+          : videoEnhanceOptions.length === 1
+            ? videoEnhanceOptions[0]
+            : undefined;
+        if (!selected) {
+          throw new Error(
+            settingsModelId
+              ? `Video enhancement model ${settingsModelId} has no configured and executable Provider route for ${sourceKind}.`
+              : `Select a ${semanticShape} model in Settings before running.`,
+          );
+        }
+        return { modelId: selected.id, route: selected.implementation };
+      }
+      if (semanticShape !== "media_analysis") {
+        throw new Error(
+          `No Settings resolver is registered for semantic shape ${semanticShape}.`,
+        );
+      }
+      const config = await mediaAnalysisConfig.get();
+      if (!config.modelId) {
+        throw new Error(
+          `Select a ${semanticShape} model in Settings before running.`,
+        );
+      }
+      const selected = await mediaAnalysisConfig.assertRunnable({
+        sourceKind,
+        modelId: config.modelId,
+      });
+      return { modelId: config.modelId, route: selected.implementation };
+    },
     providerPluginExecutor,
     assetInspection,
     ...(options.providerGenerationDeadlineMs === undefined
@@ -1482,14 +1783,15 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
         );
       },
     },
-    marketplaceActions: [...codexImagegenMarketplace.actions],
+    marketplaceActions,
     listInstalledMarketplaceActions: () =>
       codexImagegenMarketplace.listInstalled(),
     installMarketplaceAction: (packageId) =>
       codexImagegenMarketplace.install(packageId),
     uninstallMarketplaceAction: (actionId) =>
       codexImagegenMarketplace.uninstall(actionId),
-    marketplaceSkills: [...npxSkillsMarketplace.skills],
+    marketplaceSkills,
+    marketplaceFeed,
     listInstalledMarketplaceSkills: () => npxSkillsMarketplace.listInstalled(),
     installMarketplaceSkill: (skillId) => npxSkillsMarketplace.install(skillId),
     uninstallMarketplaceSkill: (skillId) =>
@@ -1546,7 +1848,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     executablePluginAction,
     resolvePluginBinding: workflowPluginBindingResolver,
     durableProviderRuns: {
-      ownerId: "local-api",
+      ownerId: pendingDiscoveryHostId ?? "local-api",
       providerPluginExecutor,
     },
     textAgent: localAcp.runTextTask
@@ -1574,37 +1876,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
           },
         }
       : undefined,
-    aigc: createMockExternalAigcService({
-      fal: falMock,
-      origin: `http://127.0.0.1:${options.port}`,
-      providerAccounts: () => loadLocalProviderAccounts(options.dataDir),
-      modelCards: async () =>
-        loadLocalModelCards(
-          options.dataDir,
-          "local-user",
-          await listPluginCards(),
-          await listPluginModelBindings(),
-        ),
-      providerPluginProjector,
-      providerPluginExecutor,
-      resolveProviderPluginStagedAsset: async ({
-        projectId,
-        projectAssetId,
-      }) => {
-        const staged = await pluginAssetStaging.resolve({
-          projectId,
-          projectAssetId,
-        });
-        if (!staged) return undefined;
-        return {
-          bytes: new Uint8Array(await readFile(staged.projection.path)),
-          kind: staged.kind,
-          ...(staged.mediaType ? { contentType: staged.mediaType } : {}),
-        };
-      },
-      resolveProviderPluginBinding,
-      localTts,
-    }),
+    aigc: externalAigc,
   });
   const remotePersistence =
     options.remotePersistence === undefined

@@ -73,6 +73,13 @@ test("server keeps Studio and Canvas App surfaces quarantined", async () => {
       `${name} must expose workspace contentFile ingestion`,
     );
   }
+  for (const name of ["clash_canvas_add"]) {
+    assert.match(
+      tools.get(name)?.config.description ?? "",
+      /Asset nodes can only be connected to generation nodes\./,
+      `${name} must expose the generation-to-asset graph relationship`,
+    );
+  }
   assert.ok(tools.has("clash_workspace_init"));
   assert.deepEqual(
     [...tools.keys()].filter((name) => name.startsWith("clash_cli_")),
@@ -190,6 +197,7 @@ test("bundled MCP gives Assets a lightweight operation index before execution", 
     "clash_assets",
     "clash_canvas",
     "clash_composition",
+    "clash_generators",
     "clash_plugin",
     "clash_workspace_init",
   ]);
@@ -262,6 +270,72 @@ test("bundled MCP gives Assets a lightweight operation index before execution", 
     {
       name: "clash_assets_list",
       input: { projectId: "project-a" },
+    },
+  ]);
+});
+
+test("bundled MCP registers Generator leaves with the authenticated Host API transport", async (t) => {
+  const { createClashMcpServer } = await import("./server");
+  const requests: Array<{ url: string; authorization: string | null }> = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    requests.push({
+      url: String(input),
+      authorization: new Headers(init?.headers).get("authorization"),
+    });
+    return Response.json([{ definitionId: "render" }]);
+  };
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  const server = createClashMcpServer({
+    client: {
+      resolveConnection: async () => ({
+        endpoint: "http://host.test/",
+        token: "secret",
+      }),
+      resolveContext: async () => ({ projectId: "p", source: "explicit" }),
+      request: async <T extends Record<string, unknown>>() => ({
+        projectId: "p",
+        value: {} as T,
+      }),
+    },
+    bundledAppJavascript: "",
+    bundledStudioAppJavascript: "",
+    gateway: { invoke: async () => [] },
+    assetGateway: { invoke: async () => [] },
+  });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  const client = new Client({
+    name: "generator-registration",
+    version: "1.0.0",
+  });
+  t.after(async () => {
+    await client.close().catch(() => undefined);
+    await server.close().catch(() => undefined);
+  });
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  const contracts = await client.callTool({
+    name: "clash_generators",
+    arguments: {},
+  });
+  assert.ok(
+    (
+      contracts.structuredContent as {
+        operations: Array<{ operation: string }>;
+      }
+    ).operations.some(({ operation }) => operation === "definitions_list"),
+  );
+  await client.callTool({
+    name: "clash_generators",
+    arguments: { operation: "definitions_list", arguments: {} },
+  });
+  assert.deepEqual(requests, [
+    {
+      url: "http://host.test/api/v1/generator-definitions",
+      authorization: "Bearer secret",
     },
   ]);
 });

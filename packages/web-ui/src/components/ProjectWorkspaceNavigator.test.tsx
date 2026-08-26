@@ -6,7 +6,6 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { useState } from "react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ResolvedAsset } from "@clash/shared-types";
@@ -27,6 +26,53 @@ function resolvedAsset(
 }
 
 describe("ProjectWorkspaceNavigator", () => {
+  it("shows open browser pages as selectable project sidebar tabs", () => {
+    const onSelectBrowser = vi.fn();
+    const browserProps = {
+      browsers: [
+        {
+          id: "browser-1",
+          title: "Clash docs",
+          url: "https://clash.example/docs",
+        },
+      ],
+      onSelectBrowser,
+      onCreateBrowser: vi.fn(),
+      onCloseBrowser: vi.fn(),
+    };
+
+    render(
+      <ProjectWorkspaceNavigator
+        {...browserProps}
+        canvases={[{ id: "main", name: "Main", position: 0 }]}
+        timelines={[]}
+        assets={[]}
+        surface={{ kind: "canvas", canvasId: "main" }}
+        onSelectCanvas={vi.fn()}
+        onSelectTimeline={vi.fn()}
+        onSelectAsset={vi.fn()}
+        onCreateCanvas={vi.fn()}
+        onRenameCanvas={vi.fn()}
+        onDeleteCanvas={vi.fn()}
+        onCreateTimeline={vi.fn()}
+        onAttachTimeline={vi.fn()}
+        onAddAsset={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Browsers" })).toBeTruthy();
+    const browserTab = screen.getByRole("tab", { name: "Clash docs" });
+    fireEvent.click(browserTab);
+    expect(onSelectBrowser).toHaveBeenCalledWith("browser-1");
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    const search = screen.getByRole("combobox", { name: "Search project" });
+    fireEvent.change(search, { target: { value: "Clash docs" } });
+    expect(
+      screen.getByRole("option", { name: "Clash docs Browser" }),
+    ).toBeTruthy();
+  });
+
   it("lists Canvas text nodes in Assets and selects their first-class workspace page", () => {
     const textAsset = {
       id: "text-script",
@@ -490,75 +536,44 @@ describe("ProjectWorkspaceNavigator", () => {
     expect(onAddAssetToLibrary).toHaveBeenCalledWith("same-id");
   });
 
-  it("collapses completely and lets the workspace own the expand control", () => {
-    function CollapsibleNavigator() {
-      const [collapsed, setCollapsed] = useState(false);
-      return (
-        <>
-          <button
-            type="button"
-            onClick={() => setCollapsed((current) => !current)}
-          >
-            {collapsed ? "Expand from workspace" : "Collapse from workspace"}
-          </button>
-          <ProjectWorkspaceNavigator
-            collapsed={collapsed}
-            canvases={[
-              { id: "main", name: "Main", position: 0 },
-              { id: "shots", name: "Shots", position: 1 },
-            ]}
-            timelines={[]}
-            assets={[]}
-            footer={<button type="button">Project settings</button>}
-            surface={{ kind: "canvas", canvasId: "main" }}
-            onSelectCanvas={vi.fn()}
-            onSelectTimeline={vi.fn()}
-            onSelectAsset={vi.fn()}
-            onCreateCanvas={vi.fn()}
-            onRenameCanvas={vi.fn()}
-            onDeleteCanvas={vi.fn()}
-            onCreateTimeline={vi.fn()}
-            onAttachTimeline={vi.fn()}
-            onAddAsset={vi.fn()}
-          />
-        </>
-      );
-    }
+  it("renders full sidebar content in a neutral container owned by an external sidebar shell", () => {
+    const { container } = render(
+      <ProjectWorkspaceNavigator
+        canvases={[
+          { id: "main", name: "Main", position: 0 },
+          { id: "shots", name: "Shots", position: 1 },
+        ]}
+        timelines={[]}
+        assets={[]}
+        header={<span>Project header</span>}
+        footer={<button type="button">Project settings</button>}
+        surface={{ kind: "canvas", canvasId: "main" }}
+        onSelectCanvas={vi.fn()}
+        onSelectTimeline={vi.fn()}
+        onSelectAsset={vi.fn()}
+        onCreateCanvas={vi.fn()}
+        onRenameCanvas={vi.fn()}
+        onDeleteCanvas={vi.fn()}
+        onCreateTimeline={vi.fn()}
+        onAttachTimeline={vi.fn()}
+        onAddAsset={vi.fn()}
+      />,
+    );
 
-    render(<CollapsibleNavigator />);
+    expect(screen.queryByRole("complementary")).toBeNull();
+    expect(container.querySelector("aside")).toBeNull();
+    expect(container.querySelector("[data-collapsed]")).toBeNull();
 
-    const navigator = screen.getByRole("complementary", {
-      name: "Project navigator",
-    });
-    expect(navigator.getAttribute("data-collapsed")).toBe("false");
+    expect(screen.getByText("Project header")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Search project" })).toBeTruthy();
+    expect(screen.getByText("⌘K")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Canvases" })).toBeTruthy();
+    expect(screen.getByText("Main")).toBeTruthy();
+    expect(screen.getByText("Shots")).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Project settings" }),
     ).toBeTruthy();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Collapse from workspace" }),
-    );
-
-    expect(navigator.getAttribute("data-collapsed")).toBe("true");
-    expect(navigator.getAttribute("aria-hidden")).toBe("true");
-    expect(navigator.className).toContain("invisible");
-    expect(
-      screen.queryByRole("button", { name: "Expand project sidebar" }),
-    ).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Project settings" }),
-    ).toBeNull();
-    expect(screen.queryByRole("tab", { name: "Main" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Search project" })).toBeNull();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Expand from workspace" }),
-    );
-    expect(navigator.getAttribute("data-collapsed")).toBe("false");
-    expect(navigator.getAttribute("aria-hidden")).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Project settings" }),
-    ).toBeTruthy();
+    expect(document.querySelector(".sr-only")).toBeNull();
   });
 
   it("exposes concrete Canvas, Timeline editor documents, and Asset surfaces", () => {
@@ -796,10 +811,6 @@ describe("ProjectWorkspaceNavigator", () => {
     expect(dragData.has("assetId")).toBe(false);
     expect(dragData.has("text/plain")).toBe(false);
     expect(dragData.has("asset")).toBe(false);
-
-    rerender(<ProjectWorkspaceNavigator {...props} collapsed />);
-    expect(screen.queryByRole("list", { name: "Project assets" })).toBeNull();
-    expect(screen.queryByRole("tab", { name: "hero-frame.png" })).toBeNull();
 
     rerender(<ProjectWorkspaceNavigator {...props} />);
     expect(screen.getByRole("list", { name: "Project assets" })).toBeTruthy();

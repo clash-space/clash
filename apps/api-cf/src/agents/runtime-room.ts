@@ -427,23 +427,6 @@ export class RuntimeRoom extends DurableObject<Env> {
   }
 
   /**
-   * Forward a `room.mention` text frame to every browser client attached
-   * to one runtime_session. Called by routes/v1/projects.ts after a room
-   * message that mentions this agent lands. The browser-side AgentSession
-   * decides what to do with it (later: enqueue as a system prompt so the
-   * mentioned agent responds on its next turn — append-on-next-turn,
-   * never interrupt).
-   *
-   * Daemon is NOT involved — mentions never leave the api-cf layer until
-   * the browser injects them as prompts. This keeps the daemon ignorant
-   * of the room.
-   */
-  async pushRoomMention(sessionId: string, mention: Record<string, unknown>): Promise<void> {
-    await this.ensureIdentity();
-    this.broadcastToSession(sessionId, { type: "room.mention", ...mention });
-  }
-
-  /**
    * RPC the daemon for the list of resumeable local CC sessions on
    * that machine. Returns [] if the daemon is offline or doesn't
    * respond within the timeout.

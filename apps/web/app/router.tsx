@@ -1,6 +1,8 @@
 import { createBrowserRouter } from "react-router";
-import AppLayout, { loader as appLayoutLoader } from "./layouts/AppLayout";
+import AppLayout from "./layouts/AppLayout";
+import { loader as appLayoutLoader } from "./layouts/appLayoutLoader";
 import { ErrorBoundary, HydrateFallback } from "./root";
+import { clearRouteModuleRecovery } from "./lib/routeModuleRecovery";
 
 // Object Route Module shim: route files export the page component as
 // `default` and (optionally) a `loader`. createBrowserRouter's `lazy`
@@ -10,6 +12,7 @@ import { ErrorBoundary, HydrateFallback } from "./root";
 function lazyRoute(importer: () => Promise<any>) {
   return async () => {
     const m = await importer();
+    if (import.meta.env.DEV) clearRouteModuleRecovery(window.sessionStorage);
     const out: Record<string, unknown> = { Component: m.default };
     if (m.loader) out.loader = m.loader;
     if (m.ErrorBoundary) out.ErrorBoundary = m.ErrorBoundary;
@@ -20,7 +23,10 @@ function lazyRoute(importer: () => Promise<any>) {
 
 const devOnlyRoutes = import.meta.env.DEV
   ? [
-      { path: "__canvas-perf", lazy: lazyRoute(() => import("./routes/__canvas-perf")) },
+      {
+        path: "__canvas-perf",
+        lazy: lazyRoute(() => import("./routes/__canvas-perf")),
+      },
     ]
   : [];
 
@@ -49,6 +55,12 @@ export const router = createBrowserRouter([
         lazy: lazyRoute(() => import("./routes/marketplace.manage")),
       },
       {
+        path: "marketplace/:pluginType/:pluginId",
+        lazy: lazyRoute(
+          () => import("./routes/marketplace.$pluginType.$pluginId"),
+        ),
+      },
+      {
         path: "marketplace",
         lazy: lazyRoute(() => import("./routes/marketplace")),
       },
@@ -57,7 +69,10 @@ export const router = createBrowserRouter([
         lazy: lazyRoute(() => import("./routes/editor-standalone")),
       },
       { path: "auth/cli", lazy: lazyRoute(() => import("./routes/auth.cli")) },
-      { path: "__codex-copilot-preview", lazy: lazyRoute(() => import("./routes/__codex-copilot-preview")) },
+      {
+        path: "__codex-copilot-preview",
+        lazy: lazyRoute(() => import("./routes/__codex-copilot-preview")),
+      },
       ...devOnlyRoutes,
       { path: "terms", lazy: lazyRoute(() => import("./routes/terms")) },
       { path: "privacy", lazy: lazyRoute(() => import("./routes/privacy")) },

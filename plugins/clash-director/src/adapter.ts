@@ -1,5 +1,9 @@
+import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { createGeneratorClient } from "@clash/shared-runtime/generator-client";
+import { readNativeMediaActionRun } from "@clash/shared-runtime/generator-readback";
+import { createProjectAssetHostClient } from "@clash/shared-runtime/project-asset-client";
 import {
   DirectorStageAuthoringStateSchema,
   applyDirectorStageCommand,
@@ -167,6 +171,11 @@ function captureOutputDirectory(input: DirectorToolInput, stageId: string): stri
 export function createDirectorAdapter(options: {
   client?: ProjectHostClient;
   writeProjection?: DirectorProjectionWriter;
+  readRunMedia?: (options: { projectId: string; actionRunId: string; client: ProjectHostClient }) => Promise<{
+    projectAssetId: string;
+    asset: { metadata?: { contentType?: string; width?: number; height?: number } };
+    bytes: Uint8Array;
+  }>;
 } = {}): DirectorAdapter {
   const client = options.client ?? createProjectHostClient();
   const writeProjection = options.writeProjection ?? writeDirectorProjection;
@@ -366,20 +375,58 @@ export function createDirectorAdapter(options: {
         ifMatch: observed.receipt,
       });
       const outputDir = captureOutputDirectory(input, stageId);
-      const capturedFrames = Array.isArray(result.value.frames) ? result.value.frames : [];
+      const submission = result.value;
+      if (submission.submitted !== true || submission.captured !== false || submission.stageId !== stageId) throw new Error("Director Host returned an invalid native capture submission");
+      const runs = Array.isArray(submission.runs) ? submission.runs : [];
+      if (runs.length !== frames.length) throw new Error("Director Host returned an incomplete ActionRun set");
+      const readRunMedia = options.readRunMedia ?? (async ({ projectId, actionRunId }: { projectId: string; actionRunId: string }) => {
+        if (!client.resolveConnection) throw new Error("Director capture requires a resolvable Host connection");
+        const connection = await client.resolveConnection();
+        const authenticatedFetch = (target: Parameters<typeof fetch>[0], init: RequestInit = {}) => {
+          const headers = new Headers(init.headers);
+          if (connection.token) headers.set("authorization", `Bearer ${connection.token}`);
+          return fetch(target, { ...init, headers });
+        };
+        const endpoint = new URL(connection.endpoint);
+        const generator = createGeneratorClient((path, init) => {
+          const relativePath = path.startsWith("/") ? path.slice(1) : path;
+          const base = new URL(endpoint.href.endsWith("/") ? endpoint.href : `${endpoint.href}/`);
+          return authenticatedFetch(new URL(relativePath, base), init);
+        });
+        const assets = createProjectAssetHostClient({ hostClient: client, fetch: authenticatedFetch });
+        return readNativeMediaActionRun({ generator, projectId, actionRunId, getAsset: async (id) => (await assets.get({ projectId, assetId: id })).value, downloadAsset: async (asset) => { if (!asset.url) throw new Error("Project Asset has no public media URL"); const response = await authenticatedFetch(new URL(asset.url, endpoint)); if (!response.ok) throw new Error(`Project Asset download failed (${response.status})`); return new Uint8Array(await response.arrayBuffer()); } });
+      });
+      const before = await get(input);
+      if (before.revisionId !== submission.sourceStageRevisionId) throw new Error(`Director Host captured Stage revision ${String(submission.sourceStageRevisionId)}; expected ${String(before.revisionId)}`);
       const persistedFrames: Array<Record<string, unknown>> = [];
-      for (const raw of capturedFrames) {
-        if (!raw || typeof raw !== "object") continue;
-        const frame = raw as Record<string, unknown>;
-        if (typeof frame.label !== "string" || typeof frame.dataBase64 !== "string") continue;
+      for (const [index, raw] of runs.entries()) {
+        if (!raw || typeof raw !== "object" || typeof (raw as { actionRunId?: unknown }).actionRunId !== "string") throw new Error("Director Host returned an invalid ActionRun id");
+        const frame = frames[index]!;
+        const media = await readRunMedia({ projectId: result.projectId, actionRunId: (raw as { actionRunId: string }).actionRunId, client });
+        const width = media.asset.metadata?.width;
+        const height = media.asset.metadata?.height;
+        if (media.asset.metadata?.contentType !== "image/png") throw new Error(`Director renderer returned a non-PNG frame for ${frame.label}`);
+        if (!Number.isInteger(width) || !Number.isInteger(height) || width! <= 0 || height! <= 0) throw new Error(`Director renderer returned invalid dimensions for ${frame.label}`);
+        if (!media.bytes.length || !Buffer.from(media.bytes).subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) throw new Error(`Director renderer returned invalid PNG bytes for ${frame.label}`);
         const path = join(outputDir, `${projectionSegment(frame.label)}.png`);
-        await writeProjection(path, Buffer.from(frame.dataBase64, "base64"));
-        const { dataBase64: _data, ...publicFrame } = frame;
-        persistedFrames.push({ ...publicFrame, path });
+        await writeProjection(path, media.bytes);
+        persistedFrames.push({ artifactId: frame.label, projectAssetId: media.projectAssetId, metadataAttached: false, timeSeconds: frame.timeSeconds, aspectRatio: frame.aspectRatio, width, height, mimeType: "image/png", sha256: createHash("sha256").update(media.bytes).digest("hex"), path });
       }
+      const after = await get(input);
+      if (after.revisionId !== submission.sourceStageRevisionId) throw new Error(`Director Stage ${stageId} changed during capture`);
       const receiptPath = join(outputDir, "capture.json");
-      const publicResult = publicProjectHostValue(result.value) as Record<string, unknown>;
-      const receipt = { ...publicResult, frames: persistedFrames, receiptPath };
+      const receipt = {
+        captured: true as const,
+        stageId,
+        sourceStageRevisionId: String(submission.sourceStageRevisionId),
+        verifiedStageRevisionId: after.revisionId,
+        renderer: { id: "clash-director-viewport-webgl", contractVersion: 1 },
+        stateSha256: createHash("sha256").update(JSON.stringify(before.state)).digest("hex"),
+        frames: persistedFrames,
+        receiptPath,
+        submitted: true as const,
+        actionRunIds: runs.map((run) => (run as { actionRunId: string }).actionRunId),
+      };
       await writeProjection(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
       return receipt;
     },

@@ -18,7 +18,11 @@ import { trailing } from "@milkdown/plugin-trailing";
 import { history } from "@milkdown/plugin-history";
 import { $prose, replaceAll } from "@milkdown/utils";
 import { Plugin, PluginKey } from "@milkdown/prose/state";
-import type { EditorView } from "@milkdown/prose/view";
+import {
+  Decoration,
+  DecorationSet,
+  type EditorView,
+} from "@milkdown/prose/view";
 import {
   lift,
   setBlockType,
@@ -66,6 +70,12 @@ export interface MentionableNode {
   description?: string;
   canvasId?: string;
   canvasName?: string;
+  /**
+   * Resolve a library/catalog candidate into the Project-scoped identity that
+   * may be persisted in a prompt. The editor never serializes the source
+   * library id or a temporary projection URL.
+   */
+  resolveReference?: () => Promise<MentionableNode>;
 }
 
 export interface MilkdownEditorHandle {
@@ -84,6 +94,8 @@ export type MilkdownFormat = "bold" | "italic" | "heading-2" | "blockquote";
 interface MilkdownEditorProps {
   value: string;
   onChange: (value: string) => void;
+  /** Empty-state hint rendered by ProseMirror so it never obscures the caret. */
+  placeholder?: string;
   /** Called when user presses Enter (without Shift). If provided, Enter submits instead of inserting a newline. */
   onSubmit?: () => void;
   /** Available nodes for @-mention */
@@ -103,16 +115,8 @@ const mentionPluginKey = new PluginKey("asset-mention-trigger");
 /**
  * Trigger character for the unified mention picker.
  *
- * `@` opens a single picker over BOTH agent members and canvas nodes
- * (GroupChatPanel concatenates `invitedAgent` into `mentionableNodes`
- * before passing them in). Every selection is inserted as
- * `@[label](node:<id>)`. The submit handler then re-partitions:
- * if `<id>` matches an invited agent id it dispatches via the
- * room-mention path, otherwise it's a canvas-asset attachment.
- *
- * Keeping a single trigger avoids the "what's the right key?"
- * cognitive overhead — users always type `@` and let the picker
- * disambiguate.
+ * `@` opens the canvas-node and asset picker. Every selection is inserted as
+ * `@[label](node:<id>)` and is submitted as a canvas reference.
  */
 const MENTION_TRIGGER = "@";
 
@@ -261,6 +265,38 @@ const ensureStartingParagraph = $prose(() => {
   });
 });
 
+const editorPlaceholderPluginKey = new PluginKey("editor-placeholder");
+
+function createPlaceholderPlugin(getPlaceholder: () => string | undefined) {
+  return $prose(
+    () =>
+      new Plugin({
+        key: editorPlaceholderPluginKey,
+        props: {
+          decorations(state) {
+            const placeholder = getPlaceholder();
+            const firstNode = state.doc.firstChild;
+            if (
+              !placeholder ||
+              state.doc.childCount !== 1 ||
+              !firstNode?.isTextblock ||
+              firstNode.content.size > 0
+            ) {
+              return null;
+            }
+
+            return DecorationSet.create(state.doc, [
+              Decoration.node(0, firstNode.nodeSize, {
+                class: "is-editor-empty",
+                "data-placeholder": placeholder,
+              }),
+            ]);
+          },
+        },
+      }),
+  );
+}
+
 // ─── AssetMentionMenu (floating @-menu) ──────────────────
 
 function AssetMentionMenu({
@@ -309,6 +345,7 @@ function AssetMentionMenu({
       { scope: "current-surface", label: "Current surface" },
       { scope: "current-canvas", label: "Current canvas" },
       { scope: "project-assets", label: "Project assets" },
+      { scope: "global-assets", label: "Global assets" },
       { scope: "timelines", label: "Timelines" },
       { scope: "other-canvases", label: "Other canvases" },
     ];
@@ -504,6 +541,7 @@ const MilkdownEditorInner = forwardRef<
   {
     value,
     onChange,
+    placeholder,
     onSubmit,
     mentionableNodes = [],
     promptModalities = ["text"],
@@ -519,6 +557,8 @@ const MilkdownEditorInner = forwardRef<
     cursorCoords: null,
   });
   const editorViewRef = useRef<EditorView | null>(null);
+  const placeholderRef = useRef(placeholder);
+  placeholderRef.current = placeholder;
   const mentionKeyHandlerRef = useRef<
     ((event: KeyboardEvent) => boolean) | null
   >(null);
@@ -597,6 +637,7 @@ const MilkdownEditorInner = forwardRef<
       .use(history)
       .use(trailing)
       .use(ensureStartingParagraph)
+      .use(createPlaceholderPlugin(() => placeholderRef.current))
       .use(captureViewPlugin())
       .use(enterKeyPlugin())
       .use(mentionPlugin())
@@ -616,6 +657,14 @@ const MilkdownEditorInner = forwardRef<
     currentMarkdownRef.current = value;
     editor.action(replaceAll(value));
   }, [get, loading, value]);
+
+  useEffect(() => {
+    const view = editorViewRef.current;
+    if (!view) return;
+    view.dispatch(
+      view.state.tr.setMeta(editorPlaceholderPluginKey, placeholder ?? null),
+    );
+  }, [placeholder]);
 
   // Capture EditorView via a plugin (more reliable than ctx.get)
   const captureViewPlugin = useCallback(() => {
@@ -726,6 +775,17 @@ const MilkdownEditorInner = forwardRef<
       const view = editorViewRef.current;
       if (!view) return;
 
+      let resolvedNode = node;
+      if (node.resolveReference) {
+        try {
+          resolvedNode = await node.resolveReference();
+        } catch (error) {
+          console.error("[MilkdownEditor] mention resolution failed", error);
+          view.focus();
+          return;
+        }
+      }
+
       const state = mentionPluginKey.getState(view.state) as MentionPluginState;
       if (!state?.active) return;
 
@@ -736,14 +796,14 @@ const MilkdownEditorInner = forwardRef<
       // The alt encodes mention info: "mention:nodeId:label" for parsing by parsePromptParts.
       // Without a thumbnail, falls through to the text mention path — never put an mp4 src
       // into <img> (renders as broken icon).
-      const projectedThumbnail = resolveAssetMediaUrl(node.thumbnail);
+      const projectedThumbnail = resolveAssetMediaUrl(resolvedNode.thumbnail);
       if (projectedThumbnail) {
         const imageType = view.state.schema.nodes.image;
         if (imageType) {
           const imgNode = imageType.create({
             src: projectedThumbnail,
-            alt: `mention:${node.id}:${node.label}`,
-            title: node.label,
+            alt: `mention:${resolvedNode.id}:${resolvedNode.label}`,
+            title: resolvedNode.label,
           });
           const tr = view.state.tr.replaceWith(from, to, imgNode);
           tr.setMeta(mentionPluginKey, {
@@ -779,12 +839,14 @@ const MilkdownEditorInner = forwardRef<
         // The label itself already serves as the human-readable
         // text; the title attribute brought no value.
         const mentionHref =
-          node.kind === "asset"
-            ? `project-asset:${encodeURIComponent(node.id)}`
-            : `node:${node.id}`;
+          resolvedNode.kind === "asset"
+            ? `project-asset:${encodeURIComponent(resolvedNode.id)}`
+            : `node:${resolvedNode.id}`;
         const labelText = linkMark
-          ? schema.text(node.label, [linkMark.create({ href: mentionHref })])
-          : schema.text(`[${node.label}](${mentionHref})`);
+          ? schema.text(resolvedNode.label, [
+              linkMark.create({ href: mentionHref }),
+            ])
+          : schema.text(`[${resolvedNode.label}](${mentionHref})`);
         const tr = view.state.tr.replaceWith(from, to, [
           schema.text("@"),
           labelText,
@@ -803,10 +865,14 @@ const MilkdownEditorInner = forwardRef<
       // Only current-canvas node references can become graph edges. Project
       // assets, timelines and nodes on other canvases remain prompt context.
       const isCurrentCanvasNode =
-        (node.kind ?? "node") === "node" &&
-        (node.scope ?? "current-canvas") === "current-canvas";
-      if (isCurrentCanvasNode && !connectedSet.has(node.id) && onMentionAdded) {
-        onMentionAdded(node.id);
+        (resolvedNode.kind ?? "node") === "node" &&
+        (resolvedNode.scope ?? "current-canvas") === "current-canvas";
+      if (
+        isCurrentCanvasNode &&
+        !connectedSet.has(resolvedNode.id) &&
+        onMentionAdded
+      ) {
+        onMentionAdded(resolvedNode.id);
       }
     },
     [connectedSet, onMentionAdded],

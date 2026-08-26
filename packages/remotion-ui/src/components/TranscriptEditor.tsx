@@ -457,7 +457,7 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
         draggingSelectionRef.current = false;
       }}
       style={{ containerType: "inline-size", containerName: "transcript-editor" }}
-      className="flex h-full min-h-0 flex-col bg-warm-surface outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand/45"
+      className="flex h-full min-h-0 flex-col bg-warm-surface outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/45"
     >
       <style data-transcript-responsive-styles="">{TRANSCRIPT_EDITOR_RESPONSIVE_STYLES}</style>
       <header data-transcript-header="" className="flex h-10 shrink-0 items-center gap-2 border-b border-warm-border bg-warm-surface px-2">
@@ -727,7 +727,7 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
                 aria-label="Correct selected transcript word"
                 value={correctionText}
                 onChange={(event) => setCorrectionText(event.target.value)}
-                className="h-7 w-24 rounded-[5px] border border-warm-border bg-warm-page px-2 text-[10px] text-content-primary outline-none placeholder:text-content-muted focus:border-brand/60 focus:ring-2 focus:ring-brand/10"
+                className="h-7 w-24 rounded-[5px] border border-warm-border bg-warm-page px-2 text-[10px] text-content-primary outline-none placeholder:text-content-muted focus:border-ring/60 focus:ring-2 focus:ring-ring/10"
               />
               <RemotionButton
                 type="submit"

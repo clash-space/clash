@@ -21,8 +21,6 @@ const HARNESS_PROJECT_SKILL_DIRECTORIES = {
   goose: ".goose/skills",
   cline: ".agents/skills",
   auggie: ".augment/skills",
-  hermes: ".hermes/skills",
-  openclaw: "skills",
 } as const satisfies Readonly<Record<string, string>>;
 
 export function resolveHarnessProjectSkillDirectory(

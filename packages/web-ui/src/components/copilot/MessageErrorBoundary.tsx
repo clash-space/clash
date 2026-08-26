@@ -1,4 +1,5 @@
 import { Component, type ReactNode } from 'react';
+import { FeedbackSurface } from '../ui/feedback';
 
 interface Props {
   children: ReactNode;
@@ -29,10 +30,7 @@ export class MessageErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.error) {
       return (
-        <div
-          role="alert"
-          className="clash-copilot-alert-error px-4 py-3 rounded-matrix text-sm"
-        >
+        <FeedbackSurface tone="error" density="inline" className="text-sm">
           <div className="font-medium mb-1">Failed to render this message</div>
           <div className="font-mono text-xs opacity-80 break-all">
             {this.state.error.message}
@@ -40,7 +38,7 @@ export class MessageErrorBoundary extends Component<Props, State> {
           {this.props.messageId && (
             <div className="font-mono text-[11px] opacity-60 mt-1">id: {this.props.messageId}</div>
           )}
-        </div>
+        </FeedbackSurface>
       );
     }
     return this.props.children;

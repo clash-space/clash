@@ -3,6 +3,8 @@
 import { Collapsible as CollapsiblePrimitive } from "radix-ui";
 import * as React from "react";
 
+import { cn } from "../../lib/cn";
+
 function Collapsible({
   ...props
 }: React.ComponentProps<typeof CollapsiblePrimitive.Root>) {
@@ -21,11 +23,13 @@ function CollapsibleTrigger({
 }
 
 function CollapsibleContent({
+  className,
   ...props
 }: React.ComponentProps<typeof CollapsiblePrimitive.CollapsibleContent>) {
   return (
     <CollapsiblePrimitive.CollapsibleContent
       data-slot="collapsible-content"
+      className={cn("clash-collapsible-content", className)}
       {...props}
     />
   );

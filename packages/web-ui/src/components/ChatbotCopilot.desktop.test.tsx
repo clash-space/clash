@@ -2323,7 +2323,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(
       screen.getByRole("complementary", { name: "Session history" }),
     ).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "Active" })).toBeTruthy();
+    expect(screen.queryByRole("tab")).toBeNull();
     expect(screen.getByRole("button", { name: /^Run pwd / })).toBeTruthy();
     const expandedPanel = container.querySelector<HTMLElement>(
       "#clash-copilot-panel",
@@ -2385,7 +2385,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(onArchiveSession).toHaveBeenCalledWith("source-session");
   });
 
-  it("loads archived sessions on demand and exposes restore plus permanent delete there", () => {
+  it("keeps archived sessions out of history because Settings owns the archive library", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",
@@ -2395,8 +2395,6 @@ describe("ChatbotCopilot desktop local mode", () => {
     );
     Element.prototype.scrollIntoView = vi.fn();
     const onLoadArchivedSessions = vi.fn();
-    const onRestoreSession = vi.fn();
-    const onDeleteSession = vi.fn();
     mocks.useClashRuntime.mockReturnValue(
       runtimeState({
         selectedRuntimeId: "desktop-local",
@@ -2419,36 +2417,12 @@ describe("ChatbotCopilot desktop local mode", () => {
         },
       ],
       onLoadArchivedSessions,
-      onRestoreSession,
-      onDeleteSession,
     } as any);
 
     fireEvent.click(screen.getByRole("button", { name: "Session history" }));
-    fireEvent.click(screen.getByRole("tab", { name: "Archived" }));
-    expect(onLoadArchivedSessions).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("Old storyboard")).toBeTruthy();
-
-    fireEvent.pointerDown(
-      screen.getByRole("button", {
-        name: "Session actions for Old storyboard",
-      }),
-    );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Restore session" }));
-    expect(onRestoreSession).toHaveBeenCalledWith("archived-session");
-
-    fireEvent.pointerDown(
-      screen.getByRole("button", {
-        name: "Session actions for Old storyboard",
-      }),
-    );
-    fireEvent.click(
-      screen.getByRole("menuitem", { name: "Delete permanently" }),
-    );
-    expect(onDeleteSession).not.toHaveBeenCalled();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Confirm permanent delete" }),
-    );
-    expect(onDeleteSession).toHaveBeenCalledWith("archived-session");
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.queryByText("Old storyboard")).toBeNull();
+    expect(onLoadArchivedSessions).not.toHaveBeenCalled();
   });
 
   it("surfaces restored desktop runtime messages in session history", () => {

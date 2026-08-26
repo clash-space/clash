@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { useLoroSync } from "./useLoroSync";
+import { setRuntimeConfigOverride } from "../lib/runtimeConfig";
 import {
   agentReadToken,
   Canvas,
@@ -23,6 +24,7 @@ class FakeWebSocket {
   static CONNECTING = 0;
   static OPEN = 1;
   static CLOSED = 3;
+  static instances: FakeWebSocket[] = [];
 
   binaryType = "arraybuffer";
   bufferedAmount = 0;
@@ -33,19 +35,30 @@ class FakeWebSocket {
   onclose:
     | ((event: { code: number; reason: string; wasClean: boolean }) => void)
     | null = null;
+  readonly url: string;
+  readonly sent: unknown[] = [];
 
-  constructor() {
+  constructor(url: string | URL) {
+    this.url = String(url);
+    FakeWebSocket.instances.push(this);
     queueMicrotask(() => {
       this.readyState = FakeWebSocket.OPEN;
       this.onopen?.({});
     });
   }
 
-  send(_data: unknown): void {}
+  send(data: unknown): void {
+    this.sent.push(data);
+  }
 
   close(code = 1000, reason = "closed"): void {
     this.readyState = FakeWebSocket.CLOSED;
     this.onclose?.({ code, reason, wasClean: true });
+  }
+
+  drop(): void {
+    this.readyState = FakeWebSocket.CLOSED;
+    this.onclose?.({ code: 1006, reason: "host replaced", wasClean: false });
   }
 }
 
@@ -72,6 +85,10 @@ describe("useLoroSync guardrails", () => {
   });
 
   beforeEach(() => {
+    FakeWebSocket.instances = [];
+    setRuntimeConfigOverride(undefined);
+    globalThis.__CLASH_RUNTIME_CONFIG__ = undefined;
+    delete globalThis.__CLASH_DESKTOP__;
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -81,7 +98,206 @@ describe("useLoroSync guardrails", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    setRuntimeConfigOverride(undefined);
+    globalThis.__CLASH_RUNTIME_CONFIG__ = undefined;
+    delete globalThis.__CLASH_DESKTOP__;
     window.localStorage.clear();
+  });
+
+  it("refreshes a replaced Desktop Host before reconnecting the Project Loro socket", async () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = {
+      mode: "desktop",
+      apiBaseUrl: "http://127.0.0.1:50138",
+      wsBaseUrl: "ws://127.0.0.1:50138",
+    };
+    const refreshRuntime = vi.fn().mockResolvedValue({
+      mode: "desktop",
+      apiBaseUrl: "http://127.0.0.1:55137",
+      wsBaseUrl: "ws://127.0.0.1:55137",
+    });
+    globalThis.__CLASH_DESKTOP__ = {
+      isDesktop: true,
+      newWindow: vi.fn(),
+      refreshRuntime,
+    };
+
+    const { result } = renderHook(() =>
+      useLoroSync({ projectId: "host-failover" }),
+    );
+    await waitFor(() => expect(result.current.connected).toBe(true));
+    expect(FakeWebSocket.instances[0]?.url).toBe(
+      "ws://127.0.0.1:50138/sync/host-failover",
+    );
+
+    act(() => FakeWebSocket.instances[0]?.drop());
+    act(() => {
+      expect(
+        result.current.addNode("pending-generation", {
+          type: "image",
+          position: { x: 100, y: 100 },
+          data: { status: "pending", prompt: "dog" },
+        }),
+      ).toBe(true);
+    });
+
+    await waitFor(
+      () => {
+        expect(refreshRuntime).toHaveBeenCalledTimes(1);
+        expect(FakeWebSocket.instances[1]?.url).toBe(
+          "ws://127.0.0.1:55137/sync/host-failover",
+        );
+      },
+      { timeout: 2_000 },
+    );
+    const replayedSnapshot = FakeWebSocket.instances[1]?.sent.find(
+      (value): value is Uint8Array => value instanceof Uint8Array,
+    );
+    expect(replayedSnapshot).toBeInstanceOf(Uint8Array);
+    const replayed = new (await import("loro-crdt")).LoroDoc();
+    replayed.import(replayedSnapshot!);
+    expect(replayed.getMap("nodes").get("pending-generation")).toMatchObject({
+      data: { status: "pending", prompt: "dog" },
+    });
+  });
+
+  it("publishes local Canvas node and edge commits to the React projection", async () => {
+    const onNodesChange = vi.fn();
+    const onEdgesChange = vi.fn();
+    const { result } = renderHook(() =>
+      useLoroSync({
+        projectId: "local-react-projection",
+        onNodesChange,
+        onEdgesChange,
+      }),
+    );
+    await waitFor(() => expect(result.current.isInitialized).toBe(true));
+    onNodesChange.mockClear();
+    onEdgesChange.mockClear();
+
+    act(() => {
+      expect(
+        result.current.addNode("editor", {
+          type: "image-editor",
+          position: { x: 100, y: 100 },
+          data: { label: "Image Editor" },
+        }),
+      ).toBe(true);
+      expect(
+        result.current.addNode("edited-image", {
+          type: "image",
+          position: { x: 500, y: 100 },
+          data: {
+            label: "Edited Image",
+            status: "completed",
+            assetId: "asset:edit:one",
+          },
+        }),
+      ).toBe(true);
+      expect(
+        result.current.addEdge("editor-edited-image", {
+          source: "editor",
+          target: "edited-image",
+          type: "default",
+        }),
+      ).toBe(true);
+    });
+
+    expect(onNodesChange).toHaveBeenLastCalledWith(
+      expect.arrayContaining([expect.objectContaining({ id: "edited-image" })]),
+    );
+    expect(onEdgesChange).toHaveBeenLastCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "editor-edited-image",
+          source: "editor",
+          target: "edited-image",
+        }),
+      ]),
+    );
+
+    act(() => {
+      expect(
+        result.current.updateNode("edited-image", {
+          data: {
+            label: "Edited Image",
+            status: "failed",
+            error: "client transform failed",
+          },
+        }),
+      ).toBe(true);
+    });
+    expect(onNodesChange).toHaveBeenLastCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "edited-image",
+          data: expect.objectContaining({
+            status: "failed",
+            error: "client transform failed",
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it("projects a linked pending Asset immediately from the shared Canvas operation", async () => {
+    const onNodesChange = vi.fn();
+    const onEdgesChange = vi.fn();
+    const { result } = renderHook(() =>
+      useLoroSync({
+        projectId: "linked-pending-react-projection",
+        onNodesChange,
+        onEdgesChange,
+      }),
+    );
+    await waitFor(() => expect(result.current.isInitialized).toBe(true));
+
+    act(() => {
+      expect(
+        result.current.addNode("image-editor", {
+          type: "image-editor",
+          position: { x: 100, y: 100 },
+          data: { label: "Image Editor" },
+        }),
+      ).toBe(true);
+    });
+    onNodesChange.mockClear();
+    onEdgesChange.mockClear();
+
+    act(() => {
+      expect(
+        result.current.createLinkedNode({
+          nodeId: "pending-image",
+          nodeType: "image",
+          data: {
+            label: "Edited Image",
+            status: "pending",
+            taskId: "run:client:one",
+          },
+          parentId: null,
+          sourceNodeId: "image-editor",
+        }),
+      ).toMatchObject({ nodeId: "pending-image" });
+    });
+
+    expect(onNodesChange).toHaveBeenLastCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "pending-image",
+          data: expect.objectContaining({
+            status: "pending",
+            taskId: "run:client:one",
+          }),
+        }),
+      ]),
+    );
+    expect(onEdgesChange).toHaveBeenLastCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "image-editor",
+          target: "pending-image",
+        }),
+      ]),
+    );
   });
 
   it("keeps its public API object stable across parent-only renders", async () => {

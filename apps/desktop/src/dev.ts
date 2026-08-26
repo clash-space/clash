@@ -151,6 +151,8 @@ async function main(): Promise<void> {
     CLASH_APP_NAME: "Clash Dev",
     CLASH_PROFILE: "dev",
     CLASH_WEB_URL: rendererUrl,
+    CLASH_DESKTOP_SOURCE_HOST_WATCH:
+      process.env.CLASH_DESKTOP_SOURCE_HOST_WATCH ?? "1",
   });
 
   const firstExit = await Promise.race([

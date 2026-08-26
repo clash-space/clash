@@ -251,7 +251,7 @@ it("ensureAgentCwd links the canonical Clash skill without injecting repository 
   }
 });
 
-it("uses the source plugin root for development agent skills", async () => {
+it("uses the host plugin root for agent skills without requiring a process-global override", async () => {
   const originalHome = process.env.HOME;
   const originalAgentRoot = process.env.CLASH_AGENT_BUNDLE_ROOT;
   const originalPluginRoot = process.env.CLASH_BUILTIN_PLUGIN_ROOT;
@@ -275,11 +275,14 @@ it("uses the source plugin root for development agent skills", async () => {
   );
   process.env.HOME = home;
   process.env.CLASH_AGENT_BUNDLE_ROOT = agentRoot;
-  process.env.CLASH_BUILTIN_PLUGIN_ROOT = pluginRoot;
+  delete process.env.CLASH_BUILTIN_PLUGIN_ROOT;
   try {
-    const cwd = await ensureAgentCwd("clash", "proj_source_skill", {
-      harnessId: "codex-acp",
-    });
+    const cwd = await ensureAgentCwd(
+      "clash",
+      "proj_source_skill",
+      { harnessId: "codex-acp" },
+      { CLASH_BUILTIN_PLUGIN_ROOT: pluginRoot },
+    );
     const installed = join(cwd, ".agents", "skills", "clash");
     expect(await readlink(installed)).toBe(join(pluginRoot, "skills", "clash"));
     expect(await readFile(join(installed, "SKILL.md"), "utf8")).toBe(
@@ -384,4 +387,60 @@ it("resolves the source Clash plugin as an ACP stdio MCP descriptor in developme
   const entry = "args" in server ? server.args[0] : undefined;
   expect(entry).toBeDefined();
   expect((await stat(entry!)).isFile()).toBe(true);
+});
+
+it("injects the host-owned Clash MCP when the agent runtime does not declare plugins", async () => {
+  const originalAgentRoot = process.env.CLASH_AGENT_BUNDLE_ROOT;
+  const originalPluginRoot = process.env.CLASH_BUILTIN_PLUGIN_ROOT;
+  const agentRoot = await mkdtemp(join(tmpdir(), "clash-agent-root-"));
+  const pluginRoot = await mkdtemp(join(tmpdir(), "clash-plugin-root-"));
+  await mkdir(join(agentRoot, "clash"), { recursive: true });
+  await writeFile(
+    join(agentRoot, "clash", "runtime.json"),
+    JSON.stringify({ agent_id: "codex-acp" }),
+  );
+  await mkdir(join(pluginRoot, ".codex-plugin"), { recursive: true });
+  await mkdir(join(pluginRoot, "runtime"), { recursive: true });
+  await writeFile(
+    join(pluginRoot, ".codex-plugin", "plugin.json"),
+    JSON.stringify({ name: "clash", mcpServers: "./.mcp.json" }),
+  );
+  await writeFile(
+    join(pluginRoot, ".mcp.json"),
+    JSON.stringify({
+      mcpServers: {
+        clash: {
+          command: "node",
+          args: ["./runtime/dispatcher.js", "mcp"],
+          cwd: ".",
+        },
+      },
+    }),
+  );
+  await writeFile(join(pluginRoot, "runtime", "dispatcher.js"), "");
+  process.env.CLASH_AGENT_BUNDLE_ROOT = agentRoot;
+  process.env.CLASH_BUILTIN_PLUGIN_ROOT = pluginRoot;
+
+  try {
+    const [server] = await resolveAgentMcpServers(
+      "clash",
+      { CLASH_PROJECT_ID: "project-host-root" },
+    );
+
+    expect(server).toMatchObject({
+      name: "clash",
+      args: [join(pluginRoot, "runtime", "dispatcher.js"), "mcp"],
+    });
+  } finally {
+    if (originalAgentRoot === undefined) {
+      delete process.env.CLASH_AGENT_BUNDLE_ROOT;
+    } else {
+      process.env.CLASH_AGENT_BUNDLE_ROOT = originalAgentRoot;
+    }
+    if (originalPluginRoot === undefined) {
+      delete process.env.CLASH_BUILTIN_PLUGIN_ROOT;
+    } else {
+      process.env.CLASH_BUILTIN_PLUGIN_ROOT = originalPluginRoot;
+    }
+  }
 });

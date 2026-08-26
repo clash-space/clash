@@ -25,8 +25,8 @@ describe("v0 Provider Asset delivery contract", () => {
 
   it("preserves declarative delivery support on a Provider binding", () => {
     const binding = ModelProviderImplementationSchema.parse({
-      providerId: "volcengine",
-      upstreamId: "volcengine",
+      providerId: "volcengine-modelark",
+      upstreamId: "volcengine-modelark",
       upstreamModel: "doubao-seedance-2-5-260628",
       apiShape: "modelark",
       assetInputs: [

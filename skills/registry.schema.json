@@ -27,7 +27,11 @@
         "skillBoundary": { "const": "portable-artifact-contract" },
         "executionModel": {
           "type": "object",
-          "required": ["portableSkillExecution", "clashManagedExecution", "hardBoundary"],
+          "required": [
+            "portableSkillExecution",
+            "clashManagedExecution",
+            "hardBoundary"
+          ],
           "properties": {
             "portableSkillExecution": { "type": "string" },
             "clashManagedExecution": { "type": "string" },
@@ -151,7 +155,16 @@
               "required": ["kind", "pathPattern"],
               "properties": {
                 "kind": {
-                  "enum": ["action", "asset", "metadata", "projection", "view", "analysis", "manifest", "source"]
+                  "enum": [
+                    "action",
+                    "asset",
+                    "metadata",
+                    "projection",
+                    "view",
+                    "analysis",
+                    "manifest",
+                    "source"
+                  ]
                 },
                 "pathPattern": { "type": "string" },
                 "schema": { "type": "string" }
@@ -166,7 +179,17 @@
               "required": ["kind", "pathPattern"],
               "properties": {
                 "kind": {
-                  "enum": ["action", "asset", "metadata", "projection", "view", "analysis", "manifest", "review-gate", "export"]
+                  "enum": [
+                    "action",
+                    "asset",
+                    "metadata",
+                    "projection",
+                    "view",
+                    "analysis",
+                    "manifest",
+                    "review-gate",
+                    "export"
+                  ]
                 },
                 "pathPattern": { "type": "string" },
                 "schema": { "type": "string" },
@@ -284,13 +307,25 @@
           "source": { "enum": ["first-party", "provider-official"] },
           "sourceVersion": { "type": "string" },
           "path": { "type": "string" },
+          "cover": {
+            "type": "object",
+            "required": ["src"],
+            "properties": {
+              "src": { "type": "string", "format": "uri" },
+              "alt": { "type": "string" }
+            },
+            "additionalProperties": false
+          },
           "install": {
             "type": "object",
             "required": ["kind", "source", "skill", "scope"],
             "properties": {
               "kind": { "const": "npx-skills" },
               "source": { "type": "string", "pattern": "^https://" },
-              "skill": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+              "skill": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
               "scope": { "const": "global" }
             },
             "additionalProperties": false

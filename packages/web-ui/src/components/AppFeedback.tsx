@@ -1,12 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { CheckCircle, Info, WarningCircle, X } from '@phosphor-icons/react';
+import { X } from '@phosphor-icons/react';
 import { Link } from 'react-router';
 import { Button } from './ui/button';
-import { Dialog } from './ui/dialog';
+import { InlineAlert, ToastViewport, type FeedbackTone } from './ui/feedback';
 import { IconButton } from './ui/icon-button';
 
-type FeedbackVariant = 'error' | 'info' | 'success';
+type FeedbackVariant = FeedbackTone;
 
 interface FeedbackInput {
   title: string;
@@ -21,29 +21,42 @@ interface FeedbackInput {
 
 interface FeedbackToast extends Required<FeedbackInput> {
   id: string;
-  createdAt: number;
-}
-
-interface FeedbackDialog {
-  title: string;
-  message: string;
-  variant: FeedbackVariant;
-  actionLabel?: string;
+  expiresAt: number | null;
+  remainingMs: number | null;
 }
 
 interface AppFeedbackContextValue {
   notify(input: FeedbackInput): void;
-  showDialog(input: FeedbackInput & { actionLabel?: string }): void;
 }
 
 const noopFeedback: AppFeedbackContextValue = {
   notify: () => undefined,
-  showDialog: () => undefined,
 };
 
 const AppFeedbackContext = createContext<AppFeedbackContextValue>(noopFeedback);
 
 const TOAST_DURATION_MS = 5_000;
+const WARNING_TOAST_DURATION_MS = 7_000;
+
+function usePrefersReducedMotion(): boolean {
+  const query = '(prefers-reduced-motion: reduce)';
+  const [matches, setMatches] = useState(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia(query).matches
+      : false,
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia(query);
+    const onChange = (event: MediaQueryListEvent) => setMatches(event.matches);
+    setMatches(media.matches);
+    media.addEventListener?.('change', onChange);
+    return () => media.removeEventListener?.('change', onChange);
+  }, []);
+
+  return matches;
+}
 
 function normalizedFeedback(input: FeedbackInput): Required<FeedbackInput> {
   return {
@@ -57,77 +70,94 @@ function normalizedFeedback(input: FeedbackInput): Required<FeedbackInput> {
   };
 }
 
-function variantIcon(variant: FeedbackVariant) {
-  if (variant === 'success') return <CheckCircle className="h-4 w-4" weight="fill" aria-hidden="true" />;
-  if (variant === 'error') return <WarningCircle className="h-4 w-4" weight="fill" aria-hidden="true" />;
-  return <Info className="h-4 w-4" weight="fill" aria-hidden="true" />;
-}
-
-function variantClassName(variant: FeedbackVariant): string {
-  if (variant === 'success') return 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-400/25 dark:bg-emerald-500/10 dark:text-emerald-100';
-  if (variant === 'error') return 'border-red-200 bg-red-50 text-red-900 dark:border-red-400/25 dark:bg-red-500/10 dark:text-red-100';
-  return 'border-warm-border bg-warm-surface text-slate-900 dark:text-slate-100';
+function toastDuration(input: Required<FeedbackInput>): number | null {
+  if (input.variant === 'error' || input.actionLabel) return null;
+  if (input.variant === 'warning') return WARNING_TOAST_DURATION_MS;
+  return TOAST_DURATION_MS;
 }
 
 export function AppFeedbackProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<FeedbackToast[]>([]);
-  const [dialog, setDialog] = useState<FeedbackDialog | null>(null);
+  const shouldReduceMotion = usePrefersReducedMotion();
 
   const notify = useCallback((input: FeedbackInput) => {
     const normalized = normalizedFeedback(input);
+    const duration = toastDuration(normalized);
     const item: FeedbackToast = {
       ...normalized,
       id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
-      createdAt: Date.now(),
+      expiresAt: duration === null ? null : Date.now() + duration,
+      remainingMs: duration,
     };
     setToasts((prev) => [item, ...prev].slice(0, 4));
-  }, []);
-
-  const showDialog = useCallback((input: FeedbackInput & { actionLabel?: string }) => {
-    setDialog({
-      ...normalizedFeedback(input),
-      actionLabel: input.actionLabel,
-    });
   }, []);
 
   useEffect(() => {
     if (toasts.length === 0) return;
     const timer = window.setInterval(() => {
       const now = Date.now();
-      setToasts((prev) => prev.filter((toast) => now - toast.createdAt < TOAST_DURATION_MS));
+      setToasts((prev) => prev.filter((toast) => toast.expiresAt === null || now < toast.expiresAt));
     }, 500);
     return () => window.clearInterval(timer);
   }, [toasts.length]);
 
-  const value = useMemo(() => ({ notify, showDialog }), [notify, showDialog]);
+  const value = useMemo(() => ({ notify }), [notify]);
+
+  const pauseToast = useCallback((id: string) => {
+    const now = Date.now();
+    setToasts((prev) => prev.map((toast) => {
+      if (toast.id !== id || toast.expiresAt === null) return toast;
+      return {
+        ...toast,
+        expiresAt: null,
+        remainingMs: Math.max(0, toast.expiresAt - now),
+      };
+    }));
+  }, []);
+
+  const resumeToast = useCallback((id: string) => {
+    const now = Date.now();
+    setToasts((prev) => prev.map((toast) => {
+      if (toast.id !== id || toast.remainingMs === null || toast.variant === 'error' || toast.actionLabel) return toast;
+      return { ...toast, expiresAt: now + toast.remainingMs };
+    }));
+  }, []);
 
   return (
     <AppFeedbackContext.Provider value={value}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-[10000] flex w-[min(24rem,calc(100vw-2rem))] flex-col-reverse items-end gap-2">
+      <ToastViewport>
         <AnimatePresence mode="popLayout">
           {toasts.map((toast) => (
             <motion.div
               key={toast.id}
-              role={toast.variant === 'error' ? 'alert' : 'status'}
-              initial={{ opacity: 0, y: 8, scale: 0.98 }}
+              initial={shouldReduceMotion ? false : { opacity: 0, y: 8, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={toast.exitToDesktopChrome
-                ? { opacity: 0, y: 'calc(-100vh + 3.25rem)', scale: 0.3 }
-                : { opacity: 0, x: 12, scale: 0.98 }}
-              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-              className={`pointer-events-auto flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 shadow-lg ${variantClassName(toast.variant)}`}
+              exit={shouldReduceMotion
+                ? { opacity: 0 }
+                : toast.exitToDesktopChrome
+                  ? { opacity: 0, y: 'calc(-100vh + 3.25rem)', scale: 0.3 }
+                  : { opacity: 0, x: 12, scale: 0.98 }}
+              transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+              className="w-full"
             >
-              <span className="mt-0.5 shrink-0">{variantIcon(toast.variant)}</span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold leading-5">{toast.title}</span>
-                {toast.message ? <span className="mt-0.5 block text-xs leading-5 opacity-75">{toast.message}</span> : null}
-                {toast.actionLabel ? (
+              <InlineAlert
+                tone={toast.variant}
+                density="toast"
+                title={toast.title}
+                message={toast.message}
+                onMouseEnter={() => pauseToast(toast.id)}
+                onMouseLeave={() => resumeToast(toast.id)}
+                onFocusCapture={() => pauseToast(toast.id)}
+                onBlurCapture={() => resumeToast(toast.id)}
+                action={(
+                  <span className="flex items-start gap-1">
+                    {toast.actionLabel ? (
                   toast.actionHref ? (
                     <Link
                       to={toast.actionHref}
                       onClick={() => setToasts((prev) => prev.filter((item) => item.id !== toast.id))}
-                      className="mt-2 inline-flex rounded-lg border border-current/20 px-2.5 py-1 text-xs font-semibold opacity-90 transition hover:bg-black/5 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                      className="inline-flex rounded-lg px-2.5 py-1 text-xs font-semibold opacity-90 transition-colors hover:bg-black/5 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
                     >
                       {toast.actionLabel}
                     </Link>
@@ -138,41 +168,27 @@ export function AppFeedbackProvider({ children }: { children: ReactNode }) {
                         toast.onAction();
                         setToasts((prev) => prev.filter((item) => item.id !== toast.id));
                       }}
-                      className="mt-2 min-h-0 border-current/20 bg-transparent px-2.5 py-1 text-xs font-semibold text-current opacity-90 shadow-none hover:bg-black/5 hover:opacity-100"
+                      className="min-h-0 border-0 bg-transparent px-2.5 py-1 text-xs font-semibold text-current opacity-90 shadow-none hover:bg-black/5 hover:opacity-100"
                     >
                       {toast.actionLabel}
                     </Button>
                   )
-                ) : null}
-              </span>
-              <IconButton
-                label="Dismiss notification"
-                icon={<X className="h-3.5 w-3.5" weight="bold" />}
-                size="sm"
-                onClick={() => setToasts((prev) => prev.filter((item) => item.id !== toast.id))}
-                className="shrink-0 text-current opacity-60 hover:bg-black/5 hover:text-current hover:opacity-100"
+                    ) : null}
+                    <IconButton
+                      label="Dismiss notification"
+                      icon={<X className="h-3.5 w-3.5" weight="bold" />}
+                      size="sm"
+                      onClick={() => setToasts((prev) => prev.filter((item) => item.id !== toast.id))}
+                      className="shrink-0 text-current opacity-60 hover:bg-black/5 hover:text-current hover:opacity-100"
+                    />
+                  </span>
+                )}
+                className="pointer-events-auto w-full"
               />
             </motion.div>
           ))}
         </AnimatePresence>
-      </div>
-      <Dialog
-        open={!!dialog}
-        onClose={() => setDialog(null)}
-        title={dialog?.title ?? 'Notice'}
-        description={dialog?.message}
-        size="sm"
-      >
-        <div className="flex justify-end">
-          <Button
-            variant="primary"
-            onClick={() => setDialog(null)}
-            className="clash-settings-primary px-4 py-2 text-sm font-semibold"
-          >
-            {dialog?.actionLabel ?? 'OK'}
-          </Button>
-        </div>
-      </Dialog>
+      </ToastViewport>
     </AppFeedbackContext.Provider>
   );
 }
@@ -180,3 +196,5 @@ export function AppFeedbackProvider({ children }: { children: ReactNode }) {
 export function useAppFeedback(): AppFeedbackContextValue {
   return useContext(AppFeedbackContext);
 }
+
+export type { FeedbackInput, FeedbackVariant };

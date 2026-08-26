@@ -9,6 +9,7 @@ import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { useProject } from '../ProjectContext';
 import { getItemSourceNodeId } from '@clash/remotion-core';
 import { Button } from '../ui/button';
+import { InlineAlert } from '../ui/feedback';
 import { listProjectTimelines, type ProjectTimeline } from '@clash/shared-types';
 import {
     assetPreviewMedia,
@@ -233,9 +234,11 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
                 </div>
 
                 {renderError ? (
-                    <div role="alert" className="border-t border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[11px] font-medium leading-4 text-amber-800 dark:text-amber-200">
-                        {renderError}
-                    </div>
+                    <InlineAlert
+                        tone="warning"
+                        title={renderError}
+                        className="rounded-none border-x-0 border-b-0"
+                    />
                 ) : null}
 
                 {/* Footer Actions */}

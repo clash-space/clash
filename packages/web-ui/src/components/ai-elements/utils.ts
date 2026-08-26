@@ -3,7 +3,7 @@
  * directory is to mirror Vercel's AI SDK Elements visual language
  * without dragging in their full workspace (which depends on
  * mermaid / rive / katex / shiki). We re-implement just what
- * AcpMessageList needs.
+ * Clash inline renderers need.
  */
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';

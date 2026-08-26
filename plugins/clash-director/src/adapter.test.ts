@@ -332,63 +332,44 @@ test("bounded Director mutation preserves a real external STALE_READ without rep
   ]);
 });
 
-test("Director capture calls the typed host renderer command directly", async () => {
+test("Director capture completes submitted native runs into PNG receipt fields", async () => {
   const { createDirectorAdapter } = await import("./adapter.js");
   const calls: ProjectHostRequest[] = [];
   const writes: Array<{ path: string; content: string | Uint8Array }> = [];
+  let lists = 0;
+  const png = new Uint8Array([137,80,78,71,13,10,26,10,1]);
   const adapter = createDirectorAdapter({
     client: hostClient(calls, (request) => request.command.action === "list_director_stages"
-      ? { stages: [stage], versions: { "stage-1": "director-host-receipt" } }
-      : {
-          captured: true,
-          stageId: "stage-1",
-          sourceStageRevisionId: "revision-1",
-          renderer: { id: "clash-director-viewport-webgl", contractVersion: 1 },
-          stateSha256: "state-hash",
-          readToken: "capture-internal-receipt",
-          version: "capture-internal-version",
-          frames: [{
-            label: "opening",
-            timeSeconds: 0,
-            aspectRatio: "16:9",
-            width: 1920,
-            height: 1080,
-            mimeType: "image/png",
-            dataBase64: Buffer.from("png").toString("base64"),
-            sha256: "frame-hash",
-          }],
-        }),
+      ? (lists++, { stages: [stage], versions: { "stage-1": "director-host-receipt" } })
+      : { submitted: true, captured: false, stageId: "stage-1", sourceStageRevisionId: "revision-1", runs: [{ actionRunId: "run-1" }, { actionRunId: "run-2" }] }),
+    readRunMedia: async ({ actionRunId }) => ({ projectAssetId: `asset-${actionRunId}`, asset: { metadata: { contentType: "image/png", width: 1920, height: 1080 } }, bytes: png }),
     writeProjection: async (path, content) => { writes.push({ path, content }); },
   });
-
   await adapter.get({ cwd: "/workspace", stageId: "stage-1" });
-  const result = await adapter.capture({
-    cwd: "/workspace",
-    stageId: "stage-1",
-    times: [0],
-    labels: ["opening"],
-    longEdge: 1920,
-  });
+  const result = await adapter.capture({ cwd: "/workspace", stageId: "stage-1", times: [1, 0], labels: ["later", "earlier"] }) as any;
+  assert.equal(lists, 3);
+  assert.equal(result.captured, true);
+  assert.equal(result.submitted, true);
+  assert.equal(result.sourceStageRevisionId, "revision-1");
+  assert.equal(result.verifiedStageRevisionId, "revision-1");
+  assert.equal(result.renderer.id, "clash-director-viewport-webgl");
+  assert.equal(result.stateSha256.length, 64);
+  assert.deepEqual(result.frames.map((frame: any) => frame.artifactId), ["later", "earlier"]);
+  assert.deepEqual(result.frames.map((frame: any) => frame.projectAssetId), ["asset-run-1", "asset-run-2"]);
+  assert.ok(writes.some(({ path, content }) => path.endsWith("later.png") && content instanceof Uint8Array));
+  const receipt = JSON.parse(String(writes.find(({ path }) => path.endsWith("capture.json"))!.content));
+  assert.equal(receipt.captured, true);
+  assert.equal(receipt.frames[0].sha256.length, 64);
+});
 
-  assert.deepEqual(calls.at(-1)?.command, {
-    action: "capture_director_stage",
-    stageId: "stage-1",
-    frames: [{ label: "opening", timeSeconds: 0, aspectRatio: "16:9" }],
-    longEdge: 1920,
-    actorClientType: "mcp",
-    observedVersion: "director-host-receipt",
-    ifMatch: "director-host-receipt",
+test("Director capture propagates failed native ActionRun readback", async () => {
+  const { createDirectorAdapter } = await import("./adapter.js");
+  const adapter = createDirectorAdapter({
+    client: hostClient([], (request) => request.command.action === "list_director_stages"
+      ? { stages: [stage], versions: { "stage-1": "receipt" } }
+      : { submitted: true, captured: false, stageId: "stage-1", sourceStageRevisionId: "revision-1", runs: [{ actionRunId: "run-1" }] }),
+    readRunMedia: async () => { throw new Error("ActionRun run-1 failed"); },
   });
-  assert.equal((result as { stageId?: string }).stageId, "stage-1");
-  assert.doesNotMatch(
-    JSON.stringify(result),
-    /readToken|receipt.*capture-internal|capture-internal-version/i,
-  );
-  assert.ok(writes.some(({ path }) => path.endsWith("opening.png")));
-  const captureReceipt = writes.find(({ path }) => path.endsWith("capture.json"));
-  assert.ok(captureReceipt);
-  assert.doesNotMatch(
-    String(captureReceipt.content),
-    /readToken|capture-internal-receipt|capture-internal-version/i,
-  );
+  await adapter.get({ stageId: "stage-1" });
+  await assert.rejects(adapter.capture({ stageId: "stage-1", times: [0] }), /ActionRun run-1 failed/);
 });

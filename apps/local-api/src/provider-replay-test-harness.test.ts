@@ -7,10 +7,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   assertProviderMediaFormat,
   createProviderReplayOfflineFetch,
+  mediaTypeMatchesExpectedAssetKind,
   normalizeProviderReplayText,
   providerTestReferenceAssetId,
   providerTestExecutedNodeId,
+  resolveProviderReplayChainRefs,
   runProviderReplayTestHarness,
+  validateProviderReplayCaseChain,
 } from "./provider-replay-test-harness.js";
 import { loadProviderLiveTestConfig } from "./provider-live-test-config.test-helper.js";
 
@@ -120,6 +123,131 @@ describe("provider replay test harness", () => {
     );
   });
 
+  it("accepts model_gen as a provider replay case type carrying a 3D output", async () => {
+    // A `type: "model_gen"` case with `expect: { kind: "model" }` must be
+    // representable at the type level (mesh generation / auto-rig). We can't
+    // exercise a live model_gen provider run without network or a bundled
+    // Tripo plugin, so this is a compile-time + fast-fail structural check
+    // rather than a full grading run.
+    await expect(
+      runProviderReplayTestHarness({
+        fixturePath: join(
+          import.meta.dirname,
+          "fixtures/minimax-local-stand-in-traffic.jsonl",
+        ),
+        account: {
+          id: "model-gen-shape-check",
+          providerId: "minimax",
+          upstreamId: "minimax",
+          credentials: { apiKey: "replay-placeholder" },
+        },
+        cases: [
+          {
+            id: "mesh-gen",
+            type: "model_gen",
+            modelId: "meshy-mesh-gen",
+            prompt: "Generate a low-poly fox mesh",
+            expect: { kind: "model", mediaType: "model/gltf-binary" },
+            // Forward reference: no earlier case named `auto-rig` exists yet,
+            // so the harness must fail fast during chain validation instead of
+            // starting a server or touching the network.
+            refCaseIds: ["auto-rig"],
+          },
+        ],
+        providerAssetFetch: async () => {
+          throw new Error("offline replay harness attempted provider network");
+        },
+      }),
+    ).rejects.toThrow(/refCaseIds names auto-rig/);
+  });
+
+  it("validates a case chain rejects self-references and forward references", () => {
+    expect(() =>
+      validateProviderReplayCaseChain([
+        { id: "mesh-gen" },
+        { id: "auto-rig", refCaseIds: ["mesh-gen"] },
+      ]),
+    ).not.toThrow();
+
+    expect(() =>
+      validateProviderReplayCaseChain([
+        { id: "mesh-gen", refCaseIds: ["mesh-gen"] },
+      ]),
+    ).toThrow(/cannot reference itself/);
+
+    expect(() =>
+      validateProviderReplayCaseChain([
+        { id: "auto-rig", refCaseIds: ["mesh-gen"] },
+        { id: "mesh-gen" },
+      ]),
+    ).toThrow(/refCaseIds names mesh-gen, which is not an earlier case/);
+
+    expect(() =>
+      validateProviderReplayCaseChain([
+        { id: "auto-rig", refCaseIds: ["does-not-exist"] },
+      ]),
+    ).toThrow(/refCaseIds names does-not-exist, which is not an earlier case/);
+  });
+
+  it("matches a 3D model MIME against a known set, not a naive `model/` prefix pass-through", () => {
+    expect(
+      mediaTypeMatchesExpectedAssetKind("model", "model/gltf-binary"),
+    ).toBe(true);
+    expect(
+      mediaTypeMatchesExpectedAssetKind("model", "model/gltf+json"),
+    ).toBe(true);
+    // Not every `model/*` spelling is a real, replayable 3D container --
+    // an unregistered subtype must not pass just because of the prefix.
+    expect(
+      mediaTypeMatchesExpectedAssetKind("model", "model/not-a-real-format"),
+    ).toBe(false);
+    // These are real published 3D MIME types, but `assertProviderMediaFormat`
+    // has no byte-level validator for them: accepting them here would let a
+    // case pass MIME matching and then always fail format assertion.
+    expect(mediaTypeMatchesExpectedAssetKind("model", "model/obj")).toBe(
+      false,
+    );
+    expect(mediaTypeMatchesExpectedAssetKind("model", "model/stl")).toBe(
+      false,
+    );
+    expect(
+      mediaTypeMatchesExpectedAssetKind("model", "model/vnd.usdz+zip"),
+    ).toBe(false);
+    expect(mediaTypeMatchesExpectedAssetKind("image", "image/png")).toBe(true);
+    expect(mediaTypeMatchesExpectedAssetKind("image", "model/gltf-binary")).toBe(
+      false,
+    );
+  });
+
+  it("resolves refCaseIds to the graded output node id, not the Project Asset id", () => {
+    const outputNodeIdByCaseId = new Map([
+      ["mesh-gen", "node-abc123"],
+    ]);
+
+    const refs = resolveProviderReplayChainRefs(
+      { id: "auto-rig", refCaseIds: ["mesh-gen"] },
+      outputNodeIdByCaseId,
+    );
+
+    expect(refs).toEqual(["node-abc123"]);
+    // The asset id format (`asset:provider-test:...`) must never leak into
+    // `refs`; `host-command add` resolves `refs` as Canvas node ids.
+    expect(refs).not.toEqual([
+      providerTestReferenceAssetId("mesh-gen", 0),
+    ]);
+  });
+
+  it("fails resolving a refCaseIds chain when the named case has not graded a node id yet", () => {
+    expect(() =>
+      resolveProviderReplayChainRefs(
+        { id: "auto-rig", refCaseIds: ["mesh-gen"] },
+        new Map(),
+      ),
+    ).toThrow(
+      /auto-rig refCaseIds names mesh-gen, which has not produced a storable asset yet/,
+    );
+  });
+
   it("accepts real container signatures used by provider replay assets", () => {
     expect(() =>
       assertProviderMediaFormat(
@@ -151,6 +279,21 @@ describe("provider replay test harness", () => {
         Buffer.from("000000186674797069736f6d00000200", "hex"),
       ),
     ).not.toThrow();
+    expect(() =>
+      assertProviderMediaFormat(
+        "model/gltf-binary",
+        Buffer.concat([
+          Buffer.from("glTF", "ascii"),
+          Buffer.from([0x02, 0x00, 0x00, 0x00]),
+        ]),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertProviderMediaFormat(
+        "model/gltf+json",
+        Buffer.from('{"asset":{"version":"2.0"}}', "utf8"),
+      ),
+    ).not.toThrow();
   });
 
   it("rejects non-media bytes even when metadata claims a media MIME", () => {
@@ -160,6 +303,18 @@ describe("provider replay test harness", () => {
     expect(() =>
       assertProviderMediaFormat("video/mp4", Buffer.from("not an mp4")),
     ).toThrow("does not contain an MP4 file type box");
+    expect(() =>
+      assertProviderMediaFormat(
+        "model/gltf-binary",
+        Buffer.from("not a glb file", "utf8"),
+      ),
+    ).toThrow("does not contain a glTF binary magic header");
+    expect(() =>
+      assertProviderMediaFormat(
+        "model/gltf+json",
+        Buffer.from("not json at all", "utf8"),
+      ),
+    ).toThrow("does not contain glTF JSON content");
   });
 
   it("grades a text fixture through Project Canvas with no provider network fallback", async () => {

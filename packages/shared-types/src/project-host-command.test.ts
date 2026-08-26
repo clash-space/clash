@@ -56,6 +56,25 @@ describe("ProjectHostCommandSchema", () => {
       actorClientType: "mcp",
     })).toMatchObject({ action: "add", type: "image_gen", label: "Hero" });
 
+    expect(ProjectHostCommandSchema.parse({
+      action: "add",
+      type: "model_gen",
+      label: "Statue",
+      prompt: "Create a 3D statue",
+    })).toMatchObject({ action: "add", type: "model_gen", label: "Statue" });
+
+    expect(ProjectHostCommandSchema.parse({
+      action: "add",
+      type: "image",
+      label: "Deep-space otter",
+      assetId: "asset-otter",
+    })).toMatchObject({
+      action: "add",
+      type: "image",
+      label: "Deep-space otter",
+      assetId: "asset-otter",
+    });
+
     for (const command of [
       { action: "add", type: "unknown", label: "Bad" },
       { action: "add", type: "text", label: "Bad", data: { actorUserId: "spoofed" } },

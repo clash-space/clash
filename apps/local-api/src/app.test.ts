@@ -7923,6 +7923,7 @@ describe("local API app", () => {
   });
 
   it("deletes local runtime sessions from persisted project history", async () => {
+    let eventStore: any = null;
     const app = createLocalApiApp({
       dataDir,
       userId: "local-user",
@@ -7935,6 +7936,9 @@ describe("local API app", () => {
         },
         async listResumeSessions() {
           return { sessions: [] };
+        },
+        setSessionEventStore(store: any) {
+          eventStore = store;
         },
       } as any,
     });
@@ -7952,6 +7956,11 @@ describe("local API app", () => {
     );
     expect(created.status).toBe(200);
     const { session_id } = (await created.json()) as { session_id: string };
+    await eventStore.appendEvent(session_id, {
+      type: "user_prompt",
+      data: { turn_id: "turn-delete", text: "delete me" },
+      ts: 1_700_000_000_000,
+    });
 
     const deleted = await app.request(
       `/api/v1/sessions?threadId=${encodeURIComponent(session_id)}`,
@@ -7980,6 +7989,10 @@ describe("local API app", () => {
       "/api/v1/sessions?projectId=project-delete",
     );
     expect(await persistedProjectSessions.json()).toEqual({ sessions: [] });
+    const deletedHistory = await reopened.request(
+      `/api/v1/local-sessions/${encodeURIComponent(session_id)}/events`,
+    );
+    expect(deletedHistory.status).toBe(404);
   });
 
   it("archives sessions out of the active list and restores them without deleting history", async () => {
@@ -8136,17 +8149,15 @@ describe("local API app", () => {
       status: "error",
     });
 
-    const messages = await app.request(
-      `/api/v1/local-sessions/${listedJson.sessions[0]!.id}/messages`,
+    const events = await app.request(
+      `/api/v1/local-sessions/${listedJson.sessions[0]!.id}/events`,
     );
-    expect(messages.status).toBe(200);
-    expect(await messages.json()).toMatchObject({
-      messages: [
+    expect(events.status).toBe(200);
+    expect(await events.json()).toMatchObject({
+      events: [
         {
-          sender_kind: "agent",
-          events: [
-            { type: "promptError", error: "agent child failed to start" },
-          ],
+          type: "turn_failed",
+          data: { message: "agent child failed to start" },
         },
       ],
     });
@@ -9561,7 +9572,7 @@ describe("local API app", () => {
     });
   });
 
-  it("returns local ACP session history with the cloud-compatible message shape", async () => {
+  it("exposes only the canonical append-only event history", async () => {
     const app = createLocalApiApp({
       dataDir,
       userId: "local-user",
@@ -9575,25 +9586,24 @@ describe("local API app", () => {
         async listResumeSessions() {
           return { sessions: [] };
         },
-        async listSessionMessages(sessionId) {
+        async listSessionEvents(sessionId) {
           if (sessionId !== "local-session-history") return null;
           return {
-            messages: [
+            events: [
               {
-                id: "turn-1-user",
-                sender_kind: "user",
-                sender_id: "local-user",
-                turn_id: "turn-1",
-                events: [{ type: "text", text: "hello agent" }],
-                created_at: 1_700_000_000,
+                seq: 1,
+                type: "user_prompt",
+                data: { turn_id: "turn-1", text: "hello agent" },
+                ts: 1_700_000_000_000,
               },
               {
-                id: "turn-1-agent",
-                sender_kind: "agent",
-                sender_id: "local-clash",
-                turn_id: "turn-1",
-                events: [{ type: "text", text: "agent reply" }],
-                created_at: 1_700_000_001,
+                seq: 2,
+                type: "session.event",
+                data: {
+                  turn_id: "turn-1",
+                  event: { type: "text", text: "agent reply" },
+                },
+                ts: 1_700_000_001_000,
               },
             ],
           };
@@ -9602,34 +9612,36 @@ describe("local API app", () => {
     });
 
     const res = await app.request(
-      "/api/v1/local-sessions/local-session-history/messages",
+      "/api/v1/local-sessions/local-session-history/events",
     );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
-      messages: [
+      events: [
         {
-          id: "turn-1-user",
-          sender_kind: "user",
-          sender_id: "local-user",
-          turn_id: "turn-1",
-          events: [{ type: "text", text: "hello agent" }],
-          created_at: 1_700_000_000,
+          seq: 1,
+          type: "user_prompt",
+          data: { turn_id: "turn-1", text: "hello agent" },
+          ts: 1_700_000_000_000,
         },
         {
-          id: "turn-1-agent",
-          sender_kind: "agent",
-          sender_id: "local-clash",
-          turn_id: "turn-1",
-          events: [{ type: "text", text: "agent reply" }],
-          created_at: 1_700_000_001,
+          seq: 2,
+          type: "session.event",
+          data: {
+            turn_id: "turn-1",
+            event: { type: "text", text: "agent reply" },
+          },
+          ts: 1_700_000_001_000,
         },
       ],
     });
 
-    const missing = await app.request(
-      "/api/v1/local-sessions/missing/messages",
-    );
+    const missing = await app.request("/api/v1/local-sessions/missing/events");
     expect(missing.status).toBe(404);
+
+    const retiredMessages = await app.request(
+      "/api/v1/local-sessions/local-session-history/messages",
+    );
+    expect(retiredMessages.status).toBe(404);
   });
 
   it("exposes held ACP version status and restarts the selected local session", async () => {
@@ -10024,7 +10036,7 @@ describe("local API app", () => {
   });
 
   it("uses the visible user prompt for a session title instead of protocol comments", async () => {
-    let messageStore: any = null;
+    let eventStore: any = null;
     const app = createLocalApiApp({
       dataDir,
       userId: "local-user",
@@ -10038,8 +10050,8 @@ describe("local API app", () => {
         async listResumeSessions() {
           return { sessions: [] };
         },
-        setSessionMessageStore(store: any) {
-          messageStore = store;
+        setSessionEventStore(store: any) {
+          eventStore = store;
         },
       } as any,
     });
@@ -10052,18 +10064,13 @@ describe("local API app", () => {
         project_id: "project-protocol-title",
       }),
     });
-    await messageStore.appendUserPrompt("local-session-protocol-title", {
-      id: "turn-protocol-user",
-      sender_kind: "user",
-      sender_id: "local-user",
-      turn_id: "turn-protocol",
-      events: [
-        {
-          type: "text",
-          text: '<!-- clash-workspace-context {"version":1,"projectId":"project-protocol-title"} -->\nRun pwd with your shell tool.',
-        },
-      ],
-      created_at: 1_700_000_000,
+    await eventStore.appendEvent("local-session-protocol-title", {
+      type: "user_prompt",
+      data: {
+        turn_id: "turn-protocol",
+        text: '<!-- clash-workspace-context {"version":1,"projectId":"project-protocol-title"} -->\nRun pwd with your shell tool.',
+      },
+      ts: 1_700_000_000_000,
     });
 
     const listed = await app.request(
@@ -10079,8 +10086,8 @@ describe("local API app", () => {
     });
   });
 
-  it("persists runtime ACP transcript messages in the local DB for cold restore", async () => {
-    let messageStore: any = null;
+  it("persists the append-only runtime event log in the local DB for cold restore", async () => {
+    let eventStore: any = null;
     const app = createLocalApiApp({
       dataDir,
       userId: "local-user",
@@ -10094,8 +10101,8 @@ describe("local API app", () => {
         async listResumeSessions() {
           return { sessions: [] };
         },
-        setSessionMessageStore(store: any) {
-          messageStore = store;
+        setSessionEventStore(store: any) {
+          eventStore = store;
         },
       } as any,
     });
@@ -10113,43 +10120,44 @@ describe("local API app", () => {
       },
     );
     expect(created.status).toBe(200);
-    expect(messageStore).toBeTruthy();
+    expect(eventStore).toBeTruthy();
 
-    await messageStore.appendUserPrompt("local-session-persisted", {
-      id: "turn-1-user",
-      sender_kind: "user",
-      sender_id: "local-user",
-      turn_id: "turn-1",
-      events: [{ type: "text", text: "hello agent" }],
-      created_at: 1_700_000_000,
+    await eventStore.appendEvent("local-session-persisted", {
+      type: "user_prompt",
+      data: { turn_id: "turn-1", text: "hello agent" },
+      ts: 1_700_000_000_000,
     });
-    await messageStore.appendAgentEvent("local-session-persisted", {
-      id: "turn-1-agent",
-      sender_kind: "agent",
-      sender_id: "local-clash",
-      turn_id: "turn-1",
-      events: [
-        {
+    await eventStore.appendEvent("local-session-persisted", {
+      type: "session.event",
+      data: {
+        turn_id: "turn-1",
+        event: {
           type: "agent_message_chunk",
           content: { type: "text", text: "hello human" },
         },
-      ],
-      created_at: 1_700_000_001,
+      },
+      ts: 1_700_000_001_000,
     });
-    await messageStore.appendAgentEvent("local-session-persisted", {
-      id: "turn-1-agent",
-      sender_kind: "agent",
-      sender_id: "local-clash",
-      turn_id: "turn-1",
-      events: [
-        { sessionUpdate: "session_info_update", title: "Generated title" },
-      ],
-      created_at: 1_700_000_001,
+    await eventStore.appendEvent("local-session-persisted", {
+      type: "session.event",
+      data: {
+        turn_id: "turn-1",
+        event: {
+          sessionUpdate: "session_info_update",
+          title: "Generated title",
+        },
+      },
+      ts: 1_700_000_002_000,
+    });
+    await eventStore.appendEvent("local-session-persisted", {
+      type: "turn_completed",
+      data: { turn_id: "turn-1" },
+      ts: 1_700_000_003_000,
     });
 
     const reopened = createLocalApiApp({ dataDir, userId: "local-user" });
     const restored = await reopened.request(
-      "/api/v1/local-sessions/local-session-persisted/messages",
+      "/api/v1/local-sessions/local-session-persisted/events",
     );
     const sessions = await reopened.request(
       "/api/v1/sessions?projectId=project-transcript",
@@ -10157,28 +10165,42 @@ describe("local API app", () => {
 
     expect(restored.status).toBe(200);
     expect(await restored.json()).toEqual({
-      messages: [
+      events: [
         {
-          id: "turn-1-user",
-          sender_kind: "user",
-          sender_id: "local-user",
-          turn_id: "turn-1",
-          events: [{ type: "text", text: "hello agent" }],
-          created_at: 1_700_000_000,
+          seq: expect.any(Number),
+          type: "user_prompt",
+          data: { turn_id: "turn-1", text: "hello agent" },
+          ts: 1_700_000_000_000,
         },
         {
-          id: "turn-1-agent",
-          sender_kind: "agent",
-          sender_id: "local-clash",
-          turn_id: "turn-1",
-          events: [
-            {
+          seq: expect.any(Number),
+          type: "session.event",
+          data: {
+            turn_id: "turn-1",
+            event: {
               type: "agent_message_chunk",
               content: { type: "text", text: "hello human" },
             },
-            { sessionUpdate: "session_info_update", title: "Generated title" },
-          ],
-          created_at: 1_700_000_001,
+          },
+          ts: 1_700_000_001_000,
+        },
+        {
+          seq: expect.any(Number),
+          type: "session.event",
+          data: {
+            turn_id: "turn-1",
+            event: {
+              sessionUpdate: "session_info_update",
+              title: "Generated title",
+            },
+          },
+          ts: 1_700_000_002_000,
+        },
+        {
+          seq: expect.any(Number),
+          type: "turn_completed",
+          data: { turn_id: "turn-1" },
+          ts: 1_700_000_003_000,
         },
       ],
     });
@@ -10187,8 +10209,8 @@ describe("local API app", () => {
     });
   });
 
-  it("deduplicates repeated persisted ACP events for the same runtime turn", async () => {
-    let messageStore: any = null;
+  it("does not coalesce repeated persisted ACP events for the same runtime turn", async () => {
+    let eventStore: any = null;
     const app = createLocalApiApp({
       dataDir,
       userId: "local-user",
@@ -10202,8 +10224,8 @@ describe("local API app", () => {
         async listResumeSessions() {
           return { sessions: [] };
         },
-        setSessionMessageStore(store: any) {
-          messageStore = store;
+        setSessionEventStore(store: any) {
+          eventStore = store;
         },
       } as any,
     });
@@ -10227,44 +10249,42 @@ describe("local API app", () => {
       status: "completed",
       rawOutput: { stdout: "/Users/xiaoyang/project\n" },
     };
-    await messageStore.appendAgentEvent("local-session-dedupe", {
-      id: "turn-1-agent",
-      sender_kind: "agent",
-      sender_id: "local-agent",
-      turn_id: "turn-1",
-      events: [event],
-      created_at: 1_700_000_001,
+    await eventStore.appendEvent("local-session-dedupe", {
+      type: "session.event",
+      data: { turn_id: "turn-1", event },
+      ts: 1_700_000_001_000,
     });
-    await messageStore.appendAgentEvent("local-session-dedupe", {
-      id: "turn-1-agent",
-      sender_kind: "agent",
-      sender_id: "local-agent",
-      turn_id: "turn-1",
-      events: [event],
-      created_at: 1_700_000_001,
+    await eventStore.appendEvent("local-session-dedupe", {
+      type: "session.event",
+      data: { turn_id: "turn-1", event },
+      ts: 1_700_000_001_001,
     });
 
     const restored = await app.request(
-      "/api/v1/local-sessions/local-session-dedupe/messages",
+      "/api/v1/local-sessions/local-session-dedupe/events",
     );
 
     expect(restored.status).toBe(200);
     expect(await restored.json()).toEqual({
-      messages: [
+      events: [
         {
-          id: "turn-1-agent",
-          sender_kind: "agent",
-          sender_id: "local-agent",
-          turn_id: "turn-1",
-          events: [event],
-          created_at: 1_700_000_001,
+          seq: expect.any(Number),
+          type: "session.event",
+          data: { turn_id: "turn-1", event },
+          ts: 1_700_000_001_000,
+        },
+        {
+          seq: expect.any(Number),
+          type: "session.event",
+          data: { turn_id: "turn-1", event },
+          ts: 1_700_000_001_001,
         },
       ],
     });
   });
 
   it("preserves repeated ACP text chunks when a cumulative transcript snapshot is persisted", async () => {
-    let messageStore: any = null;
+    let eventStore: any = null;
     const app = createLocalApiApp({
       dataDir,
       userId: "local-user",
@@ -10278,8 +10298,8 @@ describe("local API app", () => {
         async listResumeSessions() {
           return { sessions: [] };
         },
-        setSessionMessageStore(store: any) {
-          messageStore = store;
+        setSessionEventStore(store: any) {
+          eventStore = store;
         },
       } as any,
     });
@@ -10302,47 +10322,36 @@ describe("local API app", () => {
       messageId: "final-answer",
       content: { type: "text", text },
     });
-    const message = {
-      id: "turn-1-agent",
-      sender_kind: "agent" as const,
-      sender_id: "local-agent",
-      turn_id: "turn-1",
-      created_at: 1_700_000_001,
-    };
-
-    await messageStore.appendAgentEvent("local-session-repeated-chunks", {
-      ...message,
-      events: [chunk("/")],
-    });
-    await messageStore.appendAgentEvent("local-session-repeated-chunks", {
-      ...message,
-      events: [
-        chunk("/"),
-        chunk("Users"),
-        chunk("/"),
-        chunk("project"),
-        chunk("-"),
-        chunk("-"),
-      ],
-    });
+    for (const [index, event] of [
+      chunk("/"),
+      chunk("Users"),
+      chunk("/"),
+      chunk("project"),
+      chunk("-"),
+      chunk("-"),
+    ].entries()) {
+      await eventStore.appendEvent("local-session-repeated-chunks", {
+        type: "session.event",
+        data: { turn_id: "turn-1", event },
+        ts: 1_700_000_001_000 + index,
+      });
+    }
 
     const restored = await app.request(
-      "/api/v1/local-sessions/local-session-repeated-chunks/messages",
+      "/api/v1/local-sessions/local-session-repeated-chunks/events",
     );
 
     expect(restored.status).toBe(200);
     const restoredJson = (await restored.json()) as {
-      messages: Array<{ events: Array<{ content?: { text?: string } }> }>;
+      events: Array<{ data?: { event?: { content?: { text?: string } } } }>;
     };
     expect(
-      restoredJson.messages[0]?.events
-        .map((event) => event.content?.text)
-        .join(""),
+      restoredJson.events.map((row) => row.data?.event?.content?.text).join(""),
     ).toBe("/Users/project--");
   });
 
-  it("keeps runtime session history when transcript events write concurrently", async () => {
-    let messageStore: any = null;
+  it("keeps runtime session history when append-only events write concurrently", async () => {
+    let eventStore: any = null;
     const app = createLocalApiApp({
       dataDir,
       userId: "local-user",
@@ -10356,8 +10365,8 @@ describe("local API app", () => {
         async listResumeSessions() {
           return { sessions: [] };
         },
-        setSessionMessageStore(store: any) {
-          messageStore = store;
+        setSessionEventStore(store: any) {
+          eventStore = store;
         },
       } as any,
     });
@@ -10375,32 +10384,24 @@ describe("local API app", () => {
       },
     );
     expect(created.status).toBe(200);
-    expect(messageStore).toBeTruthy();
+    expect(eventStore).toBeTruthy();
 
     await Promise.all(
       Array.from({ length: 24 }, (_, index) =>
-        index % 2 === 0
-          ? messageStore.appendUserPrompt("local-session-race", {
-              id: `turn-${index}-user`,
-              sender_kind: "user",
-              sender_id: "local-user",
-              turn_id: `turn-${index}`,
-              events: [{ type: "text", text: `prompt ${index}` }],
-              created_at: 1_700_000_000 + index,
-            })
-          : messageStore.appendAgentEvent("local-session-race", {
-              id: `turn-${index}-agent`,
-              sender_kind: "agent",
-              sender_id: "local-clash",
-              turn_id: `turn-${index}`,
-              events: [
-                {
-                  type: "agent_message_chunk",
-                  content: { type: "text", text: `reply ${index}` },
+        eventStore.appendEvent("local-session-race", {
+          type: index % 2 === 0 ? "user_prompt" : "session.event",
+          data:
+            index % 2 === 0
+              ? { turn_id: `turn-${index}`, text: `prompt ${index}` }
+              : {
+                  turn_id: `turn-${index}`,
+                  event: {
+                    type: "agent_message_chunk",
+                    content: { type: "text", text: `reply ${index}` },
+                  },
                 },
-              ],
-              created_at: 1_700_000_000 + index,
-            }),
+          ts: 1_700_000_000_000 + index,
+        }),
       ),
     );
 
@@ -10408,13 +10409,13 @@ describe("local API app", () => {
       "/api/v1/sessions?projectId=project-race",
     );
     const restored = await app.request(
-      "/api/v1/local-sessions/local-session-race/messages",
+      "/api/v1/local-sessions/local-session-race/events",
     );
 
     const sqlite = openSqlite();
     try {
       expect(
-        sqlite.prepare("select count(*) as count from chat_message").get(),
+        sqlite.prepare("select count(*) as count from session_event").get(),
       ).toEqual({ count: 24 });
     } finally {
       sqlite.close();
@@ -10428,7 +10429,7 @@ describe("local API app", () => {
         },
       ],
     });
-    expect((await restored.json()).messages).toHaveLength(24);
+    expect((await restored.json()).events).toHaveLength(24);
   });
 
   it("creates, lists, renames, and deletes local projects", async () => {

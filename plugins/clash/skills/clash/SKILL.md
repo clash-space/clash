@@ -1,6 +1,6 @@
 ---
 name: clash
-description: Operate a Clash video project through either the Clash CLI or its peer plugin stdio MCP surface. Use when an agent needs to initialize a workspace, discover current commands or typed tools progressively, mutate product state through local-api, or verify a persisted result.
+description: Operate every Clash project workflow through the Clash MCP or peer CLI, including Canvas, Assets, Project media generation or editing, background Generator runs, Timeline, and Director Stage. Use this skill whenever the current workspace is a Clash project or the user asks Clash to create, generate, edit, import, arrange, or verify an image, video, audio, or other project artifact; product-owned media must not escape to a global generation tool.
 ---
 
 # Use Clash
@@ -99,6 +99,37 @@ For the common Asset workflow, a task that already names Asset `import`,
 the `import_file`, `list`, and `get` contracts together, then execute those
 short operations. Use the index when the required Asset operation is not
 already identified.
+
+## Route project media generation through Clash
+
+In a Clash project, generated or edited media is product state: the request,
+background run, immutable output, and Canvas relationship must remain visible
+to Clash. Use the `clash_generators` dispatcher for Project media generation
+instead of calling a global `imagegen`, `image_gen`, video-generation, or other
+standalone media tool. A global generator may be an implementation detail used
+inside a Clash plugin, but the agent-facing turn must enter through Clash so
+the output is persisted as a Project Asset rather than returned as an orphaned
+file.
+
+Use the live Generator contracts rather than guessing a provider-specific
+payload:
+
+1. Discover the matching definition with `definitions_list` and read the exact
+   one with `definition_get` when it is not already known.
+2. Create or read the Project Generator with `create` or `get`, preserving its
+   returned Generator and Revision identities.
+3. Submit the requested Action against that exact Revision with
+   `action_run_submit`. Submission starts a background task; it is not proof of
+   a finished asset.
+4. Poll the returned Action Run with `action_run_get` until it reaches a
+   terminal state, then read each persisted output through
+   `output_commit_get`.
+5. Use `clash_assets` or `clash_canvas` only for the next product operation,
+   such as reading the committed Asset or placing/connecting it on Canvas.
+
+If a required Generator definition or action is unavailable, report the Clash
+capability gap. Do not silently fall back to a global media skill, write a
+lookalike file, or claim that an external tool result belongs to the Project.
 
 ## Operate and verify
 

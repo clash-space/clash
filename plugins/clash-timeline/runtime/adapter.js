@@ -23749,22 +23749,18 @@ function createTimelineAdapter(options = {}) {
         return { ...base, completed: false, status: "pending" };
       const deadline = Date.now() + (input.timeoutMs ?? 18e5);
       while (true) {
-        const polled = target.kind === "project-assets" ? await request(input, {
+        const polled = await request(input, {
           action: "list_timeline_renders",
           status: "all"
-        }) : await request(input, {
-          action: "get",
-          canvasId: target.canvasId,
-          nodeId: submitted.renderNodeId
         });
-        const renderNode = target.kind === "project-assets" ? Array.isArray(polled.value.renders) ? polled.value.renders.map(
+        const renderNode = Array.isArray(polled.value.renders) ? polled.value.renders.map(
           (entry) => entry && typeof entry === "object" ? entry.node : void 0
         ).find(
           (node) => node && typeof node === "object" && node.id === submitted.renderNodeId
-        ) : void 0 : polled.value.node;
+        ) : void 0;
         if (!renderNode || typeof renderNode !== "object") {
           throw new Error(
-            `Timeline render node ${submitted.renderNodeId} was not returned by Host readback`
+            `Timeline native render ${submitted.renderNodeId} was not returned by Host readback`
           );
         }
         const data = renderNode.data ?? {};

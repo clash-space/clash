@@ -22,7 +22,7 @@ export function Response({ className, components, ...props }: ResponseProps) {
     <Streamdown
       className={cn(
         "prose prose-sm dark:prose-invert max-w-none",
-        "text-[13px] leading-[1.55] prose-p:my-1 prose-pre:my-1.5 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5",
+        "text-[13px] leading-[1.55] prose-p:my-1 prose-pre:my-1.5 prose-ul:my-1 prose-ul:pl-5 prose-ol:my-1 prose-ol:pl-5 prose-li:my-0.5",
         "prose-headings:font-semibold prose-h1:text-base prose-h2:text-base prose-h3:text-sm",
         "prose-code:before:content-none prose-code:after:content-none prose-code:rounded-none prose-code:bg-transparent prose-code:px-0 prose-code:py-0",
         "prose-pre:border-0 prose-pre:bg-transparent prose-pre:p-0",
@@ -59,6 +59,22 @@ export function Response({ className, components, ...props }: ResponseProps) {
           >
             {children}
           </pre>
+        ),
+        ul: ({ node: _node, className: listClassName, children, ...rest }) => (
+          <ul
+            {...rest}
+            className={cn("list-outside list-disc pl-5", listClassName)}
+          >
+            {children}
+          </ul>
+        ),
+        ol: ({ node: _node, className: listClassName, children, ...rest }) => (
+          <ol
+            {...rest}
+            className={cn("list-outside list-decimal pl-5", listClassName)}
+          >
+            {children}
+          </ol>
         ),
         ...components,
       }}

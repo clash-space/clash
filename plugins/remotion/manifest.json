@@ -9,7 +9,9 @@
     "kind": "local",
     "transport": "stdio",
     "entrypoint": "dist/stdio.mjs",
-    "resources": ["dist/browser-bundle"]
+    "resources": [
+      "dist/browser-bundle"
+    ]
   },
   "contributes": {
     "functions": [
@@ -19,11 +21,24 @@
         "assetInputs": [
           {
             "match": {
-              "kinds": ["image", "video", "audio"]
+              "kinds": [
+                "image",
+                "video",
+                "audio"
+              ]
             },
-            "representations": ["executor-url"]
+            "representations": [
+              "executor-url"
+            ]
           }
         ]
+      }
+    ],
+    "generators": [
+      {
+        "id": "timeline",
+        "kind": "generator",
+        "path": "generators/timeline.json"
       }
     ]
   }

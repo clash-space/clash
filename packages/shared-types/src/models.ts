@@ -9,7 +9,7 @@ import { CANONICAL_RESOLUTION_TIERS, type CanonicalResolutionTier } from './reso
 /**
  * What a model card produces, which is the AIGC action it performs.
  *
- * This is `AigcActionKindSchema` rather than an enum of its own. The two lists were the same four
+ * This is `AigcActionKindSchema` rather than an enum of its own. The two lists were the same five
  * words plus `asr`, and a parallel enum is a list that can drift: `asr` is how a model works, not
  * what it makes, and the five cards under it all produced text. They are `text` now.
  *
@@ -325,7 +325,7 @@ export type ModelParameterType = z.infer<typeof ModelParameterTypeSchema>;
 /**
  * Provider configuration for models
  */
-export const BuiltinProviderSchema = z.enum(['local', 'official', 'fal', 'pika', 'replicate', 'kling', 'minimax', 'volcengine', 'elevenlabs', 'suno', 'mock', 'custom']);
+export const BuiltinProviderSchema = z.enum(['local', 'official', 'fal', 'pika', 'replicate', 'kling', 'minimax', 'volcengine-modelark', 'elevenlabs', 'suno', 'mock', 'custom']);
 export const ProviderSchema = z.string().trim().regex(
   /^[a-z0-9][a-z0-9._-]*$/,
   'Provider ids must be lowercase plugin-safe identifiers.',
@@ -404,6 +404,7 @@ export type ModelParameter = z.infer<typeof ModelParameterSchema>;
  *   first/last frame (Kling 2.5)   { startEnd: {} }
  *   Seedance ref-to-video          { images:{max:9}, videos:{max:3}, audios:{max:3} }
  *   future audio-driven video      { images:{max:1, min:1}, audios:{max:1, min:1} }
+ *   model-to-model (auto-rig)      { models: { max: 1, min: 1 } }
  *
  * `startEnd` always means the standard convention: first frame required,
  * last frame optional. No real-world model breaks that pattern; if one
@@ -467,7 +468,7 @@ const RefSpecSchema = z.object({
   min: z.number().int().nonnegative().optional(),
   /** When this modality is present, at least one of these companion
    * modalities must also be present. */
-  requiresAnyOf: z.array(z.enum(['image', 'video', 'audio'])).min(1).optional(),
+  requiresAnyOf: z.array(z.enum(['image', 'video', 'audio', 'model'])).min(1).optional(),
   constraints: ReferenceMediaConstraintsSchema.optional(),
   maxTotalDurationMs: z.number().int().positive().optional(),
   /** Parameter-conditioned refinements for one input mode (for example,
@@ -479,9 +480,13 @@ export const ModelInputModeSchema = z.object({
   images: RefSpecSchema.optional(),
   videos: RefSpecSchema.optional(),
   audios: RefSpecSchema.optional(),
+  /** Reference to another Model output -- e.g. a static mesh bound into a rigging model. Declared
+   * the same way as images/videos/audios, so a model-to-model workflow (auto-rig, retarget) is
+   * expressed through the same generic input contract rather than a provider-specific field. */
+  models: RefSpecSchema.optional(),
   /** At least one reference from these modalities must be attached. */
-  requiresAnyOf: z.array(z.enum(['image', 'video', 'audio'])).min(1).optional(),
-  /** Maximum total references across image, video, and audio buckets. */
+  requiresAnyOf: z.array(z.enum(['image', 'video', 'audio', 'model'])).min(1).optional(),
+  /** Maximum total references across image, video, audio, and model buckets. */
   maxTotalReferences: z.number().int().positive().optional(),
   /** Maximum JSON request body when local media is represented as Base64 Data URIs. */
   maxEmbeddedRequestBytes: z.number().int().positive().optional(),
@@ -512,7 +517,7 @@ export const ModelInputRuleSchema = z.object({
   inputMode: ModelInputModeSchema.default({}),
   /** Modalities that can be @-mentioned inline in the prompt editor.
    *  Does NOT affect form-field inputs (start/end frames, etc.) */
-  promptModalities: z.array(z.enum(['text', 'image', 'video', 'audio'])).default(['text']),
+  promptModalities: z.array(z.enum(['text', 'image', 'video', 'audio', 'model'])).default(['text']),
   /** How inline prompt references are represented on the provider wire. */
   referenceBinding: ReferenceBindingSchema.optional(),
   /** Specialized input surface owned by this Model Card. */
@@ -613,6 +618,26 @@ export const ProviderAssetInputSchema = z.object({
 }).strict();
 export type ProviderAssetInput = z.infer<typeof ProviderAssetInputSchema>;
 
+export const ModelCardConsumerSchema = z
+  .object({
+    pluginId: z.string().trim().min(1),
+    definitionId: z.string().trim().min(1).optional(),
+    actionId: z.string().trim().min(1).optional(),
+  })
+  .strict();
+export type ModelCardConsumer = z.infer<typeof ModelCardConsumerSchema>;
+
+export const ModelCardVisibilitySchema = z.discriminatedUnion('scope', [
+    z.object({ scope: z.literal('public') }).strict(),
+    z
+      .object({
+        scope: z.literal('plugin-private'),
+        consumers: z.array(ModelCardConsumerSchema).min(1),
+      })
+      .strict(),
+  ]).optional();
+export type ModelCardVisibility = z.infer<typeof ModelCardVisibilitySchema>;
+
 export const ModelProviderImplementationSchema = z
   .object({
     providerId: ProviderSchema,
@@ -682,6 +707,10 @@ export const ModelCardSchema = z
     name: z.string(),
     provider: z.string(),
     kind: ModelKindSchema,
+    /** Provider-independent consumption contract. Provider wire shapes remain on implementations. */
+    semanticShape: z.string().trim().regex(/^[a-z][a-z0-9_]*$/).optional(),
+    /** Catalog scope evaluated from explicit consumer context, never contributor ids. */
+    visibility: ModelCardVisibilitySchema,
     custom: z.boolean().optional(),
     description: z.string().optional(),
     promptGuidance: z.string().optional(),
@@ -1825,8 +1854,8 @@ const MODEL_CARD_DEFINITIONS = [
     id: 'seedance-2-startend',
     name: 'Seedance 2.0 (Start/End)',
     provider: 'fal.ai',
-    availableProviders: ['volcengine', 'fal', 'pika', 'replicate'],
-    defaultProvider: 'volcengine',
+    availableProviders: ['volcengine-modelark', 'fal', 'pika', 'replicate'],
+    defaultProvider: 'volcengine-modelark',
     kind: 'video',
     defaultAspectRatio: '16:9',
     description: 'Seedance 2.0 — animate from a start frame, optionally constrained to a target end frame.',
@@ -1891,8 +1920,8 @@ const MODEL_CARD_DEFINITIONS = [
     aliases: ['seedance-2-text'],
     name: 'Seedance 2.0 (全能参考)',
     provider: 'ByteDance',
-    availableProviders: ['volcengine', 'fal', 'pika', 'replicate'],
-    defaultProvider: 'volcengine',
+    availableProviders: ['volcengine-modelark', 'fal', 'pika', 'replicate'],
+    defaultProvider: 'volcengine-modelark',
     kind: 'video',
     defaultAspectRatio: '16:9',
     description: 'Seedance 2.0 all-purpose generation with optional image, video, and audio references.',
@@ -1987,8 +2016,8 @@ const MODEL_CARD_DEFINITIONS = [
     id: 'seedance-2-extend',
     name: 'Seedance 2.0 (Video Extension)',
     provider: 'ByteDance',
-    availableProviders: ['volcengine'],
-    defaultProvider: 'volcengine',
+    availableProviders: ['volcengine-modelark'],
+    defaultProvider: 'volcengine-modelark',
     kind: 'video',
     defaultAspectRatio: '16:9',
     description: 'Continue one to three ordered source videos with Seedance 2.0.',
@@ -2048,8 +2077,8 @@ const MODEL_CARD_DEFINITIONS = [
     aliases: ['seedance-2.5-text'],
     name: 'Seedance 2.5 (全能参考)',
     provider: 'ByteDance',
-    availableProviders: ['volcengine'],
-    defaultProvider: 'volcengine',
+    availableProviders: ['volcengine-modelark'],
+    defaultProvider: 'volcengine-modelark',
     kind: 'video',
     defaultAspectRatio: '16:9',
     description: 'Seedance 2.5 all-purpose generation with optional image, video, and audio references.',
@@ -2150,8 +2179,8 @@ const MODEL_CARD_DEFINITIONS = [
     id: 'seedance-2.5-startend',
     name: 'Seedance 2.5 (Start / End Frame)',
     provider: 'ByteDance',
-    availableProviders: ['volcengine'],
-    defaultProvider: 'volcengine',
+    availableProviders: ['volcengine-modelark'],
+    defaultProvider: 'volcengine-modelark',
     kind: 'video',
     defaultAspectRatio: '16:9',
     description: 'Animate from a required start frame toward an optional end frame with Seedance 2.5.',
@@ -2202,8 +2231,8 @@ const MODEL_CARD_DEFINITIONS = [
     id: 'seedance-2.5-extend',
     name: 'Seedance 2.5 (Video Extension)',
     provider: 'ByteDance',
-    availableProviders: ['volcengine'],
-    defaultProvider: 'volcengine',
+    availableProviders: ['volcengine-modelark'],
+    defaultProvider: 'volcengine-modelark',
     kind: 'video',
     defaultAspectRatio: '16:9',
     description: 'Continue one to ten ordered source videos with Seedance 2.5.',
@@ -2891,6 +2920,7 @@ const MODEL_CARD_DEFINITIONS = [
     availableProviders: ['official'],
     defaultProvider: 'official',
     kind: 'text',
+    semanticShape: 'media_analysis',
     defaultAspectRatio: '1:1',
     description: 'Google Gemini 3.5 Flash — near-Pro agentic capability at Flash-tier speed and cost.',
     parameters: [
@@ -2920,6 +2950,7 @@ const MODEL_CARD_DEFINITIONS = [
     availableProviders: ['official'],
     defaultProvider: 'official',
     kind: 'text',
+    semanticShape: 'media_analysis',
     defaultAspectRatio: '1:1',
     description: 'Google Gemini 3.1 Pro — flagship multimodal reasoning across text, image, video, and audio inputs.',
     parameters: [
@@ -2949,6 +2980,7 @@ const MODEL_CARD_DEFINITIONS = [
     availableProviders: ['official'],
     defaultProvider: 'official',
     kind: 'text',
+    semanticShape: 'media_analysis',
     defaultAspectRatio: '1:1',
     description: 'Faster, cheaper Gemini 3 Flash — multimodal across text, image, video, and audio inputs.',
     parameters: [
@@ -2978,6 +3010,7 @@ const MODEL_CARD_DEFINITIONS = [
     availableProviders: ['official'],
     defaultProvider: 'official',
     kind: 'text',
+    semanticShape: 'media_analysis',
     defaultAspectRatio: '1:1',
     description: 'Google Gemini 3.1 Flash-Lite — low-latency, high-volume text generation with multimodal inputs.',
     parameters: [
@@ -3779,8 +3812,8 @@ const MODEL_CARD_DEFINITIONS = [
     id: 'seedance-2-fast-ref',
     name: 'Seedance 2.0 Fast (全能参考)',
     provider: 'ByteDance',
-    availableProviders: ['volcengine'],
-    defaultProvider: 'volcengine',
+    availableProviders: ['volcengine-modelark'],
+    defaultProvider: 'volcengine-modelark',
     kind: 'video',
     defaultAspectRatio: '16:9',
     description: 'Seedance 2.0 Fast all-purpose generation with optional image, video, and audio references.',
@@ -3836,8 +3869,8 @@ const MODEL_CARD_DEFINITIONS = [
     id: 'seedance-2-fast-startend',
     name: 'Seedance 2.0 Fast (首尾帧)',
     provider: 'ByteDance',
-    availableProviders: ['volcengine'],
-    defaultProvider: 'volcengine',
+    availableProviders: ['volcengine-modelark'],
+    defaultProvider: 'volcengine-modelark',
     kind: 'video',
     defaultAspectRatio: '16:9',
     description: 'Seedance 2.0 Fast animation between a first and an optional last frame.',
@@ -3883,8 +3916,8 @@ const MODEL_CARD_DEFINITIONS = [
     id: 'seedance-2-mini-ref',
     name: 'Seedance 2.0 Mini (全能参考)',
     provider: 'ByteDance',
-    availableProviders: ['volcengine'],
-    defaultProvider: 'volcengine',
+    availableProviders: ['volcengine-modelark'],
+    defaultProvider: 'volcengine-modelark',
     kind: 'video',
     defaultAspectRatio: '16:9',
     description: 'Seedance 2.0 Mini all-purpose generation with optional image, video, and audio references.',
@@ -3940,8 +3973,8 @@ const MODEL_CARD_DEFINITIONS = [
     id: 'seedance-2-mini-startend',
     name: 'Seedance 2.0 Mini (首尾帧)',
     provider: 'ByteDance',
-    availableProviders: ['volcengine'],
-    defaultProvider: 'volcengine',
+    availableProviders: ['volcengine-modelark'],
+    defaultProvider: 'volcengine-modelark',
     kind: 'video',
     defaultAspectRatio: '16:9',
     description: 'Seedance 2.0 Mini animation between a first and an optional last frame.',
@@ -4304,6 +4337,261 @@ const MODEL_CARD_DEFINITIONS = [
       referenceBinding: { type: 'grouped-references' },
       inputMode: { audios: { max: 1 } },
       promptModalities: ['text', 'audio'],
+    },
+  },
+  // ─── Model: Meshy ──────────────────────────────────────────
+  // Meshy 6 and Meshy 7 are two distinct AI model tiers behind the same Text-to-3D /
+  // Image-to-3D routes (docs.meshy.ai): a prompt alone drives Text-to-3D, an attached
+  // image drives Image-to-3D, and both stay under one Card per model tier rather than a
+  // split text/image pair -- the executable Provider (plugins/meshy) picks the route by
+  // reference presence, not by a card-level mode switch. Parameters are limited to what
+  // `meshy-executor.ts` implements and tests against the documented wire shapes:
+  // `PBR` is the exact wire-compatible key the executable Provider adapter reads
+  // (`booleanParam(values, "PBR")` in `meshy-adapter.ts`); `textureResolution` is Meshy's own
+  // 2k/4k/8k menu; `poseMode` is a-pose/t-pose or the documented empty-string "no pose" value;
+  // `targetPolycount` only takes effect on the remesh path and is bounded 100-300,000 exactly as
+  // `MIN_TARGET_POLYCOUNT`/`MAX_TARGET_POLYCOUNT` in `meshy-executor.ts`. None of these four has a
+  // proven upstream default, so no `defaultValue` or `defaultParams` entry is invented for them.
+  {
+    id: 'meshy-6',
+    name: 'Meshy 6',
+    provider: 'Meshy',
+    kind: 'model',
+    defaultAspectRatio: '1:1',
+    description: 'Meshy 6 text-to-3D and image-to-3D generation, producing a textured GLB mesh.',
+    parameters: [
+      { id: 'PBR', label: 'PBR Textures', type: 'boolean' },
+      {
+        id: 'textureResolution',
+        label: 'Texture Resolution',
+        type: 'select',
+        options: [
+          { label: '2K', value: '2k' },
+          { label: '4K', value: '4k' },
+          { label: '8K', value: '8k' },
+        ],
+      },
+      {
+        id: 'poseMode',
+        label: 'Pose',
+        type: 'select',
+        options: [
+          { label: 'None', value: '' },
+          { label: 'A-Pose', value: 'a-pose' },
+          { label: 'T-Pose', value: 't-pose' },
+        ],
+      },
+      {
+        id: 'targetPolycount',
+        label: 'Target Polycount',
+        type: 'number',
+        min: 100,
+        max: 300_000,
+        step: 1,
+      },
+    ],
+    defaultParams: {},
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: 'grouped-references' },
+      inputMode: { images: { max: 1 } },
+      promptModalities: ['text', 'image'],
+    },
+  },
+  {
+    id: 'meshy-7',
+    name: 'Meshy 7',
+    provider: 'Meshy',
+    kind: 'model',
+    defaultAspectRatio: '1:1',
+    description: 'Meshy 7 text-to-3D and image-to-3D generation, producing a textured GLB mesh.',
+    parameters: [
+      { id: 'PBR', label: 'PBR Textures', type: 'boolean' },
+      {
+        id: 'textureResolution',
+        label: 'Texture Resolution',
+        type: 'select',
+        options: [
+          { label: '2K', value: '2k' },
+          { label: '4K', value: '4k' },
+          { label: '8K', value: '8k' },
+        ],
+      },
+      {
+        id: 'poseMode',
+        label: 'Pose',
+        type: 'select',
+        options: [
+          { label: 'None', value: '' },
+          { label: 'A-Pose', value: 'a-pose' },
+          { label: 'T-Pose', value: 't-pose' },
+        ],
+      },
+      {
+        id: 'targetPolycount',
+        label: 'Target Polycount',
+        type: 'number',
+        min: 100,
+        max: 300_000,
+        step: 1,
+      },
+    ],
+    defaultParams: {},
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: 'grouped-references' },
+      inputMode: { images: { max: 1 } },
+      promptModalities: ['text', 'image'],
+    },
+  },
+  // Meshy auto-rig is model-to-model: it always resolves a required `model` reference through
+  // `POST /v1/rigging` (plugins/meshy/src/meshy-executor.ts buildRiggingBody) and never reads a
+  // prompt. `heightMeters` is the one optional parameter the executor forwards, and it must be
+  // positive when present -- there is no documented default height, so none is set here. This
+  // stays `kind: 'model'`: a rigged mesh is still a `model` Asset, never a separate `rig` kind
+  // (packages/shared-types/src/assets.ts `flexibility` documents the same rule).
+  {
+    id: 'meshy-auto-rig',
+    name: 'Meshy Auto-Rig',
+    provider: 'Meshy',
+    kind: 'model',
+    defaultAspectRatio: '1:1',
+    description: 'Automatically rig a static 3D model with a biped skeleton.',
+    parameters: [
+      { id: 'heightMeters', label: 'Character Height (m)', type: 'number' },
+    ],
+    defaultParams: {},
+    input: {
+      requiresPrompt: false,
+      referenceBinding: { type: 'grouped-references' },
+      inputMode: { models: { min: 1, max: 1 } },
+      promptModalities: ['model'],
+    },
+  },
+  // ─── Model: Tripo ──────────────────────────────────────────
+  // Tripo H3.1 is one Card covering both text-to-3D and image-to-3D: the executable Provider
+  // (plugins/tripo) picks `POST /generation/text-to-model` or `POST /generation/image-to-model`
+  // by reference presence, exactly like Meshy above, so it is not split into two Cards. Parameter
+  // ids and menus are exactly what `tripo-client.ts`'s `buildTripoTextToModelBody` implements and
+  // tests: `pbr`, `textureQuality` (standard/detailed/extreme), `geometryQuality`
+  // (standard/detailed), `faceLimit` (1 to Tripo's documented v3.1 standard-mode ceiling of
+  // 1,500,000), and `autoSize`. None has a documented default, so none is invented here.
+  {
+    id: 'tripo-h3.1',
+    name: 'Tripo H3.1',
+    provider: 'Tripo3D',
+    kind: 'model',
+    defaultAspectRatio: '1:1',
+    description: 'Tripo H3.1 text-to-3D and image-to-3D generation, producing a textured GLB mesh.',
+    parameters: [
+      { id: 'pbr', label: 'PBR Textures', type: 'boolean' },
+      {
+        id: 'textureQuality',
+        label: 'Texture Quality',
+        type: 'select',
+        options: [
+          { label: 'Standard', value: 'standard' },
+          { label: 'Detailed', value: 'detailed' },
+          { label: 'Extreme', value: 'extreme' },
+        ],
+      },
+      {
+        id: 'geometryQuality',
+        label: 'Geometry Quality',
+        type: 'select',
+        options: [
+          { label: 'Standard', value: 'standard' },
+          { label: 'Detailed', value: 'detailed' },
+        ],
+      },
+      {
+        id: 'faceLimit',
+        label: 'Face Limit',
+        type: 'number',
+        min: 1,
+        max: 1_500_000,
+        step: 1,
+      },
+      { id: 'autoSize', label: 'Auto Size', type: 'boolean' },
+    ],
+    defaultParams: {},
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: 'grouped-references' },
+      inputMode: { images: { max: 1 } },
+      promptModalities: ['text', 'image'],
+    },
+  },
+  // Tripo auto-rig is model-to-model: it always resolves a required `model` reference through
+  // `POST /animations/rig` and always requests biped/mixamo/glb regardless of caller input
+  // (plugins/tripo/src/tripo-client.ts buildTripoRigBody, tested in tripo-client.test.ts "always
+  // requests biped, mixamo, glb regardless of caller input"). There is nothing left to configure,
+  // so this Card declares no parameters at all rather than an unused knob.
+  {
+    id: 'tripo-auto-rig',
+    name: 'Tripo Auto-Rig',
+    provider: 'Tripo3D',
+    kind: 'model',
+    defaultAspectRatio: '1:1',
+    description: 'Automatically rig a static 3D model with a biped skeleton.',
+    parameters: [],
+    defaultParams: {},
+    input: {
+      requiresPrompt: false,
+      referenceBinding: { type: 'grouped-references' },
+      inputMode: { models: { min: 1, max: 1 } },
+      promptModalities: ['model'],
+    },
+  },
+  // Move AI s2 is provider-neutral: no providerImplementations row exists yet, so it has no
+  // routable executor. It is video-to-motion, not video-to-video: a single reference video is
+  // the only input, there is no prompt, and the produced Asset is an animated rigged GLB, so
+  // `kind` stays `model` even though the required *input* modality is video (see move-ai-s2
+  // model card test for the input/output modality distinction). `mimeTypes`/`fileExtensions`
+  // are Move AI's documented accepted upload formats; no duration/byte/codec ceiling is
+  // published, so none is invented here.
+  {
+    id: 'move-ai-s2',
+    name: 'Move AI s2',
+    provider: 'Move AI',
+    kind: 'model',
+    defaultAspectRatio: '1:1',
+    description:
+      'Single-camera video-to-motion capture, producing an animated rigged GLB model from one reference video.',
+    parameters: [
+      {
+        id: 'trackFingers',
+        label: 'Track Fingers',
+        type: 'boolean',
+        defaultValue: true,
+      },
+      {
+        id: 'floorPlane',
+        label: 'Floor Plane',
+        type: 'boolean',
+        defaultValue: true,
+      },
+      {
+        id: 'trackBall',
+        label: 'Track Ball',
+        type: 'boolean',
+      },
+    ],
+    defaultParams: { trackFingers: true, floorPlane: true },
+    input: {
+      requiresPrompt: false,
+      referenceBinding: { type: 'grouped-references' },
+      inputMode: {
+        videos: {
+          min: 1,
+          max: 1,
+          constraints: {
+            mimeTypes: ['video/mp4', 'video/quicktime', 'video/x-msvideo'],
+            fileExtensions: ['mp4', 'mov', 'avi'],
+          },
+        },
+      },
+      promptModalities: ['video'],
     },
   },
 ];
@@ -5530,8 +5818,8 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
   ],
   [
     'seedance-2-startend',
-    'volcengine',
-    'volcengine',
+    'volcengine-modelark',
+    'volcengine-modelark',
     'modelark',
     'doubao-seedance-2-0-260128',
     9,
@@ -5547,8 +5835,8 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
   ],
   [
     'seedance-2-ref',
-    'volcengine',
-    'volcengine',
+    'volcengine-modelark',
+    'volcengine-modelark',
     'modelark',
     'doubao-seedance-2-0-260128',
     9,
@@ -5576,8 +5864,8 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
   ],
   [
     'seedance-2-extend',
-    'volcengine',
-    'volcengine',
+    'volcengine-modelark',
+    'volcengine-modelark',
     'modelark',
     'doubao-seedance-2-0-260128',
     9,
@@ -5595,8 +5883,8 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
   ],
   [
     'seedance-2.5-ref',
-    'volcengine',
-    'volcengine',
+    'volcengine-modelark',
+    'volcengine-modelark',
     'modelark',
     'doubao-seedance-2-5-260628',
     9,
@@ -5623,8 +5911,8 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
   ],
   [
     'seedance-2.5-startend',
-    'volcengine',
-    'volcengine',
+    'volcengine-modelark',
+    'volcengine-modelark',
     'modelark',
     'doubao-seedance-2-5-260628',
     9,
@@ -5642,8 +5930,8 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
   ],
   [
     'seedance-2.5-extend',
-    'volcengine',
-    'volcengine',
+    'volcengine-modelark',
+    'volcengine-modelark',
     'modelark',
     'doubao-seedance-2-5-260628',
     9,

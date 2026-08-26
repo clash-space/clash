@@ -1,0 +1,17 @@
+{
+  "apiVersion": "clash.binding/v1",
+  "kind": "model-provider-binding",
+  "spec": {
+    "id": "hilo-media-analysis",
+    "modelId": "hilo-hub-media-analysis",
+    "upstreamModel": "provider-managed",
+    "apiShape": "hub-analyse-media",
+    "requiredCredentials": ["accessToken"],
+    "assetInputs": [
+      {
+        "match": { "kinds": ["image", "video", "audio"] },
+        "representations": ["bytes"]
+      }
+    ]
+  }
+}

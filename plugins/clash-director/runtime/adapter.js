@@ -263,11 +263,11 @@ var require_directives = __commonJS({
     };
     var escapeTagName = (tn) => tn.replace(/[!,[\]{}]/g, (ch) => escapeChars[ch]);
     var Directives = class _Directives {
-      constructor(yaml, tags) {
+      constructor(yaml, tags2) {
         this.docStart = null;
         this.docEnd = false;
         this.yaml = Object.assign({}, _Directives.defaultYaml, yaml);
-        this.tags = Object.assign({}, _Directives.defaultTags, tags);
+        this.tags = Object.assign({}, _Directives.defaultTags, tags2);
       }
       clone() {
         const copy = new _Directives(this.yaml, this.tags);
@@ -395,12 +395,12 @@ var require_directives = __commonJS({
         const tagEntries = Object.entries(this.tags);
         let tagNames;
         if (doc && tagEntries.length > 0 && identity.isNode(doc.contents)) {
-          const tags = {};
+          const tags2 = {};
           visit.visit(doc.contents, (_key, node) => {
             if (identity.isNode(node) && node.tag)
-              tags[node.tag] = true;
+              tags2[node.tag] = true;
           });
-          tagNames = Object.keys(tags);
+          tagNames = Object.keys(tags2);
         } else
           tagNames = [];
         for (const [handle, prefix] of tagEntries) {
@@ -763,15 +763,15 @@ var require_createNode = __commonJS({
     var identity = require_identity();
     var Scalar = require_Scalar();
     var defaultTagPrefix = "tag:yaml.org,2002:";
-    function findTagObject(value, tagName, tags) {
+    function findTagObject(value, tagName, tags2) {
       if (tagName) {
-        const match = tags.filter((t) => t.tag === tagName);
+        const match = tags2.filter((t) => t.tag === tagName);
         const tagObj = match.find((t) => !t.format) ?? match[0];
         if (!tagObj)
           throw new Error(`Tag ${tagName} not found`);
         return tagObj;
       }
-      return tags.find((t) => t.identify?.(value) && !t.format);
+      return tags2.find((t) => t.identify?.(value) && !t.format);
     }
     function createNode(value, tagName, ctx) {
       if (identity.isDocument(value))
@@ -1366,8 +1366,8 @@ ${indent}${start}${value}${end}`;
 ${indent}`);
       if (actualString) {
         const test = (tag) => tag.default && tag.tag !== "tag:yaml.org,2002:str" && tag.test?.test(str);
-        const { compat, tags } = ctx.doc.schema;
-        if (tags.some(test) || compat?.some(test))
+        const { compat, tags: tags2 } = ctx.doc.schema;
+        if (tags2.some(test) || compat?.some(test))
           return quotedString(value, ctx);
       }
       return implicitKey ? str : foldFlowLines.foldFlowLines(str, indent, foldFlowLines.FOLD_FLOW, getFoldOptions(ctx, false));
@@ -1459,9 +1459,9 @@ var require_stringify = __commonJS({
         options: opt
       };
     }
-    function getTagObject(tags, item) {
+    function getTagObject(tags2, item) {
       if (item.tag) {
-        const match = tags.filter((t) => t.tag === item.tag);
+        const match = tags2.filter((t) => t.tag === item.tag);
         if (match.length > 0)
           return match.find((t) => t.format === item.format) ?? match[0];
       }
@@ -1469,7 +1469,7 @@ var require_stringify = __commonJS({
       let obj;
       if (identity.isScalar(item)) {
         obj = item.value;
-        let match = tags.filter((t) => t.identify?.(obj));
+        let match = tags2.filter((t) => t.identify?.(obj));
         if (match.length > 1) {
           const testMatch = match.filter((t) => t.test);
           if (testMatch.length > 0)
@@ -1478,7 +1478,7 @@ var require_stringify = __commonJS({
         tagObj = match.find((t) => t.format === item.format) ?? match.find((t) => !t.format);
       } else {
         obj = item;
-        tagObj = tags.find((t) => t.nodeClass && obj instanceof t.nodeClass);
+        tagObj = tags2.find((t) => t.nodeClass && obj instanceof t.nodeClass);
       }
       if (!tagObj) {
         const name = obj?.constructor?.name ?? (obj === null ? "null" : typeof obj);
@@ -3244,10 +3244,10 @@ var require_tags = __commonJS({
       if (schemaTags && !customTags) {
         return addMergeTag && !schemaTags.includes(merge.merge) ? schemaTags.concat(merge.merge) : schemaTags.slice();
       }
-      let tags = schemaTags;
-      if (!tags) {
+      let tags2 = schemaTags;
+      if (!tags2) {
         if (Array.isArray(customTags))
-          tags = [];
+          tags2 = [];
         else {
           const keys = Array.from(schemas.keys()).filter((key) => key !== "yaml11").map((key) => JSON.stringify(key)).join(", ");
           throw new Error(`Unknown schema "${schemaName}"; use one of ${keys} or define customTags array`);
@@ -3255,22 +3255,22 @@ var require_tags = __commonJS({
       }
       if (Array.isArray(customTags)) {
         for (const tag of customTags)
-          tags = tags.concat(tag);
+          tags2 = tags2.concat(tag);
       } else if (typeof customTags === "function") {
-        tags = customTags(tags.slice());
+        tags2 = customTags(tags2.slice());
       }
       if (addMergeTag)
-        tags = tags.concat(merge.merge);
-      return tags.reduce((tags2, tag) => {
+        tags2 = tags2.concat(merge.merge);
+      return tags2.reduce((tags3, tag) => {
         const tagObj = typeof tag === "string" ? tagsByName[tag] : tag;
         if (!tagObj) {
           const tagName = JSON.stringify(tag);
           const keys = Object.keys(tagsByName).map((key) => JSON.stringify(key)).join(", ");
           throw new Error(`Unknown custom tag ${tagName}; use one of ${keys}`);
         }
-        if (!tags2.includes(tagObj))
-          tags2.push(tagObj);
-        return tags2;
+        if (!tags3.includes(tagObj))
+          tags3.push(tagObj);
+        return tags3;
       }, []);
     }
     exports.coreKnownTags = coreKnownTags;
@@ -3286,14 +3286,14 @@ var require_Schema = __commonJS({
     var map = require_map();
     var seq = require_seq();
     var string = require_string();
-    var tags = require_tags();
+    var tags2 = require_tags();
     var sortMapEntriesByKey = (a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
     var Schema = class _Schema {
       constructor({ compat, customTags, merge, resolveKnownTags, schema, sortMapEntries, toStringDefaults }) {
-        this.compat = Array.isArray(compat) ? tags.getTags(compat, "compat") : compat ? tags.getTags(null, compat) : null;
+        this.compat = Array.isArray(compat) ? tags2.getTags(compat, "compat") : compat ? tags2.getTags(null, compat) : null;
         this.name = typeof schema === "string" && schema || "core";
-        this.knownTags = resolveKnownTags ? tags.coreKnownTags : {};
-        this.tags = tags.getTags(customTags, this.name, merge);
+        this.knownTags = resolveKnownTags ? tags2.coreKnownTags : {};
+        this.tags = tags2.getTags(customTags, this.name, merge);
         this.toStringOptions = toStringDefaults ?? null;
         Object.defineProperty(this, identity.MAP, { value: map.map });
         Object.defineProperty(this, identity.SCALAR, { value: string.string });
@@ -7360,8 +7360,12 @@ var require_dist = __commonJS({
 });
 
 // src/adapter.ts
+import { createHash } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "path";
+import { createGeneratorClient } from "@clash/shared-runtime/generator-client";
+import { readNativeMediaActionRun } from "@clash/shared-runtime/generator-readback";
+import { createProjectAssetHostClient } from "@clash/shared-runtime/project-asset-client";
 
 // ../../node_modules/.pnpm/zod@3.24.4/node_modules/zod/lib/index.mjs
 var util;
@@ -7882,12 +7886,12 @@ var handleResult = (ctx, result) => {
 function processCreateParams(params) {
   if (!params)
     return {};
-  const { errorMap: errorMap2, invalid_type_error, required_error, description } = params;
+  const { errorMap: errorMap2, invalid_type_error, required_error, description: description2 } = params;
   if (errorMap2 && (invalid_type_error || required_error)) {
     throw new Error(`Can't use "invalid_type_error" or "required_error" in conjunction with custom error map.`);
   }
   if (errorMap2)
-    return { errorMap: errorMap2, description };
+    return { errorMap: errorMap2, description: description2 };
   const customMap = (iss, ctx) => {
     var _a, _b;
     const { message } = params;
@@ -7901,7 +7905,7 @@ function processCreateParams(params) {
       return { message: ctx.defaultError };
     return { message: (_b = message !== null && message !== void 0 ? message : invalid_type_error) !== null && _b !== void 0 ? _b : ctx.defaultError };
   };
-  return { errorMap: customMap, description };
+  return { errorMap: customMap, description: description2 };
 }
 var ZodType = class {
   get description() {
@@ -8168,11 +8172,11 @@ var ZodType = class {
       typeName: ZodFirstPartyTypeKind.ZodCatch
     });
   }
-  describe(description) {
+  describe(description2) {
     const This = this.constructor;
     return new This({
       ...this._def,
-      description
+      description: description2
     });
   }
   pipe(target) {
@@ -11424,7 +11428,7 @@ var z = /* @__PURE__ */ Object.freeze({
   ZodError
 });
 
-// ../../packages/shared-types/dist/chunk-T6TANLZN.js
+// ../../packages/shared-types/dist/chunk-GWDIKZMB.js
 var AssetKindSchema = z.enum(["image", "video", "audio", "model"]);
 var ResourceIdSchema = z.string().trim().min(1);
 var ResourceSchema = z.object({
@@ -11455,7 +11459,12 @@ var ProjectAssetMetadataSchema = z.object({
   sampleRate: z.number().int().positive().optional(),
   channelCount: z.number().int().positive().optional(),
   channelLayout: z.string().trim().min(1).optional(),
-  originalName: z.string().trim().min(1).optional()
+  originalName: z.string().trim().min(1).optional(),
+  /** Normalized rig/deform capability a `model` asset exposes, independent from any provider or
+   *  rig format. `0` means static/rigid -- no rig/deform capability. `1` means rigged/deformable.
+   *  This is a normalized capability, not a bone count or physical degree of freedom, and it
+   *  never becomes a `rig` kind of its own -- static and rigged 3-D assets are both `model`. */
+  flexibility: z.number().min(0).max(1).optional()
 }).strict();
 var ProjectAssetPublicationMetadataSchema = ProjectAssetMetadataSchema.omit({ waveform: true });
 var ProjectAssetProvenanceSchema = z.object({
@@ -11630,7 +11639,7 @@ var AssetRefRowSchema = z.object({
   importedAt: z.number()
 });
 
-// ../../packages/shared-types/dist/chunk-VG5GRRAK.js
+// ../../packages/shared-types/dist/chunk-UZSXLAEL.js
 var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
 var pluginIdSchema = z.string().trim().superRefine((value, ctx) => {
   const segments = value.split(".");
@@ -12702,223 +12711,7 @@ var ExecutablePluginJsonValueSchema = z.lazy(
     z.record(ExecutablePluginJsonValueSchema)
   ])
 );
-var nonEmptyIdSchema = z.string().trim().min(1);
-var prefixedSha256Schema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
-var jsonObjectSchema = z.record(ExecutablePluginJsonValueSchema);
-var GeneratorEditPolicySchema = z.enum([
-  "advance-head",
-  "fork-when-materialized"
-]);
-var MediaAssetRevisionRefSchema = z.object({
-  kind: z.literal("media"),
-  projectAssetId: nonEmptyIdSchema
-}).strict();
-var DocumentAssetRevisionRefSchema = z.object({
-  kind: z.literal("document"),
-  documentAssetId: nonEmptyIdSchema,
-  revisionId: nonEmptyIdSchema
-}).strict();
-var AssetRevisionRefSchema = z.discriminatedUnion("kind", [
-  MediaAssetRevisionRefSchema,
-  DocumentAssetRevisionRefSchema
-]);
-var GeneratorRevisionRefSchema = z.object({
-  generatorId: nonEmptyIdSchema,
-  generatorRevisionId: nonEmptyIdSchema
-}).strict();
-var GeneratorInputTargetSchema = z.union([
-  AssetRevisionRefSchema,
-  GeneratorRevisionRefSchema
-]);
-var GeneratorInputRefSchema = z.object({
-  slot: nonEmptyIdSchema,
-  itemKey: nonEmptyIdSchema.optional(),
-  target: GeneratorInputTargetSchema
-}).strict();
-var GeneratorDefinitionRefSchema = z.object({
-  pluginId: pluginIdSchema,
-  definitionId: nonEmptyIdSchema,
-  version: nonEmptyIdSchema,
-  schemaHash: prefixedSha256Schema
-}).strict();
-var GeneratorExecutorRefSchema = z.object({
-  pluginId: pluginIdSchema,
-  version: nonEmptyIdSchema,
-  exportId: nonEmptyIdSchema,
-  schemaHash: prefixedSha256Schema
-}).strict();
-var GeneratorMediaAssetTypeSchema = z.object({
-  kind: z.literal("media"),
-  mediaKind: AssetKindSchema
-}).strict();
-var GeneratorDocumentAssetTypeSchema = z.object({
-  kind: z.literal("document"),
-  documentKind: nonEmptyIdSchema,
-  schemaVersion: z.number().int().positive()
-}).strict();
-var GeneratorAssetTypeSchema = z.discriminatedUnion("kind", [
-  GeneratorMediaAssetTypeSchema,
-  GeneratorDocumentAssetTypeSchema
-]);
-var GeneratorInputCardinalitySchema = z.object({
-  minItems: z.number().int().nonnegative(),
-  maxItems: z.number().int().positive().nullable()
-}).strict().superRefine(({ minItems, maxItems }, context) => {
-  if (maxItems !== null && maxItems < minItems) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["maxItems"],
-      message: "maxItems must be greater than or equal to minItems."
-    });
-  }
-});
-var GeneratorFamilyInputTypeSchema = z.object({
-  kind: z.literal("generator"),
-  pluginId: pluginIdSchema,
-  definitionId: nonEmptyIdSchema
-}).strict();
-var GeneratorInputTypeSchema = z.discriminatedUnion("kind", [
-  GeneratorMediaAssetTypeSchema,
-  GeneratorDocumentAssetTypeSchema,
-  GeneratorFamilyInputTypeSchema
-]);
-var GeneratorInputPortSchema = z.object({
-  slot: nonEmptyIdSchema,
-  accepts: z.array(GeneratorInputTypeSchema).min(1),
-  cardinality: GeneratorInputCardinalitySchema
-}).strict();
-var GeneratorActionInputPortSchema = GeneratorInputPortSchema;
-var GeneratorActionOutputCardinalitySchema = GeneratorInputCardinalitySchema;
-var GeneratorActionOutputPortSchema = z.object({
-  slot: nonEmptyIdSchema,
-  assetType: GeneratorAssetTypeSchema,
-  cardinality: GeneratorActionOutputCardinalitySchema
-}).strict();
-var GeneratorActionOutputContractSchema = z.array(GeneratorActionOutputPortSchema).length(1).superRefine((outputs, context) => {
-  const cardinality = outputs[0]?.cardinality;
-  if (cardinality?.minItems !== 1 || cardinality.maxItems !== 1) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: [0, "cardinality"],
-      message: "The current Generator Action profile requires exactly one output."
-    });
-  }
-});
-var GeneratorActionDefinitionSchema = z.object({
-  id: nonEmptyIdSchema,
-  executorExportId: nonEmptyIdSchema,
-  parametersSchema: jsonObjectSchema,
-  invocationInputs: z.array(GeneratorActionInputPortSchema),
-  outputs: GeneratorActionOutputContractSchema
-}).strict().superRefine(({ invocationInputs }, context) => {
-  const seen = /* @__PURE__ */ new Set();
-  invocationInputs.forEach((input, index) => {
-    if (seen.has(input.slot)) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["invocationInputs", index, "slot"],
-        message: `Duplicate Generator Action input slot: ${input.slot}`
-      });
-    }
-    seen.add(input.slot);
-  });
-});
-var generatorDefinitionSpecShape = {
-  definitionId: nonEmptyIdSchema,
-  stateSchema: jsonObjectSchema,
-  editPolicy: GeneratorEditPolicySchema,
-  persistentInputs: z.array(GeneratorInputPortSchema),
-  actions: z.array(GeneratorActionDefinitionSchema).min(1)
-};
-function validateGeneratorDefinitionSpec(input, context) {
-  const persistentSlots = /* @__PURE__ */ new Set();
-  input.persistentInputs.forEach((persistentInput, index) => {
-    if (persistentSlots.has(persistentInput.slot)) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["persistentInputs", index, "slot"],
-        message: `Duplicate Generator persistent input slot: ${persistentInput.slot}`
-      });
-    }
-    persistentSlots.add(persistentInput.slot);
-  });
-  const actionIds = /* @__PURE__ */ new Set();
-  input.actions.forEach((action, index) => {
-    if (actionIds.has(action.id)) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["actions", index, "id"],
-        message: `Duplicate Generator action id: ${action.id}`
-      });
-    }
-    actionIds.add(action.id);
-  });
-}
-var GeneratorDefinitionSpecSchema = z.object(generatorDefinitionSpecShape).strict().superRefine(validateGeneratorDefinitionSpec);
-var GeneratorDefinitionSchema = GeneratorDefinitionRefSchema.extend({
-  stateSchema: generatorDefinitionSpecShape.stateSchema,
-  editPolicy: generatorDefinitionSpecShape.editPolicy,
-  persistentInputs: generatorDefinitionSpecShape.persistentInputs,
-  actions: generatorDefinitionSpecShape.actions
-}).strict().superRefine(validateGeneratorDefinitionSpec);
-var ProjectGeneratorHeadSchema = z.object({
-  id: nonEmptyIdSchema,
-  headRevisionId: nonEmptyIdSchema
-}).strict();
-var ProjectGeneratorSchema = ProjectGeneratorHeadSchema.extend({
-  definitionRef: GeneratorDefinitionRefSchema
-}).strict();
-var GeneratorRevisionSchema = z.object({
-  id: nonEmptyIdSchema,
-  generatorId: nonEmptyIdSchema,
-  definitionRef: GeneratorDefinitionRefSchema,
-  parentRevisionId: nonEmptyIdSchema.optional(),
-  forkedFrom: GeneratorRevisionRefSchema.optional(),
-  state: jsonObjectSchema,
-  persistentInputRefs: z.array(GeneratorInputRefSchema)
-}).strict().superRefine(({ generatorId, forkedFrom }, context) => {
-  if (forkedFrom?.generatorId === generatorId) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["forkedFrom", "generatorId"],
-      message: "Same-Generator ancestry belongs in parentRevisionId, not forkedFrom."
-    });
-  }
-});
-var ActionRunStatusSchema = z.enum([
-  "pending",
-  "running",
-  "succeeded",
-  "failed"
-]);
-var ActionRunRequestSchema = z.object({
-  actionRunId: nonEmptyIdSchema,
-  generatorRevision: GeneratorRevisionRefSchema,
-  actionId: nonEmptyIdSchema,
-  executor: GeneratorExecutorRefSchema,
-  invocationFingerprint: prefixedSha256Schema,
-  parameters: jsonObjectSchema,
-  invocationInputRefs: z.array(GeneratorInputRefSchema),
-  outputContract: GeneratorActionOutputContractSchema
-}).strict();
-var ActionRunOutcomeSchema = z.object({
-  actionRunId: nonEmptyIdSchema,
-  status: z.enum(["succeeded", "failed"])
-}).strict();
-var ProjectActionRunSchema = ActionRunRequestSchema.extend({
-  status: ActionRunStatusSchema
-}).strict();
-var OutputCommitSchema = z.object({
-  actionRunId: nonEmptyIdSchema,
-  outputSlot: nonEmptyIdSchema,
-  itemKey: nonEmptyIdSchema.optional(),
-  asset: AssetRevisionRefSchema
-}).strict();
-var AspectRatioSchema = z.object({
-  width: z.number().int().positive(),
-  height: z.number().int().positive()
-}).strict();
-var AIGC_ACTION_KINDS = ["image", "video", "audio", "text"];
+var AIGC_ACTION_KINDS = ["image", "video", "audio", "text", "model"];
 var AigcActionKindSchema = z.enum(AIGC_ACTION_KINDS);
 var CANONICAL_RESOLUTION_TIERS = [
   { label: "0.5K (Draft)", value: "0.5K", pixels: 262144 },
@@ -13155,7 +12948,7 @@ var GEMINI_TTS_VOICES = [
   { label: "Sulafat - Warm", value: "Sulafat" }
 ];
 var ModelParameterTypeSchema = z.enum(["select", "slider", "number", "text", "boolean"]);
-var BuiltinProviderSchema = z.enum(["local", "official", "fal", "pika", "replicate", "kling", "minimax", "volcengine", "elevenlabs", "suno", "mock", "custom"]);
+var BuiltinProviderSchema = z.enum(["local", "official", "fal", "pika", "replicate", "kling", "minimax", "volcengine-modelark", "elevenlabs", "suno", "mock", "custom"]);
 var ProviderSchema = z.string().trim().regex(
   /^[a-z0-9][a-z0-9._-]*$/,
   "Provider ids must be lowercase plugin-safe identifiers."
@@ -13257,7 +13050,7 @@ var RefSpecSchema = z.object({
   min: z.number().int().nonnegative().optional(),
   /** When this modality is present, at least one of these companion
    * modalities must also be present. */
-  requiresAnyOf: z.array(z.enum(["image", "video", "audio"])).min(1).optional(),
+  requiresAnyOf: z.array(z.enum(["image", "video", "audio", "model"])).min(1).optional(),
   constraints: ReferenceMediaConstraintsSchema.optional(),
   maxTotalDurationMs: z.number().int().positive().optional(),
   /** Parameter-conditioned refinements for one input mode (for example,
@@ -13268,9 +13061,13 @@ var ModelInputModeSchema = z.object({
   images: RefSpecSchema.optional(),
   videos: RefSpecSchema.optional(),
   audios: RefSpecSchema.optional(),
+  /** Reference to another Model output -- e.g. a static mesh bound into a rigging model. Declared
+   * the same way as images/videos/audios, so a model-to-model workflow (auto-rig, retarget) is
+   * expressed through the same generic input contract rather than a provider-specific field. */
+  models: RefSpecSchema.optional(),
   /** At least one reference from these modalities must be attached. */
-  requiresAnyOf: z.array(z.enum(["image", "video", "audio"])).min(1).optional(),
-  /** Maximum total references across image, video, and audio buckets. */
+  requiresAnyOf: z.array(z.enum(["image", "video", "audio", "model"])).min(1).optional(),
+  /** Maximum total references across image, video, audio, and model buckets. */
   maxTotalReferences: z.number().int().positive().optional(),
   /** Maximum JSON request body when local media is represented as Base64 Data URIs. */
   maxEmbeddedRequestBytes: z.number().int().positive().optional(),
@@ -13294,7 +13091,7 @@ var ModelInputRuleSchema = z.object({
   inputMode: ModelInputModeSchema.default({}),
   /** Modalities that can be @-mentioned inline in the prompt editor.
    *  Does NOT affect form-field inputs (start/end frames, etc.) */
-  promptModalities: z.array(z.enum(["text", "image", "video", "audio"])).default(["text"]),
+  promptModalities: z.array(z.enum(["text", "image", "video", "audio", "model"])).default(["text"]),
   /** How inline prompt references are represented on the provider wire. */
   referenceBinding: ReferenceBindingSchema.optional(),
   /** Specialized input surface owned by this Model Card. */
@@ -13372,6 +13169,18 @@ var ProviderAssetInputSchema = z.object({
   representations: z.array(ProviderAssetRepresentationSchema).min(1),
   mediaTypes: z.array(z.string().trim().min(1)).min(1).optional()
 }).strict();
+var ModelCardConsumerSchema = z.object({
+  pluginId: z.string().trim().min(1),
+  definitionId: z.string().trim().min(1).optional(),
+  actionId: z.string().trim().min(1).optional()
+}).strict();
+var ModelCardVisibilitySchema = z.discriminatedUnion("scope", [
+  z.object({ scope: z.literal("public") }).strict(),
+  z.object({
+    scope: z.literal("plugin-private"),
+    consumers: z.array(ModelCardConsumerSchema).min(1)
+  }).strict()
+]).optional();
 var ModelProviderImplementationSchema = z.object({
   providerId: ProviderSchema,
   accountId: z.string().optional(),
@@ -13433,6 +13242,10 @@ var ModelCardSchema = z.object({
   name: z.string(),
   provider: z.string(),
   kind: ModelKindSchema,
+  /** Provider-independent consumption contract. Provider wire shapes remain on implementations. */
+  semanticShape: z.string().trim().regex(/^[a-z][a-z0-9_]*$/).optional(),
+  /** Catalog scope evaluated from explicit consumer context, never contributor ids. */
+  visibility: ModelCardVisibilitySchema,
   custom: z.boolean().optional(),
   description: z.string().optional(),
   promptGuidance: z.string().optional(),
@@ -14448,8 +14261,8 @@ var MODEL_CARD_DEFINITIONS = [
     id: "seedance-2-startend",
     name: "Seedance 2.0 (Start/End)",
     provider: "fal.ai",
-    availableProviders: ["volcengine", "fal", "pika", "replicate"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-modelark", "fal", "pika", "replicate"],
+    defaultProvider: "volcengine-modelark",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 \u2014 animate from a start frame, optionally constrained to a target end frame.",
@@ -14514,8 +14327,8 @@ var MODEL_CARD_DEFINITIONS = [
     aliases: ["seedance-2-text"],
     name: "Seedance 2.0 (\u5168\u80FD\u53C2\u8003)",
     provider: "ByteDance",
-    availableProviders: ["volcengine", "fal", "pika", "replicate"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-modelark", "fal", "pika", "replicate"],
+    defaultProvider: "volcengine-modelark",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 all-purpose generation with optional image, video, and audio references.",
@@ -14610,8 +14423,8 @@ var MODEL_CARD_DEFINITIONS = [
     id: "seedance-2-extend",
     name: "Seedance 2.0 (Video Extension)",
     provider: "ByteDance",
-    availableProviders: ["volcengine"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-modelark"],
+    defaultProvider: "volcengine-modelark",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Continue one to three ordered source videos with Seedance 2.0.",
@@ -14671,8 +14484,8 @@ var MODEL_CARD_DEFINITIONS = [
     aliases: ["seedance-2.5-text"],
     name: "Seedance 2.5 (\u5168\u80FD\u53C2\u8003)",
     provider: "ByteDance",
-    availableProviders: ["volcengine"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-modelark"],
+    defaultProvider: "volcengine-modelark",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Seedance 2.5 all-purpose generation with optional image, video, and audio references.",
@@ -14773,8 +14586,8 @@ var MODEL_CARD_DEFINITIONS = [
     id: "seedance-2.5-startend",
     name: "Seedance 2.5 (Start / End Frame)",
     provider: "ByteDance",
-    availableProviders: ["volcengine"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-modelark"],
+    defaultProvider: "volcengine-modelark",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Animate from a required start frame toward an optional end frame with Seedance 2.5.",
@@ -14825,8 +14638,8 @@ var MODEL_CARD_DEFINITIONS = [
     id: "seedance-2.5-extend",
     name: "Seedance 2.5 (Video Extension)",
     provider: "ByteDance",
-    availableProviders: ["volcengine"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-modelark"],
+    defaultProvider: "volcengine-modelark",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Continue one to ten ordered source videos with Seedance 2.5.",
@@ -15513,6 +15326,7 @@ var MODEL_CARD_DEFINITIONS = [
     availableProviders: ["official"],
     defaultProvider: "official",
     kind: "text",
+    semanticShape: "media_analysis",
     defaultAspectRatio: "1:1",
     description: "Google Gemini 3.5 Flash \u2014 near-Pro agentic capability at Flash-tier speed and cost.",
     parameters: [
@@ -15542,6 +15356,7 @@ var MODEL_CARD_DEFINITIONS = [
     availableProviders: ["official"],
     defaultProvider: "official",
     kind: "text",
+    semanticShape: "media_analysis",
     defaultAspectRatio: "1:1",
     description: "Google Gemini 3.1 Pro \u2014 flagship multimodal reasoning across text, image, video, and audio inputs.",
     parameters: [
@@ -15571,6 +15386,7 @@ var MODEL_CARD_DEFINITIONS = [
     availableProviders: ["official"],
     defaultProvider: "official",
     kind: "text",
+    semanticShape: "media_analysis",
     defaultAspectRatio: "1:1",
     description: "Faster, cheaper Gemini 3 Flash \u2014 multimodal across text, image, video, and audio inputs.",
     parameters: [
@@ -15600,6 +15416,7 @@ var MODEL_CARD_DEFINITIONS = [
     availableProviders: ["official"],
     defaultProvider: "official",
     kind: "text",
+    semanticShape: "media_analysis",
     defaultAspectRatio: "1:1",
     description: "Google Gemini 3.1 Flash-Lite \u2014 low-latency, high-volume text generation with multimodal inputs.",
     parameters: [
@@ -16401,8 +16218,8 @@ var MODEL_CARD_DEFINITIONS = [
     id: "seedance-2-fast-ref",
     name: "Seedance 2.0 Fast (\u5168\u80FD\u53C2\u8003)",
     provider: "ByteDance",
-    availableProviders: ["volcengine"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-modelark"],
+    defaultProvider: "volcengine-modelark",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 Fast all-purpose generation with optional image, video, and audio references.",
@@ -16458,8 +16275,8 @@ var MODEL_CARD_DEFINITIONS = [
     id: "seedance-2-fast-startend",
     name: "Seedance 2.0 Fast (\u9996\u5C3E\u5E27)",
     provider: "ByteDance",
-    availableProviders: ["volcengine"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-modelark"],
+    defaultProvider: "volcengine-modelark",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 Fast animation between a first and an optional last frame.",
@@ -16505,8 +16322,8 @@ var MODEL_CARD_DEFINITIONS = [
     id: "seedance-2-mini-ref",
     name: "Seedance 2.0 Mini (\u5168\u80FD\u53C2\u8003)",
     provider: "ByteDance",
-    availableProviders: ["volcengine"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-modelark"],
+    defaultProvider: "volcengine-modelark",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 Mini all-purpose generation with optional image, video, and audio references.",
@@ -16562,8 +16379,8 @@ var MODEL_CARD_DEFINITIONS = [
     id: "seedance-2-mini-startend",
     name: "Seedance 2.0 Mini (\u9996\u5C3E\u5E27)",
     provider: "ByteDance",
-    availableProviders: ["volcengine"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-modelark"],
+    defaultProvider: "volcengine-modelark",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 Mini animation between a first and an optional last frame.",
@@ -16926,6 +16743,260 @@ var MODEL_CARD_DEFINITIONS = [
       referenceBinding: { type: "grouped-references" },
       inputMode: { audios: { max: 1 } },
       promptModalities: ["text", "audio"]
+    }
+  },
+  // ─── Model: Meshy ──────────────────────────────────────────
+  // Meshy 6 and Meshy 7 are two distinct AI model tiers behind the same Text-to-3D /
+  // Image-to-3D routes (docs.meshy.ai): a prompt alone drives Text-to-3D, an attached
+  // image drives Image-to-3D, and both stay under one Card per model tier rather than a
+  // split text/image pair -- the executable Provider (plugins/meshy) picks the route by
+  // reference presence, not by a card-level mode switch. Parameters are limited to what
+  // `meshy-executor.ts` implements and tests against the documented wire shapes:
+  // `PBR` is the exact wire-compatible key the executable Provider adapter reads
+  // (`booleanParam(values, "PBR")` in `meshy-adapter.ts`); `textureResolution` is Meshy's own
+  // 2k/4k/8k menu; `poseMode` is a-pose/t-pose or the documented empty-string "no pose" value;
+  // `targetPolycount` only takes effect on the remesh path and is bounded 100-300,000 exactly as
+  // `MIN_TARGET_POLYCOUNT`/`MAX_TARGET_POLYCOUNT` in `meshy-executor.ts`. None of these four has a
+  // proven upstream default, so no `defaultValue` or `defaultParams` entry is invented for them.
+  {
+    id: "meshy-6",
+    name: "Meshy 6",
+    provider: "Meshy",
+    kind: "model",
+    defaultAspectRatio: "1:1",
+    description: "Meshy 6 text-to-3D and image-to-3D generation, producing a textured GLB mesh.",
+    parameters: [
+      { id: "PBR", label: "PBR Textures", type: "boolean" },
+      {
+        id: "textureResolution",
+        label: "Texture Resolution",
+        type: "select",
+        options: [
+          { label: "2K", value: "2k" },
+          { label: "4K", value: "4k" },
+          { label: "8K", value: "8k" }
+        ]
+      },
+      {
+        id: "poseMode",
+        label: "Pose",
+        type: "select",
+        options: [
+          { label: "None", value: "" },
+          { label: "A-Pose", value: "a-pose" },
+          { label: "T-Pose", value: "t-pose" }
+        ]
+      },
+      {
+        id: "targetPolycount",
+        label: "Target Polycount",
+        type: "number",
+        min: 100,
+        max: 3e5,
+        step: 1
+      }
+    ],
+    defaultParams: {},
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { images: { max: 1 } },
+      promptModalities: ["text", "image"]
+    }
+  },
+  {
+    id: "meshy-7",
+    name: "Meshy 7",
+    provider: "Meshy",
+    kind: "model",
+    defaultAspectRatio: "1:1",
+    description: "Meshy 7 text-to-3D and image-to-3D generation, producing a textured GLB mesh.",
+    parameters: [
+      { id: "PBR", label: "PBR Textures", type: "boolean" },
+      {
+        id: "textureResolution",
+        label: "Texture Resolution",
+        type: "select",
+        options: [
+          { label: "2K", value: "2k" },
+          { label: "4K", value: "4k" },
+          { label: "8K", value: "8k" }
+        ]
+      },
+      {
+        id: "poseMode",
+        label: "Pose",
+        type: "select",
+        options: [
+          { label: "None", value: "" },
+          { label: "A-Pose", value: "a-pose" },
+          { label: "T-Pose", value: "t-pose" }
+        ]
+      },
+      {
+        id: "targetPolycount",
+        label: "Target Polycount",
+        type: "number",
+        min: 100,
+        max: 3e5,
+        step: 1
+      }
+    ],
+    defaultParams: {},
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { images: { max: 1 } },
+      promptModalities: ["text", "image"]
+    }
+  },
+  // Meshy auto-rig is model-to-model: it always resolves a required `model` reference through
+  // `POST /v1/rigging` (plugins/meshy/src/meshy-executor.ts buildRiggingBody) and never reads a
+  // prompt. `heightMeters` is the one optional parameter the executor forwards, and it must be
+  // positive when present -- there is no documented default height, so none is set here. This
+  // stays `kind: 'model'`: a rigged mesh is still a `model` Asset, never a separate `rig` kind
+  // (packages/shared-types/src/assets.ts `flexibility` documents the same rule).
+  {
+    id: "meshy-auto-rig",
+    name: "Meshy Auto-Rig",
+    provider: "Meshy",
+    kind: "model",
+    defaultAspectRatio: "1:1",
+    description: "Automatically rig a static 3D model with a biped skeleton.",
+    parameters: [
+      { id: "heightMeters", label: "Character Height (m)", type: "number" }
+    ],
+    defaultParams: {},
+    input: {
+      requiresPrompt: false,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { models: { min: 1, max: 1 } },
+      promptModalities: ["model"]
+    }
+  },
+  // ─── Model: Tripo ──────────────────────────────────────────
+  // Tripo H3.1 is one Card covering both text-to-3D and image-to-3D: the executable Provider
+  // (plugins/tripo) picks `POST /generation/text-to-model` or `POST /generation/image-to-model`
+  // by reference presence, exactly like Meshy above, so it is not split into two Cards. Parameter
+  // ids and menus are exactly what `tripo-client.ts`'s `buildTripoTextToModelBody` implements and
+  // tests: `pbr`, `textureQuality` (standard/detailed/extreme), `geometryQuality`
+  // (standard/detailed), `faceLimit` (1 to Tripo's documented v3.1 standard-mode ceiling of
+  // 1,500,000), and `autoSize`. None has a documented default, so none is invented here.
+  {
+    id: "tripo-h3.1",
+    name: "Tripo H3.1",
+    provider: "Tripo3D",
+    kind: "model",
+    defaultAspectRatio: "1:1",
+    description: "Tripo H3.1 text-to-3D and image-to-3D generation, producing a textured GLB mesh.",
+    parameters: [
+      { id: "pbr", label: "PBR Textures", type: "boolean" },
+      {
+        id: "textureQuality",
+        label: "Texture Quality",
+        type: "select",
+        options: [
+          { label: "Standard", value: "standard" },
+          { label: "Detailed", value: "detailed" },
+          { label: "Extreme", value: "extreme" }
+        ]
+      },
+      {
+        id: "geometryQuality",
+        label: "Geometry Quality",
+        type: "select",
+        options: [
+          { label: "Standard", value: "standard" },
+          { label: "Detailed", value: "detailed" }
+        ]
+      },
+      {
+        id: "faceLimit",
+        label: "Face Limit",
+        type: "number",
+        min: 1,
+        max: 15e5,
+        step: 1
+      },
+      { id: "autoSize", label: "Auto Size", type: "boolean" }
+    ],
+    defaultParams: {},
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { images: { max: 1 } },
+      promptModalities: ["text", "image"]
+    }
+  },
+  // Tripo auto-rig is model-to-model: it always resolves a required `model` reference through
+  // `POST /animations/rig` and always requests biped/mixamo/glb regardless of caller input
+  // (plugins/tripo/src/tripo-client.ts buildTripoRigBody, tested in tripo-client.test.ts "always
+  // requests biped, mixamo, glb regardless of caller input"). There is nothing left to configure,
+  // so this Card declares no parameters at all rather than an unused knob.
+  {
+    id: "tripo-auto-rig",
+    name: "Tripo Auto-Rig",
+    provider: "Tripo3D",
+    kind: "model",
+    defaultAspectRatio: "1:1",
+    description: "Automatically rig a static 3D model with a biped skeleton.",
+    parameters: [],
+    defaultParams: {},
+    input: {
+      requiresPrompt: false,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { models: { min: 1, max: 1 } },
+      promptModalities: ["model"]
+    }
+  },
+  // Move AI s2 is provider-neutral: no providerImplementations row exists yet, so it has no
+  // routable executor. It is video-to-motion, not video-to-video: a single reference video is
+  // the only input, there is no prompt, and the produced Asset is an animated rigged GLB, so
+  // `kind` stays `model` even though the required *input* modality is video (see move-ai-s2
+  // model card test for the input/output modality distinction). `mimeTypes`/`fileExtensions`
+  // are Move AI's documented accepted upload formats; no duration/byte/codec ceiling is
+  // published, so none is invented here.
+  {
+    id: "move-ai-s2",
+    name: "Move AI s2",
+    provider: "Move AI",
+    kind: "model",
+    defaultAspectRatio: "1:1",
+    description: "Single-camera video-to-motion capture, producing an animated rigged GLB model from one reference video.",
+    parameters: [
+      {
+        id: "trackFingers",
+        label: "Track Fingers",
+        type: "boolean",
+        defaultValue: true
+      },
+      {
+        id: "floorPlane",
+        label: "Floor Plane",
+        type: "boolean",
+        defaultValue: true
+      },
+      {
+        id: "trackBall",
+        label: "Track Ball",
+        type: "boolean"
+      }
+    ],
+    defaultParams: { trackFingers: true, floorPlane: true },
+    input: {
+      requiresPrompt: false,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: {
+        videos: {
+          min: 1,
+          max: 1,
+          constraints: {
+            mimeTypes: ["video/mp4", "video/quicktime", "video/x-msvideo"],
+            fileExtensions: ["mp4", "mov", "avi"]
+          }
+        }
+      },
+      promptModalities: ["video"]
     }
   }
 ];
@@ -18109,8 +18180,8 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ],
   [
     "seedance-2-startend",
-    "volcengine",
-    "volcengine",
+    "volcengine-modelark",
+    "volcengine-modelark",
     "modelark",
     "doubao-seedance-2-0-260128",
     9,
@@ -18126,8 +18197,8 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ],
   [
     "seedance-2-ref",
-    "volcengine",
-    "volcengine",
+    "volcengine-modelark",
+    "volcengine-modelark",
     "modelark",
     "doubao-seedance-2-0-260128",
     9,
@@ -18155,8 +18226,8 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ],
   [
     "seedance-2-extend",
-    "volcengine",
-    "volcengine",
+    "volcengine-modelark",
+    "volcengine-modelark",
     "modelark",
     "doubao-seedance-2-0-260128",
     9,
@@ -18174,8 +18245,8 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ],
   [
     "seedance-2.5-ref",
-    "volcengine",
-    "volcengine",
+    "volcengine-modelark",
+    "volcengine-modelark",
     "modelark",
     "doubao-seedance-2-5-260628",
     9,
@@ -18202,8 +18273,8 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ],
   [
     "seedance-2.5-startend",
-    "volcengine",
-    "volcengine",
+    "volcengine-modelark",
+    "volcengine-modelark",
     "modelark",
     "doubao-seedance-2-5-260628",
     9,
@@ -18221,8 +18292,8 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ],
   [
     "seedance-2.5-extend",
-    "volcengine",
-    "volcengine",
+    "volcengine-modelark",
+    "volcengine-modelark",
     "modelark",
     "doubao-seedance-2-5-260628",
     9,
@@ -18487,6 +18558,461 @@ var MOCK_MODEL_CARDS = z.array(ModelCardSchema).parse([
     ]
   }
 ]);
+var nonEmptyIdSchema = z.string().trim().min(1);
+var prefixedSha256Schema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+var jsonObjectSchema = z.record(ExecutablePluginJsonValueSchema);
+var GeneratorMediaKindSchema = AssetKindSchema;
+var GeneratorEditPolicySchema = z.enum([
+  "advance-head",
+  "fork-when-materialized"
+]);
+var MediaAssetRevisionRefSchema = z.object({
+  kind: z.literal("media"),
+  projectAssetId: nonEmptyIdSchema
+}).strict();
+var DocumentAssetRevisionRefSchema = z.object({
+  kind: z.literal("document"),
+  documentAssetId: nonEmptyIdSchema,
+  revisionId: nonEmptyIdSchema
+}).strict();
+var AssetRevisionRefSchema = z.discriminatedUnion("kind", [
+  MediaAssetRevisionRefSchema,
+  DocumentAssetRevisionRefSchema
+]);
+var GeneratorRevisionRefSchema = z.object({
+  generatorId: nonEmptyIdSchema,
+  generatorRevisionId: nonEmptyIdSchema
+}).strict();
+var GeneratorInputTargetSchema = z.union([
+  AssetRevisionRefSchema,
+  GeneratorRevisionRefSchema
+]);
+var GeneratorInputRefSchema = z.object({
+  slot: nonEmptyIdSchema,
+  itemKey: nonEmptyIdSchema.optional(),
+  target: GeneratorInputTargetSchema
+}).strict();
+var GeneratorDefinitionRefSchema = z.object({
+  pluginId: pluginIdSchema,
+  definitionId: nonEmptyIdSchema,
+  version: nonEmptyIdSchema,
+  schemaHash: prefixedSha256Schema
+}).strict();
+var GeneratorExecutorRefSchema = z.object({
+  pluginId: pluginIdSchema,
+  version: nonEmptyIdSchema,
+  exportId: nonEmptyIdSchema,
+  schemaHash: prefixedSha256Schema
+}).strict();
+var GeneratorMediaAssetTypeSchema = z.object({
+  kind: z.literal("media"),
+  mediaKind: AssetKindSchema
+}).strict();
+var GeneratorDocumentAssetTypeSchema = z.object({
+  kind: z.literal("document"),
+  documentKind: nonEmptyIdSchema,
+  schemaVersion: z.number().int().positive()
+}).strict();
+var GeneratorAssetTypeSchema = z.discriminatedUnion("kind", [
+  GeneratorMediaAssetTypeSchema,
+  GeneratorDocumentAssetTypeSchema
+]);
+var GeneratorInputCardinalitySchema = z.object({
+  minItems: z.number().int().nonnegative(),
+  maxItems: z.number().int().positive().nullable()
+}).strict().superRefine(({ minItems, maxItems }, context) => {
+  if (maxItems !== null && maxItems < minItems) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["maxItems"],
+      message: "maxItems must be greater than or equal to minItems."
+    });
+  }
+});
+var GeneratorFamilyInputTypeSchema = z.object({
+  kind: z.literal("generator"),
+  pluginId: pluginIdSchema,
+  definitionId: nonEmptyIdSchema
+}).strict();
+var GeneratorInputTypeSchema = z.discriminatedUnion("kind", [
+  GeneratorMediaAssetTypeSchema,
+  GeneratorDocumentAssetTypeSchema,
+  GeneratorFamilyInputTypeSchema
+]);
+var GeneratorInputPortSchema = z.object({
+  slot: nonEmptyIdSchema,
+  accepts: z.array(GeneratorInputTypeSchema).min(1),
+  cardinality: GeneratorInputCardinalitySchema
+}).strict();
+var GeneratorActionInputPortSchema = GeneratorInputPortSchema;
+var GeneratorActionOutputCardinalitySchema = GeneratorInputCardinalitySchema;
+var GeneratorActionOutputPortSchema = z.object({
+  slot: nonEmptyIdSchema,
+  assetType: GeneratorAssetTypeSchema,
+  cardinality: GeneratorActionOutputCardinalitySchema,
+  /** Human label and prompt contract owned by the plugin declaration. */
+  title: nonEmptyIdSchema.optional(),
+  sourceMediaKinds: z.array(GeneratorMediaKindSchema).min(1).optional(),
+  prompt: nonEmptyIdSchema.optional(),
+  promptVersion: nonEmptyIdSchema.optional()
+}).strict();
+var GeneratorActionOutputContractSchema = z.array(GeneratorActionOutputPortSchema).min(1).superRefine((outputs, context) => {
+  const slots = /* @__PURE__ */ new Set();
+  outputs.forEach((output, index) => {
+    if (slots.has(output.slot)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [index, "slot"],
+        message: `Duplicate Generator Action output slot: ${output.slot}`
+      });
+    }
+    slots.add(output.slot);
+    if (output.cardinality.maxItems !== 1 || output.cardinality.minItems !== 0 && output.cardinality.minItems !== 1) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [index, "cardinality"],
+        message: "The current Generator Action profile requires singular 0..1 or 1..1 output slots."
+      });
+    }
+  });
+});
+var GeneratorActionDefinitionSchema = z.object({
+  id: nonEmptyIdSchema,
+  executorExportId: nonEmptyIdSchema,
+  parametersSchema: jsonObjectSchema,
+  selectOutputsByParameter: nonEmptyIdSchema.optional(),
+  /** Provider-independent model consumption contract resolved by the Host. */
+  modelConsumer: z.object({
+    semanticShape: z.string().trim().regex(/^[a-z][a-z0-9_]*$/),
+    sourceInputSlot: nonEmptyIdSchema
+  }).strict().optional(),
+  invocationInputs: z.array(GeneratorActionInputPortSchema),
+  outputs: GeneratorActionOutputContractSchema
+}).strict().superRefine(({ invocationInputs, modelConsumer }, context) => {
+  const seen = /* @__PURE__ */ new Set();
+  invocationInputs.forEach((input, index) => {
+    if (seen.has(input.slot)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["invocationInputs", index, "slot"],
+        message: `Duplicate Generator Action input slot: ${input.slot}`
+      });
+    }
+    seen.add(input.slot);
+  });
+  if (modelConsumer && !invocationInputs.some((input) => input.slot === modelConsumer.sourceInputSlot)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["modelConsumer", "sourceInputSlot"],
+      message: `Model consumer source slot ${modelConsumer.sourceInputSlot} is not declared.`
+    });
+  }
+});
+var GENERATOR_PROJECTION_SURFACE_IDS = [
+  "clash.timeline",
+  "clash.director-stage"
+];
+var GeneratorProjectionSurfaceIdSchema = z.enum(
+  GENERATOR_PROJECTION_SURFACE_IDS
+);
+var GeneratorProjectionSurfaceSchema = z.object({
+  id: GeneratorProjectionSurfaceIdSchema,
+  /** Generator state key holding the legacy editable document. */
+  stateKey: nonEmptyIdSchema,
+  /** Persistent input slot that receives the legacy document's media items. */
+  mediaInputSlot: nonEmptyIdSchema.optional(),
+  /** Action the legacy render/capture entrypoint submits. */
+  primaryActionId: nonEmptyIdSchema
+}).strict();
+var generatorDefinitionSpecShape = {
+  definitionId: nonEmptyIdSchema,
+  stateSchema: jsonObjectSchema,
+  editPolicy: GeneratorEditPolicySchema,
+  persistentInputs: z.array(GeneratorInputPortSchema),
+  actions: z.array(GeneratorActionDefinitionSchema).min(1),
+  projectionSurface: GeneratorProjectionSurfaceSchema.optional()
+};
+function validateGeneratorDefinitionSpec(input, context) {
+  const persistentSlots = /* @__PURE__ */ new Set();
+  input.persistentInputs.forEach((persistentInput, index) => {
+    if (persistentSlots.has(persistentInput.slot)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["persistentInputs", index, "slot"],
+        message: `Duplicate Generator persistent input slot: ${persistentInput.slot}`
+      });
+    }
+    persistentSlots.add(persistentInput.slot);
+  });
+  const actionIds = /* @__PURE__ */ new Set();
+  input.actions.forEach((action, index) => {
+    if (actionIds.has(action.id)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["actions", index, "id"],
+        message: `Duplicate Generator action id: ${action.id}`
+      });
+    }
+    actionIds.add(action.id);
+  });
+  const surface = input.projectionSurface;
+  if (!surface) return;
+  if (!actionIds.has(surface.primaryActionId)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["projectionSurface", "primaryActionId"],
+      message: `Projection surface ${surface.id} names undefined Action ${surface.primaryActionId}.`
+    });
+  }
+  if (surface.mediaInputSlot && !persistentSlots.has(surface.mediaInputSlot)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["projectionSurface", "mediaInputSlot"],
+      message: `Projection surface ${surface.id} names undeclared persistent input slot ${surface.mediaInputSlot}.`
+    });
+  }
+}
+var GeneratorDefinitionSpecSchema = z.object(generatorDefinitionSpecShape).strict().superRefine(validateGeneratorDefinitionSpec);
+var GeneratorDefinitionSchema = GeneratorDefinitionRefSchema.extend({
+  stateSchema: generatorDefinitionSpecShape.stateSchema,
+  editPolicy: generatorDefinitionSpecShape.editPolicy,
+  persistentInputs: generatorDefinitionSpecShape.persistentInputs,
+  actions: generatorDefinitionSpecShape.actions,
+  projectionSurface: generatorDefinitionSpecShape.projectionSurface
+}).strict().superRefine(validateGeneratorDefinitionSpec);
+var ProjectGeneratorHeadSchema = z.object({
+  id: nonEmptyIdSchema,
+  headRevisionId: nonEmptyIdSchema
+}).strict();
+var ProjectGeneratorSchema = ProjectGeneratorHeadSchema.extend({
+  definitionRef: GeneratorDefinitionRefSchema
+}).strict();
+var GeneratorRevisionSchema = z.object({
+  id: nonEmptyIdSchema,
+  generatorId: nonEmptyIdSchema,
+  definitionRef: GeneratorDefinitionRefSchema,
+  parentRevisionId: nonEmptyIdSchema.optional(),
+  forkedFrom: GeneratorRevisionRefSchema.optional(),
+  state: jsonObjectSchema,
+  persistentInputRefs: z.array(GeneratorInputRefSchema)
+}).strict().superRefine(({ generatorId, forkedFrom }, context) => {
+  if (forkedFrom?.generatorId === generatorId) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["forkedFrom", "generatorId"],
+      message: "Same-Generator ancestry belongs in parentRevisionId, not forkedFrom."
+    });
+  }
+});
+var ActionRunStatusSchema = z.enum([
+  "pending",
+  "running",
+  "succeeded",
+  "failed"
+]);
+var ActionRunModelRouteSchema = z.object({
+  providerId: nonEmptyIdSchema.optional(),
+  accountId: nonEmptyIdSchema.optional(),
+  region: nonEmptyIdSchema.optional(),
+  upstreamId: nonEmptyIdSchema,
+  upstreamModel: nonEmptyIdSchema,
+  apiShape: nonEmptyIdSchema,
+  executorPluginId: pluginIdSchema.optional(),
+  executorExportId: nonEmptyIdSchema.optional(),
+  /**
+   * The exact Provider executor plugin/version/export the Host resolved and pinned at
+   * selection time. A generic model-consumer Generator Action must dispatch to, and later
+   * accept a staged media receipt from, only this exact frozen binding -- never a version the
+   * Host happens to resolve fresh when the durable run later submits or polls.
+   */
+  executorBinding: z.object({
+    pluginId: pluginIdSchema,
+    version: z.string().trim().min(1),
+    exportId: nonEmptyIdSchema,
+    schemaHash: prefixedSha256Schema
+  }).strict().optional(),
+  /** Delivery declaration copied from the exact selected Provider route, frozen at selection. */
+  assetInputs: z.array(ProviderAssetInputSchema).optional()
+}).strict().superRefine((route, ctx) => {
+  if (!route.executorBinding) return;
+  if (route.executorPluginId && route.executorBinding.pluginId !== route.executorPluginId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `executorBinding.pluginId (${route.executorBinding.pluginId}) does not match executorPluginId (${route.executorPluginId}).`,
+      path: ["executorBinding", "pluginId"]
+    });
+  }
+  if (route.executorExportId && route.executorBinding.exportId !== route.executorExportId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `executorBinding.exportId (${route.executorBinding.exportId}) does not match executorExportId (${route.executorExportId}).`,
+      path: ["executorBinding", "exportId"]
+    });
+  }
+});
+var ActionRunModelSelectionSchema = z.object({
+  semanticShape: z.string().trim().regex(/^[a-z][a-z0-9_]*$/),
+  modelId: nonEmptyIdSchema,
+  route: ActionRunModelRouteSchema
+}).strict();
+var ActionRunRequestSchema = z.object({
+  actionRunId: nonEmptyIdSchema,
+  generatorRevision: GeneratorRevisionRefSchema,
+  actionId: nonEmptyIdSchema,
+  executor: GeneratorExecutorRefSchema,
+  invocationFingerprint: prefixedSha256Schema,
+  parameters: jsonObjectSchema,
+  modelSelection: ActionRunModelSelectionSchema.optional(),
+  invocationInputRefs: z.array(GeneratorInputRefSchema),
+  outputContract: GeneratorActionOutputContractSchema
+}).strict();
+var ActionRunOutcomeSchema = z.object({
+  actionRunId: nonEmptyIdSchema,
+  status: z.enum(["succeeded", "failed"])
+}).strict();
+var ProjectActionRunSchema = ActionRunRequestSchema.extend({
+  status: ActionRunStatusSchema
+}).strict();
+var OutputCommitSchema = z.object({
+  actionRunId: nonEmptyIdSchema,
+  outputSlot: nonEmptyIdSchema,
+  itemKey: nonEmptyIdSchema.optional(),
+  asset: AssetRevisionRefSchema
+}).strict();
+var sha256Schema = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
+var idSchema = z.string().trim().min(1);
+var MediaAnalysisCategorySchema = z.enum([
+  "description",
+  "tags",
+  "subjects",
+  "actions-events",
+  "scene-shot",
+  "style",
+  "ocr",
+  "audio-semantics"
+]);
+var sourceSchema = z.object({
+  projectAssetId: idSchema,
+  resourceHash: sha256Schema,
+  kind: AssetKindSchema.exclude(["model"])
+}).strict();
+function analysisBody(category, result) {
+  return z.object({
+    schemaVersion: z.literal(1),
+    source: sourceSchema,
+    modelId: idSchema,
+    provider: idSchema,
+    route: idSchema,
+    underlyingModel: idSchema,
+    category: z.literal(category),
+    promptVersion: idSchema,
+    generatorRevisionId: idSchema,
+    actionRunId: idSchema,
+    resultHash: sha256Schema,
+    bodyHash: sha256Schema,
+    result
+  }).strict();
+}
+var description = analysisBody(
+  "description",
+  z.object({ text: idSchema, language: idSchema.optional() }).strict()
+);
+var tags = analysisBody(
+  "tags",
+  z.object({ tags: z.array(idSchema) }).strict()
+);
+var subjects = analysisBody(
+  "subjects",
+  z.object({
+    items: z.array(
+      z.object({
+        type: idSchema,
+        name: idSchema,
+        description: idSchema.optional()
+      }).strict()
+    )
+  }).strict()
+);
+var actionsEvents = analysisBody(
+  "actions-events",
+  z.object({
+    items: z.array(
+      z.object({
+        label: idSchema,
+        description: idSchema.optional(),
+        startMs: z.number().int().nonnegative().optional(),
+        endMs: z.number().int().positive().optional()
+      }).strict()
+    )
+  }).strict()
+);
+var sceneShot = analysisBody(
+  "scene-shot",
+  z.object({
+    scenes: z.array(
+      z.object({
+        description: idSchema,
+        shotType: idSchema.optional(),
+        startMs: z.number().int().nonnegative().optional(),
+        endMs: z.number().int().positive().optional()
+      }).strict()
+    )
+  }).strict()
+);
+var style = analysisBody(
+  "style",
+  z.object({
+    summary: idSchema,
+    mood: z.array(idSchema).optional(),
+    composition: z.array(idSchema).optional()
+  }).strict()
+);
+var ocr = analysisBody(
+  "ocr",
+  z.object({
+    items: z.array(
+      z.object({
+        text: idSchema,
+        language: idSchema.optional(),
+        startMs: z.number().int().nonnegative().optional(),
+        endMs: z.number().int().positive().optional()
+      }).strict()
+    )
+  }).strict()
+);
+var audioSemantics = analysisBody(
+  "audio-semantics",
+  z.object({
+    summary: idSchema,
+    speechSummary: idSchema.optional(),
+    music: z.array(idSchema).optional(),
+    sounds: z.array(idSchema).optional()
+  }).strict()
+);
+var MediaAnalysisDocumentSchemas = {
+  description,
+  tags,
+  subjects,
+  "actions-events": actionsEvents,
+  "scene-shot": sceneShot,
+  style,
+  ocr,
+  "audio-semantics": audioSemantics
+};
+var MEDIA_ANALYSIS_DOCUMENT_KIND_BY_CATEGORY = {
+  description: "media.analysis.description",
+  tags: "media.analysis.tags",
+  subjects: "media.analysis.subjects",
+  "actions-events": "media.analysis.actions-events",
+  "scene-shot": "media.analysis.scene-shot",
+  style: "media.analysis.style",
+  ocr: "media.analysis.ocr",
+  "audio-semantics": "media.analysis.audio-semantics"
+};
+var AspectRatioSchema = z.object({
+  width: z.number().int().positive(),
+  height: z.number().int().positive()
+}).strict();
 var PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 var SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 var SHA256_PATTERN = /^sha256:[0-9a-f]{64}$/;
@@ -19136,6 +19662,70 @@ var ExecutablePluginResultSchema = z.discriminatedUnion("status", [
     error: ExecutablePluginFailureErrorSchema
   }).strict()
 ]);
+var ExecutableMediaAnalysisReferenceSchema = ExecutablePluginReferenceBaseSchema.extend({
+  asset: ExecutablePluginAssetHandleObjectSchema.extend({
+    kind: z.enum(["image", "video", "audio"])
+  }).strict()
+}).strict();
+var ExecutableMediaAnalysisOperationSchema = z.object({
+  kind: z.literal("media.analyze"),
+  reference: ExecutableMediaAnalysisReferenceSchema,
+  modelId: z.string().trim().min(1),
+  category: z.string().trim().min(1),
+  prompt: z.string().trim().min(1),
+  promptVersion: z.string().trim().min(1)
+}).strict();
+var ExecutableMediaAnalysisResultSchema = z.discriminatedUnion(
+  "status",
+  [
+    z.object({
+      status: z.literal("completed"),
+      provider: z.string().trim().min(1),
+      route: z.string().trim().min(1),
+      underlyingModel: z.string().trim().min(1),
+      result: ExecutablePluginJsonValueSchema
+    }).strict(),
+    z.object({
+      status: z.literal("accepted"),
+      poll: ExecutablePluginJsonValueSchema,
+      retryAfterMs: z.number().int().positive().optional()
+    }).strict()
+  ]
+);
+var ExecutableVideoEnhanceReferenceSchema = ExecutablePluginReferenceBaseSchema.extend({
+  asset: ExecutablePluginAssetHandleObjectSchema.extend({
+    kind: z.literal("video")
+  }).strict()
+}).strict();
+var ExecutableVideoEnhanceOperationSchema = z.object({
+  kind: z.literal("video.enhance"),
+  reference: ExecutableVideoEnhanceReferenceSchema,
+  modelId: z.string().trim().min(1),
+  params: ExecutablePluginJsonValueSchema,
+  /** Present only when resuming Host-owned asynchronous enhancement work. */
+  poll: ExecutablePluginJsonValueSchema.optional()
+}).strict();
+var ExecutableVideoEnhanceResultSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("completed"),
+    provider: z.string().trim().min(1),
+    route: z.string().trim().min(1),
+    underlyingModel: z.string().trim().min(1),
+    /**
+     * A Host staging receipt from the Provider implementation's own single upload -- not yet
+     * a published, immutable Project Asset. Publication requires the Host to verify this
+     * receipt's plugin/version/account/slot/task against the frozen Run authority first.
+     */
+    asset: ExecutablePluginAssetHandleObjectSchema.extend({
+      kind: z.literal("video")
+    }).strict()
+  }).strict(),
+  z.object({
+    status: z.literal("accepted"),
+    poll: ExecutablePluginJsonValueSchema,
+    retryAfterMs: z.number().int().positive().optional()
+  }).strict()
+]);
 var ExecutableSpeechTranscriptionOperationSchema = z.object({
   kind: z.literal("speech.transcribe"),
   reference: ExecutableSpeechTranscriptionReferenceSchema,
@@ -19158,7 +19748,32 @@ var ExecutableSpeechTranscriptionResultSchema = z.discriminatedUnion(
     }).strict()
   ]
 );
+var ExecutableDirectorStageCaptureOperationSchema = z.object({
+  kind: z.literal("director.stage.capture-frame"),
+  stage: z.object({
+    name: z.string(),
+    owner: z.union([
+      z.object({ kind: z.literal("project") }).strict(),
+      z.object({ kind: z.literal("canvas-action"), canvasId: z.string().min(1), actionNodeId: z.string().min(1) }).strict()
+    ]),
+    state: ExecutablePluginJsonValueSchema.refine(
+      (value) => value !== null && typeof value === "object" && !Array.isArray(value),
+      "Director Stage state must be an object."
+    )
+  }).strict(),
+  label: z.string().trim().min(1),
+  timeSeconds: z.number().finite().nonnegative(),
+  aspectRatio: z.enum(["16:9", "9:16", "4:3", "3:4", "1:1"]),
+  longEdge: z.number().int().min(256).max(4096)
+}).strict();
+var ExecutableDirectorStageCaptureResultSchema = z.object({
+  mediaType: z.literal("image/png"),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  bytesBase64: z.string().min(1)
+}).strict();
 var ExecutablePluginBrokerOperationSchema = z.union([
+  ExecutableDirectorStageCaptureOperationSchema,
   z.object({
     kind: z.literal("asset.resolve"),
     reference: ExecutablePluginReferenceSchema
@@ -19276,7 +19891,9 @@ var ExecutablePluginBrokerOperationSchema = z.union([
       }).strict()
     ).max(5).default([])
   }).strict(),
-  ExecutableSpeechTranscriptionOperationSchema
+  ExecutableSpeechTranscriptionOperationSchema,
+  ExecutableMediaAnalysisOperationSchema,
+  ExecutableVideoEnhanceOperationSchema
 ]);
 var ExecutablePluginBrokerRequestSchema = z.object({
   protocol: z.literal("clash.plugin.broker-request/v1"),
@@ -19371,7 +19988,7 @@ var ExecutablePluginContributionsSchema = z.object({
   modelBindings: z.array(ExecutablePluginModelBindingExportSchema).default([]),
   generators: z.array(ExecutablePluginGeneratorExportSchema).default([]),
   functions: z.array(ExecutablePluginFunctionExportSchema).default([]),
-  hostTools: z.array(z.enum(["codex.imagegen", "speech.transcribe"])).default([])
+  hostTools: z.array(z.enum(["codex.imagegen", "speech.transcribe", "media.analyze", "director.stage.capture-frame", "video.enhance"])).default([])
 }).strict();
 var ExecutablePluginManifestSchema = z.object({
   apiVersion: z.literal("clash.plugin/v1"),
@@ -21099,16 +21716,16 @@ function timelineDslAnnotatedObjectShape(fields, options = {}) {
     })
   );
 }
-function field(schema, description, options) {
+function field(schema, description2, options) {
   return {
     schema,
-    description,
+    description: description2,
     ...options,
     authoredRequired: options.authoredRequired ?? options.required
   };
 }
-var authored = (schema, description, options) => field(schema, description, { ...options, authored: true });
-var derived = (schema, description, options) => field(schema, description, { ...options, authored: false });
+var authored = (schema, description2, options) => field(schema, description2, { ...options, authored: true });
+var derived = (schema, description2, options) => field(schema, description2, { ...options, authored: false });
 var TIMELINE_DSL_ITEM_TYPES = [
   "video",
   "audio",
@@ -23170,7 +23787,7 @@ var TrackUpdatesSchema = z.object(
   (updates) => Object.keys(updates).length > 0,
   "At least one track field must be updated."
 );
-function editorAction(id2, inputSchema, description, preconditions = ["A Timeline editor draft is loaded."]) {
+function editorAction(id2, inputSchema, description2, preconditions = ["A Timeline editor draft is loaded."]) {
   return annotation({
     id: id2,
     kind: "editor-action",
@@ -23181,7 +23798,7 @@ function editorAction(id2, inputSchema, description, preconditions = ["A Timelin
     cas: "none",
     readProof: "none",
     preconditions,
-    description,
+    description: description2,
     runtimeConsumers: ["remotion-core", "remotion-ui", "editor-history"],
     public: true,
     agentCallable: false
@@ -24324,39 +24941,39 @@ import { LoroMap as LoroMap6 } from "loro-crdt";
 import { LoroMap as LoroMap4 } from "loro-crdt";
 import { LoroMap as LoroMap5 } from "loro-crdt";
 import { LoroDoc } from "loro-crdt";
-var idSchema = z.string().trim().min(1);
-var sha256Schema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+var idSchema2 = z.string().trim().min(1);
+var sha256Schema2 = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 var DocumentAssetMutabilitySchema = z.enum(["immutable", "versioned"]);
 var DocumentBodyRefSchema = z.object({
-  digest: sha256Schema,
+  digest: sha256Schema2,
   byteLength: z.number().int().nonnegative(),
   contentType: z.string().trim().min(1)
 }).strict();
 var DocumentRevisionProducerSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("action-run"),
-    actionRunId: idSchema
+    actionRunId: idSchema2
   }).strict(),
   z.object({
     kind: z.literal("actor"),
     actor: z.object({
       kind: z.enum(["user", "agent"]),
-      id: idSchema.optional()
+      id: idSchema2.optional()
     }).strict()
   }).strict(),
   z.object({
     kind: z.literal("migration"),
-    source: idSchema
+    source: idSchema2
   }).strict()
 ]);
 var DocumentRevisionSourceRefSchema = GeneratorInputRefSchema;
 var DocumentAssetRevisionSchema = z.object({
-  id: idSchema,
-  documentAssetId: idSchema,
-  documentKind: idSchema,
+  id: idSchema2,
+  documentAssetId: idSchema2,
+  documentKind: idSchema2,
   schemaVersion: z.number().int().positive(),
   mutability: DocumentAssetMutabilitySchema,
-  parentRevisionId: idSchema.optional(),
+  parentRevisionId: idSchema2.optional(),
   forkedFrom: DocumentAssetRevisionRefSchema.optional(),
   body: DocumentBodyRefSchema,
   producer: DocumentRevisionProducerSchema,
@@ -24371,34 +24988,34 @@ var DocumentAssetRevisionSchema = z.object({
   }
 });
 var ProjectDocumentAssetHeadSchema = z.object({
-  id: idSchema,
-  headRevisionId: idSchema
+  id: idSchema2,
+  headRevisionId: idSchema2
 }).strict();
 var ProjectDocumentAssetSchema = ProjectDocumentAssetHeadSchema.extend(
   {
-    documentKind: idSchema,
+    documentKind: idSchema2,
     mutability: DocumentAssetMutabilitySchema
   }
 ).strict();
 var DocumentAttachmentTargetSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("project-asset"),
-    projectAssetId: idSchema
+    projectAssetId: idSchema2
   }).strict(),
   z.object({
     kind: z.literal("generator-revision"),
-    generatorId: idSchema,
-    generatorRevisionId: idSchema
+    generatorId: idSchema2,
+    generatorRevisionId: idSchema2
   }).strict(),
   z.object({
     kind: z.literal("action-run"),
-    actionRunId: idSchema
+    actionRunId: idSchema2
   }).strict()
 ]);
 var DocumentAttachmentSchema = z.object({
-  id: idSchema,
+  id: idSchema2,
   target: DocumentAttachmentTargetSchema,
-  slot: idSchema,
+  slot: idSchema2,
   document: DocumentAssetRevisionRefSchema
 }).strict();
 var MediaTranscriptMetadataSchema = z.object({
@@ -24493,13 +25110,13 @@ registerAssetMetadataKind({
   kind: "media.render-lineage",
   schema: MediaRenderLineageMetadataSchema
 });
-var idSchema2 = z.string().trim().min(1);
+var idSchema22 = z.string().trim().min(1);
 var DocumentProjectionContractSchema = z.object({
   format: z.enum(["json", "text"]),
   editable: z.boolean()
 }).strict();
 var DocumentKindDefinitionSchema = z.object({
-  kind: idSchema2,
+  kind: idSchema22,
   schemaVersion: z.number().int().positive(),
   mutability: DocumentAssetMutabilitySchema,
   projection: DocumentProjectionContractSchema,
@@ -24507,7 +25124,7 @@ var DocumentKindDefinitionSchema = z.object({
     message: "Document attachment target declarations must be unique."
   }),
   /** Empty means storage/projection support only; it grants no product semantics. */
-  productConsumers: z.array(idSchema2).refine((values) => new Set(values).size === values.length, {
+  productConsumers: z.array(idSchema22).refine((values) => new Set(values).size === values.length, {
     message: "Document product consumer declarations must be unique."
   })
 }).strict();
@@ -24575,6 +25192,23 @@ registerDocumentKind({
   },
   schema: MediaRenderLineageMetadataSchema
 });
+for (const category of MediaAnalysisCategorySchema.options) {
+  registerDocumentKind({
+    definition: {
+      kind: MEDIA_ANALYSIS_DOCUMENT_KIND_BY_CATEGORY[category],
+      schemaVersion: 1,
+      mutability: "versioned",
+      projection: { format: "json", editable: false },
+      allowedAttachmentTargets: [
+        "project-asset",
+        "generator-revision",
+        "action-run"
+      ],
+      productConsumers: ["search", "agent-context"]
+    },
+    schema: MediaAnalysisDocumentSchemas[category]
+  });
+}
 var LegacyLinkedProjectAssetSourceSchema = z.object({
   kind: z.literal("linked"),
   resourceId: z.string().trim().min(1),
@@ -24679,6 +25313,55 @@ var DirectorReferencePacketSchema = z.object({
     shots: z.array(DirectorReferenceShotSchema)
   })
 });
+var MEDIA_REFERENCE_FIELDS = [
+  {
+    modality: "image",
+    pendingField: "referenceImageAssetIds",
+    partitionField: "imageAssetIds",
+    label: "Reference image",
+    pluralNoun: "images",
+    countNoun: "images"
+  },
+  {
+    modality: "video",
+    pendingField: "referenceVideoAssetIds",
+    partitionField: "videoAssetIds",
+    label: "Reference video",
+    pluralNoun: "videos",
+    countNoun: "video(s)"
+  },
+  {
+    modality: "audio",
+    pendingField: "referenceAudioAssetIds",
+    partitionField: "audioAssetIds",
+    label: "Reference audio",
+    pluralNoun: "audio",
+    countNoun: "audio clip(s)"
+  },
+  {
+    modality: "model",
+    pendingField: "referenceModelAssetIds",
+    partitionField: "modelAssetIds",
+    label: "Reference model",
+    pluralNoun: "models",
+    countNoun: "model(s)"
+  }
+];
+var MEDIA_REFERENCE_MODALITIES = MEDIA_REFERENCE_FIELDS.map((field3) => field3.modality);
+var MEDIA_REFERENCE_FIELD_BY_MODALITY = Object.fromEntries(
+  MEDIA_REFERENCE_FIELDS.map(
+    (field3) => [
+      field3.modality,
+      field3
+    ]
+  )
+);
+var MEDIA_REFERENCE_PLURAL_NOUN = Object.fromEntries(
+  MEDIA_REFERENCE_FIELDS.map((field3) => [field3.modality, field3.pluralNoun])
+);
+var MEDIA_REFERENCE_COUNT_NOUN = Object.fromEntries(
+  MEDIA_REFERENCE_FIELDS.map((field3) => [field3.modality, field3.countNoun])
+);
 var ActionFamilySchema = z.enum(["generate", "edit", "custom"]);
 var ActionExecutorSchema = z.enum([
   "model",
@@ -24798,6 +25481,8 @@ var RF_NODE_TYPE = {
   Video: "video",
   /** Audio asset (completed generation or upload) */
   Audio: "audio",
+  /** 3D model asset (completed generation or upload) */
+  Model: "model",
   /** Agent-authored Remotion TSX component with live Canvas/Timeline preview */
   RemotionComponent: "remotion-component",
   /** Generation node — renders as ActionBadge */
@@ -24808,6 +25493,8 @@ var ACTION_TYPE = {
   VideoGen: "video-gen",
   AudioGen: "audio-gen",
   TextGen: "text-gen",
+  /** 3D model generation (mesh generation, auto-rig, etc.) */
+  ModelGen: "model-gen",
   /** Custom actions provided by local agents. Full actionType: "custom:<action-id>" */
   Custom: "custom"
 };
@@ -24817,11 +25504,13 @@ var AGENT_NODE_TYPE_MAP = {
   image: { rfType: RF_NODE_TYPE.Image },
   video: { rfType: RF_NODE_TYPE.Video },
   audio: { rfType: RF_NODE_TYPE.Audio },
+  model: { rfType: RF_NODE_TYPE.Model },
   remotion: { rfType: RF_NODE_TYPE.RemotionComponent },
   image_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.ImageGen },
   video_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.VideoGen },
   audio_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.AudioGen },
-  text_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.TextGen }
+  text_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.TextGen },
+  model_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.ModelGen }
 };
 var NodeStatusSchema = z.enum([
   "idle",
@@ -24962,14 +25651,16 @@ var NodeType = {
   Image: "image",
   Video: "video",
   Audio: "audio",
+  Model: "model",
   ImageGen: "image_gen",
   VideoGen: "video_gen",
   AudioGen: "audio_gen",
-  TextGen: "text_gen"
+  TextGen: "text_gen",
+  ModelGen: "model_gen"
 };
 var ALL_NODE_TYPES = Object.values(NodeType);
 var CONTENT_NODE_TYPES = [NodeType.Text, NodeType.Group];
-var GENERATION_NODE_TYPES = [NodeType.ImageGen, NodeType.VideoGen, NodeType.AudioGen, NodeType.TextGen];
+var GENERATION_NODE_TYPES = [NodeType.ImageGen, NodeType.VideoGen, NodeType.AudioGen, NodeType.TextGen, NodeType.ModelGen];
 var CustomActionParameterSchema = ModelParameterSchema;
 var CustomActionSecretSchema = z.object({
   id: z.string(),
@@ -25237,8 +25928,51 @@ var AgentAnnotationSurfaceSchema = z.enum([
   "timeline",
   "director-stage",
   // Project assets annotated from the workspace sidebar / asset views.
-  "asset"
+  "asset",
+  // A page or element selected in the desktop project's in-app browser.
+  "browser"
 ]);
+var AgentAnnotationBrowserRectSchema = z.object({
+  x: z.number().finite().min(0),
+  y: z.number().finite().min(0),
+  width: z.number().finite().positive(),
+  height: z.number().finite().positive()
+});
+var AgentAnnotationBrowserViewportSchema = z.object({
+  width: z.number().finite().positive(),
+  height: z.number().finite().positive(),
+  devicePixelRatio: z.number().finite().positive()
+});
+var AgentAnnotationBrowserContextSchema = z.discriminatedUnion(
+  "kind",
+  [
+    z.object({
+      kind: z.literal("element"),
+      url: z.string().url(),
+      title: z.string().max(300),
+      selector: z.string().trim().min(1).max(2048),
+      domPath: z.string().max(2048).optional(),
+      tagName: z.string().trim().min(1).max(120),
+      id: z.string().max(200).optional(),
+      classNames: z.array(z.string().max(120)).max(16).optional(),
+      role: z.string().max(120).optional(),
+      ariaLabel: z.string().max(300).optional(),
+      text: z.string().max(1200).optional(),
+      attributes: z.record(z.string(), z.string()).optional(),
+      outerHtml: z.string().max(4e3).optional(),
+      computedStyles: z.record(z.string(), z.string()).optional(),
+      rect: AgentAnnotationBrowserRectSchema,
+      viewport: AgentAnnotationBrowserViewportSchema
+    }),
+    z.object({
+      kind: z.literal("region"),
+      url: z.string().url(),
+      title: z.string().max(300),
+      rect: AgentAnnotationBrowserRectSchema,
+      viewport: AgentAnnotationBrowserViewportSchema
+    })
+  ]
+);
 var AgentAnnotationVisualRectSchema = z.object({
   x: z.number().finite().min(0).max(1),
   y: z.number().finite().min(0).max(1),
@@ -25265,6 +25999,8 @@ var AgentAnnotationTargetSchema = z.object({
   objectPath: z.string().trim().min(1),
   capabilities: z.array(z.enum(["read", "modify"])).min(1),
   selection: AgentAnnotationSelectionSchema.optional(),
+  /** Backchat-compatible page context for a browser element or region. */
+  browser: AgentAnnotationBrowserContextSchema.optional(),
   /** Asset backing the annotated object, when it has one — lets chat surfaces show a media preview. */
   previewAssetId: z.string().trim().min(1).optional()
 });
@@ -26353,6 +27089,18 @@ function applyDirectorStageCommand(state, command2) {
   }
   return { ok: true, state: validated.data };
 }
+var EnvelopeSchema = z.object({
+  name: z.string(),
+  owner: z.union([
+    z.object({ kind: z.literal("project") }).strict(),
+    z.object({
+      kind: z.literal("canvas-action"),
+      canvasId: z.string().min(1),
+      actionNodeId: z.string().min(1)
+    }).strict()
+  ]),
+  state: DirectorStageStateSchema
+}).strict();
 var id = z.string().trim().min(1);
 var actorClientType = z.enum(["browser", "cli", "mcp", "agent"]).optional();
 var observed = {
@@ -26373,7 +27121,8 @@ var addCommand = z.object({
     "image_gen",
     "video_gen",
     "audio_gen",
-    "text_gen"
+    "text_gen",
+    "model_gen"
   ]),
   label: id,
   content: z.string().optional(),
@@ -26676,7 +27425,7 @@ var BuiltinModelUpstreamIdSchema = z.enum([
   "replicate",
   "kling",
   "minimax",
-  "volcengine",
+  "volcengine-modelark",
   "elevenlabs",
   "suno"
 ]);
@@ -26712,7 +27461,7 @@ var BuiltinProviderAccountIdSchema = z.enum([
   "replicate",
   "kling",
   "minimax",
-  "volcengine",
+  "volcengine-modelark",
   "elevenlabs",
   "suno",
   "mock",
@@ -26844,6 +27593,18 @@ var CopilotProjectAssetReferenceSchema = z.object({
 var CopilotProjectAssetSubmissionSchema = z.object({
   actionId: z.string().trim().min(1),
   assets: CopilotProjectAssetReferenceSchema.array().min(1)
+}).strict();
+var ProjectTimelineEnvelopeSchema = z.object({
+  name: z.string(),
+  owner: z.union([
+    z.object({ kind: z.literal("project") }).strict(),
+    z.object({
+      kind: z.literal("canvas-action"),
+      canvasId: z.string().min(1),
+      actionNodeId: z.string().min(1)
+    }).strict()
+  ]),
+  state: z.unknown()
 }).strict();
 var TextRevisionActorSchema = z.object({
   actorType: z.enum(["user", "agent"]),
@@ -27809,20 +28570,63 @@ function createDirectorAdapter(options = {}) {
         ifMatch: observed2.receipt
       });
       const outputDir = captureOutputDirectory(input, stageId);
-      const capturedFrames = Array.isArray(result.value.frames) ? result.value.frames : [];
+      const submission = result.value;
+      if (submission.submitted !== true || submission.captured !== false || submission.stageId !== stageId) throw new Error("Director Host returned an invalid native capture submission");
+      const runs = Array.isArray(submission.runs) ? submission.runs : [];
+      if (runs.length !== frames.length) throw new Error("Director Host returned an incomplete ActionRun set");
+      const readRunMedia = options.readRunMedia ?? (async ({ projectId, actionRunId }) => {
+        if (!client.resolveConnection) throw new Error("Director capture requires a resolvable Host connection");
+        const connection = await client.resolveConnection();
+        const authenticatedFetch = (target, init = {}) => {
+          const headers = new Headers(init.headers);
+          if (connection.token) headers.set("authorization", `Bearer ${connection.token}`);
+          return fetch(target, { ...init, headers });
+        };
+        const endpoint = new URL(connection.endpoint);
+        const generator = createGeneratorClient((path, init) => {
+          const relativePath = path.startsWith("/") ? path.slice(1) : path;
+          const base = new URL(endpoint.href.endsWith("/") ? endpoint.href : `${endpoint.href}/`);
+          return authenticatedFetch(new URL(relativePath, base), init);
+        });
+        const assets = createProjectAssetHostClient({ hostClient: client, fetch: authenticatedFetch });
+        return readNativeMediaActionRun({ generator, projectId, actionRunId, getAsset: async (id2) => (await assets.get({ projectId, assetId: id2 })).value, downloadAsset: async (asset) => {
+          if (!asset.url) throw new Error("Project Asset has no public media URL");
+          const response = await authenticatedFetch(new URL(asset.url, endpoint));
+          if (!response.ok) throw new Error(`Project Asset download failed (${response.status})`);
+          return new Uint8Array(await response.arrayBuffer());
+        } });
+      });
+      const before = await get(input);
+      if (before.revisionId !== submission.sourceStageRevisionId) throw new Error(`Director Host captured Stage revision ${String(submission.sourceStageRevisionId)}; expected ${String(before.revisionId)}`);
       const persistedFrames = [];
-      for (const raw of capturedFrames) {
-        if (!raw || typeof raw !== "object") continue;
-        const frame = raw;
-        if (typeof frame.label !== "string" || typeof frame.dataBase64 !== "string") continue;
+      for (const [index, raw] of runs.entries()) {
+        if (!raw || typeof raw !== "object" || typeof raw.actionRunId !== "string") throw new Error("Director Host returned an invalid ActionRun id");
+        const frame = frames[index];
+        const media = await readRunMedia({ projectId: result.projectId, actionRunId: raw.actionRunId, client });
+        const width = media.asset.metadata?.width;
+        const height = media.asset.metadata?.height;
+        if (media.asset.metadata?.contentType !== "image/png") throw new Error(`Director renderer returned a non-PNG frame for ${frame.label}`);
+        if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) throw new Error(`Director renderer returned invalid dimensions for ${frame.label}`);
+        if (!media.bytes.length || !Buffer.from(media.bytes).subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw new Error(`Director renderer returned invalid PNG bytes for ${frame.label}`);
         const path = join(outputDir, `${projectionSegment(frame.label)}.png`);
-        await writeProjection(path, Buffer.from(frame.dataBase64, "base64"));
-        const { dataBase64: _data, ...publicFrame } = frame;
-        persistedFrames.push({ ...publicFrame, path });
+        await writeProjection(path, media.bytes);
+        persistedFrames.push({ artifactId: frame.label, projectAssetId: media.projectAssetId, metadataAttached: false, timeSeconds: frame.timeSeconds, aspectRatio: frame.aspectRatio, width, height, mimeType: "image/png", sha256: createHash("sha256").update(media.bytes).digest("hex"), path });
       }
+      const after = await get(input);
+      if (after.revisionId !== submission.sourceStageRevisionId) throw new Error(`Director Stage ${stageId} changed during capture`);
       const receiptPath = join(outputDir, "capture.json");
-      const publicResult = publicProjectHostValue(result.value);
-      const receipt = { ...publicResult, frames: persistedFrames, receiptPath };
+      const receipt = {
+        captured: true,
+        stageId,
+        sourceStageRevisionId: String(submission.sourceStageRevisionId),
+        verifiedStageRevisionId: after.revisionId,
+        renderer: { id: "clash-director-viewport-webgl", contractVersion: 1 },
+        stateSha256: createHash("sha256").update(JSON.stringify(before.state)).digest("hex"),
+        frames: persistedFrames,
+        receiptPath,
+        submitted: true,
+        actionRunIds: runs.map((run) => run.actionRunId)
+      };
       await writeProjection(receiptPath, `${JSON.stringify(receipt, null, 2)}
 `);
       return receipt;

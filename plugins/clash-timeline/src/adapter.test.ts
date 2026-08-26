@@ -354,7 +354,7 @@ test("Timeline render polls the Host standalone-render readback", async () => {
   });
 });
 
-test("Timeline render polls a Canvas target from the submitted target Canvas", async () => {
+test("Timeline render polls a Canvas target through native render readback", async () => {
   const { createTimelineAdapter } = await import("./adapter.js");
   const calls: ProjectHostRequest[] = [];
   const adapter = createTimelineAdapter({
@@ -378,15 +378,17 @@ test("Timeline render polls a Canvas target from the submitted target Canvas", a
           },
         };
       }
-      if (
-        request.command.action === "get" &&
-        request.command.canvasId === "main"
-      ) {
+      if (request.command.action === "list_timeline_renders") {
         return {
-          node: {
-            id: "render-1",
-            data: { status: "completed", assetId: "asset-render-1" },
-          },
+          status: "all",
+          renders: [
+            {
+              node: {
+                id: "render-1",
+                data: { status: "completed", assetId: "asset-render-1" },
+              },
+            },
+          ],
         };
       }
       return {
@@ -418,9 +420,8 @@ test("Timeline render polls a Canvas target from the submitted target Canvas", a
     },
   );
   assert.deepEqual(calls.at(-1)?.command, {
-    action: "get",
-    canvasId: "main",
-    nodeId: "render-1",
+    action: "list_timeline_renders",
+    status: "all",
   });
 });
 

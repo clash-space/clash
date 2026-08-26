@@ -50,7 +50,8 @@ const options: AcpSessionConfigOption[] = [
 describe('recent ACP run preferences', () => {
     it('uses the recent agent only while it is still enabled and advertised', () => {
         expect(preferredRecentAgentId(agents, 'codex-acp')).toBe('codex-acp');
-        expect(preferredRecentAgentId(agents, 'removed-acp')).toBe('claude-acp');
+        expect(preferredRecentAgentId(agents, 'openclaw')).toBe('claude-acp');
+        expect(preferredRecentAgentId(agents, 'hermes')).toBe('claude-acp');
         expect(preferredRecentAgentId([], 'codex-acp')).toBeUndefined();
     });
 

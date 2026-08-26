@@ -15,6 +15,8 @@
 
 export {
   ActionRunSchema,
+  ActionRunModelRouteSchema,
+  ActionRunModelSelectionSchema,
   ActionRunOutcomeSchema,
   ActionRunRequestSchema,
   ActionRunStatusSchema,
@@ -40,6 +42,9 @@ export {
   GeneratorInputPortSchema,
   GeneratorInputTargetSchema,
   GeneratorInputTypeSchema,
+  GeneratorProjectionSurfaceIdSchema,
+  GeneratorProjectionSurfaceSchema,
+  GENERATOR_PROJECTION_SURFACE_IDS,
   GeneratorRevisionRefSchema,
   GeneratorRevisionSchema,
   MediaAssetRevisionRefSchema,
@@ -47,7 +52,10 @@ export {
   ProjectActionRunSchema,
   ProjectGeneratorHeadSchema,
   ProjectGeneratorSchema,
+  resolveGeneratorProjectionDefinition,
   type ActionRun,
+  type ActionRunModelRoute,
+  type ActionRunModelSelection,
   type ActionRunOutcome,
   type ActionRunRequest,
   type ActionRunStatus,
@@ -73,6 +81,8 @@ export {
   type GeneratorInputPort,
   type GeneratorInputTarget,
   type GeneratorInputType,
+  type GeneratorProjectionSurface,
+  type GeneratorProjectionSurfaceId,
   type GeneratorRevision,
   type GeneratorRevisionRef,
   type MediaAssetRevisionRef,
@@ -80,6 +90,7 @@ export {
   type ProjectActionRun,
   type ProjectGeneratorHead,
   type ProjectGenerator,
+  type ResolveGeneratorProjectionDefinitionResult,
 } from "./generator-v2.js";
 
 export {
@@ -244,6 +255,7 @@ export {
 
 export {
   AgentAnnotationDraftSchema,
+  AgentAnnotationBrowserContextSchema,
   AgentAnnotationPromptPayloadSchema,
   AgentAnnotationSelectionSchema,
   AgentAnnotationSurfaceSchema,
@@ -251,6 +263,7 @@ export {
   AgentAnnotationVisualRectSchema,
   serializeAgentAnnotationPromptBlock,
   type AgentAnnotationDraft,
+  type AgentAnnotationBrowserContext,
   type AgentAnnotationObjectRef,
   type AgentAnnotationPromptPayload,
   type AgentAnnotationSelection,
@@ -290,6 +303,13 @@ export {
   type TimelineTranscriptSource,
   type TimelineTranscriptWord,
 } from "./timeline-transcript.js";
+
+export {
+  projectDirectorStageFromGeneratorRevision,
+  projectDirectorStageToGeneratorRevisionState,
+  type DirectorStageProjectionReadResult,
+  type DirectorStageProjectionWriteResult,
+} from "./director-stage-generator-projection.js";
 
 export {
   DirectorStageActionClipSchema,
@@ -475,6 +495,12 @@ export {
   ExecutablePluginContractTestDocumentSchema,
   ExecutablePluginBindingSchema,
   ExecutablePluginAssetHandleSchema,
+  ExecutableMediaAnalysisReferenceSchema,
+  ExecutableMediaAnalysisOperationSchema,
+  ExecutableMediaAnalysisResultSchema,
+  ExecutableVideoEnhanceReferenceSchema,
+  ExecutableVideoEnhanceOperationSchema,
+  ExecutableVideoEnhanceResultSchema,
   ExecutableSpeechTranscriptionReferenceSchema,
   ExecutableSpeechTranscriptionOperationSchema,
   ExecutableSpeechTranscriptionResultSchema,
@@ -523,6 +549,12 @@ export {
   type ExecutablePluginContractTestDocument,
   type ExecutablePluginBinding,
   type ExecutablePluginAssetHandle,
+  type ExecutableMediaAnalysisReference,
+  type ExecutableMediaAnalysisOperation,
+  type ExecutableMediaAnalysisResult,
+  type ExecutableVideoEnhanceReference,
+  type ExecutableVideoEnhanceOperation,
+  type ExecutableVideoEnhanceResult,
   type ExecutableSpeechTranscriptionReference,
   type ExecutableSpeechTranscriptionOperation,
   type ExecutableSpeechTranscriptionResult,
@@ -655,7 +687,15 @@ export {
   referenceModality,
   findCompatibleModels,
   pickDefaultModel,
+  MEDIA_REFERENCE_FIELDS,
+  MEDIA_REFERENCE_MODALITIES,
+  mediaReferencePendingFields,
+  mediaReferenceCounts,
   type Modality,
+  type MediaReferenceModality,
+  type MediaReferenceFieldDescriptor,
+  type MediaReferencePendingFields,
+  type MediaReferenceField,
   type RefBound,
   type ReferenceMediaConstraints,
   type ReferenceMediaMetadata,
@@ -679,6 +719,8 @@ export {
   ModelInputRuleSchema,
   MusicInputMappingSchema,
   ModelCardSchema,
+  ModelCardConsumerSchema,
+  ModelCardVisibilitySchema,
   MODEL_CARDS,
   MOCK_MODEL_CARDS,
   normalizeModelId,
@@ -692,6 +734,8 @@ export {
   type ModelParameterType,
   type ModelParameter,
   type ModelProviderImplementation,
+  type ModelCardConsumer,
+  type ModelCardVisibility,
   type ProviderCredentialRequirements,
   type ProviderInputAdaptation,
   type ProviderAssetRepresentation,
@@ -786,6 +830,8 @@ export {
   MODEL_UPSTREAM_ROUTES,
   activeModelParameterIds,
   listModelUpstreamRoutes,
+  matchesFrozenModelRoutePin,
+  resolvePinnedModelUpstreamRoute,
   modelRouteSupportsParameters,
   resolveModelUpstreamRoute,
   missingModelRouteCredentials,
@@ -803,6 +849,8 @@ export {
   buildEffectiveModelCards,
   listUserEnabledCanvasModelIds,
   listCompatibleModelCatalogEntries,
+  listConsumerModelCatalogEntries,
+  modelCardVisibleToConsumer,
   listProviderModelSupport,
   invalidProviderModelFilters,
   unsupportedProviderModelFilterIds,
@@ -815,6 +863,7 @@ export {
   type ModelProviderSupportedModel,
   type UpstreamAvailability,
   type ModelUpstreamRouteQuery,
+  type FrozenModelRoutePin,
   type ModelProviderId,
   type ModelProviderApiShape,
   type ModelProviderRoute,
@@ -828,6 +877,7 @@ export {
   type UserModelCardConfig,
   type UserEnabledCanvasModelIdsQuery,
   type CompatibleModelCatalogQuery,
+  type ConsumerModelCatalogQuery,
   type ProviderModelSupport,
   type InvalidProviderModelFilter,
   type ModelProviderRouteQuery,
@@ -1249,6 +1299,12 @@ export {
   type ProjectTimelinePersistenceResult,
 } from "./timeline-persistence.js";
 export {
+  projectTimelineFromGeneratorRevision,
+  projectTimelineToGeneratorRevisionState,
+  type ProjectTimelineFromGeneratorRevisionResult,
+  type ProjectTimelineToGeneratorRevisionStateResult,
+} from "./timeline-generator-projection.js";
+export {
   renderTimelineAgentWorkflowReference,
   renderTimelineDslMarkdown,
   renderTimelineMaskSkillReference,
@@ -1379,14 +1435,12 @@ export {
 // Serializable Action Specs and asset-edit invocations.
 export {
   ActionFamilySchema,
-  ActionExecutorSchema,
   ActionOperationSpecSchema,
   ActionSpecSchema,
   ActionInvocationModeSchema,
   ActionSurfaceSchema,
   invocationModeForSurface,
   type ActionFamily,
-  type ActionExecutor,
   type ActionOperationSpec,
   type ActionSpec,
   type ActionInvocationMode,
@@ -1463,6 +1517,7 @@ export * from "./actions.js";
 export * from "./auth-form.js";
 
 export * from "./plugin-capabilities.js";
+export * from "./media-analysis-documents.js";
 
 export {
   WORKSPACE_BUNDLE_MANIFEST_PATH,

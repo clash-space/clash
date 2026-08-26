@@ -131,7 +131,7 @@ function defaultUpstream(providerId: ProviderAccountId): ModelUpstreamId | undef
     providerId === "replicate" ||
     providerId === "kling" ||
     providerId === "minimax" ||
-    providerId === "volcengine" ||
+    providerId === "volcengine-modelark" ||
     providerId === "elevenlabs" ||
     providerId === "suno" ||
     providerId === "mock"

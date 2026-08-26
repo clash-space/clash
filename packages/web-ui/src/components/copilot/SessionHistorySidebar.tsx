@@ -1,10 +1,8 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   Archive,
   ArrowBendDownRight,
-  ArrowCounterClockwise,
   DotsThree,
-  Trash,
   X,
 } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
@@ -14,10 +12,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
-import { Tab, TabList, TabPanel, TabProvider } from "../ui/tabs";
 import { cn } from "../ai-elements/utils";
 
 export type SessionHistoryItem = {
@@ -36,55 +32,26 @@ export type SessionHistoryItem = {
   updatedAt?: string;
 };
 
-export type SessionArchiveStatus = "idle" | "loading" | "ready" | "error";
-
 type SessionHistorySidebarProps = {
   activeSessions: SessionHistoryItem[];
-  archivedSessions: SessionHistoryItem[];
   activeSessionId?: string;
-  archiveStatus?: SessionArchiveStatus;
-  archiveError?: string | null;
   onSelect: (session: SessionHistoryItem) => void;
   onFork: (session: SessionHistoryItem) => void;
   onArchive?: (threadId: string) => void | Promise<void>;
-  onRestore?: (threadId: string) => void | Promise<void>;
-  onDeletePermanently?: (threadId: string) => void | Promise<void>;
-  onLoadArchived?: () => void | Promise<void>;
   onClose: () => void;
   className?: string;
 };
 
 export function SessionHistorySidebar({
   activeSessions,
-  archivedSessions,
   activeSessionId,
-  archiveStatus = "idle",
-  archiveError,
   onSelect,
   onFork,
   onArchive,
-  onRestore,
-  onDeletePermanently,
-  onLoadArchived,
   onClose,
   className,
 }: SessionHistorySidebarProps) {
   const { t } = useTranslation();
-  const [selectedView, setSelectedView] = useState<"active" | "archived">(
-    "active",
-  );
-  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(
-    null,
-  );
-
-  const selectView = (next: string | null | undefined) => {
-    if (next !== "active" && next !== "archived") return;
-    setSelectedView(next);
-    setConfirmingDeleteId(null);
-    if (next === "archived" && archiveStatus === "idle") {
-      void onLoadArchived?.();
-    }
-  };
 
   return (
     <aside
@@ -108,92 +75,27 @@ export function SessionHistorySidebar({
         />
       </div>
 
-      <TabProvider
-        selectedId={selectedView}
-        setSelectedId={selectView}
-        orientation="horizontal"
-        focusLoop
+      <div
+        className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-2 outline-none"
       >
-        <TabList
-          aria-label={t("copilot.history.title")}
-          className="mx-3 grid grid-cols-2 gap-1 rounded-lg bg-warm-muted p-1"
-        >
-          <HistoryTab id="active" label={t("copilot.history.active")} />
-          <HistoryTab id="archived" label={t("copilot.history.archived")} />
-        </TabList>
-
-        <TabPanel
-          tabId="active"
-          className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-2 outline-none"
-        >
-          <SessionList
-            sessions={activeSessions}
-            activeSessionId={activeSessionId}
-            emptyLabel={t("copilot.history.empty")}
-            onSelect={(session) => {
-              onSelect(session);
-              onClose();
-            }}
-            actions={(session) => (
-              <ActiveSessionActions
-                session={session}
-                onFork={onFork}
-                onArchive={onArchive}
-              />
-            )}
-          />
-        </TabPanel>
-
-        <TabPanel
-          tabId="archived"
-          className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-2 outline-none"
-        >
-          {archiveStatus === "loading" ? (
-            <SessionListSkeleton />
-          ) : archiveStatus === "error" ? (
-            <div className="px-2 py-8 text-center text-xs text-content-secondary">
-              <p>{archiveError || t("copilot.history.archiveLoadError")}</p>
-              <button
-                type="button"
-                onClick={() => void onLoadArchived?.()}
-                className="mt-3 rounded-md px-2 py-1 font-medium text-content-primary outline-none hover:bg-warm-hover focus-visible:ring-2 focus-visible:ring-ring/50"
-              >
-                {t("copilot.history.retry")}
-              </button>
-            </div>
-          ) : (
-            <SessionList
-              sessions={archivedSessions}
-              emptyLabel={t("copilot.history.archivedEmpty")}
-              confirmingDeleteId={confirmingDeleteId}
-              onCancelDelete={() => setConfirmingDeleteId(null)}
-              onConfirmDelete={(threadId) => {
-                setConfirmingDeleteId(null);
-                void onDeletePermanently?.(threadId);
-              }}
-              actions={(session) => (
-                <ArchivedSessionActions
-                  session={session}
-                  onRestore={onRestore}
-                  onRequestDelete={setConfirmingDeleteId}
-                />
-              )}
+        <SessionList
+          sessions={activeSessions}
+          activeSessionId={activeSessionId}
+          emptyLabel={t("copilot.history.empty")}
+          onSelect={(session) => {
+            onSelect(session);
+            onClose();
+          }}
+          actions={(session) => (
+            <ActiveSessionActions
+              session={session}
+              onFork={onFork}
+              onArchive={onArchive}
             />
           )}
-        </TabPanel>
-      </TabProvider>
+        />
+      </div>
     </aside>
-  );
-}
-
-function HistoryTab({ id, label }: { id: string; label: string }) {
-  return (
-    <Tab
-      id={id}
-      className="h-7 rounded-md px-2 text-xs font-medium text-content-secondary outline-none transition-colors hover:text-content-primary focus-visible:ring-2 focus-visible:ring-ring/50 aria-selected:bg-warm-surface aria-selected:text-content-primary aria-selected:shadow-sm"
-    >
-      {label}
-    </Tab>
   );
 }
 
@@ -203,18 +105,12 @@ function SessionList({
   emptyLabel,
   onSelect,
   actions,
-  confirmingDeleteId,
-  onCancelDelete,
-  onConfirmDelete,
 }: {
   sessions: SessionHistoryItem[];
   activeSessionId?: string;
   emptyLabel: string;
   onSelect?: (session: SessionHistoryItem) => void;
   actions: (session: SessionHistoryItem) => ReactNode;
-  confirmingDeleteId?: string | null;
-  onCancelDelete?: () => void;
-  onConfirmDelete?: (threadId: string) => void;
 }) {
   const { t } = useTranslation();
   if (sessions.length === 0) {
@@ -231,7 +127,6 @@ function SessionList({
         const title =
           session.title ||
           t("copilot.history.fallbackTitle", { index: index + 1 });
-        const confirmingDelete = confirmingDeleteId === session.threadId;
         return (
           <li key={session.threadId} className="py-1">
             <div
@@ -260,27 +155,6 @@ function SessionList({
               )}
               {actions(session)}
             </div>
-            {confirmingDelete ? (
-              <div className="mx-1.5 mb-1 flex items-center gap-1 rounded-lg bg-warm-muted px-2 py-1.5 text-[11px] text-content-secondary">
-                <span className="min-w-0 flex-1">
-                  {t("copilot.history.deleteConfirm")}
-                </span>
-                <button
-                  type="button"
-                  onClick={onCancelDelete}
-                  className="rounded-md px-1.5 py-1 font-medium text-content-secondary outline-none hover:bg-warm-hover hover:text-content-primary focus-visible:ring-2 focus-visible:ring-ring/50"
-                >
-                  {t("copilot.history.cancel")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onConfirmDelete?.(session.threadId)}
-                  className="rounded-md px-1.5 py-1 font-medium text-red-600 outline-none hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-500/50 dark:text-red-300 dark:hover:bg-red-950/30"
-                >
-                  {t("copilot.history.confirmDelete")}
-                </button>
-              </div>
-            ) : null}
           </li>
         );
       })}
@@ -334,35 +208,6 @@ function SessionRowText({
   );
 }
 
-function ArchivedSessionActions({
-  session,
-  onRestore,
-  onRequestDelete,
-}: {
-  session: SessionHistoryItem;
-  onRestore?: (threadId: string) => void | Promise<void>;
-  onRequestDelete: (threadId: string) => void;
-}) {
-  const { t } = useTranslation();
-  const title = session.title || session.threadId;
-  return (
-    <SessionActionsMenu title={title}>
-      <DropdownMenuItem onSelect={() => void onRestore?.(session.threadId)}>
-        <ArrowCounterClockwise className="h-4 w-4" />
-        {t("copilot.history.restore")}
-      </DropdownMenuItem>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem
-        onSelect={() => onRequestDelete(session.threadId)}
-        className="text-red-600 focus:text-red-700 dark:text-red-300"
-      >
-        <Trash className="h-4 w-4" />
-        {t("copilot.history.deletePermanently")}
-      </DropdownMenuItem>
-    </SessionActionsMenu>
-  );
-}
-
 function SessionActionsMenu({
   title,
   children,
@@ -385,23 +230,6 @@ function SessionActionsMenu({
         {children}
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-function SessionListSkeleton() {
-  return (
-    <div
-      aria-label="Loading archived sessions"
-      role="status"
-      className="space-y-2 px-2 py-2"
-    >
-      {[0, 1, 2].map((index) => (
-        <div
-          key={index}
-          className="h-12 animate-pulse rounded-lg bg-warm-muted"
-        />
-      ))}
-    </div>
   );
 }
 

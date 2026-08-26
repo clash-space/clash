@@ -22,6 +22,12 @@ import {
   Play,
   Pause,
 } from "@phosphor-icons/react";
+import {
+  HandIcon,
+  ShieldAlertIcon,
+  ShieldCheckIcon,
+  type LucideIcon,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { parseAcpEvent } from "@openma/common/session";
 import { UserMessage } from "./copilot/UserMessage";
@@ -45,7 +51,6 @@ import { RuntimePickerDialog } from "./copilot/RuntimePickerDialog";
 import { SessionHarnessUpdateControl } from "./copilot/SessionHarnessUpdateControl";
 import {
   SessionHistorySidebar,
-  type SessionArchiveStatus,
   type SessionHistoryItem,
 } from "./copilot/SessionHistorySidebar";
 import { Dialog } from "./ui/dialog";
@@ -213,15 +218,9 @@ interface ChatbotCopilotProps {
   initialPrompt?: string;
   /** Session history + actions passed from parent */
   sessionHistory?: Array<CopilotSessionHistoryItem>;
-  archivedSessionHistory?: Array<CopilotSessionHistoryItem>;
-  archiveStatus?: SessionArchiveStatus;
-  archiveError?: string | null;
   onNewSession?: () => void;
   onSwitchSession?: (threadId: string) => void;
-  onLoadArchivedSessions?: () => void | Promise<void>;
   onArchiveSession?: (threadId: string) => void | Promise<void>;
-  onRestoreSession?: (threadId: string) => void | Promise<void>;
-  onDeleteSession?: (threadId: string) => void;
   onUpsertSession?: (session: CopilotSessionHistoryItem) => void;
   /** Called when user sends first message with no active session */
   onCreateSession?: (initialMessage: string) => void;
@@ -725,15 +724,9 @@ function ChatbotCopilot({
   workspaceContext,
   initialPrompt,
   sessionHistory = [],
-  archivedSessionHistory = [],
-  archiveStatus = "idle",
-  archiveError = null,
   onNewSession,
   onSwitchSession,
-  onLoadArchivedSessions,
   onArchiveSession,
-  onRestoreSession,
-  onDeleteSession,
   onUpsertSession,
   onCreateSession,
   onUploadFiles,
@@ -3368,16 +3361,10 @@ function ChatbotCopilot({
                       >
                         <SessionHistorySidebar
                           activeSessions={visibleSessionHistory}
-                          archivedSessions={archivedSessionHistory}
                           activeSessionId={activeSessionId}
-                          archiveStatus={archiveStatus}
-                          archiveError={archiveError}
                           onSelect={selectHistoryItem}
                           onFork={forkRuntimeSession}
                           onArchive={onArchiveSession}
-                          onRestore={onRestoreSession}
-                          onDeletePermanently={onDeleteSession}
-                          onLoadArchived={onLoadArchivedSessions}
                           onClose={() => {
                             setSessionHistoryOpen(false);
                             historyButtonRef.current?.focus();
@@ -4554,6 +4541,9 @@ export function HarnessPermissionSelector({
     }
     return null;
   }, [agentId, selectedAcpMode, selectedSessionMode]);
+  const SelectedModeIcon = selectedMode
+    ? permissionModeIcon(selectedMode.value)
+    : ShieldCheckIcon;
   const sections = useMemo<SelectSection<string>[]>(
     () => [
       {
@@ -4564,23 +4554,25 @@ export function HarnessPermissionSelector({
           modeValues.length > 0
             ? modeValues.map((mode) => {
                 const presentation = configModeOptionPresentation(mode);
+                const ModeIcon = permissionModeIcon(mode.value);
                 return {
                   value: mode.value,
                   label: presentation.label,
                   description: presentation.description,
                   selected: mode.value === selectedPermissionModeId,
-                  icon: (
-                    <ShieldWarning className="h-4 w-4" aria-hidden="true" />
-                  ),
+                  icon: <ModeIcon className="h-4 w-4" aria-hidden="true" />,
                 };
               })
-            : sessionModeValues.map((mode) => ({
-                value: mode.id,
-                label: mode.name,
-                description: mode.description ?? undefined,
-                selected: mode.id === selectedMode?.value,
-                icon: <ShieldWarning className="h-4 w-4" aria-hidden="true" />,
-              })),
+            : sessionModeValues.map((mode) => {
+                const ModeIcon = permissionModeIcon(mode.id);
+                return {
+                  value: mode.id,
+                  label: mode.name,
+                  description: mode.description ?? undefined,
+                  selected: mode.id === selectedMode?.value,
+                  icon: <ModeIcon className="h-4 w-4" aria-hidden="true" />,
+                };
+              }),
       },
     ],
     [
@@ -4611,7 +4603,7 @@ export function HarnessPermissionSelector({
       stopPropagation
       triggerPrefix={
         <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-status-down">
-          <ShieldWarning className="h-4 w-4" aria-hidden="true" />
+          <SelectedModeIcon className="h-4 w-4" aria-hidden="true" />
         </span>
       }
       triggerLabel={
@@ -4621,6 +4613,13 @@ export function HarnessPermissionSelector({
       }
     />
   );
+}
+
+function permissionModeIcon(value: string): LucideIcon {
+  if (value === "read-only") return HandIcon;
+  if (value === "agent") return ShieldCheckIcon;
+  if (value === "agent-full-access") return ShieldAlertIcon;
+  return ShieldCheckIcon;
 }
 
 export function SessionPlanTag({

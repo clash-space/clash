@@ -558,7 +558,7 @@ export const Editor: React.FC<EditorProps> = ({
       aria-label="Expand Properties"
       title="Expand Properties"
       onClick={() => setInspectorCollapsed((collapsed) => !collapsed)}
-      className="clash-workbench-control-button flex h-8 w-8 shrink-0 items-center justify-center bg-brand/[0.09] text-brand transition-colors hover:bg-brand/[0.14] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+      className="clash-workbench-control-button flex h-8 w-8 shrink-0 items-center justify-center bg-brand/[0.09] text-brand transition-colors hover:bg-brand/[0.14] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
     >
       <InspectorRevealIcon />
     </RemotionButton>
@@ -569,7 +569,7 @@ export const Editor: React.FC<EditorProps> = ({
       aria-label="Collapse Properties"
       title="Collapse Properties"
       onClick={() => setInspectorCollapsed((collapsed) => !collapsed)}
-      className="clash-workbench-control-button flex h-8 w-8 shrink-0 items-center justify-center bg-transparent text-content-muted transition-colors hover:bg-warm-hover hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+      className="clash-workbench-control-button flex h-8 w-8 shrink-0 items-center justify-center bg-transparent text-content-muted transition-colors hover:bg-warm-hover hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
     >
       <InspectorPanelToggleIcon collapsed={false} />
     </RemotionButton>
@@ -580,7 +580,7 @@ export const Editor: React.FC<EditorProps> = ({
       aria-label="Expand editor panel"
       title="Expand editor panel"
       onClick={() => setSidePanelCollapsed(false)}
-      className="clash-workbench-control-button flex h-8 w-8 shrink-0 items-center justify-center bg-brand/[0.09] text-brand transition-colors hover:bg-brand/[0.14] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+      className="clash-workbench-control-button flex h-8 w-8 shrink-0 items-center justify-center bg-brand/[0.09] text-brand transition-colors hover:bg-brand/[0.14] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
     >
       <EditorPanelToggleIcon collapsed={true} />
     </RemotionButton>
@@ -591,7 +591,7 @@ export const Editor: React.FC<EditorProps> = ({
       aria-label="Collapse editor panel"
       title="Collapse editor panel"
       onClick={() => setSidePanelCollapsed(true)}
-      className="clash-workbench-control-button flex h-8 w-8 shrink-0 items-center justify-center bg-transparent text-content-muted transition-colors hover:bg-warm-hover hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+      className="clash-workbench-control-button flex h-8 w-8 shrink-0 items-center justify-center bg-transparent text-content-muted transition-colors hover:bg-warm-hover hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
     >
       <EditorPanelToggleIcon collapsed={false} />
     </RemotionButton>
@@ -636,7 +636,7 @@ export const Editor: React.FC<EditorProps> = ({
                   : "clamp(280px,22%,340px)",
               } as React.CSSProperties
             }
-            className={`group/timeline-editor grid h-full min-h-0 [--clash-timeline-gutter:var(--clash-project-chrome-gutter,0.5rem)] [--clash-timeline-control-gap:var(--clash-control-gap,0.25rem)] [--clash-timeline-control-size:var(--clash-project-control-height,2rem)] gap-[var(--clash-timeline-gutter)] overflow-hidden bg-warm-page pb-[var(--clash-timeline-gutter)] pl-[var(--clash-timeline-gutter)] ${reserveHeaderEndGutter ? "pr-[var(--clash-timeline-gutter)]" : ""} motion-reduce:transition-none [grid-template-columns:minmax(var(--clash-timeline-side-panel-min-width),var(--clash-timeline-side-panel-width))_minmax(var(--clash-timeline-preview-min-width),1fr)_minmax(var(--clash-timeline-inspector-min-width),var(--clash-timeline-inspector-width))] [grid-template-rows:var(--clash-project-sidebar-header-height,2.5rem)_minmax(0,1fr)_var(--clash-timeline-height)] ${
+            className={`clash-timeline-editor group/timeline-editor grid h-full min-h-0 [--clash-timeline-gutter:var(--clash-project-chrome-gutter,0.5rem)] [--clash-timeline-control-gap:var(--clash-control-gap,0.25rem)] [--clash-timeline-control-size:var(--clash-project-control-height,2rem)] gap-[var(--clash-timeline-gutter)] overflow-hidden bg-warm-page pb-[var(--clash-timeline-gutter)] pl-[var(--clash-timeline-gutter)] ${reserveHeaderEndGutter ? "pr-[var(--clash-timeline-gutter)]" : ""} motion-reduce:transition-none [grid-template-columns:minmax(var(--clash-timeline-side-panel-min-width),var(--clash-timeline-side-panel-width))_minmax(var(--clash-timeline-preview-min-width),1fr)_minmax(var(--clash-timeline-inspector-min-width),var(--clash-timeline-inspector-width))] [grid-template-rows:var(--clash-project-sidebar-header-height,2.5rem)_minmax(0,1fr)_var(--clash-timeline-height)] ${
               layoutResizing
                 ? ""
                 : "transition-[grid-template-columns,grid-template-rows] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]"
@@ -676,7 +676,7 @@ export const Editor: React.FC<EditorProps> = ({
                             aria-controls={`editor-${tool.panel}-panel`}
                             aria-label={tool.label}
                             onClick={() => selectPrimaryTool(tool)}
-                            className={`clash-workbench-control-button flex h-8 w-8 shrink-0 items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 ${
+                            className={`clash-workbench-control-button flex h-8 w-8 shrink-0 items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 ${
                               activePrimaryTool === tool.id
                                 ? "bg-brand/[0.09] text-brand hover:bg-brand/[0.14]"
                                 : "text-content-muted hover:bg-warm-hover hover:text-content-primary"

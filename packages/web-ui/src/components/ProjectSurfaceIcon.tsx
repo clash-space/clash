@@ -1,16 +1,14 @@
 import {
   Cube,
   FilmSlate,
+  GlobeSimple,
   HashStraight,
   Images,
   type IconProps,
 } from "@phosphor-icons/react";
 
 export type ProjectSurfaceIconKind =
-  | "canvas"
-  | "timeline"
-  | "director-stage"
-  | "asset";
+  "canvas" | "timeline" | "director-stage" | "asset" | "browser";
 
 export interface ProjectSurfaceIconProps extends IconProps {
   surface: ProjectSurfaceIconKind;
@@ -33,7 +31,9 @@ export function ProjectSurfaceIcon({
         ? FilmSlate
         : surface === "director-stage"
           ? Cube
-          : Images;
+          : surface === "browser"
+            ? GlobeSimple
+            : Images;
 
   return <Icon data-project-surface-icon={surface} {...props} />;
 }

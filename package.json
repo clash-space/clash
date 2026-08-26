@@ -94,10 +94,14 @@
       "@vitest/mocker": "4.1.0",
       "vitest": "4.1.0",
       "@electron/get": "5.0.0"
+    },
+    "patchedDependencies": {
+      "@openma/common@0.5.0": "patches/@openma__common@0.5.0.patch"
     }
   },
   "dependencies": {
     "@cloudflare/containers": "^0.2.0",
+    "@openma/common": "link:../openma-common",
     "better-auth": "^1.4.6",
     "better-auth-cloudflare": "^0.2.9",
     "zod": "^4"

@@ -29,8 +29,10 @@ import React, {
 import type { Edge, Node } from "@xyflow/react";
 import { EditorModalDialog } from "./EditorModalDialog";
 import { useOptionalLoroSyncContext } from "./LoroSyncContext";
-import { generateSemanticId } from "@clash/web-ui/lib/utils/semanticId";
-import { autoInsertNode } from "@clash/web-ui/lib/layout";
+import {
+  beginCanvasAssetAction,
+  type CanvasAssetActionLifecycle,
+} from "@clash/web-ui/lib/canvasAssetActionLifecycle";
 import {
   applyImageEdit,
   type EditApplyResult,
@@ -154,6 +156,8 @@ export function ImageEditorPanel({
   );
   const [aspect, setAspect] = useState<AspectId>("free");
   const actionRunIdRef = useRef<string | null>(null);
+  const invocationKeyRef = useRef<string | null>(null);
+  const outputLifecycleRef = useRef<CanvasAssetActionLifecycle | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -202,37 +206,53 @@ export function ImageEditorPanel({
   );
 
   const handleApply = useCallback(async () => {
-    actionRunIdRef.current ??= `edit:${globalThis.crypto.randomUUID()}`;
+    const invocationKey = JSON.stringify(params);
+    if (invocationKeyRef.current !== invocationKey) {
+      invocationKeyRef.current = invocationKey;
+      actionRunIdRef.current = null;
+      outputLifecycleRef.current = null;
+    }
+    const actionRunId =
+      (actionRunIdRef.current ??= `edit:${globalThis.crypto.randomUUID()}`);
+    let lifecycle = outputLifecycleRef.current ?? undefined;
     setBusy(true);
     setError(null);
     try {
-      if (loroSync?.connected && input.editorNodeId) {
+      if (loroSync && input.editorNodeId) {
         loroSync.updateNode(input.editorNodeId, {
           data: { editParams: params },
         });
       }
+      if (loroSync && input.editorNodeId && input.nodes) {
+        if (lifecycle) {
+          lifecycle.pending();
+        } else {
+          lifecycle = await beginCanvasAssetAction({
+            actionRunId,
+            actionId: "image-editor",
+            outputKind: "image",
+            sourceNodeId: input.editorNodeId,
+            parentId: input.parentId,
+            projectId: input.projectId,
+            nodes: input.nodes,
+            writer: loroSync,
+          });
+          outputLifecycleRef.current = lifecycle;
+        }
+      }
       const result = await applyImageEdit({
-        actionRunId: actionRunIdRef.current,
+        actionRunId,
         projectId: input.projectId,
         sourceAssetId: input.sourceAssetId,
         sourceUrl: input.sourceUrl,
         params,
         origin: input.origin,
       });
-      if (input.editorNodeId && input.nodes && input.edges) {
-        await spawnCompletedImageDownstream({
-          editorNodeId: input.editorNodeId,
-          parentId: input.parentId,
-          projectId: input.projectId,
-          assetId: result.assetId,
-          nodes: input.nodes,
-          edges: input.edges,
-          loroSync,
-        });
-      }
+      lifecycle?.complete(result.assetId);
       await input.onApplied?.(result);
       onClose();
     } catch (e) {
+      lifecycle?.fail(e);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
@@ -784,73 +804,4 @@ function clampCrop(c: CropRect, imgW: number, imgH: number): CropRect {
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.min(Math.max(n, lo), hi);
-}
-
-// ─── Spawn helper ───────────────────────────────────────────
-
-interface SpawnInput {
-  editorNodeId: string;
-  parentId?: string;
-  projectId: string;
-  assetId: string;
-  nodes: Node[];
-  edges: Edge[];
-  loroSync: ReturnType<typeof useOptionalLoroSyncContext>;
-}
-
-async function spawnCompletedImageDownstream({
-  editorNodeId,
-  parentId,
-  projectId,
-  assetId,
-  nodes,
-  edges,
-  loroSync,
-}: SpawnInput): Promise<void> {
-  if (!loroSync?.connected) return;
-
-  const newNodeId = await generateSemanticId(projectId);
-  const editorNode = nodes.find((n) => n.id === editorNodeId);
-
-  const tempEdge: Edge = {
-    id: `temp-${editorNodeId}-${newNodeId}`,
-    source: editorNodeId,
-    target: newNodeId,
-    type: "default",
-  };
-  const tempNode: Node = {
-    id: newNodeId,
-    type: "image",
-    position: { x: 0, y: 0 },
-    data: { label: "Edited Image", status: "completed", assetId },
-    parentId: parentId ?? editorNode?.parentId,
-  };
-  const layout = autoInsertNode(
-    newNodeId,
-    [...nodes, tempNode],
-    [...edges, tempEdge],
-  );
-
-  const finalNode = {
-    id: newNodeId,
-    type: "image",
-    position: layout.position,
-    parentId: parentId ?? editorNode?.parentId,
-    data: { label: "Edited Image", status: "completed", assetId },
-  };
-  loroSync.addNode(newNodeId, finalNode);
-
-  const edgeId = `${editorNodeId}-${newNodeId}`;
-  loroSync.addEdge(edgeId, {
-    id: edgeId,
-    source: editorNodeId,
-    target: newNodeId,
-    type: "default",
-  });
-
-  if (layout.pushedNodes.size > 0) {
-    layout.pushedNodes.forEach((pos, nodeId) => {
-      loroSync.updateNode(nodeId, { position: pos });
-    });
-  }
 }

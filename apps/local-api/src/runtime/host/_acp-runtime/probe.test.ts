@@ -302,6 +302,31 @@ class FailingAuthProbeAgent extends AuthRequiredProbeAgent {
   }
 }
 
+class ConventionAuthProbeAgent extends AuthRequiredProbeAgent {
+  readonly authenticateCalls: AuthenticateRequest[] = [];
+
+  constructor(
+    calls: string[],
+    private readonly method: Record<string, unknown>,
+  ) {
+    super(calls);
+  }
+
+  override async initialize(params: InitializeRequest): Promise<InitializeResponse> {
+    this.calls.push(`initialize:gateway=${Boolean(params.clientCapabilities?.auth?._meta?.gateway)}`);
+    return {
+      protocolVersion: PROTOCOL_VERSION,
+      authMethods: [this.method as never],
+      agentCapabilities: { promptCapabilities: {} },
+    };
+  }
+
+  override async authenticate(params: AuthenticateRequest) {
+    this.authenticateCalls.push(params);
+    return {};
+  }
+}
+
 describe("probeAgentAuthStatus", () => {
   it("reports auth_required without calling authenticate", async () => {
     const calls: string[] = [];
@@ -389,6 +414,30 @@ describe("probeAgentAuthStatus", () => {
     });
 
     expect(calls).toEqual(["initialize"]);
+  });
+
+  it("reports agent-owned API key metadata as an in-app authentication form", async () => {
+    const calls: string[] = [];
+    await expect(probeAgentAuthStatus({
+      agent: { command: "fake-agent" },
+      cwd: "/tmp/clash-acp-form-auth-probe-test",
+      spawner: connectProbeAgent(() => new ConventionAuthProbeAgent(calls, {
+        id: "provider-login",
+        name: "Provider key",
+        _meta: { "api-key": { provider: "anthropic" } },
+      })),
+    })).resolves.toMatchObject({
+      status: "needs-auth",
+      methods: [{
+        id: "provider-login",
+        name: "Provider key",
+        type: "agent",
+        form: "fields",
+        vars: [{ name: "api-key", label: "API key", secret: true }],
+      }],
+    });
+
+    expect(calls).toEqual(["initialize:gateway=true", "newSession"]);
   });
 
   it("reports configured auth when a session can be created", async () => {
@@ -658,6 +707,60 @@ describe("authenticateAgent", () => {
     })).resolves.toEqual({ status: "completed" });
 
     expect(calls).toEqual(["initialize", "authenticate:api-key"]);
+  });
+
+  it("submits authentication form values through the method metadata convention", async () => {
+    const calls: string[] = [];
+    const agent = new ConventionAuthProbeAgent(calls, {
+      id: "provider-login",
+      name: "Provider key",
+      _meta: { "api-key": { provider: "anthropic" } },
+    });
+
+    await expect(authenticateAgent({
+      agent: { command: "fake-agent" },
+      cwd: "/tmp/clash-acp-form-auth-submit-test",
+      methodId: "provider-login",
+      values: { "api-key": "sk-ant-test" },
+      spawner: connectProbeAgent(() => agent),
+    })).resolves.toEqual({ status: "completed" });
+
+    expect(agent.authenticateCalls).toEqual([{
+      methodId: "provider-login",
+      _meta: { "api-key": { apiKey: "sk-ant-test" } },
+    }]);
+  });
+
+  it("submits gateway authentication fields without persisting the API key in the host", async () => {
+    const calls: string[] = [];
+    const agent = new ConventionAuthProbeAgent(calls, {
+      id: "custom-endpoint",
+      name: "Custom endpoint",
+      _meta: { gateway: { protocol: "openai" } },
+    });
+
+    await expect(authenticateAgent({
+      agent: { command: "fake-agent" },
+      cwd: "/tmp/clash-acp-gateway-auth-submit-test",
+      methodId: "custom-endpoint",
+      values: {
+        baseUrl: " https://api.example.com/v1 ",
+        "api-key": "TOKEN",
+        providerName: "custom",
+      },
+      spawner: connectProbeAgent(() => agent),
+    })).resolves.toEqual({ status: "completed" });
+
+    expect(agent.authenticateCalls).toEqual([{
+      methodId: "custom-endpoint",
+      _meta: {
+        gateway: {
+          baseUrl: "https://api.example.com/v1",
+          headers: { Authorization: "Bearer TOKEN" },
+          providerName: "custom",
+        },
+      },
+    }]);
   });
 
   it("launches ACP terminal auth methods through the host terminal", async () => {

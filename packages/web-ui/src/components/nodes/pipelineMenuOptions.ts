@@ -1,10 +1,12 @@
-import { Image as ImageIcon, VideoCamera, FilmSlate, SpeakerHigh, TextT, PencilSimple, FilmStrip } from '@phosphor-icons/react';
+import { Image as ImageIcon, VideoCamera, FilmSlate, SpeakerHigh, TextT, PencilSimple, FilmStrip, Cube } from '@phosphor-icons/react';
 import {
     listCompatibleModelCatalogEntries,
     pickDefaultModel,
+    type AigcActionKind,
     type ModelCatalogEntry,
     type Modality,
 } from '@clash/shared-types';
+import { GENERATION_ACTION_TYPE_BY_KIND } from './generationActionKind';
 
 export interface PipelineMenuOption {
     id: string;
@@ -28,11 +30,11 @@ export interface PipelineMenuOption {
 
 /** Build the spawn payload for a generation action-badge. */
 function buildGenNodeData(
-    actionType: 'image-gen' | 'video-gen' | 'audio-gen' | 'text-gen',
-    outputKind: 'image' | 'video' | 'audio' | 'text',
+    outputKind: AigcActionKind,
     sourceKind?: Modality,
     catalog: ReadonlyArray<ModelCatalogEntry> = [],
 ): Record<string, unknown> {
+    const actionType = GENERATION_ACTION_TYPE_BY_KIND[outputKind];
     // `pickDefaultModel` owns the per-kind default, not catalog array order.
     // Taking `[0]` of the compatible list made the default depend on where a
     // card happens to sit in the catalog: adding a music model above the TTS
@@ -43,14 +45,15 @@ function buildGenNodeData(
         cards: catalog.map((entry) => entry.model),
     });
     const modelId = card?.id ?? '';
-    const labelByAction = {
-        'image-gen': 'Image Prompt',
-        'video-gen': 'Video Prompt',
-        'audio-gen': 'Audio Prompt',
-        'text-gen': 'Text Prompt',
-    } as const;
+    const labelByKind = {
+        image: 'Image Prompt',
+        video: 'Video Prompt',
+        audio: 'Audio Prompt',
+        text: 'Text Prompt',
+        model: 'Model Prompt',
+    } as const satisfies Record<AigcActionKind, string>;
     return {
-        label: labelByAction[actionType],
+        label: labelByKind[outputKind],
         actionType,
         modelId,
         model: modelId,
@@ -60,7 +63,7 @@ function buildGenNodeData(
 }
 
 function hasCompatibleGenerationModel(
-    outputKind: 'image' | 'video' | 'audio' | 'text',
+    outputKind: AigcActionKind,
     sourceKind?: Modality,
     catalog: ReadonlyArray<ModelCatalogEntry> = [],
 ): boolean {
@@ -81,7 +84,7 @@ export const PIPELINE_MENU_OPTIONS: PipelineMenuOption[] = [
         label: 'Image Gen',
         icon: ImageIcon,
         nodeType: 'action-badge',
-        getNodeData: (sourceKind, catalog) => buildGenNodeData('image-gen', 'image', sourceKind, catalog),
+        getNodeData: (sourceKind, catalog) => buildGenNodeData('image', sourceKind, catalog),
         // Visible only when some image-output model can consume the source.
         // Without a source (manual placement), always visible.
         isCompatibleWithSource: (sourceKind, catalog) => hasCompatibleGenerationModel('image', sourceKind, catalog),
@@ -91,7 +94,7 @@ export const PIPELINE_MENU_OPTIONS: PipelineMenuOption[] = [
         label: 'Video Gen',
         icon: VideoCamera,
         nodeType: 'action-badge',
-        getNodeData: (sourceKind, catalog) => buildGenNodeData('video-gen', 'video', sourceKind, catalog),
+        getNodeData: (sourceKind, catalog) => buildGenNodeData('video', sourceKind, catalog),
         isCompatibleWithSource: (sourceKind, catalog) => hasCompatibleGenerationModel('video', sourceKind, catalog),
     },
     {
@@ -99,7 +102,7 @@ export const PIPELINE_MENU_OPTIONS: PipelineMenuOption[] = [
         label: 'Audio Gen',
         icon: SpeakerHigh,
         nodeType: 'action-badge',
-        getNodeData: (sourceKind, catalog) => buildGenNodeData('audio-gen', 'audio', sourceKind, catalog),
+        getNodeData: (sourceKind, catalog) => buildGenNodeData('audio', sourceKind, catalog),
         isCompatibleWithSource: (sourceKind, catalog) => hasCompatibleGenerationModel('audio', sourceKind, catalog),
     },
     {
@@ -107,8 +110,16 @@ export const PIPELINE_MENU_OPTIONS: PipelineMenuOption[] = [
         label: 'Text Gen',
         icon: TextT,
         nodeType: 'action-badge',
-        getNodeData: (sourceKind, catalog) => buildGenNodeData('text-gen', 'text', sourceKind, catalog),
+        getNodeData: (sourceKind, catalog) => buildGenNodeData('text', sourceKind, catalog),
         isCompatibleWithSource: (sourceKind, catalog) => hasCompatibleGenerationModel('text', sourceKind, catalog),
+    },
+    {
+        id: 'model-gen',
+        label: 'Model Gen',
+        icon: Cube,
+        nodeType: 'action-badge',
+        getNodeData: (sourceKind, catalog) => buildGenNodeData('model', sourceKind, catalog),
+        isCompatibleWithSource: (sourceKind, catalog) => hasCompatibleGenerationModel('model', sourceKind, catalog),
     },
     {
         id: 'video-editor',

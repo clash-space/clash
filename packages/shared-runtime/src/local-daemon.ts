@@ -3,7 +3,8 @@ import {
   type ChildProcess,
   type SpawnOptions,
 } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { mkdir, open, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -35,6 +36,8 @@ export interface LocalDaemonLaunchResult {
 
 export interface DetachedLocalDaemonOptions {
   entryPath: string;
+  /** Content identity advertised by the launched host. */
+  runtimeFingerprint?: string;
   /** Node flags placed before the entrypoint (for example `--import tsx` in development). */
   nodeArgs?: readonly string[];
   dataDir: string;
@@ -52,6 +55,8 @@ export interface DetachedLocalDaemonOptions {
     args: readonly string[],
     options: SpawnOptions,
   ) => Pick<ChildProcess, "pid" | "unref">;
+  processExists?: (pid: number) => boolean;
+  killProcess?: (pid: number, signal: NodeJS.Signals) => void;
 }
 
 export interface LocalDaemonBootstrap {
@@ -65,9 +70,18 @@ export interface LocalDaemonBootstrapOptions {
   pidExists?: (pid: number) => boolean;
   probe?: (record: LocalHostDiscoveryRecord) => Promise<boolean>;
   launch: () => Promise<LocalDaemonLaunchResult>;
+  /** Replace a healthy host when it advertises a different executable artifact. */
+  runtimeFingerprint?: string;
+  retire?: (record: LocalHostDiscoveryRecord) => Promise<void>;
   startupTimeoutMs?: number;
   lockTimeoutMs?: number;
   pollIntervalMs?: number;
+}
+
+export function resolveLocalDaemonRuntimeFingerprint(
+  entryPath: string,
+): string {
+  return `sha256:${createHash("sha256").update(readFileSync(entryPath)).digest("hex")}`;
 }
 
 function isMissingFile(error: unknown): boolean {
@@ -97,6 +111,8 @@ export function launchDetachedLocalDaemon(
   options: DetachedLocalDaemonOptions,
 ): LocalDaemonLaunchResult {
   const spawnProcess = options.spawnProcess ?? spawn;
+  const launchedProcessExists = options.processExists ?? processExists;
+  const killProcess = options.killProcess ?? process.kill;
   const env = options.env ?? process.env;
   // Decoupled from the launcher on purpose. Desktop may explicitly use its
   // bundled Electron executable in Node mode after validating that embedded
@@ -140,6 +156,7 @@ export function launchDetachedLocalDaemon(
         CLASH_HOST_RUN_DIR: options.runDir,
         CLASH_CLI_ENTRY_PATH: options.cliEntryPath,
         CLASH_LOCAL_API_WRAPPER_ENTRY: "1",
+        CLASH_DAEMON_RUNTIME_FINGERPRINT: options.runtimeFingerprint,
         // Electron Node mode is still a detached Node process; without this
         // explicit opt-in an Electron executable would recursively open the GUI.
         ELECTRON_RUN_AS_NODE: options.electronRunAsNode ? "1" : undefined,
@@ -156,9 +173,12 @@ export function launchDetachedLocalDaemon(
     pid,
     runtime,
     stop: async () => {
-      if (!processExists(pid)) return;
+      if (!launchedProcessExists(pid)) return;
       try {
-        process.kill(pid, "SIGTERM");
+        // A detached source runtime may be supervised by tsx. Signal the whole
+        // process group so a timed-out watcher cannot leave its listening child
+        // behind as an orphan.
+        killProcess(process.platform === "win32" ? pid : -pid, "SIGTERM");
       } catch (error) {
         if (!(
           error &&
@@ -193,6 +213,7 @@ async function defaultHealthProbe(
         pid?: unknown;
         profile?: unknown;
         protocolVersion?: unknown;
+        runtimeFingerprint?: unknown;
       };
     };
     return (
@@ -201,7 +222,8 @@ async function defaultHealthProbe(
       body.host?.hostId === record.hostId &&
       body.host.pid === record.pid &&
       body.host.profile === (record.profile ?? "prod") &&
-      body.host.protocolVersion === record.protocolVersion
+      body.host.protocolVersion === record.protocolVersion &&
+      body.host.runtimeFingerprint === record.runtimeFingerprint
     );
   } catch {
     return false;
@@ -211,6 +233,7 @@ async function defaultHealthProbe(
 type LocalDaemonInspection =
   | { status: "absent" }
   | { status: "healthy"; record: LocalHostDiscoveryRecord }
+  | { status: "obsolete"; record: LocalHostDiscoveryRecord }
   | { status: "unhealthy"; record: LocalHostDiscoveryRecord };
 
 function isLoopbackEndpoint(endpoint: string): boolean {
@@ -233,6 +256,7 @@ async function inspectLocalDaemon(options: {
   profile: ClashRuntimeProfile;
   pidExists: (pid: number) => boolean;
   probe: (record: LocalHostDiscoveryRecord) => Promise<boolean>;
+  runtimeFingerprint?: string;
 }): Promise<LocalDaemonInspection> {
   let value: unknown;
   try {
@@ -253,9 +277,44 @@ async function inspectLocalDaemon(options: {
   ) {
     return { status: "unhealthy", record: value };
   }
-  return (await options.probe(value))
-    ? { status: "healthy", record: value }
-    : { status: "unhealthy", record: value };
+  if (!(await options.probe(value))) {
+    return { status: "unhealthy", record: value };
+  }
+  if (
+    options.runtimeFingerprint &&
+    value.runtimeFingerprint !== options.runtimeFingerprint
+  ) {
+    return { status: "obsolete", record: value };
+  }
+  return { status: "healthy", record: value };
+}
+
+async function retireLocalDaemon(
+  record: LocalHostDiscoveryRecord,
+  pidExists: (pid: number) => boolean,
+): Promise<void> {
+  try {
+    process.kill(record.pid, "SIGTERM");
+  } catch (error) {
+    if (!isMissingProcess(error)) throw error;
+    return;
+  }
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline && pidExists(record.pid)) await delay(50);
+  if (pidExists(record.pid)) {
+    throw new Error(
+      `Clash daemon process ${record.pid} did not stop after its runtime artifact was superseded`,
+    );
+  }
+}
+
+function isMissingProcess(error: unknown): boolean {
+  return Boolean(
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    error.code === "ESRCH",
+  );
 }
 
 async function acquireStartupLock(options: {
@@ -329,7 +388,7 @@ export function createLocalDaemonBootstrap(
 ): LocalDaemonBootstrap {
   const pidExists = options.pidExists ?? processExists;
   const probe = options.probe ?? defaultHealthProbe;
-  const startupTimeoutMs = options.startupTimeoutMs ?? 10_000;
+  const startupTimeoutMs = options.startupTimeoutMs ?? 30_000;
   const lockTimeoutMs = options.lockTimeoutMs ?? 15_000;
   const pollIntervalMs = options.pollIntervalMs ?? 50;
   const inspectDaemon = () =>
@@ -338,6 +397,7 @@ export function createLocalDaemonBootstrap(
       profile: options.profile,
       pidExists,
       probe,
+      runtimeFingerprint: options.runtimeFingerprint,
     });
   let ensuring: Promise<LocalHostDiscoveryRecord> | undefined;
   let closed = false;
@@ -346,6 +406,8 @@ export function createLocalDaemonBootstrap(
     if (closed) throw new Error("Clash daemon bootstrap is closed");
     const active = await inspectDaemon();
     if (active.status === "healthy") return active.record;
+    // Retirement happens only after taking the startup lock below. Until then,
+    // another client may already be replacing the same artifact.
     if (active.status === "unhealthy") {
       throw new Error(
         `Clash daemon process ${active.record.pid} is alive but unhealthy at ${active.record.endpoint}; ` +
@@ -363,6 +425,17 @@ export function createLocalDaemonBootstrap(
     try {
       const activeAfterLock = await inspectDaemon();
       if (activeAfterLock.status === "healthy") return activeAfterLock.record;
+      if (activeAfterLock.status === "obsolete") {
+        await (
+          options.retire ?? ((record) => retireLocalDaemon(record, pidExists))
+        )(activeAfterLock.record);
+        const afterRetire = await inspectDaemon();
+        if (afterRetire.status !== "absent") {
+          throw new Error(
+            `Clash daemon process ${activeAfterLock.record.pid} still owns discovery after retirement`,
+          );
+        }
+      }
       if (activeAfterLock.status === "unhealthy") {
         throw new Error(
           `Clash daemon process ${activeAfterLock.record.pid} is alive but unhealthy at ${activeAfterLock.record.endpoint}; ` +

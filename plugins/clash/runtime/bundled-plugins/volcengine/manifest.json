@@ -1,7 +1,7 @@
 {
   "apiVersion": "clash.plugin/v1",
   "id": "clash.volcengine",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "name": "Volcengine",
   "description": "Volcengine ModelArk video and OpenSpeech audio generation.",
   "runtime": {
@@ -10,7 +10,13 @@
     "entrypoint": "dist/stdio.mjs"
   },
   "contributes": {
-    "cards": [],
+    "cards": [
+      {
+        "id": "volcengine-mediakit-video-enhance",
+        "kind": "model-card",
+        "path": "cards/video-enhance.json"
+      }
+    ],
     "functions": [
       {
         "id": "volcengine-execute",
@@ -21,20 +27,40 @@
         "id": "volcengine-speech-execute",
         "kind": "provider-executor",
         "operations": ["submit"]
+      },
+      {
+        "id": "volcengine-mediakit-execute",
+        "kind": "provider-executor",
+        "operations": ["submit", "poll"]
       }
     ],
     "providers": [
       {
-        "id": "volcengine",
+        "id": "volcengine-modelark",
         "kind": "provider",
-        "path": "providers/volcengine.json"
+        "path": "providers/volcengine-modelark.json"
       },
       {
         "id": "volcengine-speech",
         "kind": "provider",
         "path": "providers/volcengine-speech.json"
+      },
+      {
+        "id": "volcengine-mediakit",
+        "kind": "provider",
+        "path": "providers/volcengine-mediakit.json"
+      }
+    ],
+    "modelBindings": [
+      {
+        "id": "volcengine-mediakit-video-enhance",
+        "kind": "model-provider-binding",
+        "path": "bindings/video-enhance.json"
       }
     ]
   },
-  "contractTests": ["contract-tests/volcengine-execute.json"]
+  "contractTests": [
+    "contract-tests/volcengine-execute.json",
+    "contract-tests/volcengine-mediakit-execute.json"
+  ]
 }

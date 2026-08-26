@@ -4,8 +4,8 @@ import { AIGC_ACTION_KINDS, AigcActionKindSchema } from "./actions.js";
 import { AssetKindSchema } from "./assets.js";
 
 describe("action kinds", () => {
-  it("names the four things the product produces", () => {
-    expect([...AIGC_ACTION_KINDS]).toEqual(["image", "video", "audio", "text"]);
+  it("names the five things the product produces", () => {
+    expect([...AIGC_ACTION_KINDS]).toEqual(["image", "video", "audio", "text", "model"]);
   });
 
   it("refuses a task-shaped value", () => {
@@ -15,10 +15,14 @@ describe("action kinds", () => {
     expect(AigcActionKindSchema.safeParse("music-generation").success).toBe(false);
   });
 
-  it("is not the asset kinds", () => {
-    // Two enums that differ by one member each are easy to use interchangeably by accident. They
-    // answer different questions: what can be stored, and what can be produced.
-    expect(AigcActionKindSchema.safeParse("model").success).toBe(false);
+  it("shares every storable asset kind now that a model-generation action can produce one", () => {
+    // `model` used to be the one AssetKind an AIGC action could never produce: a 3-D asset a user
+    // could hold without any action having made it. A model-generation action (e.g. mesh or
+    // auto-rig generation) closes that gap, so every AssetKind is now also a valid AigcActionKind.
+    // `text` is the only member left that names an action without naming a storable Asset.
+    for (const kind of AssetKindSchema.options) {
+      expect(AigcActionKindSchema.safeParse(kind).success).toBe(true);
+    }
     expect(AssetKindSchema.safeParse("text").success).toBe(false);
   });
 });

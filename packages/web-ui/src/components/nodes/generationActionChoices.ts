@@ -5,6 +5,7 @@ import {
   type CustomActionDefinition,
   type ModelCard,
   type Modality,
+  type AigcActionKind,
 } from "@clash/shared-types";
 
 export type GenerationActionChoice =
@@ -32,7 +33,7 @@ export function generationChoiceDefaults(
 }
 
 export function listGenerationActionChoices(options: {
-  outputKind: "image" | "video" | "audio" | "text";
+  outputKind: AigcActionKind;
   models: readonly ModelCard[];
   customActions: readonly CustomActionDefinition[];
   referenceCounts?: Partial<Record<Modality, number>>;

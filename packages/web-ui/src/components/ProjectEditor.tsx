@@ -181,6 +181,8 @@ import { runtimeApiUrl } from "@clash/web-ui/lib/runtimeConfig";
 import betterAuthClient from "@clash/web-ui/lib/betterAuthClient";
 import {
   DESKTOP_TAB_TITLE_EVENT,
+  dispatchDesktopTabConnection,
+  type DesktopTabConnectionEventDetail,
   type DesktopTabTitleEventDetail,
 } from "@clash/web-ui/lib/desktopTabs";
 import {
@@ -1290,6 +1292,27 @@ export default function ProjectEditor({
       setEdges(processedEdges);
     },
   });
+  useEffect(() => {
+    const detail: DesktopTabConnectionEventDetail = {
+      path: location.pathname,
+      connection: !loroSync.isInitialized
+        ? "connecting"
+        : loroSync.connected
+          ? "connected"
+          : "disconnected",
+    };
+    dispatchDesktopTabConnection(detail);
+  }, [location.pathname, loroSync.connected, loroSync.isInitialized]);
+  useEffect(() => {
+    const path = location.pathname;
+    return () => {
+      const detail: DesktopTabConnectionEventDetail = {
+        path,
+        connection: undefined,
+      };
+      dispatchDesktopTabConnection(detail);
+    };
+  }, [location.pathname]);
   const canvasFolderCanvases = useMemo(
     () =>
       loroSync.canvases.filter((canvas) => !isImplicitCanvasRoot(canvas.name)),
@@ -1627,14 +1650,8 @@ export default function ProjectEditor({
   const editorRouter = useNavigate();
   const {
     sessions: sessionHistory,
-    archivedSessions: archivedSessionHistory,
-    archiveStatus,
-    archiveError,
     upsertSession,
-    loadArchivedSessions,
     archiveSession,
-    restoreSession,
-    deleteSession: removeSession,
   } = useSessionHistory(project.id);
 
   const handleReturnToProjects = useCallback(() => {
@@ -1696,13 +1713,6 @@ export default function ProjectEditor({
       }
     },
     [archiveSession, setFollowingAgentMode, threadId],
-  );
-
-  const handleDeleteSessionPermanently = useCallback(
-    (id: string) => {
-      void removeSession(id);
-    },
-    [removeSession],
   );
 
   const handleCopilotCreateSession = useCallback(
@@ -3347,12 +3357,10 @@ export default function ProjectEditor({
               : n,
           ),
         );
-        if (loroSync.connected) {
-          loroSync.updateNode(placeholderId, {
-            width: scaled.width,
-            height: scaled.height,
-          });
-        }
+        loroSync.updateNode(placeholderId, {
+          width: scaled.width,
+          height: scaled.height,
+        });
       }
 
       try {
@@ -7506,21 +7514,9 @@ export default function ProjectEditor({
                                         }
                                         initialPrompt={chatInitialPrompt}
                                         sessionHistory={sessionHistory}
-                                        archivedSessionHistory={
-                                          archivedSessionHistory
-                                        }
-                                        archiveStatus={archiveStatus}
-                                        archiveError={archiveError}
                                         onNewSession={handleNewSession}
                                         onSwitchSession={handleSwitchSession}
-                                        onLoadArchivedSessions={
-                                          loadArchivedSessions
-                                        }
                                         onArchiveSession={handleArchiveSession}
-                                        onRestoreSession={restoreSession}
-                                        onDeleteSession={
-                                          handleDeleteSessionPermanently
-                                        }
                                         onUpsertSession={upsertSession}
                                         onCreateSession={
                                           handleCopilotCreateSession

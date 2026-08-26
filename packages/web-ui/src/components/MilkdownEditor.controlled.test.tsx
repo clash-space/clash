@@ -15,6 +15,60 @@ import MilkdownEditor, { type MilkdownEditorHandle } from "./MilkdownEditor";
 describe("MilkdownEditor controlled value", () => {
   afterEach(cleanup);
 
+  it("keeps the empty hint inside ProseMirror and focuses the real editor from its surface", async () => {
+    const { container } = render(
+      <MilkdownEditor
+        value=""
+        onChange={() => undefined}
+        placeholder="Describe your video idea..."
+      />,
+    );
+
+    const editor = await screen.findByRole("textbox");
+    const emptyParagraph = editor.querySelector("p");
+    expect(emptyParagraph).toHaveAttribute(
+      "data-placeholder",
+      "Describe your video idea...",
+    );
+
+    const surface = container.querySelector(".milkdown-editor-wrapper");
+    expect(surface).toBeTruthy();
+    fireEvent.click(surface!);
+    expect(document.activeElement).toBe(editor);
+  });
+
+  it("updates the ProseMirror hint in place when its context changes", async () => {
+    const { container, rerender } = render(
+      <MilkdownEditor
+        value=""
+        onChange={() => undefined}
+        placeholder="Describe your video idea..."
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror p")).toHaveAttribute(
+        "data-placeholder",
+        "Describe your video idea...",
+      );
+    });
+
+    rerender(
+      <MilkdownEditor
+        value=""
+        onChange={() => undefined}
+        placeholder="Ask anything..."
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror p")).toHaveAttribute(
+        "data-placeholder",
+        "Ask anything...",
+      );
+    });
+  });
+
   it("writes an externally selected slash command into the visible editor", async () => {
     const onChange = vi.fn();
     const { container, rerender } = render(
@@ -299,6 +353,70 @@ describe("MilkdownEditor controlled value", () => {
       ).toBe(true);
     });
     expect(onMentionAdded).not.toHaveBeenCalled();
+  });
+
+  it("resolves a Global Asset into a Project Asset before inserting its mention", async () => {
+    const rect = {
+      left: 20,
+      right: 20,
+      top: 40,
+      bottom: 52,
+      width: 0,
+      height: 12,
+      x: 20,
+      y: 40,
+      toJSON: () => ({}),
+    };
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      configurable: true,
+      value: () => ({ 0: rect, length: 1, item: () => rect }),
+    });
+    Object.defineProperty(Range.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value: () => rect,
+    });
+    const onChange = vi.fn();
+    const resolveReference = vi.fn().mockResolvedValue({
+      id: "project-logo",
+      type: "image",
+      label: "Logo master",
+      kind: "asset",
+      scope: "project-assets",
+    });
+    const ref = createRef<MilkdownEditorHandle>();
+    render(
+      <MilkdownEditor
+        ref={ref}
+        value=""
+        onChange={onChange}
+        promptModalities={["image"]}
+        mentionableNodes={[
+          {
+            id: "global-logo",
+            type: "image",
+            label: "Logo master",
+            kind: "asset",
+            scope: "global-assets",
+            resolveReference,
+          },
+        ]}
+      />,
+    );
+
+    await screen.findByRole("textbox");
+    act(() => ref.current?.insertAtCursor("@"));
+    fireEvent.click(await screen.findByText("Logo master"));
+
+    await waitFor(() => expect(resolveReference).toHaveBeenCalledOnce());
+    await waitFor(() => {
+      expect(
+        onChange.mock.calls.some(
+          ([markdown]) =>
+            typeof markdown === "string" &&
+            markdown.includes("@[Logo master](project-asset:project-logo)"),
+        ),
+      ).toBe(true);
+    });
   });
 
   it("exposes real document formatting commands to editor toolbars", async () => {

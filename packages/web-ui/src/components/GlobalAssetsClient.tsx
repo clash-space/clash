@@ -18,6 +18,10 @@ import { AssetThumbnail } from "../features/assets/AssetThumbnail";
 import { projectAssetDisplayName } from "../features/assets/projectAssetPresentation";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { InlineAlert } from "./ui/feedback";
+import { ArtworkSlot } from "./ui/artwork-slot";
+import { AppPage, AppPageHeader } from "./AppPage";
+import { BrandAsset } from "./BrandAsset";
 
 type TrashedResolvedAsset = ResolvedAsset & {
   lifecycle: Extract<ResolvedAsset["lifecycle"], { state: "trashed" }>;
@@ -110,32 +114,26 @@ export default function GlobalAssetsClient({
 
   return (
     <main className="clash-dashboard-shell min-h-screen">
-      <div className="mx-auto max-w-[1600px] px-6 pb-24 pt-20">
-        <header className="mb-10 flex items-end justify-between gap-6">
-          <div>
-            <p className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
-              Reusable media
-            </p>
-            <h1 className="font-display text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50">
-              Assets
-            </h1>
-            <p className="mt-2 max-w-xl text-base text-stone-600 dark:text-stone-300">
-              One library for source files you want to reuse across canvases.
-            </p>
-          </div>
-          <Button
-            onClick={() => inputRef.current?.click()}
-            disabled={uploading}
-            leftIcon={
-              uploading ? (
-                <UploadSimple className="h-4 w-4 animate-pulse" />
-              ) : (
-                <Plus className="h-4 w-4" weight="bold" />
-              )
-            }
-          >
-            {uploading ? "Uploading…" : "Add assets"}
-          </Button>
+      <AppPage width="wide">
+        <AppPageHeader
+          title="Assets"
+          description="One library for source files you want to reuse across canvases."
+          action={
+            <Button
+              onClick={() => inputRef.current?.click()}
+              disabled={uploading}
+              leftIcon={
+                uploading ? (
+                  <UploadSimple className="h-4 w-4 animate-pulse" />
+                ) : (
+                  <Plus className="h-4 w-4" weight="bold" />
+                )
+              }
+            >
+              {uploading ? "Uploading…" : "Add assets"}
+            </Button>
+          }
+        />
           <Input
             ref={inputRef}
             type="file"
@@ -145,23 +143,27 @@ export default function GlobalAssetsClient({
             className="hidden"
             onChange={uploadFiles}
           />
-        </header>
 
         {error ? (
-          <p role="alert" className="mb-6 text-sm font-medium text-red-700">
-            {error}
-          </p>
+          <InlineAlert tone="error" title={error} className="mb-6" />
         ) : null}
         {activeAssets.length === 0 && trashedAssets.length === 0 ? (
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            className="group flex min-h-72 w-full flex-col items-center justify-center border-y border-dashed border-warm-border bg-warm-surface/40 text-center transition-colors hover:bg-warm-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+            className="group flex min-h-72 w-full flex-col items-center justify-center border-y border-dashed border-warm-border bg-warm-surface/40 text-center transition-colors hover:bg-warm-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
           >
-            <UploadSimple
-              className="mb-5 h-8 w-8 text-stone-350 transition-transform duration-200 group-hover:-translate-y-1"
-              weight="light"
-            />
+            <ArtworkSlot
+              slot="assets-empty-artwork"
+              size="xl"
+              className="mb-5 transition-transform duration-200 group-hover:-translate-y-1 motion-reduce:transition-none"
+            >
+              <BrandAsset
+                name="assets"
+                alt=""
+                className="size-16 object-contain"
+              />
+            </ArtworkSlot>
             <strong className="font-display text-lg text-content-primary">
               Build your reusable library
             </strong>
@@ -291,7 +293,7 @@ export default function GlobalAssetsClient({
             </ul>
           </section>
         ) : null}
-      </div>
+      </AppPage>
     </main>
   );
 }

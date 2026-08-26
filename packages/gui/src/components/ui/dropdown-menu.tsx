@@ -1,61 +1,23 @@
-import {
-  createContext,
-  forwardRef,
-  useContext,
-  type ComponentPropsWithoutRef,
-  type ElementRef,
-} from "react";
+import { forwardRef, type ComponentPropsWithoutRef, type ElementRef } from "react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 
 import { cn } from "../../lib/cn";
-import { useExclusivePopupOpen, usePopupFocusPolicy } from "./popup-focus";
 
-type DropdownFocusPolicy = ReturnType<
-  typeof usePopupFocusPolicy<HTMLButtonElement>
->;
-const DropdownFocusContext = createContext<DropdownFocusPolicy | null>(null);
-
-export function DropdownMenu({
-  modal = false,
-  open: controlledOpen,
-  defaultOpen,
-  onOpenChange,
-  ...props
-}: ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Root>) {
-  const focusPolicy = usePopupFocusPolicy<HTMLButtonElement>();
-  const popup = useExclusivePopupOpen({
-    open: controlledOpen,
-    defaultOpen,
-    onOpenChange,
-  });
-  return (
-    <DropdownFocusContext.Provider value={focusPolicy}>
-      <DropdownMenuPrimitive.Root
-        modal={modal}
-        open={popup.open}
-        onOpenChange={popup.setOpen}
-        {...props}
-      />
-    </DropdownFocusContext.Provider>
-  );
+export function DropdownMenu(
+  { modal = false, ...props }: ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Root>,
+) {
+  return <DropdownMenuPrimitive.Root modal={modal} {...props} />;
 }
+
 export const DropdownMenuTrigger = forwardRef<
   ElementRef<typeof DropdownMenuPrimitive.Trigger>,
   ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Trigger>
->(function DropdownMenuTrigger({ onPointerDown, onKeyDown, ...props }, ref) {
-  const focusPolicy = useContext(DropdownFocusContext);
+>(function DropdownMenuTrigger(props, ref) {
   return (
     <DropdownMenuPrimitive.Trigger
+      ref={ref}
+      data-slot="dropdown-menu-trigger"
       {...props}
-      ref={focusPolicy?.composeTriggerRef(ref) ?? ref}
-      onPointerDown={(event) => {
-        focusPolicy?.markPointerOpen();
-        onPointerDown?.(event);
-      }}
-      onKeyDown={(event) => {
-        focusPolicy?.markKeyboardOpen(event.key);
-        onKeyDown?.(event);
-      }}
     />
   );
 });
@@ -68,11 +30,9 @@ export function dropdownMenuItemClassName({
   className?: string;
 } = {}) {
   return cn(
-    "flex min-h-[40px] w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors",
-    "text-content-primary hover:bg-warm-muted/75",
-    "focus-visible:bg-warm-muted/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand",
-    "data-[highlighted]:outline-none",
-    disabled && "cursor-not-allowed opacity-45",
+    "app-select-item app-select-focus relative flex min-h-8 w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none select-none",
+    "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+    disabled && "pointer-events-none opacity-50",
     className,
   );
 }
@@ -81,39 +41,20 @@ export const DropdownMenuContent = forwardRef<
   ElementRef<typeof DropdownMenuPrimitive.Content>,
   ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
 >(function DropdownMenuContent(
-  {
-    className,
-    sideOffset = 8,
-    collisionPadding = 12,
-    onCloseAutoFocus,
-    onFocusCapture,
-    onFocusOutside,
-    ...props
-  },
+  { className, align = "start", sideOffset = 4, collisionPadding = 12, ...props },
   ref,
 ) {
-  const focusPolicy = useContext(DropdownFocusContext);
   return (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
         ref={ref}
+        data-slot="dropdown-menu-content"
+        align={align}
         sideOffset={sideOffset}
         collisionPadding={collisionPadding}
-        onCloseAutoFocus={(event) => {
-          onCloseAutoFocus?.(event);
-          focusPolicy?.handleCloseAutoFocus(event);
-        }}
-        onFocusCapture={(event) => {
-          onFocusCapture?.(event);
-          if (!event.defaultPrevented)
-            focusPolicy?.handleContentFocusCapture(event);
-        }}
-        onFocusOutside={(event) => {
-          onFocusOutside?.(event);
-          focusPolicy?.handleFocusOutside(event);
-        }}
         className={cn(
-          "z-[80] rounded-2xl border border-overlay-border bg-overlay-surface p-1.5 text-content-primary shadow-overlay",
+          "app-select-content z-[80] max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-32 origin-[var(--radix-dropdown-menu-content-transform-origin)] overflow-x-hidden overflow-y-auto rounded-lg p-1 text-foreground outline-none",
+          "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
           className,
         )}
         {...props}
@@ -129,8 +70,81 @@ export const DropdownMenuItem = forwardRef<
   return (
     <DropdownMenuPrimitive.Item
       ref={ref}
+      data-slot="dropdown-menu-item"
       disabled={disabled}
       className={dropdownMenuItemClassName({ disabled, className })}
+      {...props}
+    />
+  );
+});
+
+export const DropdownMenuCheckboxItem = forwardRef<
+  ElementRef<typeof DropdownMenuPrimitive.CheckboxItem>,
+  ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.CheckboxItem>
+>(function DropdownMenuCheckboxItem({ className, disabled, ...props }, ref) {
+  return (
+    <DropdownMenuPrimitive.CheckboxItem
+      ref={ref}
+      data-slot="dropdown-menu-checkbox-item"
+      disabled={disabled}
+      className={dropdownMenuItemClassName({ disabled, className })}
+      {...props}
+    />
+  );
+});
+
+export const DropdownMenuItemIndicator = DropdownMenuPrimitive.ItemIndicator;
+export const DropdownMenuSub = DropdownMenuPrimitive.Sub;
+
+export const DropdownMenuSubTrigger = forwardRef<
+  ElementRef<typeof DropdownMenuPrimitive.SubTrigger>,
+  ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubTrigger>
+>(function DropdownMenuSubTrigger({ className, disabled, ...props }, ref) {
+  return (
+    <DropdownMenuPrimitive.SubTrigger
+      ref={ref}
+      data-slot="dropdown-menu-sub-trigger"
+      disabled={disabled}
+      className={dropdownMenuItemClassName({ disabled, className })}
+      {...props}
+    />
+  );
+});
+
+export const DropdownMenuSubContent = forwardRef<
+  ElementRef<typeof DropdownMenuPrimitive.SubContent>,
+  ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubContent>
+>(function DropdownMenuSubContent(
+  { className, sideOffset = 2, collisionPadding = 12, ...props },
+  ref,
+) {
+  return (
+    <DropdownMenuPrimitive.Portal>
+      <DropdownMenuPrimitive.SubContent
+        ref={ref}
+        data-slot="dropdown-menu-sub-content"
+        sideOffset={sideOffset}
+        collisionPadding={collisionPadding}
+        className={cn(
+          "app-select-content z-[90] flex max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-44 flex-col gap-[var(--select-item-gap)] origin-[var(--radix-dropdown-menu-content-transform-origin)] overflow-x-hidden overflow-y-auto rounded-lg p-1 text-foreground outline-none",
+          "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
+          className,
+        )}
+        {...props}
+      />
+    </DropdownMenuPrimitive.Portal>
+  );
+});
+
+export const DropdownMenuSeparator = forwardRef<
+  ElementRef<typeof DropdownMenuPrimitive.Separator>,
+  ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Separator>
+>(function DropdownMenuSeparator({ className, ...props }, ref) {
+  return (
+    <DropdownMenuPrimitive.Separator
+      ref={ref}
+      data-slot="dropdown-menu-separator"
+      className={cn("-mx-1 my-1 h-px bg-border", className)}
       {...props}
     />
   );

@@ -114,4 +114,23 @@ describe("Image Gen action-bar choices", () => {
       "FLUX 3 Video (Continue)",
     ]);
   });
+
+  it("lists 3D model cards through the same model choice contract", () => {
+    const modelCard = MODEL_CARDS.find((model) => model.kind === "model");
+    expect(modelCard).toBeDefined();
+
+    const choices = listGenerationActionChoices({
+      outputKind: "model",
+      models: [modelCard!],
+      customActions: [],
+    });
+
+    expect(choices).toEqual([
+      expect.objectContaining({
+        kind: "model",
+        value: `model:${modelCard!.id}`,
+        model: modelCard,
+      }),
+    ]);
+  });
 });

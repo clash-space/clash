@@ -6,6 +6,11 @@ import {
 } from "./asset-metadata-registry.js";
 import { DocumentAssetMutabilitySchema } from "./document-assets.js";
 import { AsrTimedTranscriptSchema } from "./production-metadata.js";
+import {
+  MEDIA_ANALYSIS_DOCUMENT_KIND_BY_CATEGORY,
+  MediaAnalysisCategorySchema,
+  MediaAnalysisDocumentSchemas,
+} from "./media-analysis-documents.js";
 
 const idSchema = z.string().trim().min(1);
 
@@ -152,3 +157,21 @@ registerDocumentKind({
   },
   schema: MediaRenderLineageMetadataSchema,
 });
+
+for (const category of MediaAnalysisCategorySchema.options) {
+  registerDocumentKind({
+    definition: {
+      kind: MEDIA_ANALYSIS_DOCUMENT_KIND_BY_CATEGORY[category],
+      schemaVersion: 1,
+      mutability: "versioned",
+      projection: { format: "json", editable: false },
+      allowedAttachmentTargets: [
+        "project-asset",
+        "generator-revision",
+        "action-run",
+      ],
+      productConsumers: ["search", "agent-context"],
+    },
+    schema: MediaAnalysisDocumentSchemas[category],
+  });
+}

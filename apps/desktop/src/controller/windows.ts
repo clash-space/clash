@@ -9,6 +9,7 @@ import {
   Menu,
   nativeTheme,
   protocol,
+  shell,
 } from "electron";
 import type { MenuItemConstructorOptions } from "electron";
 
@@ -32,10 +33,13 @@ import type { DesktopRuntime } from "../runtime";
 import {
   createWindowRegistry,
   ensureNativeWindowControlsVisible,
+  recoverDesktopWindow,
   resolveDesktopWindowOptions,
+  resolveDesktopWebPreferences,
   shouldCreateWindowOnActivate,
 } from "../windowing";
 import type { DesktopControllerLogger } from "./types";
+import { openExternalHttpUrl } from "../external-url";
 
 function contentTypeForPath(path: string): string {
   if (path.endsWith(".html")) return "text/html";
@@ -68,11 +72,13 @@ export function createDesktopWindowController({
   moduleDir,
   dataDir,
   currentRuntime,
+  refreshRuntime,
   log,
 }: {
   moduleDir: string;
   dataDir: string;
   currentRuntime: () => DesktopRuntime;
+  refreshRuntime: () => Promise<DesktopRuntime>;
   log: DesktopControllerLogger;
 }) {
   const windowRegistry = createWindowRegistry<BrowserWindow>();
@@ -154,12 +160,8 @@ export function createDesktopWindowController({
     const window = new BrowserWindow({
       ...resolveDesktopWindowOptions(windowRegistry.count(), nativeTheme.shouldUseDarkColors),
       webPreferences: {
-        preload: join(moduleDir, "preload.js"),
-        contextIsolation: true,
-        nodeIntegration: false,
+        ...resolveDesktopWebPreferences(join(moduleDir, "preload.js")),
         backgroundThrottling: false,
-        sandbox: false,
-        additionalArguments: [],
       },
     });
     windowRegistry.register(window);
@@ -218,6 +220,10 @@ export function createDesktopWindowController({
     ipcMain.handle("clash:new-window", async () => {
       const window = await createWindow();
       return { windowId: window.id, windowCount: windowRegistry.count() };
+    });
+    ipcMain.handle("clash:refresh-runtime", async () => refreshRuntime());
+    ipcMain.handle("clash:open-external", async (_event, url: string) => {
+      await openExternalHttpUrl(url, (value) => shell.openExternal(value));
     });
     ipcMain.handle("clash:get-nle-availability", async () => detectNleAvailability());
     ipcMain.handle("clash:authorize-provider", async (event, request: ProviderOAuthAuthorizationRequest) => {
@@ -281,5 +287,14 @@ export function createDesktopWindowController({
     }
   }
 
-  return { registerHostBindings, createWindow, activate };
+  async function recoverWindow(): Promise<void> {
+    const existingWindow = windowRegistry.all().at(-1);
+    if (!existingWindow) {
+      await createWindow();
+      return;
+    }
+    await recoverDesktopWindow(existingWindow, currentRuntime().webUrl);
+  }
+
+  return { registerHostBindings, createWindow, recoverWindow, activate };
 }

@@ -180,6 +180,31 @@ test("Canvas add resolves contentFile once and persists only exact file content"
   assert.doesNotMatch(JSON.stringify(calls), /contentFile|character\.tsx/);
 });
 
+test("Canvas add forwards an existing Project Asset for independent media projection", async () => {
+  const { createCanvasProjectHostGateway } = await import("./canvas-gateway");
+  const calls: ProjectHostRequest[] = [];
+  const gateway = createCanvasProjectHostGateway(hostClient(
+    () => ({ nodeId: "otter-1", created: true }),
+    calls,
+  ));
+
+  await gateway.invoke("clash_canvas_add", {
+    cwd: "/workspace",
+    type: "image",
+    label: "Deep-space otter",
+    assetId: "asset-otter",
+  });
+
+  assert.deepEqual(calls.map(({ command }) => command), [{
+    action: "add",
+    canvasId: "main",
+    type: "image",
+    label: "Deep-space otter",
+    assetId: "asset-otter",
+    actorClientType: "mcp",
+  }]);
+});
+
 test("Canvas content and contentFile are mutually exclusive before Host mutation", async () => {
   const { createCanvasProjectHostGateway } = await import("./canvas-gateway");
   const workspaceRoot = await mkdtemp(join(tmpdir(), "clash-canvas-exclusive-"));

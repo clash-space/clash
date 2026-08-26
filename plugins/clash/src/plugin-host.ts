@@ -4,6 +4,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import {
   createLocalDaemonBootstrap,
   launchDetachedLocalDaemon,
+  resolveLocalDaemonRuntimeFingerprint,
   type LocalDaemonLaunchResult,
 } from "@clash/shared-runtime/local-daemon";
 import {
@@ -35,6 +36,7 @@ type StartHost = (context: {
   dataDir: string;
   env: NodeJS.ProcessEnv;
   startedBy: "cli" | "plugin";
+  runtimeFingerprint?: string;
 }) => Promise<LocalDaemonLaunchResult>;
 
 export interface PluginHostRuntimeLayout {
@@ -52,6 +54,7 @@ export function resolvePluginHostRuntimeLayout(
     moduleUrl?: string;
     env?: NodeJS.ProcessEnv;
     tsxCliPath?: string;
+    tsxLoaderPath?: string;
   } = {},
 ): PluginHostRuntimeLayout {
   const moduleUrl = options.moduleUrl ?? import.meta.url;
@@ -79,12 +82,15 @@ export function resolvePluginHostRuntimeLayout(
     cliEntry: join(repoRoot, "packages", "cli", "src", "index.ts"),
     agentBundleRoot: join(repoRoot, "packages", "cli", "assets", "agents"),
     builtinPluginRoot,
-    nodeArgs: [
-      options.tsxCliPath ?? require.resolve("tsx/cli"),
-      "watch",
-      "--tsconfig",
-      tsconfigPath,
-    ],
+    nodeArgs:
+      env.CLASH_SOURCE_HOST_WATCH === "1"
+        ? [
+            options.tsxCliPath ?? require.resolve("tsx/cli"),
+            "watch",
+            "--tsconfig",
+            tsconfigPath,
+          ]
+        : ["--import", options.tsxLoaderPath ?? require.resolve("tsx")],
     daemonEnv: {
       CLASH_SOURCE_RUNTIME: "1",
       TSX_TSCONFIG_PATH: tsconfigPath,
@@ -145,6 +151,7 @@ async function startBundledHost(
   const layout = resolvePluginHostRuntimeLayout({ env: context.env });
   return launchDetachedLocalDaemon({
     entryPath: layout.localApiEntry,
+    runtimeFingerprint: context.runtimeFingerprint,
     nodeArgs: layout.nodeArgs,
     cliEntryPath: layout.cliEntry,
     dataDir: context.dataDir,
@@ -168,6 +175,7 @@ export function createPluginHostManager(
     startedBy?: "cli" | "plugin";
     probeHost?: (record: LocalHostDiscoveryRecord) => Promise<boolean>;
     startHost?: StartHost;
+    runtimeFingerprint?: string;
   } = {},
 ): PluginHostManager {
   const env = options.env ?? process.env;
@@ -177,11 +185,20 @@ export function createPluginHostManager(
   const runDir = options.runDir ?? join(clashHome, "run");
   const startHost = options.startHost ?? startBundledHost;
   const startedBy = options.startedBy ?? "plugin";
+  const runtimeFingerprint =
+    options.runtimeFingerprint ??
+    (options.startHost
+      ? undefined
+      : resolveLocalDaemonRuntimeFingerprint(
+          resolvePluginHostRuntimeLayout({ env }).localApiEntry,
+        ));
   const bootstrap = createLocalDaemonBootstrap({
     runDir,
     profile,
     probe: options.probeHost,
-    launch: () => startHost({ runDir, dataDir, env, startedBy }),
+    runtimeFingerprint,
+    launch: () =>
+      startHost({ runDir, dataDir, env, startedBy, runtimeFingerprint }),
   });
 
   return {

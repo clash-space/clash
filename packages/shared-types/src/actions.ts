@@ -15,20 +15,24 @@ import { z } from "zod";
  *
  * This list was already here, spelled out three times as an inline union on `outputKind` in
  * model-capabilities. Naming it is what lets a card, a route and a default all be checked against
- * the same four words.
+ * the same five words.
  *
  * **These are the AIGC actions, not every action.** An action is any operation the product
- * performs; these four are the ones a model performs, which is why each is backed by model cards
+ * performs; these five are the ones a model performs, which is why each is backed by model cards
  * and those by providers. Rendering a timeline is an action and is not one of these: no model
  * produces it, it has no cards, and nothing about it is chosen by picking a provider. The enum was
  * briefly called `ACTION_KINDS`, which claimed a scope it did not have -- a timeline render is an
  * action that would have had to be absent from the list of actions.
  *
- * Deliberately not `AssetKind`. That enum is `image | video | audio | model`: it names what can be
- * stored, and `model` is a 3-D asset a user can hold without any action having produced it. This
- * one names what an AIGC action can produce, which is why it has `text` and not `model`.
+ * Almost `AssetKind`. That enum is `image | video | audio | model`: it names what can be stored.
+ * `model` used to be the one member an AIGC action could never produce -- a 3-D asset a user could
+ * hold without any action having made it -- but a model-generation action (mesh generation, or
+ * binding an existing mesh into a rig) closes that gap the same way any other action produces its
+ * output: a static model and a rigged model are both `model`, and there is no separate `rig` kind.
+ * `text` is the one member left on this side only, because an AIGC action can produce prose
+ * without that prose ever becoming a storable Asset.
  */
-export const AIGC_ACTION_KINDS = ["image", "video", "audio", "text"] as const;
+export const AIGC_ACTION_KINDS = ["image", "video", "audio", "text", "model"] as const;
 
 export const AigcActionKindSchema = z.enum(AIGC_ACTION_KINDS);
 

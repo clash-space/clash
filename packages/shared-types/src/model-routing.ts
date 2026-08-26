@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { MOCK_MODEL_CARDS, MODEL_CARDS, ModelCardSchema, normalizeModelId, type ModelCard, type ModelKind, type ModelParameter, type ProviderAssetInput, type ProviderCredentialRequirements, type ProviderInputAdaptation, type ReferenceBinding } from "./models.js";
+import { MOCK_MODEL_CARDS, MODEL_CARDS, ModelCardSchema, normalizeModelId, type ModelCard, type ModelCardConsumer, type ModelKind, type ModelParameter, type ProviderAssetInput, type ProviderCredentialRequirements, type ProviderInputAdaptation, type ReferenceBinding } from "./models.js";
 import { findCompatibleModels, type Modality } from "./model-capabilities.js";
 import type { ExecutablePluginBinding } from "./executable-plugin.js";
 
@@ -23,7 +23,7 @@ export const BuiltinModelUpstreamIdSchema = z.enum([
   "replicate",
   "kling",
   "minimax",
-  "volcengine",
+  "volcengine-modelark",
   "elevenlabs",
   "suno",
 ]);
@@ -65,7 +65,7 @@ export const BuiltinProviderAccountIdSchema = z.enum([
   "replicate",
   "kling",
   "minimax",
-  "volcengine",
+  "volcengine-modelark",
   "elevenlabs",
   "suno",
   "mock",
@@ -182,6 +182,8 @@ export interface ModelUpstreamRouteQuery {
   configuredProviders?: ProviderAccountAvailability[];
   /** Canonical Card parameters materially selected for this invocation. */
   requestedParameterIds?: readonly string[];
+  /** Host-supplied proof that this exact route's adapter/binding is executable now. */
+  isRouteExecutable?: (route: ModelUpstreamRoute) => boolean;
   allowMock?: boolean;
 }
 
@@ -529,8 +531,8 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
     requiredCredentials: [ACCESS_KEY_CREDENTIAL, SECRET_KEY_CREDENTIAL],
   },
   {
-    providerId: "volcengine",
-    upstreamId: "volcengine",
+    providerId: "volcengine-modelark",
+    upstreamId: "volcengine-modelark",
     apiShape: "modelark",
     priority: 9,
     requiredCredentials: [API_KEY_CREDENTIAL],
@@ -910,6 +912,7 @@ function hasRequiredOAuth(
 }
 
 function isEnabled(route: ModelUpstreamRoute, query: ModelUpstreamRouteQuery): boolean {
+  if (query.isRouteExecutable && !query.isRouteExecutable(route)) return false;
   if (route.upstreamId === "local") return true;
   if (route.upstreamId === "mock" && !query.allowMock) return false;
   if (!query.configuredUpstreams && !query.configuredProviders) return true;
@@ -1002,6 +1005,55 @@ export function resolveModelUpstreamRoute(query: ModelUpstreamRouteQuery): Model
   return listModelUpstreamRoutes(query)[0] ?? null;
 }
 
+/**
+ * Identity of one exact Provider implementation frozen at selection time.
+ * A Card keeps all of its 1:N providerImplementations; a pin only names which
+ * one a specific Run must execute so validation and lineage cannot diverge.
+ */
+export interface FrozenModelRoutePin {
+  providerId?: string;
+  accountId?: string;
+  region?: string;
+  upstreamId: string;
+  upstreamModel: string;
+  apiShape: string;
+  executorPluginId?: string;
+  executorExportId?: string;
+}
+
+/** True when a currently listable route is the exact frozen implementation. */
+export function matchesFrozenModelRoutePin(
+  route: ModelUpstreamRoute,
+  pin: FrozenModelRoutePin,
+): boolean {
+  const optionalMatches = (
+    pinned: string | undefined,
+    current: string | undefined,
+  ) => pinned === undefined || pinned === current;
+  return (
+    route.upstreamId === pin.upstreamId &&
+    route.upstreamModel === pin.upstreamModel &&
+    route.apiShape === pin.apiShape &&
+    optionalMatches(pin.providerId, route.providerId) &&
+    optionalMatches(pin.accountId, route.accountId) &&
+    optionalMatches(pin.region, route.region) &&
+    optionalMatches(pin.executorPluginId, route.executorPluginId) &&
+    optionalMatches(pin.executorExportId, route.executorExportId)
+  );
+}
+
+/** Resolve one exact frozen implementation among the currently available routes. */
+export function resolvePinnedModelUpstreamRoute(
+  query: ModelUpstreamRouteQuery,
+  pin: FrozenModelRoutePin,
+): ModelUpstreamRoute | null {
+  return (
+    listModelUpstreamRoutes(query).find((route) =>
+      matchesFrozenModelRoutePin(route, pin),
+    ) ?? null
+  );
+}
+
 /** Compose the public model contract with the selected provider's deltas.
  * This keeps common fields shared while ensuring the UI and backend validate
  * the exact candidates the selected provider can receive. */
@@ -1068,6 +1120,7 @@ export function listModelCatalogEntries(options: {
   models?: readonly ModelCard[];
   configuredProviders?: ProviderAccountAvailability[];
   configuredUpstreams?: UpstreamAvailability[];
+  isRouteExecutable?: (route: ModelUpstreamRoute) => boolean;
   allowMock?: boolean;
 } = {}): ModelCatalogEntry[] {
   const allowMock = shouldAllowMockCatalogRoutes(options);
@@ -1079,6 +1132,7 @@ export function listModelCatalogEntries(options: {
       models,
       configuredProviders: options.configuredProviders,
       configuredUpstreams: options.configuredUpstreams,
+      isRouteExecutable: options.isRouteExecutable,
       allowMock,
     };
     const allRoutes = candidateRoutes({ modelCode: model.id, kind: model.kind, models, allowMock });
@@ -1153,14 +1207,54 @@ export function listUserEnabledCanvasModelIds(
 }
 
 export interface CompatibleModelCatalogQuery {
-  outputKind: "image" | "video" | "audio" | "text";
+  outputKind: ModelKind;
   sourceKind?: Modality | string;
   referenceCounts?: Partial<Record<Modality, number>>;
   enforceMinimums?: boolean;
   models?: readonly ModelCard[];
   configuredProviders?: ProviderAccountAvailability[];
   configuredUpstreams?: UpstreamAvailability[];
+  isRouteExecutable?: (route: ModelUpstreamRoute) => boolean;
   allowMock?: boolean;
+}
+
+export interface ConsumerModelCatalogQuery extends CompatibleModelCatalogQuery {
+  consumer?: ModelCardConsumer;
+  semanticShape: string;
+}
+
+export function modelCardVisibleToConsumer(
+  model: ModelCard,
+  consumer: ModelCardConsumer | undefined,
+): boolean {
+  if (!model.visibility || model.visibility.scope === "public") return true;
+  if (!consumer) return false;
+  return model.visibility.consumers.some(
+    (candidate) =>
+      candidate.pluginId === consumer.pluginId &&
+      (candidate.definitionId === undefined ||
+        candidate.definitionId === consumer.definitionId) &&
+      (candidate.actionId === undefined || candidate.actionId === consumer.actionId),
+  );
+}
+
+/**
+ * Generic discovery for a declared model-consumption shape. It preserves every
+ * implementation on the Card while requiring the selected route to be enabled,
+ * configured, credential-ready, capability-compatible, and executable.
+ */
+export function listConsumerModelCatalogEntries(
+  options: ConsumerModelCatalogQuery,
+): ModelCatalogEntry[] {
+  const visibleModels = (options.models ?? MODEL_CARDS).filter(
+    (model) =>
+      model.semanticShape === options.semanticShape &&
+      modelCardVisibleToConsumer(model, options.consumer),
+  );
+  return listCompatibleModelCatalogEntries({
+    ...options,
+    models: visibleModels,
+  }).filter((entry) => entry.selectedRoute !== null);
 }
 
 /** Capability filter on the existing model catalog anti-corruption layer. */

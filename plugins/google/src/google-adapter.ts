@@ -399,6 +399,11 @@ function mediaReference(
       `Google ${reference.slot} reference resolved to text instead of media.`,
     );
   }
+  if (resolved.form === "document") {
+    throw referenceFailure(
+      `Google ${reference.slot} reference resolved to a document instead of media.`,
+    );
+  }
   const declaredKind = "asset" in reference ? reference.asset.kind : undefined;
   const kind = expectedKind ?? resolved.kind ?? declaredKind;
   if (kind !== "image" && kind !== "video" && kind !== "audio") {
@@ -416,9 +421,13 @@ function mediaReference(
     );
   }
   const mediaType = resolved.mediaType ?? defaultMediaType(kind);
-  return resolved.form === "provider-url"
-    ? { form: "url", url: resolved.providerUrl, kind, mediaType }
-    : { form: "bytes", bytes: resolved.bytes, kind, mediaType };
+  if (resolved.form === "provider-url") {
+    return { form: "url", url: resolved.providerUrl, kind, mediaType };
+  }
+  if (resolved.form === "executor-url") {
+    return { form: "url", url: resolved.executorUrl, kind, mediaType };
+  }
+  return { form: "bytes", bytes: resolved.bytes, kind, mediaType };
 }
 
 function sortedReferences(
@@ -489,33 +498,54 @@ async function resolveInputReferences(
   return collected;
 }
 
-function googleMediaPart(media: GoogleMediaReference): Record<string, unknown> {
-  if (media.form === "url") return dataPart(media.url, media.mediaType);
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function videoMetadata(params: Record<string, unknown>): Record<string, unknown> | undefined {
+  const fps = finiteNumber(params.video_fps);
+  const start = finiteNumber(params.video_start_seconds);
+  const end = finiteNumber(params.video_end_seconds);
+  if (fps === undefined && start === undefined && end === undefined) return undefined;
   return {
+    ...(fps !== undefined ? { fps } : {}),
+    ...(start !== undefined ? { startOffset: `${start}s` } : {}),
+    ...(end !== undefined ? { endOffset: `${end}s` } : {}),
+  };
+}
+
+function googleMediaPart(
+  media: GoogleMediaReference,
+  params: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const data = media.form === "url" ? dataPart(media.url, media.mediaType) : {
     inlineData: {
       mimeType: media.mediaType,
       data: Buffer.from(media.bytes).toString("base64"),
     },
   };
+  const metadata = media.kind === "video" ? videoMetadata(params) : undefined;
+  return { ...data, ...(metadata ? { videoMetadata: metadata } : {}) };
 }
 
 function orderedParts(
   values: Record<string, unknown>,
   references: GoogleInputReferences,
 ): Record<string, unknown>[] {
+  const params = record(values.modelParams);
   if (references.content.length > 0) {
     return references.content.map((reference) =>
       reference.form === "text"
         ? { text: reference.text }
-        : googleMediaPart(reference),
+        : googleMediaPart(reference, params),
     );
   }
   const prompt = typeof values.prompt === "string" ? values.prompt : "";
   return [
     ...(prompt ? [{ text: prompt }] : []),
-    ...references.images.map(googleMediaPart),
-    ...references.videos.map(googleMediaPart),
-    ...references.audios.map(googleMediaPart),
+    ...references.images.map((reference) => googleMediaPart(reference, params)),
+    ...references.videos.map((reference) => googleMediaPart(reference, params)),
+    ...references.audios.map((reference) => googleMediaPart(reference, params)),
   ];
 }
 
@@ -546,6 +576,13 @@ function generateContentBody(
         : ["TEXT", "IMAGE"];
   const voiceName = stringValue(values, params, "voice_name") ?? "Kore";
   const systemPrompt = stringValue(values, params, "system_prompt");
+  const requestedMediaResolution = stringValue(values, params, "video_media_resolution");
+  const mediaResolution =
+    requestedMediaResolution === "low" ||
+    requestedMediaResolution === "medium" ||
+    requestedMediaResolution === "high"
+      ? `MEDIA_RESOLUTION_${requestedMediaResolution.toUpperCase()}`
+      : undefined;
   return {
     // Agent Platform rejects a content without a role; the Developer API defaults it. One provider
     // serves both, so the stricter of the two sets the shape.
@@ -555,6 +592,7 @@ function generateContentBody(
     contents: [{ role: "user", parts: orderedParts(values, references) }],
     generationConfig: {
       responseModalities,
+      ...(mediaResolution ? { mediaResolution } : {}),
       ...(kind === "image" && Object.keys(imageConfig).length
         ? { imageConfig }
         : {}),

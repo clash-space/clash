@@ -53,7 +53,7 @@ export function useCascadeRunner({
             : node,
         ),
       );
-      if (loroSync?.connected) {
+      if (loroSync) {
         loroSync.updateNode(nodeId, { data: payload });
       }
     };

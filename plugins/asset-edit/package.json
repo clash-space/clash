@@ -1,0 +1,36 @@
+{
+  "name": "@clash-plugin/asset-edit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
+  "exports": {
+    "./manifest.json": "./manifest.json",
+    "./stdio": "./dist/stdio.mjs"
+  },
+  "files": [
+    "manifest.json",
+    "generators",
+    "dist",
+    "agents.json"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clash/action-sdk": "workspace:*",
+    "@clash/shared-runtime": "workspace:*",
+    "@ffmpeg-installer/ffmpeg": "1.1.0",
+    "sharp": "0.34.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.0"
+  }
+}

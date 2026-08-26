@@ -60,6 +60,61 @@ export interface ScopedTimelineAssetInsertRequest {
 }
 
 /**
+ * Asset-library sections for a Composer. Unlike Canvas/Timeline placement,
+ * this surface only chooses prompt references, so no target relation is
+ * invented here. Global entries are admitted lazily by the Composer owner.
+ */
+export function buildComposerAssetSections({
+  projectAssets,
+  globalAssets,
+}: {
+  projectAssets: ResolvedAsset[];
+  globalAssets: ResolvedAsset[];
+}): ScopedAssetSection[] {
+  const option = (
+    asset: ResolvedAsset,
+    source: ScopedAssetOption["source"],
+  ): ScopedAssetOption => ({
+    assetId: asset.id,
+    name: safeScopedAssetName(asset),
+    type: asset.kind as ScopedAssetOption["type"],
+    src: projectAssetPlaybackUrl(asset) ?? "",
+    thumbnail: asset.thumbnailUrl,
+    status: asset.status,
+    ...(asset.progress === undefined ? {} : { progress: asset.progress }),
+    ...(asset.error === undefined ? {} : { error: asset.error }),
+    ...(asset.status === "ready" && projectAssetPlaybackUrl(asset)
+      ? {}
+      : { disabledReason: assetAvailabilityLabel(asset) }),
+    source,
+  });
+  const visible = (asset: ResolvedAsset) =>
+    asset.lifecycle.state === "active" && asset.kind !== "model";
+
+  return [
+    {
+      scope: "project",
+      label: "Project",
+      description: "Media already available to this Project.",
+      assets: projectAssets
+        .filter(visible)
+        .map((asset) => option(asset, { kind: "project", assetId: asset.id })),
+    },
+    {
+      scope: "external",
+      label: "Global Assets",
+      description: "Reusable media from your personal library.",
+      assets: globalAssets
+        .filter(visible)
+        .map((asset) =>
+          option(asset, { kind: "global-library", assetId: asset.id }),
+        ),
+      allowLocalUpload: true,
+    },
+  ];
+}
+
+/**
  * Makes Timeline insertion the final publication step after scope admission.
  * The returned editor request is disposable UI state; Project Timeline state
  * and its ActionAssetBinding are committed together by the Project authority.

@@ -1,0 +1,25 @@
+{
+  "summary": "First-party Director Generator package for pinned Stage capture and local humanoid GLB animation retargeting.",
+  "context_hints": [
+    "Humanoid retarget resolves exactly one frozen target and motion model reference through context.reference; it never uses asset handles or provider identity as media bytes.",
+    "Retargeting reads and writes GLBs with @gltf-transform/core so the target document's mesh, skin, material, and texture resources remain in the output; Three.js is used only for the Director core rig math.",
+    "The plugin returns declarative media bytes and relies on the Action SDK to upload the animated-model asset.",
+    "The exported plugin is an inert PluginModule; stdio starts only when dist/stdio.mjs is executed directly."
+  ],
+  "subdirectories": {
+    "generators": "Native clash.generator/v1 definitions for Director operations.",
+    "src": "Transport-neutral action implementations and direct-execution stdio entrypoint.",
+    "dist": "Generated standalone compatibility artifact; never hand-edit."
+  },
+  "key_files": {
+    "manifest.json": "Versioned Director package contributions for stage capture and humanoid retargeting.",
+    "generators/humanoid-retarget.json": "Retarget action model input, parameter, and animated model output contract.",
+    "src/humanoid-retarget.ts": "Frozen GLB resolution, rig inspection, Three hierarchy construction, retargeting, and GLB animation append.",
+    "src/stdio.ts": "Inert PluginModule with direct-execution stdio compatibility entrypoint."
+  },
+  "verification": [
+    "pnpm test:package @clash-plugin/director",
+    "pnpm typecheck:package @clash-plugin/director",
+    "pnpm build:package @clash-plugin/director"
+  ]
+}

@@ -310,10 +310,11 @@ async function exerciseLocalSession(origin) {
 
   await waitForValue(
     async () => {
-      const history = await jsonFetch(`${origin}/api/v1/local-sessions/${encodeURIComponent(created.session_id)}/messages`);
-      return history.messages?.some((message) =>
-        message.sender_kind === "agent" &&
-        message.events?.some((event) => event.type === "text" && event.text === "Mock ACP reply: hello daemon helper")
+      const history = await jsonFetch(`${origin}/api/v1/local-sessions/${encodeURIComponent(created.session_id)}/events`);
+      return history.events?.some((row) =>
+        row.type === "session.event" &&
+        row.data?.event?.type === "text" &&
+        row.data.event.text === "Mock ACP reply: hello daemon helper"
       )
         ? history
         : null;

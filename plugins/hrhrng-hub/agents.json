@@ -4,7 +4,8 @@
     "The plugin id is hrhrng.hub and its Provider declaration is providers/hilo-hub.json",
     "Plugin code performs native upstream HTTP and uses only the Host-selected account state exposed through context.store",
     "MiniMax H3 and Seedance references are uploaded through /api/v1/files/upload before submission",
-    "At the upload boundary, normalize audio/mpeg to audio/mp3 because Hub derives the file extension from the data-URI media type"
+    "At the upload boundary, normalize audio/mpeg to audio/mp3 because Hub derives the file extension from the data-URI media type",
+    "The plugin owns the consumer-private media_analysis Card and hub-analyse-media binding; the adapter sends only media_data, mime_type, and question, never a model name"
   ],
   "subdirectories": {
     "providers": "Hilo Hub Provider declaration and supported sign-in methods.",
@@ -13,7 +14,7 @@
     "contract-tests": "Declarative activation-gating ABI fixtures."
   },
   "key_files": {
-    "manifest.json": "Versioned executable package and contributed Provider, bindings, and executor.",
+    "manifest.json": "Versioned executable package and contributed private Card, Provider, bindings, and executor.",
     "providers/hilo-hub.json": "Provider metadata, account flows, executor link, and binding defaults.",
     "src/hub-adapter.ts": "Hub request and response shape translation.",
     "src/hub-executor.ts": "Native Hub HTTP execution, reference upload, MIME adaptation, and polling."

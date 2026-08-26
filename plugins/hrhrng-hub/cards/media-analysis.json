@@ -1,0 +1,37 @@
+{
+  "apiVersion": "clash.card/v1",
+  "kind": "model-card",
+  "spec": {
+    "id": "hilo-hub-media-analysis",
+    "aliases": [],
+    "name": "Hilo Hub Media Analysis",
+    "provider": "hilo-hub",
+    "kind": "text",
+    "semanticShape": "media_analysis",
+    "visibility": {
+      "scope": "plugin-private",
+      "consumers": [
+        {
+          "pluginId": "clash.media-analysis",
+          "definitionId": "media-analysis",
+          "actionId": "analyze"
+        }
+      ]
+    },
+    "description": "Provider-managed semantic analysis of one image, video, or audio Asset.",
+    "parameters": [],
+    "defaultParams": {},
+    "defaultAspectRatio": "1:1",
+    "input": {
+      "requiresPrompt": true,
+      "inputMode": {
+        "images": { "max": 1 },
+        "videos": { "max": 1 },
+        "audios": { "max": 1 },
+        "maxTotalReferences": 1
+      },
+      "promptModalities": ["text", "image", "video", "audio"]
+    },
+    "maxRuntimeMs": 180000
+  }
+}

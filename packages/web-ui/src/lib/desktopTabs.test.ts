@@ -6,6 +6,7 @@ import {
   createDesktopTab,
   titleForDesktopPath,
   updateDesktopTabPath,
+  updateDesktopTabConnection,
   updateDesktopTabTitle,
 } from "./desktopTabs";
 
@@ -29,7 +30,6 @@ describe("desktop tabs", () => {
       createDesktopTab("/", "tab-home"),
       createDesktopTab("/projects", "tab-projects"),
     ];
-
     expect(activateOrAppendDesktopTab(tabs, "/projects", "unused")).toEqual({
       tabs,
       activeTabId: "tab-projects",
@@ -38,8 +38,9 @@ describe("desktop tabs", () => {
 
   it("cold-creates project tabs only when their route opens", () => {
     const tabs = [createDesktopTab("/projects/a", "tab-project-a")];
-
-    expect(activateOrAppendDesktopTab(tabs, "/projects/b", "tab-project-b")).toEqual({
+    expect(
+      activateOrAppendDesktopTab(tabs, "/projects/b", "tab-project-b"),
+    ).toEqual({
       tabs: [
         createDesktopTab("/projects/a", "tab-project-a"),
         createDesktopTab("/projects/b", "tab-project-b"),
@@ -53,7 +54,6 @@ describe("desktop tabs", () => {
       createDesktopTab("/", "tab-1"),
       createDesktopTab("/projects", "tab-2"),
     ];
-
     expect(updateDesktopTabPath(tabs, "tab-2", "/marketplace")).toEqual([
       createDesktopTab("/", "tab-1"),
       createDesktopTab("/marketplace", "tab-2"),
@@ -66,13 +66,44 @@ describe("desktop tabs", () => {
       createDesktopTab("/projects/project-1", "tab-2"),
       createDesktopTab("/projects/project-2", "tab-3"),
     ];
-
-    expect(updateDesktopTabTitle(tabs, "/projects/project-1", "Storyboard draft")).toEqual([
+    expect(
+      updateDesktopTabTitle(tabs, "/projects/project-1", "Storyboard draft"),
+    ).toEqual([
       createDesktopTab("/", "tab-1"),
-      { ...createDesktopTab("/projects/project-1", "tab-2"), title: "Storyboard draft" },
+      {
+        ...createDesktopTab("/projects/project-1", "tab-2"),
+        title: "Storyboard draft",
+      },
       createDesktopTab("/projects/project-2", "tab-3"),
     ]);
-    expect(updateDesktopTabTitle(tabs, "/projects/project-1", "   ")[1].title).toBe("Untitled");
+    expect(
+      updateDesktopTabTitle(tabs, "/projects/project-1", "   ")[1].title,
+    ).toBe("Untitled");
+  });
+
+  it("tracks the live Project connection on its tab without changing the title", () => {
+    const tabs = [
+      createDesktopTab("/", "tab-home"),
+      createDesktopTab("/projects/project-1", "tab-project"),
+    ];
+
+    expect(
+      updateDesktopTabConnection(
+        tabs,
+        "/projects/project-1",
+        "disconnected",
+      ),
+    ).toEqual([
+      tabs[0],
+      { ...tabs[1], connection: "disconnected" },
+    ]);
+    expect(
+      updateDesktopTabConnection(
+        [{ ...tabs[1], connection: "connected" }],
+        "/projects/project-1",
+        undefined,
+      ),
+    ).toEqual([tabs[1]]);
   });
 
   it("activates the neighboring tab when closing the active tab", () => {
@@ -81,16 +112,25 @@ describe("desktop tabs", () => {
       createDesktopTab("/projects", "tab-2"),
       createDesktopTab("/marketplace", "tab-3"),
     ];
-
     expect(closeDesktopTab(tabs, "tab-2", "tab-2")).toEqual({
-      tabs: [createDesktopTab("/", "tab-1"), createDesktopTab("/marketplace", "tab-3")],
+      tabs: [
+        createDesktopTab("/", "tab-1"),
+        createDesktopTab("/marketplace", "tab-3"),
+      ],
       activeTabId: "tab-3",
       nextPath: "/marketplace",
     });
   });
 
   it("keeps one home tab when closing the last tab", () => {
-    expect(closeDesktopTab([createDesktopTab("/projects", "tab-1")], "tab-1", "tab-1", "tab-home")).toEqual({
+    expect(
+      closeDesktopTab(
+        [createDesktopTab("/projects", "tab-1")],
+        "tab-1",
+        "tab-1",
+        "tab-home",
+      ),
+    ).toEqual({
       tabs: [createDesktopTab("/", "tab-home")],
       activeTabId: "tab-home",
       nextPath: "/",

@@ -12,6 +12,7 @@
   },
   "files": [
     "manifest.json",
+    "cards",
     "providers",
     "bindings",
     "contract-tests",

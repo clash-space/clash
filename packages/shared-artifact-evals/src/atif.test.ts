@@ -245,6 +245,91 @@ function piInput(
 }
 
 describe("Pi ATIF v1.7 structured projection", () => {
+  it("preserves completed turns across Pi retry and compaction control events", async () => {
+    const source = jsonl([
+      {
+        type: "session",
+        version: 3,
+        id: "pi-retry-session",
+        timestamp: "2026-08-18T06:00:00.000Z",
+        cwd: "/private/pi-workspace",
+      },
+      { type: "agent_start" },
+      { type: "turn_start" },
+      {
+        type: "turn_end",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "First turn completed." }],
+          usage: { input: 10, cacheRead: 0, output: 2 },
+        },
+        toolResults: [],
+      },
+      { type: "agent_end", willRetry: true },
+      { type: "auto_retry_start", attempt: 1, delayMs: 2000 },
+      { type: "agent_start" },
+      { type: "turn_start" },
+      {
+        type: "turn_end",
+        message: {
+          role: "assistant",
+          content: [],
+          usage: { input: 1, cacheRead: 0, output: 0 },
+        },
+        toolResults: [],
+      },
+      { type: "agent_end", willRetry: true },
+      { type: "auto_retry_start", attempt: 2, delayMs: 4000 },
+      { type: "agent_start" },
+      { type: "turn_start" },
+      { type: "auto_retry_end", attempt: 2 },
+      {
+        type: "turn_end",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Recovered turn completed." }],
+          usage: { input: 12, cacheRead: 1, output: 3 },
+        },
+        toolResults: [],
+      },
+      { type: "agent_end", willRetry: false },
+      { type: "compaction_start" },
+      { type: "compaction_end", willRetry: true },
+      { type: "agent_start" },
+      { type: "turn_start" },
+      {
+        type: "turn_end",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Compaction retry completed." }],
+          usage: { input: 2, cacheRead: 0, output: 1 },
+        },
+        toolResults: [],
+      },
+      { type: "agent_end", willRetry: false },
+      { type: "compaction_end", willRetry: false },
+      { type: "agent_settled" },
+    ]);
+
+    const projected = await projectAtifTrajectory(
+      piInput({ kind: "text", text: source }),
+    );
+
+    expect(projected.trajectory.steps.map((step) => step.message)).toEqual([
+      "Inspect the requested Clash Timeline.",
+      "First turn completed.",
+      "",
+      "Recovered turn completed.",
+      "Compaction retry completed.",
+    ]);
+    expect(projected.trajectory.final_metrics).toMatchObject({
+      total_prompt_tokens: 25,
+      total_cached_tokens: 1,
+      total_completion_tokens: 6,
+      total_steps: 5,
+    });
+  });
+
   it("projects Pi turns, visible text, tool results, and usage without retaining reasoning", async () => {
     const projected = await projectAtifTrajectory(piInput());
     const trajectory = projected.trajectory;

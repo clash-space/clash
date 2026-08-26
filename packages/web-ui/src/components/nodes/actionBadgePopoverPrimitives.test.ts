@@ -96,15 +96,21 @@ describe("ActionBadge popover primitives", () => {
         expect(source).not.toContain("[{ l: 'On', v: true }, { l: 'Off', v: false }].map");
     });
 
-    it("does not keep an unused inline boolean or text parameter fallback", () => {
+    it("does not keep an unused inline boolean parameter fallback", () => {
         const source = readNodeSource("ActionBadge.tsx");
 
         expect(source).not.toContain("renderParamControl");
         expect(source).not.toContain("../ui/switch");
         expect(source).not.toContain("<Switch");
-        expect(source).not.toContain("../ui/textarea");
-        expect(source).not.toContain("<Textarea");
         expect(source).not.toContain('type="checkbox"');
+    });
+
+    it("routes the real music lyrics field through the shared Textarea", () => {
+        const source = readNodeSource("ActionBadge.tsx");
+
+        expect(source).toContain("../ui/textarea");
+        expect(source).toContain("<Textarea");
+        expect(source).not.toContain("<textarea");
     });
 
     it("uses the shared slider primitive for model slider parameters", () => {

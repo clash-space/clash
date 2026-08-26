@@ -492,7 +492,7 @@ describe("Generator v2 contracts", () => {
     }
   });
 
-  it("rejects non-single outputs in the current Action profile", () => {
+  it("rejects collection outputs while allowing independent singular ports", () => {
     const collectionResult = GeneratorDefinitionSchema.safeParse(
       stageDefinition([
         {
@@ -524,7 +524,47 @@ describe("Generator v2 contracts", () => {
     );
 
     expect(collectionResult.success).toBe(false);
-    expect(multiplePortsResult.success).toBe(false);
+    expect(multiplePortsResult.success).toBe(true);
+  });
+
+  it("accepts model as a peer media kind in Generator inputs, outputs, and source declarations", () => {
+    const definition = GeneratorDefinitionSchema.parse(
+      stageDefinition([
+        {
+          id: "retarget",
+          executorExportId: "retarget-model",
+          parametersSchema: { type: "object" },
+          invocationInputs: [
+            {
+              slot: "source-model",
+              accepts: [{ kind: "media", mediaKind: "model" }],
+              cardinality: { minItems: 1, maxItems: 1 },
+            },
+          ],
+          outputs: [
+            {
+              slot: "rigged-model",
+              assetType: { kind: "media", mediaKind: "model" },
+              sourceMediaKinds: ["model"],
+              cardinality: { minItems: 1, maxItems: 1 },
+            },
+          ],
+        },
+      ]),
+    );
+
+    expect(definition.actions[0]).toMatchObject({
+      invocationInputs: [
+        { slot: "source-model", accepts: [{ kind: "media", mediaKind: "model" }] },
+      ],
+      outputs: [
+        {
+          slot: "rigged-model",
+          assetType: { kind: "media", mediaKind: "model" },
+          sourceMediaKinds: ["model"],
+        },
+      ],
+    });
   });
 
   it("pins an upstream Generator revision as a persistent or invocation input", () => {

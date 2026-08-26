@@ -5,10 +5,26 @@ import { PIPELINE_MENU_OPTIONS } from "./pipelineMenuOptions";
 const ENABLED_CATALOG = MODEL_CARDS.map((model) => ({ model })) as ModelCatalogEntry[];
 
 describe("PIPELINE_MENU_OPTIONS", () => {
-    it("exposes built-in image, video, audio, and text generation chains", () => {
+    it("exposes every built-in AIGC generation chain, including 3D models", () => {
         expect(PIPELINE_MENU_OPTIONS.map((option) => option.id)).toEqual(
-            expect.arrayContaining(["image-gen", "video-gen", "audio-gen", "text-gen"]),
+            expect.arrayContaining(["image-gen", "video-gen", "audio-gen", "text-gen", "model-gen"]),
         );
+    });
+
+    it("builds a model-generation action from a real model card", () => {
+        const option = PIPELINE_MENU_OPTIONS.find((item) => item.id === "model-gen");
+
+        expect(option?.nodeType).toBe("action-badge");
+        const data = option?.getNodeData(undefined, ENABLED_CATALOG);
+        expect(data).toMatchObject({
+            label: "Model Prompt",
+            actionType: "model-gen",
+            content: "# Prompt\nEnter your prompt here...",
+        });
+        const selected = MODEL_CARDS.find((card) => card.id === data?.modelId);
+        expect(selected, `unknown model ${String(data?.modelId)}`).toBeDefined();
+        expect(selected!.kind).toBe("model");
+        expect(data?.model).toBe(data?.modelId);
     });
 
     it("builds audio generation action-badge payloads defaulting to speech, not music", () => {

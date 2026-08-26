@@ -1,6 +1,6 @@
 {
   "name": "@clash-plugin/volcengine",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "engines": {
@@ -13,6 +13,8 @@
   "files": [
     "manifest.json",
     "providers",
+    "cards",
+    "bindings",
     "contract-tests",
     "dist"
   ],

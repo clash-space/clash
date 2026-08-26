@@ -16,7 +16,9 @@ import {
   type ProjectDirectorStage,
 } from "@clash/shared-types";
 import { isJsonMode, printJson, printTable } from "../lib/output";
-import { sendProjectCommand } from "../lib/project-host-client";
+import { createGeneratorClient } from "@clash/shared-runtime/generator-client";
+import { readNativeMediaActionRun } from "@clash/shared-runtime/generator-readback";
+import { createCliProjectAssetHostClient, resolveCliProjectHostConnection, sendProjectCommand } from "../lib/project-host-client";
 import { type ResolvedProjectContext } from "../lib/project-context";
 import {
   recordWorktreeObservation,
@@ -188,16 +190,12 @@ type DirectorCaptureRenderResult = {
   }>;
 };
 
-type DirectorCaptureHostResult = Omit<DirectorCaptureRenderResult, "frames"> & {
-  captured: true;
+type DirectorCaptureHostResult = {
+  submitted: true;
+  captured: false;
   stageId: string;
   sourceStageRevisionId: string;
-  frames: Array<
-    DirectorCaptureRenderResult["frames"][number] & {
-      projectAssetId: string;
-      metadataAttached?: boolean;
-    }
-  >;
+  runs: Array<{ actionRunId: string }>;
 };
 
 type DirectorCaptureHostRequest = {
@@ -321,6 +319,11 @@ export async function captureDirectorStageWithReadback(options: {
   capture: (
     request: DirectorCaptureHostRequest,
   ) => Promise<DirectorCaptureHostResult>;
+  readRunMedia: (actionRunId: string) => Promise<{
+    projectAssetId: string;
+    bytes: Uint8Array;
+    metadata?: { contentType?: string; width?: number; height?: number };
+  }>;
 }): Promise<DirectorCaptureReceipt> {
   if (
     !Array.isArray(options.times) ||
@@ -375,67 +378,26 @@ export async function captureDirectorStageWithReadback(options: {
     })),
   };
   const rendered = await options.capture(request);
-  if (!rendered.captured || rendered.stageId !== options.stageId) {
-    throw new Error("Director Host returned a capture for the wrong Stage");
+  if (!rendered.submitted || rendered.captured !== false || rendered.stageId !== options.stageId) {
+    throw new Error("Director Host returned a capture submission for the wrong Stage");
   }
   if (rendered.sourceStageRevisionId !== before.revisionId) {
     throw new Error(
       `Director Host captured Stage revision ${rendered.sourceStageRevisionId}; expected ${before.revisionId}`,
     );
   }
-  if (rendered.renderer.id !== "clash-director-viewport-webgl") {
-    throw new Error(`Unexpected Director renderer: ${rendered.renderer.id}`);
+  if (rendered.runs.length !== times.length) {
+    throw new Error("Director Host returned an incomplete ActionRun set");
   }
-  if (rendered.renderer.contractVersion !== 1) {
-    throw new Error(
-      `Unsupported Director renderer contract: ${rendered.renderer.contractVersion}`,
-    );
-  }
-  if (rendered.stateSha256 !== captureSha256(JSON.stringify(before.state))) {
-    throw new Error(
-      "Director renderer state hash does not match the persisted Stage revision",
-    );
-  }
-  if (rendered.frames.length !== times.length) {
-    throw new Error("Director renderer returned an incomplete frame set");
-  }
-  for (const [index, frame] of rendered.frames.entries()) {
+  const nativeFrames = await Promise.all(rendered.runs.map((run) => options.readRunMedia(run.actionRunId)));
+  const stateSha256 = captureSha256(JSON.stringify(before.state));
+  const renderer = { id: "clash-director-viewport-webgl", contractVersion: 1 };
+  for (const [index, frame] of nativeFrames.entries()) {
     const expected = request.frames[index]!;
-    if (frame.label !== expected.label) {
-      throw new Error(
-        `Director renderer changed frame label ${expected.label}`,
-      );
-    }
-    if (frame.timeSeconds !== expected.timeSeconds) {
-      throw new Error(
-        `Director renderer changed frame time for ${expected.label}`,
-      );
-    }
-    if (frame.aspectRatio !== expected.aspectRatio) {
-      throw new Error(
-        `Director renderer changed frame aspect ratio for ${expected.label}`,
-      );
-    }
-    if (frame.mimeType !== "image/png") {
-      throw new Error(
-        `Director renderer returned a non-PNG frame for ${expected.label}`,
-      );
-    }
-    if (!frame.projectAssetId?.trim()) {
-      throw new Error(
-        `Director Host did not publish a Project Asset for ${expected.label}`,
-      );
-    }
-    if (
-      !Number.isInteger(frame.width) ||
-      frame.width < 1 ||
-      !Number.isInteger(frame.height) ||
-      frame.height < 1
-    ) {
-      throw new Error(
-        `Director renderer returned invalid dimensions for ${expected.label}`,
-      );
-    }
+    if (frame.metadata?.contentType !== "image/png") throw new Error(`Director renderer returned a non-PNG frame for ${expected.label}`);
+    if (!frame.projectAssetId.trim()) throw new Error(`Director Host did not publish a Project Asset for ${expected.label}`);
+    if (!Number.isInteger(frame.metadata?.width) || !Number.isInteger(frame.metadata?.height)) throw new Error(`Director renderer returned invalid dimensions for ${expected.label}`);
+    if (!frame.bytes.byteLength || !Buffer.from(frame.bytes).subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) throw new Error(`Director renderer returned invalid PNG bytes for ${expected.label}`);
   }
 
   const after = await options.readStage();
@@ -451,27 +413,23 @@ export async function captureDirectorStageWithReadback(options: {
     options.outputDir,
   );
   mkdirSync(outputDir, { recursive: true });
-  const renderedFrames = rendered.frames.map((frame, index) => {
+  const renderedFrames = nativeFrames.map((frame, index) => {
     const artifactId = artifactIds[index]!;
-    const bytes = Buffer.from(frame.dataBase64, "base64");
-    if (bytes.length === 0 || captureSha256(bytes) !== frame.sha256) {
-      throw new Error(
-        `Director renderer returned invalid bytes for ${artifactId}`,
-      );
-    }
+    const expected = request.frames[index]!;
+    const bytes = Buffer.from(frame.bytes);
     const path = join(outputDir, `${artifactId}.png`);
     writeFileSync(path, bytes);
     return {
       artifactId,
       projectAssetId: frame.projectAssetId,
-      metadataAttached: frame.metadataAttached ?? false,
-      timeSeconds: frame.timeSeconds,
-      aspectRatio: frame.aspectRatio,
-      ...(frame.activeCameraId ? { activeCameraId: frame.activeCameraId } : {}),
-      width: frame.width,
-      height: frame.height,
-      mimeType: frame.mimeType,
-      sha256: frame.sha256,
+      metadataAttached: false,
+      timeSeconds: expected.timeSeconds,
+      aspectRatio: expected.aspectRatio,
+      ...(before.state.activeCameraId ? { activeCameraId: before.state.activeCameraId } : {}),
+      width: frame.metadata!.width!,
+      height: frame.metadata!.height!,
+      mimeType: "image/png" as const,
+      sha256: captureSha256(bytes),
       path,
     };
   });
@@ -482,8 +440,8 @@ export async function captureDirectorStageWithReadback(options: {
     stageId: options.stageId,
     sourceStageRevisionId: before.revisionId,
     verifiedStageRevisionId: after.revisionId,
-    renderer: rendered.renderer,
-    stateSha256: rendered.stateSha256,
+    renderer,
+    stateSha256,
     frames: renderedFrames,
     receiptPath,
   };
@@ -738,6 +696,28 @@ directorCommand
         });
         if (result.error) throw new Error(result.error);
         return result;
+      },
+      readRunMedia: async (actionRunId) => {
+        const connection = resolveCliProjectHostConnection();
+        const authenticatedFetch = (input: Parameters<typeof fetch>[0], init: RequestInit = {}) => fetch(input, {
+          ...init,
+          headers: { ...Object.fromEntries(new Headers(init.headers)), ...(connection.token ? { authorization: `Bearer ${connection.token}` } : {}) },
+        });
+        const generator = createGeneratorClient((path, init) => authenticatedFetch(new URL(path, connection.endpoint), init));
+        const assets = createCliProjectAssetHostClient({ fetch: authenticatedFetch });
+        const media = await readNativeMediaActionRun({
+          generator,
+          projectId: context.projectId,
+          actionRunId,
+          getAsset: async (projectAssetId) => (await assets.get({ projectId: context.projectId, assetId: projectAssetId })).value,
+          downloadAsset: async (asset) => {
+            if (!asset.url) throw new Error("Project Asset has no public media URL");
+            const response = await authenticatedFetch(asset.url);
+            if (!response.ok) throw new Error(`Project Asset download failed (${response.status})`);
+            return new Uint8Array(await response.arrayBuffer());
+          },
+        });
+        return { projectAssetId: media.projectAssetId, bytes: media.bytes, metadata: media.asset.metadata };
       },
     });
     if (isJsonMode(options)) printJson(receipt);

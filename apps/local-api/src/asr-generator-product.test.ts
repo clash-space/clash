@@ -29,7 +29,7 @@ afterEach(async () => {
 });
 
 describe("first-party ASR Generator product path", () => {
-  it("runs the bundled Action against a frozen Asset and commits one timed transcript Document", async () => {
+  it("processes a discovery-enabled Host Generator Action against a frozen Asset", async () => {
     const clashRoot = await mkdtemp(join(tmpdir(), "clash-asr-product-"));
     directories.push(clashRoot);
     const dataDir = join(clashRoot, "local-api");
@@ -125,7 +125,7 @@ describe("first-party ASR Generator product path", () => {
       dataDir,
       port: 0,
       remotePersistence: null,
-      discovery: { enabled: false },
+      discovery: { enabled: true },
       audioConfig,
       localAcp: createConfiguredLocalAcpAdapter({ CLASH_E2E_STUB_ACP: "1" }),
     });

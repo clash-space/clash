@@ -52,4 +52,35 @@ describe("VoiceInputSetupPopover", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onOpenChange).toHaveBeenLastCalledWith(false);
   });
+
+  it("renders setup failures through the shared feedback contract", () => {
+    render(
+      <MemoryRouter>
+        <VoiceInputSetupPopover
+          open
+          onOpenChange={vi.fn()}
+          notice={{
+            message: "Enable voice input in Voice input settings first.",
+            action: {
+              label: "Open Voice input",
+              href: "/settings?section=audio",
+            },
+          }}
+          trigger={<button type="button">Voice</button>}
+        />
+      </MemoryRouter>,
+    );
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveAttribute("data-ui", "feedback");
+    expect(alert).toHaveAttribute("data-tone", "error");
+    expect(alert).toHaveTextContent("Voice input unavailable");
+    expect(alert).toHaveTextContent(
+      "Enable voice input in Voice input settings first.",
+    );
+    expect(screen.getByRole("link", { name: "Open Voice input" })).toHaveAttribute(
+      "href",
+      "/settings?section=audio",
+    );
+  });
 });

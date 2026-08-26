@@ -1,14 +1,26 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { redirect, useLoaderData, useSearchParams } from "react-router";
 import ProjectEditor from "@clash/web-ui/components/ProjectEditor";
-import { runtimeApiUrl } from "@clash/web-ui/lib/runtimeConfig";
+import { dispatchDesktopTabConnection } from "@clash/web-ui/lib/desktopTabs";
+import { runtimeFetch } from "@clash/web-ui/lib/runtimeConfig";
+
+export { ErrorBoundary } from "../root";
 
 export async function loader({ params }: LoaderFunctionArgs) {
   const id = params.id!;
-  const projRes = await fetch(
-    runtimeApiUrl(`/api/v1/projects/${encodeURIComponent(id)}`),
-    { credentials: "include" },
-  );
+  let projRes: Response;
+  try {
+    projRes = await runtimeFetch(
+      `/api/v1/projects/${encodeURIComponent(id)}`,
+      { credentials: "include" },
+    );
+  } catch (error) {
+    dispatchDesktopTabConnection({
+      path: `/projects/${id}`,
+      connection: "disconnected",
+    });
+    throw error;
+  }
 
   if (projRes.status === 401) throw redirect("/login");
   if (projRes.status === 404) throw new Response("Project not found", { status: 404 });

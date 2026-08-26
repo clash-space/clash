@@ -216,6 +216,7 @@ test("Canvas and composition dispatchers keep tools/list stable while legacy gro
     "clash_assets",
     "clash_canvas",
     "clash_composition",
+    "clash_generators",
     "clash_plugin",
     "clash_workspace_init",
   ];
@@ -797,6 +798,7 @@ test("the root Clash tool reveals live leaf contracts and dispatches them withou
     "clash_assets",
     "clash_canvas",
     "clash_composition",
+    "clash_generators",
     "clash_plugin",
   ];
   assert.deepEqual(
@@ -1124,6 +1126,130 @@ test("the fixed plugin dispatcher reveals and executes live plugin operations", 
       },
     ],
   });
+  assert.deepEqual(
+    (await client.listTools()).tools.map(({ name }) => name),
+    initialToolNames,
+  );
+});
+
+test("the fixed generators dispatcher reveals and dispatches a live registered Project Generator leaf", async (t) => {
+  const server = new ClashMcpServer({
+    name: "generators-dispatch",
+    version: "1.0.0",
+  });
+  let getCalls = 0;
+  server.registerTool(
+    "clash_generators_get",
+    {
+      title: "Read a registered Project Generator",
+      description: describeClashTool({
+        useWhen: "a registered Project Generator's head revision is needed",
+        effect: "reads the live registered Project Generator exactly once",
+        returns: "the Project Generator id and its head Revision id",
+        next: "run an Action against the returned head Revision",
+      }),
+      inputSchema: {
+        generatorId: z.string().min(1),
+      },
+      annotations: { readOnlyHint: true },
+      _meta: { ui: { visibility: ["model"] } },
+    },
+    async ({ generatorId }) => {
+      getCalls += 1;
+      return {
+        content: [{ type: "text", text: `Read ${generatorId}.` }],
+        structuredContent: { generatorId, headRevisionId: "revision-1" },
+      };
+    },
+  );
+
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "generators-client", version: "1.0.0" });
+  t.after(async () => {
+    await client.close().catch(() => undefined);
+    await server.close().catch(() => undefined);
+  });
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const initialTools = (await client.listTools()).tools;
+  const initialToolNames = initialTools.map(({ name }) => name);
+  assert.ok(initialToolNames.includes("clash_generators"));
+  assert.equal(initialToolNames.includes("clash_generators_get"), false);
+  const generatorsDescription = initialTools.find(
+    ({ name }) => name === "clash_generators",
+  )?.description;
+  assert.match(
+    generatorsDescription ?? "",
+    /image.{0,80}video.{0,80}audio.{0,160}Clash Project/i,
+  );
+  assert.match(
+    generatorsDescription ?? "",
+    /output commit.{0,160}(?:complete|finished|success)/i,
+  );
+
+  const navigation = await client.callTool({
+    name: "clash",
+    arguments: { command: "generators" },
+  });
+  assert.equal(
+    (navigation.structuredContent as { selectedDispatcher?: string })
+      .selectedDispatcher,
+    "clash_generators",
+  );
+
+  const contracts = await client.callTool({
+    name: "clash_generators",
+    arguments: {},
+  });
+  assert.deepEqual(
+    (
+      contracts.structuredContent as {
+        operations: Array<{
+          name: string;
+          operation: string;
+          readOnly: boolean;
+          destructive: boolean;
+        }>;
+      }
+    ).operations.map(({ name, operation, readOnly, destructive }) => ({
+      name,
+      operation,
+      readOnly,
+      destructive,
+    })),
+    [
+      {
+        name: "clash_generators_get",
+        operation: "get",
+        readOnly: true,
+        destructive: false,
+      },
+    ],
+  );
+
+  const read = await client.callTool({
+    name: "clash_generators",
+    arguments: {
+      operation: "get",
+      arguments: { generatorId: "acme-generator" },
+    },
+  });
+  assert.equal(read.isError, undefined);
+  assert.deepEqual(read.structuredContent, {
+    generatorId: "acme-generator",
+    headRevisionId: "revision-1",
+  });
+  assert.equal(getCalls, 1);
+
+  const invalid = await client.callTool({
+    name: "clash_generators",
+    arguments: { operation: "get", arguments: {} },
+  });
+  assert.equal(invalid.isError, true);
+  assert.equal(getCalls, 1, "invalid arguments must not reach the leaf");
+
   assert.deepEqual(
     (await client.listTools()).tools.map(({ name }) => name),
     initialToolNames,

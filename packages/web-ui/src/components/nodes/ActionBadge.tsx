@@ -32,6 +32,7 @@ import {
   Copy,
   SpeakerHigh,
   TextT,
+  Cube,
   SlidersHorizontal,
 } from "@phosphor-icons/react";
 import { motion, Reorder } from "framer-motion";
@@ -75,6 +76,7 @@ import {
   type ModelCard,
   type ModelParameter,
   type CustomActionDefinition,
+  type AigcActionKind,
   type Modality,
   type ReferenceMediaMetadata,
 } from "@clash/shared-types";
@@ -102,6 +104,7 @@ import {
 import { Button } from "../ui/button";
 import { IconButton } from "../ui/icon-button";
 import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
 import { Tooltip } from "../ui/tooltip";
 import { Slider, SliderRange, SliderThumb, SliderTrack } from "../ui/slider";
 import {
@@ -128,21 +131,16 @@ import {
   generationChoiceDefaults,
   listGenerationActionChoices,
 } from "./generationActionChoices";
+import { resolveBuiltInActionKind } from "./generationActionKind";
 
 type ModelParams = Record<string, string | number | boolean>;
-type BuiltInActionKind = "image" | "video" | "audio" | "text";
-const getBuiltInActionKind = (actionType: string): BuiltInActionKind => {
-  if (actionType === "video-gen") return "video";
-  if (actionType === "audio-gen") return "audio";
-  if (actionType === "text-gen") return "text";
-  return "image";
-};
 
-const FALLBACK_MODEL_BY_KIND: Record<BuiltInActionKind, string> = {
+const FALLBACK_MODEL_BY_KIND: Record<AigcActionKind, string> = {
   image: "nano-banana-2",
   video: "sora-2",
   audio: "gemini-3.1-flash-tts",
   text: "gpt-5.4",
+  model: "meshy-6",
 };
 
 const BATCH_COUNT_OPTIONS: SelectOption<number>[] = [
@@ -443,7 +441,7 @@ function KeyframeTimeInput({
             event.currentTarget.blur();
           }
         }}
-        className={`${NODE_INTERACTION_BOUNDARY_CLASS} block h-full w-full rounded border border-transparent bg-transparent px-0.5 text-center text-[9px] tabular-nums leading-none text-content-secondary outline-none transition-colors hover:border-warm-border hover:bg-warm-surface focus:border-brand/45 focus:bg-warm-surface focus:text-content-primary`}
+        className={`${NODE_INTERACTION_BOUNDARY_CLASS} block h-full w-full rounded border border-transparent bg-transparent px-0.5 text-center text-[9px] tabular-nums leading-none text-content-secondary outline-none transition-colors hover:border-warm-border hover:bg-warm-surface focus:border-ring/45 focus:bg-warm-surface focus:text-content-primary`}
       />
     </label>
   );
@@ -772,7 +770,7 @@ const PromptActionNode = ({
   const confirm = useConfirm();
   const onNodesMutated = useCallback(
     (prevNodes: RFNode[], nextNodes: RFNode[]) => {
-      if (!loroSync?.connected) return;
+      if (!loroSync) return;
       const patches = collectLayoutNodePatches(prevNodes, nextNodes);
       applyLayoutPatchesToLoro(loroSync, patches);
     },
@@ -874,7 +872,7 @@ const PromptActionNode = ({
 
   const editorRef = useRef<HTMLDivElement>(null);
 
-  const actionKind = customDef?.outputType ?? getBuiltInActionKind(actionType);
+  const actionKind = customDef?.outputType ?? resolveBuiltInActionKind(actionType);
   const initialModelId = isCustom
     ? ""
     : (actionKind === "image" || actionKind === "video"
@@ -906,6 +904,8 @@ const PromptActionNode = ({
         ? SpeakerHigh
         : actionKind === "text"
           ? TextT
+          : actionKind === "model"
+            ? Cube
           : ImageIcon;
   const colorClass = isCustom
     ? "text-custom"
@@ -915,6 +915,8 @@ const PromptActionNode = ({
         ? "text-audio"
         : actionKind === "text"
           ? "text-slate-800 dark:text-slate-200"
+          : actionKind === "model"
+            ? "text-slate-800 dark:text-slate-200"
           : "text-image";
   const bgClass = isCustom
     ? "bg-custom-light"
@@ -924,6 +926,8 @@ const PromptActionNode = ({
         ? "bg-audio-light"
         : actionKind === "text"
           ? "bg-warm-muted"
+          : actionKind === "model"
+            ? "bg-warm-muted"
           : "bg-image-light";
   const ringClass = isCustom
     ? "ring-custom"
@@ -933,6 +937,8 @@ const PromptActionNode = ({
         ? "ring-audio"
         : actionKind === "text"
           ? "ring-slate-500"
+          : actionKind === "model"
+            ? "ring-slate-500"
           : "ring-image";
   const btnClass = isCustom
     ? "bg-custom hover:opacity-90"
@@ -942,6 +948,8 @@ const PromptActionNode = ({
         ? "bg-audio hover:opacity-90"
         : actionKind === "text"
           ? "clash-node-primary"
+          : actionKind === "model"
+            ? "clash-node-primary"
           : "bg-image hover:opacity-90";
 
   const availableModels = useMemo(
@@ -1163,6 +1171,7 @@ const PromptActionNode = ({
       image: 0,
       video: 0,
       audio: 0,
+      model: 0,
     };
     for (const nid of refNodeIds) {
       const n = getNode(nid);
@@ -1246,7 +1255,7 @@ const PromptActionNode = ({
       .map((e) => e.id);
     if (edgeIds.length > 0) {
       setEdges((eds) => eds.filter((e) => !edgeIds.includes(e.id)));
-      if (loroSync?.connected) {
+      if (loroSync) {
         edgeIds.forEach((eid) => loroSync.removeEdge(eid));
       }
     }
@@ -1315,7 +1324,7 @@ const PromptActionNode = ({
             : n,
         ),
       );
-      if (loroSync?.connected) {
+      if (loroSync) {
         loroSync.updateNode(id, { data: { referenceImageOrder: cleaned } });
       }
     },
@@ -1338,7 +1347,7 @@ const PromptActionNode = ({
             : node,
         ),
       );
-      if (loroSync?.connected) {
+      if (loroSync) {
         loroSync.updateNode(id, { data: { modelParams: nextParams } });
       }
     },
@@ -1360,7 +1369,7 @@ const PromptActionNode = ({
         target: id,
         type: "default",
       });
-      if (loroSync?.connected) {
+      if (loroSync) {
         loroSync.addEdge(edgeId, {
           id: edgeId,
           source: sourceNodeId,
@@ -1379,7 +1388,7 @@ const PromptActionNode = ({
         .map((e) => e.id);
       if (edgeIds.length === 0) return;
       setEdges((eds) => eds.filter((e) => !edgeIds.includes(e.id)));
-      if (loroSync?.connected) {
+      if (loroSync) {
         edgeIds.forEach((eid) => loroSync.removeEdge(eid));
       }
     },
@@ -1468,7 +1477,7 @@ const PromptActionNode = ({
     }
     if (stale.length > 0) {
       setEdges((eds) => eds.filter((e) => !stale.includes(e.id)));
-      if (loroSync?.connected) {
+      if (loroSync) {
         stale.forEach((eid) => loroSync.removeEdge(eid));
       }
     }
@@ -1749,7 +1758,7 @@ const PromptActionNode = ({
             : node,
         ),
       );
-      if (loroSync?.connected) {
+      if (loroSync) {
         loroSync.updateNode(id, { data: { content: raw } });
       }
     }, 300);
@@ -1815,7 +1824,7 @@ const PromptActionNode = ({
       setShowMentionMenu(false);
       const edgeId = `${node.id}-${id}`;
       addEdges({ id: edgeId, source: node.id, target: id, type: "default" });
-      if (loroSync?.connected) {
+      if (loroSync) {
         loroSync.addEdge(edgeId, {
           id: edgeId,
           source: node.id,
@@ -1890,7 +1899,7 @@ const PromptActionNode = ({
           return node;
         }),
       );
-      if (loroSync?.connected) {
+      if (loroSync) {
         loroSync.updateNode(id, {
           data: {
             modelId: nextModelId,
@@ -1913,7 +1922,7 @@ const PromptActionNode = ({
             : node,
         ),
       );
-      if (loroSync?.connected) {
+      if (loroSync) {
         loroSync.updateNode(id, { data: nextData });
       }
     },
@@ -2078,7 +2087,7 @@ const PromptActionNode = ({
             : node,
         ),
       );
-      if (loroSync?.connected) {
+      if (loroSync) {
         loroSync.updateNode(id, { data: { lyrics: nextLyrics } });
       }
     },
@@ -2131,7 +2140,7 @@ const PromptActionNode = ({
         n.id === id ? { ...n, data: { ...n.data, openPanel: undefined } } : n,
       ),
     );
-    if (loroSync?.connected) {
+    if (loroSync) {
       loroSync.updateNode(id, { data: { openPanel: undefined } });
     }
     // Run once on mount if the flag is present; deps intentionally minimal.
@@ -2234,7 +2243,7 @@ const PromptActionNode = ({
         return node;
       }),
     );
-    if (loroSync?.connected) {
+    if (loroSync) {
       loroSync.updateNode(id, { data: { label, content } });
     }
   }, [id, label, content, setNodes, loroSync]);
@@ -2268,14 +2277,14 @@ const PromptActionNode = ({
       },
     };
     setNodes((nds) => [...nds, newNode as any]);
-    if (loroSync?.connected) {
+    if (loroSync) {
       loroSync.addNode(newId, newNode);
     }
     // Duplicate incoming reference edges so the new copy shares the same attachments
     refNodeIds.forEach((srcId) => {
       const edgeId = `${srcId}-${newId}`;
       addEdges({ id: edgeId, source: srcId, target: newId, type: "default" });
-      if (loroSync?.connected) {
+      if (loroSync) {
         loroSync.addEdge(edgeId, {
           id: edgeId,
           source: srcId,
@@ -2378,6 +2387,8 @@ const PromptActionNode = ({
         baseLabel = extractLabelFromPrompt(promptText, "Generated Audio");
       } else if (actionType === "text-gen") {
         baseLabel = extractLabelFromPrompt(promptText, "Generated Text");
+      } else if (actionType === "model-gen") {
+        baseLabel = extractLabelFromPrompt(promptText, "Generated Model");
       } else {
         baseLabel = extractLabelFromPrompt(promptText, "Generated Image");
       }
@@ -2434,7 +2445,7 @@ const PromptActionNode = ({
         if (!groupNode) {
           throw new Error("Failed to create Director Shot Group.");
         }
-        if (loroSync?.connected) {
+        if (loroSync) {
           loroSync.addNode(groupNode.id, groupNode);
         }
 
@@ -2483,7 +2494,7 @@ const PromptActionNode = ({
           };
         }),
       );
-      if (loroSync?.connected) {
+      if (loroSync) {
         loroSync.updateNode(id, { data: { hasRun: true } });
       }
     } catch (err: any) {
@@ -2873,7 +2884,7 @@ const PromptActionNode = ({
                     <div
                       aria-label={`${label} at ${formatFrameTime(previewFrame, keyframeFrameRate)}`}
                       onPointerDown={() => setSelectedKeyframeId(nodeId)}
-                      className={`${NODE_INTERACTION_BOUNDARY_CLASS} rounded-lg outline-none transition-shadow ${selectedKeyframeId === nodeId ? "ring-2 ring-brand/55 ring-offset-2 ring-offset-warm-surface" : "focus-visible:ring-2 focus-visible:ring-brand/45"}`}
+                      className={`${NODE_INTERACTION_BOUNDARY_CLASS} rounded-lg outline-none transition-shadow ${selectedKeyframeId === nodeId ? "ring-2 ring-brand/55 ring-offset-2 ring-offset-warm-surface" : "focus-visible:ring-2 focus-visible:ring-ring/45"}`}
                     >
                       <FrameReferenceSlot
                         filled
@@ -3569,7 +3580,7 @@ const PromptActionNode = ({
             >
               Lyrics
             </label>
-            <textarea
+            <Textarea
               id={`action-lyrics-${id}`}
               aria-label="Lyrics"
               value={lyrics}
@@ -3577,7 +3588,8 @@ const PromptActionNode = ({
               disabled={isCheckpointLocked}
               maxLength={selectedModel?.musicInput?.maxLyricsCharacters}
               placeholder="Write lyrics..."
-              className={`${NODE_INTERACTION_BOUNDARY_CLASS} min-h-24 w-full resize-y rounded-lg border border-warm-border bg-transparent px-3 py-2 text-sm leading-relaxed text-content-primary outline-none placeholder:text-stone-400 focus:border-brand/70 disabled:cursor-default disabled:opacity-70`}
+              controlSize="lg"
+              className={`${NODE_INTERACTION_BOUNDARY_CLASS} min-h-24 resize-y leading-relaxed disabled:cursor-default`}
             />
           </div>
         )}
@@ -3827,7 +3839,7 @@ const PromptActionNode = ({
                                 onChange={(e) =>
                                   updateModelParam(p.id, Number(e.target.value))
                                 }
-                                className={`${NODE_INTERACTION_BOUNDARY_CLASS} w-full text-xs border border-warm-border rounded-lg px-3 py-2 focus:outline-none focus:border-brand/70`}
+                                className={`${NODE_INTERACTION_BOUNDARY_CLASS} w-full text-xs border border-warm-border rounded-lg px-3 py-2 focus:outline-none focus:border-ring/70`}
                                 onClick={(e) => e.stopPropagation()}
                               />
                             )}
@@ -3844,7 +3856,7 @@ const PromptActionNode = ({
                                 onChange={(event) =>
                                   updateModelParam(p.id, event.target.value)
                                 }
-                                className={`${NODE_INTERACTION_BOUNDARY_CLASS} w-full rounded-lg border border-warm-border px-3 py-2 text-xs focus:border-brand/70 focus:outline-none`}
+                                className={`${NODE_INTERACTION_BOUNDARY_CLASS} w-full rounded-lg border border-warm-border px-3 py-2 text-xs focus:border-ring/70 focus:outline-none`}
                                 onClick={(event) => event.stopPropagation()}
                               />
                             )}

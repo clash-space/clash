@@ -108,14 +108,16 @@ describe("DirectorStageNode", () => {
     mocks.doc = null;
   });
 
-  it("renders Stage authoring state without treating legacy output fields as its preview", () => {
+  it("renders the stored Stage with its exported reference video preview", () => {
     const { container } = renderDirectorStage();
 
     expect(screen.getByText("Courtyard blocking")).toBeTruthy();
     expect(screen.getByText("0 objects")).toBeTruthy();
     expect(screen.getByText("0 cameras")).toBeTruthy();
-    expect(screen.queryByText("Reference video ready")).toBeNull();
-    expect(container.querySelector("video")).toBeNull();
+    expect(screen.getByText("Reference video ready")).toBeTruthy();
+    expect(container.querySelector("video")?.getAttribute("src")).toBe(
+      "https://host.example/assets/asset-video",
+    );
   });
 
   it("opens the independently stored Stage", () => {

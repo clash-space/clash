@@ -3,11 +3,6 @@ import { buildProjectRecoveryPolicy, buildProjectStatus, projectWorkspaceId } fr
 
 const expectedTracePolicy = {
   schemaVersion: 1,
-  roomMessages: {
-    kind: "project-chat",
-    syncDefault: "sync-when-project-sync-enabled",
-    rawAgentTrace: false,
-  },
   agentSessionMetadata: {
     kind: "public-session-metadata",
     syncDefault: "sync-when-project-sync-enabled",

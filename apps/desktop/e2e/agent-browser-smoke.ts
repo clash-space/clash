@@ -90,6 +90,7 @@ const scopedAssetPickerScreenshot = path.join(
   "scoped-asset-picker-agent-browser-desktop.png",
 );
 let electronTargetRecovery = null;
+let electronCdpPort: number | null = null;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -130,6 +131,39 @@ async function waitForHttp(url, label) {
   }
   throw new Error(
     `${label} did not become reachable at ${url}: ${lastError?.message ?? lastError}`,
+  );
+}
+
+async function waitForCdpPageTarget(
+  cdpPort,
+  expectedUrlPrefix,
+  timeoutMs = 65_000,
+) {
+  const url = `http://127.0.0.1:${cdpPort}/json/list`;
+  const deadline = Date.now() + timeoutMs;
+  let lastTargets = [];
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(2500) });
+      if (res.ok) {
+        const targets = await res.json();
+        lastTargets = Array.isArray(targets) ? targets : [];
+        const page = lastTargets.find(
+          (target) =>
+            target?.type === "page" &&
+            typeof target.url === "string" &&
+            target.url.startsWith(expectedUrlPrefix) &&
+            typeof target.webSocketDebuggerUrl === "string",
+        );
+        if (page) return page;
+      }
+    } catch {
+      // Electron may expose the browser endpoint before creating its window.
+    }
+    await sleep(250);
+  }
+  throw new Error(
+    `Electron page target did not become available at ${expectedUrlPrefix}: ${JSON.stringify(lastTargets)}`,
   );
 }
 
@@ -178,14 +212,22 @@ function sleepSync(ms) {
 function agentBrowser(args, opts = {}) {
   let result;
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    result = spawnSync("agent-browser", ["--session", sessionName, ...args], {
-      cwd: repoRoot,
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        AGENT_BROWSER_SCREENSHOT_DIR: captureDir,
+    const directCdpArgs =
+      electronCdpPort !== null && args[0] !== "connect" && args[0] !== "close"
+        ? ["--cdp", String(electronCdpPort)]
+        : [];
+    result = spawnSync(
+      "agent-browser",
+      ["--session", sessionName, ...directCdpArgs, ...args],
+      {
+        cwd: repoRoot,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          AGENT_BROWSER_SCREENSHOT_DIR: captureDir,
+        },
       },
-    });
+    );
     if (result.status === 0) break;
     if (!String(result.stderr).includes("Resource temporarily unavailable"))
       break;
@@ -334,17 +376,19 @@ async function assertRuntimeHistory(projectId, apiOrigin, expectedCount) {
     );
     const sessionsWithPaths = [];
     for (const session of runtimeSessions) {
-      const messages = await fetchJson(
-        `${apiOrigin}/api/v1/local-sessions/${encodeURIComponent(session.threadId || session.id)}/messages`,
-      );
+      const eventPath = `${apiOrigin}/api/v1/local-sessions/${encodeURIComponent(session.threadId || session.id)}/events`;
+      const history = await fetchJson(eventPath);
       sessionsWithPaths.push(
-        runtimeSessionPathObservation({
-          session,
-          projectId,
-          apiOrigin,
-          dataDir,
-          messageCount: (messages.messages || []).length,
-        }),
+        {
+          ...runtimeSessionPathObservation({
+            session,
+            projectId,
+            apiOrigin,
+            dataDir,
+            messageCount: (history.events || []).length,
+          }),
+          apiPath: eventPath,
+        },
       );
     }
     lastState = {
@@ -381,6 +425,7 @@ async function main() {
   const webPort = await findFreePort(49870);
   const apiPort = await findFreePort(49920);
   const cdpPort = await findFreePort(49970);
+  electronCdpPort = cdpPort;
   const webOrigin = `http://127.0.0.1:${webPort}`;
 
   const webLogs = [];
@@ -406,6 +451,8 @@ async function main() {
           CLASH_LOCAL_DATA_DIR: dataDir,
           CLASH_LOCAL_API_PORT: String(apiPort),
           CLASH_DESKTOP_CAPTURE_DIR: captureDir,
+          CLASH_DESKTOP_HOST_STARTUP_TIMEOUT_MS: "60000",
+          CLASH_DESKTOP_SOURCE_HOST_WATCH: "0",
         },
         stdio: ["ignore", "pipe", "pipe"],
       },
@@ -425,12 +472,15 @@ async function main() {
       "Electron CDP",
     );
 
-    agentBrowser(["close"], { allowFailure: true });
-    agentBrowser(["connect", String(cdpPort)]);
     electronTargetRecovery = {
       cdpPort,
       expectedUrlPrefix: `http://127.0.0.1:${webPort}/`,
     };
+    await waitForCdpPageTarget(
+      cdpPort,
+      electronTargetRecovery.expectedUrlPrefix,
+    );
+    recoverAgentBrowserTarget(agentBrowser, electronTargetRecovery);
     await waitForEval(`document.body.innerText.includes("Home")`, "home page");
     const runtime = await waitForEval(
       `(() => window.__CLASH_RUNTIME_CONFIG__?.apiBaseUrl ? window.__CLASH_RUNTIME_CONFIG__ : false)()`,
@@ -486,12 +536,14 @@ async function main() {
       );
     }
     const seededAsset = await seededAssetResponse.json();
+    const seededAssetElementId = `project-asset-${seededAsset.id}`;
+    const seededAssetSelector = `[id=${JSON.stringify(seededAssetElementId)}]`;
     agentBrowser(["eval", "location.reload()"], { allowFailure: true });
     await sleep(750);
     recoverAgentBrowserTarget(agentBrowser, electronTargetRecovery);
     await waitForEval(
       `document.querySelector('[aria-controls="project-assets-list"]')?.getAttribute('aria-expanded') === 'true' &&
-       !!document.querySelector(${JSON.stringify(`#project-asset-${seededAsset.id}`)})`,
+       !!document.querySelector(${JSON.stringify(seededAssetSelector)})`,
       "project detail with complete asset list",
       20000,
     );
@@ -521,7 +573,7 @@ async function main() {
         const dialog = document.querySelector('[role="dialog"]');
         const tabs = [...(dialog?.querySelectorAll('[role="tab"]') ?? [])].map((node) => node.textContent?.trim());
         return !!dialog?.querySelector('[data-layout="command-grid"]') &&
-          !!dialog.querySelector('[role="searchbox"][aria-label="Search media"]') &&
+          !!dialog.querySelector('input[type="search"][aria-label="Search media"]') &&
           tabs.includes('Project') && tabs.includes('More sources') &&
           !tabs.includes('Current Canvas');
       })()`,
@@ -546,13 +598,30 @@ async function main() {
       "session config menu closed by its trigger",
     );
 
+    let popupInteractions;
+
+    const firstPrompt = "agent-browser desktop first turn";
+    const secondPrompt = "agent-browser desktop fresh turn";
+    if (
+      !clickButtonByLabel(agentBrowser, "Follow agent actions") &&
+      !clickButtonByLabel(agentBrowser, "跟随 Agent 操作")
+    ) {
+      throw new Error("Could not enable agent follow mode");
+    }
+    await waitForEval(
+      `document.querySelector('#project-workspace-shell')?.getAttribute('data-following-agent') === 'true' &&
+       document.querySelector('[aria-label="Stop following agent"], [aria-label="停止跟随 Agent"]')?.getAttribute('aria-pressed') === 'true'`,
+      "active agent follow mode",
+      10000,
+    );
+    await sendPrompt(firstPrompt);
     agentBrowser(["click", sessionConfigSelector]);
     await waitForEval(
       `document.querySelector(${JSON.stringify(sessionConfigSelector)})?.getAttribute('data-state') === 'open'`,
       "session config menu reopened",
     );
     agentBrowser(["click", sessionHistorySelector]);
-    const popupInteractions = await waitForEval(
+    popupInteractions = await waitForEval(
       `(() => {
         const sessionConfig = document.querySelector(${JSON.stringify(sessionConfigSelector)});
         const sessionHistory = document.querySelector(${JSON.stringify(sessionHistorySelector)});
@@ -576,22 +645,6 @@ async function main() {
        !document.querySelector('[role="menu"][data-state="open"]')`,
       "popup dismissed with Escape",
     );
-
-    const firstPrompt = "agent-browser desktop first turn";
-    const secondPrompt = "agent-browser desktop fresh turn";
-    if (
-      !clickButtonByLabel(agentBrowser, "Follow agent actions") &&
-      !clickButtonByLabel(agentBrowser, "跟随 Agent 操作")
-    ) {
-      throw new Error("Could not enable agent follow mode");
-    }
-    await waitForEval(
-      `document.querySelector('#project-workspace-shell')?.getAttribute('data-following-agent') === 'true' &&
-       document.querySelector('[aria-label="Stop following agent"], [aria-label="停止跟随 Agent"]')?.getAttribute('aria-pressed') === 'true'`,
-      "active agent follow mode",
-      10000,
-    );
-    await sendPrompt(firstPrompt);
     const agentFollow = await waitForEval(
       `(() => {
         const shell = document.querySelector('#project-workspace-shell');
@@ -803,7 +856,7 @@ async function main() {
       agentBrowser(["mouse", "up", "left"], { allowFailure: true });
     }
 
-    agentBrowser(["click", `#project-asset-${seededAsset.id}`]);
+    agentBrowser(["click", seededAssetSelector]);
     await waitForEval(
       `document.querySelector('#project-workspace-shell')?.getAttribute('data-following-agent') === 'false' &&
        !!document.querySelector('[aria-label="Follow agent actions"], [aria-label="跟随 Agent 操作"]') &&
@@ -1550,7 +1603,7 @@ async function main() {
         `document.querySelector(${JSON.stringify(disclosureSelector)})?.getAttribute('aria-expanded') === 'false' &&
          !document.querySelector(${JSON.stringify(folder.childSelector)}) &&
          !!document.querySelector(${JSON.stringify(folder.unaffectedSelector)}) &&
-         !!document.querySelector(${JSON.stringify(`#project-asset-${seededAsset.id}`)})`,
+         !!document.querySelector(${JSON.stringify(seededAssetSelector)})`,
         `collapsed ${folder.label} folder without affecting siblings`,
         10000,
       );
@@ -1563,7 +1616,7 @@ async function main() {
       );
     }
 
-    const assetSelector = `#project-asset-${seededAsset.id}`;
+    const assetSelector = seededAssetSelector;
     if (
       !evalJson(`(() => {
       const asset = document.querySelector(${JSON.stringify(assetSelector)});
@@ -1576,7 +1629,7 @@ async function main() {
       throw new Error("Could not open the project asset directly");
     }
     await waitForEval(
-      `document.querySelector('[aria-label="Project navigator"] [role="tab"][aria-selected="true"]')?.id === ${JSON.stringify(`project-asset-${seededAsset.id}`)} &&
+      `document.querySelector('[aria-label="Project navigator"] [role="tab"][aria-selected="true"]')?.id === ${JSON.stringify(seededAssetElementId)} &&
        !!document.querySelector('[aria-label="explicit-target.png preview"]') &&
        ![...document.querySelectorAll('#project-workspace-inset h1, #project-workspace-inset h2')].some((heading) => (heading.textContent || '').trim() === 'Assets') &&
        !!document.querySelector('[data-desktop-chrome="true"] [aria-label="Collapse project sidebar"]') &&

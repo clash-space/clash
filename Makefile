@@ -1,4 +1,4 @@
-.PHONY: install dev dev-web dev-api-cf dev-full build test lint typecheck clean format setup db-web-local check-tools help bundle remotion-bundle remotion-render deploy deploy-api deploy-web deploy-loro-sync deploy-all predeploy-check wrangler-whoami deploy-staging deploy-api-staging deploy-web-staging
+.PHONY: install dev dev-desktop dev-web dev-api-cf dev-full build test lint typecheck clean format setup db-web-local check-tools help bundle remotion-bundle remotion-render deploy deploy-api deploy-web deploy-loro-sync deploy-all predeploy-check wrangler-whoami deploy-staging deploy-api-staging deploy-web-staging
 
 # Use interactive shell to load .zshrc environment
 
@@ -18,6 +18,7 @@ NO_PROXY ?=
 # /api/tasks/*, /api/describe, /api/generate/* are proxied to api-cf via the
 # service binding (or API_CF_URL fallback).
 WEB_PORT ?= 3000
+DESKTOP_RENDERER_PORT ?= 3001
 API_CF_PORT ?= 8789
 RENDER_PORT ?= 8080
 
@@ -79,6 +80,10 @@ db-local: db-web-local ## Setup all local D1 databases
 #==============================================================================
 # Development Servers
 #==============================================================================
+
+dev-desktop: check-tools ## Start Electron with Desktop-only renderer HMR on :3001
+	@echo "$(BLUE)Starting Clash Desktop with HMR on http://127.0.0.1:$(DESKTOP_RENDERER_PORT)...$(NC)"
+	@CLASH_DESKTOP_RENDERER_PORT=$(DESKTOP_RENDERER_PORT) pnpm --filter @clash/desktop dev
 
 dev-web: ## Start web app (Vite + RR7 + Cloudflare Vite plugin) on :3000
 	@echo "$(BLUE)Starting web on http://localhost:$(WEB_PORT)...$(NC)"

@@ -9,10 +9,15 @@ import {
   ASSET_ACTION_ID,
   createAssetActionInvocation,
   legacyEditOriginForSurface,
+  resolveAssetActionOutputKind,
   type AssetEditActionInvocation,
   type ActionSurface,
   ResolvedAssetSchema,
 } from "@clash/shared-types";
+import {
+  createAssetEditPluginModule,
+  invokeAssetEditPlugin,
+} from "@clash/shared-runtime";
 import { runtimeApiUrl } from "./runtimeConfig";
 
 export interface EditApplyResult {
@@ -36,6 +41,44 @@ function actionSurface(
   return origin === "asset-preview" ? "asset-preview" : "canvas";
 }
 
+const assetEditPluginModule = createAssetEditPluginModule(
+  async ({ actionRunId, invocation, sourceUrl }) => {
+    const result =
+      invocation.actionId === ASSET_ACTION_ID.ImageEditor
+        ? await executeImageEdit(actionRunId, invocation, sourceUrl)
+        : invocation.params.mode === "crop"
+          ? await executeVideoCrop(actionRunId, invocation)
+          : await executeVideoScreenshot(actionRunId, invocation, sourceUrl);
+    const outputKind = resolveAssetActionOutputKind(
+      invocation.actionId,
+      invocation.params,
+    );
+    return {
+      slot: "output",
+      kind: "asset",
+      asset: {
+        assetId: result.assetId,
+        uri: `clash-asset://${result.assetId}`,
+        kind: outputKind,
+      },
+    };
+  },
+);
+
+async function invokeClientAssetEditPlugin(input: {
+  actionRunId: string;
+  invocation: AssetEditActionInvocation;
+  sourceUrl?: string;
+}): Promise<EditApplyResult> {
+  return invokeAssetEditPlugin({
+    realm: "client",
+    module: assetEditPluginModule,
+    actionRunId: input.actionRunId,
+    invocation: input.invocation,
+    ...(input.sourceUrl ? { sourceUrl: input.sourceUrl } : {}),
+  });
+}
+
 /**
  * Apply an image edit (crop + rotation) entirely in the browser, then POST
  * the rendered PNG to /api/v1/edits which creates a new asset row pointing
@@ -52,7 +95,6 @@ export async function applyImageEdit(input: {
   params: ImageEditParams;
   origin?: "canvas-node" | "asset-preview";
 }): Promise<EditApplyResult> {
-  const blob = await renderImageEdit(input.sourceUrl, input.params);
   const invocation = createAssetActionInvocation({
     actionId: ASSET_ACTION_ID.ImageEditor,
     projectId: input.projectId,
@@ -60,11 +102,10 @@ export async function applyImageEdit(input: {
     params: input.params,
     surface: actionSurface(input.origin),
   });
-  return await postEdit({
+  return invokeClientAssetEditPlugin({
     actionRunId: editActionRunId(input),
     invocation,
-    outputKind: "image",
-    blob,
+    sourceUrl: input.sourceUrl,
   });
 }
 
@@ -84,10 +125,6 @@ export async function applyVideoScreenshot(input: {
   params: Extract<VideoClipParams, { mode: "screenshot" }>;
   origin?: "canvas-node" | "asset-preview";
 }): Promise<EditApplyResult> {
-  const blob = await renderVideoScreenshot(
-    input.sourceUrl,
-    input.params.frameTimeSec,
-  );
   const invocation = createAssetActionInvocation({
     actionId: ASSET_ACTION_ID.VideoClipper,
     projectId: input.projectId,
@@ -95,11 +132,10 @@ export async function applyVideoScreenshot(input: {
     params: input.params,
     surface: actionSurface(input.origin),
   });
-  return await postEdit({
+  return invokeClientAssetEditPlugin({
     actionRunId: editActionRunId(input),
     invocation,
-    outputKind: "image",
-    blob,
+    sourceUrl: input.sourceUrl,
   });
 }
 
@@ -118,12 +154,55 @@ export async function applyVideoCrop(input: {
     params: input.params,
     surface,
   });
-  const body = {
+  return invokeClientAssetEditPlugin({
     actionRunId: editActionRunId(input),
-    projectId: input.projectId,
-    sourceAssetId: input.sourceAssetId,
-    params: input.params,
-    origin: input.origin ?? "canvas-node",
+    invocation,
+  });
+}
+
+async function executeImageEdit(
+  actionRunId: string,
+  invocation: Extract<AssetEditActionInvocation, { actionId: "image-editor" }>,
+  sourceUrl?: string,
+): Promise<EditApplyResult> {
+  if (!sourceUrl)
+    throw new Error("Image Editor requires a source URL in the client realm.");
+  const blob = await renderImageEdit(sourceUrl, invocation.params);
+  return postEdit({ actionRunId, invocation, outputKind: "image", blob });
+}
+
+async function executeVideoScreenshot(
+  actionRunId: string,
+  invocation: Extract<AssetEditActionInvocation, { actionId: "video-clipper" }>,
+  sourceUrl?: string,
+): Promise<EditApplyResult> {
+  if (!sourceUrl)
+    throw new Error(
+      "Video screenshot requires a source URL in the client realm.",
+    );
+  if (invocation.params.mode !== "screenshot") {
+    throw new Error("Video screenshot received crop parameters.");
+  }
+  const blob = await renderVideoScreenshot(
+    sourceUrl,
+    invocation.params.frameTimeSec,
+  );
+  return postEdit({ actionRunId, invocation, outputKind: "image", blob });
+}
+
+async function executeVideoCrop(
+  actionRunId: string,
+  invocation: Extract<AssetEditActionInvocation, { actionId: "video-clipper" }>,
+): Promise<EditApplyResult> {
+  if (invocation.params.mode !== "crop") {
+    throw new Error("Video crop received screenshot parameters.");
+  }
+  const body = {
+    actionRunId,
+    projectId: invocation.projectId,
+    sourceAssetId: invocation.source.assetId,
+    params: invocation.params,
+    origin: legacyEditOriginForSurface(invocation.surface),
     invocation,
   };
   const res = await fetch(runtimeApiUrl("/api/v1/edits/video-crop"), {

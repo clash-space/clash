@@ -44,7 +44,7 @@ export interface ProviderTestAccount {
 
 export interface ProviderTestReference {
   id?: string;
-  kind: "image" | "video" | "audio";
+  kind: "image" | "video" | "audio" | "model";
   bytes: Uint8Array;
   mediaType: string;
   originalName?: string;
@@ -57,16 +57,25 @@ export type ProviderTestExpectation =
       /** ASR-only tolerance for presentation differences; authored text remains exact by default. */
       textMatch?: "exact" | "normalized";
     }
-  | { kind: "image" | "video" | "audio"; mediaType?: string };
+  | { kind: "image" | "video" | "audio" | "model"; mediaType?: string };
 
 export interface ProviderReplayTestCase {
   id: string;
-  type: "text_gen" | "image_gen" | "video_gen" | "audio_gen";
+  type: "text_gen" | "image_gen" | "video_gen" | "audio_gen" | "model_gen";
   modelId: string;
   prompt: string;
   label?: string;
   params?: Record<string, string | number | boolean>;
   refs?: readonly ProviderTestReference[];
+  /**
+   * Earlier, already-completed case ids whose graded output asset becomes an
+   * additional Canvas reference for this case (e.g. a mesh-generation case
+   * feeding an auto-rig case). Every id must name a case that appears
+   * strictly earlier in the same `cases` array and produce a storable
+   * (non-text) asset -- `validateProviderReplayCaseChain` enforces the
+   * ordering before any server or network work starts.
+   */
+  refCaseIds?: readonly string[];
   expect: ProviderTestExpectation;
 }
 
@@ -79,11 +88,89 @@ export type ProviderReplayTestCaseResult =
     }
   | {
       id: string;
-      kind: "image" | "video" | "audio";
+      kind: "image" | "video" | "audio" | "model";
       assetId: string;
       mediaType: string;
       byteLength: number;
     };
+
+/**
+ * Fail fast, before any temp directory or server is created, when a case's
+ * `refCaseIds` names itself or a case that is not strictly earlier in the
+ * array. This is the ordering `runProviderTestHarness` relies on to resolve
+ * each chained reference to an already-graded output asset id.
+ */
+export function validateProviderReplayCaseChain(
+  cases: readonly Pick<ProviderReplayTestCase, "id" | "refCaseIds">[],
+): void {
+  const seen = new Set<string>();
+  for (const graderCase of cases) {
+    for (const refCaseId of graderCase.refCaseIds ?? []) {
+      if (refCaseId === graderCase.id) {
+        throw new Error(
+          `Provider replay case ${graderCase.id} cannot reference itself via refCaseIds`,
+        );
+      }
+      if (!seen.has(refCaseId)) {
+        throw new Error(
+          `Provider replay case ${graderCase.id} refCaseIds names ${refCaseId}, which is not an earlier case`,
+        );
+      }
+    }
+    seen.add(graderCase.id);
+  }
+}
+
+/**
+ * Resolve one case's `refCaseIds` to the graded Canvas output **node** ids
+ * (`host-command add`'s `refs` resolves Canvas node ids, not Project Asset
+ * ids -- see `resolveCanvasReferenceNodeIds` in project-command-host.ts).
+ * Pulled out as a pure function so a unit test can prove the values threaded
+ * into `refs` are node ids and would fail if an asset id ever slipped back
+ * in here.
+ */
+export function resolveProviderReplayChainRefs(
+  graderCase: Pick<ProviderReplayTestCase, "id" | "refCaseIds">,
+  outputNodeIdByCaseId: ReadonlyMap<string, string>,
+): string[] {
+  return (graderCase.refCaseIds ?? []).map((refCaseId) => {
+    const nodeId = outputNodeIdByCaseId.get(refCaseId);
+    if (!nodeId) {
+      throw new Error(
+        `${graderCase.id} refCaseIds names ${refCaseId}, which has not produced a storable asset yet`,
+      );
+    }
+    return nodeId;
+  });
+}
+
+/**
+ * Kept in lockstep with `assertProviderMediaFormat`'s registered validators.
+ * Accepting a spelling here that has no byte-level check below would let a
+ * case pass MIME matching and then always fail format assertion -- so this
+ * set names only formats this file actually knows how to verify.
+ */
+const MODEL_MEDIA_TYPES = new Set(["model/gltf-binary", "model/gltf+json"]);
+
+/**
+ * Match a graded asset's MIME against the expected asset kind.
+ *
+ * `image` / `video` / `audio` MIME types are provider-published and share
+ * one namespace with their kind (`image/png`, `video/mp4`, ...), so a
+ * `${kind}/` prefix check is a correct membership test there. 3D output is
+ * not: `model/gltf-binary`, `model/gltf+json`, and friends are a menu of
+ * concrete published container types, not a namespace clash detector, so
+ * treating any `model/*` spelling as a pass would let an unregistered or
+ * mistyped subtype through unnoticed. `model` kind is matched against the
+ * explicit registered set instead.
+ */
+export function mediaTypeMatchesExpectedAssetKind(
+  expectedKind: "image" | "video" | "audio" | "model",
+  mediaType: string,
+): boolean {
+  if (expectedKind === "model") return MODEL_MEDIA_TYPES.has(mediaType);
+  return mediaType.startsWith(`${expectedKind}/`);
+}
 
 export interface ProviderReplayTestResult {
   /** The isolated directory used for the run. It has been removed when this function resolves. */
@@ -175,6 +262,7 @@ async function runProviderTestHarness(
   if (options.cases.length === 0) {
     throw new Error("Provider replay test harness requires at least one case");
   }
+  validateProviderReplayCaseChain(options.cases);
   const root = await mkdtemp(join(tmpdir(), "clash-provider-replay-harness-"));
   const dataDir = join(root, "local-api");
   const actionsRoot = join(root, "actions");
@@ -311,6 +399,7 @@ async function runProviderTestHarness(
     }
 
     const results: ProviderReplayTestCaseResult[] = [];
+    const outputNodeIdByCaseId = new Map<string, string>();
     for (const graderCase of options.cases) {
       if (options.traffic.mode === "live") {
         activeLiveStub = providerConformanceStubForCase(
@@ -319,7 +408,14 @@ async function runProviderTestHarness(
         );
         await writeActiveProviderStub(activeStubPath, activeLiveStub);
       }
-      const refs = referencesByCase.get(graderCase.id) ?? [];
+      const chainRefs = resolveProviderReplayChainRefs(
+        graderCase,
+        outputNodeIdByCaseId,
+      );
+      const refs = [
+        ...(referencesByCase.get(graderCase.id) ?? []),
+        ...chainRefs,
+      ];
       const added = await command<{ node_id: string }>({
         action: "add",
         canvasId: "main",
@@ -344,16 +440,16 @@ async function runProviderTestHarness(
         caseId: graderCase.id,
         timeoutMs: options.timeoutMs ?? 30 * 60_000,
       });
-      results.push(
-        await gradeCompletedNode({
-          origin,
-          dataDir,
-          projectId,
-          nodeId,
-          graderCase,
-          node,
-        }),
-      );
+      const graded = await gradeCompletedNode({
+        origin,
+        dataDir,
+        projectId,
+        nodeId,
+        graderCase,
+        node,
+      });
+      if (graded.kind !== "text") outputNodeIdByCaseId.set(graderCase.id, nodeId);
+      results.push(graded);
     }
 
     return { dataDir, projectId, cases: results };
@@ -609,7 +705,7 @@ async function gradeCompletedNode(options: {
     metadata.contentType,
     `${options.graderCase.id} asset MIME type`,
   );
-  if (!mediaType.startsWith(`${expectedKind}/`)) {
+  if (!mediaTypeMatchesExpectedAssetKind(expectedKind, mediaType)) {
     throw new Error(
       `${options.graderCase.id} asset MIME ${mediaType} is not ${expectedKind}`,
     );
@@ -772,6 +868,22 @@ export function assertProviderMediaFormat(
       fail("does not contain whole 16-bit PCM samples");
     return;
   }
+  if (mediaType === "model/gltf-binary") {
+    if (!asciiAt(bytes, 0, "glTF"))
+      fail("does not contain a glTF binary magic header");
+    return;
+  }
+  if (mediaType === "model/gltf+json") {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(Buffer.from(bytes).toString("utf8"));
+    } catch {
+      fail("does not contain glTF JSON content");
+    }
+    if (!isObject(parsed) || !("asset" in parsed))
+      fail("does not contain glTF JSON content");
+    return;
+  }
   fail("has no registered replay format validator");
 }
 
@@ -864,7 +976,15 @@ function extensionForReference(ref: ProviderTestReference): string {
   if (ref.mediaType === "video/mp4") return ".mp4";
   if (ref.mediaType === "audio/wav") return ".wav";
   if (ref.mediaType === "audio/mpeg") return ".mp3";
-  return ref.kind === "image" ? ".png" : ref.kind === "video" ? ".mp4" : ".mp3";
+  if (ref.mediaType === "model/gltf-binary") return ".glb";
+  if (ref.mediaType === "model/gltf+json") return ".gltf";
+  return ref.kind === "image"
+    ? ".png"
+    : ref.kind === "video"
+      ? ".mp4"
+      : ref.kind === "model"
+        ? ".glb"
+        : ".mp3";
 }
 
 function providerConformanceStubForCase(

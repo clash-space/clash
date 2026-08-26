@@ -6,8 +6,8 @@ import {
   commitActionRunOutcome,
   createProjectDocumentAsset,
   ensureActionRunRequest,
+  ensureDocumentAttachment,
   ensureOutputCommit,
-  listActionAssetBindings,
   markActionRunStarted,
   readOutputCommit,
   readDocumentAssetRevision,
@@ -15,7 +15,6 @@ import {
   readProjectActionRun,
   readProjectDocumentAsset,
   resolveOutputCommitAssetType,
-  type ActionAssetBinding,
   type ActionRunRequest,
   type DocumentAssetRevision,
   type OutputCommit,
@@ -34,7 +33,6 @@ import { publishLocalProjectAssetWithBindings } from "./local-project-assets.js"
 
 export interface LocalGeneratorMediaPublication {
   entry: ProjectAssetEntry;
-  legacyBinding: ActionAssetBinding;
   commit: OutputCommit;
   run: ProjectActionRun;
   changed: boolean;
@@ -61,6 +59,14 @@ export interface LocalGeneratorRunBridge {
     command: LocalDurableRunCreateCommand;
     checkpoint: () => Promise<void>;
   }): Promise<ProjectActionRun>;
+  enqueueBatch(input: {
+    doc: LoroDoc;
+    entries: readonly {
+      request: ActionRunRequest;
+      command: LocalDurableRunCreateCommand;
+    }[];
+    checkpoint: () => Promise<void>;
+  }): Promise<ProjectActionRun[]>;
   projectRunning(input: {
     doc: LoroDoc;
     identity: { actionRunId: string; outputSlot: string };
@@ -71,7 +77,6 @@ export interface LocalGeneratorRunBridge {
     actionRunId: string;
     outputSlot: string;
     entry: ProjectAssetEntry;
-    legacyBinding: ActionAssetBinding;
     checkpoint: () => Promise<void>;
   }): Promise<LocalGeneratorMediaPublication>;
   publishDocumentSuccess(input: {
@@ -81,15 +86,46 @@ export interface LocalGeneratorRunBridge {
     revision: DocumentAssetRevision;
     checkpoint: () => Promise<void>;
   }): Promise<LocalGeneratorDocumentPublication>;
+  publishDocumentBatchSuccess(input: {
+    doc: LoroDoc;
+    actionRunId: string;
+    outputs: readonly {
+      outputSlot: string;
+      revision: DocumentAssetRevision;
+    }[];
+    checkpoint: () => Promise<void>;
+  }): Promise<{
+    publications: LocalGeneratorDocumentPublication[];
+    run: ProjectActionRun;
+    changed: boolean;
+  }>;
   publishFailure(input: {
     doc: LoroDoc;
     actionRunId: string;
     checkpoint: () => Promise<void>;
   }): Promise<LocalGeneratorFailurePublication>;
+  finalizeSuccess(input: {
+    doc: LoroDoc;
+    actionRunId: string;
+    checkpoint: () => Promise<void>;
+  }): Promise<{ run: ProjectActionRun; changed: boolean }>;
 }
 
 function generatorMutationFailure(error: ProjectGeneratorMutationError): never {
   throw new Error(`${error.code}: ${error.message}`);
+}
+
+function completeSingleOutputRun(
+  doc: LoroDoc,
+  run: ProjectActionRun,
+): { run: ProjectActionRun; changed: boolean } {
+  if (run.outputContract.length !== 1) return { run, changed: false };
+  const outcome = commitActionRunOutcome(doc, {
+    actionRunId: run.actionRunId,
+    status: "succeeded",
+  });
+  if (!outcome.ok) generatorMutationFailure(outcome.error);
+  return { run: outcome.run, changed: outcome.changed };
 }
 
 function applyMediaSuccess(
@@ -98,7 +134,6 @@ function applyMediaSuccess(
     actionRunId: string;
     outputSlot: string;
     entry: ProjectAssetEntry;
-    legacyBinding: ActionAssetBinding;
   },
 ): LocalGeneratorMediaPublication {
   const run = readProjectActionRun(doc, input.actionRunId);
@@ -115,21 +150,6 @@ function applyMediaSuccess(
       "The published media Asset does not match the Generator Action Run output contract.",
     );
   }
-  if (
-    input.legacyBinding.owner.kind !== "run" ||
-    input.legacyBinding.owner.actionRunId !== input.actionRunId ||
-    input.legacyBinding.owner.actionId !== run.generatorRevision.generatorId ||
-    input.legacyBinding.owner.actionRevisionId !==
-      run.generatorRevision.generatorRevisionId ||
-    input.legacyBinding.direction !== "output" ||
-    input.legacyBinding.slot !== input.outputSlot ||
-    input.legacyBinding.projectAssetId !== input.entry.id
-  ) {
-    throw new Error(
-      "The legacy ActionAssetBinding must identify the same Generator revision, Run, output slot, and Asset.",
-    );
-  }
-
   const existingCommit = readOutputCommit(doc, {
     actionRunId: input.actionRunId,
     outputSlot: input.outputSlot,
@@ -142,36 +162,21 @@ function applyMediaSuccess(
     }
     const existingProjectAssetId = existingCommit.asset.projectAssetId;
     const existingEntry = readProjectAsset(doc, existingProjectAssetId);
-    const existingBinding = listActionAssetBindings(doc).find(
-      (candidate) =>
-        candidate.owner.kind === "run" &&
-        candidate.owner.actionRunId === input.actionRunId &&
-        candidate.direction === "output" &&
-        candidate.slot === input.outputSlot &&
-        candidate.projectAssetId === existingProjectAssetId,
-    );
-    if (!existingEntry || !existingBinding) {
+    if (!existingEntry) {
       throw new Error(
-        "The existing Generator output winner is missing its Project Asset or legacy binding.",
+        "The existing Generator output winner is missing its Project Asset.",
       );
     }
-    const outcome = commitActionRunOutcome(doc, {
-      actionRunId: input.actionRunId,
-      status: "succeeded",
-    });
-    if (!outcome.ok) generatorMutationFailure(outcome.error);
+    const completed = completeSingleOutputRun(doc, run);
     return {
       entry: existingEntry,
-      legacyBinding: existingBinding,
       commit: existingCommit,
-      run: outcome.run,
-      changed: outcome.changed,
+      run: completed.run,
+      changed: completed.changed,
     };
   }
 
-  const publication = publishLocalProjectAssetWithBindings(doc, input.entry, [
-    input.legacyBinding,
-  ]);
+  const publication = publishLocalProjectAssetWithBindings(doc, input.entry, []);
   const output = ensureOutputCommit(
     doc,
     {
@@ -182,17 +187,12 @@ function applyMediaSuccess(
     resolveOutputCommitAssetType,
   );
   if (!output.ok) generatorMutationFailure(output.error);
-  const outcome = commitActionRunOutcome(doc, {
-    actionRunId: input.actionRunId,
-    status: "succeeded",
-  });
-  if (!outcome.ok) generatorMutationFailure(outcome.error);
+  const completed = completeSingleOutputRun(doc, run);
   return {
     entry: publication.entry,
-    legacyBinding: publication.bindings[0]!,
     commit: output.commit,
-    run: outcome.run,
-    changed: publication.changed || output.changed || outcome.changed,
+    run: completed.run,
+    changed: publication.changed || output.changed || completed.changed,
   };
 }
 
@@ -270,17 +270,13 @@ function applyDocumentSuccess(
         "The existing Generator Document output winner is missing its immutable revision.",
       );
     }
-    const outcome = commitActionRunOutcome(doc, {
-      actionRunId: input.actionRunId,
-      status: "succeeded",
-    });
-    if (!outcome.ok) generatorMutationFailure(outcome.error);
+    const completed = completeSingleOutputRun(doc, run);
     return {
       asset,
       revision,
       commit: existingCommit,
-      run: outcome.run,
-      changed: outcome.changed,
+      run: completed.run,
+      changed: completed.changed,
     };
   }
 
@@ -302,17 +298,35 @@ function applyDocumentSuccess(
     resolveOutputCommitAssetType,
   );
   if (!output.ok) generatorMutationFailure(output.error);
-  const outcome = commitActionRunOutcome(doc, {
-    actionRunId: input.actionRunId,
-    status: "succeeded",
-  });
-  if (!outcome.ok) generatorMutationFailure(outcome.error);
+  let attachmentChanged = false;
+  for (const ref of input.revision.sourceRefs) {
+    if (!("kind" in ref.target) || ref.target.kind !== "media") continue;
+    const attachment = ensureDocumentAttachment(doc, {
+      id: `attachment:${input.revision.id}:${ref.target.projectAssetId}`,
+      target: {
+        kind: "project-asset",
+        projectAssetId: ref.target.projectAssetId,
+      },
+      slot: input.outputSlot,
+      document: {
+        kind: "document",
+        documentAssetId: input.revision.documentAssetId,
+        revisionId: input.revision.id,
+      },
+    });
+    if (!attachment.ok) {
+      throw new Error(`${attachment.error.code}: ${attachment.error.message}`);
+    }
+    attachmentChanged ||= attachment.changed;
+  }
+  const completed = completeSingleOutputRun(doc, run);
   return {
     asset: document.asset,
     revision: document.revision,
     commit: output.commit,
-    run: outcome.run,
-    changed: document.changed || output.changed || outcome.changed,
+    run: completed.run,
+    changed:
+      document.changed || output.changed || attachmentChanged || completed.changed,
   };
 }
 
@@ -320,81 +334,69 @@ export function createLocalGeneratorRunBridge(options: {
   ownerId: string;
   journal: SqliteDurableRunJournal;
 }): LocalGeneratorRunBridge {
+  function validatePair(request: ActionRunRequest, command: LocalDurableRunCreateCommand): void {
+    if (command.actionRunId !== request.actionRunId || !request.outputContract.some((output) => output.slot === command.outputSlot))
+      throw new Error("A Generator Action Run request and its private durable task must have the same Run and output identity.");
+    if (command.executor.targetKind !== "generator-action" || command.executor.actionId !== request.actionId || !isDeepStrictEqual(command.executor.generatorOutputContract, request.outputContract))
+      throw new Error("A Generator v2 Run requires a generator-action task frozen from its exact Action id and output contract.");
+    if (!isDeepStrictEqual(command.executor.binding, request.executor))
+      throw new Error("A Generator v2 Run requires a private task frozen from its exact public executor.");
+    if (command.executor.publicOwner?.actionId !== request.generatorRevision.generatorId || command.executor.publicOwner.actionRevisionId !== request.generatorRevision.generatorRevisionId)
+      throw new Error("A Generator v2 task public owner must identify the exact Generator revision.");
+  }
+
   return {
     async enqueue(input) {
-      if (
-        input.command.actionRunId !== input.request.actionRunId ||
-        !input.request.outputContract.some(
-          (output) => output.slot === input.command.outputSlot,
-        )
-      ) {
-        throw new Error(
-          "A Generator Action Run request and its private durable task must have the same Run and output identity.",
-        );
-      }
-      if (
-        input.command.executor.targetKind !== "generator-action" ||
-        input.command.executor.actionId !== input.request.actionId ||
-        !isDeepStrictEqual(
-          input.command.executor.generatorOutputContract,
-          input.request.outputContract,
-        )
-      ) {
-        throw new Error(
-          "A Generator v2 Run requires a generator-action task frozen from its exact Action id and output contract.",
-        );
-      }
-      if (
-        !isDeepStrictEqual(
-          input.command.executor.binding,
-          input.request.executor,
-        )
-      ) {
-        throw new Error(
-          "A Generator v2 Run requires a private task frozen from its exact public executor.",
-        );
-      }
-      if (
-        input.command.executor.publicOwner?.actionId !==
-          input.request.generatorRevision.generatorId ||
-        input.command.executor.publicOwner.actionRevisionId !==
-          input.request.generatorRevision.generatorRevisionId
-      ) {
-        throw new Error(
-          "A Generator v2 task public owner must identify the exact Generator revision.",
-        );
-      }
-
-      const requested = ensureActionRunRequest(input.doc, input.request);
-      if (!requested.ok) generatorMutationFailure(requested.error);
-      if (
-        requested.run.status === "succeeded" ||
-        requested.run.status === "failed"
-      ) {
-        // A retry of an intentional Run reuses its public identity. Once that
-        // identity is terminal it must never recreate owner-private work, even
-        // if the old journal has already been compacted or lost. A deliberate
-        // rerun uses a new actionRunId.
-        return requested.run;
-      }
-
-      // The Project request is the public durable intent. Persist it before
-      // owner-private task creation makes the Run eligible for execution.
-      await input.checkpoint();
-
-      await createLocalDurableRun({
-        ownerId: options.ownerId,
-        journal: options.journal,
-        command: input.command,
+      const [run] = await this.enqueueBatch({
+        doc: input.doc,
+        entries: [{ request: input.request, command: input.command }],
+        checkpoint: input.checkpoint,
       });
+      return run!;
+    },
+    async enqueueBatch(input) {
+      if (input.entries.length === 0) return [];
 
-      const started = markActionRunStarted(
-        input.doc,
-        input.request.actionRunId,
-      );
-      if (!started.ok) generatorMutationFailure(started.error);
-      await input.checkpoint();
-      return started.run;
+      // The fork validates the complete public write set, including duplicate
+      // identities within this batch, before either durable authority changes.
+      const validationDoc = input.doc.fork();
+      for (const entry of input.entries) {
+        validatePair(entry.request, entry.command);
+        const requested = ensureActionRunRequest(validationDoc, entry.request);
+        if (!requested.ok) generatorMutationFailure(requested.error);
+        if (requested.run.status === "succeeded" || requested.run.status === "failed") continue;
+        const existing = await options.journal.load({ actionRunId: entry.command.actionRunId, outputSlot: entry.command.outputSlot });
+        if (existing) {
+          // This path performs the coordinator's canonical frozen-input
+          // compatibility check; because the identity exists it cannot write.
+          await createLocalDurableRun({ ownerId: options.ownerId, journal: options.journal, command: entry.command });
+        }
+      }
+
+      let publicChanged = false;
+      const admitted: Array<{ request: ActionRunRequest; command: LocalDurableRunCreateCommand }> = [];
+      for (const entry of input.entries) {
+        const requested = ensureActionRunRequest(input.doc, entry.request);
+        if (!requested.ok) generatorMutationFailure(requested.error);
+        publicChanged ||= requested.changed;
+        if (requested.run.status !== "succeeded" && requested.run.status !== "failed") admitted.push(entry);
+      }
+      if (publicChanged) await input.checkpoint();
+
+      // Do not project any Run as running until every private task is durable.
+      // A retry reuses compatible tasks and repairs only the missing suffix.
+      for (const entry of admitted) {
+        await createLocalDurableRun({ ownerId: options.ownerId, journal: options.journal, command: entry.command });
+      }
+      let runningChanged = false;
+      for (const entry of admitted) {
+        const before = readProjectActionRun(input.doc, entry.request.actionRunId);
+        const started = markActionRunStarted(input.doc, entry.request.actionRunId);
+        if (!started.ok) generatorMutationFailure(started.error);
+        runningChanged ||= before?.status !== started.run.status;
+      }
+      if (runningChanged) await input.checkpoint();
+      return input.entries.map((entry) => readProjectActionRun(input.doc, entry.request.actionRunId)!);
     },
     async projectRunning(input) {
       const task = await options.journal.load(input.identity);
@@ -429,11 +431,52 @@ export function createLocalGeneratorRunBridge(options: {
       await input.checkpoint();
       return published;
     },
+    async publishDocumentBatchSuccess(input) {
+      const apply = (doc: LoroDoc) => {
+        const publications = input.outputs.map((output) =>
+          applyDocumentSuccess(doc, {
+            actionRunId: input.actionRunId,
+            outputSlot: output.outputSlot,
+            revision: output.revision,
+          }),
+        );
+        const outcome = commitActionRunOutcome(doc, {
+          actionRunId: input.actionRunId,
+          status: "succeeded",
+        });
+        if (!outcome.ok) generatorMutationFailure(outcome.error);
+        return {
+          publications,
+          run: outcome.run,
+          changed:
+            publications.some((publication) => publication.changed) ||
+            outcome.changed,
+        };
+      };
+      apply(input.doc.fork());
+      const published = apply(input.doc);
+      if (published.changed) await input.checkpoint();
+      return published;
+    },
     async publishDocumentSuccess(input) {
       applyDocumentSuccess(input.doc.fork(), input);
       const published = applyDocumentSuccess(input.doc, input);
       await input.checkpoint();
       return published;
+    },
+    async finalizeSuccess(input) {
+      const apply = (doc: LoroDoc) => {
+        const outcome = commitActionRunOutcome(doc, {
+          actionRunId: input.actionRunId,
+          status: "succeeded",
+        });
+        if (!outcome.ok) generatorMutationFailure(outcome.error);
+        return { run: outcome.run, changed: outcome.changed };
+      };
+      apply(input.doc.fork());
+      const finalized = apply(input.doc);
+      if (finalized.changed) await input.checkpoint();
+      return finalized;
     },
     async publishFailure(input) {
       applyFailure(input.doc.fork(), input.actionRunId);

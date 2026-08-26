@@ -35,20 +35,58 @@ async function mediaUrl(
   context: ExecutorContext,
 ): Promise<string | undefined> {
   const resolved = await context.reference(reference);
-  if (resolved.form === "text") {
-    if (reference.slot === "content") return undefined;
-    throw invalidReference(
-      `Volcengine ${kind} reference resolved to text instead of media.`,
-    );
+  switch (resolved.form) {
+    case "text": {
+      if (reference.slot === "content") return undefined;
+      throw invalidReference(
+        `Volcengine ${kind} reference resolved to text instead of media.`,
+      );
+    }
+    case "document": {
+      throw invalidReference(
+        `Volcengine ${kind} reference resolved to a document instead of media.`,
+      );
+    }
+    case "provider-url": {
+      if (resolved.kind && resolved.kind !== kind) {
+        throw invalidReference(
+          `Volcengine ${kind} slot resolved to ${resolved.kind} media.`,
+        );
+      }
+      return resolved.providerUrl;
+    }
+    case "executor-url": {
+      // A short-lived Host capability reachable by the current executor, forwarded the same way a
+      // Provider-fetchable URL is (matching the established action-sdk convention, e.g. the Google
+      // adapter). Which delivery forms a given Provider/model route may resolve to at all is
+      // decided upstream by that route's declared `assetInputs` representations -- MediaKit's own,
+      // stricter provider-url-only adapter never asks the Host to resolve to this form in the
+      // first place, so this case only ever fires for a route that already opted into it.
+      if (resolved.kind && resolved.kind !== kind) {
+        throw invalidReference(
+          `Volcengine ${kind} slot resolved to ${resolved.kind} media.`,
+        );
+      }
+      return resolved.executorUrl;
+    }
+    case "bytes": {
+      if (resolved.kind && resolved.kind !== kind) {
+        throw invalidReference(
+          `Volcengine ${kind} slot resolved to ${resolved.kind} media.`,
+        );
+      }
+      const mediaType = resolved.mediaType ?? defaultMediaType(kind);
+      return `data:${mediaType};base64,${Buffer.from(resolved.bytes).toString("base64")}`;
+    }
+    default: {
+      const exhaustive: never = resolved;
+      throw invalidReference(
+        `Volcengine ${kind} reference resolved to an unsupported delivery form ${
+          (exhaustive as { form: string }).form
+        }.`,
+      );
+    }
   }
-  if (resolved.kind && resolved.kind !== kind) {
-    throw invalidReference(
-      `Volcengine ${kind} slot resolved to ${resolved.kind} media.`,
-    );
-  }
-  if (resolved.form === "provider-url") return resolved.providerUrl;
-  const mediaType = resolved.mediaType ?? defaultMediaType(kind);
-  return `data:${mediaType};base64,${Buffer.from(resolved.bytes).toString("base64")}`;
 }
 
 /** Resolve every media input through the Host SDK; provider values never carry Asset locations. */

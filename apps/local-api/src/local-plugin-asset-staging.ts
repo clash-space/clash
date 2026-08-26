@@ -36,6 +36,8 @@ interface StagingRow {
   pluginVersion: string;
   invocationId: string;
   mediaType?: string;
+  /** Host-selected Provider account this upload ran under, when the invocation had one. */
+  accountId?: string;
   createdAt: number;
 }
 
@@ -58,6 +60,8 @@ export interface LocalPluginAssetStagingStore {
     invocationId: string;
     kind: AssetKind;
     mediaType?: string;
+    /** Host-selected Provider account this upload ran under, when the invocation had one. */
+    accountId?: string;
     bytes: Uint8Array;
   }): Promise<LocalPluginStagedAsset>;
   resolve(input: {
@@ -103,6 +107,15 @@ function openDatabase(path: string): SqliteDatabase {
       "ALTER TABLE local_plugin_asset_staging ADD COLUMN byte_length INTEGER",
     );
   }
+  try {
+    database.prepare(
+      "SELECT account_id FROM local_plugin_asset_staging LIMIT 1",
+    );
+  } catch {
+    database.exec(
+      "ALTER TABLE local_plugin_asset_staging ADD COLUMN account_id TEXT",
+    );
+  }
   return database;
 }
 
@@ -124,6 +137,7 @@ function parseRow(row: Record<string, unknown>): StagingRow {
   const pluginVersion = row.plugin_version;
   const invocationId = row.invocation_id;
   const mediaType = row.media_type;
+  const accountId = row.account_id;
   const createdAt = row.created_at;
   if (
     typeof projectId !== "string" ||
@@ -140,6 +154,9 @@ function parseRow(row: Record<string, unknown>): StagingRow {
     typeof pluginVersion !== "string" ||
     typeof invocationId !== "string" ||
     (mediaType !== null && typeof mediaType !== "string") ||
+    (accountId !== null &&
+      accountId !== undefined &&
+      typeof accountId !== "string") ||
     typeof createdAt !== "number" ||
     !Number.isSafeInteger(createdAt)
   ) {
@@ -157,6 +174,7 @@ function parseRow(row: Record<string, unknown>): StagingRow {
     pluginVersion,
     invocationId,
     ...(typeof mediaType === "string" && mediaType ? { mediaType } : {}),
+    ...(typeof accountId === "string" && accountId ? { accountId } : {}),
     createdAt,
   };
 }
@@ -216,7 +234,7 @@ export function createLocalPluginAssetStagingStore(options: {
           `
         SELECT project_id, project_asset_id, resource_id, kind, task_id, slot,
                byte_length, plugin_id, plugin_version, invocation_id,
-               media_type, created_at
+               media_type, account_id, created_at
         FROM local_plugin_asset_staging
         WHERE project_id = ? AND project_asset_id = ?
       `,
@@ -331,6 +349,7 @@ export function createLocalPluginAssetStagingStore(options: {
         ...(input.mediaType?.trim()
           ? { mediaType: input.mediaType.trim().toLowerCase() }
           : {}),
+        ...(input.accountId?.trim() ? { accountId: input.accountId.trim() } : {}),
         createdAt: Date.now(),
       };
       await withDatabase((database) => {
@@ -340,8 +359,8 @@ export function createLocalPluginAssetStagingStore(options: {
           INSERT OR IGNORE INTO local_plugin_asset_staging (
             project_id, project_asset_id, resource_id, kind, task_id, slot,
             byte_length, plugin_id, plugin_version, invocation_id,
-            media_type, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            media_type, account_id, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
           )
           .run(
@@ -356,6 +375,7 @@ export function createLocalPluginAssetStagingStore(options: {
             intended.pluginVersion,
             intended.invocationId,
             intended.mediaType ?? null,
+            intended.accountId ?? null,
             intended.createdAt,
           );
       });

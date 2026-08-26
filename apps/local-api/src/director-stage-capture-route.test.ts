@@ -1,1001 +1,257 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import {
+  Canvas,
   listActionAssetBindings,
+  readOutputCommit,
+  readProjectActionRun,
   readProjectAsset,
-  readProjectDirectorStage,
-  updateProjectDirectorStageState,
+  type ExecutablePluginGeneratorRegistration,
 } from "@clash/shared-types";
-import { LoroDoc } from "loro-crdt";
-import { describe, expect, it, vi } from "vitest";
-import { createLocalApiApp } from "./app";
-import type { LocalProjectAssetReplica } from "./local-project-assets";
-import { FileReplicaStore } from "./loro/file-replica-store";
+import type { LoroDoc } from "loro-crdt";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { createLocalApiApp } from "./app.js";
+import { FileReplicaStore } from "./loro/file-replica-store.js";
+import type { LocalProjectAssetReplica } from "./local-project-assets.js";
 import {
   createConfiguredLocalAcpAdapter,
-  createLocalPluginBrokerServices,
   startLocalApiServer,
-} from "./server";
-import { LocalLoroRoomHub } from "./sync";
+} from "./server.js";
+import { LocalLoroRoomHub } from "./sync.js";
 
-const CAPTURE_DATA_BASE64 =
+const PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
-const CAPTURE_SHA256 = createHash("sha256")
-  .update(Buffer.from(CAPTURE_DATA_BASE64, "base64"))
-  .digest("hex");
 
-describe("Director Stage capture host route", () => {
-  it("publishes a browser-rendered output as a revision-pinned run reference without advancing the Stage", async () => {
-    const dataDir = await mkdtemp(
-      join(tmpdir(), "clash-director-output-reference-"),
-    );
-    const projectId = "project-director-output-reference";
-    const doc = new LoroDoc();
-    const projectAssetReplica: LocalProjectAssetReplica = {
-      inspect: async (_projectId, read) => read(doc),
-      mutate: async (_projectId, mutation) => (await mutation(doc)).value,
-    };
-    const app = createLocalApiApp({
-      dataDir,
-      userId: "local-user",
-      projectAssetReplica,
-      inspectAssetResource: async ({ resource }) => ({
-        width: 1280,
-        height: 720,
-        durationMs: 1_000,
-        rotationDegrees: 0,
-        frameRate: 30,
-        videoCodec: "vp8",
-        hasAudio: false,
-        ...(resource.contentType ? { contentType: resource.contentType } : {}),
-      }),
-    });
-    const command = (body: unknown) =>
-      app.request(`/api/v1/projects/${projectId}/host-command`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
+async function directorGenerators(): Promise<ExecutablePluginGeneratorRegistration[]> {
+  const document = JSON.parse(
+    await readFile(
+      join(process.cwd(), "../../plugins/director/generators/director-stage.json"),
+      "utf8",
+    ),
+  ) as ExecutablePluginGeneratorRegistration["document"];
+  return [{
+    pluginId: "clash.director",
+    version: "0.1.0",
+    schemaHash: `sha256:${"0".repeat(64)}`,
+    document,
+  }];
+}
 
-    expect(
-      (
-        await command({
-          action: "create_director_stage",
-          stageId: "stage-output",
-          name: "Output Stage",
-        })
-      ).status,
-    ).toBe(200);
-    expect(
-      (
-        await command({
-          action: "attach_director_stage",
-          stageId: "stage-output",
-          canvasId: "main",
-          actionNodeId: "director-node",
-        })
-      ).status,
-    ).toBe(200);
-    const before = (await (
-      await command({ action: "list_director_stages" })
-    ).json()) as {
-      stages: Array<{ id: string; revisionId: string }>;
-    };
-    const sourceStageRevisionId = before.stages.find(
-      (stage) => stage.id === "stage-output",
-    )?.revisionId;
-    expect(sourceStageRevisionId).toBeTruthy();
+function authorities(hub: LocalLoroRoomHub) {
+  return {
+    projectAssetReplica: {
+      inspect: <T>(id: string, read: Parameters<LocalProjectAssetReplica["inspect"]>[1]) =>
+        hub.inspectProject(id, read) as Promise<T>,
+      mutate: (id: string, mutation: Parameters<LocalProjectAssetReplica["mutate"]>[1]) =>
+        hub.mutateProject(id, mutation),
+    } as LocalProjectAssetReplica,
+    generatorProjectAuthority: {
+      inspect: <T>(id: string, read: (doc: LoroDoc) => T | Promise<T>) =>
+        hub.inspectProject(id, read),
+      mutate: <T>(id: string, mutation: (doc: LoroDoc, checkpoint: () => Promise<void>) => T | Promise<T>) =>
+        hub.mutateProjectWithCheckpoint(id, mutation),
+    },
+  };
+}
 
-    const form = new FormData();
-    form.set(
-      "file",
-      new File([new Uint8Array([1, 2, 3])], "preview.webm", {
-        type: "video/webm",
-      }),
-    );
-    form.set("kind", "video");
-    form.set("sourceStageRevisionId", sourceStageRevisionId!);
-    form.set("artifactId", "preview-1");
-    const publishedResponse = await app.request(
-      `/api/v1/projects/${projectId}/director-stages/stage-output/outputs`,
-      { method: "POST", body: form },
-    );
+const directories: string[] = [];
+afterEach(async () => {
+  await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true })));
+});
 
-    expect(
-      publishedResponse.status,
-      await publishedResponse.clone().text(),
-    ).toBe(201);
-    const published = (await publishedResponse.json()) as {
-      asset: { id: string };
-      binding: {
-        owner: {
-          kind: string;
-          actionId: string;
-          actionRevisionId: string;
-          actionRunId: string;
-        };
-        direction: string;
-        projectAssetId: string;
-      };
-    };
-    expect(published.binding).toMatchObject({
-      owner: {
-        kind: "run",
-        actionId: "node:director-node",
-        actionRevisionId: sourceStageRevisionId,
-        actionRunId: expect.any(String),
-      },
-      direction: "output",
-      projectAssetId: published.asset.id,
-    });
-    expect(
-      listActionAssetBindings(doc).filter(
-        (binding) => binding.projectAssetId === published.asset.id,
-      ),
-    ).toEqual([published.binding]);
-    expect(readProjectAsset(doc, published.asset.id)).toMatchObject({
-      id: published.asset.id,
-      lifecycle: { state: "active" },
-      provenance: {
-        kind: "render",
-        actionRunId: published.binding.owner.actionRunId,
-      },
-    });
-
-    const after = (await (
-      await command({ action: "list_director_stages" })
-    ).json()) as {
-      stages: Array<{ id: string; revisionId: string }>;
-    };
-    expect(
-      after.stages.find((stage) => stage.id === "stage-output")?.revisionId,
-    ).toBe(sourceStageRevisionId);
-  });
-
-  it("rejects capture publication when the Stage changes after render readback", async () => {
-    const dataDir = await mkdtemp(
-      join(tmpdir(), "clash-director-capture-publication-race-"),
-    );
-    const projectId = "project-director-capture-publication-race";
-    const stageId = "stage-publication-race";
-    const doc = new LoroDoc();
-    let raceArmed = false;
-    let raceInjected = false;
-    const projectAssetReplica: LocalProjectAssetReplica = {
-      inspect: async (_projectId, read) => read(doc),
-      mutate: async (_projectId, mutation) => {
-        if (raceArmed && !raceInjected) {
-          raceInjected = true;
-          const stage = readProjectDirectorStage(doc, stageId);
-          expect(stage).not.toBeNull();
-          const changed = updateProjectDirectorStageState(doc, stageId, {
-            ...stage!.state,
-            scene: {
-              ...stage!.state.scene,
-              backgroundColor: "#123456",
-            },
-          });
-          expect(changed.ok).toBe(true);
-        }
-        return (await mutation(doc)).value;
-      },
-    };
-    const app = createLocalApiApp({
-      dataDir,
-      userId: "local-user",
-      projectAssetReplica,
-      directorStageRenderer: {
-        async render(request) {
-          raceArmed = true;
-          return {
-            renderer: {
-              id: "clash-director-viewport-webgl" as const,
-              contractVersion: 1 as const,
-            },
-            stateSha256: "a".repeat(64),
-            frames: request.frames.map((frame) => ({
-              ...frame,
-              width: 1,
-              height: 1,
-              mimeType: "image/png" as const,
-              dataBase64: CAPTURE_DATA_BASE64,
-              sha256: CAPTURE_SHA256,
-            })),
-          };
-        },
-        dispose: async () => undefined,
-      },
-    });
-    const command = (body: unknown) =>
-      app.request(`/api/v1/projects/${projectId}/host-command`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
-    expect(
-      (
-        await command({
-          action: "create_director_stage",
-          stageId,
-          name: "Publication race",
-        })
-      ).status,
-    ).toBe(200);
-    const listed = (await (
-      await command({ action: "list_director_stages" })
-    ).json()) as { versions: Record<string, string> };
-
-    const response = await command({
-      action: "capture_director_stage",
-      stageId,
-      frames: [{ label: "opening", timeSeconds: 0, aspectRatio: "1:1" }],
-      longEdge: 1280,
-      actorClientType: "agent",
-      ifMatch: listed.versions[stageId],
-    });
-
-    expect(raceInjected).toBe(true);
-    expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toMatchObject({
-      code: "STALE_READ",
-    });
-    expect(listActionAssetBindings(doc)).toEqual([]);
-  });
-
-  it("durably publishes captured Assets before the production Host responds", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "clash-director-capture-host-checkpoint-"),
-    );
-    const dataDir = join(root, "local-api");
-    const projectId = "project-capture-host-checkpoint";
-    let server: Awaited<ReturnType<typeof startLocalApiServer>> | undefined;
-
-    try {
-      server = await startLocalApiServer({
-        dataDir,
-        port: 0,
-        remotePersistence: null,
-        discovery: { enabled: false },
-        localAcp: createConfiguredLocalAcpAdapter({
-          CLASH_E2E_STUB_ACP: "1",
-        }),
-        directorStageRenderer: {
-          async render(request) {
-            return {
-              renderer: {
-                id: "clash-director-viewport-webgl" as const,
-                contractVersion: 1 as const,
-              },
-              stateSha256: "a".repeat(64),
-              frames: request.frames.map((frame) => ({
-                ...frame,
-                width: 1,
-                height: 1,
-                mimeType: "image/png" as const,
-                dataBase64: CAPTURE_DATA_BASE64,
-                sha256: CAPTURE_SHA256,
-              })),
-            };
-          },
-          dispose: async () => undefined,
-        },
-      });
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        throw new Error("local-api did not bind a TCP port");
-      }
-      const origin = `http://127.0.0.1:${address.port}`;
-      const command = async (body: unknown) =>
-        fetch(`${origin}/api/v1/projects/${projectId}/host-command`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        });
-
-      // The benchmark readiness gate is the first Project read. A read must not create an
-      // uncheckpointed Canvas prefix that makes every later capture update undecodable.
-      const ready = await command({ action: "ping" });
-      expect(ready.status, await ready.clone().text()).toBe(200);
-      const created = await command({
-        action: "create_director_stage",
-        stageId: "stage-checkpoint",
-        name: "Checkpoint Stage",
-      });
-      expect(created.status, await created.clone().text()).toBe(200);
-      const listed = (await (
-        await command({ action: "list_director_stages" })
-      ).json()) as { versions: Record<string, string> };
-      const capture = await command({
-        action: "capture_director_stage",
-        stageId: "stage-checkpoint",
-        frames: [{ label: "opening", timeSeconds: 0, aspectRatio: "1:1" }],
-        longEdge: 1280,
-        actorClientType: "agent",
-        ifMatch: listed.versions["stage-checkpoint"],
-      });
-      expect(capture.status, await capture.clone().text()).toBe(200);
-      const captured = (await capture.json()) as {
-        sourceStageRevisionId: string;
-        frames: Array<{ projectAssetId: string }>;
-      };
-      const projectAssetId = captured.frames[0]?.projectAssetId;
-      expect(projectAssetId).toMatch(/^director-capture:/u);
-
-      const recovered = await new FileReplicaStore(
-        join(dataDir, "projects"),
-      ).recover(projectId);
-      expect(readProjectAsset(recovered, projectAssetId!)).toMatchObject({
-        id: projectAssetId,
-        lifecycle: { state: "active" },
-        provenance: {
-          kind: "render",
-          actionRunId: expect.stringMatching(/^director-capture:/u),
-        },
-      });
-      expect(
-        listActionAssetBindings(recovered).filter(
-          (binding) => binding.projectAssetId === projectAssetId,
-        ),
-      ).toEqual([
-        expect.objectContaining({
-          owner: expect.objectContaining({
-            kind: "run",
-            actionRevisionId: captured.sourceStageRevisionId,
-          }),
-          direction: "output",
-          projectAssetId,
-        }),
-      ]);
-    } finally {
-      if (server) {
-        await new Promise<void>((resolveClose) =>
-          server!.close(() => resolveClose()),
-        );
-      }
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it("creates a distinct Project Asset when a new Stage revision renders identical Resource bytes", async () => {
-    const dataDir = await mkdtemp(
-      join(tmpdir(), "clash-director-capture-revision-identity-"),
-    );
-    const app = createLocalApiApp({
-      dataDir,
-      userId: "local-user",
-      directorStageRenderer: {
-        async render(request) {
-          return {
-            renderer: {
-              id: "clash-director-viewport-webgl" as const,
-              contractVersion: 1 as const,
-            },
-            stateSha256: "a".repeat(64),
-            frames: request.frames.map((frame) => ({
-              ...frame,
-              width: 1280,
-              height: 720,
-              mimeType: "image/png" as const,
-              dataBase64: CAPTURE_DATA_BASE64,
-              sha256: CAPTURE_SHA256,
-            })),
-          };
-        },
-        dispose: async () => undefined,
-      },
-    });
-    const command = (body: unknown) =>
-      app.request("/api/v1/projects/project-revision/host-command", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
-    const createResponse = await command({
-      action: "create_director_stage",
-      stageId: "stage-revision",
-      name: "Revision identity",
-    });
-    expect(createResponse.status).toBe(200);
-    const created = (await createResponse.json()) as {
-      stage: {
-        revisionId: string;
-        state: Record<string, unknown> & {
-          scene: Record<string, unknown>;
-        };
-      };
-    };
-
-    const capture = async () => {
-      const listed = (await (
-        await command({ action: "list_director_stages" })
-      ).json()) as { versions: Record<string, string> };
-      const response = await command({
-        action: "capture_director_stage",
-        stageId: "stage-revision",
-        frames: [{ label: "opening", timeSeconds: 0, aspectRatio: "16:9" }],
-        longEdge: 1280,
-        actorClientType: "mcp",
-        ifMatch: listed.versions["stage-revision"],
-      });
-      const payload = (await response.json()) as {
-        frames?: Array<{ projectAssetId?: string }>;
-        error?: string;
-      };
-      expect(response.status, payload.error).toBe(200);
-      return payload.frames?.[0]?.projectAssetId;
-    };
-
-    const firstAssetId = await capture();
-    const listed = (await (
-      await command({ action: "list_director_stages" })
-    ).json()) as { versions: Record<string, string> };
-    const updateResponse = await command({
-      action: "update_director_stage_state",
-      stageId: "stage-revision",
-      state: {
-        ...created.stage.state,
-        scene: {
-          ...created.stage.state.scene,
-          backgroundColor: "#123456",
-        },
-      },
-      actorClientType: "mcp",
-      ifMatch: listed.versions["stage-revision"],
-    });
-    expect(updateResponse.status).toBe(200);
-    const updated = (await updateResponse.json()) as {
-      stage: { revisionId: string };
-      error?: string;
-    };
-    expect(updated.error).toBeUndefined();
-    expect(updated.stage.revisionId).not.toBe(created.stage.revisionId);
-
-    const secondAssetId = await capture();
-    const replayedSecondAssetId = await capture();
-
-    expect(firstAssetId).toMatch(/^director-capture:[a-f0-9]{32}$/u);
-    expect(secondAssetId).toMatch(/^director-capture:[a-f0-9]{32}$/u);
-    expect(secondAssetId).not.toBe(firstAssetId);
-    expect(replayedSecondAssetId).toBe(secondAssetId);
-  });
-
-  it("publishes changed capture output under one Stage revision without rebinding the previous output", async () => {
-    const dataDir = await mkdtemp(
-      join(tmpdir(), "clash-director-capture-run-identity-"),
-    );
-    const projectId = "project-capture-run-identity";
-    const changedBytes = Buffer.concat([
-      Buffer.from(CAPTURE_DATA_BASE64, "base64"),
-      Buffer.from([0]),
-    ]);
-    const changedDataBase64 = changedBytes.toString("base64");
-    const changedSha256 = createHash("sha256")
-      .update(changedBytes)
-      .digest("hex");
-    let renderCount = 0;
-    const app = createLocalApiApp({
-      dataDir,
-      userId: "local-user",
-      directorStageRenderer: {
-        async render(request) {
-          const changed = renderCount++ > 0;
-          return {
-            renderer: {
-              id: "clash-director-viewport-webgl" as const,
-              contractVersion: 1 as const,
-            },
-            stateSha256: "a".repeat(64),
-            frames: request.frames.map((frame) => ({
-              ...frame,
-              width: 1,
-              height: 1,
-              mimeType: "image/png" as const,
-              dataBase64: changed ? changedDataBase64 : CAPTURE_DATA_BASE64,
-              sha256: changed ? changedSha256 : CAPTURE_SHA256,
-            })),
-          };
-        },
-        dispose: async () => undefined,
-      },
-    });
-    const command = (body: unknown) =>
-      app.request(`/api/v1/projects/${projectId}/host-command`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-    try {
-      expect(
-        (
-          await command({
-            action: "create_director_stage",
-            stageId: "stage-run-identity",
-            name: "Capture run identity",
-          })
-        ).status,
-      ).toBe(200);
-      const listed = (await (
-        await command({ action: "list_director_stages" })
-      ).json()) as { versions: Record<string, string> };
-      const capture = async () => {
-        const response = await command({
-          action: "capture_director_stage",
-          stageId: "stage-run-identity",
-          frames: [{ label: "opening", timeSeconds: 0, aspectRatio: "1:1" }],
-          longEdge: 1280,
-          actorClientType: "agent",
-          ifMatch: listed.versions["stage-run-identity"],
-        });
-        const payload = (await response.json()) as {
-          sourceStageRevisionId?: string;
-          frames?: Array<{ projectAssetId?: string }>;
-          error?: string;
-        };
-        expect(response.status, payload.error).toBe(200);
-        return {
-          revisionId: payload.sourceStageRevisionId,
-          assetId: payload.frames?.[0]?.projectAssetId,
-        };
-      };
-
-      const first = await capture();
-      const second = await capture();
-      expect(second.revisionId).toBe(first.revisionId);
-      expect(second.assetId).not.toBe(first.assetId);
-
-      const recovered = await new FileReplicaStore(
-        join(dataDir, "projects"),
-      ).recover(projectId);
-      for (const assetId of [first.assetId, second.assetId]) {
-        expect(
-          listActionAssetBindings(recovered).filter(
-            (binding) =>
-              binding.direction === "output" &&
-              binding.projectAssetId === assetId,
-          ),
-        ).toEqual([
-          expect.objectContaining({
-            owner: expect.objectContaining({
-              kind: "run",
-              actionRevisionId: first.revisionId,
-            }),
-            direction: "output",
-            projectAssetId: assetId,
-          }),
-        ]);
-      }
-    } finally {
-      await rm(dataDir, { recursive: true, force: true });
-    }
-  });
-
-  it("captures a persisted Stage through the typed project host command", async () => {
-    const dataDir = await mkdtemp(
-      join(tmpdir(), "clash-director-capture-command-"),
-    );
-    const render = vi.fn(async (request: any) => ({
-      renderer: {
-        id: "clash-director-viewport-webgl" as const,
-        contractVersion: 1 as const,
-      },
+async function productionHarness(options: { fail?: boolean } = {}) {
+  const root = await mkdtemp(join(tmpdir(), "clash-director-native-capture-"));
+  directories.push(root);
+  const dataDir = join(root, "local-api");
+  const render = vi.fn(async (request: any) => {
+    if (options.fail) throw new Error("renderer exploded");
+    return {
+      renderer: { id: "clash-director-viewport-webgl" as const, contractVersion: 1 as const },
       stateSha256: "a".repeat(64),
       frames: request.frames.map((frame: any) => ({
         ...frame,
-        width: 1280,
-        height: 720,
+        width: 1,
+        height: 1,
         mimeType: "image/png" as const,
-        dataBase64: CAPTURE_DATA_BASE64,
-        sha256: CAPTURE_SHA256,
+        dataBase64: PNG,
+        sha256: "b".repeat(64),
       })),
-    }));
-    const app = createLocalApiApp({
-      dataDir,
-      userId: "local-user",
-      directorStageRenderer: { render, dispose: async () => undefined },
-    });
-    const command = (body: unknown) =>
-      app.request("/api/v1/projects/project-1/host-command", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
-    expect(
-      (
-        await command({
-          action: "create_director_stage",
-          stageId: "stage-1",
-          name: "Blocking",
-        })
-      ).status,
-    ).toBe(200);
-    const listed = (await (
-      await command({ action: "list_director_stages" })
-    ).json()) as {
-      versions: Record<string, string>;
     };
-
-    const response = await command({
-      action: "capture_director_stage",
-      stageId: "stage-1",
-      frames: [{ label: "opening", timeSeconds: 0, aspectRatio: "16:9" }],
-      longEdge: 1280,
-      actorClientType: "mcp",
-      ifMatch: listed.versions["stage-1"],
-    });
-
-    expect(response.status).toBe(200);
-    const captured = (await response.json()) as {
-      frames: Array<{ projectAssetId?: string }>;
-    };
-    expect(captured).toMatchObject({
-      captured: true,
-      stageId: "stage-1",
-      sourceStageRevisionId: expect.any(String),
-      renderer: { id: "clash-director-viewport-webgl", contractVersion: 1 },
-      frames: [
-        {
-          label: "opening",
-          dataBase64: CAPTURE_DATA_BASE64,
-          projectAssetId: expect.stringMatching(/^director-capture:/u),
-        },
-      ],
-    });
-    const projectAssetId = captured.frames[0]?.projectAssetId;
-    expect(projectAssetId).toBeDefined();
-    const asset = await app.request(
-      `/api/v1/projects/project-1/assets/${encodeURIComponent(projectAssetId!)}`,
-    );
-    expect(asset.status).toBe(200);
-    await expect(asset.json()).resolves.toMatchObject({
-      id: projectAssetId,
-      kind: "image",
-      lifecycle: { state: "active" },
-      status: "ready",
-    });
-    expect(render).toHaveBeenCalledWith(
-      expect.objectContaining({
-        state: expect.objectContaining({ schemaVersion: 1 }),
-        longEdge: 1280,
-        frames: [{ label: "opening", timeSeconds: 0, aspectRatio: "16:9" }],
-      }),
-    );
   });
-
-  it("reads a Stage capture before and after render from the injected live Project replica", async () => {
-    const dataDir = await mkdtemp(
-      join(tmpdir(), "clash-director-capture-live-replica-"),
-    );
-    const doc = new LoroDoc();
-    const projectAssetReplica: LocalProjectAssetReplica = {
-      inspect: async (_projectId, read) => read(doc),
-      mutate: async (_projectId, mutation) => (await mutation(doc)).value,
-    };
-    const app = createLocalApiApp({
-      dataDir,
-      userId: "local-user",
-      projectAssetReplica,
-      directorStageRenderer: {
-        async render(request) {
-          return {
-            renderer: {
-              id: "clash-director-viewport-webgl",
-              contractVersion: 1,
-            },
-            stateSha256: "a".repeat(64),
-            frames: request.frames.map((frame) => ({
-              ...frame,
-              width: 1280,
-              height: 720,
-              mimeType: "image/png" as const,
-              dataBase64: CAPTURE_DATA_BASE64,
-              sha256: CAPTURE_SHA256,
-            })),
-          };
-        },
-        dispose: async () => undefined,
-      },
-    });
-    const command = (body: unknown) =>
-      app.request("/api/v1/projects/project-live/host-command", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-    expect(
-      (
-        await command({
-          action: "create_director_stage",
-          stageId: "stage-live",
-          name: "Live Stage",
-        })
-      ).status,
-    ).toBe(200);
-    const listed = (await (
-      await command({ action: "list_director_stages" })
-    ).json()) as { versions: Record<string, string> };
-
-    const captured = await command({
-      action: "capture_director_stage",
-      stageId: "stage-live",
-      frames: [{ label: "hero", timeSeconds: 0, aspectRatio: "16:9" }],
-      longEdge: 1280,
-      actorClientType: "agent",
-      ifMatch: listed.versions["stage-live"],
-    });
-
-    expect(captured.status).toBe(200);
-    await expect(captured.json()).resolves.toMatchObject({
-      captured: true,
-      stageId: "stage-live",
-      sourceStageRevisionId: expect.any(String),
-      frames: [{ label: "hero", dataBase64: CAPTURE_DATA_BASE64 }],
-    });
+  const server = await startLocalApiServer({
+    dataDir,
+    port: 0,
+    remotePersistence: null,
+    discovery: { enabled: false },
+    localAcp: createConfiguredLocalAcpAdapter({ CLASH_E2E_STUB_ACP: "1" }),
+    directorStageRenderer: { render, dispose: async () => undefined },
   });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("local-api did not bind");
+  const projectId = `director-${Math.random().toString(16).slice(2)}`;
+  const command = (body: unknown) => fetch(
+    `http://127.0.0.1:${address.port}/api/v1/projects/${projectId}/host-command`,
+    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) },
+  );
+  const close = () => new Promise<void>((resolve) => server.close(() => resolve()));
+  return { dataDir, projectId, command, render, close };
+}
 
-  it("publishes every captured frame to plugin Asset reads before returning", async () => {
-    const dataDir = await mkdtemp(
-      join(tmpdir(), "clash-director-capture-plugin-publication-"),
-    );
-    const projectId = "project-capture-plugin-publication";
-    const hub = new LocalLoroRoomHub(dataDir);
-    let mutationInFlight = false;
-    const projectAssetReplica: LocalProjectAssetReplica = {
-      inspect: (id, read) => hub.inspectProject(id, read),
-      async mutate(id, mutation) {
-        if (mutationInFlight) {
-          throw new Error(
-            "A capture cannot issue overlapping writes to one Project replica.",
-          );
-        }
-        mutationInFlight = true;
-        try {
-          return await hub.mutateProject(id, mutation);
-        } finally {
-          mutationInFlight = false;
-        }
-      },
-    };
+async function createStage(command: (body: unknown) => Response | Promise<Response>, id = "stage-1") {
+  const created = await command({ action: "create_director_stage", stageId: id, name: "Native Stage" });
+  expect(created.status, await created.clone().text()).toBe(200);
+  const listedResponse = await command({ action: "list_director_stages" });
+  const listed = await listedResponse.json() as { stages: Array<{ id: string; revisionId: string }>; versions: Record<string, string> };
+  return {
+    readProof: listed.versions[id]!,
+    revisionId: listed.stages.find((stage) => stage.id === id)!.revisionId,
+    listed,
+  };
+}
+
+async function capture(command: (body: unknown) => Response | Promise<Response>, revisionId: string, frames: unknown[]) {
+  return command({
+    action: "capture_director_stage",
+    stageId: "stage-1",
+    frames,
+    longEdge: 1280,
+    actorClientType: "agent",
+    ifMatch: revisionId,
+  });
+}
+
+async function waitForRuns(dataDir: string, projectId: string, ids: string[], status: "succeeded" | "failed") {
+  const store = new FileReplicaStore(join(dataDir, "projects"));
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const doc = await store.recover(projectId);
+    const runs = ids.map((id) => readProjectActionRun(doc, id));
+    if (runs.every((run) => run?.status === status)) return { doc, runs };
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  const doc = await store.recover(projectId);
+  throw new Error(`runs did not become ${status}: ${JSON.stringify(ids.map((id) => readProjectActionRun(doc, id)))}`);
+}
+
+describe("Director Stage native capture migration", () => {
+  it("creates and lists a native Stage without writing the retired directorStages map", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-director-native-stage-"));
+    directories.push(dataDir);
+    const hub = new LocalLoroRoomHub(dataDir, undefined, null);
     try {
       const app = createLocalApiApp({
         dataDir,
-        userId: "local-user",
-        projectAssetReplica,
-        inspectAssetResource: async ({ resource }) => ({
-          width: 1,
-          height: 1,
-          rotationDegrees: 0,
-          ...(resource.contentType
-            ? { contentType: resource.contentType }
-            : {}),
-        }),
-        directorStageRenderer: {
-          async render(request) {
-            return {
-              renderer: {
-                id: "clash-director-viewport-webgl",
-                contractVersion: 1,
-              },
-              stateSha256: "a".repeat(64),
-              frames: request.frames.map((frame) => ({
-                ...frame,
-                width: 1,
-                height: 1,
-                mimeType: "image/png" as const,
-                dataBase64: CAPTURE_DATA_BASE64,
-                sha256: CAPTURE_SHA256,
-              })),
-            };
-          },
-          dispose: async () => undefined,
-        },
+        listPluginGenerators: directorGenerators,
+        ...authorities(hub),
       });
-      const command = (body: unknown) =>
-        app.request(`/api/v1/projects/${projectId}/host-command`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        });
-      expect(
-        (
-          await command({
-            action: "create_director_stage",
-            stageId: "stage-publication",
-            name: "Publication Stage",
-          })
-        ).status,
-      ).toBe(200);
-      for (const index of [0, 1]) {
-        await hub.mutateProject(projectId, (doc) => {
-          doc.getMap("capture-publication-prelude").set(String(index), true);
-          return { value: undefined };
-        });
-      }
-      const listed = (await (
-        await command({ action: "list_director_stages" })
-      ).json()) as { versions: Record<string, string> };
-      const captureResponse = await command({
-        action: "capture_director_stage",
-        stageId: "stage-publication",
-        frames: Array.from({ length: 12 }, (_, index) => ({
-          label: `frame-${index}`,
-          timeSeconds: index,
-          aspectRatio: "1:1",
-        })),
-        longEdge: 1280,
-        actorClientType: "agent",
-        ifMatch: listed.versions["stage-publication"],
+      const command = (body: unknown) => app.request("/api/v1/projects/p1/host-command", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
       });
-      expect(captureResponse.status).toBe(200);
-      const captured = (await captureResponse.json()) as {
-        frames: Array<{ projectAssetId: string }>;
-      };
-      expect(captured.frames).toHaveLength(12);
-
-      // Production plugin execution reads the durable Project replica because it can run while
-      // the live room owns its mutation queue. The capture response is therefore the publication
-      // barrier: no Asset get/list warm-up or retry may be needed before this broker read.
-      const broker = createLocalPluginBrokerServices({ dataDir });
-      await hub.mutateProject(projectId, async (doc) => {
-        doc.getMap("capture-publication-consumer").set("started", true);
-        for (const [index, frame] of captured.frames.entries()) {
-          const reference = {
-            slot: `frame-${index}`,
-            index: 0,
-            asset: {
-              assetId: frame.projectAssetId,
-              uri: `clash-asset://${frame.projectAssetId}`,
-              kind: "image" as const,
-            },
-          };
-          await expect(
-            broker(
-              {
-                protocol: "clash.plugin.broker-request/v1",
-                requestId: `resolve-frame-${index}`,
-                invocationId: "capture-publication-invocation",
-                operation: { kind: "asset.resolve", reference },
-              },
-              {
-                manifest: {
-                  apiVersion: "clash.plugin/v1",
-                  id: "test.capture-reader",
-                  version: "1.0.0",
-                  name: "Capture reader",
-                  runtime: {
-                    kind: "local",
-                    transport: "stdio",
-                    entrypoint: "handler.mjs",
-                    args: [],
-                  },
-                  contractTests: [],
-                  contributes: {
-                    cards: [],
-                    providers: [],
-                    modelBindings: [],
-                    generators: [],
-                    functions: [
-                      {
-                        id: "run",
-                        kind: "action",
-                        operations: ["submit"],
-                      },
-                    ],
-                    hostTools: [],
-                  },
-                },
-                invocation: {
-                  protocol: "clash.plugin.invoke/v1",
-                  invocationId: "capture-publication-invocation",
-                  taskId: "capture-publication-task",
-                  projectId,
-                  target: {
-                    pluginId: "test.capture-reader",
-                    version: "1.0.0",
-                    exportId: "run",
-                    schemaHash: `sha256:${"e".repeat(64)}`,
-                    kind: "action",
-                  },
-                  input: { values: {}, references: [reference] },
-                  assetInputs: [
-                    {
-                      match: { kinds: ["image"], slots: [reference.slot] },
-                      representations: ["bytes"],
-                    },
-                  ],
-                  actor: { kind: "agent", id: "capture-reader" },
-                  operation: "submit",
-                },
-              },
-            ),
-          ).resolves.toMatchObject({
-            form: "bytes",
-            kind: "image",
-            bytesBase64: CAPTURE_DATA_BASE64,
-          });
-        }
-        return { value: undefined };
-      });
+      const { listed } = await createStage(command);
+      expect(listed.stages).toEqual([expect.objectContaining({ id: "stage-1" })]);
+      await expect(hub.inspectProject("p1", (doc) => doc.getMap("directorStages").get("stage-1"))).resolves.toBeUndefined();
     } finally {
       await hub.close();
-      await rm(dataDir, { recursive: true, force: true });
     }
   });
 
-  it("exposes the injected product renderer without fabricating a fallback", async () => {
-    const dataDir = await mkdtemp(
-      join(tmpdir(), "clash-director-capture-route-"),
-    );
-    const render = vi.fn(async () => ({
-      renderer: {
-        id: "clash-director-viewport-webgl" as const,
-        contractVersion: 1 as const,
-      },
-      stateSha256: "a".repeat(64),
-      frames: [
-        {
-          label: "frame-opening",
-          timeSeconds: 0,
-          aspectRatio: "16:9" as const,
-          activeCameraId: "camera-a",
-          width: 1280,
-          height: 720,
-          mimeType: "image/png" as const,
-          dataBase64: "AQID",
-          sha256: "b".repeat(64),
-        },
-      ],
-    }));
-    const app = createLocalApiApp({
-      dataDir,
-      userId: "local-user",
-      directorStageRenderer: { render, dispose: async () => undefined },
-    });
-    const request = {
-      state: {
-        schemaVersion: 1,
-        scene: {
-          backgroundColor: "#171816",
-          grid: { visible: true, snap: false, size: 1 },
-        },
-        objects: [],
-        cameras: [],
-        shots: [],
-      },
-      longEdge: 1280,
-      frames: [{ label: "frame-opening", timeSeconds: 0, aspectRatio: "16:9" }],
-    };
-
-    const response = await app.request("/api/v1/local/director-stage/capture", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(request),
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      renderer: { id: "clash-director-viewport-webgl", contractVersion: 1 },
-      frames: [{ label: "frame-opening", dataBase64: "AQID" }],
-    });
-    expect(render).toHaveBeenCalledWith(request);
+  it("submits one revision-pinned ActionRun and processes it into a durable OutputCommit", async () => {
+    const h = await productionHarness();
+    try {
+      const { readProof, revisionId } = await createStage(h.command);
+      const response = await capture(h.command, readProof, [{ label: "hero", timeSeconds: 0, aspectRatio: "16:9" }]);
+      expect(response.status, await response.clone().text()).toBe(200);
+      const body = await response.json() as { submitted: boolean; sourceStageRevisionId: string; runs: Array<{ actionRunId: string }> };
+      expect(body).toMatchObject({ submitted: true, sourceStageRevisionId: revisionId });
+      const runId = body.runs[0]!.actionRunId;
+      const { doc, runs } = await waitForRuns(h.dataDir, h.projectId, [runId], "succeeded");
+      expect(runs[0]).toMatchObject({ actionRunId: runId, generatorRevision: { generatorId: "stage-1", generatorRevisionId: revisionId }, status: "succeeded" });
+      const commit = readOutputCommit(doc, { actionRunId: runId, outputSlot: "frame" });
+      expect(commit).toMatchObject({ actionRunId: runId, outputSlot: "frame", asset: { kind: "media", projectAssetId: expect.any(String) } });
+      expect(readProjectAsset(doc, (commit!.asset as { projectAssetId: string }).projectAssetId)).toMatchObject({ lifecycle: { state: "active" } });
+      expect(h.render).toHaveBeenCalledOnce();
+      expect(new Canvas(doc, () => {}).readNode(runId)).toBeNull();
+      expect(listActionAssetBindings(doc).filter((binding) => binding.owner.kind === "run" && binding.owner.actionRunId === runId)).toEqual([]);
+    } finally { await h.close(); }
   });
 
-  it("fails closed when the daemon has no Director product renderer", async () => {
-    const dataDir = await mkdtemp(
-      join(tmpdir(), "clash-director-capture-missing-"),
-    );
-    const app = createLocalApiApp({ dataDir, userId: "local-user" });
-    const response = await app.request("/api/v1/local/director-stage/capture", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ state: {}, longEdge: 1280, frames: [] }),
-    });
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
-      error: "Director Stage product renderer is unavailable",
-    });
+  it("creates one run and OutputCommit per frame, pinned to the same Stage revision", async () => {
+    const h = await productionHarness();
+    try {
+      const { readProof, revisionId } = await createStage(h.command);
+      const response = await capture(h.command, readProof, [
+        { label: "first", timeSeconds: 0, aspectRatio: "1:1" },
+        { label: "second", timeSeconds: 1, aspectRatio: "9:16" },
+      ]);
+      const body = await response.json() as { runs: Array<{ actionRunId: string }> };
+      expect(body.runs).toHaveLength(2);
+      const ids = body.runs.map((run) => run.actionRunId);
+      const { doc, runs } = await waitForRuns(h.dataDir, h.projectId, ids, "succeeded");
+      expect(new Set(ids).size).toBe(2);
+      expect(runs.map((run) => run!.generatorRevision.generatorRevisionId)).toEqual([revisionId, revisionId]);
+      expect(ids.map((actionRunId) => readOutputCommit(doc, { actionRunId, outputSlot: "frame" }))).toEqual([
+        expect.objectContaining({ actionRunId: ids[0] }),
+        expect.objectContaining({ actionRunId: ids[1] }),
+      ]);
+      expect(h.render).toHaveBeenCalledTimes(2);
+    } finally { await h.close(); }
+  });
+
+  it("rejects a stale Stage read proof before submitting work", async () => {
+    const h = await productionHarness();
+    try {
+      const { readProof } = await createStage(h.command);
+      const updated = await h.command({
+        action: "update_director_stage_state",
+        stageId: "stage-1",
+        actorClientType: "agent",
+        ifMatch: readProof,
+        state: {
+          schemaVersion: 1,
+          scene: { backgroundColor: "#123456", grid: { visible: true, snap: false, size: 1 } },
+          objects: [], cameras: [], shots: [],
+        },
+      });
+      expect(updated.status, await updated.clone().text()).toBe(200);
+      await expect(updated.clone().json()).resolves.toMatchObject({ stage: { revisionId: expect.any(String) } });
+      const rejected = await capture(h.command, readProof, [{ label: "stale", timeSeconds: 0, aspectRatio: "1:1" }]);
+      expect(rejected.status).toBe(200);
+      const rejectedBody = await rejected.json();
+      expect(rejectedBody).toMatchObject({ code: "STALE_READ" });
+      expect(h.render).not.toHaveBeenCalled();
+    } finally { await h.close(); }
+  });
+
+  it("records renderer/plugin failure as a failed native ActionRun", async () => {
+    const h = await productionHarness({ fail: true });
+    try {
+      const { readProof } = await createStage(h.command);
+      const response = await capture(h.command, readProof, [{ label: "broken", timeSeconds: 0, aspectRatio: "1:1" }]);
+      const body = await response.json() as { runs: Array<{ actionRunId: string }> };
+      const runId = body.runs[0]!.actionRunId;
+      const { doc, runs } = await waitForRuns(h.dataDir, h.projectId, [runId], "failed");
+      expect(runs[0]).toMatchObject({ actionRunId: runId, status: "failed" });
+      expect(readOutputCommit(doc, { actionRunId: runId, outputSlot: "frame" })).toBeNull();
+      expect(h.render).toHaveBeenCalledOnce();
+    } finally { await h.close(); }
+  });
+
+  it("checkpoints native capture facts so a fresh replica recovery sees the run, commit, and Asset", async () => {
+    const h = await productionHarness();
+    try {
+      const { readProof } = await createStage(h.command);
+      const response = await capture(h.command, readProof, [{ label: "durable", timeSeconds: 0, aspectRatio: "4:3" }]);
+      const body = await response.json() as { runs: Array<{ actionRunId: string }> };
+      const runId = body.runs[0]!.actionRunId;
+      await waitForRuns(h.dataDir, h.projectId, [runId], "succeeded");
+      const recovered = await new FileReplicaStore(join(h.dataDir, "projects")).recover(h.projectId);
+      const commit = readOutputCommit(recovered, { actionRunId: runId, outputSlot: "frame" });
+      expect(readProjectActionRun(recovered, runId)?.status).toBe("succeeded");
+      expect(commit).not.toBeNull();
+      expect(readProjectAsset(recovered, (commit!.asset as { projectAssetId: string }).projectAssetId)).not.toBeNull();
+      expect(recovered.getMap("directorStages").get("stage-1")).toBeUndefined();
+    } finally { await h.close(); }
   });
 });

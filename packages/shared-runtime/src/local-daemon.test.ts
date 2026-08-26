@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   createLocalDaemonBootstrap,
   launchDetachedLocalDaemon,
+  resolveLocalDaemonRuntimeFingerprint,
   type LocalDaemonLaunchResult,
 } from "./local-daemon.js";
 import {
@@ -44,6 +45,20 @@ async function publish(
 }
 
 describe("local daemon bootstrap", () => {
+  it("fingerprints the runtime artifact content instead of its filesystem location", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-daemon-fingerprint-"));
+    const first = join(root, "first.cjs");
+    const second = join(root, "second.cjs");
+    await writeFile(first, "module.exports = 'same';\n", "utf8");
+    await writeFile(second, "module.exports = 'same';\n", "utf8");
+
+    const before = resolveLocalDaemonRuntimeFingerprint(first);
+    expect(resolveLocalDaemonRuntimeFingerprint(second)).toBe(before);
+
+    await writeFile(second, "module.exports = 'changed';\n", "utf8");
+    expect(resolveLocalDaemonRuntimeFingerprint(second)).not.toBe(before);
+  });
+
   it("launches a detached daemon that outlives the initiating client", async () => {
     let spawnOptions: Record<string, unknown> | undefined;
     let unrefs = 0;
@@ -52,6 +67,7 @@ describe("local daemon bootstrap", () => {
       dataDir: "/tmp/clash/local-api",
       runDir: "/tmp/clash/run",
       cliEntryPath: "/opt/clash/clash.cjs",
+      runtimeFingerprint: "sha256:runtime-a",
       env: { CLASH_PROFILE: "prod" },
       spawnProcess: (_command, _args, options) => {
         spawnOptions = options as Record<string, unknown>;
@@ -74,6 +90,7 @@ describe("local daemon bootstrap", () => {
         CLASH_HOST_RUN_DIR: "/tmp/clash/run",
         CLASH_CLI_ENTRY_PATH: "/opt/clash/clash.cjs",
         CLASH_LOCAL_API_WRAPPER_ENTRY: "1",
+        CLASH_DAEMON_RUNTIME_FINGERPRINT: "sha256:runtime-a",
         PORT: "0",
       },
     });
@@ -113,6 +130,30 @@ describe("local daemon bootstrap", () => {
     expect(spawnOptions?.detached).toBe(true);
   });
 
+  it("stops the complete detached process group so source runners cannot orphan a child", async () => {
+    const signals: Array<{ pid: number; signal: NodeJS.Signals }> = [];
+    const launched = launchDetachedLocalDaemon({
+      entryPath: "/opt/clash/source-host.ts",
+      dataDir: "/tmp/clash/local-api",
+      runDir: "/tmp/clash/run",
+      cliEntryPath: "/opt/clash/clash.ts",
+      processExists: () => true,
+      killProcess: (pid, signal) => {
+        signals.push({ pid, signal });
+      },
+      spawnProcess: () => ({ pid: 4245, unref() {} }) as never,
+    });
+
+    await launched.stop?.();
+
+    expect(signals).toEqual([
+      {
+        pid: process.platform === "win32" ? 4245 : -4245,
+        signal: "SIGTERM",
+      },
+    ]);
+  });
+
   it("rejects Electron Node mode outside the verified Node 24 range", () => {
     expect(() =>
       launchDetachedLocalDaemon({
@@ -145,6 +186,38 @@ describe("local daemon bootstrap", () => {
 
     await expect(bootstrap.ensureDaemon()).resolves.toEqual(active);
     expect(launches).toBe(0);
+  });
+
+  it("gracefully replaces a healthy daemon running a different runtime artifact", async () => {
+    const runDir = await mkdtemp(join(tmpdir(), "clash-daemon-replace-"));
+    const active = record({ runtimeFingerprint: "sha256:old" });
+    const replacement = record({
+      hostId: "daemon-replacement",
+      runtimeFingerprint: "sha256:new",
+    });
+    await publish(runDir, active);
+    let retires = 0;
+    let launches = 0;
+    const bootstrap = createLocalDaemonBootstrap({
+      runDir,
+      profile: "prod",
+      runtimeFingerprint: "sha256:new",
+      probe: async () => true,
+      retire: async (candidate) => {
+        expect(candidate).toEqual(active);
+        retires += 1;
+        await rm(join(runDir, "host.json"));
+      },
+      launch: async () => {
+        launches += 1;
+        await publish(runDir, replacement);
+        return { pid: replacement.pid };
+      },
+    });
+
+    await expect(bootstrap.ensureDaemon()).resolves.toEqual(replacement);
+    expect(retires).toBe(1);
+    expect(launches).toBe(1);
   });
 
   it("actively launches when discovery is stale and waits for healthy readiness", async () => {

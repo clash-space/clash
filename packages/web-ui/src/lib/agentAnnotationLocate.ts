@@ -27,28 +27,54 @@ export function annotationLocateSelector(
   return `[data-agent-annotation-object-id="${objectId}"]`;
 }
 
+/** Centers a located target, waits for that movement to finish, then highlights. */
+export function centerAndHighlightAnnotationTarget(
+  element: HTMLElement,
+  center: () => void | Promise<unknown> = () => {
+    element.scrollIntoView({
+      behavior: "auto",
+      block: "center",
+      inline: "center",
+    });
+  },
+): void {
+  void Promise.resolve(center()).then(() => {
+    window.requestAnimationFrame(() => {
+      flashAnnotationLocateHighlight(element);
+    });
+  });
+}
+
 /**
- * Draws a temporary brand-colored ring around the located element, then
- * restores its previous inline styles after ANNOTATION_LOCATE_HIGHLIGHT_MS.
+ * Temporarily emphasizes the located element without stacking visual frames.
+ * Browser annotations already own a border, so locating them strengthens the
+ * existing fill. Other workspace targets receive one outline.
  */
 export function flashAnnotationLocateHighlight(
   element: HTMLElement,
   durationMs = ANNOTATION_LOCATE_HIGHLIGHT_MS,
 ): void {
+  const reusesAnnotationFrame = element.hasAttribute(
+    "data-browser-annotation-marker",
+  );
   const previous = {
     outline: element.style.outline,
     outlineOffset: element.style.outlineOffset,
-    boxShadow: element.style.boxShadow,
+    backgroundColor: element.style.backgroundColor,
     transition: element.style.transition,
   };
-  element.style.transition = "outline-color 240ms ease, box-shadow 240ms ease";
-  element.style.outline = "2px solid rgba(215, 78, 58, 0.95)";
-  element.style.outlineOffset = "3px";
-  element.style.boxShadow = "0 0 0 6px rgba(215, 78, 58, 0.18)";
+  if (reusesAnnotationFrame) {
+    element.style.transition = "background-color 180ms ease";
+    element.style.backgroundColor = "rgba(215, 78, 58, 0.24)";
+  } else {
+    element.style.transition = "outline-color 180ms ease";
+    element.style.outline = "2px solid rgba(215, 78, 58, 0.95)";
+    element.style.outlineOffset = "3px";
+  }
   window.setTimeout(() => {
     element.style.outline = previous.outline;
     element.style.outlineOffset = previous.outlineOffset;
-    element.style.boxShadow = previous.boxShadow;
+    element.style.backgroundColor = previous.backgroundColor;
     element.style.transition = previous.transition;
   }, durationMs);
 }

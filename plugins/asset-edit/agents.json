@@ -1,0 +1,17 @@
+{
+  "summary": "Built-in image/video edit Generators backed by one realm-neutral Asset Action PluginModule.",
+  "context_hints": [
+    "Image Editor and Video Clipper share the semantic module in @clash/shared-runtime; do not fork their invocation or lifecycle by runtime",
+    "local, cloud, and client are Host-private execution realms, never Generator identity or persisted Action parameters",
+    "Every edit publishes a new immutable Asset; the Host owns OutputCommit publication and Canvas projection"
+  ],
+  "subdirectories": {
+    "generators": "Native image-editor and video-clipper Generator definitions.",
+    "src": "Local media adapter plugged into the realm-neutral shared PluginModule.",
+    "dist": "Generated standalone stdio compatibility artifact; never hand-edit."
+  },
+  "key_files": {
+    "manifest.json": "Bundled Generator and Action exports plus source media delivery contracts.",
+    "src/stdio.ts": "Node media adapter and direct-execution stdio compatibility entrypoint."
+  }
+}

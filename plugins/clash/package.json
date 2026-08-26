@@ -48,6 +48,7 @@
     "@remotion/renderer": "4.0.507",
     "esbuild": "^0.25.0",
     "loro-crdt": "^1.10.3",
+    "sharp": "0.34.5",
     "yaml": "^2.6.0"
   },
   "devDependencies": {
@@ -56,6 +57,7 @@
     "@clash/gui": "workspace:*",
     "@clash/local-api": "workspace:*",
     "@clash/mcp-server": "workspace:*",
+    "@clash-plugin/asset-edit": "workspace:*",
     "@clash-plugin/remotion": "workspace:*",
     "@clash/render-server": "workspace:*",
     "@clash/shared-mcp": "workspace:*",

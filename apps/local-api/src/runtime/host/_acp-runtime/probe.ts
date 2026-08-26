@@ -46,6 +46,8 @@ export interface AuthenticateAgentOptions {
   backgroundAuthTimeoutMs?: number;
   spawner?: Spawner;
   methodId?: string;
+  /** Ephemeral fields encoded into authenticate `_meta`; never persisted by the Host. */
+  values?: Record<string, string>;
   launchInteractiveAuth?: (options: TerminalAuthLaunchOptions) => Promise<void>;
 }
 
@@ -66,6 +68,7 @@ export interface ProbeAgentAuthMethod {
   name?: string;
   description?: string;
   type: string;
+  form?: "fields";
   vars?: Array<{
     name: string;
     label?: string;
@@ -102,6 +105,7 @@ const ACP_CLIENT_CAPABILITIES: ClientCapabilities = withClashAcpExtensionCapabil
   terminal: true,
   auth: {
     terminal: true,
+    _meta: { gateway: true },
   },
 });
 
@@ -244,6 +248,57 @@ function authMethodLink(method: AuthMethod): string | undefined {
   return typeof link === "string" && link.length > 0 ? link : undefined;
 }
 
+function apiKeyAuthMeta(method: AuthMethod): Record<string, unknown> | null {
+  const meta = authMethodMeta(method);
+  if (!meta) return null;
+  const block = meta["api-key"];
+  return isRecord(block) ? block : null;
+}
+
+function gatewayAuthMeta(method: AuthMethod): Record<string, unknown> | null {
+  const meta = authMethodMeta(method);
+  if (!meta) return null;
+  return isRecord(meta.gateway) ? meta.gateway : null;
+}
+
+function authFormVars(method: AuthMethod): ProbeAgentAuthMethod["vars"] | undefined {
+  if (apiKeyAuthMeta(method)) {
+    return [{ name: "api-key", label: "API key", secret: true }];
+  }
+  if (gatewayAuthMeta(method)) {
+    return [
+      { name: "baseUrl", label: "Base URL" },
+      { name: "api-key", label: "API key", secret: true },
+      { name: "providerName", label: "Provider", optional: true },
+    ];
+  }
+  return undefined;
+}
+
+function authenticateMetaFromMethod(
+  method: AuthMethod,
+  values: Record<string, string>,
+): Record<string, unknown> | undefined {
+  if (gatewayAuthMeta(method)) {
+    const baseUrl = (values.baseUrl ?? "").trim();
+    const apiKey = (values["api-key"] ?? "").trim();
+    const providerName = (values.providerName ?? "").trim();
+    if (!baseUrl) return undefined;
+    return {
+      gateway: {
+        baseUrl,
+        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+        ...(providerName ? { providerName } : {}),
+      },
+    };
+  }
+  if (apiKeyAuthMeta(method)) {
+    const apiKey = (values["api-key"] ?? "").trim();
+    return apiKey ? { "api-key": { apiKey } } : undefined;
+  }
+  return undefined;
+}
+
 function selectAuthMethod(authMethods: unknown, methodId?: string): AuthMethod | null {
   const methods = supportedAuthMethods(authMethods);
   if (!methodId) return methods[0] ?? null;
@@ -316,14 +371,17 @@ function publicAuthMethods(
   cwd: string,
 ): ProbeAgentAuthMethod[] {
   return methods.map((method) => {
-    const vars = credentialVars(method);
+    const formVars = authFormVars(method);
+    const vars = formVars ?? credentialVars(method);
     const type = isCredentialPromptAuthMethod(method) ? "env_var" : authMethodType(method);
+    const form = formVars ? "fields" as const : undefined;
     const terminalLaunch = type === "terminal" ? terminalAuthFromMethod(method, agent, env, cwd) : null;
     return {
       id: method.id,
       ...(authMethodName(method) ? { name: authMethodName(method) } : {}),
       ...(authMethodDescription(method) ? { description: authMethodDescription(method) } : {}),
       type,
+      ...(form ? { form } : {}),
       ...(vars ? { vars } : {}),
       ...(authMethodLink(method) ? { link: authMethodLink(method) } : {}),
       ...(terminalLaunch ? { terminalLaunch } : {}),
@@ -814,6 +872,16 @@ export async function authenticateAgent(options: AuthenticateAgentOptions): Prom
           throw new Error(vars
             ? `ACP auth method ${method.id} requires credential variables (${vars}) and cannot be started as a sign-in flow.`
             : `ACP auth method ${method.id} requires credential variables and cannot be started as a sign-in flow.`);
+        }
+        const authenticateMeta = authenticateMetaFromMethod(method, options.values ?? {});
+        if (authenticateMeta) {
+          await Promise.resolve(agent.authenticate({
+            methodId: method.id,
+            _meta: authenticateMeta,
+          })).catch((error) => {
+            throw withAcpDetails(error);
+          });
+          return { status: "completed" as const };
         }
         const terminalAuth = terminalAuthFromMethod(method, options.agent, env, cwd);
         if (terminalAuth) {

@@ -5,7 +5,12 @@ import {
 } from "@modelcontextprotocol/ext-apps/server";
 import { readFileSync } from "node:fs";
 import { z } from "zod";
-import { ClashMcpServer, describeClashTool } from "@clash/shared-mcp";
+import {
+  ClashMcpServer,
+  describeClashTool,
+  registerGeneratorTools,
+} from "@clash/shared-mcp";
+import type { GeneratorRequest } from "@clash/shared-runtime/generator-client";
 import { initializeClashWorkspace } from "@clash/shared-runtime";
 import {
   createPersonalGlobalAssetHostClient,
@@ -518,9 +523,9 @@ const toolDefinitions: Record<
     title: "Add Canvas node",
     description: describeClashTool({
       useWhen:
-        "the creative outcome needs a new text, group, editable Remotion TSX component, or generation Action node",
+        "the creative outcome needs a new text, group, editable Remotion TSX component, generation Action, or an existing Project Asset projected independently onto the Canvas",
       effect:
-        "creates one persisted Canvas node; type 'remotion' stores a distinct remotion-component with a stable node ID and editable TSX content",
+        "creates one persisted Canvas node; image, video, and audio require an existing active matching Project Asset and create no fabricated lineage edge. Asset nodes can only be connected to generation nodes.",
       returns: "the created node and its stable ID",
       next: "read the node; execute only generation Actions, while Remotion components are referenced by sourceNodeId from a Timeline and rendered through timeline render",
     }),
@@ -530,7 +535,7 @@ const toolDefinitions: Record<
         .string()
         .min(1)
         .describe(
-          "Node type: text, group, remotion, image_gen, video_gen, audio_gen, or text_gen",
+          "Node type: text, group, remotion, image, video, audio, image_gen, video_gen, audio_gen, text_gen, or model_gen",
         ),
       label: z.string().min(1),
       content: z
@@ -550,6 +555,11 @@ const toolDefinitions: Record<
       parentId: z.string().optional(),
       modelId: z.string().optional(),
       actionId: z.string().optional(),
+      assetId: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Existing active Project Asset ID; required for type image, video, or audio"),
       refs: z.array(z.string()).optional(),
       params: z
         .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
@@ -633,9 +643,9 @@ const toolDefinitions: Record<
     title: "Replace Canvas media asset",
     description: describeClashTool({
       useWhen:
-        "a media node should point at a different immutable asset without mutating the source node",
+        "an immutable media node with downstream references must be replaced while preserving those existing references",
       effect:
-        "creates a copy-on-write media node bound to the replacement asset",
+        "creates a copy-on-write media node bound to the replacement asset; independent Project Assets must use Add Canvas node instead",
       returns: "the replacement node and its new stable ID",
       next: "read the returned node and verify its asset identity before using it downstream",
     }),
@@ -1089,6 +1099,7 @@ export function createClashMcpServer(
     bundledStudioAppJavascript?: string;
     appSurfaces?: boolean;
     pluginGateway?: PluginMcpGateway;
+    generatorRequest?: GeneratorRequest;
   } = {},
 ): McpServer {
   const server = new ClashMcpServer({
@@ -1119,6 +1130,23 @@ export function createClashMcpServer(
   if (options.pluginGateway) {
     registerClashPluginMcp(server, options.pluginGateway);
   }
+  const generatorRequest =
+    options.generatorRequest ??
+    (options.client?.resolveConnection
+      ? async (path: string, init?: RequestInit) => {
+          const { endpoint, token } =
+            await options.client!.resolveConnection!();
+          return fetch(`${endpoint.replace(/\/$/, "")}${path}`, {
+            ...init,
+            headers: {
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              ...((init?.headers as Record<string, string> | undefined) ?? {}),
+            },
+          });
+        }
+      : undefined);
+  if (generatorRequest)
+    registerGeneratorTools(server, { request: generatorRequest });
   registerClashCanvasMcp(
     server,
     options.gateway ??

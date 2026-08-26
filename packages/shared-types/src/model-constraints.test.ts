@@ -127,11 +127,11 @@ describe("declarative model-card configuration constraints", () => {
     expect(normalizeModelParametersForCard(model, {
       duration: "auto",
       resolution: "4k",
-      provider_id: "volcengine",
+      provider_id: "volcengine-modelark",
     })).toEqual({
       duration: 5,
       resolution: "720p",
-      provider_id: "volcengine",
+      provider_id: "volcengine-modelark",
     });
   });
 

@@ -2,11 +2,27 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createWindowRegistry,
   ensureNativeWindowControlsVisible,
+  recoverDesktopWindow,
   resolveDesktopWindowOptions,
   shouldCreateWindowOnActivate,
 } from "./windowing";
+import * as desktopWindowing from "./windowing";
 
 describe("desktop windowing", () => {
+  it("enables Backchat's isolated in-app browser webview in project windows", () => {
+    const resolveWebPreferences = (desktopWindowing as Record<string, unknown>)
+      .resolveDesktopWebPreferences;
+    expect(resolveWebPreferences).toBeTypeOf("function");
+    if (typeof resolveWebPreferences !== "function") return;
+
+    expect(resolveWebPreferences("/tmp/clash-preload.js")).toMatchObject({
+      preload: "/tmp/clash-preload.js",
+      contextIsolation: true,
+      nodeIntegration: false,
+      webviewTag: true,
+    });
+  });
+
   it("uses an inline title bar with traffic lights centered in the desktop tab strip", () => {
     const options = resolveDesktopWindowOptions(0);
 
@@ -35,8 +51,12 @@ describe("desktop windowing", () => {
   });
 
   it("uses the operating-system theme for the hidden window background", () => {
-    expect(resolveDesktopWindowOptions(0, false).backgroundColor).toBe("#f7f6f2");
-    expect(resolveDesktopWindowOptions(0, true).backgroundColor).toBe("#151515");
+    expect(resolveDesktopWindowOptions(0, false).backgroundColor).toBe(
+      "#f7f6f2",
+    );
+    expect(resolveDesktopWindowOptions(0, true).backgroundColor).toBe(
+      "#151515",
+    );
   });
 
   it("tracks registered windows and removes them when closed", () => {
@@ -63,6 +83,30 @@ describe("desktop windowing", () => {
   it("creates a window on macOS activation only when no windows remain", () => {
     expect(shouldCreateWindowOnActivate(0)).toBe(true);
     expect(shouldCreateWindowOnActivate(2)).toBe(false);
+  });
+
+  it("reloads and focuses an existing window when a second dev launch arrives", async () => {
+    const events: string[] = [];
+    await recoverDesktopWindow(
+      {
+        isDestroyed: () => false,
+        isMinimized: () => true,
+        loadURL: async (url) => {
+          events.push(`load:${url}`);
+        },
+        restore: () => events.push("restore"),
+        show: () => events.push("show"),
+        focus: () => events.push("focus"),
+      },
+      "http://127.0.0.1:3001",
+    );
+
+    expect(events).toEqual([
+      "load:http://127.0.0.1:3001",
+      "restore",
+      "show",
+      "focus",
+    ]);
   });
 
   it("keeps native macOS window controls visible in hidden title bar mode", () => {

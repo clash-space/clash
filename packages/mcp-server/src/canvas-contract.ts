@@ -112,6 +112,7 @@ export function buildCanvasCliArgs(
       if (input.parentId?.trim()) args.push("--parent", input.parentId.trim());
       if (input.modelId?.trim()) args.push("--model", input.modelId.trim());
       if (input.actionId?.trim()) args.push("--action", input.actionId.trim());
+      if (input.assetId?.trim()) args.push("--asset", input.assetId.trim());
       appendRepeated(args, "--ref", input.refs);
       appendRecord(args, "--param", input.params);
       break;

@@ -167,6 +167,22 @@ test("the base Clash skill teaches peer CLI and MCP navigation without AGENTS in
     true,
     "known Asset operations should have a direct MCP contract path",
   );
+  assert.equal(
+    sourceMatches(
+      markdown,
+      /project.{0,120}media generation.{0,320}`clash_generators`.{0,500}global.{0,100}(?:imagegen|image_gen)/i,
+    ),
+    true,
+    "project media generation must stay inside Clash instead of escaping to a global generator",
+  );
+  assert.equal(
+    sourceMatches(
+      markdown,
+      /action_run_submit.{0,260}action_run_get.{0,260}output_commit_get/i,
+    ),
+    true,
+    "Generator guidance must cover submission, background polling, and persisted output readback",
+  );
   assert.match(markdown, /clash init --json/);
   assert.match(markdown, /root `clash` tool/i);
   assert.match(markdown, /root `clash`[\s\S]*navigation/i);

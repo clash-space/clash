@@ -27,9 +27,9 @@ export const iconButtonVariants = cva(
         variants: {
             variant: {
                 default:
-                    'text-slate-800 hover:bg-warm-muted dark:text-slate-200 focus-visible:ring-brand focus-visible:ring-offset-warm-surface',
+                    'text-slate-800 hover:bg-warm-muted dark:text-slate-200 focus-visible:ring-ring focus-visible:ring-offset-warm-surface',
                 active:
-                    'bg-brand/10 text-brand hover:bg-brand/20 dark:bg-brand/15 dark:hover:bg-brand/25 focus-visible:ring-brand focus-visible:ring-offset-warm-surface',
+                    'bg-brand/10 text-brand hover:bg-brand/20 dark:bg-brand/15 dark:hover:bg-brand/25 focus-visible:ring-ring focus-visible:ring-offset-warm-surface',
                 destructive:
                     'text-slate-700 hover:bg-red-50 hover:text-red-600 dark:text-slate-300 dark:hover:bg-red-950/40 dark:hover:text-red-300 focus-visible:ring-red-500 focus-visible:ring-offset-warm-surface',
             },

@@ -30,6 +30,9 @@ type SqliteDatabase = {
 const require = createRequire(import.meta.url);
 const PROVIDER_ACCOUNTS_MIGRATION_ID = "provider-accounts-sqlite-v1";
 const PROVIDER_OAUTH_MIGRATION_ID = "provider-oauth-sqlite-v1";
+const VOLCENGINE_MODELARK_MIGRATION_ID = "provider-accounts-volcengine-modelark-v1";
+const LEGACY_VOLCENGINE_ID = "volcengine";
+const CANONICAL_VOLCENGINE_MODELARK_ID = "volcengine-modelark";
 const SECRET_PREFIX = "enc:v1:";
 const secretKeyCache = new Map<string, Promise<Buffer>>();
 
@@ -590,6 +593,29 @@ function hasProviderOAuthRows(db: SqliteDatabase): boolean {
   return rowCount(db, "SELECT COUNT(*) AS count FROM provider_oauth") > 0;
 }
 
+function hasLegacyVolcengineModelarkRows(db: SqliteDatabase): boolean {
+  return rowCount(db, `
+    SELECT COUNT(*) AS count
+      FROM provider_accounts
+     WHERE provider_id = '${LEGACY_VOLCENGINE_ID}'
+       AND upstream_id = '${LEGACY_VOLCENGINE_ID}'
+  `) > 0;
+}
+
+/**
+ * Only a row whose provider and upstream are both the legacy bare `volcengine`
+ * id is the old ModelArk account. Sibling ecosystems (`volcengine-speech`,
+ * `volcengine-mediakit`) and rows matching a single column stay untouched.
+ */
+function canonicalizeVolcengineModelarkAccount(account: LocalProviderAccountConfig): LocalProviderAccountConfig {
+  if (account.providerId !== LEGACY_VOLCENGINE_ID || account.upstreamId !== LEGACY_VOLCENGINE_ID) return account;
+  return {
+    ...account,
+    providerId: CANONICAL_VOLCENGINE_MODELARK_ID,
+    upstreamId: CANONICAL_VOLCENGINE_MODELARK_ID,
+  };
+}
+
 function clearProviderAccountsUnsafe(db: SqliteDatabase): void {
   db.prepare("DELETE FROM provider_account_model_priorities").run();
   db.prepare("DELETE FROM provider_account_supported_models").run();
@@ -1019,9 +1045,40 @@ export function createLocalProviderStore(dataDir: string) {
     });
   }
 
+  /**
+   * One-shot canonicalization of legacy bare-`volcengine` ModelArk accounts.
+   * Renaming changes both the account_key and the credential AAD, so this goes
+   * through the existing read -> map -> replace path (which re-encrypts) rather
+   * than raw SQL updates.
+   */
+  async function ensureVolcengineModelarkMigrated(): Promise<void> {
+    if (!(await exists())) return;
+    const needsMigration = await withDb((db) => {
+      if (hasMigrationMarker(db, VOLCENGINE_MODELARK_MIGRATION_ID)) return false;
+      return hasLegacyVolcengineModelarkRows(db);
+    });
+    if (!needsMigration) return;
+    const secretKey = await resolveProviderSecretKey(dataDir);
+    await withDb((db) => {
+      if (hasMigrationMarker(db, VOLCENGINE_MODELARK_MIGRATION_ID)) return;
+      if (!hasLegacyVolcengineModelarkRows(db)) return;
+      const accounts = readProviderAccountsUnsafe(db, secretKey).map(canonicalizeVolcengineModelarkAccount);
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        replaceProviderAccountsUnsafe(db, accounts, secretKey);
+        markMigration(db, VOLCENGINE_MODELARK_MIGRATION_ID, dataDir, "");
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    });
+  }
+
   async function loadProviderAccounts(): Promise<LocalProviderAccountConfig[]> {
     if (!(await exists())) return [];
     await ensureProviderAccountsMigrated();
+    await ensureVolcengineModelarkMigrated();
     if (!(await withDb((db) => hasProviderAccountRows(db)))) return [];
     const secretKey = await resolveProviderSecretKey(dataDir);
     return withDb((db) => readProviderAccountsUnsafe(db, secretKey));

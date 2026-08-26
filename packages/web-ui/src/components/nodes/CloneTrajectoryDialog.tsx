@@ -71,7 +71,7 @@ function wrapPreviewNode<T extends Record<string, unknown>>(Inner: ComponentType
                                 size="sm"
                                 shape="rounded"
                                 aria-label="Drop this action and everything upstream that only feeds it"
-                                className="clash-node-danger-ghost h-9 min-h-9 rounded-lg px-3 text-[11px] font-semibold shadow-sm focus-visible:ring-brand"
+                                className="clash-node-danger-ghost h-9 min-h-9 rounded-lg px-3 text-[11px] font-semibold shadow-sm focus-visible:ring-ring"
                             >
                                 drop stage
                             </Button>

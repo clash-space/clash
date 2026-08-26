@@ -36,6 +36,6 @@ import type { ExecutablePluginOutput } from "@clash/shared-types/executable-plug
 export type ExecutorOutput = ExecutablePluginOutput;
 
 /** A non-media result: the model's words, an id, a measurement. */
-export function valueOutput(value: Record<string, unknown>, slot = "media"): ExecutorOutput[] {
+export function valueOutput(value: unknown, slot = "media"): ExecutorOutput[] {
   return [{ slot, kind: "value", value }] as ExecutorOutput[];
 }

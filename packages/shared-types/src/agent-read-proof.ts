@@ -46,6 +46,8 @@ export type SessionReadProofLike = {
   acpSessionId?: unknown;
   acp_session_id?: unknown;
   status?: unknown;
+  archivedAt?: unknown;
+  archived_at?: unknown;
   createdAt?: unknown;
   created_at?: unknown;
   updatedAt?: unknown;
@@ -168,6 +170,9 @@ export function sessionReadToken(session: SessionReadProofLike): string {
         session.acpSessionId ?? session.acp_session_id,
       ),
       status: normalizeProjectText(session.status),
+      archivedAt: normalizeProjectTimestamp(
+        session.archivedAt ?? session.archived_at,
+      ),
       createdAt: normalizeProjectTimestamp(
         session.createdAt ?? session.created_at,
       ),

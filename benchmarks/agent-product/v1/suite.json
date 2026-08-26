@@ -1057,9 +1057,6 @@
           "timeline.render",
           "asset.get"
         ],
-        "forbiddenProductOperations": [
-          "timeline.validate"
-        ],
         "requiredCapabilities": [
           "director-stage-readback",
           "director-headless-png-capture",

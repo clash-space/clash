@@ -1,6 +1,8 @@
-import { useState, type MouseEvent } from "react";
+import { type MouseEvent } from "react";
 import { ClockCounterClockwise } from "@phosphor-icons/react";
 import type { RevisionHistoryEntry } from "@clash/web-ui/hooks/useRevisionHistory";
+import { Button } from "../ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 
 interface RevisionHistorySnapshot {
   count: number;
@@ -55,8 +57,6 @@ export function RevisionHistoryBadge({
   showWhenEmpty = false,
   variant = "badge",
 }: RevisionHistoryBadgeProps) {
-  const [open, setOpen] = useState(false);
-
   if (history.count === 0 && !showWhenEmpty) return null;
 
   const label = "Text revision history";
@@ -88,44 +88,50 @@ export function RevisionHistoryBadge({
   };
 
   return (
-    <div
-      className={`relative ${className}`}
-      onClick={stopNodeGesture}
-      onDoubleClick={stopNodeGesture}
-      onPointerDown={stopNodeGesture}
-    >
-      <button
-        type="button"
-        className={
-          variant === "toolbar"
-            ? "clash-workbench-control-button inline-flex h-[var(--clash-project-control-height,2rem)] items-center gap-[var(--clash-control-gap,0.25rem)] px-2 text-xs font-medium text-content-muted transition-colors hover:bg-warm-hover hover:text-content-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-            : "rounded-md border border-warm-border bg-warm-surface/95 px-2 py-1 text-[10px] font-semibold text-stone-700 shadow-sm transition-colors hover:bg-warm-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 dark:text-stone-200"
-        }
-        aria-label={accessibleHistory}
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+    <Popover>
+      <div
+        className={className}
+        onClick={stopNodeGesture}
+        onDoubleClick={stopNodeGesture}
+        onPointerDown={stopNodeGesture}
       >
-        {variant === "toolbar" ? (
-          <>
-            <ClockCounterClockwise className="h-3.5 w-3.5" weight="bold" />
-            <span>History</span>
-            {history.count > 0 ? (
-              <span className="tabular-nums text-content-disabled">
-                {history.count}
-              </span>
-            ) : null}
-          </>
-        ) : (
-          `${history.count} rev`
-        )}
-      </button>
-      {open && (
-        <div
+        <PopoverTrigger asChild>
+          <Button
+            variant={null}
+            size={null}
+            shape={null}
+            className={
+              variant === "toolbar"
+                ? "clash-workbench-control-button inline-flex h-[var(--clash-project-control-height,2rem)] items-center gap-[var(--clash-control-gap,0.25rem)] px-2 text-xs font-medium text-content-muted transition-colors hover:bg-warm-hover hover:text-content-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                : "rounded-md border border-warm-border bg-warm-surface/95 px-2 py-1 text-[10px] font-semibold text-stone-700 shadow-sm transition-colors hover:bg-warm-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 dark:text-stone-200"
+            }
+            aria-label={accessibleHistory}
+          >
+            {variant === "toolbar" ? (
+              <>
+                <ClockCounterClockwise className="h-3.5 w-3.5" weight="bold" />
+                <span>History</span>
+                {history.count > 0 ? (
+                  <span className="tabular-nums text-content-disabled">
+                    {history.count}
+                  </span>
+                ) : null}
+              </>
+            ) : (
+              `${history.count} rev`
+            )}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
           role="region"
           aria-label={`${label} panel`}
-          className={`absolute top-8 z-50 w-72 rounded-matrix border border-warm-border bg-warm-surface p-2 text-[11px] text-stone-700 shadow-lg dark:text-stone-200 ${
-            variant === "toolbar" ? "left-0" : "right-0"
-          }`}
+          side="bottom"
+          align={variant === "toolbar" ? "start" : "end"}
+          sideOffset={4}
+          onClick={stopNodeGesture}
+          onDoubleClick={stopNodeGesture}
+          onPointerDown={stopNodeGesture}
+          className="w-72 gap-0 p-2 text-[11px] text-stone-700 dark:text-stone-200"
         >
           <div className="flex items-center justify-between gap-2">
             <span className="font-semibold">{label}</span>
@@ -180,9 +186,11 @@ export function RevisionHistoryBadge({
                       <code className="mt-1 block break-all rounded-md bg-warm-muted px-2 py-1 font-mono text-[10px] leading-snug text-stone-800 dark:text-stone-100">
                         {restore}
                       </code>
-                      <button
-                        type="button"
-                        className="mt-1 inline-flex h-6 items-center rounded-md border border-warm-border bg-warm-surface px-2 text-[10px] font-semibold text-stone-700 transition-colors hover:bg-warm-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 dark:text-stone-200"
+                      <Button
+                        variant={null}
+                        size={null}
+                        shape={null}
+                        className="mt-1 inline-flex h-6 items-center rounded-md border border-warm-border bg-warm-surface px-2 text-[10px] font-semibold text-stone-700 transition-colors hover:bg-warm-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 dark:text-stone-200"
                         aria-label={
                           directRestore
                             ? `Restore text revision ${revision.revisionId}`
@@ -199,15 +207,15 @@ export function RevisionHistoryBadge({
                         }
                       >
                         {directRestore ? "Restore" : "Copy restore"}
-                      </button>
+                      </Button>
                     </>
                   )}
                 </li>
               );
             })}
           </ul>
-        </div>
-      )}
-    </div>
+        </PopoverContent>
+      </div>
+    </Popover>
   );
 }

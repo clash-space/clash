@@ -1005,15 +1005,19 @@ export class Canvas {
     const actionType = (nodeData.actionType as string) || "";
 
     // Validate node is a generation type. Both built-in actionTypes
-    // (image-gen / video-gen / audio-gen / text-gen) and custom-action
-    // actionTypes (`custom:<id>`) are accepted — they unify through
-    // buildGenerationPayload below.
+    // (image-gen / video-gen / audio-gen / text-gen / model-gen) and
+    // custom-action actionTypes (`custom:<id>`) are accepted — they
+    // unify through buildGenerationPayload below. model-gen covers
+    // 3D/model providers (e.g. Tripo text/image-to-model, Tripo
+    // auto-rig) — omitting it here made every model-gen action-badge
+    // fail before ever reaching the provider.
     const isActionBadge = nodeType === RF_NODE_TYPE.ActionBadge;
     const isBuiltInGen =
       actionType === ACTION_TYPE.ImageGen ||
       actionType === ACTION_TYPE.VideoGen ||
       actionType === ACTION_TYPE.AudioGen ||
-      actionType === ACTION_TYPE.TextGen;
+      actionType === ACTION_TYPE.TextGen ||
+      actionType === ACTION_TYPE.ModelGen;
     const isCustomGen =
       typeof actionType === "string" && actionType.startsWith("custom:");
     if (!isActionBadge || (!isBuiltInGen && !isCustomGen)) {
@@ -1028,7 +1032,24 @@ export class Canvas {
     // Extract prompt
     const prompt =
       (nodeData.content as string) || (nodeData.prompt as string) || "";
-    if (isBuiltInGen && !prompt.trim()) {
+    // Some built-in cards declare `requiresPrompt: false` (Tripo
+    // auto-rig is model-to-model with no configurable knobs at all;
+    // ASR text-gen cards take audio, not a typed prompt). Resolve the
+    // requested model card up front so the gate reflects the card's
+    // own declaration instead of blanket-requiring a prompt for every
+    // built-in actionType.
+    const requestedModelIdForPromptCheck =
+      (nodeData.modelId as string) || (nodeData.model as string) || "";
+    const promptCheckModelCard = isBuiltInGen
+      ? this.modelCards.find(
+          (c: ModelCard) =>
+            c.id ===
+            (normalizeModelId(requestedModelIdForPromptCheck) ??
+              requestedModelIdForPromptCheck),
+        )
+      : undefined;
+    const cardRequiresPrompt = promptCheckModelCard?.input?.requiresPrompt ?? true;
+    if (isBuiltInGen && cardRequiresPrompt && !prompt.trim()) {
       return {
         assetNodeId: "",
         assetNodeType: "",
@@ -1142,6 +1163,7 @@ export class Canvas {
         | typeof ACTION_TYPE.VideoGen
         | typeof ACTION_TYPE.AudioGen
         | typeof ACTION_TYPE.TextGen
+        | typeof ACTION_TYPE.ModelGen
         | `custom:${string}`,
       label: nodeData.label as string | undefined,
       referenceMode: nodeData.referenceMode as string | undefined,

@@ -126,7 +126,7 @@ it("polls a standalone Timeline render through the Host render readback", async 
   }
 });
 
-it("polls a Canvas-owned Timeline render from its returned Canvas", async () => {
+it("polls a Canvas-owned Timeline render through native render readback", async () => {
   const requests: Record<string, unknown>[] = [];
   const server = createServer(async (request, response) => {
     const command = await readRequestBody(request);
@@ -145,9 +145,12 @@ it("polls a Canvas-owned Timeline render from its returned Canvas", async () => 
       });
       return;
     }
-    if (command.action === "get" && command.canvasId === "main") {
+    if (command.action === "list_timeline_renders") {
       replyJson(response, {
-        node: { id: "render-2", data: { status: "generating" } },
+        status: "all",
+        renders: [
+          { node: { id: "render-2", data: { status: "generating" } } },
+        ],
       });
       return;
     }
@@ -190,9 +193,8 @@ it("polls a Canvas-owned Timeline render from its returned Canvas", async () => 
       status: "pending",
     });
     expect(requests[1]).toEqual({
-      action: "get",
-      canvasId: "main",
-      nodeId: "render-2",
+      action: "list_timeline_renders",
+      status: "all",
     });
   } finally {
     await new Promise<void>((resolve, reject) => {

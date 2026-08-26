@@ -36,6 +36,10 @@ export default withMermaid(defineConfig({
               link: "/guide/add-model-provider",
             },
             { text: "Local ASR & Transcripts", link: "/guide/local-asr" },
+            {
+              text: "Director Stage for Beginners",
+              link: "/guide/director-stage-for-beginners",
+            },
             { text: "What a Test May Assert", link: "/guide/testing-rules" },
           ],
         },

@@ -1,0 +1,24 @@
+{
+  "summary": "Bundled first-party executable Provider plugin binding Move AI to the built-in move-ai-s2 model Card. Contributes zero cards.",
+  "context_hints": [
+    "This plugin never contributes a Card. move-ai-s2 is a Clash built-in Card owned in packages/shared-types; this package only ships the Provider, the one model-provider binding, and the executor that serves it.",
+    "move-ai-s2 takes no prompt. Exactly one reference in slot video is the only input, and Move AI's single-camera S2 mocap model always produces one animated, rigged GLB output (Move AI's MAIN_GLB output). upstreamModel is pinned to the literal string S2 by contract -- a submit for any other upstreamModel value fails invalid_request before any Provider request.",
+    "Move AI's upload flow (createFile -> presigned PUT -> createSingleCamTake -> createSingleCamJob, polled through getJob) requires raw bytes it can PUT directly. There is no 'give Move AI a URL and let it fetch' mode, so unlike most other plugins here a provider-url or executor-url resolved reference is rejected rather than fetched or forwarded -- only a bytes form with a supported video mediaType (video/mp4, video/quicktime, video/x-msvideo) reaches Move AI.",
+    "Submit validates structurally before doing any account or network work, in this order: (1) the invocation's own reference list must contain exactly one reference and it must be kind video, checked before context.reference is ever called; (2) upstreamModel === S2; (3) the account's apiKey is read from context.store; (4) trackFingers/floorPlane/trackBall are read from modelParams (or the top-level values as a fallback) and type-checked as booleans. Only after all four pass does context.reference resolve the video bytes.",
+    "Poll validates its durable pollState ({ jobId }) before reading the account's apiKey, exactly like every other plugin in this repo, so a corrupt journal entry fails independently of which account it belongs to. A completed job maps Move AI's MAIN_GLB presignedUrl to one ExecutorStep media output in slot media, kind model, mediaType model/gltf-binary. No secret, byte, or intermediate URL is ever carried in pollState -- it is exactly { jobId }."
+  ],
+  "subdirectories": {
+    "providers": "Move AI Provider declaration and secure API-key form.",
+    "bindings": "model-provider-binding document routing move-ai-s2 to this Provider.",
+    "src": "Typed stdio entrypoint, Move AI GraphQL HTTP client, reference resolution, and the submit/poll executor.",
+    "contract-tests": "Declarative activation-gating ABI fixtures."
+  },
+  "key_files": {
+    "manifest.json": "Versioned executable package and contribution declarations; contributes.cards is empty by contract.",
+    "providers/move-ai.json": "Provider metadata, raw Authorization-header API-key form, and default asset-input representations.",
+    "bindings/move-ai-s2.json": "Binds move-ai-s2 to Move AI's S2 single-cam mocap model, accepting only bytes-form video input.",
+    "src/move-ai-client.ts": "Pure Move AI UGC GraphQL HTTP layer: request builders, envelope/HTTP error mapping, submit sequence, job poll.",
+    "src/move-ai-adapter.ts": "Reference validation, order-of-operations (reference shape -> upstreamModel -> credentials -> option validation -> reference resolution), and the submit/poll Executor."
+  },
+  "verification": ["pnpm --filter @clash-plugin/move-ai test", "pnpm --filter @clash-plugin/move-ai build"]
+}

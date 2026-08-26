@@ -1,0 +1,38 @@
+{
+  "name": "@clash-plugin/director",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
+  "exports": {
+    "./manifest.json": "./manifest.json",
+    "./stdio": "./dist/stdio.mjs"
+  },
+  "files": [
+    "manifest.json",
+    "generators",
+    "contract-tests",
+    "dist",
+    "agents.json"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@clash/action-sdk": "workspace:*",
+    "@clash/director-core": "workspace:*",
+    "@clash/shared-types": "workspace:*",
+    "@gltf-transform/core": "^4.4.2",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/three": "^0.185.1",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.0"
+  }
+}

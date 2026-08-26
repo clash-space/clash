@@ -44,7 +44,7 @@
     "test:startup:real-codex-cold": "node scripts/prepare-clash-cli.mjs && pnpm prepare:harnesses && CLASH_E2E_REAL_CODEX=1 node e2e/real-codex-cold-start-agent-browser.mjs",
     "test:startup:real-codex": "node scripts/prepare-clash-cli.mjs && pnpm prepare:harnesses && CLASH_E2E_REAL_CODEX=1 node e2e/real-codex-agent-browser.mjs",
     "test:startup:real-codex-resume": "node scripts/prepare-clash-cli.mjs && pnpm prepare:harnesses && CLASH_E2E_REAL_CODEX=1 node e2e/real-codex-resume-agent-browser.mjs",
-    "test:startup:static": "node scripts/prepare-clash-cli.mjs && pnpm prepare:harnesses && node e2e/startup-static.mjs",
+    "test:startup:static": "node scripts/prepare-clash-cli.mjs && pnpm prepare:harnesses && tsx e2e/startup-static.ts",
     "test:startup:ui": "tsx e2e/startup-ui-smoke.ts",
     "test:watch": "vitest"
   },

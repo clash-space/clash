@@ -19,7 +19,9 @@ const globalCss = readFileSync(
 
 describe("ProjectEditor toolbar surface", () => {
   it("exposes Director Stage as a first-class canvas tool", () => {
-    expect(projectEditorSource).toContain('{ id: "director-stage", label: "Director Stage", icon: Cube }');
+    expect(projectEditorSource).toContain(
+      '{ id: "director-stage", label: "Director Stage", icon: Cube }',
+    );
   });
 
   it("creates Remotion components as their own first-class Canvas tool", () => {
@@ -39,9 +41,11 @@ describe("ProjectEditor toolbar surface", () => {
     );
   });
 
-  it("uses one fixed 48px vertical rail for every canvas mode and tool", () => {
+  it("uses one token-sized vertical rail for every canvas mode and tool", () => {
     expect(projectEditorSource).toContain('id="project-workspace-shell"');
-    expect(projectEditorSource).toContain("grid-cols-[12rem_minmax(0,1fr)]");
+    expect(projectEditorSource).toContain(
+      "grid-cols-[var(--clash-app-sidebar-expanded-width,16rem)_minmax(0,1fr)]",
+    );
     expect(projectEditorSource).toContain(
       "data-[project-navigator-collapsed=true]:grid-cols-[0_minmax(0,1fr)]",
     );
@@ -49,12 +53,15 @@ describe("ProjectEditor toolbar surface", () => {
       "data-[project-navigator-collapsed=true]:grid-cols-[3rem_minmax(0,1fr)]",
     );
     expect(projectEditorSource).not.toContain(
+      "--clash-app-sidebar-collapsed-width",
+    );
+    expect(projectEditorSource).not.toContain(
       "clash-project-sidebar-toggle-button",
     );
     expect(projectEditorSource).toContain('className="absolute inset-0');
     expect(projectEditorSource).toContain("<Toolbar.Root");
     expect(projectEditorSource).toContain(
-      "clash-canvas-toolbar-surface pointer-events-auto flex w-12",
+      "clash-canvas-toolbar-surface pointer-events-auto flex",
     );
     expect(projectEditorSource).toMatch(
       /orientation=["']vertical["'][\s\S]*?aria-label=["']Canvas mode["']/,
@@ -71,7 +78,7 @@ describe("ProjectEditor toolbar surface", () => {
     expect(projectEditorSource).not.toContain("-translate-y-1/2");
     expect(projectEditorSource).not.toContain("rounded-2xl py-6");
     expect(globalCss).toMatch(
-      /\.clash-canvas-toolbar-surface\s*\{[\s\S]*width:\s*3rem;/,
+      /\.clash-canvas-toolbar-surface\s*\{[\s\S]*width:\s*calc\(/,
     );
     expect(globalCss).toMatch(
       /\.clash-canvas-toolbar-surface\s*\{[\s\S]*overflow:\s*visible;/,
@@ -114,19 +121,25 @@ describe("ProjectEditor toolbar surface", () => {
       /clash-project-sidebar-header[^\n]*border-b/,
     );
     expect(projectEditorSource).toContain(
-      'clash-project-sidebar-header-content clash-project-chrome-header-content flex min-w-0 flex-1 items-center',
+      "clash-project-sidebar-header-content clash-project-chrome-header-content flex min-w-0 flex-1 items-center",
     );
     expect(projectEditorSource).not.toContain(
       "translate-y-[var(--clash-control-gap,0.25rem)]",
     );
     const headerContentRule =
-      globalCss.match(/\.clash-project-chrome-header-content\s*\{[\s\S]*?\n\}/)?.[0] ?? "";
+      globalCss.match(
+        /\.clash-project-chrome-header-content\s*\{[\s\S]*?\n\}/,
+      )?.[0] ?? "";
     expect(headerContentRule).toContain("transform: translateY(");
-    expect(headerContentRule).toContain("--clash-project-header-content-offset-y");
+    expect(headerContentRule).toContain(
+      "--clash-project-header-content-offset-y",
+    );
     expect(headerContentRule).toContain("var(--clash-control-gap, 0.25rem)");
-    expect(projectEditorSource).toMatch(
+    // Collapsed no longer compacts the header: the body is always full.
+    expect(projectEditorSource).not.toMatch(
       /isProjectNavigatorCollapsed\s*\?\s*["']{2}\s*:\s*["']-ml-px["']/,
     );
+    expect(projectEditorSource).toContain("clash-project-return-button");
     expect(projectWorkspaceNavigatorSource).toContain(
       'className="min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-[var(--clash-project-action-phase,0.5rem)]"',
     );
@@ -136,8 +149,8 @@ describe("ProjectEditor toolbar surface", () => {
     expect(projectWorkspaceNavigatorSource).toContain(
       'aria-label="Search project"',
     );
-    expect(projectEditorSource).toContain(
-      "clash-canvas-toolbar-surface pointer-events-auto flex w-12 flex-col items-center gap-0 rounded-lg py-[var(--clash-project-action-phase)] transition-colors [--clash-toolbar-section-gap:var(--clash-project-action-phase)]",
+    expect(projectEditorSource).toMatch(
+      /clash-canvas-toolbar-surface pointer-events-auto flex[^"']*flex-col items-center/,
     );
     expect(projectEditorSource).toContain(
       'className="flex w-full flex-col items-center gap-0"',
@@ -238,8 +251,10 @@ describe("ProjectEditor toolbar surface", () => {
       "onOpenChange={(open) => setActiveMenu",
     );
     expect(projectEditorSource).not.toContain("setActiveMenu(null)");
-    expect(projectEditorSource).toContain("data-[state=open]:bg-brand/10");
-    expect(projectEditorSource).toContain("data-[state=open]:text-brand");
+    expect(projectEditorSource).toContain("clash-workspace-icon-control");
+    expect(globalCss).toMatch(
+      /\.clash-canvas-toolbar-surface[\s\S]*?\.clash-workspace-icon-control\[data-state="open"\][\s\S]*?background:\s*var\(--control-bg-open\)/,
+    );
   });
 
   it("does not let the menu surface override fixed flyout positioning", () => {
@@ -276,5 +291,8 @@ describe("ProjectEditor toolbar surface", () => {
       "<PresenceBar clients={otherClients} />",
     );
     expect(projectEditorSource).toContain("footer={<UserControls compact />}");
+    expect(projectWorkspaceNavigatorSource).toContain(
+      'aria-label="Project controls"',
+    );
   });
 });

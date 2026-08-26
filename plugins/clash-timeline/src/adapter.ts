@@ -402,37 +402,27 @@ export function createTimelineAdapter(
         return { ...base, completed: false, status: "pending" };
       const deadline = Date.now() + (input.timeoutMs ?? 1_800_000);
       while (true) {
-        const polled =
-          target.kind === "project-assets"
-            ? await request(input, {
-                action: "list_timeline_renders",
-                status: "all",
-              })
-            : await request(input, {
-                action: "get",
-                canvasId: target.canvasId,
-                nodeId: submitted.renderNodeId,
-              });
-        const renderNode =
-          target.kind === "project-assets"
-            ? Array.isArray(polled.value.renders)
-              ? polled.value.renders
-                  .map((entry) =>
-                    entry && typeof entry === "object"
-                      ? (entry as { node?: unknown }).node
-                      : undefined,
-                  )
-                  .find(
-                    (node) =>
-                      node &&
-                      typeof node === "object" &&
-                      (node as { id?: unknown }).id === submitted.renderNodeId,
-                  )
-              : undefined
-            : polled.value.node;
+        const polled = await request(input, {
+          action: "list_timeline_renders",
+          status: "all",
+        });
+        const renderNode = Array.isArray(polled.value.renders)
+          ? polled.value.renders
+              .map((entry) =>
+                entry && typeof entry === "object"
+                  ? (entry as { node?: unknown }).node
+                  : undefined,
+              )
+              .find(
+                (node) =>
+                  node &&
+                  typeof node === "object" &&
+                  (node as { id?: unknown }).id === submitted.renderNodeId,
+              )
+          : undefined;
         if (!renderNode || typeof renderNode !== "object") {
           throw new Error(
-            `Timeline render node ${submitted.renderNodeId} was not returned by Host readback`,
+            `Timeline native render ${submitted.renderNodeId} was not returned by Host readback`,
           );
         }
         const data =

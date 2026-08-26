@@ -161,6 +161,189 @@ describe("Local Generator contract boundary", () => {
     expect(built.request.executor).not.toHaveProperty("realm");
   });
 
+  it("freezes a generic Host-selected model and exact Provider route in the public Run request and fingerprint", () => {
+    const routeA = {
+      providerId: "dummy-provider",
+      upstreamId: "dummy-upstream",
+      upstreamModel: "dummy/upstream-a",
+      apiShape: "dummy-shape",
+    };
+    const selected = build(undefined, {
+      modelSelection: {
+        semanticShape: "dummy_analysis",
+        modelId: "dummy-card",
+        route: routeA,
+      },
+    });
+    const other = build(undefined, {
+      modelSelection: {
+        semanticShape: "dummy_analysis",
+        modelId: "other-card",
+        route: routeA,
+      },
+    });
+    const otherRoute = build(undefined, {
+      modelSelection: {
+        semanticShape: "dummy_analysis",
+        modelId: "dummy-card",
+        route: { ...routeA, upstreamModel: "dummy/upstream-b" },
+      },
+    });
+
+    expect(selected.request.modelSelection).toEqual({
+      semanticShape: "dummy_analysis",
+      modelId: "dummy-card",
+      route: routeA,
+    });
+    expect(selected.request.invocationFingerprint).not.toBe(
+      other.request.invocationFingerprint,
+    );
+    expect(selected.request.invocationFingerprint).not.toBe(
+      otherRoute.request.invocationFingerprint,
+    );
+  });
+
+  it("derives a selected multi-output Run contract from the trusted definition declaration", () => {
+    const selectedDefinition: GeneratorDefinition = {
+      ...definition,
+      actions: [
+        {
+          id: "analyze",
+          executorExportId: "analyze",
+          parametersSchema: {
+            type: "object",
+            properties: {
+              categories: {
+                type: "array",
+                items: { type: "string" },
+                minItems: 1,
+                uniqueItems: true,
+              },
+            },
+            required: ["categories"],
+            additionalProperties: false,
+          },
+          selectOutputsByParameter: "categories",
+          invocationInputs: [
+            {
+              slot: "source",
+              accepts: [{ kind: "media", mediaKind: "image" }],
+              cardinality: { minItems: 1, maxItems: 1 },
+            },
+          ],
+          outputs: ["description", "tags"].map((slot) => ({
+            slot,
+            title: slot,
+            sourceMediaKinds: ["image" as const],
+            prompt: `Return ${slot}`,
+            assetType: {
+              kind: "document" as const,
+              documentKind: `media.analysis.${slot}`,
+              schemaVersion: 1,
+            },
+            cardinality: { minItems: 0, maxItems: 1 },
+          })),
+        },
+      ],
+    };
+    const doc = projectDoc();
+    const created = createProjectAsset(doc, {
+      id: "source-image",
+      kind: "image",
+      source: { kind: "owned", resourceId: "resource-source" },
+      lifecycle: { state: "active" },
+      metadata: { contentType: "image/png" },
+    });
+    if (!created.ok) throw new Error(created.error.message);
+
+    const built = buildLocalGeneratorActionRun({
+      doc,
+      definition: selectedDefinition,
+      actionRunId: "analysis-run",
+      generatorRevision: {
+        generatorId: "stage",
+        generatorRevisionId: "stage:r1",
+      },
+      actionId: "analyze",
+      parameters: { categories: ["tags"] },
+      invocationInputRefs: [
+        {
+          slot: "source",
+          target: { kind: "media", projectAssetId: "source-image" },
+        },
+      ],
+    });
+
+    expect(built.request.outputContract).toEqual([
+      expect.objectContaining({
+        slot: "tags",
+        cardinality: { minItems: 1, maxItems: 1 },
+      }),
+    ]);
+    expect(built.request.parameters).toEqual({ categories: ["tags"] });
+  });
+
+  it("rejects duplicate, unknown, and source-inapplicable selected outputs", () => {
+    const action = definition.actions[0]!;
+    const selectedDefinition: GeneratorDefinition = {
+      ...definition,
+      actions: [{
+        ...action,
+        selectOutputsByParameter: "categories",
+        parametersSchema: {
+          type: "object",
+          properties: {
+            categories: { type: "array", items: { type: "string" }, minItems: 1 },
+          },
+          required: ["categories"],
+          additionalProperties: false,
+        },
+        invocationInputs: [{
+          slot: "source",
+          accepts: [{ kind: "media", mediaKind: "image" }],
+          cardinality: { minItems: 1, maxItems: 1 },
+        }],
+        outputs: [
+          {
+            slot: "description",
+            sourceMediaKinds: ["image"],
+            assetType: { kind: "document", documentKind: "media.analysis.description", schemaVersion: 1 },
+            cardinality: { minItems: 0, maxItems: 1 },
+          },
+          {
+            slot: "audio-semantics",
+            sourceMediaKinds: ["audio"],
+            assetType: { kind: "document", documentKind: "media.analysis.audio-semantics", schemaVersion: 1 },
+            cardinality: { minItems: 0, maxItems: 1 },
+          },
+        ],
+      }],
+    };
+    const doc = projectDoc();
+    expect(createProjectAsset(doc, {
+      id: "source-image",
+      kind: "image",
+      source: { kind: "owned", resourceId: "resource-source" },
+      lifecycle: { state: "active" },
+      metadata: { contentType: "image/png" },
+    })).toMatchObject({ ok: true });
+    const invoke = (categories: string[]) => buildLocalGeneratorActionRun({
+      doc,
+      definition: selectedDefinition,
+      actionRunId: "analysis-rejected",
+      generatorRevision: { generatorId: "stage", generatorRevisionId: "stage:r1" },
+      actionId: "render-still",
+      parameters: { categories },
+      invocationInputRefs: [{
+        slot: "source",
+        target: { kind: "media", projectAssetId: "source-image" },
+      }],
+    });
+    expect(() => invoke(["description", "description"])).toThrow(/duplicate/i);
+    expect(() => invoke(["invented"])).toThrow(/unknown category/i);
+    expect(() => invoke(["audio-semantics"])).toThrow(/not applicable/i);
+  });
+
   it("keeps retry equivalence separate from intentional Run identity", () => {
     const first = build();
     const rerun = build(projectDoc(), { actionRunId: "run-2" });

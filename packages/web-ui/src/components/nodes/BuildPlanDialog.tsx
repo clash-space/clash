@@ -1,10 +1,11 @@
 import { memo, useId, useMemo } from "react";
-import { Warning, WarningCircle, X, Play } from "@phosphor-icons/react";
+import { X, Play } from "@phosphor-icons/react";
 import { summarizeInvocations, type BuildPlan } from "./buildPlan";
 import { Dialog } from "../ui/dialog";
 import { Tooltip } from "../ui/tooltip";
 import { IconButton } from "../ui/icon-button";
 import { Button } from "../ui/button";
+import { InlineAlert } from "../ui/feedback";
 
 interface BuildPlanDialogProps {
   open: boolean;
@@ -87,38 +88,21 @@ const BuildPlanDialog = ({
 
       <div className="px-4 sm:px-6 py-4 sm:py-5 flex-1 overflow-y-auto space-y-4 sm:space-y-5">
         {plan.cycle && (
-          <div
-            role="alert"
-            className="clash-node-alert-error flex items-start gap-2 rounded-lg px-3 py-2.5 text-xs"
-          >
-            <WarningCircle
-              size={16}
-              weight="fill"
-              className="shrink-0 mt-0.5"
-              aria-hidden="true"
-            />
-            <div>
-              Cycle detected in dependency graph. Resolve the cycle and try
-              again.
-            </div>
-          </div>
+          <InlineAlert
+            tone="error"
+            title="Cycle detected in dependency graph"
+            message="Resolve the cycle and try again."
+          />
         )}
 
         {plan.blockers.length > 0 && (
-          <div role="alert" className="space-y-1">
+          <div className="space-y-1">
             {plan.blockers.map((msg, i) => (
-              <div
+              <InlineAlert
                 key={i}
-                className="clash-node-alert-error flex items-start gap-2 rounded-lg px-3 py-2 text-xs"
-              >
-                <WarningCircle
-                  size={14}
-                  weight="fill"
-                  className="shrink-0 mt-0.5"
-                  aria-hidden="true"
-                />
-                <span>{msg}</span>
-              </div>
+                tone="error"
+                title={msg}
+              />
             ))}
           </div>
         )}
@@ -126,18 +110,11 @@ const BuildPlanDialog = ({
         {plan.warnings.length > 0 && (
           <div className="space-y-1">
             {plan.warnings.map((msg, i) => (
-              <div
+              <InlineAlert
                 key={i}
-                className="flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200"
-              >
-                <Warning
-                  size={14}
-                  weight="fill"
-                  className="shrink-0 mt-0.5"
-                  aria-hidden="true"
-                />
-                <span>{msg}</span>
-              </div>
+                tone="warning"
+                title={msg}
+              />
             ))}
           </div>
         )}

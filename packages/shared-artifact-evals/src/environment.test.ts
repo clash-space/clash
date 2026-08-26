@@ -751,6 +751,58 @@ describe("benchmark Environment transition", () => {
     );
   });
 
+  it("seals an ATIF projection infrastructure failure without requiring a missing receipt", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-bench-atif-failure-"));
+    roots.push(root);
+    const suiteRoot = join(root, "suite");
+    const caseRoot = join(root, "case");
+    const inputRoot = join(suiteRoot, "environments", "base-v1");
+    const modifiedRoot = join(caseRoot, "modified-workspace");
+    const input = await createWorkspaceBundle(inputRoot, "input-project");
+    await createWorkspaceBundle(modifiedRoot, "input-project", "modified");
+    const benchmarkCase = benchmark(input.integrity.bundleDigest);
+    const caseReport = report(caseRoot, "fail");
+    caseReport.failure = {
+      classification: "infrastructure",
+      retryable: true,
+      phase: "atif-projection",
+      detail: "Unsupported Pi control event",
+    };
+    await writeCaseEvidence(caseRoot, caseReport, benchmarkCase);
+    await Promise.all([
+      rm(join(caseRoot, "logs", "trajectory.atif.json")),
+      rm(join(caseRoot, "logs", "trajectory.atif-receipt.json")),
+    ]);
+
+    const capture = await writeBenchmarkAttemptCapture({
+      caseRoot,
+      suiteId: "functional-suite",
+      runId: "pi-atif-failure-run",
+      benchmark: benchmarkCase,
+      agent: {
+        adapter: "pi",
+        provider: "test-provider",
+        model: "test-model",
+      },
+      report: caseReport,
+      attempt: 1,
+      startedAt: "2026-08-15T08:00:00.000Z",
+      finishedAt: "2026-08-15T08:00:02.000Z",
+      inputWorkspaceBundle: inputRoot,
+      modifiedWorkspaceCapture: { status: "complete", path: modifiedRoot },
+      serviceVersion: "0.1.0",
+    });
+
+    expect(capture.atif).toEqual({
+      status: "unsupported",
+      format: "ATIF-v1.7",
+      detail: "Unsupported Pi control event",
+    });
+    await expect(
+      writeBenchmarkAttempt({ caseRoot, suiteRoot }),
+    ).resolves.toMatchObject({ path: "attempt.json" });
+  });
+
   it("emits a blocked result without fabricating either Workspace bundle", async () => {
     const root = await mkdtemp(join(tmpdir(), "clash-bench-blocked-"));
     roots.push(root);

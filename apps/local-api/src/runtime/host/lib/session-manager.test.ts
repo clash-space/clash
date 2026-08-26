@@ -27,8 +27,13 @@ function restoreEnv(previous: Record<string, string | undefined>): void {
   }
 }
 
-async function writeFakeAcpHarness(binDir: string, captureDir: string): Promise<void> {
-  const sdkUrl = pathToFileURL(require.resolve("@agentclientprotocol/sdk")).href;
+async function writeFakeAcpHarness(
+  binDir: string,
+  captureDir: string,
+): Promise<void> {
+  const sdkUrl = pathToFileURL(
+    require.resolve("@agentclientprotocol/sdk"),
+  ).href;
   const scriptPath = join(binDir, "fake-acp-harness.mjs");
   await writeFile(
     scriptPath,
@@ -43,6 +48,7 @@ async function writeFakeAcpHarness(binDir: string, captureDir: string): Promise<
       "const captureDir = process.env.CLASH_E2E_PROMPT_CAPTURE_DIR;",
       "const captureJsonDir = process.env.CLASH_E2E_PROMPT_CAPTURE_JSON_DIR;",
       "let currentModeId = 'ask';",
+      "let releaseHeldPrompt;",
       "const currentConfigValues = { mode: 'read-only', model: 'gpt-5.5', effort: 'low' };",
       "const configOptions = () => Object.entries(currentConfigValues).map(([id, currentValue]) => ({",
       "  id,",
@@ -54,7 +60,10 @@ async function writeFakeAcpHarness(binDir: string, captureDir: string): Promise<
       "",
       "class FakeAcpHarness {",
       "  constructor(connection) { this.connection = connection; }",
-      "  async initialize() {",
+      "  async initialize(params) {",
+      "    if (process.env.CLASH_E2E_CAPABILITY_CAPTURE_PATH) {",
+      "      await writeFile(process.env.CLASH_E2E_CAPABILITY_CAPTURE_PATH, JSON.stringify(params.clientCapabilities), 'utf8');",
+      "    }",
       "    const promptCapabilities = process.env.FAKE_EMBEDDED_CONTEXT === '1'",
       "      ? { embeddedContext: true }",
       "      : {};",
@@ -90,13 +99,17 @@ async function writeFakeAcpHarness(binDir: string, captureDir: string): Promise<
       "    if (captureJsonDir) {",
       "      await writeFile(join(captureJsonDir, `${harnessId}.json`), JSON.stringify(params.prompt, null, 2), 'utf8');",
       "    }",
+      "    if (process.env.FAKE_HOLD_PROMPT === '1') {",
+      "      await new Promise((resolve) => { releaseHeldPrompt = resolve; });",
+      "      return { stopReason: 'cancelled' };",
+      "    }",
       "    await this.connection.sessionUpdate({",
       "      sessionId: params.sessionId,",
       "      update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `ok ${harnessId}` } },",
       "    });",
       "    return { stopReason: 'end_turn' };",
       "  }",
-      "  async cancel() {}",
+      "  async cancel() { releaseHeldPrompt?.(); }",
       "}",
       "",
       "const input = Writable.toWeb(process.stdout);",
@@ -107,16 +120,24 @@ async function writeFakeAcpHarness(binDir: string, captureDir: string): Promise<
     { mode: 0o755 },
   );
 
-  for (const binaryName of ["codex-acp", "claude-agent-acp", "gemini", "clash-acp-gemini", "clash-acp-opencode", "hermes", "opencode", "openclaw"]) {
-    const geminiHelp = binaryName === "gemini"
-      ? [
-          "if [ \"${1:-}\" = \"--help\" ]; then",
-          "  echo 'Usage: gemini [options]'",
-          "  echo '      --experimental-acp          Starts the agent in ACP mode'",
-          "  exit 0",
-          "fi",
-        ]
-      : [];
+  for (const binaryName of [
+    "codex-acp",
+    "claude-agent-acp",
+    "gemini",
+    "clash-acp-gemini",
+    "clash-acp-opencode",
+    "opencode",
+  ]) {
+    const geminiHelp =
+      binaryName === "gemini"
+        ? [
+            'if [ "${1:-}" = "--help" ]; then',
+            "  echo 'Usage: gemini [options]'",
+            "  echo '      --experimental-acp          Starts the agent in ACP mode'",
+            "  exit 0",
+            "fi",
+          ]
+        : [];
     await writeFile(
       join(binDir, binaryName),
       [
@@ -133,33 +154,80 @@ async function writeFakeAcpHarness(binDir: string, captureDir: string): Promise<
 
 describe("applyPermissionModeToAgentSpec", () => {
   it("keeps the trusted local permission policy at the Clash host boundary", () => {
-    expect(selectAcpPermissionOutcome({
-      options: [
-        { optionId: "deny", name: "Deny", kind: "reject_once" },
-        { optionId: "allow", name: "Allow", kind: "allow_once" },
-      ],
-    } as never)).toEqual({ outcome: { outcome: "selected", optionId: "allow" } });
+    expect(
+      selectAcpPermissionOutcome({
+        options: [
+          { optionId: "deny", name: "Deny", kind: "reject_once" },
+          { optionId: "allow", name: "Allow", kind: "allow_once" },
+        ],
+      } as never),
+    ).toEqual({ outcome: { outcome: "selected", optionId: "allow" } });
   });
 
   it("does not mirror broker permission requests into transcript events", async () => {
-    const source = await readFile(new URL("./session-manager.ts", import.meta.url), "utf8");
+    const source = await readFile(
+      new URL("./session-manager.ts", import.meta.url),
+      "utf8",
+    );
     expect(source).not.toContain("emitPermissionEvents: true");
+  });
+
+  it("advertises both form and URL elicitation to ACP agents", async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "clash-session-elicitation-capabilities-"),
+    );
+    const binDir = join(root, "bin");
+    const captureDir = join(root, "captures");
+    const home = join(root, "home");
+    const capabilityPath = join(root, "client-capabilities.json");
+    await mkdir(binDir, { recursive: true });
+    await mkdir(captureDir, { recursive: true });
+    await mkdir(home, { recursive: true });
+    await writeFakeAcpHarness(binDir, captureDir);
+    const previousEnv = {
+      CLASH_ACP_BIN_DIR: process.env.CLASH_ACP_BIN_DIR,
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+    };
+    process.env.CLASH_ACP_BIN_DIR = "";
+    process.env.PATH = "";
+    process.env.HOME = home;
+
+    try {
+      const manager = new SessionManager(() => undefined);
+      manager.setSpawnEnv({
+        CLASH_E2E_PROMPT_CAPTURE_DIR: captureDir,
+        CLASH_E2E_CAPABILITY_CAPTURE_PATH: capabilityPath,
+      });
+      await manager.start({
+        session_id: "session-elicitation-capabilities",
+        agent_template_id: "clash",
+        agent_id: "codex-acp",
+        agent_spec: { command: join(binDir, "codex-acp") },
+      });
+
+      expect(JSON.parse(await readFile(capabilityPath, "utf8"))).toMatchObject({
+        elicitation: { form: {}, url: {} },
+      });
+      await manager.dispose("session-elicitation-capabilities");
+    } finally {
+      restoreEnv(previousEnv);
+    }
   });
 
   it("leaves the agent spec unchanged when no permission mode is selected", () => {
     const spec = { command: "codex-acp", args: ["--flag"], env: { KEEP: "1" } };
-    expect(applyPermissionModeToAgentSpec(
-      "codex-acp",
-      spec,
-    )).toBe(spec);
+    expect(applyPermissionModeToAgentSpec("codex-acp", spec)).toBe(spec);
   });
 
   it("does not translate Codex ACP permission to local CLI flags", () => {
-    expect(applyPermissionModeToAgentSpec(
-      "codex-acp",
-      { command: "codex-acp", args: ["-c", "model=gpt-5.5"] },
-      "codex:review",
-    )).toEqual({
+    expect(
+      applyPermissionModeToAgentSpec(
+        "codex-acp",
+        { command: "codex-acp", args: ["-c", "model=gpt-5.5"] },
+        "codex:review",
+      ),
+    ).toEqual({
       command: "codex-acp",
       args: ["-c", "model=gpt-5.5"],
       env: { CLASH_PERMISSION_MODE: "codex:review" },
@@ -167,11 +235,13 @@ describe("applyPermissionModeToAgentSpec", () => {
   });
 
   it("preserves existing harness env while forwarding the selected permission mode", () => {
-    expect(applyPermissionModeToAgentSpec(
-      "codex-acp",
-      { command: "codex-acp", env: { EXISTING: "yes" } },
-      "codex:full-access",
-    )).toEqual({
+    expect(
+      applyPermissionModeToAgentSpec(
+        "codex-acp",
+        { command: "codex-acp", env: { EXISTING: "yes" } },
+        "codex:full-access",
+      ),
+    ).toEqual({
       command: "codex-acp",
       env: {
         EXISTING: "yes",
@@ -181,11 +251,13 @@ describe("applyPermissionModeToAgentSpec", () => {
   });
 
   it("leaves non-Codex harness arguments untouched and forwards the harness mode", () => {
-    expect(applyPermissionModeToAgentSpec(
-      "claude-acp",
-      { command: "claude-agent-acp" },
-      "claude:full-access",
-    )).toEqual({
+    expect(
+      applyPermissionModeToAgentSpec(
+        "claude-acp",
+        { command: "claude-agent-acp" },
+        "claude:full-access",
+      ),
+    ).toEqual({
       command: "claude-agent-acp",
       env: { CLASH_PERMISSION_MODE: "claude:full-access" },
     });
@@ -310,7 +382,9 @@ describe("SessionManager harness prompt contract", () => {
       });
 
       await manager.setMode("session-modes", "code");
-      expect([...sent].reverse().find((msg) => msg.type === "session.mode")).toEqual({
+      expect(
+        [...sent].reverse().find((msg) => msg.type === "session.mode"),
+      ).toEqual({
         type: "session.mode",
         session_id: "session-modes",
         modes: {
@@ -400,7 +474,9 @@ describe("SessionManager harness prompt contract", () => {
       HOME: process.env.HOME,
     };
     process.env.CLASH_ACP_BIN_DIR = binDir;
-    process.env.PATH = [binDir, previousEnv.PATH ?? ""].filter(Boolean).join(delimiter);
+    process.env.PATH = [binDir, previousEnv.PATH ?? ""]
+      .filter(Boolean)
+      .join(delimiter);
     process.env.HOME = home;
 
     try {
@@ -408,9 +484,7 @@ describe("SessionManager harness prompt contract", () => {
         ["codex-acp", "codex-acp"],
         ["claude-acp", "claude-agent-acp"],
         ["gemini", "clash-acp-gemini"],
-        ["hermes", "hermes"],
         ["opencode", "clash-acp-opencode"],
-        ["openclaw", "openclaw"],
       ] as const;
 
       for (const [agentId, binaryName] of harnesses) {
@@ -437,8 +511,17 @@ describe("SessionManager harness prompt contract", () => {
         });
         await manager.dispose(sessionId);
 
-        expect(sent.some((msg) => msg.type === "session.complete" && msg.turn_id === `turn-${agentId}`)).toBe(true);
-        const prompt = await readFile(join(captureDir, `${binaryName}.txt`), "utf-8");
+        expect(
+          sent.some(
+            (msg) =>
+              msg.type === "session.complete" &&
+              msg.turn_id === `turn-${agentId}`,
+          ),
+        ).toBe(true);
+        const prompt = await readFile(
+          join(captureDir, `${binaryName}.txt`),
+          "utf-8",
+        );
         expect(prompt).toBe(`identify ${agentId}`);
       }
     } finally {
@@ -464,7 +547,9 @@ describe("SessionManager harness prompt contract", () => {
       HOME: process.env.HOME,
     };
     process.env.CLASH_ACP_BIN_DIR = binDir;
-    process.env.PATH = [binDir, previousEnv.PATH ?? ""].filter(Boolean).join(delimiter);
+    process.env.PATH = [binDir, previousEnv.PATH ?? ""]
+      .filter(Boolean)
+      .join(delimiter);
     process.env.HOME = home;
 
     try {
@@ -489,20 +574,100 @@ describe("SessionManager harness prompt contract", () => {
       });
       await manager.dispose("session-embedded-context");
 
-      expect(sent.some((msg) => msg.type === "session.complete" && msg.turn_id === "turn-embedded-context")).toBe(true);
-      const promptBlocks = JSON.parse(await readFile(join(captureJsonDir, "codex-acp.json"), "utf-8"));
+      expect(
+        sent.some(
+          (msg) =>
+            msg.type === "session.complete" &&
+            msg.turn_id === "turn-embedded-context",
+        ),
+      ).toBe(true);
+      const promptBlocks = JSON.parse(
+        await readFile(join(captureJsonDir, "codex-acp.json"), "utf-8"),
+      );
       expect(promptBlocks).toEqual([{ type: "text", text: "read contract" }]);
     } finally {
       restoreEnv(previousEnv);
     }
   });
+
+  it("emits an acknowledged cancellation terminal instead of completion", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-session-cancelled-"));
+    const binDir = join(root, "bin");
+    const captureDir = join(root, "captures");
+    const home = join(root, "home");
+    await mkdir(binDir, { recursive: true });
+    await mkdir(captureDir, { recursive: true });
+    await mkdir(home, { recursive: true });
+    await writeFakeAcpHarness(binDir, captureDir);
+
+    const previousEnv = {
+      CLASH_ACP_BIN_DIR: process.env.CLASH_ACP_BIN_DIR,
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+    };
+    process.env.CLASH_ACP_BIN_DIR = binDir;
+    process.env.PATH = [binDir, previousEnv.PATH ?? ""]
+      .filter(Boolean)
+      .join(delimiter);
+    process.env.HOME = home;
+
+    try {
+      const sent: ManagerOut[] = [];
+      const manager = new SessionManager((message) => sent.push(message));
+      manager.setSpawnEnv({
+        CLASH_E2E_PROMPT_CAPTURE_DIR: captureDir,
+        FAKE_HOLD_PROMPT: "1",
+      });
+      await manager.start({
+        session_id: "session-cancelled",
+        agent_template_id: "clash",
+        agent_id: "codex-acp",
+        project_id: "project-cancelled",
+      });
+      const prompt = manager.prompt({
+        session_id: "session-cancelled",
+        turn_id: "turn-cancelled",
+        text: "keep running",
+      });
+      await expect
+        .poll(async () => {
+          try {
+            await lstat(join(captureDir, "codex-acp.txt"));
+            return true;
+          } catch {
+            return false;
+          }
+        })
+        .toBe(true);
+      manager.cancel("session-cancelled", "turn-cancelled");
+      await prompt;
+
+      expect(sent).toContainEqual({
+        type: "session.cancelled",
+        session_id: "session-cancelled",
+        turn_id: "turn-cancelled",
+      });
+      expect(
+        sent.some(
+          (message) =>
+            message.type === "session.complete" &&
+            message.turn_id === "turn-cancelled",
+        ),
+      ).toBe(false);
+      await manager.dispose("session-cancelled");
+    } finally {
+      restoreEnv(previousEnv);
+    }
+  }, 10_000);
 });
 
 describe("parseAgentDiagnosticStatus", () => {
   it("maps Codex sampling retries to a transient reconnecting status", () => {
-    expect(parseAgentDiagnosticStatus(
-      "2026-06-20T01:15:04.123Z WARN codex_core::responses_retry: stream disconnected - retrying sampling request (3/5 in 2.0s)...",
-    )).toEqual({
+    expect(
+      parseAgentDiagnosticStatus(
+        "2026-06-20T01:15:04.123Z WARN codex_core::responses_retry: stream disconnected - retrying sampling request (3/5 in 2.0s)...",
+      ),
+    ).toEqual({
       status: "reconnecting",
       attempt: 3,
       maxAttempts: 5,
@@ -512,9 +677,11 @@ describe("parseAgentDiagnosticStatus", () => {
   });
 
   it("maps Codex HTTP fallback diagnostics without treating them as assistant text", () => {
-    expect(parseAgentDiagnosticStatus(
-      "Handled error during turn: Falling back from WebSockets to HTTPS transport. request timed out",
-    )).toEqual({
+    expect(
+      parseAgentDiagnosticStatus(
+        "Handled error during turn: Falling back from WebSockets to HTTPS transport. request timed out",
+      ),
+    ).toEqual({
       status: "transport_fallback",
       message: "Switching transport",
       detail: "request timed out",
@@ -524,7 +691,11 @@ describe("parseAgentDiagnosticStatus", () => {
 
 describe("parseAgentDiagnostic", () => {
   it("keeps arbitrary stderr diagnostics as structured debug data", () => {
-    expect(parseAgentDiagnostic("2026-06-20T01:20:00.000Z WARN provider cache warmup took 3020ms")).toEqual({
+    expect(
+      parseAgentDiagnostic(
+        "2026-06-20T01:20:00.000Z WARN provider cache warmup took 3020ms",
+      ),
+    ).toEqual({
       stream: "stderr",
       severity: "warning",
       raw: "2026-06-20T01:20:00.000Z WARN provider cache warmup took 3020ms",
@@ -533,7 +704,11 @@ describe("parseAgentDiagnostic", () => {
   });
 
   it("attaches a transient status when stderr carries retry semantics", () => {
-    expect(parseAgentDiagnostic("WARN stream disconnected - retrying sampling request (4/5 in 4.0s)...")).toEqual({
+    expect(
+      parseAgentDiagnostic(
+        "WARN stream disconnected - retrying sampling request (4/5 in 4.0s)...",
+      ),
+    ).toEqual({
       stream: "stderr",
       severity: "warning",
       raw: "WARN stream disconnected - retrying sampling request (4/5 in 4.0s)...",

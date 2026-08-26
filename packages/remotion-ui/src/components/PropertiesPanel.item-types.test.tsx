@@ -71,6 +71,11 @@ const latestItem = <T extends Item>(stateRef: {
     .find((item) => item.id === stateRef.current!.selectedItemId) ??
     stateRef.current!.tracks.flatMap((track) => track.items)[0]) as T;
 
+const chooseInspectorOption = (selectName: string, optionName: string) => {
+  fireEvent.click(screen.getByRole("combobox", { name: selectName }));
+  fireEvent.click(screen.getByRole("option", { name: optionName }));
+};
+
 describe("PropertiesPanel item type coverage", () => {
   it("labels static item size as a source multiplier instead of pixels", () => {
     const image: ImageItem = {
@@ -126,9 +131,7 @@ describe("PropertiesPanel item type coverage", () => {
       ).toBeTruthy();
     }
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Mask shape" }), {
-      target: { value: "ellipse" },
-    });
+    chooseInspectorOption("Mask shape", "Ellipse");
     fireEvent.click(
       screen.getByRole("button", {
         name: "Add Mask position keyframe at current frame",
@@ -303,12 +306,7 @@ describe("PropertiesPanel item type coverage", () => {
         }) as HTMLInputElement
       ).value,
     ).toBe("200");
-    fireEvent.change(
-      screen.getByRole("combobox", { name: "Position keyframe interpolation" }),
-      {
-        target: { value: "hold" },
-      },
-    );
+    chooseInspectorOption("Position keyframe interpolation", "Hold");
 
     expect(latestItem<ImageItem>(stateRef).keyframes?.position?.[1]).toEqual({
       frame: 20,
@@ -466,9 +464,7 @@ describe("PropertiesPanel item type coverage", () => {
     ],
   ])("edits the rendered media fit for %s", (_label, item) => {
     const stateRef = renderInspector(item);
-    const fit = screen.getByRole("combobox", { name: "Media fit" });
-
-    fireEvent.change(fit, { target: { value: "cover" } });
+    chooseInspectorOption("Media fit", "Cover");
 
     expect(
       (latestItem(stateRef) as Item & { mediaFit?: string }).mediaFit,
@@ -487,12 +483,7 @@ describe("PropertiesPanel item type coverage", () => {
 
     expect(screen.getByText("Animation")).toBeTruthy();
     expect(screen.queryByText("Fades")).toBeNull();
-    fireEvent.change(
-      screen.getByRole("combobox", { name: "Entrance animation type" }),
-      {
-        target: { value: "zoom-in" },
-      },
-    );
+    chooseInspectorOption("Entrance animation type", "Zoom in");
     fireEvent.change(
       screen.getByRole("spinbutton", {
         name: "Entrance animation duration in frames",
@@ -501,12 +492,7 @@ describe("PropertiesPanel item type coverage", () => {
         target: { value: "18" },
       },
     );
-    fireEvent.change(
-      screen.getByRole("combobox", { name: "Exit animation type" }),
-      {
-        target: { value: "fade" },
-      },
-    );
+    chooseInspectorOption("Exit animation type", "Fade");
     fireEvent.change(
       screen.getByRole("spinbutton", {
         name: "Exit animation duration in frames",
@@ -539,9 +525,7 @@ describe("PropertiesPanel item type coverage", () => {
     };
     const stateRef = renderInspector(text);
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Text alignment" }), {
-      target: { value: "left" },
-    });
+    chooseInspectorOption("Text alignment", "Left");
     fireEvent.change(
       screen.getByRole("spinbutton", { name: "Text letter spacing in pixels" }),
       {
@@ -587,24 +571,14 @@ describe("PropertiesPanel item type coverage", () => {
     // sentence Text stickers. The selected sticker therefore owns one cue.
     expect(screen.getByText("1 cue")).toBeTruthy();
     expect(screen.queryByRole("textbox", { name: "Text content" })).toBeNull();
-    fireEvent.change(
-      screen.getByRole("combobox", { name: "Caption position" }),
-      {
-        target: { value: "top" },
-      },
-    );
+    chooseInspectorOption("Caption position", "Top");
     fireEvent.change(
       screen.getByRole("spinbutton", { name: "Caption font size" }),
       {
         target: { value: "58" },
       },
     );
-    fireEvent.change(
-      screen.getByRole("combobox", { name: "Caption font weight" }),
-      {
-        target: { value: "800" },
-      },
-    );
+    chooseInspectorOption("Caption font weight", "Extra bold");
 
     expect(latestItem<TextItem>(stateRef).style).toMatchObject({
       position: "top",

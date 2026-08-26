@@ -28,6 +28,16 @@
       "import": "./dist/local-daemon.js",
       "default": "./dist/local-daemon.js"
     },
+    "./generator-readback": {
+      "types": "./src/generator-readback.ts",
+      "import": "./src/generator-readback.ts",
+      "default": "./dist/generator-readback.js"
+    },
+    "./generator-client": {
+      "types": "./src/generator-client.ts",
+      "import": "./src/generator-client.ts",
+      "default": "./dist/generator-client.js"
+    },
     "./project-host-client": {
       "types": "./dist/project-host-client.d.ts",
       "import": "./dist/project-host-client.js",
@@ -59,6 +69,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@clash/action-sdk": "workspace:*",
     "@clash/asset-sdk": "workspace:*",
     "@clash/shared-types": "workspace:*"
   },

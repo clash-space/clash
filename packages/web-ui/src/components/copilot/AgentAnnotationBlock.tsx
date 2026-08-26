@@ -33,6 +33,7 @@ const SURFACE_LABELS = {
   timeline: "Timeline",
   "director-stage": "Director Stage",
   asset: "Asset",
+  browser: "Browser",
 } as const;
 
 function formatObjectType(objectType: string): string {
@@ -41,7 +42,7 @@ function formatObjectType(objectType: string): string {
     parts.splice(0, 2);
   } else if (
     parts.length > 1 &&
-    ["canvas", "timeline", "asset"].includes(parts[0])
+    ["canvas", "timeline", "asset", "browser"].includes(parts[0])
   ) {
     parts.shift();
   }
@@ -253,7 +254,7 @@ function AnnotationRow({
           aria-label={`Annotation ${number}: ${target.objectLabel}`}
           onClick={onOpen ?? onToggle}
           disabled={disabled}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand disabled:opacity-60"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-60"
         >
           <AnnotationNumberBadge number={number} />
           {target.previewAssetId ? (
@@ -418,7 +419,7 @@ export function AgentAnnotationTray({
             aria-label="Agent annotations"
             onClick={() => setOpen((value) => !value)}
             disabled={disabled}
-            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-warm-border bg-warm-surface py-1 pl-2 pr-2.5 text-[12px] font-medium leading-4 text-slate-900 transition-colors hover:bg-warm-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand disabled:opacity-60 dark:border-warm-border dark:bg-warm-surface dark:text-neutral-100 dark:hover:bg-warm-muted/60"
+            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-warm-border bg-warm-surface py-1 pl-2 pr-2.5 text-[12px] font-medium leading-4 text-slate-900 transition-colors hover:bg-warm-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-60 dark:border-warm-border dark:bg-warm-surface dark:text-neutral-100 dark:hover:bg-warm-muted/60"
           >
             {assetAnnotations.length > 0 ? (
               <span className="flex shrink-0 -space-x-1.5" aria-hidden="true">
@@ -659,7 +660,7 @@ export function AgentAnnotationInspector({
                     aria-label={`Open annotation ${index + 1}: ${candidate.target.objectLabel}`}
                     aria-current={selected ? "true" : undefined}
                     onClick={() => onSelect(candidate.id)}
-                    className={`flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand ${
+                    className={`flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
                       selected
                         ? "bg-warm-muted text-content-primary"
                         : "text-content-secondary hover:bg-warm-muted/60 hover:text-content-primary"

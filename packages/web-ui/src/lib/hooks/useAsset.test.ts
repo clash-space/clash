@@ -211,14 +211,14 @@ describe("useAsset", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("returns undefined when the fetch fails (does not throw)", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("boom", { status: 500 }),
-    );
+  it("returns undefined after fetch retries are exhausted (does not throw)", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("boom", { status: 500 }));
 
     const { result } = renderHook(() => useAsset("project-1", "asset-error"));
-    // Allow the effect+catch to settle
-    await new Promise((r) => setTimeout(r, 10));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
     expect(result.current).toBeUndefined();
   });
 

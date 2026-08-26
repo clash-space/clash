@@ -41,19 +41,23 @@ describe("SettingsClient primitives", () => {
     expect(fallbackSource).not.toContain("<CollapsibleTrigger className=");
   });
 
-  it("uses shared collapsible primitives for agent runtime groups", () => {
+  it("uses shared tabs for machine selection and shared settings rows for agents", () => {
     const source = readSource("packages/web-ui/src/components/SettingsClient.tsx");
+    const agentsStart = source.indexOf("function AgentsSection()");
+    const agentsEnd = source.indexOf(
+      "function UninstallHarnessDialog",
+      agentsStart,
+    );
+    const agentsSource = source.slice(agentsStart, agentsEnd);
 
-    expect(source).toContain("<Collapsible");
-    expect(source).toContain("CollapsibleTrigger asChild");
-    expect(source).toContain("CollapsibleContent asChild");
-    expect(source).toContain("group-data-[state=open]/runtime-group:rotate-90");
-    expect(source).not.toContain("const [collapsedRuntimeIds, setCollapsedRuntimeIds]");
-    expect(source).not.toContain("setRuntimeCollapsed");
-    expect(source).not.toContain("open={!collapsed}");
-    expect(source).not.toContain("aria-expanded={!collapsed}");
-    expect(source).not.toContain("onClick={() => toggleRuntimeCollapsed(group.id)}");
-    expect(source).not.toContain("const toggleRuntimeCollapsed");
+    expect(agentsSource).toContain("<TabProvider");
+    expect(agentsSource).toContain('aria-label="Runtime machines"');
+    expect(agentsSource).toContain("<Tab");
+    expect(agentsSource).toContain("<SettingsCollection");
+    expect(agentsSource).toContain("<SettingsRow");
+    expect(agentsSource).not.toContain("RuntimeGroupCollapsible");
+    expect(agentsSource).not.toContain("Collapse ${group.label}");
+    expect(agentsSource).not.toContain("Expand ${group.label}");
   });
 
   it("uses the shared radio group primitive for sync mode selection", () => {
@@ -146,9 +150,32 @@ describe("SettingsClient primitives", () => {
     expect(source).not.toMatch(/<button[\s\S]{0,180}setSetupDialog\(null\)/);
   });
 
-  it("does not render native buttons directly in SettingsClient", () => {
+  it("does not render native buttons, selects, or textareas directly in SettingsClient", () => {
     const source = readSource("packages/web-ui/src/components/SettingsClient.tsx");
 
-    expect(source).not.toContain("<button");
+    expect(sourceContains(source, "<button")).toBe(false);
+    expect(sourceContains(source, "<select")).toBe(false);
+    expect(sourceContains(source, "<textarea")).toBe(false);
+  });
+
+  it("keeps model detail fields, wireless lists, and save actions on shared primitives", () => {
+    const source = readSource("packages/web-ui/src/components/SettingsClient.tsx");
+    const detailStart = source.indexOf("const renderModelDetail =");
+    const detailEnd = source.indexOf(
+      "\n  return (\n    <SettingsSectionLayout>",
+      detailStart,
+    );
+    const detailSource = source.slice(detailStart, detailEnd);
+
+    expect(detailStart).toBeGreaterThan(-1);
+    expect(detailEnd).toBeGreaterThan(detailStart);
+    expect(sourceContains(detailSource, '<SettingsFieldGroup label="Model description">')).toBe(true);
+    expect(sourceContains(detailSource, '<Textarea aria-label="Model description"')).toBe(true);
+    expect(sourceContains(detailSource, '<SettingsFieldGroup label="Prompt guidance">')).toBe(true);
+    expect(sourceContains(detailSource, '<Textarea aria-label="Prompt guidance"')).toBe(true);
+    expect(sourceContains(detailSource, '<SettingsCollection as="ul"')).toBe(true);
+    expect(sourceContains(detailSource, '<SettingsRow as="li"')).toBe(true);
+    expect(sourceContains(detailSource, '<SettingsActions className="justify-between pt-2">')).toBe(true);
+    expect(sourceMatches(detailSource, /<Button.{0,100}type="submit".{0,100}variant="primary".{0,180}Save model card/)).toBe(true);
   });
 });

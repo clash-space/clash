@@ -22,5 +22,11 @@ export default defineConfig({
     "../../packages/shared-types/src",
     "../../packages/clash-sdk/js/src",
   ],
+  ignoreWatch: [
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+  ],
   onSuccess: "electron .",
 });

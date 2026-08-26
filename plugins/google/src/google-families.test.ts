@@ -382,6 +382,73 @@ describe("Google API families", () => {
     });
   });
 
+  it("maps generic video analysis controls to Gemini videoMetadata and mediaResolution", async () => {
+    const requests: CapturedRequest[] = [];
+    await googleAdapter.submit(
+      invocation(
+        {
+          modelId: "gemini-3.5-flash",
+          upstreamModel: "gemini-3.5-flash",
+          kind: "text",
+          prompt: "Review this boundary.",
+          modelParams: {
+            video_fps: 12,
+            video_start_seconds: 4.25,
+            video_end_seconds: 6.75,
+            video_media_resolution: "high",
+          },
+        },
+        {
+          references: [{
+            slot: "video",
+            index: 0,
+            asset: {
+              assetId: "analysis-video",
+              uri: "clash-asset://analysis-video",
+              kind: "video",
+            },
+          }],
+        },
+      ),
+      context(
+        { candidates: [{ content: { parts: [{ text: '{"boundaryMs":5000}' }] } }] },
+        requests,
+        undefined,
+        async () => ({
+          form: "provider-url",
+          providerUrl: "https://objects.example.test/video.mp4?sig=1",
+          expiresAt: "2026-08-13T12:00:00.000Z",
+          kind: "video",
+          mediaType: "video/mp4",
+        }),
+      ),
+    );
+
+    expect(requests[0]?.body).toMatchObject({
+      contents: [{
+        role: "user",
+        parts: [
+          { text: "Review this boundary." },
+          {
+            fileData: {
+              mimeType: "video/mp4",
+              fileUri: "https://objects.example.test/video.mp4?sig=1",
+            },
+            videoMetadata: {
+              fps: 12,
+              startOffset: "4.25s",
+              endOffset: "6.75s",
+            },
+          },
+        ],
+      }],
+      generationConfig: {
+        responseModalities: ["TEXT"],
+        mediaResolution: "MEDIA_RESOLUTION_HIGH",
+      },
+    });
+  });
+
   it("submits Veo text/reference work through predictLongRunning", async () => {
     const requests: CapturedRequest[] = [];
     const result = await googleAdapter.submit(

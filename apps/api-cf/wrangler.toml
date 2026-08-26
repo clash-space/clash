@@ -4,6 +4,24 @@ main = "src/index.ts"
 compatibility_date = "2025-03-14"
 compatibility_flags = ["nodejs_compat"]
 
+# loro-crdt's default export condition is the wasm-URL build
+# (`new URL("./loro_wasm_bg.wasm", import.meta.url)`), which Wrangler's plain
+# esbuild bundle can't resolve — the Worker crashes on startup. The `base64`
+# entry fails differently: it compiles wasm at runtime, which workerd forbids
+# ("Wasm code generation disallowed by embedder"). The `bundler` entry has an
+# explicit Cloudflare Workers path and statically imports its .wasm, which
+# workerd accepts as a precompiled module. Alias the bare specifier centrally
+# instead of rewriting every source import.
+[alias]
+"loro-crdt" = "loro-crdt/bundler"
+
+# Static `.wasm` imports (loro-crdt/bundler) must be bundled as precompiled
+# WebAssembly modules rather than fetched or eval'd at runtime.
+[[rules]]
+type = "CompiledWasm"
+globs = ["**/*.wasm"]
+fallthrough = true
+
 [observability]
 enabled = true
 

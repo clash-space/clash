@@ -747,6 +747,9 @@ function parsePiTurns(events: ParsedEvent[]): {
 } {
   let sessionId: string | undefined;
   let current: Turn | undefined;
+  let agentActive = false;
+  let retryActive = false;
+  let compactionActive = false;
   const turns: Turn[] = [];
 
   for (const event of events) {
@@ -762,13 +765,14 @@ function parsePiTurns(events: ParsedEvent[]): {
       continue;
     }
     if (type === "agent_start") {
-      if (!sessionId || current || turns.length > 0) {
+      if (!sessionId || current || agentActive) {
         throw new Error("Pi event turn structure is invalid");
       }
+      agentActive = true;
       continue;
     }
     if (type === "turn_start") {
-      if (!sessionId || current) {
+      if (!sessionId || current || !agentActive) {
         throw new Error("Pi event turn structure is invalid");
       }
       current = newTurn();
@@ -904,8 +908,60 @@ function parsePiTurns(events: ParsedEvent[]): {
       current = undefined;
       continue;
     }
-    if (type === "agent_end" || type === "agent_settled") {
-      if (!sessionId || current) {
+    if (type === "agent_end") {
+      if (!sessionId || current || !agentActive) {
+        throw new Error("Pi event turn structure is invalid");
+      }
+      agentActive = false;
+      continue;
+    }
+    if (type === "auto_retry_start") {
+      if (
+        !sessionId ||
+        current ||
+        agentActive ||
+        compactionActive
+      ) {
+        throw new Error("Pi event turn structure is invalid");
+      }
+      retryActive = true;
+      continue;
+    }
+    if (type === "auto_retry_end") {
+      if (!sessionId || !retryActive) {
+        throw new Error("Pi event turn structure is invalid");
+      }
+      retryActive = false;
+      continue;
+    }
+    if (type === "compaction_start") {
+      if (
+        !sessionId ||
+        current ||
+        agentActive ||
+        retryActive ||
+        compactionActive
+      ) {
+        throw new Error("Pi event turn structure is invalid");
+      }
+      compactionActive = true;
+      continue;
+    }
+    if (type === "compaction_end") {
+      if (!sessionId || !compactionActive) {
+        throw new Error("Pi event turn structure is invalid");
+      }
+      compactionActive = event.value.willRetry === true;
+      continue;
+    }
+    if (type === "agent_settled") {
+      if (
+        !sessionId ||
+        current ||
+        agentActive ||
+        retryActive ||
+        compactionActive
+      ) {
         throw new Error("Pi event turn structure is invalid");
       }
       continue;
@@ -915,7 +971,14 @@ function parsePiTurns(events: ParsedEvent[]): {
     );
   }
 
-  if (!sessionId || current || turns.length === 0) {
+  if (
+    !sessionId ||
+    current ||
+    agentActive ||
+    retryActive ||
+    compactionActive ||
+    turns.length === 0
+  ) {
     throw new Error("Pi event turn structure is invalid");
   }
   return { sessionId, turns };

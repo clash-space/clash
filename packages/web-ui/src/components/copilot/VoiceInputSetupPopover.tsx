@@ -8,6 +8,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "../ui/popover";
+import { InlineAlert } from "../ui/feedback";
 
 export interface VoiceInputNotice {
   message: string;
@@ -47,38 +48,32 @@ export function VoiceInputSetupPopover({
           side="top"
           align="end"
           sideOffset={8}
-          className="w-[min(20rem,calc(100vw-1.5rem))] p-3"
+          className="w-[min(22rem,calc(100vw-1.5rem))] overflow-hidden p-0"
         >
-          <div className="flex items-start gap-2.5">
-            <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-warm-muted text-content-secondary">
+          <InlineAlert
+            tone="error"
+            title="Voice input unavailable"
+            message={notice.message}
+            icon={
               <Microphone
                 className="h-4 w-4"
                 weight="bold"
-                aria-hidden="true"
               />
-            </span>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-content-primary">
-                Voice input unavailable
-              </p>
-              <p
-                role="alert"
-                className="mt-1 text-xs leading-5 text-content-secondary"
-              >
-                {notice.message}
-              </p>
-              {notice.action ? (
+            }
+            action={
+              notice.action ? (
                 <PopoverClose asChild>
                   <Link
                     to={notice.action.href}
-                    className="mt-2 inline-flex text-xs font-semibold text-brand underline-offset-2 hover:underline"
+                    className="inline-flex text-xs font-semibold text-current underline underline-offset-2"
                   >
                     {notice.action.label}
                   </Link>
                 </PopoverClose>
-              ) : null}
-            </div>
-          </div>
+              ) : undefined
+            }
+            className="rounded-[inherit] border-0"
+          />
         </PopoverContent>
       ) : null}
     </Popover>

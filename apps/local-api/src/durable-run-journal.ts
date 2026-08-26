@@ -126,8 +126,15 @@ function parseRecord(text: string, sourceIdentity: string): DurableRunRecord {
     throw corrupt(sourceIdentity, "owner must be an object");
   }
   const ownerRecord = owner as Record<string, unknown>;
-  if (ownerRecord.realm !== "local" && ownerRecord.realm !== "cloud") {
-    throw corrupt(sourceIdentity, "owner.realm must be local or cloud");
+  if (
+    ownerRecord.realm !== "local" &&
+    ownerRecord.realm !== "cloud" &&
+    ownerRecord.realm !== "client"
+  ) {
+    throw corrupt(
+      sourceIdentity,
+      "owner.realm must be local, cloud, or client",
+    );
   }
   if (typeof ownerRecord.id !== "string" || !ownerRecord.id.trim()) {
     throw corrupt(sourceIdentity, "owner.id must be a non-empty string");

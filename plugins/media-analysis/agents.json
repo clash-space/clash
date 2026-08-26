@@ -1,0 +1,10 @@
+{
+  "name": "clash.media-analysis",
+  "summary": "First-party inert media-analysis Generator producing selected typed semantic Documents.",
+  "rules": [
+    "Generator output declarations are the sole category authority.",
+    "Do not add verbatim transcript output; ASR owns transcripts.",
+    "This Generator declares semanticShape=media_analysis and must not recognize any Provider or Hilo implementation.",
+    "Importing src/stdio.ts must never start analysis or stdio serving."
+  ]
+}

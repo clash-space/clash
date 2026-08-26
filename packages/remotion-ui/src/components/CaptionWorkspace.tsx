@@ -211,7 +211,7 @@ export const CaptionWorkspace: React.FC<CaptionWorkspaceProps> = ({
               role="tab"
               aria-selected={view === candidate.id}
               onClick={() => setView(candidate.id)}
-              className={`clash-workbench-control-button h-8 shrink-0 whitespace-nowrap px-2 text-[length:var(--clash-editor-text-control)] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 ${
+              className={`clash-workbench-control-button h-8 shrink-0 whitespace-nowrap px-2 text-[length:var(--clash-editor-text-control)] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 ${
                 view === candidate.id
                   ? 'bg-brand/[0.10] text-brand'
                   : 'text-content-muted hover:bg-warm-hover hover:text-content-primary'
@@ -319,7 +319,7 @@ export const CaptionWorkspace: React.FC<CaptionWorkspaceProps> = ({
                             dispatch({ type: 'SELECT_ITEM', payload: entry.item.id });
                           }}
                           onChange={(event) => updateCueText(entry, cue.id, event.target.value)}
-                          className={`w-full resize-none rounded-md border border-warm-border bg-warm-surface px-2 py-1.5 text-content-primary outline-none focus:border-brand/50 focus:ring-2 focus:ring-brand/15 ${captionTypography.item}`}
+                          className={`w-full resize-none rounded-md border border-warm-border bg-warm-surface px-2 py-1.5 text-content-primary outline-none focus:border-ring/50 focus:ring-2 focus:ring-ring/15 ${captionTypography.item}`}
                         />
                       </label>
                     ))}

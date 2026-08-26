@@ -11,7 +11,13 @@
     "args": []
   },
   "contributes": {
-    "cards": [],
+    "cards": [
+      {
+        "id": "hilo-hub-media-analysis",
+        "kind": "model-card",
+        "path": "cards/media-analysis.json"
+      }
+    ],
     "providers": [
       {
         "id": "hilo-hub",
@@ -20,6 +26,11 @@
       }
     ],
     "modelBindings": [
+      {
+        "id": "hilo-media-analysis",
+        "kind": "model-provider-binding",
+        "path": "bindings/media-analysis.json"
+      },
       {
         "id": "hilo-elevenlabs-music-v2",
         "kind": "model-provider-binding",

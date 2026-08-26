@@ -1,4 +1,10 @@
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import {
+  access,
+  appendFile,
+  mkdir,
+  readFile,
+  writeFile,
+} from "node:fs/promises";
 import { dirname } from "node:path";
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
@@ -195,6 +201,14 @@ export function createProviderTestRecorder(options: {
   const write = async (event: ProviderTestRecordingEvent) => {
     await options.write(event);
   };
+  // One correlation registry per recorder instance (i.e. per cassette). A secret value returned
+  // under a sensitive key (e.g. Tripo's `file_token`) is registered here the first time it is
+  // seen; every later occurrence of that exact raw value anywhere in the transport -- including
+  // under an unrelated, non-secret field name like `input` -- is replaced with the same stable
+  // opaque alias instead of the generic "[redacted]" marker, so the raw value never touches disk
+  // but a multi-step replay can still correlate "the token this step returned" with "the token the
+  // next step sent".
+  const secrets = new CorrelatedSecretRegistry();
 
   return {
     async recordRequest(input) {
@@ -206,12 +220,15 @@ export function createProviderTestRecorder(options: {
         requestId,
         stub: input.stub,
         request: {
-          url: normalizeHttpUrlForRecording(input.url) ?? input.url,
+          url: substituteCorrelatedSecrets(
+            normalizeHttpUrlForRecording(input.url) ?? input.url,
+            secrets,
+          ),
           method: input.method,
           headers: normalizeHeaders(input.headers),
           ...(input.body === undefined
             ? {}
-            : { body: normalizeTransportPayload(input.body) }),
+            : { body: normalizeTransportPayload(input.body, secrets) }),
         },
       });
       return requestId;
@@ -227,7 +244,7 @@ export function createProviderTestRecorder(options: {
           headers: normalizeHeaders(input.headers),
           ...(input.body === undefined
             ? {}
-            : { body: normalizeTransportPayload(input.body) }),
+            : { body: normalizeTransportPayload(input.body, secrets) }),
         },
       });
     },
@@ -238,12 +255,15 @@ export function createProviderTestRecorder(options: {
         timestamp: now().toISOString(),
         requestId: input.requestId,
         callback: {
-          url: normalizeHttpUrlForRecording(input.url) ?? input.url,
+          url: substituteCorrelatedSecrets(
+            normalizeHttpUrlForRecording(input.url) ?? input.url,
+            secrets,
+          ),
           method: input.method,
           headers: normalizeHeaders(input.headers),
           ...(input.body === undefined
             ? {}
-            : { body: normalizeTransportPayload(input.body) }),
+            : { body: normalizeTransportPayload(input.body, secrets) }),
         },
       });
     },
@@ -257,9 +277,15 @@ export async function createJsonlProviderTestRecorder(
   let writeQueue: Promise<void> = Promise.resolve();
   return createProviderTestRecorder({
     write: (event) => {
-      const write = writeQueue.then(() =>
-        appendFile(filePath, providerTestRecordingEventToJsonl(event), "utf8"),
-      );
+      const write = writeQueue
+        .then(() => externalizeProviderTestRecordingBinaries(event, filePath))
+        .then((externalized) =>
+          appendFile(
+            filePath,
+            providerTestRecordingEventToJsonl(externalized),
+            "utf8",
+          ),
+        );
       writeQueue = write.catch(() => undefined);
       return write;
     },
@@ -314,13 +340,20 @@ export async function readJsonlProviderTestRecording(
     .filter(Boolean);
   const events: ProviderTestRecordingEvent[] = [];
   for (const [index, line] of lines.entries()) {
+    let parsed: ProviderTestRecordingEvent;
     try {
-      events.push(parseProviderTestRecordingEvent(line, index + 1));
+      parsed = parseProviderTestRecordingEvent(line, index + 1);
     } catch (error) {
       const interruptedTail = index === lines.length - 1 && !/\r?\n$/.test(raw);
       if (interruptedTail) break;
       throw error;
     }
+    events.push(
+      (await hydrateProviderTestRecordingBinaries(
+        parsed,
+        filePath,
+      )) as ProviderTestRecordingEvent,
+    );
   }
   return events;
 }
@@ -410,9 +443,7 @@ export function createProviderTestReplayFetch(
   }) as typeof fetch;
 }
 
-function providerTestReplayHeaders(
-  recorded: Record<string, string>,
-): Headers {
+function providerTestReplayHeaders(recorded: Record<string, string>): Headers {
   const headers = new Headers(recorded);
   // Fetch has already decoded the body before the recorder reads it. Replaying those decoded bytes
   // with the upstream compression framing makes Undici try to decode them a second time, which
@@ -500,14 +531,24 @@ function normalizeHeaders(
       key,
       shouldRedactKey(key)
         ? "[redacted]"
-        : key.toLowerCase() === "content-type" && /^multipart\/form-data\b/i.test(String(value))
+        : key.toLowerCase() === "content-type" &&
+            /^multipart\/form-data\b/i.test(String(value))
           ? "multipart/form-data"
           : String(value),
     ]),
   );
 }
 
-function normalizePayload(value: unknown): ProviderTestRecordingPayload {
+function normalizePayload(
+  value: unknown,
+  secrets?: CorrelatedSecretRegistry,
+): ProviderTestRecordingPayload {
+  // An already-normalized binary payload (inline `$binary` or an externalized `$binaryRef`) must
+  // short-circuit here. Recursing into it would re-run the URL/redaction string scan over a
+  // multi-megabyte base64 `data` field a second time -- the exact double-normalization cost that
+  // turned a single ~55MB Tripo GLB response into minutes of CPU and a 111MB JSONL cassette.
+  if (isBinaryPayloadRecord(value))
+    return value as ProviderTestRecordingPayload;
   if (
     value === null ||
     typeof value === "string" ||
@@ -516,13 +557,15 @@ function normalizePayload(value: unknown): ProviderTestRecordingPayload {
   ) {
     if (typeof value === "string") {
       const url = normalizeHttpUrlForRecording(value);
-      return url ?? normalizeGoogleProjectResource(value);
+      const normalized = url ?? normalizeGoogleProjectResource(value);
+      return substituteCorrelatedSecrets(normalized, secrets);
     }
     return value;
   }
-  if (Array.isArray(value)) return value.map((item) => normalizePayload(item));
+  if (Array.isArray(value))
+    return value.map((item) => normalizePayload(item, secrets));
   if (value instanceof URLSearchParams) {
-    return normalizePayload(Object.fromEntries(value.entries()));
+    return normalizePayload(Object.fromEntries(value.entries()), secrets);
   }
   if (value instanceof ArrayBuffer) {
     return normalizeBinaryPayload(new Uint8Array(value));
@@ -536,7 +579,9 @@ function normalizePayload(value: unknown): ProviderTestRecordingPayload {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>).map(([key, item]) => [
         key,
-        shouldRedactKey(key) ? "[redacted]" : normalizePayload(item),
+        shouldRedactKey(key)
+          ? redactSensitiveValue(item, secrets)
+          : normalizePayload(item, secrets),
       ]),
     );
   }
@@ -546,12 +591,16 @@ function normalizePayload(value: unknown): ProviderTestRecordingPayload {
 /** Parse only a transport's top-level body envelope; nested strings are provider data. */
 function normalizeTransportPayload(
   value: unknown,
+  secrets?: CorrelatedSecretRegistry,
 ): ProviderTestRecordingPayload {
-  if (typeof value !== "string") return normalizePayload(value);
+  if (typeof value !== "string") return normalizePayload(value, secrets);
   try {
-    return normalizePayload(JSON.parse(value));
+    return normalizePayload(JSON.parse(value), secrets);
   } catch {
-    return normalizeUrlEncodedPayload(value) ?? normalizePayload(value);
+    return (
+      normalizeUrlEncodedPayload(value, secrets) ??
+      normalizePayload(value, secrets)
+    );
   }
 }
 
@@ -621,16 +670,105 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
 
 function normalizeUrlEncodedPayload(
   value: string,
+  secrets?: CorrelatedSecretRegistry,
 ): ProviderTestRecordingPayload | null {
   if (!value.includes("=") || !value.includes("&")) return null;
   try {
     const params = new URLSearchParams(value);
     const entries = [...params.entries()];
     if (!entries.length) return null;
-    return normalizePayload(Object.fromEntries(entries));
+    return normalizePayload(Object.fromEntries(entries), secrets);
   } catch {
     return null;
   }
+}
+
+/**
+ * Cassette-local correlation registry for redacted secrets.
+ *
+ * A sensitive value is registered the first time it is observed under a key `shouldRedactKey`
+ * recognizes (e.g. `file_token`). Every subsequent occurrence of that *exact* raw value -- under
+ * any field name, sensitive or not -- is replaced with the same stable opaque alias instead of
+ * either the raw value (a leak) or a generic "[redacted]" marker (which would make a later
+ * request using the value the response returned fail to match on replay). The alias is derived
+ * from a content hash of the raw value, so it is deterministic for a given secret without ever
+ * storing that secret.
+ */
+class CorrelatedSecretRegistry {
+  private readonly aliasesByRawValue = new Map<string, string>();
+
+  get size(): number {
+    return this.aliasesByRawValue.size;
+  }
+
+  /** Look up (or mint) the stable alias for a raw secret value. */
+  alias(rawValue: string): string {
+    const existing = this.aliasesByRawValue.get(rawValue);
+    if (existing) return existing;
+    const fingerprint = createHash("sha256")
+      .update(rawValue)
+      .digest("hex")
+      .slice(0, 12);
+    const alias = `[redacted:${fingerprint}]`;
+    this.aliasesByRawValue.set(rawValue, alias);
+    return alias;
+  }
+
+  entries(): IterableIterator<[string, string]> {
+    return this.aliasesByRawValue.entries();
+  }
+}
+
+// Below this length a value is generic enough (short flags, single-digit ids, boolean-ish
+// strings) that indiscriminately treating it as a correlatable secret risks aliasing unrelated
+// data anywhere that value happens to reappear. Real provider secrets/tokens are always far
+// longer than this.
+const CORRELATABLE_SECRET_MIN_LENGTH = 6;
+
+function isCorrelatableSecretValue(value: string): boolean {
+  return value.length >= CORRELATABLE_SECRET_MIN_LENGTH;
+}
+
+// Matches both the plain marker written for values that never needed correlation and the
+// per-value alias minted by `CorrelatedSecretRegistry`. The final JSONL serialization boundary
+// (`providerTestRecordingEventToJsonl`) re-normalizes already-recorded events with no registry of
+// its own; without this check it would see a sensitive key holding a string and stamp a fresh
+// plain "[redacted]" over an existing alias, collapsing every correlated secret back to the same
+// indistinguishable marker and breaking replay matching all over again.
+const REDACTED_MARKER_PATTERN = /^\[redacted(:[^\]]+)?\]$/;
+
+function isAlreadyRedactedMarker(value: string): boolean {
+  return REDACTED_MARKER_PATTERN.test(value);
+}
+
+/** Redact a value recorded under a key `shouldRedactKey` matched. */
+function redactSensitiveValue(
+  value: unknown,
+  secrets: CorrelatedSecretRegistry | undefined,
+): ProviderTestRecordingPayload {
+  if (typeof value !== "string") return "[redacted]";
+  if (isAlreadyRedactedMarker(value)) return value;
+  if (!secrets || !isCorrelatableSecretValue(value)) return "[redacted]";
+  return secrets.alias(value);
+}
+
+/** Replace every exact occurrence of a previously-registered raw secret with its stable alias. */
+function substituteCorrelatedSecrets(
+  value: string,
+  secrets: CorrelatedSecretRegistry | undefined,
+): string {
+  if (!secrets || secrets.size === 0) return value;
+  let result = value;
+  for (const [rawValue, alias] of secrets.entries()) {
+    if (result === rawValue) {
+      result = alias;
+      continue;
+    }
+    if (result.includes(rawValue)) {
+      result = result.split(rawValue).join(alias);
+    }
+  }
+  return result;
 }
 
 function shouldRedactKey(key: string): boolean {
@@ -939,6 +1077,153 @@ function isProviderTestRecordingBinaryPayload(
     typeof fields.data === "string" &&
     typeof fields.byteLength === "number"
   );
+}
+
+interface ProviderTestRecordingBinaryRefPayload {
+  $binaryRef: {
+    sha256: string;
+    byteLength: number;
+  };
+}
+
+function isProviderTestRecordingBinaryRefPayload(
+  value: unknown,
+): value is ProviderTestRecordingBinaryRefPayload {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const ref = (value as Record<string, unknown>).$binaryRef;
+  if (!ref || typeof ref !== "object" || Array.isArray(ref)) return false;
+  const fields = ref as Record<string, unknown>;
+  return (
+    typeof fields.sha256 === "string" && typeof fields.byteLength === "number"
+  );
+}
+
+/** Structural check shared by the normalization guard: true for either binary payload shape. */
+function isBinaryPayloadRecord(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return "$binary" in record || "$binaryRef" in record;
+}
+
+// Below this size, keeping the payload inline as base64 is cheap and keeps small fixtures
+// (including every existing in-repo cassette) human-readable in a single JSONL line. Above it --
+// a real generated video/3D-model payload -- inlining is what balloons the cassette and makes the
+// redaction pass re-scan megabytes of base64 on every write.
+const PROVIDER_TEST_RECORDING_BLOB_THRESHOLD_BYTES = 8192;
+
+function providerTestRecordingBlobDir(filePath: string): string {
+  return `${filePath}.blobs`;
+}
+
+function providerTestRecordingBlobPath(
+  filePath: string,
+  sha256: string,
+): string {
+  return `${providerTestRecordingBlobDir(filePath)}/${sha256}.bin`;
+}
+
+/**
+ * Walk a just-recorded event and move any large inline `$binary` payload into a
+ * content-addressed sidecar blob file next to the JSONL cassette, replacing it with a small
+ * `$binaryRef` (sha256 + byteLength only -- no absolute or user path). Identical bytes recorded
+ * more than once (e.g. the same generated asset fetched twice) dedupe to a single blob file.
+ */
+async function externalizeProviderTestRecordingBinaries(
+  value: unknown,
+  filePath: string,
+): Promise<unknown> {
+  if (
+    isProviderTestRecordingBinaryPayload(value as ProviderTestRecordingPayload)
+  ) {
+    const binary = (value as ProviderTestRecordingBinaryPayload).$binary;
+    if (binary.byteLength <= PROVIDER_TEST_RECORDING_BLOB_THRESHOLD_BYTES) {
+      return value;
+    }
+    const bytes = Buffer.from(binary.data, binary.encoding);
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    await writeProviderTestRecordingBlobOnce(filePath, sha256, bytes);
+    return {
+      $binaryRef: { sha256, byteLength: binary.byteLength },
+    } satisfies ProviderTestRecordingBinaryRefPayload;
+  }
+  if (Array.isArray(value)) {
+    return Promise.all(
+      value.map((item) =>
+        externalizeProviderTestRecordingBinaries(item, filePath),
+      ),
+    );
+  }
+  if (value && typeof value === "object") {
+    const entries = await Promise.all(
+      Object.entries(value as Record<string, unknown>).map(
+        async ([key, item]) =>
+          [
+            key,
+            await externalizeProviderTestRecordingBinaries(item, filePath),
+          ] as const,
+      ),
+    );
+    return Object.fromEntries(entries);
+  }
+  return value;
+}
+
+async function writeProviderTestRecordingBlobOnce(
+  filePath: string,
+  sha256: string,
+  bytes: Buffer,
+): Promise<void> {
+  const blobPath = providerTestRecordingBlobPath(filePath, sha256);
+  await mkdir(providerTestRecordingBlobDir(filePath), { recursive: true });
+  try {
+    await access(blobPath);
+    return; // Identical content already written by an earlier event; dedupe.
+  } catch {
+    // Not present yet.
+  }
+  await writeFile(blobPath, bytes);
+}
+
+/**
+ * Reverse of {@link externalizeProviderTestRecordingBinaries}: replace every `$binaryRef` in a
+ * parsed event with the inline `$binary` shape the rest of the module (and every replay API)
+ * already understands, by reading the referenced sidecar blob file.
+ */
+async function hydrateProviderTestRecordingBinaries(
+  value: unknown,
+  filePath: string,
+): Promise<unknown> {
+  if (isProviderTestRecordingBinaryRefPayload(value)) {
+    const { sha256, byteLength } = value.$binaryRef;
+    const bytes = await readFile(
+      providerTestRecordingBlobPath(filePath, sha256),
+    );
+    return {
+      $binary: {
+        encoding: "base64",
+        data: bytes.toString("base64"),
+        byteLength,
+      },
+    } satisfies ProviderTestRecordingBinaryPayload;
+  }
+  if (Array.isArray(value)) {
+    return Promise.all(
+      value.map((item) => hydrateProviderTestRecordingBinaries(item, filePath)),
+    );
+  }
+  if (value && typeof value === "object") {
+    const entries = await Promise.all(
+      Object.entries(value as Record<string, unknown>).map(
+        async ([key, item]) =>
+          [
+            key,
+            await hydrateProviderTestRecordingBinaries(item, filePath),
+          ] as const,
+      ),
+    );
+    return Object.fromEntries(entries);
+  }
+  return value;
 }
 
 function providerTestReplayErrorMessage(

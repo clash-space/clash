@@ -1,9 +1,14 @@
 import React from 'react';
+import {
+  SelectMenu,
+  type SelectOption,
+  type SelectValue,
+} from '@clash/gui/components/ui/select';
 
 export type TimelineIconButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement>;
 
 const TIMELINE_ICON_BUTTON_INTERACTION_CLASS =
-  'transition-[filter] duration-150 ease-out hover:brightness-95 active:brightness-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 disabled:hover:brightness-100 motion-reduce:transition-none';
+  'transition-[filter] duration-150 ease-out hover:brightness-95 active:brightness-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:hover:brightness-100 motion-reduce:transition-none';
 
 export const TimelineIconButton = React.forwardRef<HTMLButtonElement, TimelineIconButtonProps>(
   function TimelineIconButton({ type = 'button', className, ...props }, ref) {
@@ -44,13 +49,44 @@ export const RemotionInput = React.forwardRef<HTMLInputElement, RemotionInputPro
   },
 );
 
-export type RemotionSelectProps = React.SelectHTMLAttributes<HTMLSelectElement>;
+export type RemotionSelectProps<Value extends SelectValue = string> = {
+  value: Value;
+  options: ReadonlyArray<SelectOption<Value>>;
+  onValueChange: (value: Value) => void;
+  ariaLabel: string;
+  title?: string;
+  disabled?: boolean;
+  className?: string;
+  containerClassName?: string;
+};
 
-export const RemotionSelect = React.forwardRef<HTMLSelectElement, RemotionSelectProps>(
-  function RemotionSelect(props, ref) {
-    return <select ref={ref} {...props} />;
-  },
-);
+export function RemotionSelect<Value extends SelectValue = string>({
+  value,
+  options,
+  onValueChange,
+  ariaLabel,
+  title,
+  disabled,
+  className,
+  containerClassName = 'w-full',
+}: RemotionSelectProps<Value>) {
+  return (
+    <SelectMenu
+      value={value}
+      options={[...options]}
+      onValueChange={(nextValue) => onValueChange(nextValue)}
+      ariaLabel={ariaLabel}
+      title={title}
+      disabled={disabled}
+      variant="field"
+      size="sm"
+      menuWidth="trigger"
+      context="timeline"
+      className={containerClassName}
+      triggerClassName={className}
+    />
+  );
+}
 
 export type RemotionTextareaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement>;
 

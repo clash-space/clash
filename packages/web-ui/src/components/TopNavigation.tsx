@@ -1,137 +1,341 @@
-
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { motion } from 'framer-motion';
-import { Link, useLocation, useNavigate } from 'react-router';
-import { desktopChromeMetrics } from '@clash/shared-runtime';
-import type { NleAvailability } from '@clash/remotion-core';
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { motion } from "framer-motion";
+import { Link, useLocation, useNavigate } from "react-router";
 import {
-  ArrowLeft,
-  ArrowRight,
-  House,
-  FolderOpen,
-  Images,
-  SidebarSimple,
-  Storefront,
+  desktopChromeMetrics,
+  type RuntimeEndpointConfig,
+} from "@clash/shared-runtime";
+import type { NleAvailability } from "@clash/remotion-core";
+import {
+  File,
+  MagnifyingGlass,
+  Plus,
+  SlidersHorizontal,
+  SquaresFour,
   X,
-} from '@phosphor-icons/react';
-import UserControls from './UserControls';
-import { Button } from './ui/button';
-import { IconButton } from './ui/icon-button';
-import { Tab, TabList, TabProvider } from './ui/tabs';
-import { Tooltip } from './ui/tooltip';
-import { HarnessUpdateNotifier } from './HarnessUpdateNotifier';
+} from "@phosphor-icons/react";
+import UserControls from "./UserControls";
 import {
-  activateOrAppendDesktopTab,
+  DesktopAutoHideSidebar,
+  DesktopSidebarCollapseButton,
+} from "./DesktopAutoHideSidebar";
+import { Button } from "./ui/button";
+import {
+  Combobox,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxProvider,
+  useComboboxStore,
+} from "./ui/combobox";
+import { Dialog } from "./ui/dialog";
+import { IconButton } from "./ui/icon-button";
+import { Tab, TabList, TabProvider } from "./ui/tabs";
+import { Tooltip } from "./ui/tooltip";
+import { HarnessUpdateNotifier } from "./HarnessUpdateNotifier";
+import { BrandAsset } from "./BrandAsset";
+import { AgentMotion } from "./copilot/AgentMotion";
+import {
+  ProductNavIcon,
+  type ProductNavIconKind,
+} from "./ProductNavIcon";
+import { isDesktopRuntime } from "../lib/runtimeConfig";
+import {
+  activateDesktopPath,
   closeDesktopTab,
   createDesktopTab,
+  DESKTOP_TAB_CONNECTION_EVENT,
   DESKTOP_TAB_TITLE_EVENT,
-  type DesktopTabTitleEventDetail,
+  isDesktopWorkspaceTabPath,
   type DesktopTab,
+  type DesktopTabConnectionEventDetail,
+  type DesktopTabTitleEventDetail,
+  updateDesktopTabConnection,
   updateDesktopTabTitle,
-} from '../lib/desktopTabs';
-import {
-  readProjectNavigatorCollapsed,
-  setProjectNavigatorCollapsedFromChrome,
-} from '../lib/projectNavigatorChrome';
+} from "../lib/desktopTabs";
 
 declare global {
   var __CLASH_DESKTOP__:
     | {
         isDesktop: true;
         newWindow: () => Promise<{ windowId: number; windowCount: number }>;
+        refreshRuntime?: () => Promise<RuntimeEndpointConfig>;
         authorizeProvider?: (request: {
           verificationUri: string;
           callbackScheme: string;
         }) => Promise<{ cancelled: boolean; callbackUrl?: string }>;
+        openExternal?: (url: string) => Promise<void>;
         getNleAvailability?: () => Promise<NleAvailability[]>;
-        exportDirectorVideo?: (request: unknown) => Promise<{ canceled: boolean; outputPath?: string }>;
+        exportDirectorVideo?: (
+          request: unknown,
+        ) => Promise<{ canceled: boolean; outputPath?: string }>;
         openInNle?: (request: unknown) => Promise<{ documentPath: string }>;
       }
     | undefined;
 }
 
 const navItems = [
-  { name: 'Home', href: '/', icon: House },
-  { name: 'Projects', href: '/projects', icon: FolderOpen },
-  { name: 'Assets', href: '/assets', icon: Images },
-  { name: 'Store', href: '/marketplace/manage', icon: Storefront },
+  { name: "Home", href: "/", kind: "home" },
+  { name: "Projects", href: "/projects", kind: "projects" },
+  { name: "Assets", href: "/assets", kind: "assets" },
+  { name: "Store", href: "/marketplace/manage", kind: "store" },
+] satisfies Array<{
+  name: string;
+  href: string;
+  kind: ProductNavIconKind;
+}>;
+
+const desktopCommands: Array<{
+  name: string;
+  href: string;
+  kind?: ProductNavIconKind;
+  icon?: typeof SlidersHorizontal;
+}> = [
+  ...navItems,
+  { name: "Settings", href: "/settings", icon: SlidersHorizontal },
 ];
 
-const desktopChromeStyle = {
-  '--clash-desktop-chrome-height': `${desktopChromeMetrics.tabStripHeight}px`,
-  '--clash-desktop-toolbar-left-inset': `${desktopChromeMetrics.toolbarLeftInset}px`,
-} as CSSProperties;
-
-const HOME_DESKTOP_TAB_ID = 'tab-home';
+const DESKTOP_SIDEBAR_COLLAPSED_KEY = "clash.desktop.sidebar-collapsed";
+const HOME_DESKTOP_TAB_ID = "tab-home";
 
 function ensureHomeDesktopTab(tabs: DesktopTab[]): DesktopTab[] {
-  const homeTab = tabs.find((tab) => tab.path === '/');
-  const remainingTabs = tabs.filter((tab) => tab.path !== '/');
-  return [homeTab ?? createDesktopTab('/', HOME_DESKTOP_TAB_ID), ...remainingTabs];
+  const homeTab = tabs.find((tab) => tab.path === "/");
+  const remainingTabs = tabs.filter((tab) => tab.path !== "/");
+  return [
+    homeTab ?? createDesktopTab("/", HOME_DESKTOP_TAB_ID),
+    ...remainingTabs,
+  ];
 }
 
-export default function TopNavigation() {
-  const pathname = useLocation().pathname;
-  const navigate = useNavigate();
-  const isProjectDetailPage = /^\/projects\/[^/]+$/.test(pathname);
-  const isSettingsPage = pathname === '/settings';
-  const [isDesktop, setIsDesktop] = useState(false);
-  const [desktopTabs, setDesktopTabs] = useState<DesktopTab[]>([]);
-  const [activeDesktopTabId, setActiveDesktopTabId] = useState<string | null>(null);
-  const [projectNavigatorCollapsed, setProjectNavigatorCollapsed] = useState(false);
-  const [desktopHistory, setDesktopHistory] = useState<{ entries: string[]; index: number }>(() => ({
-    entries: [pathname],
-    index: 0,
-  }));
-  const pendingDesktopHistoryPathRef = useRef<string | null>(null);
+function readDesktopSidebarCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return (
+      window.localStorage.getItem(DESKTOP_SIDEBAR_COLLAPSED_KEY) === "true"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function persistDesktopSidebarCollapsed(collapsed: boolean): void {
+  try {
+    window.localStorage.setItem(
+      DESKTOP_SIDEBAR_COLLAPSED_KEY,
+      String(collapsed),
+    );
+  } catch {
+    // The sidebar still works when storage is unavailable.
+  }
+}
+
+function DesktopCommandPalette({
+  collapsed,
+  onNavigate,
+}: {
+  collapsed: boolean;
+  onNavigate: (path: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const close = useCallback(() => {
+    setOpen(false);
+    setQuery("");
+  }, []);
+  const selectCommand = useCallback(
+    (href: string) => {
+      const command = desktopCommands.find(
+        (candidate) => candidate.href === href,
+      );
+      if (!command) return;
+      onNavigate(command.href);
+      close();
+    },
+    [close, onNavigate],
+  );
+  const store = useComboboxStore({
+    value: query,
+    setValue: setQuery,
+    setSelectedValue: (value) => {
+      if (typeof value === "string") selectCommand(value);
+    },
+    focusLoop: true,
+    focusWrap: true,
+    orientation: "vertical",
+  });
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const results = desktopCommands.filter((command) =>
+    command.name.toLocaleLowerCase().includes(normalizedQuery),
+  );
 
   useEffect(() => {
-    const desktop = globalThis.__CLASH_DESKTOP__?.isDesktop === true;
-    setIsDesktop(desktop);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        !event.shiftKey &&
+        event.key.toLocaleLowerCase() === "k"
+      ) {
+        event.preventDefault();
+        setOpen(true);
+      }
+    };
 
-    if (desktop) {
-      setDesktopHistory({ entries: [pathname], index: 0 });
-      const initial = activateOrAppendDesktopTab(
-        ensureHomeDesktopTab([]),
-        pathname,
-        `tab-${Date.now().toString(36)}`,
-      );
-      setDesktopTabs(ensureHomeDesktopTab(initial.tabs));
-      setActiveDesktopTabId(initial.activeTabId);
-    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  const trigger = (
+    <Button
+      aria-label="Search Clash"
+      variant={null}
+      size={null}
+      shape={null}
+      onClick={() => setOpen(true)}
+      className={[
+        "h-[var(--clash-app-sidebar-search-height)] justify-start rounded-lg border border-warm-border bg-warm-surface text-[13px] font-normal text-content-muted shadow-none hover:bg-warm-hover hover:text-content-primary focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-0",
+        collapsed ? "w-9 justify-center px-0" : "w-full gap-2 px-2.5",
+      ].join(" ")}
+      leftIcon={<MagnifyingGlass className="h-4 w-4" weight="regular" />}
+    >
+      {!collapsed ? (
+        <>
+          <span className="min-w-0 flex-1 truncate text-left">Search</span>
+          <kbd className="font-sans text-[11px] font-medium text-content-disabled">
+            ⌘K
+          </kbd>
+        </>
+      ) : null}
+    </Button>
+  );
+
+  return (
+    <>
+      {collapsed ? (
+        <Tooltip label="Search" placement="right">
+          {trigger}
+        </Tooltip>
+      ) : (
+        trigger
+      )}
+      <Dialog
+        open={open}
+        onClose={close}
+        ariaLabel="Search Clash"
+        size="auto"
+        hideCloseButton
+        unstyled
+        containerClassName="items-start pt-[12vh]"
+        contentClassName="w-full max-w-lg overflow-hidden rounded-xl border border-warm-border bg-warm-surface shadow-overlay"
+      >
+        <ComboboxProvider store={store}>
+          <div className="relative border-b border-warm-border">
+            <MagnifyingGlass
+              aria-hidden="true"
+              className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-content-muted"
+            />
+            <Combobox
+              aria-label="Search Clash"
+              autoComplete="list"
+              autoSelect
+              autoFocus
+              placeholder="Go to a page"
+              className="h-12 w-full bg-transparent pl-11 pr-4 text-sm text-content-primary outline-none placeholder:text-content-disabled focus-visible:ring-0"
+            />
+          </div>
+          <ComboboxList
+            aria-label="Clash commands"
+            alwaysVisible
+            className="max-h-80 overflow-y-auto p-1.5"
+          >
+            {results.length === 0 ? (
+              <div
+                role="status"
+                className="flex h-12 items-center justify-center text-xs text-content-muted"
+              >
+                No results
+              </div>
+            ) : (
+              results.map((command) => {
+                const CommandIcon = command.icon;
+                return (
+                  <ComboboxItem
+                    key={command.href}
+                    value={command.href}
+                    focusOnHover
+                    setValueOnClick={false}
+                    aria-label={command.name}
+                    className="flex h-10 w-full cursor-default items-center gap-3 rounded-lg px-3 text-left text-sm text-content-primary outline-none hover:bg-warm-hover data-[active-item]:bg-warm-hover focus-visible:bg-warm-hover"
+                  >
+                    {command.kind ? (
+                      <ProductNavIcon
+                        kind={command.kind}
+                        aria-hidden="true"
+                        className="h-4 w-4 shrink-0 text-content-muted"
+                      />
+                    ) : CommandIcon ? (
+                      <CommandIcon
+                        aria-hidden="true"
+                        className="h-4 w-4 shrink-0 text-content-muted"
+                      />
+                    ) : null}
+                    <span className="min-w-0 flex-1 truncate font-medium">
+                      {command.name}
+                    </span>
+                  </ComboboxItem>
+                );
+              })
+            )}
+          </ComboboxList>
+        </ComboboxProvider>
+      </Dialog>
+    </>
+  );
+}
+
+const desktopChromeStyle = {
+  "--clash-desktop-chrome-height": `${desktopChromeMetrics.tabStripHeight}px`,
+  "--clash-desktop-toolbar-left-inset": `${desktopChromeMetrics.toolbarLeftInset}px`,
+} as CSSProperties;
+
+export default function TopNavigation({
+  pendingPathname,
+}: {
+  pendingPathname?: string | null;
+} = {}) {
+  const currentPathname = useLocation().pathname;
+  const navigate = useNavigate();
+  const isDesktop = isDesktopRuntime();
+  const pathname =
+    isDesktop && pendingPathname ? pendingPathname : currentPathname;
+  const isProjectDetailPage = /^\/projects\/[^/]+$/.test(pathname);
+  const isSettingsPage = pathname === "/settings";
+  const [desktopTabs, setDesktopTabs] = useState<DesktopTab[]>([]);
+  const [activeDesktopTabId, setActiveDesktopTabId] = useState<string | null>(
+    null,
+  );
+  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(
+    readDesktopSidebarCollapsed,
+  );
   useEffect(() => {
-    if (!isDesktop) return;
-    setDesktopHistory((history) => {
-      const pendingPath = pendingDesktopHistoryPathRef.current;
-      if (pendingPath === pathname) {
-        pendingDesktopHistoryPathRef.current = null;
-        return history;
-      }
-
-      const currentPath = history.entries[history.index];
-      if (currentPath === pathname) return history;
-
-      const previousEntries = history.entries.slice(0, history.index + 1);
-      return {
-        entries: [...previousEntries, pathname],
-        index: previousEntries.length,
-      };
-    });
-  }, [isDesktop, pathname]);
-
-  useEffect(() => {
-    setProjectNavigatorCollapsed(
-      isProjectDetailPage ? readProjectNavigatorCollapsed() : false,
-    );
-  }, [isProjectDetailPage, pathname]);
+    if (!isDesktop) return undefined;
+    const root = document.documentElement;
+    root.dataset.clashSidebarCollapsed = String(desktopSidebarCollapsed);
+    return () => {
+      delete root.dataset.clashSidebarCollapsed;
+    };
+  }, [desktopSidebarCollapsed, isDesktop]);
 
   useEffect(() => {
     if (!isDesktop) return;
     const id = `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
     setDesktopTabs((tabs) => {
-      const next = activateOrAppendDesktopTab(ensureHomeDesktopTab(tabs), pathname, id);
+      const next = activateDesktopPath(
+        ensureHomeDesktopTab(tabs),
+        pathname,
+        id,
+        HOME_DESKTOP_TAB_ID,
+      );
       setActiveDesktopTabId(next.activeTabId);
       return ensureHomeDesktopTab(next.tabs);
     });
@@ -142,41 +346,68 @@ export default function TopNavigation() {
 
     const handleDesktopTabTitle = (event: Event) => {
       const detail = (event as CustomEvent<DesktopTabTitleEventDetail>).detail;
-      if (!detail || typeof detail.path !== 'string' || typeof detail.title !== 'string') return;
-      setDesktopTabs((tabs) => updateDesktopTabTitle(tabs, detail.path, detail.title));
+      if (
+        !detail ||
+        typeof detail.path !== "string" ||
+        typeof detail.title !== "string"
+      ) {
+        return;
+      }
+      setDesktopTabs((tabs) =>
+        updateDesktopTabTitle(tabs, detail.path, detail.title),
+      );
     };
 
     window.addEventListener(DESKTOP_TAB_TITLE_EVENT, handleDesktopTabTitle);
-    return () => window.removeEventListener(DESKTOP_TAB_TITLE_EVENT, handleDesktopTabTitle);
+    return () =>
+      window.removeEventListener(
+        DESKTOP_TAB_TITLE_EVENT,
+        handleDesktopTabTitle,
+      );
   }, [isDesktop]);
 
-  const openPathInDesktopTab = (path: string) => {
-    const id = `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-    setDesktopTabs((tabs) => {
-      const next = activateOrAppendDesktopTab(ensureHomeDesktopTab(tabs), path, id);
-      setActiveDesktopTabId(next.activeTabId);
-      return ensureHomeDesktopTab(next.tabs);
-    });
+  useEffect(() => {
+    if (!isDesktop) return;
+
+    const handleDesktopTabConnection = (event: Event) => {
+      const detail = (
+        event as CustomEvent<DesktopTabConnectionEventDetail>
+      ).detail;
+      if (!detail || typeof detail.path !== "string") return;
+      setDesktopTabs((tabs) =>
+        updateDesktopTabConnection(tabs, detail.path, detail.connection),
+      );
+    };
+
+    window.addEventListener(
+      DESKTOP_TAB_CONNECTION_EVENT,
+      handleDesktopTabConnection,
+    );
+    return () =>
+      window.removeEventListener(
+        DESKTOP_TAB_CONNECTION_EVENT,
+        handleDesktopTabConnection,
+      );
+  }, [isDesktop]);
+
+  const openDesktopPath = (path: string) => {
     if (pathname !== path) navigate(path);
   };
-
-  const selectDesktopTab = (tab: DesktopTab) => {
-    setActiveDesktopTabId(tab.id);
-    if (tab.path !== pathname) navigate(tab.path);
-  };
-
   const selectDesktopTabId = (tabId: string | null | undefined) => {
     const tab = desktopTabs.find((candidate) => candidate.id === tabId);
     if (!tab) return;
-    selectDesktopTab(tab);
+    setActiveDesktopTabId(tab.id);
+    if (tab.path !== pathname) navigate(tab.path);
   };
-
   const closeTab = (tabId: string) => {
     const tabToClose = desktopTabs.find((tab) => tab.id === tabId);
-    if (!tabToClose || tabToClose.path === '/') return;
+    if (!tabToClose || tabToClose.path === "/") return;
+    const wasActiveWorkspace = tabId === activeDesktopTabId;
 
     if (!activeDesktopTabId) {
-      setDesktopTabs((tabs) => ensureHomeDesktopTab(tabs.filter((tab) => tab.id !== tabId)));
+      setDesktopTabs((tabs) =>
+        ensureHomeDesktopTab(tabs.filter((tab) => tab.id !== tabId)),
+      );
       return;
     }
 
@@ -187,26 +418,24 @@ export default function TopNavigation() {
       HOME_DESKTOP_TAB_ID,
     );
     const nextTabs = ensureHomeDesktopTab(result.tabs);
-    const nextActiveTab = nextTabs.find((tab) => tab.id === result.activeTabId) ?? nextTabs[0];
+    const nextActiveTab =
+      nextTabs.find((tab) => tab.id === result.activeTabId) ?? nextTabs[0];
     setDesktopTabs(nextTabs);
     setActiveDesktopTabId(nextActiveTab.id);
-    if (nextActiveTab.path !== pathname) navigate(nextActiveTab.path);
+    if (wasActiveWorkspace && nextActiveTab.path !== pathname) {
+      navigate(nextActiveTab.path);
+    }
   };
-  const canGoBack = desktopHistory.index > 0;
-  const canGoForward = desktopHistory.index < desktopHistory.entries.length - 1;
-  const navigateDesktopHistory = (delta: -1 | 1) => {
-    const nextIndex = desktopHistory.index + delta;
-    if (nextIndex < 0 || nextIndex >= desktopHistory.entries.length) return;
-    const nextPath = desktopHistory.entries[nextIndex];
-    pendingDesktopHistoryPathRef.current = nextPath;
-    setDesktopHistory((history) => ({ ...history, index: nextIndex }));
-    if (nextPath !== pathname) navigate(nextPath);
+  const setDesktopSidebarVisibility = (collapsed: boolean) => {
+    setDesktopSidebarCollapsed(collapsed);
+    persistDesktopSidebarCollapsed(collapsed);
   };
-  const toggleProjectNavigator = () => {
-    const collapsed = !projectNavigatorCollapsed;
-    setProjectNavigatorCollapsed(collapsed);
-    setProjectNavigatorCollapsedFromChrome(collapsed);
-  };
+
+  const hasGlobalSidebar = !isProjectDetailPage && !isSettingsPage;
+  const openWorkspaceTabs = desktopTabs.filter((tab) =>
+    isDesktopWorkspaceTabPath(tab.path),
+  );
+  const dashboardActive = activeDesktopTabId === HOME_DESKTOP_TAB_ID;
 
   if (isDesktop) {
     return (
@@ -214,254 +443,264 @@ export default function TopNavigation() {
         <header
           data-desktop-chrome="true"
           style={desktopChromeStyle}
-          className="desktop-drag-region fixed left-0 right-0 top-0 z-50 h-[var(--clash-desktop-chrome-height)] border-b border-warm-border bg-warm-muted/95 text-slate-900 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_10px_28px_rgba(35,31,25,0.065)] backdrop-blur-xl dark:text-slate-100 dark:shadow-[0_1px_0_rgba(255,255,255,0.04)_inset,0_10px_28px_rgba(0,0,0,0.28)]"
+          className="desktop-drag-region fixed left-0 right-0 top-0 z-50 h-[var(--clash-desktop-chrome-height)] border-b border-warm-border bg-warm-muted text-content-primary"
         >
           <div
             data-desktop-toolbar="true"
-            className="flex h-full items-center gap-[var(--clash-control-gap)] pl-[max(var(--clash-desktop-toolbar-left-inset),env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]"
+            className="flex h-full items-center gap-1.5 pl-[max(var(--clash-desktop-toolbar-left-inset),env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]"
           >
-            {isProjectDetailPage ? (
-              <Tooltip
-                label={
-                  projectNavigatorCollapsed
-                    ? 'Expand project sidebar'
-                    : 'Collapse project sidebar'
-                }
-              >
-                <IconButton
-                  data-project-navigator-toggle
-                  label={
-                    projectNavigatorCollapsed
-                      ? 'Expand project sidebar'
-                      : 'Collapse project sidebar'
-                  }
-                  icon={<SidebarSimple className="h-4 w-4" weight="regular" />}
-                  size="sm"
-                  onClick={toggleProjectNavigator}
-                  className="desktop-no-drag flex-none text-stone-700 hover:bg-black/[0.055] hover:text-stone-950 dark:text-stone-300 dark:hover:bg-white/[0.07] dark:hover:text-stone-50"
-                />
-              </Tooltip>
-            ) : null}
-            <Tooltip label="Back">
-              <IconButton
-                label="Back"
-                icon={<ArrowLeft className="h-4 w-4" />}
-                size="sm"
-                onClick={() => navigateDesktopHistory(-1)}
-                disabled={!canGoBack}
-                className="desktop-no-drag flex-none text-stone-700 hover:bg-black/[0.055] disabled:cursor-default disabled:text-stone-300 disabled:hover:bg-transparent dark:text-stone-300 dark:hover:bg-white/[0.07] dark:hover:text-stone-50 dark:disabled:text-stone-600"
+            <Link
+              data-desktop-dashboard="true"
+              data-active={String(dashboardActive)}
+              aria-label="Dashboard"
+              aria-current={pathname === "/" ? "page" : undefined}
+              to="/"
+              className={`desktop-no-drag inline-flex h-8 flex-none items-center gap-2 rounded-lg px-2 text-sm font-medium shadow-none outline-none transition-colors hover:bg-warm-hover hover:text-content-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-warm-muted ${
+                dashboardActive
+                  ? "bg-warm-hover text-content-primary"
+                  : "text-content-secondary"
+              }`}
+            >
+              <SquaresFour
+                data-desktop-dashboard-icon="true"
+                aria-hidden="true"
+                className="h-[18px] w-[18px]"
+                weight="regular"
               />
-            </Tooltip>
-            <Tooltip label="Forward">
-              <IconButton
-                label="Forward"
-                icon={<ArrowRight className="h-4 w-4" />}
-                size="sm"
-                onClick={() => navigateDesktopHistory(1)}
-                disabled={!canGoForward}
-                className="desktop-no-drag flex-none text-stone-700 hover:bg-black/[0.055] disabled:cursor-default disabled:text-stone-300 disabled:hover:bg-transparent dark:text-stone-300 dark:hover:bg-white/[0.07] dark:hover:text-stone-50 dark:disabled:text-stone-600"
-              />
-            </Tooltip>
+              Dashboard
+            </Link>
+            <span
+              aria-hidden="true"
+              className="mx-1 h-6 w-px flex-none bg-warm-border"
+            />
             <TabProvider
               selectedId={activeDesktopTabId ?? undefined}
               setSelectedId={selectDesktopTabId}
               focusLoop
             >
               <TabList
-                aria-label="Open tabs"
-                className="desktop-drag-region flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden"
+                aria-label="Open workspaces"
+                className="desktop-drag-region flex min-w-0 items-center gap-1.5 overflow-x-auto"
               >
-                {desktopTabs.map((tab, index) => {
+                {openWorkspaceTabs.map((tab) => {
                   const active = tab.id === activeDesktopTabId;
-                  const isHomeTab = tab.path === '/';
-                  const nextTab = desktopTabs[index + 1];
-                  const nextActive = nextTab?.id === activeDesktopTabId;
-                  const showInactiveSeparator = !active && !!nextTab && !nextActive;
+                  const TabIcon =
+                    tab.path === "/settings" ? SlidersHorizontal : File;
+
                   return (
                     <div
                       key={tab.id}
-                      data-desktop-tab="true"
-                      className={`desktop-no-drag group relative flex h-8 items-center gap-1 rounded-lg border text-[13px] font-medium transition-colors ${
-                        isHomeTab ? 'w-10 flex-none justify-center px-0' : 'min-w-36 max-w-60 px-2.5'
-                      } ${
+                      data-desktop-workspace-tab="true"
+                      data-active={String(active)}
+                      className={`desktop-no-drag group relative flex h-8 min-w-36 max-w-64 items-center gap-1 rounded-lg border pl-2.5 pr-1 text-sm font-medium transition-[background-color,border-color,box-shadow,color] ${
                         active
-                          ? 'border-warm-border bg-warm-surface text-slate-950 shadow-sm dark:text-slate-50'
-                          : 'border-transparent bg-transparent text-stone-600 hover:bg-warm-surface/65 hover:text-stone-950 dark:text-stone-400 dark:hover:text-stone-100'
+                          ? "border-warm-border bg-warm-surface text-content-primary shadow-raised"
+                          : "border-transparent bg-warm-hover text-content-muted hover:text-content-primary"
                       }`}
                     >
                       <Tab
                         id={tab.id}
-                        aria-label={isHomeTab ? 'Home' : undefined}
-                        className={`min-w-0 focus-visible:outline-none ${
-                          isHomeTab ? 'inline-flex h-full w-full items-center justify-center' : 'flex-1 truncate text-left'
-                        }`}
+                        aria-label={tab.title}
+                        className="flex min-w-0 flex-1 items-center gap-2 truncate text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-warm-muted"
                       >
-                        {isHomeTab ? (
-                          <House
-                            className={`h-4 w-4 ${active ? 'text-brand' : ''}`}
-                            weight={active ? 'fill' : 'regular'}
-                            aria-hidden="true"
-                          />
-                        ) : (
-                          tab.title
-                        )}
-                      </Tab>
-                      {!isHomeTab && (
-                        <Tooltip label={`Close ${tab.title}`}>
-                          <IconButton
-                            label={`Close ${tab.title}`}
-                            icon={<X className="h-3 w-3" weight="bold" />}
-                            size="sm"
-                            shape="circle"
-                            onClick={() => closeTab(tab.id)}
-                            className={`flex-none ${
-                              active
-                                ? 'text-stone-500 hover:bg-black/10 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-white/10 dark:hover:text-stone-50'
-                                : 'text-stone-400 opacity-0 hover:bg-black/10 hover:text-stone-800 group-hover:opacity-100 dark:text-stone-500 dark:hover:bg-white/10 dark:hover:text-stone-100'
-                            }`}
-                          />
-                        </Tooltip>
-                      )}
-                      {showInactiveSeparator && (
-                        <span
+                        <TabIcon
+                          data-workspace-tab-icon="true"
                           aria-hidden="true"
-                          data-desktop-tab-separator="true"
-                          className="pointer-events-none absolute right-0 top-1/2 h-5 w-px -translate-y-1/2 bg-warm-border/90"
+                          className="h-[18px] w-[18px] flex-none"
+                          weight="regular"
                         />
-                      )}
+                        <span className="truncate">{tab.title}</span>
+                      </Tab>
+                      {tab.connection ? (
+                        <span
+                          role="status"
+                          aria-label={`Project connection: ${tab.connection}`}
+                          title={`Project connection: ${tab.connection}`}
+                          data-desktop-tab-connection={tab.connection}
+                          className={`h-2 w-2 flex-none rounded-full ${
+                            tab.connection === "connected"
+                              ? "bg-emerald-500"
+                              : tab.connection === "connecting"
+                                ? "animate-pulse bg-amber-400"
+                                : "bg-red-500 ring-2 ring-red-500/20"
+                          }`}
+                        />
+                      ) : null}
+                      <Tooltip label={`Close ${tab.title}`}>
+                        <IconButton
+                          label={`Close ${tab.title}`}
+                          icon={<X className="h-3 w-3" weight="bold" />}
+                          size="sm"
+                          shape="circle"
+                          onClick={() => closeTab(tab.id)}
+                          className="flex-none text-content-muted hover:bg-black/10 hover:text-content-primary dark:hover:bg-white/10"
+                        />
+                      </Tooltip>
                     </div>
                   );
                 })}
               </TabList>
             </TabProvider>
+            <Tooltip label="Open project">
+              <IconButton
+                label="Open project"
+                icon={<Plus className="h-4 w-4" weight="regular" />}
+                size="sm"
+                onClick={() => openDesktopPath("/projects")}
+                className="desktop-no-drag flex-none text-content-secondary hover:bg-warm-hover hover:text-content-primary"
+              />
+            </Tooltip>
             <HarnessUpdateNotifier />
           </div>
         </header>
 
-        {!isProjectDetailPage && !isSettingsPage && (
-          <div
+        {hasGlobalSidebar && (
+          /*
+           * The global sidebar is never an icon rail: expanded and preview both
+           * render the same full, labeled contents, and collapsed takes the
+           * whole panel off canvas with zero layout width.
+           */
+          <DesktopAutoHideSidebar
+            collapsed={desktopSidebarCollapsed}
+            onCollapsedChange={setDesktopSidebarVisibility}
+            expandedWidth="var(--clash-app-sidebar-expanded-width)"
+            label="Application shortcuts"
+            widthStorageKey="clash.desktop.sidebar-width"
             style={desktopChromeStyle}
-            className="pointer-events-none fixed left-0 right-0 top-[calc(var(--clash-desktop-chrome-height)+0.5rem)] z-40 pb-5"
+            className="pointer-events-none fixed bottom-0 left-0 top-[var(--clash-desktop-chrome-height)] z-40 h-auto"
+            panelClassName="flex flex-col border-warm-border bg-warm-muted"
           >
-            <div className="relative flex w-full items-center justify-between pr-[max(2rem,env(safe-area-inset-right))] pl-[max(2rem,env(safe-area-inset-left))] md:px-12">
-              <div className="desktop-no-drag pointer-events-auto z-10">
-                <IconButton
-                  onClick={() => openPathInDesktopTab('/')}
-                  label="Clash home"
-                  size="lg"
-                  className="group h-12 min-h-12 w-12 min-w-12 bg-transparent p-0 text-current shadow-none hover:bg-transparent"
-                  icon={
-                    <span className="relative block h-11 w-11 transition-transform duration-150 group-hover:scale-105">
-                      <img
-                        src="/icon-192.png"
-                        alt=""
-                        className="h-11 w-11 object-contain dark:hidden"
-                        draggable={false}
-                      />
-                      <img
-                        src="/brand/logo-mark-dark.svg"
-                        alt=""
-                        className="hidden h-11 w-11 object-contain dark:block"
-                        draggable={false}
-                      />
-                    </span>
-                  }
+            <div
+              data-sidebar-header-anchor
+              data-slot="desktop-sidebar-header"
+              className="desktop-no-drag pointer-events-auto flex h-[var(--clash-app-sidebar-header-height)] flex-none items-center justify-between px-3 pb-0 pt-[var(--clash-app-sidebar-section-gap)]"
+            >
+              <Link
+                to="/"
+                aria-label="Clash home"
+                className="flex h-[var(--clash-project-control-height,2rem)] min-w-0 items-center gap-1.5 rounded-lg px-1.5 text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-warm-muted"
+              >
+                <AgentMotion
+                  state="idle"
+                  className="clash-agent-motion--compact h-6 w-6 shrink-0"
                 />
-              </div>
-
-              <nav aria-label="Primary" className="desktop-no-drag pointer-events-auto absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-2xl border border-warm-border bg-warm-surface px-2 py-2 shadow-md">
-                {navItems.map((item) => {
-                  const isActive = pathname === item.href;
-                  const Icon = item.icon;
-                  return (
-                    <Button
-                      key={item.name}
-                      size="sm"
-                      onClick={() => openPathInDesktopTab(item.href)}
-                      aria-label={item.name}
-                      aria-current={isActive ? 'page' : undefined}
-                      className={`relative flex min-h-0 items-center gap-2.5 rounded-xl border-transparent bg-transparent px-5 py-2.5 text-base font-display font-medium shadow-none transition-colors hover:bg-transparent ${
-                        isActive
-                          ? 'text-slate-900 dark:text-slate-50'
-                          : 'text-slate-700 hover:bg-warm-muted hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100'
-                      }`}
-                    >
-                      {isActive && (
-                        <motion.div
-                          layoutId="desktop-nav-pill"
-                          className="absolute inset-0 rounded-xl bg-warm-muted"
-                          transition={{ type: 'spring', bounce: 0.15, duration: 0.4 }}
-                        />
-                      )}
-                      <span className="relative z-10 flex items-center gap-2.5">
-                        <Icon className={`h-5 w-5 ${isActive ? 'text-brand' : ''}`} weight={isActive ? 'fill' : 'regular'} />
-                        {item.name}
-                      </span>
-                    </Button>
-                  );
-                })}
-              </nav>
-
-              <div className="desktop-no-drag pointer-events-auto z-10 flex items-center gap-3">
-                <UserControls />
-              </div>
+                <span className="truncate font-display text-[var(--clash-project-title-size,0.8125rem)] font-medium">
+                  Clash
+                </span>
+              </Link>
+              <DesktopSidebarCollapseButton
+                collapsed={desktopSidebarCollapsed}
+                label="Application shortcuts"
+                onCollapsedChange={setDesktopSidebarVisibility}
+                className="pointer-events-auto"
+              />
             </div>
-          </div>
+            <div className="desktop-no-drag pointer-events-auto px-3 pt-[var(--clash-app-sidebar-section-gap)]">
+              <DesktopCommandPalette
+                collapsed={false}
+                onNavigate={openDesktopPath}
+              />
+            </div>
+            <nav
+              aria-label="Primary"
+              data-orientation="vertical"
+              className="desktop-no-drag pointer-events-auto flex min-w-0 flex-col gap-1 px-3 pb-3 pt-2"
+            >
+              {navItems.map((item) => {
+                const isActive = pathname === item.href;
+                return (
+                  <button
+                    key={item.name}
+                    type="button"
+                    onClick={() => openDesktopPath(item.href)}
+                    aria-label={item.name}
+                    aria-current={isActive ? "page" : undefined}
+                    className={`flex h-9 min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-warm-muted ${
+                      isActive
+                        ? "bg-warm-hover text-content-primary"
+                        : "text-content-secondary hover:bg-warm-hover hover:text-content-primary"
+                    }`}
+                  >
+                    <ProductNavIcon
+                      kind={item.kind}
+                      className="h-4 w-4 flex-none"
+                      aria-hidden="true"
+                    />
+                    <span className="truncate">{item.name}</span>
+                  </button>
+                );
+              })}
+            </nav>
+            <div className="desktop-no-drag pointer-events-auto mt-auto border-t border-warm-border p-3">
+              <UserControls compact sidebarExpanded />
+            </div>
+          </DesktopAutoHideSidebar>
         )}
       </>
     );
   }
 
   return (
-    <header
-      className="pointer-events-none fixed top-0 left-0 right-0 z-50 pb-5 pt-[max(1.5rem,env(safe-area-inset-top))]"
-    >
-      <div
-        className="relative flex items-center justify-between w-full pr-[max(2rem,env(safe-area-inset-right))] pl-[max(2rem,env(safe-area-inset-left))] md:px-12"
-      >
+    <header className="pointer-events-none fixed top-0 left-0 right-0 z-50 pb-5 pt-[max(1.5rem,env(safe-area-inset-top))]">
+      <div className="relative flex items-center justify-between w-full pr-[max(2rem,env(safe-area-inset-right))] pl-[max(2rem,env(safe-area-inset-left))] md:px-12">
         {/* Logo Area */}
         <div className="desktop-no-drag pointer-events-auto z-10">
-          <Link to="/" className="group flex h-12 w-12 items-center justify-center" aria-label="Clash home">
-            <span className="relative block h-11 w-11 transition-transform duration-150 group-hover:scale-105">
-              <img
-                src="/icon-192.png"
+          <Link
+            to="/"
+            className="group flex h-12 w-12 items-center justify-center"
+            aria-label="Clash home"
+          >
+            <span className="relative block h-11 w-11">
+              <BrandAsset
+                name="mark"
                 alt=""
                 className="h-11 w-11 object-contain dark:hidden"
-                draggable={false}
               />
-              <img
-                src="/brand/logo-mark-dark.svg"
+              <BrandAsset
+                name="markDark"
                 alt=""
                 className="hidden h-11 w-11 object-contain dark:block"
-                draggable={false}
               />
             </span>
           </Link>
         </div>
 
         {/* Floating Center Nav */}
-        <nav aria-label="Primary" className="desktop-no-drag pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 shadow-md border border-warm-border bg-warm-surface rounded-2xl px-2 py-2 flex items-center gap-1">
+        <nav
+          aria-label="Primary"
+          className="desktop-no-drag pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 shadow-md border border-warm-border bg-warm-surface rounded-2xl px-2 py-2 flex items-center gap-1"
+        >
           {navItems.map((item) => {
             const isActive = pathname === item.href;
-            const Icon = item.icon;
             return (
-              <Link key={item.name} to={item.href} aria-current={isActive ? 'page' : undefined}>
+              <Link
+                key={item.name}
+                to={item.href}
+                aria-current={isActive ? "page" : undefined}
+              >
                 <div
                   className={`relative flex items-center gap-2.5 rounded-xl px-5 py-2.5 text-base font-display font-medium transition-colors ${
                     isActive
-                      ? 'text-slate-900 dark:text-slate-50'
-                      : 'text-slate-700 hover:text-slate-900 hover:bg-warm-muted dark:text-slate-300 dark:hover:text-slate-100'
+                      ? "text-slate-900 dark:text-slate-50"
+                      : "text-slate-700 hover:text-slate-900 hover:bg-warm-muted dark:text-slate-300 dark:hover:text-slate-100"
                   }`}
                 >
                   {isActive && (
                     <motion.div
                       layoutId="nav-pill"
                       className="absolute inset-0 bg-warm-muted rounded-xl"
-                      transition={{ type: 'spring', bounce: 0.15, duration: 0.4 }}
+                      transition={{
+                        type: "spring",
+                        bounce: 0.15,
+                        duration: 0.4,
+                      }}
                     />
                   )}
                   <span className="relative z-10 flex items-center gap-2.5">
-                    <Icon className={`h-5 w-5 ${isActive ? 'text-brand' : ''}`} weight={isActive ? 'fill' : 'regular'} />
+                    <ProductNavIcon
+                      kind={item.kind}
+                      className={`h-5 w-5 ${isActive ? "text-brand" : ""}`}
+                    />
                     {item.name}
                   </span>
                 </div>

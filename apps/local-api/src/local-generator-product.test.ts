@@ -22,7 +22,12 @@ import { createLocalApiApp } from "./app.js";
 import { createSqliteDurableRunJournal } from "./durable-run-journal.js";
 import { FileReplicaStore } from "./loro/file-replica-store.js";
 import { LocalLoroRoomHub } from "./sync.js";
-import { createLocalGeneratorProductService } from "./local-generator-product.js";
+import {
+  buildLocalGeneratorDurableRunCommand,
+  buildLocalGeneratorDurableRunCommands,
+  createLocalGeneratorProductService,
+} from "./local-generator-product.js";
+import type { BuiltLocalGeneratorActionRun } from "./local-generator-contract.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -584,7 +589,11 @@ describe("Local Generator product surface", () => {
       kind: "image",
       projectId: "project-1",
       input: {
-        values: { prompt: "a paper lighthouse", aspect_ratio: "16:9" },
+        values: {
+          prompt: "a paper lighthouse",
+          aspect_ratio: "16:9",
+          __generatorActionId: "generate",
+        },
         references: [],
       },
     });
@@ -787,5 +796,458 @@ describe("Local Generator product surface", () => {
       },
     });
     await recoveredHub.close();
+  });
+
+  it("freezes the Host-selected Provider route into the Run request and durable executor input", async () => {
+    const directory = await dataDir();
+    const journal = createSqliteDurableRunJournal(directory);
+    const hub = new LocalLoroRoomHub(directory, undefined, null);
+    const authority = {
+      inspect: <T>(projectId: string, read: (project: LoroDoc) => T | Promise<T>) =>
+        hub.inspectProject(projectId, read),
+      mutate: <T>(
+        projectId: string,
+        mutation: (project: LoroDoc, checkpoint: () => Promise<void>) => T | Promise<T>,
+      ) => hub.mutateProjectWithCheckpoint(projectId, mutation),
+    };
+    const consumerDefinition: GeneratorDefinition = {
+      pluginId: "dummy.consumer",
+      definitionId: "inspect",
+      version: "0.1.0",
+      schemaHash: `sha256:${"d".repeat(64)}`,
+      stateSchema: { type: "object", additionalProperties: false },
+      editPolicy: "advance-head",
+      persistentInputs: [],
+      actions: [
+        {
+          id: "inspect",
+          executorExportId: "execute",
+          selectOutputsByParameter: "categories",
+          modelConsumer: { semanticShape: "dummy_analysis", sourceInputSlot: "source" },
+          parametersSchema: {
+            type: "object",
+            properties: { categories: { type: "array", items: { type: "string" } } },
+            required: ["categories"],
+            additionalProperties: false,
+          },
+          invocationInputs: [
+            {
+              slot: "source",
+              accepts: [{ kind: "media", mediaKind: "image" }],
+              cardinality: { minItems: 1, maxItems: 1 },
+            },
+          ],
+          outputs: [
+            {
+              slot: "description",
+              prompt: "Describe.",
+              promptVersion: "v1",
+              sourceMediaKinds: ["image"],
+              assetType: {
+                kind: "document",
+                documentKind: "media.analysis.description",
+                schemaVersion: 1,
+              },
+              cardinality: { minItems: 0, maxItems: 1 },
+            },
+          ],
+        },
+      ],
+    };
+    const frozenRoute = {
+      providerId: "dummy-provider",
+      accountId: "dummy-account",
+      upstreamId: "dummy-upstream",
+      upstreamModel: "dummy/upstream-model",
+      apiShape: "dummy-shape",
+      executorPluginId: "dummy.provider",
+      executorExportId: "execute",
+    };
+    const resolveModelConsumer = vi.fn(async () => ({
+      modelId: "dummy-card",
+      route: frozenRoute,
+    }));
+    const host = createLocalGeneratorProductService({
+      authority,
+      resolveDefinition: async () => consumerDefinition,
+      ownerId: "host-1",
+      journal,
+      actor: { kind: "agent", id: "agent-1" },
+      resolveModelConsumer,
+    });
+    await authority.mutate("project-route", async (doc, checkpoint) => {
+      expect(
+        createProjectAsset(doc, {
+          id: "source-image",
+          kind: "image",
+          source: { kind: "owned", resourceId: `sha256:${"c".repeat(64)}` },
+          lifecycle: { state: "active" },
+          metadata: { contentType: "image/png" },
+        }),
+      ).toMatchObject({ ok: true });
+      await checkpoint();
+    });
+    await host.create("project-route", {
+      generatorId: "inspector",
+      generatorRevisionId: "inspector:r1",
+      pluginId: consumerDefinition.pluginId,
+      definitionId: consumerDefinition.definitionId,
+      state: {},
+      persistentInputRefs: [],
+    });
+    const run = await host.submit("project-route", "inspector", "inspect", {
+      actionRunId: "run-route",
+      generatorRevisionId: "inspector:r1",
+      parameters: { categories: ["description"] },
+      invocationInputRefs: [
+        { slot: "source", target: { kind: "media", projectAssetId: "source-image" } },
+      ],
+    });
+    expect(run.status).toBe("running");
+    expect(resolveModelConsumer).toHaveBeenCalledWith({
+      projectId: "project-route",
+      consumer: {
+        pluginId: "dummy.consumer",
+        definitionId: "inspect",
+        actionId: "inspect",
+      },
+      semanticShape: "dummy_analysis",
+      sourceKind: "image",
+    });
+    const persisted = await host.readRun("project-route", "run-route");
+    expect(persisted?.modelSelection).toEqual({
+      semanticShape: "dummy_analysis",
+      modelId: "dummy-card",
+      route: frozenRoute,
+    });
+    const task = await journal.load({
+      actionRunId: "run-route",
+      outputSlot: "description",
+    });
+    expect(task?.executorInput).toMatchObject({
+      input: {
+        values: {
+          modelId: "dummy-card",
+          modelRoute: frozenRoute,
+        },
+      },
+    });
+    await hub.close();
+  });
+});
+
+describe("buildLocalGeneratorDurableRunCommand", () => {
+  it("creates one durable task per selected output and narrows each plugin invocation", () => {
+    const doc = new LoroDoc();
+    expect(createProjectAsset(doc, {
+      id: "source",
+      kind: "video",
+      source: { kind: "owned", resourceId: "resource-source" },
+      lifecycle: { state: "active" },
+      metadata: { contentType: "video/mp4" },
+    })).toMatchObject({ ok: true });
+    const outputs = ["description", "tags"].map((slot) => ({
+      slot,
+      assetType: { kind: "document" as const, documentKind: `media.analysis.${slot}`, schemaVersion: 1 },
+      cardinality: { minItems: 1, maxItems: 1 },
+    }));
+    const built = {
+      definition: {} as GeneratorDefinition,
+      revision: {
+        id: "analysis:r1",
+        generatorId: "analysis",
+        definitionRef: { pluginId: "clash.media-analysis", definitionId: "media-analysis", version: "0.1.0", schemaHash: `sha256:${"a".repeat(64)}` },
+        state: { modelId: "vlm" },
+        persistentInputRefs: [],
+      },
+      action: {
+        id: "analyze",
+        executorExportId: "analyze",
+        selectOutputsByParameter: "categories",
+        parametersSchema: {},
+        invocationInputs: [],
+        outputs,
+      },
+      request: {
+        actionRunId: "analysis-run",
+        generatorRevision: { generatorId: "analysis", generatorRevisionId: "analysis:r1" },
+        actionId: "analyze",
+        executor: { pluginId: "clash.media-analysis", version: "0.1.0", exportId: "analyze", schemaHash: `sha256:${"a".repeat(64)}` },
+        invocationFingerprint: `sha256:${"b".repeat(64)}`,
+        parameters: {
+          categories: ["description", "tags"],
+          source: { projectAssetId: "source", resourceHash: `sha256:${"c".repeat(64)}`, kind: "video" },
+          generatorRevisionId: "analysis:r1",
+          actionRunId: "analysis-run",
+        },
+        invocationInputRefs: [{ slot: "source", target: { kind: "media" as const, projectAssetId: "source" } }],
+        outputContract: outputs,
+      },
+    } as BuiltLocalGeneratorActionRun;
+    const commands = buildLocalGeneratorDurableRunCommands({
+      doc, projectId: "project-1", built, actor: { kind: "agent", id: "agent-1" }, deadlineAt: Date.now() + 1_000,
+    });
+    expect(commands.map((command) => command.outputSlot)).toEqual(["description", "tags"]);
+    expect(commands.map((command) => command.executor.input.values.categories)).toEqual([["description"], ["tags"]]);
+    expect(commands.every((command) => command.executor.generatorOutputContract === built.request.outputContract)).toBe(true);
+  });
+
+  it("derives model/source/run lineage from frozen authorities rather than caller parameters", () => {
+    const doc = new LoroDoc();
+    expect(createProjectAsset(doc, {
+      id: "source",
+      kind: "video",
+      source: { kind: "owned", resourceId: `sha256:${"c".repeat(64)}` },
+      lifecycle: { state: "active" },
+      metadata: { contentType: "video/mp4" },
+    })).toMatchObject({ ok: true });
+    const output = {
+      slot: "description",
+      prompt: "Describe.",
+      promptVersion: "v1",
+      sourceMediaKinds: ["video" as const],
+      assetType: { kind: "document" as const, documentKind: "media.analysis.description", schemaVersion: 1 },
+      cardinality: { minItems: 1, maxItems: 1 },
+    };
+    const built = {
+      definition: {} as GeneratorDefinition,
+      revision: {
+        id: "analysis:r1",
+        generatorId: "analysis",
+        definitionRef: { pluginId: "dummy.consumer", definitionId: "inspect", version: "0.1.0", schemaHash: `sha256:${"a".repeat(64)}` },
+        state: {},
+        persistentInputRefs: [],
+      },
+      action: {
+        id: "inspect",
+        executorExportId: "execute",
+        selectOutputsByParameter: "categories",
+        modelConsumer: { semanticShape: "media_analysis", sourceInputSlot: "source" },
+        parametersSchema: {},
+        invocationInputs: [],
+        outputs: [output],
+      },
+      request: {
+        actionRunId: "analysis-run",
+        generatorRevision: { generatorId: "analysis", generatorRevisionId: "analysis:r1" },
+        actionId: "inspect",
+        executor: { pluginId: "dummy.consumer", version: "0.1.0", exportId: "execute", schemaHash: `sha256:${"a".repeat(64)}` },
+        invocationFingerprint: `sha256:${"b".repeat(64)}`,
+        parameters: { categories: ["description"] },
+        invocationInputRefs: [{ slot: "source", target: { kind: "media" as const, projectAssetId: "source" } }],
+        outputContract: [output],
+      },
+    } as BuiltLocalGeneratorActionRun;
+
+    const [command] = buildLocalGeneratorDurableRunCommands({
+      doc,
+      projectId: "project-1",
+      built,
+      actor: { kind: "agent", id: "agent-1" },
+      deadlineAt: Date.now() + 1_000,
+      modelId: "settings-card",
+    });
+    expect(command?.executor.input.values).toMatchObject({
+      modelId: "settings-card",
+      source: {
+        projectAssetId: "source",
+        resourceHash: `sha256:${"c".repeat(64)}`,
+        kind: "video",
+      },
+      generatorRevisionId: "analysis:r1",
+      actionRunId: "analysis-run",
+    });
+  });
+
+  it("gives a model media output a GLB delivery name", () => {
+    const built = {
+      definition: {} as GeneratorDefinition,
+      revision: {
+        id: "humanoid-retarget:r1",
+        generatorId: "humanoid-retarget",
+        definitionRef: {
+          pluginId: "clash.tripo",
+          definitionId: "humanoid-retarget",
+          version: "0.1.0",
+          schemaHash: `sha256:${"a".repeat(64)}`,
+        },
+        state: {},
+        persistentInputRefs: [],
+      },
+      action: {
+        id: "retarget",
+        executorExportId: "retarget",
+        parametersSchema: {},
+        invocationInputs: [],
+        outputs: [
+          {
+            slot: "model",
+            assetType: { kind: "media" as const, mediaKind: "model" as const },
+            cardinality: { minItems: 1, maxItems: 1 },
+          },
+        ],
+      },
+      request: {
+        actionRunId: "run-model-output",
+        generatorRevision: {
+          generatorId: "humanoid-retarget",
+          generatorRevisionId: "humanoid-retarget:r1",
+        },
+        actionId: "retarget",
+        executor: {
+          pluginId: "clash.tripo",
+          version: "0.1.0",
+          exportId: "retarget",
+          schemaHash: `sha256:${"b".repeat(64)}`,
+        },
+        invocationFingerprint: `sha256:${"c".repeat(64)}`,
+        parameters: {},
+        invocationInputRefs: [],
+        outputContract: [
+          {
+            slot: "model",
+            assetType: { kind: "media" as const, mediaKind: "model" as const },
+            cardinality: { minItems: 1, maxItems: 1 },
+          },
+        ],
+      },
+    } as BuiltLocalGeneratorActionRun;
+
+    const command = buildLocalGeneratorDurableRunCommand({
+      doc: new LoroDoc(),
+      projectId: "project-1",
+      built,
+      actor: { kind: "system" },
+      deadlineAt: Date.now() + 1_000,
+    });
+
+    expect(command.executor.delivery).toMatchObject({
+      name: "humanoid-retarget-run-model-output.glb",
+    });
+    expect(command.executor.delivery?.name).not.toMatch(/\.wav$/);
+  });
+
+  it("encodes a generic collection item ref's itemKey into the plugin reference slot", () => {
+    const doc = new LoroDoc();
+    expect(
+      createProjectAsset(doc, {
+        id: "asset:clip-1",
+        kind: "video",
+        source: { kind: "owned", resourceId: "resource:clip-1" },
+        lifecycle: { state: "active" },
+        metadata: { contentType: "video/mp4" },
+      }),
+    ).toMatchObject({ ok: true });
+
+    const timelineDefinition: GeneratorDefinition = {
+      pluginId: "clash.remotion",
+      definitionId: "timeline",
+      version: "0.1.0",
+      schemaHash: `sha256:${"b".repeat(64)}`,
+      stateSchema: {
+        type: "object",
+        properties: { timeline: { type: "object" } },
+        required: ["timeline"],
+        additionalProperties: false,
+      },
+      editPolicy: "advance-head",
+      persistentInputs: [
+        {
+          slot: "timeline:item",
+          accepts: [
+            { kind: "media", mediaKind: "video" },
+            { kind: "media", mediaKind: "image" },
+            { kind: "media", mediaKind: "audio" },
+          ],
+          cardinality: { minItems: 0, maxItems: null },
+        },
+      ],
+      actions: [
+        {
+          id: "render",
+          executorExportId: "render-timeline",
+          parametersSchema: { type: "object", additionalProperties: false },
+          invocationInputs: [],
+          outputs: [
+            {
+              slot: "render:output",
+              assetType: { kind: "media", mediaKind: "video" },
+              cardinality: { minItems: 1, maxItems: 1 },
+            },
+          ],
+        },
+      ],
+      projectionSurface: {
+        id: "clash.timeline",
+        stateKey: "timeline",
+        mediaInputSlot: "timeline:item",
+        primaryActionId: "render",
+      },
+    };
+
+    const timelineEnvelope = {
+      name: "Timeline",
+      owner: { kind: "project" as const },
+      state: { tracks: [] },
+    };
+    const built: BuiltLocalGeneratorActionRun = {
+      definition: timelineDefinition,
+      revision: {
+        id: "timeline-1:r1",
+        generatorId: "timeline-1",
+        definitionRef: {
+          pluginId: timelineDefinition.pluginId,
+          definitionId: timelineDefinition.definitionId,
+          version: timelineDefinition.version,
+          schemaHash: timelineDefinition.schemaHash,
+        },
+        state: { timeline: timelineEnvelope },
+        persistentInputRefs: [
+          {
+            slot: "timeline:item",
+            itemKey: "clip-1",
+            target: { kind: "media", projectAssetId: "asset:clip-1" },
+          },
+        ],
+      },
+      action: timelineDefinition.actions[0]!,
+      request: {
+        actionRunId: "run-timeline-1",
+        generatorRevision: {
+          generatorId: "timeline-1",
+          generatorRevisionId: "timeline-1:r1",
+        },
+        actionId: "render",
+        executor: {
+          pluginId: timelineDefinition.pluginId,
+          version: timelineDefinition.version,
+          exportId: "render-timeline",
+          schemaHash: timelineDefinition.schemaHash,
+        },
+        invocationFingerprint: `sha256:${"c".repeat(64)}`,
+        parameters: {},
+        invocationInputRefs: [],
+        outputContract: timelineDefinition.actions[0]!.outputs,
+      },
+    };
+
+    const command = buildLocalGeneratorDurableRunCommand({
+      doc,
+      projectId: "project-1",
+      built,
+      actor: { kind: "system" },
+      deadlineAt: Date.now() + 1000,
+    });
+
+    expect(command.executor.input).toMatchObject({
+      values: { timeline: timelineEnvelope },
+      references: [
+        {
+          slot: "timeline:item:clip-1",
+          index: 0,
+          asset: { assetId: "asset:clip-1" },
+        },
+      ],
+    });
   });
 });

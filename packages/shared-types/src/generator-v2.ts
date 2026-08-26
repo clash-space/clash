@@ -3,10 +3,12 @@ import { z } from "zod";
 import { AssetKindSchema } from "./assets.js";
 import { ExecutablePluginJsonValueSchema } from "./plugin-json-value.js";
 import { pluginIdSchema } from "./plugin-namespace.js";
+import { ProviderAssetInputSchema } from "./models.js";
 
 const nonEmptyIdSchema = z.string().trim().min(1);
 const prefixedSha256Schema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const jsonObjectSchema = z.record(ExecutablePluginJsonValueSchema);
+const GeneratorMediaKindSchema = AssetKindSchema;
 
 export const GeneratorEditPolicySchema = z.enum([
   "advance-head",
@@ -178,6 +180,11 @@ export const GeneratorActionOutputPortSchema = z
     slot: nonEmptyIdSchema,
     assetType: GeneratorAssetTypeSchema,
     cardinality: GeneratorActionOutputCardinalitySchema,
+    /** Human label and prompt contract owned by the plugin declaration. */
+    title: nonEmptyIdSchema.optional(),
+    sourceMediaKinds: z.array(GeneratorMediaKindSchema).min(1).optional(),
+    prompt: nonEmptyIdSchema.optional(),
+    promptVersion: nonEmptyIdSchema.optional(),
   })
   .strict();
 export type GeneratorActionOutputPort = z.infer<
@@ -186,17 +193,31 @@ export type GeneratorActionOutputPort = z.infer<
 
 export const GeneratorActionOutputContractSchema = z
   .array(GeneratorActionOutputPortSchema)
-  .length(1)
+  .min(1)
   .superRefine((outputs, context) => {
-    const cardinality = outputs[0]?.cardinality;
-    if (cardinality?.minItems !== 1 || cardinality.maxItems !== 1) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: [0, "cardinality"],
-        message:
-          "The current Generator Action profile requires exactly one output.",
-      });
-    }
+    const slots = new Set<string>();
+    outputs.forEach((output, index) => {
+      if (slots.has(output.slot)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [index, "slot"],
+          message: `Duplicate Generator Action output slot: ${output.slot}`,
+        });
+      }
+      slots.add(output.slot);
+      if (
+        output.cardinality.maxItems !== 1 ||
+        (output.cardinality.minItems !== 0 &&
+          output.cardinality.minItems !== 1)
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [index, "cardinality"],
+          message:
+            "The current Generator Action profile requires singular 0..1 or 1..1 output slots.",
+        });
+      }
+    });
   });
 export type GeneratorActionOutputContract = z.infer<
   typeof GeneratorActionOutputContractSchema
@@ -207,11 +228,20 @@ export const GeneratorActionDefinitionSchema = z
     id: nonEmptyIdSchema,
     executorExportId: nonEmptyIdSchema,
     parametersSchema: jsonObjectSchema,
+    selectOutputsByParameter: nonEmptyIdSchema.optional(),
+    /** Provider-independent model consumption contract resolved by the Host. */
+    modelConsumer: z
+      .object({
+        semanticShape: z.string().trim().regex(/^[a-z][a-z0-9_]*$/),
+        sourceInputSlot: nonEmptyIdSchema,
+      })
+      .strict()
+      .optional(),
     invocationInputs: z.array(GeneratorActionInputPortSchema),
     outputs: GeneratorActionOutputContractSchema,
   })
   .strict()
-  .superRefine(({ invocationInputs }, context) => {
+  .superRefine(({ invocationInputs, modelConsumer }, context) => {
     const seen = new Set<string>();
     invocationInputs.forEach((input, index) => {
       if (seen.has(input.slot)) {
@@ -223,9 +253,56 @@ export const GeneratorActionDefinitionSchema = z
       }
       seen.add(input.slot);
     });
+    if (
+      modelConsumer &&
+      !invocationInputs.some((input) => input.slot === modelConsumer.sourceInputSlot)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["modelConsumer", "sourceInputSlot"],
+        message: `Model consumer source slot ${modelConsumer.sourceInputSlot} is not declared.`,
+      });
+    }
   });
 export type GeneratorActionDefinition = z.infer<
   typeof GeneratorActionDefinitionSchema
+>;
+
+/**
+ * Reserved compatibility projection surfaces.
+ *
+ * A specialized product surface that existed before native Generators (the
+ * Timeline editor, the Director Stage) keeps its entrypoints, but those
+ * entrypoints must project one plugin-registered Generator family instead of
+ * owning a second state model. A plugin claims the surface from its own
+ * Generator document; the Host never names the plugin, definition, Actions, or
+ * schema hash behind a surface.
+ */
+export const GENERATOR_PROJECTION_SURFACE_IDS = [
+  "clash.timeline",
+  "clash.director-stage",
+] as const;
+
+export const GeneratorProjectionSurfaceIdSchema = z.enum(
+  GENERATOR_PROJECTION_SURFACE_IDS,
+);
+export type GeneratorProjectionSurfaceId = z.infer<
+  typeof GeneratorProjectionSurfaceIdSchema
+>;
+
+export const GeneratorProjectionSurfaceSchema = z
+  .object({
+    id: GeneratorProjectionSurfaceIdSchema,
+    /** Generator state key holding the legacy editable document. */
+    stateKey: nonEmptyIdSchema,
+    /** Persistent input slot that receives the legacy document's media items. */
+    mediaInputSlot: nonEmptyIdSchema.optional(),
+    /** Action the legacy render/capture entrypoint submits. */
+    primaryActionId: nonEmptyIdSchema,
+  })
+  .strict();
+export type GeneratorProjectionSurface = z.infer<
+  typeof GeneratorProjectionSurfaceSchema
 >;
 
 const generatorDefinitionSpecShape = {
@@ -234,12 +311,14 @@ const generatorDefinitionSpecShape = {
   editPolicy: GeneratorEditPolicySchema,
   persistentInputs: z.array(GeneratorInputPortSchema),
   actions: z.array(GeneratorActionDefinitionSchema).min(1),
+  projectionSurface: GeneratorProjectionSurfaceSchema.optional(),
 } as const;
 
 function validateGeneratorDefinitionSpec(
   input: {
     actions: readonly GeneratorActionDefinition[];
     persistentInputs: readonly GeneratorInputPort[];
+    projectionSurface?: GeneratorProjectionSurface;
   },
   context: z.RefinementCtx,
 ): void {
@@ -266,6 +345,23 @@ function validateGeneratorDefinitionSpec(
     }
     actionIds.add(action.id);
   });
+
+  const surface = input.projectionSurface;
+  if (!surface) return;
+  if (!actionIds.has(surface.primaryActionId)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["projectionSurface", "primaryActionId"],
+      message: `Projection surface ${surface.id} names undefined Action ${surface.primaryActionId}.`,
+    });
+  }
+  if (surface.mediaInputSlot && !persistentSlots.has(surface.mediaInputSlot)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["projectionSurface", "mediaInputSlot"],
+      message: `Projection surface ${surface.id} names undeclared persistent input slot ${surface.mediaInputSlot}.`,
+    });
+  }
 }
 
 /** Plugin-authored semantic definition before the Host injects package provenance. */
@@ -282,10 +378,50 @@ export const GeneratorDefinitionSchema = GeneratorDefinitionRefSchema.extend({
   editPolicy: generatorDefinitionSpecShape.editPolicy,
   persistentInputs: generatorDefinitionSpecShape.persistentInputs,
   actions: generatorDefinitionSpecShape.actions,
+  projectionSurface: generatorDefinitionSpecShape.projectionSurface,
 })
   .strict()
   .superRefine(validateGeneratorDefinitionSpec);
 export type GeneratorDefinition = z.infer<typeof GeneratorDefinitionSchema>;
+
+export type ResolveGeneratorProjectionDefinitionResult =
+  | { ok: true; definition: GeneratorDefinition }
+  | {
+      ok: false;
+      code:
+        | "GENERATOR_PROJECTION_SURFACE_NOT_INSTALLED"
+        | "GENERATOR_PROJECTION_SURFACE_AMBIGUOUS";
+      surfaceId: GeneratorProjectionSurfaceId;
+    };
+
+/**
+ * Resolve the single installed Definition that claims one compatibility
+ * surface. Zero or several claims fail closed: a legacy entrypoint must never
+ * guess which Generator family it is projecting.
+ */
+export function resolveGeneratorProjectionDefinition(
+  definitions: readonly GeneratorDefinition[],
+  surfaceId: GeneratorProjectionSurfaceId,
+): ResolveGeneratorProjectionDefinitionResult {
+  const claiming = definitions.filter(
+    (definition) => definition.projectionSurface?.id === surfaceId,
+  );
+  if (claiming.length === 0) {
+    return {
+      ok: false,
+      code: "GENERATOR_PROJECTION_SURFACE_NOT_INSTALLED",
+      surfaceId,
+    };
+  }
+  if (claiming.length > 1) {
+    return {
+      ok: false,
+      code: "GENERATOR_PROJECTION_SURFACE_AMBIGUOUS",
+      surfaceId,
+    };
+  }
+  return { ok: true, definition: claiming[0]! };
+}
 
 /** Persisted mutable Project identity. The definition is derived from its immutable head revision. */
 export const ProjectGeneratorHeadSchema = z
@@ -333,6 +469,72 @@ export const ActionRunStatusSchema = z.enum([
 ]);
 export type ActionRunStatus = z.infer<typeof ActionRunStatusSchema>;
 
+/**
+ * Exact Provider implementation identity frozen by the Host at selection time.
+ * A Card keeps 1:N providerImplementations; this pins the one the Run uses so
+ * Settings validation, execution, and lineage cannot silently diverge.
+ * Settings itself still persists only the Card id.
+ */
+export const ActionRunModelRouteSchema = z
+  .object({
+    providerId: nonEmptyIdSchema.optional(),
+    accountId: nonEmptyIdSchema.optional(),
+    region: nonEmptyIdSchema.optional(),
+    upstreamId: nonEmptyIdSchema,
+    upstreamModel: nonEmptyIdSchema,
+    apiShape: nonEmptyIdSchema,
+    executorPluginId: pluginIdSchema.optional(),
+    executorExportId: nonEmptyIdSchema.optional(),
+    /**
+     * The exact Provider executor plugin/version/export the Host resolved and pinned at
+     * selection time. A generic model-consumer Generator Action must dispatch to, and later
+     * accept a staged media receipt from, only this exact frozen binding -- never a version the
+     * Host happens to resolve fresh when the durable run later submits or polls.
+     */
+    executorBinding: z
+      .object({
+        pluginId: pluginIdSchema,
+        version: z.string().trim().min(1),
+        exportId: nonEmptyIdSchema,
+        schemaHash: prefixedSha256Schema,
+      })
+      .strict()
+      .optional(),
+    /** Delivery declaration copied from the exact selected Provider route, frozen at selection. */
+    assetInputs: z.array(ProviderAssetInputSchema).optional(),
+  })
+  .strict()
+  .superRefine((route, ctx) => {
+    if (!route.executorBinding) return;
+    if (route.executorPluginId && route.executorBinding.pluginId !== route.executorPluginId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `executorBinding.pluginId (${route.executorBinding.pluginId}) does not match executorPluginId (${route.executorPluginId}).`,
+        path: ["executorBinding", "pluginId"],
+      });
+    }
+    if (route.executorExportId && route.executorBinding.exportId !== route.executorExportId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `executorBinding.exportId (${route.executorBinding.exportId}) does not match executorExportId (${route.executorExportId}).`,
+        path: ["executorBinding", "exportId"],
+      });
+    }
+  });
+export type ActionRunModelRoute = z.infer<typeof ActionRunModelRouteSchema>;
+
+/** Host-resolved Card selection frozen with the semantic Run authority. */
+export const ActionRunModelSelectionSchema = z
+  .object({
+    semanticShape: z.string().trim().regex(/^[a-z][a-z0-9_]*$/),
+    modelId: nonEmptyIdSchema,
+    route: ActionRunModelRouteSchema,
+  })
+  .strict();
+export type ActionRunModelSelection = z.infer<
+  typeof ActionRunModelSelectionSchema
+>;
+
 export const ActionRunRequestSchema = z
   .object({
     actionRunId: nonEmptyIdSchema,
@@ -341,6 +543,7 @@ export const ActionRunRequestSchema = z
     executor: GeneratorExecutorRefSchema,
     invocationFingerprint: prefixedSha256Schema,
     parameters: jsonObjectSchema,
+    modelSelection: ActionRunModelSelectionSchema.optional(),
     invocationInputRefs: z.array(GeneratorInputRefSchema),
     outputContract: GeneratorActionOutputContractSchema,
   })

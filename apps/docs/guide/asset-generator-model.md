@@ -2,8 +2,9 @@
 
 > Status: this document is the authority for the native Generator v2 domain
 > model. It distinguishes delivered contracts and Local Host infrastructure
-> from product migrations that have not happened yet. The existing Canvas,
-> Timeline, Director Stage, inline-edit, and ASR surfaces remain on their
+> from product migrations that have not happened yet. Timeline and Director
+> Stage are delivered as specialized projections over native Generator facts.
+> Canvas generation, inline-edit paths, and legacy ASR consumers remain on their
 > current models until each is explicitly migrated.
 
 Clash has two first-class semantic concepts:
@@ -35,10 +36,11 @@ its state. The native `clash.codex-imagegen` definition delivered today has one
 `generate` Action; multiple Actions are supported by the contract and authority,
 not demonstrated by that particular artifact.
 
-That is the intended shape for a future Stage migration: one Stage-like
-Generator Revision could expose several materializations from the same frozen
-state. The current Director Stage has not been migrated, so this is a coverage
-example, not a delivery claim.
+Director Stage now demonstrates the single-Action subset of that shape: its
+native `clash.director` Definition exposes `capture-frame`, with each frame
+materialized by a separate Action Run and output. A future Definition may expose
+several Actions from the same frozen revision, but Director Stage does not yet
+demonstrate that broader supported-model capability.
 
 ## Action means materialization
 
@@ -148,9 +150,12 @@ details. None of those facts belong in Project Loro. The Local adapter is
 delivered with SQLite, Local CAS, restart scheduling, and replay-safe Project
 publication. A Cloud adapter is not delivered.
 
-Legacy Canvas, Timeline, Director, and provider flows still project status
-through their existing nodes, bindings, or endpoint records. Their use of the
-same Durable Run Engine does not make them native Generator Action Runs.
+Legacy Canvas and provider flows still project status through their existing
+nodes, bindings, or endpoint records. Timeline and Director Stage compatibility
+surfaces instead project native Project Generator, Generator Revision, Action
+Run, and Output Commit facts into their specialized CLI/MCP contracts; those
+projections are not a second execution authority. Native outputs from these
+migrated paths do not create legacy `ActionAssetBinding` records.
 
 See [Durable Run Protocol](/guide/durable-run-protocol) for retry, deadline,
 staging, and publication behavior.
@@ -176,29 +181,33 @@ reference, upload, Asset, and named tool capabilities still enforce the Clash
 product boundary.
 
 This lets built-in Generator families ship in the same first-party plugin shape
-without a dedicated service process. Codex ImageGen and ASR already contribute
-native Definitions and Action executors from bundled first-party modules.
-Timeline and Stage may migrate through the same seam later; their current
-product implementations have not been reclassified by that possibility.
+without a dedicated service process. Codex ImageGen, ASR, Timeline, and Director
+Stage contribute native Definitions and Action executors from bundled
+first-party modules. Timeline uses the Remotion executable plugin Definition
+with the `clash.timeline` projection surface; Director Stage uses the
+`clash.director` executable plugin with the `clash.director-stage` projection
+surface. The specialized Timeline and Stage contracts remain compatibility
+projections over those native facts.
 
 ## Delivery and migration status
 
-| Area                                            | Status now                                                                                                                                                                                                                                                                                                                                                                                   |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Generator v2 schemas and Project Loro authority | Delivered: heads, immutable revisions, COW rules, public Runs, output commits, peer-write guards                                                                                                                                                                                                                                                                                             |
-| Local Run bridge                                | Delivered for native Generator requests: public request before private Task, public running after Task creation, replay-safe Media and Document publication                                                                                                                                                                                                                                  |
-| Plugin artifact and ABI                         | Delivered: Generator manifest contribution, Definition validation, semantic executor pinning, one module ABI across both Local realms                                                                                                                                                                                                                                                        |
-| Codex ImageGen                                  | A first-party plugin ships both its legacy Action Card and one native Generator Definition backed by the same `generate-image` executor; the generic Local HTTP surface can create and run it                                                                                                                                                                                                |
-| Local Host HTTP product surface                 | Delivered: list/read Definitions; create/read a Project Generator; observed-head revision advance; explicit create with optional fork lineage; submit/read a Run; and read an Output Commit. Host derives edit policy, provenance, executor, fingerprint, deadline, and realm-private Task facts. Project Generator collection listing and a standalone fork route are intentionally absent. |
-| Generator CLI/MCP/GUI                           | Not delivered; the HTTP authority is not yet exposed through a user-facing client or working-tree projection                                                                                                                                                                                                                                                                                 |
-| v1 compatibility adapters                       | Delivered as fail-closed conversion helpers and tests; they do not by themselves migrate live product data or routes                                                                                                                                                                                                                                                                         |
-| Canvas generation and custom Actions            | Not migrated; current runs use Canvas node and `ActionAssetBinding` projection, and custom plugins use the legacy `action` target                                                                                                                                                                                                                                                            |
-| Timeline and Director Stage                     | Not migrated; each retains its existing revision/owner model and durable workflow                                                                                                                                                                                                                                                                                                            |
-| Inline crop/frame/edit Actions                  | Not migrated; current paths retain their existing synchronous/CAS semantics                                                                                                                                                                                                                                                                                                                  |
-| ASR native Generator path                       | Delivered: the strict `speech.transcribe` Broker/SDK ABI, reserved Local broker path, `clash.asr` bundled module and `speech-analysis` Definition, runtime model mapping, and an end-to-end native Run that publishes a timed `media.transcript@1` Document                                                                                                                                  |
-| ASR legacy consumer migration                   | Not delivered: the legacy transcription route, Timeline transcript cache/editor, and other existing consumers have not been rewired to native Generator Runs and Document revisions                                                                                                                                                                                                          |
-| Human or agent Document authoring               | The Local HTTP API can create/read/list/version/attach typed Documents with Host-derived actor provenance; CLI/MCP/native file projection and consumer migration are not delivered                                                                                                                                                                                                           |
-| Cloud Generator execution                       | Not delivered; only the Local durable adapter exists                                                                                                                                                                                                                                                                                                                                         |
+| Area                                            | Status now                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Generator v2 schemas and Project Loro authority | Delivered: heads, immutable revisions, COW rules, public Runs, output commits, peer-write guards                                                                                                                                                                                                                                                                                                                                                                           |
+| Local Run bridge                                | Delivered for native Generator requests: public request before private Task, public running after Task creation, replay-safe Media and Document publication, and coherent batch admission/running checkpoint boundaries with replay repair of missing private tasks                                                                                                                                                                                                        |
+| Plugin artifact and ABI                         | Delivered: Generator manifest contribution, Definition validation, semantic executor pinning, one module ABI across both Local realms                                                                                                                                                                                                                                                                                                                                      |
+| Codex ImageGen                                  | A first-party plugin ships both its legacy Action Card and one native Generator Definition backed by the same `generate-image` executor; the generic Local HTTP surface can create and run it                                                                                                                                                                                                                                                                              |
+| Local Host HTTP product surface                 | Delivered: list/read Definitions; create/read a Project Generator; observed-head revision advance; explicit create with optional fork lineage; submit/read a Run; and read an Output Commit. Host derives edit policy, provenance, executor, fingerprint, deadline, and realm-private Task facts. Project Generator collection listing, delete, and a standalone fork route are absent.                                                                                    |
+| Generic Generator CLI and MCP                   | Delivered for the currently supported Local HTTP operations only: Definition list/read; Project Generator create/read/advance; Action Run submit/read; and Output Commit read. Project Generator collection list, delete, and standalone fork operations, plus GUI and a native working-tree projection, remain absent.                                                                                                                                                    |
+| v1 compatibility adapters                       | Delivered as fail-closed conversion helpers and tests; they do not by themselves migrate live product data or routes                                                                                                                                                                                                                                                                                                                                                       |
+| Canvas generation and custom Actions            | Not migrated; current runs use Canvas node and `ActionAssetBinding` projection, and custom plugins use the legacy `action` target                                                                                                                                                                                                                                                                                                                                          |
+| Timeline                                        | Migrated as a specialized projection over native Project Generator and Generator Revision facts, using the Remotion executable plugin Definition with `clash.timeline`. Rendering uses native Action Runs and Output Commits. Specialized Timeline CLI/MCP remains a compatibility projection, and `timeline.validate` remains allowed. No generic Generator GUI or native working-tree projection is claimed.                                                             |
+| Director Stage                                  | Migrated as a specialized projection using the `clash.director` executable plugin and `clash.director-stage` surface. Stage CRUD, owner semantics, and observed-head CAS are native. `capture-frame` creates one Action Run and output per frame; multi-frame public intent admission and running checkpoints are atomic, with replay repair. The renderer Host tool is reserved and bound to the frozen invocation. Native outputs create no legacy `ActionAssetBinding`. |
+| Inline crop/frame/edit Actions                  | Not migrated; current paths retain their existing synchronous/CAS semantics                                                                                                                                                                                                                                                                                                                                                                                                |
+| ASR native Generator path                       | Delivered: the strict `speech.transcribe` Broker/SDK ABI, reserved Local broker path, `clash.asr` bundled module and `speech-analysis` Definition, runtime model mapping, and an end-to-end native Run that publishes a timed `media.transcript@1` Document                                                                                                                                                                                                                |
+| ASR legacy consumer migration                   | Not delivered: the legacy transcription route, Timeline transcript cache/editor, and other existing consumers have not been rewired to native Generator Runs and Document revisions                                                                                                                                                                                                                                                                                        |
+| Human or agent Document authoring               | The Local HTTP API can create/read/list/version/attach typed Documents with Host-derived actor provenance; CLI/MCP/native file projection and consumer migration are not delivered                                                                                                                                                                                                                                                                                         |
+| Cloud Generator execution                       | Not delivered; only the Local durable adapter exists                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 “Supported by the model” and “available in the product” are intentionally
 separate claims. A product surface is migrated only when it creates native

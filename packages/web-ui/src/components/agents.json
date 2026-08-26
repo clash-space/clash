@@ -11,7 +11,17 @@
     "copilot": "Components for the Chatbot/AI Assistant sidebar interface."
   },
   "key_files": {
-    "ProjectEditor.tsx": "The primary workspace component integrating React Flow and the Toolbar.",
+    "AppPage.tsx": "Shared authenticated content-page inset, semantic narrow/standard/wide width contract, AppPageHeader title/description/action rhythm, and AppBreadcrumb hierarchy navigation; full-bleed editors remain outside it.",
+    "BrandAsset.tsx": "Registry-backed renderer for Clash-owned identity, feature, and state artwork. Consumers select a semantic asset name instead of repeating public paths.",
+    "AppFeedback.tsx": "The single transient feedback queue and toast viewport. Errors persist until dismissed; warning/info/success timing and reduced-motion behavior are centralized here, and activity events adapt into this provider instead of rendering another viewport.",
+    "ProjectEditor.tsx": "The primary workspace component integrating React Flow and the Toolbar. Project Asset membership comes from Project Loro; resolved Host projections refresh on each membership revision and retry the same revision after transient Host disconnects.",
+    "BrowserSurface.tsx": "Backchat-derived Electron webview surface with navigation, persistent page state, and element/region annotations routed into the shared Agent annotation contract.",
+    "ProjectBrowserSurfaces.tsx": "Keeps every Project sidebar browser tab mounted while exposing only the selected webview surface.",
+    "DashboardComposerContext.tsx": "Route-stable Dashboard draft and Project/Skill reference state, including the shared drag-and-drop boundary and focus handoff.",
+    "DashboardComposerDock.tsx": "Persistent Home/Marketplace bottom Composer dock with an external compact searchable Project scope tag, in-surface Skill references, shared Backchat runtime controls, and one same-document transition into Project.",
+    "MarketplacePluginDetail.tsx": "Canonical Marketplace plugin detail surface with shared breadcrumb navigation and registry-declared metadata, inputs, outputs, and required capabilities.",
+    "marketplaceRouting.ts": "Single canonical path builder for action and skill detail links used by Marketplace cards and the Home featured feed.",
+    "desktopShellLayers.ts": "Semantic desktop shell elevation order shared by Dashboard task surfaces and transient sidebar preview layers.",
     "ChatbotCopilot.tsx": "The AI chat interface component.",
     "copilot/AgentAnnotationBlock.tsx": "Special composer block for editable agent-addressable review notes from Canvas, Timeline, and Director Stage.",
     "copilot/AgentAnnotationContextMenu.tsx": "Shared context-menu action that sends an addressable workspace object into the composer.",
@@ -20,5 +30,5 @@
     "VideoEditorContext.tsx": "State management for the video editing timeline.",
     "GlobalAssetsClient.tsx": "Personal Global library UI over the shared import, trash, and observed-operation restore lifecycle."
   },
-  "architecture_notes": "Keep ProjectEditor focused on workspace composition. Asset Preview/Edit, thumbnails, media resolution, and action clients belong in src/features/assets; shared action semantics belong in @clash/shared-types/actions."
+  "architecture_notes": "Keep ProjectEditor focused on workspace composition. Asset Preview/Edit, thumbnails, media resolution, and action clients belong in src/features/assets; shared action semantics belong in @clash/shared-types/actions. Home and in-session Composer surfaces reuse the same Backchat-derived editor, model/permission controls, send/voice state, and content-driven resize logic; Clash extends that core only through capability-scoped Project/Canvas/Timeline context and density tokens. Authenticated content pages must use AppPage/AppPageInset instead of page-local outer padding; Settings applies it inside its scroll pane, while Project/editor workspaces remain full bleed."
 }

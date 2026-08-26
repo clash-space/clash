@@ -25,6 +25,8 @@
 
 import type {
   ContentBlock,
+  CreateElicitationRequest,
+  CreateElicitationResponse,
   RequestPermissionRequest,
   RequestPermissionResponse,
 } from "@agentclientprotocol/sdk";
@@ -92,6 +94,7 @@ export interface SessionStartParams {
    * into the project workspace. */
   cwd?: string;
   resume?: { acp_session_id: string };
+  fork?: { acp_session_id: string };
 }
 
 export interface SessionPromptParams {
@@ -117,10 +120,15 @@ export function applyPermissionModeToAgentSpec(
 export function selectAcpPermissionOutcome(
   params: RequestPermissionRequest,
 ): RequestPermissionResponse {
-  const option = params.options.find((candidate) => candidate.kind === "allow_always")
-    ?? params.options.find((candidate) => candidate.kind === "allow_once")
-    ?? params.options.find((candidate) => /allow|approve|yes|continue/i.test(candidate.name ?? ""))
-    ?? params.options.find((candidate) => !/deny|cancel|reject|no/i.test(candidate.name ?? ""));
+  const option =
+    params.options.find((candidate) => candidate.kind === "allow_always") ??
+    params.options.find((candidate) => candidate.kind === "allow_once") ??
+    params.options.find((candidate) =>
+      /allow|approve|yes|continue/i.test(candidate.name ?? ""),
+    ) ??
+    params.options.find(
+      (candidate) => !/deny|cancel|reject|no/i.test(candidate.name ?? ""),
+    );
   return option?.optionId
     ? { outcome: { outcome: "selected", optionId: option.optionId } }
     : { outcome: { outcome: "cancelled" } };
@@ -134,11 +142,13 @@ type TrustedMcpRenderers = ReadonlyMap<string, string>;
 
 function recordValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : null;
 }
 
-function trustedMcpRenderersFromServers(servers: readonly unknown[]): Map<string, string> {
+function trustedMcpRenderersFromServers(
+  servers: readonly unknown[],
+): Map<string, string> {
   const renderers = new Map<string, string>();
   for (const server of servers) {
     const descriptor = recordValue(server);
@@ -154,31 +164,35 @@ function trustedMcpRenderersFromServers(servers: readonly unknown[]): Map<string
   return renderers;
 }
 
-function annotateTrustedMcpEvent(event: unknown, renderers: TrustedMcpRenderers): unknown {
+function annotateTrustedMcpEvent(
+  event: unknown,
+  renderers: TrustedMcpRenderers,
+): unknown {
   if (renderers.size === 0) return event;
   const outer = recordValue(event);
   if (!outer) return event;
   const nested = recordValue(outer.update);
   const update = nested ?? outer;
   const updateType = update.sessionUpdate ?? outer.sessionUpdate;
-  if (updateType !== "tool_call" && updateType !== "tool_call_update") return event;
+  if (updateType !== "tool_call" && updateType !== "tool_call_update")
+    return event;
   const meta = recordValue(update._meta) ?? {};
-  const rawInput = recordValue(update.rawInput ?? update.raw_input ?? update.input);
-  const explicitMcp = (
+  const rawInput = recordValue(
+    update.rawInput ?? update.raw_input ?? update.input,
+  );
+  const explicitMcp =
     meta.is_mcp_tool_call === true ||
     typeof meta.mcp_server_name === "string" ||
-    typeof meta.mcpServerName === "string"
-  );
+    typeof meta.mcpServerName === "string";
   if (!explicitMcp) return event;
-  const serverName = (
+  const serverName =
     typeof meta.mcp_server_name === "string"
       ? meta.mcp_server_name
       : typeof meta.mcpServerName === "string"
         ? meta.mcpServerName
         : typeof rawInput?.server === "string"
           ? rawInput.server
-          : null
-  );
+          : null;
   const renderer = serverName ? renderers.get(serverName) : undefined;
   if (!renderer) return event;
   const annotatedUpdate = {
@@ -233,11 +247,16 @@ function diagnosticMessage(line: string): string {
   return line
     .trim()
     .replace(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z\s+/, "")
-    .replace(/^(?:\[[^\]]+\]\s*)?(?:ERROR|ERR|WARN(?:ING)?|INFO|DEBUG|TRACE)\b[:\s-]*/i, "")
+    .replace(
+      /^(?:\[[^\]]+\]\s*)?(?:ERROR|ERR|WARN(?:ING)?|INFO|DEBUG|TRACE)\b[:\s-]*/i,
+      "",
+    )
     .trim();
 }
 
-export function parseAgentDiagnosticStatus(line: string): AgentDiagnosticStatus | null {
+export function parseAgentDiagnosticStatus(
+  line: string,
+): AgentDiagnosticStatus | null {
   const reconnectMatch =
     /\bReconnecting(?:\.\.\.)?\s*(\d+)\s*\/\s*(\d+)\b/i.exec(line) ??
     /\bretrying\b.*?\brequest\b.*?\((\d+)\s*\/\s*(\d+)/i.exec(line) ??
@@ -258,7 +277,10 @@ export function parseAgentDiagnosticStatus(line: string): AgentDiagnosticStatus 
     }
   }
 
-  if (/Falling back from WebSockets to HTTPS transport/i.test(line) || /\bfalling back to HTTP\b/i.test(line)) {
+  if (
+    /Falling back from WebSockets to HTTPS transport/i.test(line) ||
+    /\bfalling back to HTTP\b/i.test(line)
+  ) {
     const detail = diagnosticDetail(line);
     return {
       status: "transport_fallback",
@@ -293,7 +315,11 @@ export type ManagerOut =
       modes?: unknown;
       replay_events?: unknown[];
     }
-  | { type: "session.config_options"; session_id: string; config_options: unknown[] }
+  | {
+      type: "session.config_options";
+      session_id: string;
+      config_options: unknown[];
+    }
   | { type: "session.mode"; session_id: string; modes: unknown }
   | {
       type: "session.diagnostic";
@@ -311,9 +337,20 @@ export type ManagerOut =
       attempt?: number;
       maxAttempts?: number;
     }
-  | { type: "session.event"; session_id: string; turn_id: string; event: unknown }
+  | {
+      type: "session.event";
+      session_id: string;
+      turn_id: string;
+      event: unknown;
+    }
   | { type: "session.complete"; session_id: string; turn_id: string }
-  | { type: "session.error"; session_id: string; turn_id?: string; message: string }
+  | { type: "session.cancelled"; session_id: string; turn_id: string }
+  | {
+      type: "session.error";
+      session_id: string;
+      turn_id?: string;
+      message: string;
+    }
   | { type: "session.disposed"; session_id: string };
 
 export type Sender = (msg: ManagerOut) => void;
@@ -321,9 +358,14 @@ export type SessionPermissionBroker = (
   sessionId: string,
   params: RequestPermissionRequest,
 ) => Promise<RequestPermissionResponse>;
+export type SessionElicitationBroker = (
+  sessionId: string,
+  params: CreateElicitationRequest,
+) => Promise<CreateElicitationResponse>;
 
 export interface SessionManagerOptions {
   requestPermission?: SessionPermissionBroker;
+  requestElicitation?: SessionElicitationBroker;
 }
 
 interface ActiveSession {
@@ -354,6 +396,7 @@ export class SessionManager {
   #activeTurnBySession = new Map<string, string>();
   #lastDiagnosticBySession = new Map<string, string>();
   #requestPermission: SessionPermissionBroker;
+  #requestElicitation: SessionElicitationBroker;
   /** session_id → Promise that resolves once start() has populated #sessions
    *  (or rejected if start failed). The server may push session.prompt
    *  before the corresponding session.start has finished the slow ACP
@@ -366,8 +409,11 @@ export class SessionManager {
 
   constructor(send: Sender, options: SessionManagerOptions = {}) {
     this.#send = send;
-    this.#requestPermission = options.requestPermission
-      ?? (async (_sessionId, params) => selectAcpPermissionOutcome(params));
+    this.#requestPermission =
+      options.requestPermission ??
+      (async (_sessionId, params) => selectAcpPermissionOutcome(params));
+    this.#requestElicitation =
+      options.requestElicitation ?? (async () => ({ action: "decline" }));
   }
 
   /** Update the env injected into every subsequent spawn. */
@@ -389,11 +435,16 @@ export class SessionManager {
     sessionId: string,
     event: Parameters<typeof reduceSessionLifecycle>[1],
   ): void {
-    const current = this.#lifecycles.get(sessionId) ?? initialSessionLifecycle(sessionId);
+    const current =
+      this.#lifecycles.get(sessionId) ?? initialSessionLifecycle(sessionId);
     this.#lifecycles.set(sessionId, reduceSessionLifecycle(current, event));
   }
 
-  #sendReady(sessionId: string, session: ActiveSession, modes = session.acp.modes): void {
+  #sendReady(
+    sessionId: string,
+    session: ActiveSession,
+    modes = session.acp.modes,
+  ): void {
     this.#transition(sessionId, {
       type: "session.ready",
       acpSessionId: session.acp.acpSessionId,
@@ -407,7 +458,8 @@ export class SessionManager {
       ...((session.acp.loadedReplayEvents?.length ?? 0) > 0
         ? {
             replay_events: session.acp.loadedReplayEvents!.map((event) =>
-              annotateTrustedMcpEvent(event, session.trustedMcpRenderers)),
+              annotateTrustedMcpEvent(event, session.trustedMcpRenderers),
+            ),
           }
         : {}),
     });
@@ -456,7 +508,8 @@ export class SessionManager {
   }
 
   async #startInner(p: SessionStartParams): Promise<void> {
-    const agentTemplateId = p.agent_template_id?.trim() || DEFAULT_SESSION_CONTEXT_ID;
+    const agentTemplateId =
+      p.agent_template_id?.trim() || DEFAULT_SESSION_CONTEXT_ID;
     // Resolve optional bundled template → default agent. Current Copilot
     // sends agent_id directly, so missing templates are fine in the common
     // path and the project cwd stays role-free.
@@ -470,13 +523,20 @@ export class SessionManager {
       return;
     }
     const resolvedAgentId = p.agent_id ?? tpl!.agent_id;
+    const hostRuntimeEnv = {
+      ...process.env,
+      ...(p.agent_spec?.env ?? {}),
+      ...this.#env,
+    };
     const agent = p.agent_spec
       ? {
           id: resolvedAgentId,
           label: resolvedAgentId,
           spec: p.agent_spec,
         }
-      : await detect(resolvedAgentId, { env: { ...process.env, ...this.#env } });
+      : await detect(resolvedAgentId, {
+          env: { ...process.env, ...this.#env },
+        });
     if (!agent) {
       this.#send({
         type: "session.error",
@@ -493,6 +553,7 @@ export class SessionManager {
       agentTemplateId,
       p.project_id,
       { harnessId: resolvedAgentId },
+      hostRuntimeEnv,
     );
     process.stderr.write(
       `  → SessionManager.start ${agent.spec.command}${resumeId ? ` (resume ${resumeId.slice(0, 8)}…)` : ""} cwd=${sessionCwd}\n`,
@@ -519,9 +580,16 @@ export class SessionManager {
       // Bind bundled Clash tools to this session's canonical working tree;
       // .clash/project.toml inside that tree remains the project authority.
       spawnEnv.CLASH_WORKSPACE_ROOT = sessionCwd;
-      const agentSpec = applyPermissionModeToAgentSpec(resolvedAgentId, agent.spec, p.permission_mode);
+      const agentSpec = applyPermissionModeToAgentSpec(
+        resolvedAgentId,
+        agent.spec,
+        p.permission_mode,
+      );
       const runtimeEnv = { ...(agentSpec.env ?? {}), ...spawnEnv };
-      const mcpServers = await resolveAgentMcpServers(agentTemplateId, runtimeEnv);
+      const mcpServers = await resolveAgentMcpServers(
+        agentTemplateId,
+        runtimeEnv,
+      );
       const trustedMcpRenderers = trustedMcpRenderersFromServers(mcpServers);
       if (trustedMcpRenderers.get("clash") !== "product") {
         throw new Error(
@@ -533,15 +601,21 @@ export class SessionManager {
           ...agentSpec,
           cwd: sessionCwd,
           env: runtimeEnv,
-          onDiagnosticLine: (line) => this.#handleAgentDiagnostic(p.session_id, line),
+          onDiagnosticLine: (line) =>
+            this.#handleAgentDiagnostic(p.session_id, line),
         },
         resumeAcpSessionId: resumeId,
+        forkFromAcpSessionId: p.fork?.acp_session_id,
         mcpServers,
         clientCapabilities: withClashAcpExtensionCapabilities({
           auth: { terminal: true },
+          elicitation: { form: {}, url: {} },
         }),
         clientCallbacks: {
-          requestPermission: (params) => this.#requestPermission(p.session_id, params),
+          requestPermission: (params) =>
+            this.#requestPermission(p.session_id, params),
+          createElicitation: (params: CreateElicitationRequest) =>
+            this.#requestElicitation(p.session_id, params),
         },
       });
       if (this.#cancelledStarts.has(p.session_id)) {
@@ -556,14 +630,19 @@ export class SessionManager {
         return;
       }
       let modes = session.modes;
-      if (p.permission_mode && modes?.availableModes.some((mode) => mode.id === p.permission_mode)) {
+      if (
+        p.permission_mode &&
+        modes?.availableModes.some((mode) => mode.id === p.permission_mode)
+      ) {
         modes = await session.setMode(p.permission_mode);
       }
       if (this.#cancelledStarts.has(p.session_id)) {
         await session.dispose().catch(() => undefined);
         return;
       }
-      process.stderr.write(`  ✓ agent ready, session id=${(session as unknown as { id?: string }).id}\n`);
+      process.stderr.write(
+        `  ✓ agent ready, session id=${(session as unknown as { id?: string }).id}\n`,
+      );
       const activeSession: ActiveSession = {
         acp: session,
         trustedMcpRenderers,
@@ -603,7 +682,11 @@ export class SessionManager {
     // the entry and we'd silently 404 — turn disappears.
     const pending = this.#starting.get(p.session_id);
     if (pending) {
-      try { await pending; } catch { /* start failed; falls through to no-such-session below */ }
+      try {
+        await pending;
+      } catch {
+        /* start failed; falls through to no-such-session below */
+      }
     }
     const sess = this.#sessions.get(p.session_id);
     if (!sess) {
@@ -625,13 +708,18 @@ export class SessionManager {
 
   async #runPrompt(sess: ActiveSession, p: SessionPromptParams): Promise<void> {
     const ctrl = new AbortController();
-    this.#transition(p.session_id, { type: "prompt.requested", turnId: p.turn_id });
+    this.#transition(p.session_id, {
+      type: "prompt.requested",
+      turnId: p.turn_id,
+    });
     sess.turns.set(p.turn_id, ctrl);
     this.#activeTurnBySession.set(p.session_id, p.turn_id);
     this.#lastDiagnosticBySession.delete(p.session_id);
     try {
       const promptContent = composeClashPromptContent(p.text);
-      for await (const ev of sess.acp.prompt(promptContent, { abortSignal: ctrl.signal })) {
+      for await (const ev of sess.acp.prompt(promptContent, {
+        abortSignal: ctrl.signal,
+      })) {
         if (ctrl.signal.aborted || sess.disposed) break;
         // Filter out AcpSession's iterator-end sentinels — they're an
         // internal "the SDK promise resolved" marker, not real ACP
@@ -653,10 +741,17 @@ export class SessionManager {
             const { appendFileSync } = await import("node:fs");
             appendFileSync(
               process.env.CLASH_ACP_TAP,
-              JSON.stringify({ ts: Date.now(), session_id: p.session_id, turn_id: p.turn_id, event: ev }) + "\n",
+              JSON.stringify({
+                ts: Date.now(),
+                session_id: p.session_id,
+                turn_id: p.turn_id,
+                event: ev,
+              }) + "\n",
               "utf-8",
             );
-          } catch { /* tap is best-effort */ }
+          } catch {
+            /* tap is best-effort */
+          }
         }
         this.#send({
           type: "session.event",
@@ -666,12 +761,47 @@ export class SessionManager {
         });
       }
       if (sess.disposed) return;
-      this.#transition(p.session_id, { type: "session.complete", turnId: p.turn_id });
-      this.#send({ type: "session.complete", session_id: p.session_id, turn_id: p.turn_id });
+      if (ctrl.signal.aborted) {
+        this.#transition(p.session_id, {
+          type: "prompt.cancelled",
+          turnId: p.turn_id,
+        });
+        this.#send({
+          type: "session.cancelled",
+          session_id: p.session_id,
+          turn_id: p.turn_id,
+        });
+      } else {
+        this.#transition(p.session_id, {
+          type: "session.complete",
+          turnId: p.turn_id,
+        });
+        this.#send({
+          type: "session.complete",
+          session_id: p.session_id,
+          turn_id: p.turn_id,
+        });
+      }
     } catch (e) {
       if (sess.disposed) return;
+      if (ctrl.signal.aborted) {
+        this.#transition(p.session_id, {
+          type: "prompt.cancelled",
+          turnId: p.turn_id,
+        });
+        this.#send({
+          type: "session.cancelled",
+          session_id: p.session_id,
+          turn_id: p.turn_id,
+        });
+        return;
+      }
       const message = e instanceof Error ? e.message : String(e);
-      this.#transition(p.session_id, { type: "session.error", turnId: p.turn_id, message });
+      this.#transition(p.session_id, {
+        type: "session.error",
+        turnId: p.turn_id,
+        message,
+      });
       this.#send({
         type: "session.error",
         session_id: p.session_id,
@@ -711,10 +841,18 @@ export class SessionManager {
     this.#transition(session_id, { type: "prompt.cancelled", turnId: turn_id });
   }
 
-  async setConfigOption(session_id: string, config_id: string, value: string | boolean): Promise<void> {
+  async setConfigOption(
+    session_id: string,
+    config_id: string,
+    value: string | boolean,
+  ): Promise<void> {
     const pending = this.#starting.get(session_id);
     if (pending) {
-      try { await pending; } catch { /* start failed; falls through to no-such-session below */ }
+      try {
+        await pending;
+      } catch {
+        /* start failed; falls through to no-such-session below */
+      }
     }
     const sess = this.#sessions.get(session_id);
     if (!sess) {
@@ -744,7 +882,11 @@ export class SessionManager {
   async setMode(session_id: string, mode_id: string): Promise<void> {
     const pending = this.#starting.get(session_id);
     if (pending) {
-      try { await pending; } catch { /* start failed; falls through to no-such-session below */ }
+      try {
+        await pending;
+      } catch {
+        /* start failed; falls through to no-such-session below */
+      }
     }
     const sess = this.#sessions.get(session_id);
     if (!sess) {

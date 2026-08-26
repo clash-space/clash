@@ -12,6 +12,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./generator-tools": {
+      "types": "./dist/generator-tools.d.ts",
+      "import": "./dist/generator-tools.js",
+      "default": "./dist/generator-tools.js"
     }
   },
   "scripts": {

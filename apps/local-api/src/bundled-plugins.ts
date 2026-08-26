@@ -55,9 +55,29 @@ export class BuiltinPluginImmutableError extends Error {
  */
 export const BUNDLED_PLUGINS = [
   {
+    id: "clash.asset-edit",
+    packageName: "@clash-plugin/asset-edit",
+    workspaceDir: "asset-edit",
+  },
+  {
+    id: "clash.director",
+    packageName: "@clash-plugin/director",
+    workspaceDir: "director",
+  },
+  {
     id: "clash.asr",
     packageName: "@clash-plugin/asr",
     workspaceDir: "asr",
+  },
+  {
+    id: "clash.media-analysis",
+    packageName: "@clash-plugin/media-analysis",
+    workspaceDir: "media-analysis",
+  },
+  {
+    id: "clash.video-enhance",
+    packageName: "@clash-plugin/video-enhance",
+    workspaceDir: "video-enhance",
   },
   {
     id: "clash.remotion",
@@ -93,6 +113,21 @@ export const BUNDLED_PLUGINS = [
     id: CODEX_IMAGEGEN_PLUGIN_ID,
     packageName: "@clash-plugin/codex-imagegen",
     workspaceDir: "codex-imagegen",
+  },
+  {
+    id: "clash.meshy",
+    packageName: "@clash-plugin/meshy",
+    workspaceDir: "meshy",
+  },
+  {
+    id: "clash.tripo",
+    packageName: "@clash-plugin/tripo",
+    workspaceDir: "tripo",
+  },
+  {
+    id: "clash.move-ai",
+    packageName: "@clash-plugin/move-ai",
+    workspaceDir: "move-ai",
   },
 ] as const;
 

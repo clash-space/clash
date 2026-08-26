@@ -3,16 +3,19 @@ import type { Node as RFNode } from '@xyflow/react';
 import {
     buildGenerationPayload,
     buildPendingAssetNode,
-    ACTION_TYPE,
     type DirectorReferencePacket,
     type GenerationConfig,
     type ModelCard,
     type CustomActionDefinition,
     type ExecutablePluginBinding,
+    type AigcActionKind,
+    type PendingAssetNode,
 } from '@clash/shared-types';
 import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
+import { resolveBuiltInActionKind, resolveGenerationActionType } from './generationActionKind';
+import { persistPendingAssetAdoption, persistPendingAssetCreation } from './pendingAssetLoro';
 
 type ModelParams = Record<string, string | number | boolean>;
 type LoroSync = ReturnType<typeof useOptionalLoroSyncContext>;
@@ -75,7 +78,7 @@ export interface UseSpawnPendingAssetResult {
     canSpawn: boolean;
     disabledReason: string | null;
     /** The modality of the node this hook will create. */
-    outputKind: 'image' | 'video' | 'audio' | 'text';
+    outputKind: AigcActionKind;
 }
 
 /**
@@ -129,15 +132,11 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
     const session = betterAuthClient.useSession();
     const currentUserId = session.data?.user?.id ?? '';
 
-    const outputKind = useMemo<'image' | 'video' | 'audio' | 'text'>(() => {
+    const outputKind = useMemo<AigcActionKind>(() => {
         if (isCustom) {
-            const ot = customDef?.outputType;
-            if (ot === 'video' || ot === 'audio' || ot === 'text') return ot;
-            return 'image';
+            return customDef?.outputType ?? 'image';
         }
-        if (actionType === 'audio-gen') return 'audio';
-        if (actionType === 'text-gen') return 'text';
-        return actionType === 'video-gen' ? 'video' : 'image';
+        return resolveBuiltInActionKind(actionType);
     }, [isCustom, customDef, actionType]);
 
     // Loose gate for draft creation — a draft is just a placeholder slot, so
@@ -160,7 +159,7 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
      * strict validation runs and throws on failure.
      */
     const buildShape = useCallback(
-        (status: 'draft' | 'pending', opts?: SpawnOpts): { type: 'image' | 'video' | 'audio' | 'text'; data: Record<string, unknown> } => {
+        (status: 'draft' | 'pending', opts?: SpawnOpts): Pick<PendingAssetNode, 'type' | 'data'> => {
             const refNodes = refNodeIds
                 .map((nid) => getNodes().find((n) => n.id === nid))
                 .filter((n): n is NonNullable<typeof n> => !!n);
@@ -199,12 +198,10 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
                 refNodes: scopedRefNodes,
                 configId,
                 config,
-                actionType: actionType as
-                    | typeof ACTION_TYPE.ImageGen
-                    | typeof ACTION_TYPE.VideoGen
-                    | typeof ACTION_TYPE.AudioGen
-                    | typeof ACTION_TYPE.TextGen
-                    | `custom:${string}`,
+                actionType: resolveGenerationActionType(
+                    actionType,
+                    isCustom ? customDef?.id : undefined,
+                ),
                 label: opts?.labelOverride,
                 pluginBinding: pluginBinding ?? (config.kind === 'custom' ? config.customDef.pluginBinding : undefined),
             });
@@ -289,15 +286,10 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
                 : addNodeWithAutoLayout({ id: newId, type, data }, actionBadgeId, offset);
             if (!newNode) return null;
 
-            if (loroSync?.connected) {
-                loroSync.addNode(newNode.id, newNode);
-            }
-
             const edgeId = `${actionBadgeId}-${newId}`;
-            addEdges({ id: edgeId, source: actionBadgeId, target: newId, type: 'default' });
-            if (loroSync?.connected) {
-                loroSync.addEdge(edgeId, { id: edgeId, source: actionBadgeId, target: newId, type: 'default' });
-            }
+            const edge = { id: edgeId, source: actionBadgeId, target: newId, type: 'default' };
+            addEdges(edge);
+            persistPendingAssetCreation(loroSync, newNode, edge);
 
             return newNode;
         },
@@ -334,9 +326,7 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
                 }),
             );
 
-            if (updated && loroSync?.connected) {
-                loroSync.updateNode(draftId, { data: payload });
-            }
+            if (updated) persistPendingAssetAdoption(loroSync, draftId, payload);
 
             return updated;
         },

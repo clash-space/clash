@@ -66,6 +66,15 @@ const STRICT_SINGLE_IMAGE = card({
   kind: "video",
   input: { requiresPrompt: true, inputMode: { images: { min: 1, max: 1 } }, promptModalities: ["text"] },
 });
+const MESH_TO_RIG = card({
+  id: "mesh-to-rig",
+  kind: "model",
+  input: {
+    requiresPrompt: false,
+    inputMode: { models: { min: 1, max: 1 } },
+    promptModalities: ["model"],
+  },
+});
 
 // ═══════════════════════════════════════════════════════════════════════
 // capability — the single derivation
@@ -396,6 +405,47 @@ describe("compatible model discovery", () => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════════
+// model output kind — model as a peer AIGC output, and as an input reference
+// for model-to-model workflows like auto-rigging
+// ═══════════════════════════════════════════════════════════════════════
+
+describe("model output kind", () => {
+  it("derives a model-to-model reference bound from the models bucket, same as images/videos/audios", () => {
+    const cap = capability(MESH_TO_RIG);
+    expect(cap.outputKind).toBe("model");
+    expect(cap.ref.model).toEqual({ accepts: true, min: 1, max: 1 });
+    expect(cap.ref.image).toEqual({ accepts: false, min: 0, max: 0 });
+  });
+
+  it("validateRefs enforces the declared model reference bound", () => {
+    expect(validateRefs(MESH_TO_RIG, {}, {})).toMatch(/requires at least 1 reference model/i);
+    expect(validateRefs(MESH_TO_RIG, { model: 1 }, {})).toBeNull();
+    expect(validateRefs(MESH_TO_RIG, { model: 2 }, {})).toMatch(/at most 1 reference model.*\(got 2\)/i);
+  });
+
+  it("rejects a reference model when the card does not declare a models bucket", () => {
+    expect(validateRefs(TEXT_TO_IMAGE, { model: 1 }, { prompt: "go" })).toMatch(
+      /does not accept reference models/,
+    );
+  });
+
+  it("partitions a model reference node into modelAssetIds, same as the other media buckets", () => {
+    const refs = [
+      { type: "model", data: { assetId: "mesh-1" } },
+      { type: "model", data: { assetId: undefined } },
+    ];
+    expect(partitionRefs(refs, MESH_TO_RIG).modelAssetIds).toEqual(["mesh-1"]);
+    expect(partitionRefs(refs, TEXT_TO_IMAGE).modelAssetIds).toEqual([]);
+  });
+
+  it("finds and picks a model-output card for a model-shaped source, same as image/video/audio", () => {
+    const cards = [TEXT_TO_IMAGE, MESH_TO_RIG];
+    expect(pickDefaultModel({ outputKind: "model", sourceKind: "model", cards })?.id).toBe("mesh-to-rig");
+    expect(pickDefaultModel({ outputKind: "model", sourceKind: "image", cards })).toBeUndefined();
+  });
+});
+
 describe("reference media constraints", () => {
   const h3 = MODEL_CARDS.find((candidate) => candidate.id === "minimax-h3")!;
 
@@ -558,5 +608,87 @@ describe("reference media constraints", () => {
       contentType: "audio/wav",
       durationMs: 15_001,
     }])).toMatch(/at most 15 seconds/i);
+  });
+});
+
+describe("MEDIA_REFERENCE_FIELDS registry", () => {
+  const {
+    MEDIA_REFERENCE_FIELDS,
+    MEDIA_REFERENCE_MODALITIES,
+    mediaReferenceCounts,
+    mediaReferencePendingFields,
+    referenceModality,
+  } = modelCapabilities;
+
+  it("derives MEDIA_REFERENCE_MODALITIES from MEDIA_REFERENCE_FIELDS (one hand-authored registry, not two)", () => {
+    // MEDIA_REFERENCE_MODALITIES is `MEDIA_REFERENCE_FIELDS.map(f => f.modality)`,
+    // not a second hand-authored list, so this can never drift by construction —
+    // this assertion pins that derivation, not an independently invented count.
+    expect(MEDIA_REFERENCE_FIELDS.map((field) => field.modality)).toEqual([
+      ...MEDIA_REFERENCE_MODALITIES,
+    ]);
+    for (const field of MEDIA_REFERENCE_FIELDS) {
+      expect(field.pendingField).toMatch(/^reference.+AssetIds$/);
+      expect(field.partitionField.endsWith("AssetIds")).toBe(true);
+      expect(field.label.length).toBeGreaterThan(0);
+      expect(field.pluralNoun.length).toBeGreaterThan(0);
+      expect(field.countNoun.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("mediaReferenceCounts and mediaReferencePendingFields cover every registry entry", () => {
+    const partition = {
+      texts: ["hello"],
+      imageAssetIds: ["img-1"],
+      videoAssetIds: ["vid-1", "vid-2"],
+      audioAssetIds: [] as string[],
+      modelAssetIds: ["mdl-1"],
+    };
+    const counts = mediaReferenceCounts(partition);
+    for (const field of MEDIA_REFERENCE_FIELDS) {
+      expect(counts[field.modality]).toBe(partition[field.partitionField].length);
+    }
+    const pendingFields = mediaReferencePendingFields(partition);
+    for (const field of MEDIA_REFERENCE_FIELDS) {
+      const ids = partition[field.partitionField];
+      if (ids.length > 0) {
+        expect(pendingFields[field.pendingField]).toEqual(ids);
+      } else {
+        expect(pendingFields[field.pendingField]).toBeUndefined();
+      }
+    }
+  });
+
+  it("referenceModality resolves every registered media modality via its node type", () => {
+    for (const field of MEDIA_REFERENCE_FIELDS) {
+      expect(referenceModality({ type: field.modality })).toBe(field.modality);
+    }
+    expect(referenceModality({ type: "text" })).toBe("text");
+    expect(referenceModality({ type: "unknown-node-type" })).toBeUndefined();
+  });
+
+  it("partitionRefs, when the card accepts every registered modality, buckets each node by its registry partition field", () => {
+    const omniCard = card({
+      id: "omni",
+      kind: "model",
+      input: {
+        requiresPrompt: false,
+        inputMode: {
+          images: { max: 4 },
+          videos: { max: 4 },
+          audios: { max: 4 },
+          models: { max: 4 },
+        },
+        promptModalities: ["text", "image", "video", "audio", "model"],
+      },
+    });
+    const refs = MEDIA_REFERENCE_FIELDS.map((field) => ({
+      type: field.modality,
+      data: { assetId: `${field.modality}-asset` },
+    }));
+    const partition = partitionRefs(refs, omniCard);
+    for (const field of MEDIA_REFERENCE_FIELDS) {
+      expect(partition[field.partitionField]).toEqual([`${field.modality}-asset`]);
+    }
   });
 });

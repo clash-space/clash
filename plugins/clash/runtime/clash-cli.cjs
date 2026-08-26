@@ -264,11 +264,11 @@ var require_directives = __commonJS({
     };
     var escapeTagName = (tn) => tn.replace(/[!,[\]{}]/g, (ch) => escapeChars[ch]);
     var Directives = class _Directives {
-      constructor(yaml, tags) {
+      constructor(yaml, tags2) {
         this.docStart = null;
         this.docEnd = false;
         this.yaml = Object.assign({}, _Directives.defaultYaml, yaml);
-        this.tags = Object.assign({}, _Directives.defaultTags, tags);
+        this.tags = Object.assign({}, _Directives.defaultTags, tags2);
       }
       clone() {
         const copy = new _Directives(this.yaml, this.tags);
@@ -396,12 +396,12 @@ var require_directives = __commonJS({
         const tagEntries = Object.entries(this.tags);
         let tagNames;
         if (doc && tagEntries.length > 0 && identity.isNode(doc.contents)) {
-          const tags = {};
+          const tags2 = {};
           visit.visit(doc.contents, (_key, node) => {
             if (identity.isNode(node) && node.tag)
-              tags[node.tag] = true;
+              tags2[node.tag] = true;
           });
-          tagNames = Object.keys(tags);
+          tagNames = Object.keys(tags2);
         } else
           tagNames = [];
         for (const [handle, prefix] of tagEntries) {
@@ -764,15 +764,15 @@ var require_createNode = __commonJS({
     var identity = require_identity();
     var Scalar = require_Scalar();
     var defaultTagPrefix = "tag:yaml.org,2002:";
-    function findTagObject(value, tagName, tags) {
+    function findTagObject(value, tagName, tags2) {
       if (tagName) {
-        const match = tags.filter((t) => t.tag === tagName);
+        const match = tags2.filter((t) => t.tag === tagName);
         const tagObj = match.find((t) => !t.format) ?? match[0];
         if (!tagObj)
           throw new Error(`Tag ${tagName} not found`);
         return tagObj;
       }
-      return tags.find((t) => t.identify?.(value) && !t.format);
+      return tags2.find((t) => t.identify?.(value) && !t.format);
     }
     function createNode(value, tagName, ctx) {
       if (identity.isDocument(value))
@@ -1158,27 +1158,27 @@ var require_stringifyString = __commonJS({
       return true;
     }
     function doubleQuotedString(value, ctx) {
-      const json2 = JSON.stringify(value);
+      const json3 = JSON.stringify(value);
       if (ctx.options.doubleQuotedAsJSON)
-        return json2;
+        return json3;
       const { implicitKey } = ctx;
       const minMultiLineLength = ctx.options.doubleQuotedMinMultiLineLength;
       const indent = ctx.indent || (containsDocumentMarker(value) ? "  " : "");
       let str = "";
       let start = 0;
-      for (let i = 0, ch = json2[i]; ch; ch = json2[++i]) {
-        if (ch === " " && json2[i + 1] === "\\" && json2[i + 2] === "n") {
-          str += json2.slice(start, i) + "\\ ";
+      for (let i = 0, ch = json3[i]; ch; ch = json3[++i]) {
+        if (ch === " " && json3[i + 1] === "\\" && json3[i + 2] === "n") {
+          str += json3.slice(start, i) + "\\ ";
           i += 1;
           start = i;
           ch = "\\";
         }
         if (ch === "\\")
-          switch (json2[i + 1]) {
+          switch (json3[i + 1]) {
             case "u":
               {
-                str += json2.slice(start, i);
-                const code = json2.substr(i + 2, 4);
+                str += json3.slice(start, i);
+                const code = json3.substr(i + 2, 4);
                 switch (code) {
                   case "0000":
                     str += "\\0";
@@ -1208,23 +1208,23 @@ var require_stringifyString = __commonJS({
                     if (code.substr(0, 2) === "00")
                       str += "\\x" + code.substr(2);
                     else
-                      str += json2.substr(i, 6);
+                      str += json3.substr(i, 6);
                 }
                 i += 5;
                 start = i + 1;
               }
               break;
             case "n":
-              if (implicitKey || json2[i + 2] === '"' || json2.length < minMultiLineLength) {
+              if (implicitKey || json3[i + 2] === '"' || json3.length < minMultiLineLength) {
                 i += 1;
               } else {
-                str += json2.slice(start, i) + "\n\n";
-                while (json2[i + 2] === "\\" && json2[i + 3] === "n" && json2[i + 4] !== '"') {
+                str += json3.slice(start, i) + "\n\n";
+                while (json3[i + 2] === "\\" && json3[i + 3] === "n" && json3[i + 4] !== '"') {
                   str += "\n";
                   i += 2;
                 }
                 str += indent;
-                if (json2[i + 2] === " ")
+                if (json3[i + 2] === " ")
                   str += "\\";
                 i += 1;
                 start = i + 1;
@@ -1234,7 +1234,7 @@ var require_stringifyString = __commonJS({
               i += 1;
           }
       }
-      str = start ? str + json2.slice(start) : json2;
+      str = start ? str + json3.slice(start) : json3;
       return implicitKey ? str : foldFlowLines.foldFlowLines(str, indent, foldFlowLines.FOLD_QUOTED, getFoldOptions(ctx, false));
     }
     function singleQuotedString(value, ctx) {
@@ -1367,8 +1367,8 @@ ${indent}${start}${value}${end}`;
 ${indent}`);
       if (actualString) {
         const test = (tag) => tag.default && tag.tag !== "tag:yaml.org,2002:str" && tag.test?.test(str);
-        const { compat, tags } = ctx.doc.schema;
-        if (tags.some(test) || compat?.some(test))
+        const { compat, tags: tags2 } = ctx.doc.schema;
+        if (tags2.some(test) || compat?.some(test))
           return quotedString(value, ctx);
       }
       return implicitKey ? str : foldFlowLines.foldFlowLines(str, indent, foldFlowLines.FOLD_FLOW, getFoldOptions(ctx, false));
@@ -1460,9 +1460,9 @@ var require_stringify = __commonJS({
         options: opt
       };
     }
-    function getTagObject(tags, item) {
+    function getTagObject(tags2, item) {
       if (item.tag) {
-        const match = tags.filter((t) => t.tag === item.tag);
+        const match = tags2.filter((t) => t.tag === item.tag);
         if (match.length > 0)
           return match.find((t) => t.format === item.format) ?? match[0];
       }
@@ -1470,7 +1470,7 @@ var require_stringify = __commonJS({
       let obj;
       if (identity.isScalar(item)) {
         obj = item.value;
-        let match = tags.filter((t) => t.identify?.(obj));
+        let match = tags2.filter((t) => t.identify?.(obj));
         if (match.length > 1) {
           const testMatch = match.filter((t) => t.test);
           if (testMatch.length > 0)
@@ -1479,7 +1479,7 @@ var require_stringify = __commonJS({
         tagObj = match.find((t) => t.format === item.format) ?? match.find((t) => !t.format);
       } else {
         obj = item;
-        tagObj = tags.find((t) => t.nodeClass && obj instanceof t.nodeClass);
+        tagObj = tags2.find((t) => t.nodeClass && obj instanceof t.nodeClass);
       }
       if (!tagObj) {
         const name = obj?.constructor?.name ?? (obj === null ? "null" : typeof obj);
@@ -3245,10 +3245,10 @@ var require_tags = __commonJS({
       if (schemaTags && !customTags) {
         return addMergeTag && !schemaTags.includes(merge2.merge) ? schemaTags.concat(merge2.merge) : schemaTags.slice();
       }
-      let tags = schemaTags;
-      if (!tags) {
+      let tags2 = schemaTags;
+      if (!tags2) {
         if (Array.isArray(customTags))
-          tags = [];
+          tags2 = [];
         else {
           const keys = Array.from(schemas.keys()).filter((key) => key !== "yaml11").map((key) => JSON.stringify(key)).join(", ");
           throw new Error(`Unknown schema "${schemaName}"; use one of ${keys} or define customTags array`);
@@ -3256,22 +3256,22 @@ var require_tags = __commonJS({
       }
       if (Array.isArray(customTags)) {
         for (const tag of customTags)
-          tags = tags.concat(tag);
+          tags2 = tags2.concat(tag);
       } else if (typeof customTags === "function") {
-        tags = customTags(tags.slice());
+        tags2 = customTags(tags2.slice());
       }
       if (addMergeTag)
-        tags = tags.concat(merge2.merge);
-      return tags.reduce((tags2, tag) => {
+        tags2 = tags2.concat(merge2.merge);
+      return tags2.reduce((tags3, tag) => {
         const tagObj = typeof tag === "string" ? tagsByName[tag] : tag;
         if (!tagObj) {
           const tagName = JSON.stringify(tag);
           const keys = Object.keys(tagsByName).map((key) => JSON.stringify(key)).join(", ");
           throw new Error(`Unknown custom tag ${tagName}; use one of ${keys}`);
         }
-        if (!tags2.includes(tagObj))
-          tags2.push(tagObj);
-        return tags2;
+        if (!tags3.includes(tagObj))
+          tags3.push(tagObj);
+        return tags3;
       }, []);
     }
     exports2.coreKnownTags = coreKnownTags;
@@ -3287,14 +3287,14 @@ var require_Schema = __commonJS({
     var map2 = require_map();
     var seq = require_seq();
     var string4 = require_string();
-    var tags = require_tags();
+    var tags2 = require_tags();
     var sortMapEntriesByKey = (a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
     var Schema = class _Schema {
       constructor({ compat, customTags, merge: merge2, resolveKnownTags, schema, sortMapEntries, toStringDefaults }) {
-        this.compat = Array.isArray(compat) ? tags.getTags(compat, "compat") : compat ? tags.getTags(null, compat) : null;
+        this.compat = Array.isArray(compat) ? tags2.getTags(compat, "compat") : compat ? tags2.getTags(null, compat) : null;
         this.name = typeof schema === "string" && schema || "core";
-        this.knownTags = resolveKnownTags ? tags.coreKnownTags : {};
-        this.tags = tags.getTags(customTags, this.name, merge2);
+        this.knownTags = resolveKnownTags ? tags2.coreKnownTags : {};
+        this.tags = tags2.getTags(customTags, this.name, merge2);
         this.toStringOptions = toStringDefaults ?? null;
         Object.defineProperty(this, identity.MAP, { value: map2.map });
         Object.defineProperty(this, identity.SCALAR, { value: string4.string });
@@ -3656,11 +3656,11 @@ var require_Document = __commonJS({
           throw new Error(`With a null YAML version, the { schema: Schema } option is required`);
       }
       // json & jsonArg are only used from toJSON()
-      toJS({ json: json2, jsonArg, mapAsMap, maxAliasCount, onAnchor, reviver } = {}) {
+      toJS({ json: json3, jsonArg, mapAsMap, maxAliasCount, onAnchor, reviver } = {}) {
         const ctx = {
           anchors: /* @__PURE__ */ new Map(),
           doc: this,
-          keep: !json2,
+          keep: !json3,
           mapAsMap: mapAsMap === true,
           mapKeyWarned: false,
           maxAliasCount: typeof maxAliasCount === "number" ? maxAliasCount : 100
@@ -7497,11 +7497,11 @@ var require_loro_wasm = __commonJS({
         return `"${val}"`;
       }
       if (type == "symbol") {
-        const description = val.description;
-        if (description == null) {
+        const description2 = val.description;
+        if (description2 == null) {
           return "Symbol";
         } else {
-          return `Symbol(${description})`;
+          return `Symbol(${description2})`;
         }
       }
       if (type == "function") {
@@ -9328,10 +9328,10 @@ ${val.stack}`;
        * @param {string | JsonSchema} json
        * @returns {ImportStatus}
        */
-      importJsonUpdates(json2) {
+      importJsonUpdates(json3) {
         try {
           const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-          wasm.lorodoc_importJsonUpdates(retptr, this.__wbg_ptr, addHeapObject(json2));
+          wasm.lorodoc_importJsonUpdates(retptr, this.__wbg_ptr, addHeapObject(json3));
           var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
           var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
           var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
@@ -9713,10 +9713,10 @@ ${val.stack}`;
        * If `None` is provided, the default style is reset.
        * @param {{ expand: 'before'|'after'|'none'|'both' } | undefined} style
        */
-      configDefaultTextStyle(style) {
+      configDefaultTextStyle(style2) {
         try {
           const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-          wasm.lorodoc_configDefaultTextStyle(retptr, this.__wbg_ptr, addHeapObject(style));
+          wasm.lorodoc_configDefaultTextStyle(retptr, this.__wbg_ptr, addHeapObject(style2));
           var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
           var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
           if (r1) {
@@ -14935,8 +14935,8 @@ var require_argument = __commonJS({
        * @param {string} name
        * @param {string} [description]
        */
-      constructor(name, description) {
-        this.description = description || "";
+      constructor(name, description2) {
+        this.description = description2 || "";
         this.variadic = false;
         this.parseArg = void 0;
         this.defaultValue = void 0;
@@ -14985,9 +14985,9 @@ var require_argument = __commonJS({
        * @param {string} [description]
        * @return {Argument}
        */
-      default(value, description) {
+      default(value, description2) {
         this.defaultValue = value;
-        this.defaultValueDescription = description;
+        this.defaultValueDescription = description2;
         return this;
       }
       /**
@@ -15370,8 +15370,8 @@ var require_help = __commonJS({
       formatHelp(cmd, helper) {
         const termWidth = helper.padWidth(cmd, helper);
         const helpWidth = helper.helpWidth ?? 80;
-        function callFormatItem(term, description) {
-          return helper.formatItem(term, termWidth, description, helper);
+        function callFormatItem(term, description2) {
+          return helper.formatItem(term, termWidth, description2, helper);
         }
         let output = [
           `${helper.styleTitle("Usage:")} ${helper.styleUsage(helper.commandUsage(cmd))}`,
@@ -15548,10 +15548,10 @@ var require_help = __commonJS({
        * @param {Help} helper
        * @returns {string}
        */
-      formatItem(term, termWidth, description, helper) {
+      formatItem(term, termWidth, description2, helper) {
         const itemIndent = 2;
         const itemIndentStr = " ".repeat(itemIndent);
-        if (!description) return itemIndentStr + term;
+        if (!description2) return itemIndentStr + term;
         const paddedTerm = term.padEnd(
           termWidth + term.length - helper.displayWidth(term)
         );
@@ -15559,10 +15559,10 @@ var require_help = __commonJS({
         const helpWidth = this.helpWidth ?? 80;
         const remainingWidth = helpWidth - termWidth - spacerWidth - itemIndent;
         let formattedDescription;
-        if (remainingWidth < this.minWidthToWrap || helper.preformatted(description)) {
-          formattedDescription = description;
+        if (remainingWidth < this.minWidthToWrap || helper.preformatted(description2)) {
+          formattedDescription = description2;
         } else {
-          const wrappedDescription = helper.boxWrap(description, remainingWidth);
+          const wrappedDescription = helper.boxWrap(description2, remainingWidth);
           formattedDescription = wrappedDescription.replace(
             /\n/g,
             "\n" + " ".repeat(termWidth + spacerWidth)
@@ -15629,9 +15629,9 @@ var require_option = __commonJS({
        * @param {string} flags
        * @param {string} [description]
        */
-      constructor(flags, description) {
+      constructor(flags, description2) {
         this.flags = flags;
-        this.description = description || "";
+        this.description = description2 || "";
         this.required = flags.includes("<");
         this.optional = flags.includes("[");
         this.variadic = /\w\.\.\.[>\]]$/.test(flags);
@@ -15660,9 +15660,9 @@ var require_option = __commonJS({
        * @param {string} [description]
        * @return {Option}
        */
-      default(value, description) {
+      default(value, description2) {
         this.defaultValue = value;
-        this.defaultValueDescription = description;
+        this.defaultValueDescription = description2;
         return this;
       }
       /**
@@ -16247,8 +16247,8 @@ var require_command = __commonJS({
        * @param {string} [description]
        * @return {Argument} new argument
        */
-      createArgument(name, description) {
-        return new Argument2(name, description);
+      createArgument(name, description2) {
+        return new Argument2(name, description2);
       }
       /**
        * Define argument syntax for command.
@@ -16266,8 +16266,8 @@ var require_command = __commonJS({
        * @param {*} [defaultValue]
        * @return {Command} `this` command for chaining
        */
-      argument(name, description, fn, defaultValue) {
-        const argument = this.createArgument(name, description);
+      argument(name, description2, fn, defaultValue) {
+        const argument = this.createArgument(name, description2);
         if (typeof fn === "function") {
           argument.default(defaultValue).argParser(fn);
         } else {
@@ -16327,14 +16327,14 @@ var require_command = __commonJS({
        * @param {string} [description] - custom description
        * @return {Command} `this` command for chaining
        */
-      helpCommand(enableOrNameAndArgs, description) {
+      helpCommand(enableOrNameAndArgs, description2) {
         if (typeof enableOrNameAndArgs === "boolean") {
           this._addImplicitHelpCommand = enableOrNameAndArgs;
           return this;
         }
         enableOrNameAndArgs = enableOrNameAndArgs ?? "help [command]";
         const [, helpName, helpArgs] = enableOrNameAndArgs.match(/([^ ]+) *(.*)/);
-        const helpDescription = description ?? "display help for command";
+        const helpDescription = description2 ?? "display help for command";
         const helpCommand = this.createCommand(helpName);
         helpCommand.helpOption(false);
         if (helpArgs) helpCommand.arguments(helpArgs);
@@ -16468,8 +16468,8 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [description]
        * @return {Option} new option
        */
-      createOption(flags, description) {
-        return new Option2(flags, description);
+      createOption(flags, description2) {
+        return new Option2(flags, description2);
       }
       /**
        * Wrap parseArgs to catch 'commander.invalidArgument'.
@@ -16591,13 +16591,13 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return {Command} `this` command for chaining
        * @private
        */
-      _optionEx(config2, flags, description, fn, defaultValue) {
+      _optionEx(config2, flags, description2, fn, defaultValue) {
         if (typeof flags === "object" && flags instanceof Option2) {
           throw new Error(
             "To add an Option object use addOption() instead of option() or requiredOption()"
           );
         }
-        const option = this.createOption(flags, description);
+        const option = this.createOption(flags, description2);
         option.makeOptionMandatory(!!config2.mandatory);
         if (typeof fn === "function") {
           option.default(defaultValue).argParser(fn);
@@ -16634,8 +16634,8 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {*} [defaultValue]
        * @return {Command} `this` command for chaining
        */
-      option(flags, description, parseArg, defaultValue) {
-        return this._optionEx({}, flags, description, parseArg, defaultValue);
+      option(flags, description2, parseArg, defaultValue) {
+        return this._optionEx({}, flags, description2, parseArg, defaultValue);
       }
       /**
        * Add a required option which must have a value after parsing. This usually means
@@ -16649,11 +16649,11 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {*} [defaultValue]
        * @return {Command} `this` command for chaining
        */
-      requiredOption(flags, description, parseArg, defaultValue) {
+      requiredOption(flags, description2, parseArg, defaultValue) {
         return this._optionEx(
           { mandatory: true },
           flags,
-          description,
+          description2,
           parseArg,
           defaultValue
         );
@@ -17751,12 +17751,12 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [description]
        * @return {(this | string | undefined)} `this` command for chaining, or version string if no arguments
        */
-      version(str, flags, description) {
+      version(str, flags, description2) {
         if (str === void 0) return this._version;
         this._version = str;
         flags = flags || "-V, --version";
-        description = description || "output the version number";
-        const versionOption = this.createOption(flags, description);
+        description2 = description2 || "output the version number";
+        const versionOption = this.createOption(flags, description2);
         this._versionOptionName = versionOption.attributeName();
         this._registerOption(versionOption);
         this.on("option:" + versionOption.name(), () => {
@@ -17995,7 +17995,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [description]
        * @return {Command} `this` command for chaining
        */
-      helpOption(flags, description) {
+      helpOption(flags, description2) {
         if (typeof flags === "boolean") {
           if (flags) {
             this._helpOption = this._helpOption ?? void 0;
@@ -18005,8 +18005,8 @@ Expecting one of '${allowedValues.join("', '")}'`);
           return this;
         }
         flags = flags ?? "-h, --help";
-        description = description ?? "display help for command";
-        this._helpOption = this.createOption(flags, description);
+        description2 = description2 ?? "display help for command";
+        this._helpOption = this.createOption(flags, description2);
         return this;
       }
       /**
@@ -18153,8 +18153,8 @@ var require_commander = __commonJS({
     var { Option: Option2 } = require_option();
     exports2.program = new Command2();
     exports2.createCommand = (name) => new Command2(name);
-    exports2.createOption = (flags, description) => new Option2(flags, description);
-    exports2.createArgument = (name, description) => new Argument2(name, description);
+    exports2.createOption = (flags, description2) => new Option2(flags, description2);
+    exports2.createArgument = (name, description2) => new Argument2(name, description2);
     exports2.Command = Command2;
     exports2.Option = Option2;
     exports2.Argument = Argument2;
@@ -20389,6 +20389,7 @@ var import_node_url = require("node:url");
 // ../../packages/shared-runtime/dist/local-daemon.js
 var import_node_child_process2 = require("node:child_process");
 var import_node_crypto6 = require("node:crypto");
+var import_node_fs2 = require("node:fs");
 var import_promises9 = require("node:fs/promises");
 var import_node_path9 = require("node:path");
 
@@ -20721,8 +20722,8 @@ var ZodIssueCode = util.arrayToEnum([
   "not_finite"
 ]);
 var quotelessJson = (obj) => {
-  const json2 = JSON.stringify(obj, null, 2);
-  return json2.replace(/"([^"]+)":/g, "$1:");
+  const json3 = JSON.stringify(obj, null, 2);
+  return json3.replace(/"([^"]+)":/g, "$1:");
 };
 var ZodError = class _ZodError extends Error {
   get errors() {
@@ -21089,12 +21090,12 @@ var handleResult = (ctx, result) => {
 function processCreateParams(params) {
   if (!params)
     return {};
-  const { errorMap: errorMap2, invalid_type_error, required_error, description } = params;
+  const { errorMap: errorMap2, invalid_type_error, required_error, description: description2 } = params;
   if (errorMap2 && (invalid_type_error || required_error)) {
     throw new Error(`Can't use "invalid_type_error" or "required_error" in conjunction with custom error map.`);
   }
   if (errorMap2)
-    return { errorMap: errorMap2, description };
+    return { errorMap: errorMap2, description: description2 };
   const customMap = (iss, ctx) => {
     var _a3, _b;
     const { message: message3 } = params;
@@ -21108,7 +21109,7 @@ function processCreateParams(params) {
       return { message: ctx.defaultError };
     return { message: (_b = message3 !== null && message3 !== void 0 ? message3 : invalid_type_error) !== null && _b !== void 0 ? _b : ctx.defaultError };
   };
-  return { errorMap: customMap, description };
+  return { errorMap: customMap, description: description2 };
 }
 var ZodType = class {
   get description() {
@@ -21375,11 +21376,11 @@ var ZodType = class {
       typeName: ZodFirstPartyTypeKind.ZodCatch
     });
   }
-  describe(description) {
+  describe(description2) {
     const This = this.constructor;
     return new This({
       ...this._def,
-      description
+      description: description2
     });
   }
   pipe(target) {
@@ -24631,7 +24632,7 @@ var z = /* @__PURE__ */ Object.freeze({
   ZodError
 });
 
-// ../../packages/shared-types/dist/chunk-T6TANLZN.js
+// ../../packages/shared-types/dist/chunk-GWDIKZMB.js
 function agentReadToken(options) {
   const namespace = normalizeTokenPart(options.namespace, "namespace");
   const version2 = normalizeTokenPart(options.version ?? "v1", "version");
@@ -24652,9 +24653,9 @@ function stableJson(value) {
   if (Array.isArray(value))
     return `[${value.map((item) => stableJson(item ?? null)).join(",")}]`;
   if (typeof value === "object") {
-    const record2 = value;
-    const keys = Object.keys(record2).filter((key) => record2[key] !== void 0).sort();
-    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableJson(record2[key])}`).join(",")}}`;
+    const record3 = value;
+    const keys = Object.keys(record3).filter((key) => record3[key] !== void 0).sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableJson(record3[key])}`).join(",")}}`;
   }
   return "null";
 }
@@ -24698,7 +24699,12 @@ var ProjectAssetMetadataSchema = z.object({
   sampleRate: z.number().int().positive().optional(),
   channelCount: z.number().int().positive().optional(),
   channelLayout: z.string().trim().min(1).optional(),
-  originalName: z.string().trim().min(1).optional()
+  originalName: z.string().trim().min(1).optional(),
+  /** Normalized rig/deform capability a `model` asset exposes, independent from any provider or
+   *  rig format. `0` means static/rigid -- no rig/deform capability. `1` means rigged/deformable.
+   *  This is a normalized capability, not a bone count or physical degree of freedom, and it
+   *  never becomes a `rig` kind of its own -- static and rigged 3-D assets are both `model`. */
+  flexibility: z.number().min(0).max(1).optional()
 }).strict();
 var ProjectAssetPublicationMetadataSchema = ProjectAssetMetadataSchema.omit({ waveform: true });
 var ProjectAssetProvenanceSchema = z.object({
@@ -24873,7 +24879,7 @@ var AssetRefRowSchema = z.object({
   importedAt: z.number()
 });
 
-// ../../packages/shared-types/dist/chunk-VG5GRRAK.js
+// ../../packages/shared-types/dist/chunk-UZSXLAEL.js
 var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
 var pluginIdSchema = z.string().trim().superRefine((value, ctx) => {
   const segments = value.split(".");
@@ -24884,11 +24890,11 @@ var pluginIdSchema = z.string().trim().superRefine((value, ctx) => {
     });
     return;
   }
-  for (const segment of segments) {
-    if (!SEGMENT.test(segment)) {
+  for (const segment2 of segments) {
+    if (!SEGMENT.test(segment2)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `Plugin id segment ${JSON.stringify(segment)} must be lowercase letters, digits and hyphens, starting with a letter or digit.`
+        message: `Plugin id segment ${JSON.stringify(segment2)} must be lowercase letters, digits and hyphens, starting with a letter or digit.`
       });
     }
   }
@@ -25223,7 +25229,7 @@ var AsrTimedSegmentSchema = z.object({
   endMs: z.number().int().min(0),
   wordIds: z.array(z.string().min(1)),
   speakerId: z.string().min(1).optional()
-}).refine((segment) => segment.endMs > segment.startMs, {
+}).refine((segment2) => segment2.endMs > segment2.startMs, {
   message: "ASR segment endMs must be greater than startMs",
   path: ["endMs"]
 });
@@ -25269,8 +25275,8 @@ var AsrTimedTranscriptSchema = z.object({
       path: ["durationMs"]
     });
   }
-  transcript.segments.forEach((segment, segmentIndex) => {
-    segment.wordIds.forEach((wordId, wordIndex) => {
+  transcript.segments.forEach((segment2, segmentIndex) => {
+    segment2.wordIds.forEach((wordId, wordIndex) => {
       if (!wordIds.has(wordId)) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
@@ -25998,223 +26004,7 @@ var ExecutablePluginJsonValueSchema = z.lazy(
     z.record(ExecutablePluginJsonValueSchema)
   ])
 );
-var nonEmptyIdSchema = z.string().trim().min(1);
-var prefixedSha256Schema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
-var jsonObjectSchema = z.record(ExecutablePluginJsonValueSchema);
-var GeneratorEditPolicySchema = z.enum([
-  "advance-head",
-  "fork-when-materialized"
-]);
-var MediaAssetRevisionRefSchema = z.object({
-  kind: z.literal("media"),
-  projectAssetId: nonEmptyIdSchema
-}).strict();
-var DocumentAssetRevisionRefSchema = z.object({
-  kind: z.literal("document"),
-  documentAssetId: nonEmptyIdSchema,
-  revisionId: nonEmptyIdSchema
-}).strict();
-var AssetRevisionRefSchema = z.discriminatedUnion("kind", [
-  MediaAssetRevisionRefSchema,
-  DocumentAssetRevisionRefSchema
-]);
-var GeneratorRevisionRefSchema = z.object({
-  generatorId: nonEmptyIdSchema,
-  generatorRevisionId: nonEmptyIdSchema
-}).strict();
-var GeneratorInputTargetSchema = z.union([
-  AssetRevisionRefSchema,
-  GeneratorRevisionRefSchema
-]);
-var GeneratorInputRefSchema = z.object({
-  slot: nonEmptyIdSchema,
-  itemKey: nonEmptyIdSchema.optional(),
-  target: GeneratorInputTargetSchema
-}).strict();
-var GeneratorDefinitionRefSchema = z.object({
-  pluginId: pluginIdSchema,
-  definitionId: nonEmptyIdSchema,
-  version: nonEmptyIdSchema,
-  schemaHash: prefixedSha256Schema
-}).strict();
-var GeneratorExecutorRefSchema = z.object({
-  pluginId: pluginIdSchema,
-  version: nonEmptyIdSchema,
-  exportId: nonEmptyIdSchema,
-  schemaHash: prefixedSha256Schema
-}).strict();
-var GeneratorMediaAssetTypeSchema = z.object({
-  kind: z.literal("media"),
-  mediaKind: AssetKindSchema
-}).strict();
-var GeneratorDocumentAssetTypeSchema = z.object({
-  kind: z.literal("document"),
-  documentKind: nonEmptyIdSchema,
-  schemaVersion: z.number().int().positive()
-}).strict();
-var GeneratorAssetTypeSchema = z.discriminatedUnion("kind", [
-  GeneratorMediaAssetTypeSchema,
-  GeneratorDocumentAssetTypeSchema
-]);
-var GeneratorInputCardinalitySchema = z.object({
-  minItems: z.number().int().nonnegative(),
-  maxItems: z.number().int().positive().nullable()
-}).strict().superRefine(({ minItems, maxItems }, context) => {
-  if (maxItems !== null && maxItems < minItems) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["maxItems"],
-      message: "maxItems must be greater than or equal to minItems."
-    });
-  }
-});
-var GeneratorFamilyInputTypeSchema = z.object({
-  kind: z.literal("generator"),
-  pluginId: pluginIdSchema,
-  definitionId: nonEmptyIdSchema
-}).strict();
-var GeneratorInputTypeSchema = z.discriminatedUnion("kind", [
-  GeneratorMediaAssetTypeSchema,
-  GeneratorDocumentAssetTypeSchema,
-  GeneratorFamilyInputTypeSchema
-]);
-var GeneratorInputPortSchema = z.object({
-  slot: nonEmptyIdSchema,
-  accepts: z.array(GeneratorInputTypeSchema).min(1),
-  cardinality: GeneratorInputCardinalitySchema
-}).strict();
-var GeneratorActionInputPortSchema = GeneratorInputPortSchema;
-var GeneratorActionOutputCardinalitySchema = GeneratorInputCardinalitySchema;
-var GeneratorActionOutputPortSchema = z.object({
-  slot: nonEmptyIdSchema,
-  assetType: GeneratorAssetTypeSchema,
-  cardinality: GeneratorActionOutputCardinalitySchema
-}).strict();
-var GeneratorActionOutputContractSchema = z.array(GeneratorActionOutputPortSchema).length(1).superRefine((outputs, context) => {
-  const cardinality = outputs[0]?.cardinality;
-  if (cardinality?.minItems !== 1 || cardinality.maxItems !== 1) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: [0, "cardinality"],
-      message: "The current Generator Action profile requires exactly one output."
-    });
-  }
-});
-var GeneratorActionDefinitionSchema = z.object({
-  id: nonEmptyIdSchema,
-  executorExportId: nonEmptyIdSchema,
-  parametersSchema: jsonObjectSchema,
-  invocationInputs: z.array(GeneratorActionInputPortSchema),
-  outputs: GeneratorActionOutputContractSchema
-}).strict().superRefine(({ invocationInputs }, context) => {
-  const seen = /* @__PURE__ */ new Set();
-  invocationInputs.forEach((input, index) => {
-    if (seen.has(input.slot)) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["invocationInputs", index, "slot"],
-        message: `Duplicate Generator Action input slot: ${input.slot}`
-      });
-    }
-    seen.add(input.slot);
-  });
-});
-var generatorDefinitionSpecShape = {
-  definitionId: nonEmptyIdSchema,
-  stateSchema: jsonObjectSchema,
-  editPolicy: GeneratorEditPolicySchema,
-  persistentInputs: z.array(GeneratorInputPortSchema),
-  actions: z.array(GeneratorActionDefinitionSchema).min(1)
-};
-function validateGeneratorDefinitionSpec(input, context) {
-  const persistentSlots = /* @__PURE__ */ new Set();
-  input.persistentInputs.forEach((persistentInput, index) => {
-    if (persistentSlots.has(persistentInput.slot)) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["persistentInputs", index, "slot"],
-        message: `Duplicate Generator persistent input slot: ${persistentInput.slot}`
-      });
-    }
-    persistentSlots.add(persistentInput.slot);
-  });
-  const actionIds = /* @__PURE__ */ new Set();
-  input.actions.forEach((action, index) => {
-    if (actionIds.has(action.id)) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["actions", index, "id"],
-        message: `Duplicate Generator action id: ${action.id}`
-      });
-    }
-    actionIds.add(action.id);
-  });
-}
-var GeneratorDefinitionSpecSchema = z.object(generatorDefinitionSpecShape).strict().superRefine(validateGeneratorDefinitionSpec);
-var GeneratorDefinitionSchema = GeneratorDefinitionRefSchema.extend({
-  stateSchema: generatorDefinitionSpecShape.stateSchema,
-  editPolicy: generatorDefinitionSpecShape.editPolicy,
-  persistentInputs: generatorDefinitionSpecShape.persistentInputs,
-  actions: generatorDefinitionSpecShape.actions
-}).strict().superRefine(validateGeneratorDefinitionSpec);
-var ProjectGeneratorHeadSchema = z.object({
-  id: nonEmptyIdSchema,
-  headRevisionId: nonEmptyIdSchema
-}).strict();
-var ProjectGeneratorSchema = ProjectGeneratorHeadSchema.extend({
-  definitionRef: GeneratorDefinitionRefSchema
-}).strict();
-var GeneratorRevisionSchema = z.object({
-  id: nonEmptyIdSchema,
-  generatorId: nonEmptyIdSchema,
-  definitionRef: GeneratorDefinitionRefSchema,
-  parentRevisionId: nonEmptyIdSchema.optional(),
-  forkedFrom: GeneratorRevisionRefSchema.optional(),
-  state: jsonObjectSchema,
-  persistentInputRefs: z.array(GeneratorInputRefSchema)
-}).strict().superRefine(({ generatorId, forkedFrom }, context) => {
-  if (forkedFrom?.generatorId === generatorId) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["forkedFrom", "generatorId"],
-      message: "Same-Generator ancestry belongs in parentRevisionId, not forkedFrom."
-    });
-  }
-});
-var ActionRunStatusSchema = z.enum([
-  "pending",
-  "running",
-  "succeeded",
-  "failed"
-]);
-var ActionRunRequestSchema = z.object({
-  actionRunId: nonEmptyIdSchema,
-  generatorRevision: GeneratorRevisionRefSchema,
-  actionId: nonEmptyIdSchema,
-  executor: GeneratorExecutorRefSchema,
-  invocationFingerprint: prefixedSha256Schema,
-  parameters: jsonObjectSchema,
-  invocationInputRefs: z.array(GeneratorInputRefSchema),
-  outputContract: GeneratorActionOutputContractSchema
-}).strict();
-var ActionRunOutcomeSchema = z.object({
-  actionRunId: nonEmptyIdSchema,
-  status: z.enum(["succeeded", "failed"])
-}).strict();
-var ProjectActionRunSchema = ActionRunRequestSchema.extend({
-  status: ActionRunStatusSchema
-}).strict();
-var OutputCommitSchema = z.object({
-  actionRunId: nonEmptyIdSchema,
-  outputSlot: nonEmptyIdSchema,
-  itemKey: nonEmptyIdSchema.optional(),
-  asset: AssetRevisionRefSchema
-}).strict();
-var AspectRatioSchema = z.object({
-  width: z.number().int().positive(),
-  height: z.number().int().positive()
-}).strict();
-var AIGC_ACTION_KINDS = ["image", "video", "audio", "text"];
+var AIGC_ACTION_KINDS = ["image", "video", "audio", "text", "model"];
 var AigcActionKindSchema = z.enum(AIGC_ACTION_KINDS);
 var CANONICAL_RESOLUTION_TIERS = [
   { label: "0.5K (Draft)", value: "0.5K", pixels: 262144 },
@@ -26451,7 +26241,7 @@ var GEMINI_TTS_VOICES = [
   { label: "Sulafat - Warm", value: "Sulafat" }
 ];
 var ModelParameterTypeSchema = z.enum(["select", "slider", "number", "text", "boolean"]);
-var BuiltinProviderSchema = z.enum(["local", "official", "fal", "pika", "replicate", "kling", "minimax", "volcengine", "elevenlabs", "suno", "mock", "custom"]);
+var BuiltinProviderSchema = z.enum(["local", "official", "fal", "pika", "replicate", "kling", "minimax", "volcengine-modelark", "elevenlabs", "suno", "mock", "custom"]);
 var ProviderSchema = z.string().trim().regex(
   /^[a-z0-9][a-z0-9._-]*$/,
   "Provider ids must be lowercase plugin-safe identifiers."
@@ -26553,7 +26343,7 @@ var RefSpecSchema = z.object({
   min: z.number().int().nonnegative().optional(),
   /** When this modality is present, at least one of these companion
    * modalities must also be present. */
-  requiresAnyOf: z.array(z.enum(["image", "video", "audio"])).min(1).optional(),
+  requiresAnyOf: z.array(z.enum(["image", "video", "audio", "model"])).min(1).optional(),
   constraints: ReferenceMediaConstraintsSchema.optional(),
   maxTotalDurationMs: z.number().int().positive().optional(),
   /** Parameter-conditioned refinements for one input mode (for example,
@@ -26564,9 +26354,13 @@ var ModelInputModeSchema = z.object({
   images: RefSpecSchema.optional(),
   videos: RefSpecSchema.optional(),
   audios: RefSpecSchema.optional(),
+  /** Reference to another Model output -- e.g. a static mesh bound into a rigging model. Declared
+   * the same way as images/videos/audios, so a model-to-model workflow (auto-rig, retarget) is
+   * expressed through the same generic input contract rather than a provider-specific field. */
+  models: RefSpecSchema.optional(),
   /** At least one reference from these modalities must be attached. */
-  requiresAnyOf: z.array(z.enum(["image", "video", "audio"])).min(1).optional(),
-  /** Maximum total references across image, video, and audio buckets. */
+  requiresAnyOf: z.array(z.enum(["image", "video", "audio", "model"])).min(1).optional(),
+  /** Maximum total references across image, video, audio, and model buckets. */
   maxTotalReferences: z.number().int().positive().optional(),
   /** Maximum JSON request body when local media is represented as Base64 Data URIs. */
   maxEmbeddedRequestBytes: z.number().int().positive().optional(),
@@ -26590,7 +26384,7 @@ var ModelInputRuleSchema = z.object({
   inputMode: ModelInputModeSchema.default({}),
   /** Modalities that can be @-mentioned inline in the prompt editor.
    *  Does NOT affect form-field inputs (start/end frames, etc.) */
-  promptModalities: z.array(z.enum(["text", "image", "video", "audio"])).default(["text"]),
+  promptModalities: z.array(z.enum(["text", "image", "video", "audio", "model"])).default(["text"]),
   /** How inline prompt references are represented on the provider wire. */
   referenceBinding: ReferenceBindingSchema.optional(),
   /** Specialized input surface owned by this Model Card. */
@@ -26668,6 +26462,18 @@ var ProviderAssetInputSchema = z.object({
   representations: z.array(ProviderAssetRepresentationSchema).min(1),
   mediaTypes: z.array(z.string().trim().min(1)).min(1).optional()
 }).strict();
+var ModelCardConsumerSchema = z.object({
+  pluginId: z.string().trim().min(1),
+  definitionId: z.string().trim().min(1).optional(),
+  actionId: z.string().trim().min(1).optional()
+}).strict();
+var ModelCardVisibilitySchema = z.discriminatedUnion("scope", [
+  z.object({ scope: z.literal("public") }).strict(),
+  z.object({
+    scope: z.literal("plugin-private"),
+    consumers: z.array(ModelCardConsumerSchema).min(1)
+  }).strict()
+]).optional();
 var ModelProviderImplementationSchema = z.object({
   providerId: ProviderSchema,
   accountId: z.string().optional(),
@@ -26729,6 +26535,10 @@ var ModelCardSchema = z.object({
   name: z.string(),
   provider: z.string(),
   kind: ModelKindSchema,
+  /** Provider-independent consumption contract. Provider wire shapes remain on implementations. */
+  semanticShape: z.string().trim().regex(/^[a-z][a-z0-9_]*$/).optional(),
+  /** Catalog scope evaluated from explicit consumer context, never contributor ids. */
+  visibility: ModelCardVisibilitySchema,
   custom: z.boolean().optional(),
   description: z.string().optional(),
   promptGuidance: z.string().optional(),
@@ -27744,8 +27554,8 @@ var MODEL_CARD_DEFINITIONS = [
     id: "seedance-2-startend",
     name: "Seedance 2.0 (Start/End)",
     provider: "fal.ai",
-    availableProviders: ["volcengine", "fal", "pika", "replicate"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-modelark", "fal", "pika", "replicate"],
+    defaultProvider: "volcengine-modelark",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 \u2014 animate from a start frame, optionally constrained to a target end frame.",
@@ -27810,8 +27620,8 @@ var MODEL_CARD_DEFINITIONS = [
     aliases: ["seedance-2-text"],
     name: "Seedance 2.0 (\u5168\u80FD\u53C2\u8003)",
     provider: "ByteDance",
-    availableProviders: ["volcengine", "fal", "pika", "replicate"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-modelark", "fal", "pika", "replicate"],
+    defaultProvider: "volcengine-modelark",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 all-purpose generation with optional image, video, and audio references.",
@@ -27906,8 +27716,8 @@ var MODEL_CARD_DEFINITIONS = [
     id: "seedance-2-extend",
     name: "Seedance 2.0 (Video Extension)",
     provider: "ByteDance",
-    availableProviders: ["volcengine"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-modelark"],
+    defaultProvider: "volcengine-modelark",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Continue one to three ordered source videos with Seedance 2.0.",
@@ -27967,8 +27777,8 @@ var MODEL_CARD_DEFINITIONS = [
     aliases: ["seedance-2.5-text"],
     name: "Seedance 2.5 (\u5168\u80FD\u53C2\u8003)",
     provider: "ByteDance",
-    availableProviders: ["volcengine"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-modelark"],
+    defaultProvider: "volcengine-modelark",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Seedance 2.5 all-purpose generation with optional image, video, and audio references.",
@@ -28069,8 +27879,8 @@ var MODEL_CARD_DEFINITIONS = [
     id: "seedance-2.5-startend",
     name: "Seedance 2.5 (Start / End Frame)",
     provider: "ByteDance",
-    availableProviders: ["volcengine"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-modelark"],
+    defaultProvider: "volcengine-modelark",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Animate from a required start frame toward an optional end frame with Seedance 2.5.",
@@ -28121,8 +27931,8 @@ var MODEL_CARD_DEFINITIONS = [
     id: "seedance-2.5-extend",
     name: "Seedance 2.5 (Video Extension)",
     provider: "ByteDance",
-    availableProviders: ["volcengine"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-modelark"],
+    defaultProvider: "volcengine-modelark",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Continue one to ten ordered source videos with Seedance 2.5.",
@@ -28809,6 +28619,7 @@ var MODEL_CARD_DEFINITIONS = [
     availableProviders: ["official"],
     defaultProvider: "official",
     kind: "text",
+    semanticShape: "media_analysis",
     defaultAspectRatio: "1:1",
     description: "Google Gemini 3.5 Flash \u2014 near-Pro agentic capability at Flash-tier speed and cost.",
     parameters: [
@@ -28838,6 +28649,7 @@ var MODEL_CARD_DEFINITIONS = [
     availableProviders: ["official"],
     defaultProvider: "official",
     kind: "text",
+    semanticShape: "media_analysis",
     defaultAspectRatio: "1:1",
     description: "Google Gemini 3.1 Pro \u2014 flagship multimodal reasoning across text, image, video, and audio inputs.",
     parameters: [
@@ -28867,6 +28679,7 @@ var MODEL_CARD_DEFINITIONS = [
     availableProviders: ["official"],
     defaultProvider: "official",
     kind: "text",
+    semanticShape: "media_analysis",
     defaultAspectRatio: "1:1",
     description: "Faster, cheaper Gemini 3 Flash \u2014 multimodal across text, image, video, and audio inputs.",
     parameters: [
@@ -28896,6 +28709,7 @@ var MODEL_CARD_DEFINITIONS = [
     availableProviders: ["official"],
     defaultProvider: "official",
     kind: "text",
+    semanticShape: "media_analysis",
     defaultAspectRatio: "1:1",
     description: "Google Gemini 3.1 Flash-Lite \u2014 low-latency, high-volume text generation with multimodal inputs.",
     parameters: [
@@ -29697,8 +29511,8 @@ var MODEL_CARD_DEFINITIONS = [
     id: "seedance-2-fast-ref",
     name: "Seedance 2.0 Fast (\u5168\u80FD\u53C2\u8003)",
     provider: "ByteDance",
-    availableProviders: ["volcengine"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-modelark"],
+    defaultProvider: "volcengine-modelark",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 Fast all-purpose generation with optional image, video, and audio references.",
@@ -29754,8 +29568,8 @@ var MODEL_CARD_DEFINITIONS = [
     id: "seedance-2-fast-startend",
     name: "Seedance 2.0 Fast (\u9996\u5C3E\u5E27)",
     provider: "ByteDance",
-    availableProviders: ["volcengine"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-modelark"],
+    defaultProvider: "volcengine-modelark",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 Fast animation between a first and an optional last frame.",
@@ -29801,8 +29615,8 @@ var MODEL_CARD_DEFINITIONS = [
     id: "seedance-2-mini-ref",
     name: "Seedance 2.0 Mini (\u5168\u80FD\u53C2\u8003)",
     provider: "ByteDance",
-    availableProviders: ["volcengine"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-modelark"],
+    defaultProvider: "volcengine-modelark",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 Mini all-purpose generation with optional image, video, and audio references.",
@@ -29858,8 +29672,8 @@ var MODEL_CARD_DEFINITIONS = [
     id: "seedance-2-mini-startend",
     name: "Seedance 2.0 Mini (\u9996\u5C3E\u5E27)",
     provider: "ByteDance",
-    availableProviders: ["volcengine"],
-    defaultProvider: "volcengine",
+    availableProviders: ["volcengine-modelark"],
+    defaultProvider: "volcengine-modelark",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 Mini animation between a first and an optional last frame.",
@@ -30222,6 +30036,260 @@ var MODEL_CARD_DEFINITIONS = [
       referenceBinding: { type: "grouped-references" },
       inputMode: { audios: { max: 1 } },
       promptModalities: ["text", "audio"]
+    }
+  },
+  // ─── Model: Meshy ──────────────────────────────────────────
+  // Meshy 6 and Meshy 7 are two distinct AI model tiers behind the same Text-to-3D /
+  // Image-to-3D routes (docs.meshy.ai): a prompt alone drives Text-to-3D, an attached
+  // image drives Image-to-3D, and both stay under one Card per model tier rather than a
+  // split text/image pair -- the executable Provider (plugins/meshy) picks the route by
+  // reference presence, not by a card-level mode switch. Parameters are limited to what
+  // `meshy-executor.ts` implements and tests against the documented wire shapes:
+  // `PBR` is the exact wire-compatible key the executable Provider adapter reads
+  // (`booleanParam(values, "PBR")` in `meshy-adapter.ts`); `textureResolution` is Meshy's own
+  // 2k/4k/8k menu; `poseMode` is a-pose/t-pose or the documented empty-string "no pose" value;
+  // `targetPolycount` only takes effect on the remesh path and is bounded 100-300,000 exactly as
+  // `MIN_TARGET_POLYCOUNT`/`MAX_TARGET_POLYCOUNT` in `meshy-executor.ts`. None of these four has a
+  // proven upstream default, so no `defaultValue` or `defaultParams` entry is invented for them.
+  {
+    id: "meshy-6",
+    name: "Meshy 6",
+    provider: "Meshy",
+    kind: "model",
+    defaultAspectRatio: "1:1",
+    description: "Meshy 6 text-to-3D and image-to-3D generation, producing a textured GLB mesh.",
+    parameters: [
+      { id: "PBR", label: "PBR Textures", type: "boolean" },
+      {
+        id: "textureResolution",
+        label: "Texture Resolution",
+        type: "select",
+        options: [
+          { label: "2K", value: "2k" },
+          { label: "4K", value: "4k" },
+          { label: "8K", value: "8k" }
+        ]
+      },
+      {
+        id: "poseMode",
+        label: "Pose",
+        type: "select",
+        options: [
+          { label: "None", value: "" },
+          { label: "A-Pose", value: "a-pose" },
+          { label: "T-Pose", value: "t-pose" }
+        ]
+      },
+      {
+        id: "targetPolycount",
+        label: "Target Polycount",
+        type: "number",
+        min: 100,
+        max: 3e5,
+        step: 1
+      }
+    ],
+    defaultParams: {},
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { images: { max: 1 } },
+      promptModalities: ["text", "image"]
+    }
+  },
+  {
+    id: "meshy-7",
+    name: "Meshy 7",
+    provider: "Meshy",
+    kind: "model",
+    defaultAspectRatio: "1:1",
+    description: "Meshy 7 text-to-3D and image-to-3D generation, producing a textured GLB mesh.",
+    parameters: [
+      { id: "PBR", label: "PBR Textures", type: "boolean" },
+      {
+        id: "textureResolution",
+        label: "Texture Resolution",
+        type: "select",
+        options: [
+          { label: "2K", value: "2k" },
+          { label: "4K", value: "4k" },
+          { label: "8K", value: "8k" }
+        ]
+      },
+      {
+        id: "poseMode",
+        label: "Pose",
+        type: "select",
+        options: [
+          { label: "None", value: "" },
+          { label: "A-Pose", value: "a-pose" },
+          { label: "T-Pose", value: "t-pose" }
+        ]
+      },
+      {
+        id: "targetPolycount",
+        label: "Target Polycount",
+        type: "number",
+        min: 100,
+        max: 3e5,
+        step: 1
+      }
+    ],
+    defaultParams: {},
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { images: { max: 1 } },
+      promptModalities: ["text", "image"]
+    }
+  },
+  // Meshy auto-rig is model-to-model: it always resolves a required `model` reference through
+  // `POST /v1/rigging` (plugins/meshy/src/meshy-executor.ts buildRiggingBody) and never reads a
+  // prompt. `heightMeters` is the one optional parameter the executor forwards, and it must be
+  // positive when present -- there is no documented default height, so none is set here. This
+  // stays `kind: 'model'`: a rigged mesh is still a `model` Asset, never a separate `rig` kind
+  // (packages/shared-types/src/assets.ts `flexibility` documents the same rule).
+  {
+    id: "meshy-auto-rig",
+    name: "Meshy Auto-Rig",
+    provider: "Meshy",
+    kind: "model",
+    defaultAspectRatio: "1:1",
+    description: "Automatically rig a static 3D model with a biped skeleton.",
+    parameters: [
+      { id: "heightMeters", label: "Character Height (m)", type: "number" }
+    ],
+    defaultParams: {},
+    input: {
+      requiresPrompt: false,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { models: { min: 1, max: 1 } },
+      promptModalities: ["model"]
+    }
+  },
+  // ─── Model: Tripo ──────────────────────────────────────────
+  // Tripo H3.1 is one Card covering both text-to-3D and image-to-3D: the executable Provider
+  // (plugins/tripo) picks `POST /generation/text-to-model` or `POST /generation/image-to-model`
+  // by reference presence, exactly like Meshy above, so it is not split into two Cards. Parameter
+  // ids and menus are exactly what `tripo-client.ts`'s `buildTripoTextToModelBody` implements and
+  // tests: `pbr`, `textureQuality` (standard/detailed/extreme), `geometryQuality`
+  // (standard/detailed), `faceLimit` (1 to Tripo's documented v3.1 standard-mode ceiling of
+  // 1,500,000), and `autoSize`. None has a documented default, so none is invented here.
+  {
+    id: "tripo-h3.1",
+    name: "Tripo H3.1",
+    provider: "Tripo3D",
+    kind: "model",
+    defaultAspectRatio: "1:1",
+    description: "Tripo H3.1 text-to-3D and image-to-3D generation, producing a textured GLB mesh.",
+    parameters: [
+      { id: "pbr", label: "PBR Textures", type: "boolean" },
+      {
+        id: "textureQuality",
+        label: "Texture Quality",
+        type: "select",
+        options: [
+          { label: "Standard", value: "standard" },
+          { label: "Detailed", value: "detailed" },
+          { label: "Extreme", value: "extreme" }
+        ]
+      },
+      {
+        id: "geometryQuality",
+        label: "Geometry Quality",
+        type: "select",
+        options: [
+          { label: "Standard", value: "standard" },
+          { label: "Detailed", value: "detailed" }
+        ]
+      },
+      {
+        id: "faceLimit",
+        label: "Face Limit",
+        type: "number",
+        min: 1,
+        max: 15e5,
+        step: 1
+      },
+      { id: "autoSize", label: "Auto Size", type: "boolean" }
+    ],
+    defaultParams: {},
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { images: { max: 1 } },
+      promptModalities: ["text", "image"]
+    }
+  },
+  // Tripo auto-rig is model-to-model: it always resolves a required `model` reference through
+  // `POST /animations/rig` and always requests biped/mixamo/glb regardless of caller input
+  // (plugins/tripo/src/tripo-client.ts buildTripoRigBody, tested in tripo-client.test.ts "always
+  // requests biped, mixamo, glb regardless of caller input"). There is nothing left to configure,
+  // so this Card declares no parameters at all rather than an unused knob.
+  {
+    id: "tripo-auto-rig",
+    name: "Tripo Auto-Rig",
+    provider: "Tripo3D",
+    kind: "model",
+    defaultAspectRatio: "1:1",
+    description: "Automatically rig a static 3D model with a biped skeleton.",
+    parameters: [],
+    defaultParams: {},
+    input: {
+      requiresPrompt: false,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { models: { min: 1, max: 1 } },
+      promptModalities: ["model"]
+    }
+  },
+  // Move AI s2 is provider-neutral: no providerImplementations row exists yet, so it has no
+  // routable executor. It is video-to-motion, not video-to-video: a single reference video is
+  // the only input, there is no prompt, and the produced Asset is an animated rigged GLB, so
+  // `kind` stays `model` even though the required *input* modality is video (see move-ai-s2
+  // model card test for the input/output modality distinction). `mimeTypes`/`fileExtensions`
+  // are Move AI's documented accepted upload formats; no duration/byte/codec ceiling is
+  // published, so none is invented here.
+  {
+    id: "move-ai-s2",
+    name: "Move AI s2",
+    provider: "Move AI",
+    kind: "model",
+    defaultAspectRatio: "1:1",
+    description: "Single-camera video-to-motion capture, producing an animated rigged GLB model from one reference video.",
+    parameters: [
+      {
+        id: "trackFingers",
+        label: "Track Fingers",
+        type: "boolean",
+        defaultValue: true
+      },
+      {
+        id: "floorPlane",
+        label: "Floor Plane",
+        type: "boolean",
+        defaultValue: true
+      },
+      {
+        id: "trackBall",
+        label: "Track Ball",
+        type: "boolean"
+      }
+    ],
+    defaultParams: { trackFingers: true, floorPlane: true },
+    input: {
+      requiresPrompt: false,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: {
+        videos: {
+          min: 1,
+          max: 1,
+          constraints: {
+            mimeTypes: ["video/mp4", "video/quicktime", "video/x-msvideo"],
+            fileExtensions: ["mp4", "mov", "avi"]
+          }
+        }
+      },
+      promptModalities: ["video"]
     }
   }
 ];
@@ -31405,8 +31473,8 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ],
   [
     "seedance-2-startend",
-    "volcengine",
-    "volcengine",
+    "volcengine-modelark",
+    "volcengine-modelark",
     "modelark",
     "doubao-seedance-2-0-260128",
     9,
@@ -31422,8 +31490,8 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ],
   [
     "seedance-2-ref",
-    "volcengine",
-    "volcengine",
+    "volcengine-modelark",
+    "volcengine-modelark",
     "modelark",
     "doubao-seedance-2-0-260128",
     9,
@@ -31451,8 +31519,8 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ],
   [
     "seedance-2-extend",
-    "volcengine",
-    "volcengine",
+    "volcengine-modelark",
+    "volcengine-modelark",
     "modelark",
     "doubao-seedance-2-0-260128",
     9,
@@ -31470,8 +31538,8 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ],
   [
     "seedance-2.5-ref",
-    "volcengine",
-    "volcengine",
+    "volcengine-modelark",
+    "volcengine-modelark",
     "modelark",
     "doubao-seedance-2-5-260628",
     9,
@@ -31498,8 +31566,8 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ],
   [
     "seedance-2.5-startend",
-    "volcengine",
-    "volcengine",
+    "volcengine-modelark",
+    "volcengine-modelark",
     "modelark",
     "doubao-seedance-2-5-260628",
     9,
@@ -31517,8 +31585,8 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ],
   [
     "seedance-2.5-extend",
-    "volcengine",
-    "volcengine",
+    "volcengine-modelark",
+    "volcengine-modelark",
     "modelark",
     "doubao-seedance-2-5-260628",
     9,
@@ -31789,6 +31857,461 @@ var MOCK_MODEL_CARDS = z.array(ModelCardSchema).parse([
     ]
   }
 ]);
+var nonEmptyIdSchema = z.string().trim().min(1);
+var prefixedSha256Schema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+var jsonObjectSchema = z.record(ExecutablePluginJsonValueSchema);
+var GeneratorMediaKindSchema = AssetKindSchema;
+var GeneratorEditPolicySchema = z.enum([
+  "advance-head",
+  "fork-when-materialized"
+]);
+var MediaAssetRevisionRefSchema = z.object({
+  kind: z.literal("media"),
+  projectAssetId: nonEmptyIdSchema
+}).strict();
+var DocumentAssetRevisionRefSchema = z.object({
+  kind: z.literal("document"),
+  documentAssetId: nonEmptyIdSchema,
+  revisionId: nonEmptyIdSchema
+}).strict();
+var AssetRevisionRefSchema = z.discriminatedUnion("kind", [
+  MediaAssetRevisionRefSchema,
+  DocumentAssetRevisionRefSchema
+]);
+var GeneratorRevisionRefSchema = z.object({
+  generatorId: nonEmptyIdSchema,
+  generatorRevisionId: nonEmptyIdSchema
+}).strict();
+var GeneratorInputTargetSchema = z.union([
+  AssetRevisionRefSchema,
+  GeneratorRevisionRefSchema
+]);
+var GeneratorInputRefSchema = z.object({
+  slot: nonEmptyIdSchema,
+  itemKey: nonEmptyIdSchema.optional(),
+  target: GeneratorInputTargetSchema
+}).strict();
+var GeneratorDefinitionRefSchema = z.object({
+  pluginId: pluginIdSchema,
+  definitionId: nonEmptyIdSchema,
+  version: nonEmptyIdSchema,
+  schemaHash: prefixedSha256Schema
+}).strict();
+var GeneratorExecutorRefSchema = z.object({
+  pluginId: pluginIdSchema,
+  version: nonEmptyIdSchema,
+  exportId: nonEmptyIdSchema,
+  schemaHash: prefixedSha256Schema
+}).strict();
+var GeneratorMediaAssetTypeSchema = z.object({
+  kind: z.literal("media"),
+  mediaKind: AssetKindSchema
+}).strict();
+var GeneratorDocumentAssetTypeSchema = z.object({
+  kind: z.literal("document"),
+  documentKind: nonEmptyIdSchema,
+  schemaVersion: z.number().int().positive()
+}).strict();
+var GeneratorAssetTypeSchema = z.discriminatedUnion("kind", [
+  GeneratorMediaAssetTypeSchema,
+  GeneratorDocumentAssetTypeSchema
+]);
+var GeneratorInputCardinalitySchema = z.object({
+  minItems: z.number().int().nonnegative(),
+  maxItems: z.number().int().positive().nullable()
+}).strict().superRefine(({ minItems, maxItems }, context) => {
+  if (maxItems !== null && maxItems < minItems) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["maxItems"],
+      message: "maxItems must be greater than or equal to minItems."
+    });
+  }
+});
+var GeneratorFamilyInputTypeSchema = z.object({
+  kind: z.literal("generator"),
+  pluginId: pluginIdSchema,
+  definitionId: nonEmptyIdSchema
+}).strict();
+var GeneratorInputTypeSchema = z.discriminatedUnion("kind", [
+  GeneratorMediaAssetTypeSchema,
+  GeneratorDocumentAssetTypeSchema,
+  GeneratorFamilyInputTypeSchema
+]);
+var GeneratorInputPortSchema = z.object({
+  slot: nonEmptyIdSchema,
+  accepts: z.array(GeneratorInputTypeSchema).min(1),
+  cardinality: GeneratorInputCardinalitySchema
+}).strict();
+var GeneratorActionInputPortSchema = GeneratorInputPortSchema;
+var GeneratorActionOutputCardinalitySchema = GeneratorInputCardinalitySchema;
+var GeneratorActionOutputPortSchema = z.object({
+  slot: nonEmptyIdSchema,
+  assetType: GeneratorAssetTypeSchema,
+  cardinality: GeneratorActionOutputCardinalitySchema,
+  /** Human label and prompt contract owned by the plugin declaration. */
+  title: nonEmptyIdSchema.optional(),
+  sourceMediaKinds: z.array(GeneratorMediaKindSchema).min(1).optional(),
+  prompt: nonEmptyIdSchema.optional(),
+  promptVersion: nonEmptyIdSchema.optional()
+}).strict();
+var GeneratorActionOutputContractSchema = z.array(GeneratorActionOutputPortSchema).min(1).superRefine((outputs, context) => {
+  const slots = /* @__PURE__ */ new Set();
+  outputs.forEach((output, index) => {
+    if (slots.has(output.slot)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [index, "slot"],
+        message: `Duplicate Generator Action output slot: ${output.slot}`
+      });
+    }
+    slots.add(output.slot);
+    if (output.cardinality.maxItems !== 1 || output.cardinality.minItems !== 0 && output.cardinality.minItems !== 1) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [index, "cardinality"],
+        message: "The current Generator Action profile requires singular 0..1 or 1..1 output slots."
+      });
+    }
+  });
+});
+var GeneratorActionDefinitionSchema = z.object({
+  id: nonEmptyIdSchema,
+  executorExportId: nonEmptyIdSchema,
+  parametersSchema: jsonObjectSchema,
+  selectOutputsByParameter: nonEmptyIdSchema.optional(),
+  /** Provider-independent model consumption contract resolved by the Host. */
+  modelConsumer: z.object({
+    semanticShape: z.string().trim().regex(/^[a-z][a-z0-9_]*$/),
+    sourceInputSlot: nonEmptyIdSchema
+  }).strict().optional(),
+  invocationInputs: z.array(GeneratorActionInputPortSchema),
+  outputs: GeneratorActionOutputContractSchema
+}).strict().superRefine(({ invocationInputs, modelConsumer }, context) => {
+  const seen = /* @__PURE__ */ new Set();
+  invocationInputs.forEach((input, index) => {
+    if (seen.has(input.slot)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["invocationInputs", index, "slot"],
+        message: `Duplicate Generator Action input slot: ${input.slot}`
+      });
+    }
+    seen.add(input.slot);
+  });
+  if (modelConsumer && !invocationInputs.some((input) => input.slot === modelConsumer.sourceInputSlot)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["modelConsumer", "sourceInputSlot"],
+      message: `Model consumer source slot ${modelConsumer.sourceInputSlot} is not declared.`
+    });
+  }
+});
+var GENERATOR_PROJECTION_SURFACE_IDS = [
+  "clash.timeline",
+  "clash.director-stage"
+];
+var GeneratorProjectionSurfaceIdSchema = z.enum(
+  GENERATOR_PROJECTION_SURFACE_IDS
+);
+var GeneratorProjectionSurfaceSchema = z.object({
+  id: GeneratorProjectionSurfaceIdSchema,
+  /** Generator state key holding the legacy editable document. */
+  stateKey: nonEmptyIdSchema,
+  /** Persistent input slot that receives the legacy document's media items. */
+  mediaInputSlot: nonEmptyIdSchema.optional(),
+  /** Action the legacy render/capture entrypoint submits. */
+  primaryActionId: nonEmptyIdSchema
+}).strict();
+var generatorDefinitionSpecShape = {
+  definitionId: nonEmptyIdSchema,
+  stateSchema: jsonObjectSchema,
+  editPolicy: GeneratorEditPolicySchema,
+  persistentInputs: z.array(GeneratorInputPortSchema),
+  actions: z.array(GeneratorActionDefinitionSchema).min(1),
+  projectionSurface: GeneratorProjectionSurfaceSchema.optional()
+};
+function validateGeneratorDefinitionSpec(input, context) {
+  const persistentSlots = /* @__PURE__ */ new Set();
+  input.persistentInputs.forEach((persistentInput, index) => {
+    if (persistentSlots.has(persistentInput.slot)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["persistentInputs", index, "slot"],
+        message: `Duplicate Generator persistent input slot: ${persistentInput.slot}`
+      });
+    }
+    persistentSlots.add(persistentInput.slot);
+  });
+  const actionIds = /* @__PURE__ */ new Set();
+  input.actions.forEach((action, index) => {
+    if (actionIds.has(action.id)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["actions", index, "id"],
+        message: `Duplicate Generator action id: ${action.id}`
+      });
+    }
+    actionIds.add(action.id);
+  });
+  const surface = input.projectionSurface;
+  if (!surface) return;
+  if (!actionIds.has(surface.primaryActionId)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["projectionSurface", "primaryActionId"],
+      message: `Projection surface ${surface.id} names undefined Action ${surface.primaryActionId}.`
+    });
+  }
+  if (surface.mediaInputSlot && !persistentSlots.has(surface.mediaInputSlot)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["projectionSurface", "mediaInputSlot"],
+      message: `Projection surface ${surface.id} names undeclared persistent input slot ${surface.mediaInputSlot}.`
+    });
+  }
+}
+var GeneratorDefinitionSpecSchema = z.object(generatorDefinitionSpecShape).strict().superRefine(validateGeneratorDefinitionSpec);
+var GeneratorDefinitionSchema = GeneratorDefinitionRefSchema.extend({
+  stateSchema: generatorDefinitionSpecShape.stateSchema,
+  editPolicy: generatorDefinitionSpecShape.editPolicy,
+  persistentInputs: generatorDefinitionSpecShape.persistentInputs,
+  actions: generatorDefinitionSpecShape.actions,
+  projectionSurface: generatorDefinitionSpecShape.projectionSurface
+}).strict().superRefine(validateGeneratorDefinitionSpec);
+var ProjectGeneratorHeadSchema = z.object({
+  id: nonEmptyIdSchema,
+  headRevisionId: nonEmptyIdSchema
+}).strict();
+var ProjectGeneratorSchema = ProjectGeneratorHeadSchema.extend({
+  definitionRef: GeneratorDefinitionRefSchema
+}).strict();
+var GeneratorRevisionSchema = z.object({
+  id: nonEmptyIdSchema,
+  generatorId: nonEmptyIdSchema,
+  definitionRef: GeneratorDefinitionRefSchema,
+  parentRevisionId: nonEmptyIdSchema.optional(),
+  forkedFrom: GeneratorRevisionRefSchema.optional(),
+  state: jsonObjectSchema,
+  persistentInputRefs: z.array(GeneratorInputRefSchema)
+}).strict().superRefine(({ generatorId, forkedFrom }, context) => {
+  if (forkedFrom?.generatorId === generatorId) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["forkedFrom", "generatorId"],
+      message: "Same-Generator ancestry belongs in parentRevisionId, not forkedFrom."
+    });
+  }
+});
+var ActionRunStatusSchema = z.enum([
+  "pending",
+  "running",
+  "succeeded",
+  "failed"
+]);
+var ActionRunModelRouteSchema = z.object({
+  providerId: nonEmptyIdSchema.optional(),
+  accountId: nonEmptyIdSchema.optional(),
+  region: nonEmptyIdSchema.optional(),
+  upstreamId: nonEmptyIdSchema,
+  upstreamModel: nonEmptyIdSchema,
+  apiShape: nonEmptyIdSchema,
+  executorPluginId: pluginIdSchema.optional(),
+  executorExportId: nonEmptyIdSchema.optional(),
+  /**
+   * The exact Provider executor plugin/version/export the Host resolved and pinned at
+   * selection time. A generic model-consumer Generator Action must dispatch to, and later
+   * accept a staged media receipt from, only this exact frozen binding -- never a version the
+   * Host happens to resolve fresh when the durable run later submits or polls.
+   */
+  executorBinding: z.object({
+    pluginId: pluginIdSchema,
+    version: z.string().trim().min(1),
+    exportId: nonEmptyIdSchema,
+    schemaHash: prefixedSha256Schema
+  }).strict().optional(),
+  /** Delivery declaration copied from the exact selected Provider route, frozen at selection. */
+  assetInputs: z.array(ProviderAssetInputSchema).optional()
+}).strict().superRefine((route, ctx) => {
+  if (!route.executorBinding) return;
+  if (route.executorPluginId && route.executorBinding.pluginId !== route.executorPluginId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `executorBinding.pluginId (${route.executorBinding.pluginId}) does not match executorPluginId (${route.executorPluginId}).`,
+      path: ["executorBinding", "pluginId"]
+    });
+  }
+  if (route.executorExportId && route.executorBinding.exportId !== route.executorExportId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `executorBinding.exportId (${route.executorBinding.exportId}) does not match executorExportId (${route.executorExportId}).`,
+      path: ["executorBinding", "exportId"]
+    });
+  }
+});
+var ActionRunModelSelectionSchema = z.object({
+  semanticShape: z.string().trim().regex(/^[a-z][a-z0-9_]*$/),
+  modelId: nonEmptyIdSchema,
+  route: ActionRunModelRouteSchema
+}).strict();
+var ActionRunRequestSchema = z.object({
+  actionRunId: nonEmptyIdSchema,
+  generatorRevision: GeneratorRevisionRefSchema,
+  actionId: nonEmptyIdSchema,
+  executor: GeneratorExecutorRefSchema,
+  invocationFingerprint: prefixedSha256Schema,
+  parameters: jsonObjectSchema,
+  modelSelection: ActionRunModelSelectionSchema.optional(),
+  invocationInputRefs: z.array(GeneratorInputRefSchema),
+  outputContract: GeneratorActionOutputContractSchema
+}).strict();
+var ActionRunOutcomeSchema = z.object({
+  actionRunId: nonEmptyIdSchema,
+  status: z.enum(["succeeded", "failed"])
+}).strict();
+var ProjectActionRunSchema = ActionRunRequestSchema.extend({
+  status: ActionRunStatusSchema
+}).strict();
+var OutputCommitSchema = z.object({
+  actionRunId: nonEmptyIdSchema,
+  outputSlot: nonEmptyIdSchema,
+  itemKey: nonEmptyIdSchema.optional(),
+  asset: AssetRevisionRefSchema
+}).strict();
+var sha256Schema = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
+var idSchema = z.string().trim().min(1);
+var MediaAnalysisCategorySchema = z.enum([
+  "description",
+  "tags",
+  "subjects",
+  "actions-events",
+  "scene-shot",
+  "style",
+  "ocr",
+  "audio-semantics"
+]);
+var sourceSchema = z.object({
+  projectAssetId: idSchema,
+  resourceHash: sha256Schema,
+  kind: AssetKindSchema.exclude(["model"])
+}).strict();
+function analysisBody(category, result) {
+  return z.object({
+    schemaVersion: z.literal(1),
+    source: sourceSchema,
+    modelId: idSchema,
+    provider: idSchema,
+    route: idSchema,
+    underlyingModel: idSchema,
+    category: z.literal(category),
+    promptVersion: idSchema,
+    generatorRevisionId: idSchema,
+    actionRunId: idSchema,
+    resultHash: sha256Schema,
+    bodyHash: sha256Schema,
+    result
+  }).strict();
+}
+var description = analysisBody(
+  "description",
+  z.object({ text: idSchema, language: idSchema.optional() }).strict()
+);
+var tags = analysisBody(
+  "tags",
+  z.object({ tags: z.array(idSchema) }).strict()
+);
+var subjects = analysisBody(
+  "subjects",
+  z.object({
+    items: z.array(
+      z.object({
+        type: idSchema,
+        name: idSchema,
+        description: idSchema.optional()
+      }).strict()
+    )
+  }).strict()
+);
+var actionsEvents = analysisBody(
+  "actions-events",
+  z.object({
+    items: z.array(
+      z.object({
+        label: idSchema,
+        description: idSchema.optional(),
+        startMs: z.number().int().nonnegative().optional(),
+        endMs: z.number().int().positive().optional()
+      }).strict()
+    )
+  }).strict()
+);
+var sceneShot = analysisBody(
+  "scene-shot",
+  z.object({
+    scenes: z.array(
+      z.object({
+        description: idSchema,
+        shotType: idSchema.optional(),
+        startMs: z.number().int().nonnegative().optional(),
+        endMs: z.number().int().positive().optional()
+      }).strict()
+    )
+  }).strict()
+);
+var style = analysisBody(
+  "style",
+  z.object({
+    summary: idSchema,
+    mood: z.array(idSchema).optional(),
+    composition: z.array(idSchema).optional()
+  }).strict()
+);
+var ocr = analysisBody(
+  "ocr",
+  z.object({
+    items: z.array(
+      z.object({
+        text: idSchema,
+        language: idSchema.optional(),
+        startMs: z.number().int().nonnegative().optional(),
+        endMs: z.number().int().positive().optional()
+      }).strict()
+    )
+  }).strict()
+);
+var audioSemantics = analysisBody(
+  "audio-semantics",
+  z.object({
+    summary: idSchema,
+    speechSummary: idSchema.optional(),
+    music: z.array(idSchema).optional(),
+    sounds: z.array(idSchema).optional()
+  }).strict()
+);
+var MediaAnalysisDocumentSchemas = {
+  description,
+  tags,
+  subjects,
+  "actions-events": actionsEvents,
+  "scene-shot": sceneShot,
+  style,
+  ocr,
+  "audio-semantics": audioSemantics
+};
+var MEDIA_ANALYSIS_DOCUMENT_KIND_BY_CATEGORY = {
+  description: "media.analysis.description",
+  tags: "media.analysis.tags",
+  subjects: "media.analysis.subjects",
+  "actions-events": "media.analysis.actions-events",
+  "scene-shot": "media.analysis.scene-shot",
+  style: "media.analysis.style",
+  ocr: "media.analysis.ocr",
+  "audio-semantics": "media.analysis.audio-semantics"
+};
+var AspectRatioSchema = z.object({
+  width: z.number().int().positive(),
+  height: z.number().int().positive()
+}).strict();
 var PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 var SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 var SHA256_PATTERN = /^sha256:[0-9a-f]{64}$/;
@@ -31797,7 +32320,7 @@ function isSafePluginRelativePath(value) {
   if (value.includes("\\") || value.includes("\0")) return false;
   const segments = value.split("/");
   return segments.every(
-    (segment) => segment.length > 0 && segment !== "." && segment !== ".."
+    (segment2) => segment2.length > 0 && segment2 !== "." && segment2 !== ".."
   );
 }
 var PluginRelativePathSchema = z.string().trim().min(1).refine(
@@ -32471,6 +32994,70 @@ var ExecutablePluginResultSchema = z.discriminatedUnion("status", [
     error: ExecutablePluginFailureErrorSchema
   }).strict()
 ]);
+var ExecutableMediaAnalysisReferenceSchema = ExecutablePluginReferenceBaseSchema.extend({
+  asset: ExecutablePluginAssetHandleObjectSchema.extend({
+    kind: z.enum(["image", "video", "audio"])
+  }).strict()
+}).strict();
+var ExecutableMediaAnalysisOperationSchema = z.object({
+  kind: z.literal("media.analyze"),
+  reference: ExecutableMediaAnalysisReferenceSchema,
+  modelId: z.string().trim().min(1),
+  category: z.string().trim().min(1),
+  prompt: z.string().trim().min(1),
+  promptVersion: z.string().trim().min(1)
+}).strict();
+var ExecutableMediaAnalysisResultSchema = z.discriminatedUnion(
+  "status",
+  [
+    z.object({
+      status: z.literal("completed"),
+      provider: z.string().trim().min(1),
+      route: z.string().trim().min(1),
+      underlyingModel: z.string().trim().min(1),
+      result: ExecutablePluginJsonValueSchema
+    }).strict(),
+    z.object({
+      status: z.literal("accepted"),
+      poll: ExecutablePluginJsonValueSchema,
+      retryAfterMs: z.number().int().positive().optional()
+    }).strict()
+  ]
+);
+var ExecutableVideoEnhanceReferenceSchema = ExecutablePluginReferenceBaseSchema.extend({
+  asset: ExecutablePluginAssetHandleObjectSchema.extend({
+    kind: z.literal("video")
+  }).strict()
+}).strict();
+var ExecutableVideoEnhanceOperationSchema = z.object({
+  kind: z.literal("video.enhance"),
+  reference: ExecutableVideoEnhanceReferenceSchema,
+  modelId: z.string().trim().min(1),
+  params: ExecutablePluginJsonValueSchema,
+  /** Present only when resuming Host-owned asynchronous enhancement work. */
+  poll: ExecutablePluginJsonValueSchema.optional()
+}).strict();
+var ExecutableVideoEnhanceResultSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("completed"),
+    provider: z.string().trim().min(1),
+    route: z.string().trim().min(1),
+    underlyingModel: z.string().trim().min(1),
+    /**
+     * A Host staging receipt from the Provider implementation's own single upload -- not yet
+     * a published, immutable Project Asset. Publication requires the Host to verify this
+     * receipt's plugin/version/account/slot/task against the frozen Run authority first.
+     */
+    asset: ExecutablePluginAssetHandleObjectSchema.extend({
+      kind: z.literal("video")
+    }).strict()
+  }).strict(),
+  z.object({
+    status: z.literal("accepted"),
+    poll: ExecutablePluginJsonValueSchema,
+    retryAfterMs: z.number().int().positive().optional()
+  }).strict()
+]);
 var ExecutableSpeechTranscriptionOperationSchema = z.object({
   kind: z.literal("speech.transcribe"),
   reference: ExecutableSpeechTranscriptionReferenceSchema,
@@ -32493,7 +33080,32 @@ var ExecutableSpeechTranscriptionResultSchema = z.discriminatedUnion(
     }).strict()
   ]
 );
+var ExecutableDirectorStageCaptureOperationSchema = z.object({
+  kind: z.literal("director.stage.capture-frame"),
+  stage: z.object({
+    name: z.string(),
+    owner: z.union([
+      z.object({ kind: z.literal("project") }).strict(),
+      z.object({ kind: z.literal("canvas-action"), canvasId: z.string().min(1), actionNodeId: z.string().min(1) }).strict()
+    ]),
+    state: ExecutablePluginJsonValueSchema.refine(
+      (value) => value !== null && typeof value === "object" && !Array.isArray(value),
+      "Director Stage state must be an object."
+    )
+  }).strict(),
+  label: z.string().trim().min(1),
+  timeSeconds: z.number().finite().nonnegative(),
+  aspectRatio: z.enum(["16:9", "9:16", "4:3", "3:4", "1:1"]),
+  longEdge: z.number().int().min(256).max(4096)
+}).strict();
+var ExecutableDirectorStageCaptureResultSchema = z.object({
+  mediaType: z.literal("image/png"),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  bytesBase64: z.string().min(1)
+}).strict();
 var ExecutablePluginBrokerOperationSchema = z.union([
+  ExecutableDirectorStageCaptureOperationSchema,
   z.object({
     kind: z.literal("asset.resolve"),
     reference: ExecutablePluginReferenceSchema
@@ -32611,7 +33223,9 @@ var ExecutablePluginBrokerOperationSchema = z.union([
       }).strict()
     ).max(5).default([])
   }).strict(),
-  ExecutableSpeechTranscriptionOperationSchema
+  ExecutableSpeechTranscriptionOperationSchema,
+  ExecutableMediaAnalysisOperationSchema,
+  ExecutableVideoEnhanceOperationSchema
 ]);
 var ExecutablePluginBrokerRequestSchema = z.object({
   protocol: z.literal("clash.plugin.broker-request/v1"),
@@ -32706,7 +33320,7 @@ var ExecutablePluginContributionsSchema = z.object({
   modelBindings: z.array(ExecutablePluginModelBindingExportSchema).default([]),
   generators: z.array(ExecutablePluginGeneratorExportSchema).default([]),
   functions: z.array(ExecutablePluginFunctionExportSchema).default([]),
-  hostTools: z.array(z.enum(["codex.imagegen", "speech.transcribe"])).default([])
+  hostTools: z.array(z.enum(["codex.imagegen", "speech.transcribe", "media.analyze", "director.stage.capture-frame", "video.enhance"])).default([])
 }).strict();
 var ExecutablePluginManifestSchema = z.object({
   apiVersion: z.literal("clash.plugin/v1"),
@@ -34680,16 +35294,16 @@ function timelineDslAnnotatedObjectShape(fields, options = {}) {
     })
   );
 }
-function field(schema, description, options) {
+function field(schema, description2, options) {
   return {
     schema,
-    description,
+    description: description2,
     ...options,
     authoredRequired: options.authoredRequired ?? options.required
   };
 }
-var authored = (schema, description, options) => field(schema, description, { ...options, authored: true });
-var derived = (schema, description, options) => field(schema, description, { ...options, authored: false });
+var authored = (schema, description2, options) => field(schema, description2, { ...options, authored: true });
+var derived = (schema, description2, options) => field(schema, description2, { ...options, authored: false });
 var TIMELINE_DSL_ITEM_TYPES = [
   "video",
   "audio",
@@ -36751,7 +37365,7 @@ var TrackUpdatesSchema = z.object(
   (updates) => Object.keys(updates).length > 0,
   "At least one track field must be updated."
 );
-function editorAction(id2, inputSchema, description, preconditions = ["A Timeline editor draft is loaded."]) {
+function editorAction(id2, inputSchema, description2, preconditions = ["A Timeline editor draft is loaded."]) {
   return annotation({
     id: id2,
     kind: "editor-action",
@@ -36762,7 +37376,7 @@ function editorAction(id2, inputSchema, description, preconditions = ["A Timelin
     cas: "none",
     readProof: "none",
     preconditions,
-    description,
+    description: description2,
     runtimeConsumers: ["remotion-core", "remotion-ui", "editor-history"],
     public: true,
     agentCallable: false
@@ -37273,8 +37887,8 @@ function jsonSchemaObject(value, label) {
 }
 function jsonSchemaObjectAtPath(root, path) {
   let current = root;
-  for (const segment of path) {
-    current = jsonSchemaObject(current, path.join("."))[segment];
+  for (const segment2 of path) {
+    current = jsonSchemaObject(current, path.join("."))[segment2];
   }
   return jsonSchemaObject(current, path.join("."));
 }
@@ -37675,8 +38289,8 @@ function timelineDslFromYaml(yamlText) {
           out2.text = out2.cues.map((cue) => isRecord3(cue) && typeof cue.text === "string" ? cue.text : "").filter(Boolean).join("\n");
         }
         if (typeof out2.color !== "string") {
-          const style = isRecord3(out2.style) ? out2.style : null;
-          out2.color = style && typeof style.color === "string" ? style.color : "#ffffff";
+          const style2 = isRecord3(out2.style) ? out2.style : null;
+          out2.color = style2 && typeof style2.color === "string" ? style2.color : "#ffffff";
         }
       }
       if (isExpr && typeof item.from === "string") {
@@ -38351,39 +38965,39 @@ var import_loro_crdt5 = __toESM(require_nodejs(), 1);
 var import_loro_crdt6 = __toESM(require_nodejs(), 1);
 var import_loro_crdt7 = __toESM(require_nodejs(), 1);
 var import_loro_crdt8 = __toESM(require_nodejs(), 1);
-var idSchema = z.string().trim().min(1);
-var sha256Schema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+var idSchema2 = z.string().trim().min(1);
+var sha256Schema2 = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 var DocumentAssetMutabilitySchema = z.enum(["immutable", "versioned"]);
 var DocumentBodyRefSchema = z.object({
-  digest: sha256Schema,
+  digest: sha256Schema2,
   byteLength: z.number().int().nonnegative(),
   contentType: z.string().trim().min(1)
 }).strict();
 var DocumentRevisionProducerSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("action-run"),
-    actionRunId: idSchema
+    actionRunId: idSchema2
   }).strict(),
   z.object({
     kind: z.literal("actor"),
     actor: z.object({
       kind: z.enum(["user", "agent"]),
-      id: idSchema.optional()
+      id: idSchema2.optional()
     }).strict()
   }).strict(),
   z.object({
     kind: z.literal("migration"),
-    source: idSchema
+    source: idSchema2
   }).strict()
 ]);
 var DocumentRevisionSourceRefSchema = GeneratorInputRefSchema;
 var DocumentAssetRevisionSchema = z.object({
-  id: idSchema,
-  documentAssetId: idSchema,
-  documentKind: idSchema,
+  id: idSchema2,
+  documentAssetId: idSchema2,
+  documentKind: idSchema2,
   schemaVersion: z.number().int().positive(),
   mutability: DocumentAssetMutabilitySchema,
-  parentRevisionId: idSchema.optional(),
+  parentRevisionId: idSchema2.optional(),
   forkedFrom: DocumentAssetRevisionRefSchema.optional(),
   body: DocumentBodyRefSchema,
   producer: DocumentRevisionProducerSchema,
@@ -38398,34 +39012,34 @@ var DocumentAssetRevisionSchema = z.object({
   }
 });
 var ProjectDocumentAssetHeadSchema = z.object({
-  id: idSchema,
-  headRevisionId: idSchema
+  id: idSchema2,
+  headRevisionId: idSchema2
 }).strict();
 var ProjectDocumentAssetSchema = ProjectDocumentAssetHeadSchema.extend(
   {
-    documentKind: idSchema,
+    documentKind: idSchema2,
     mutability: DocumentAssetMutabilitySchema
   }
 ).strict();
 var DocumentAttachmentTargetSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("project-asset"),
-    projectAssetId: idSchema
+    projectAssetId: idSchema2
   }).strict(),
   z.object({
     kind: z.literal("generator-revision"),
-    generatorId: idSchema,
-    generatorRevisionId: idSchema
+    generatorId: idSchema2,
+    generatorRevisionId: idSchema2
   }).strict(),
   z.object({
     kind: z.literal("action-run"),
-    actionRunId: idSchema
+    actionRunId: idSchema2
   }).strict()
 ]);
 var DocumentAttachmentSchema = z.object({
-  id: idSchema,
+  id: idSchema2,
   target: DocumentAttachmentTargetSchema,
-  slot: idSchema,
+  slot: idSchema2,
   document: DocumentAssetRevisionRefSchema
 }).strict();
 var MediaTranscriptMetadataSchema = z.object({
@@ -38556,13 +39170,13 @@ registerAssetMetadataKind({
   kind: "media.render-lineage",
   schema: MediaRenderLineageMetadataSchema
 });
-var idSchema2 = z.string().trim().min(1);
+var idSchema22 = z.string().trim().min(1);
 var DocumentProjectionContractSchema = z.object({
   format: z.enum(["json", "text"]),
   editable: z.boolean()
 }).strict();
 var DocumentKindDefinitionSchema = z.object({
-  kind: idSchema2,
+  kind: idSchema22,
   schemaVersion: z.number().int().positive(),
   mutability: DocumentAssetMutabilitySchema,
   projection: DocumentProjectionContractSchema,
@@ -38570,7 +39184,7 @@ var DocumentKindDefinitionSchema = z.object({
     message: "Document attachment target declarations must be unique."
   }),
   /** Empty means storage/projection support only; it grants no product semantics. */
-  productConsumers: z.array(idSchema2).refine((values) => new Set(values).size === values.length, {
+  productConsumers: z.array(idSchema22).refine((values) => new Set(values).size === values.length, {
     message: "Document product consumer declarations must be unique."
   })
 }).strict();
@@ -38638,6 +39252,23 @@ registerDocumentKind({
   },
   schema: MediaRenderLineageMetadataSchema
 });
+for (const category of MediaAnalysisCategorySchema.options) {
+  registerDocumentKind({
+    definition: {
+      kind: MEDIA_ANALYSIS_DOCUMENT_KIND_BY_CATEGORY[category],
+      schemaVersion: 1,
+      mutability: "versioned",
+      projection: { format: "json", editable: false },
+      allowedAttachmentTargets: [
+        "project-asset",
+        "generator-revision",
+        "action-run"
+      ],
+      productConsumers: ["search", "agent-context"]
+    },
+    schema: MediaAnalysisDocumentSchemas[category]
+  });
+}
 var LegacyLinkedProjectAssetSourceSchema = z.object({
   kind: z.literal("linked"),
   resourceId: z.string().trim().min(1),
@@ -38742,6 +39373,55 @@ var DirectorReferencePacketSchema = z.object({
     shots: z.array(DirectorReferenceShotSchema)
   })
 });
+var MEDIA_REFERENCE_FIELDS = [
+  {
+    modality: "image",
+    pendingField: "referenceImageAssetIds",
+    partitionField: "imageAssetIds",
+    label: "Reference image",
+    pluralNoun: "images",
+    countNoun: "images"
+  },
+  {
+    modality: "video",
+    pendingField: "referenceVideoAssetIds",
+    partitionField: "videoAssetIds",
+    label: "Reference video",
+    pluralNoun: "videos",
+    countNoun: "video(s)"
+  },
+  {
+    modality: "audio",
+    pendingField: "referenceAudioAssetIds",
+    partitionField: "audioAssetIds",
+    label: "Reference audio",
+    pluralNoun: "audio",
+    countNoun: "audio clip(s)"
+  },
+  {
+    modality: "model",
+    pendingField: "referenceModelAssetIds",
+    partitionField: "modelAssetIds",
+    label: "Reference model",
+    pluralNoun: "models",
+    countNoun: "model(s)"
+  }
+];
+var MEDIA_REFERENCE_MODALITIES = MEDIA_REFERENCE_FIELDS.map((field3) => field3.modality);
+var MEDIA_REFERENCE_FIELD_BY_MODALITY = Object.fromEntries(
+  MEDIA_REFERENCE_FIELDS.map(
+    (field3) => [
+      field3.modality,
+      field3
+    ]
+  )
+);
+var MEDIA_REFERENCE_PLURAL_NOUN = Object.fromEntries(
+  MEDIA_REFERENCE_FIELDS.map((field3) => [field3.modality, field3.pluralNoun])
+);
+var MEDIA_REFERENCE_COUNT_NOUN = Object.fromEntries(
+  MEDIA_REFERENCE_FIELDS.map((field3) => [field3.modality, field3.countNoun])
+);
 var ActionFamilySchema = z.enum(["generate", "edit", "custom"]);
 var ActionExecutorSchema = z.enum([
   "model",
@@ -38861,6 +39541,8 @@ var RF_NODE_TYPE = {
   Video: "video",
   /** Audio asset (completed generation or upload) */
   Audio: "audio",
+  /** 3D model asset (completed generation or upload) */
+  Model: "model",
   /** Agent-authored Remotion TSX component with live Canvas/Timeline preview */
   RemotionComponent: "remotion-component",
   /** Generation node — renders as ActionBadge */
@@ -38871,6 +39553,8 @@ var ACTION_TYPE = {
   VideoGen: "video-gen",
   AudioGen: "audio-gen",
   TextGen: "text-gen",
+  /** 3D model generation (mesh generation, auto-rig, etc.) */
+  ModelGen: "model-gen",
   /** Custom actions provided by local agents. Full actionType: "custom:<action-id>" */
   Custom: "custom"
 };
@@ -38880,11 +39564,13 @@ var AGENT_NODE_TYPE_MAP = {
   image: { rfType: RF_NODE_TYPE.Image },
   video: { rfType: RF_NODE_TYPE.Video },
   audio: { rfType: RF_NODE_TYPE.Audio },
+  model: { rfType: RF_NODE_TYPE.Model },
   remotion: { rfType: RF_NODE_TYPE.RemotionComponent },
   image_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.ImageGen },
   video_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.VideoGen },
   audio_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.AudioGen },
-  text_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.TextGen }
+  text_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.TextGen },
+  model_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.ModelGen }
 };
 var NodeStatusSchema = z.enum([
   "idle",
@@ -39025,14 +39711,16 @@ var NodeType = {
   Image: "image",
   Video: "video",
   Audio: "audio",
+  Model: "model",
   ImageGen: "image_gen",
   VideoGen: "video_gen",
   AudioGen: "audio_gen",
-  TextGen: "text_gen"
+  TextGen: "text_gen",
+  ModelGen: "model_gen"
 };
 var ALL_NODE_TYPES = Object.values(NodeType);
 var CONTENT_NODE_TYPES = [NodeType.Text, NodeType.Group];
-var GENERATION_NODE_TYPES = [NodeType.ImageGen, NodeType.VideoGen, NodeType.AudioGen, NodeType.TextGen];
+var GENERATION_NODE_TYPES = [NodeType.ImageGen, NodeType.VideoGen, NodeType.AudioGen, NodeType.TextGen, NodeType.ModelGen];
 var CustomActionParameterSchema = ModelParameterSchema;
 var CustomActionSecretSchema = z.object({
   id: z.string(),
@@ -39300,8 +39988,51 @@ var AgentAnnotationSurfaceSchema = z.enum([
   "timeline",
   "director-stage",
   // Project assets annotated from the workspace sidebar / asset views.
-  "asset"
+  "asset",
+  // A page or element selected in the desktop project's in-app browser.
+  "browser"
 ]);
+var AgentAnnotationBrowserRectSchema = z.object({
+  x: z.number().finite().min(0),
+  y: z.number().finite().min(0),
+  width: z.number().finite().positive(),
+  height: z.number().finite().positive()
+});
+var AgentAnnotationBrowserViewportSchema = z.object({
+  width: z.number().finite().positive(),
+  height: z.number().finite().positive(),
+  devicePixelRatio: z.number().finite().positive()
+});
+var AgentAnnotationBrowserContextSchema = z.discriminatedUnion(
+  "kind",
+  [
+    z.object({
+      kind: z.literal("element"),
+      url: z.string().url(),
+      title: z.string().max(300),
+      selector: z.string().trim().min(1).max(2048),
+      domPath: z.string().max(2048).optional(),
+      tagName: z.string().trim().min(1).max(120),
+      id: z.string().max(200).optional(),
+      classNames: z.array(z.string().max(120)).max(16).optional(),
+      role: z.string().max(120).optional(),
+      ariaLabel: z.string().max(300).optional(),
+      text: z.string().max(1200).optional(),
+      attributes: z.record(z.string(), z.string()).optional(),
+      outerHtml: z.string().max(4e3).optional(),
+      computedStyles: z.record(z.string(), z.string()).optional(),
+      rect: AgentAnnotationBrowserRectSchema,
+      viewport: AgentAnnotationBrowserViewportSchema
+    }),
+    z.object({
+      kind: z.literal("region"),
+      url: z.string().url(),
+      title: z.string().max(300),
+      rect: AgentAnnotationBrowserRectSchema,
+      viewport: AgentAnnotationBrowserViewportSchema
+    })
+  ]
+);
 var AgentAnnotationVisualRectSchema = z.object({
   x: z.number().finite().min(0).max(1),
   y: z.number().finite().min(0).max(1),
@@ -39328,6 +40059,8 @@ var AgentAnnotationTargetSchema = z.object({
   objectPath: z.string().trim().min(1),
   capabilities: z.array(z.enum(["read", "modify"])).min(1),
   selection: AgentAnnotationSelectionSchema.optional(),
+  /** Backchat-compatible page context for a browser element or region. */
+  browser: AgentAnnotationBrowserContextSchema.optional(),
   /** Asset backing the annotated object, when it has one — lets chat surfaces show a media preview. */
   previewAssetId: z.string().trim().min(1).optional()
 });
@@ -40122,6 +40855,18 @@ function projectDirectorStageReadToken(stage) {
     }
   });
 }
+var EnvelopeSchema = z.object({
+  name: z.string(),
+  owner: z.union([
+    z.object({ kind: z.literal("project") }).strict(),
+    z.object({
+      kind: z.literal("canvas-action"),
+      canvasId: z.string().min(1),
+      actionNodeId: z.string().min(1)
+    }).strict()
+  ]),
+  state: DirectorStageStateSchema
+}).strict();
 var id = z.string().trim().min(1);
 var actorClientType = z.enum(["browser", "cli", "mcp", "agent"]).optional();
 var observed = {
@@ -40142,7 +40887,8 @@ var addCommand = z.object({
     "image_gen",
     "video_gen",
     "audio_gen",
-    "text_gen"
+    "text_gen",
+    "model_gen"
   ]),
   label: id,
   content: z.string().optional(),
@@ -40474,7 +41220,7 @@ var BuiltinModelUpstreamIdSchema = z.enum([
   "replicate",
   "kling",
   "minimax",
-  "volcengine",
+  "volcengine-modelark",
   "elevenlabs",
   "suno"
 ]);
@@ -40510,7 +41256,7 @@ var BuiltinProviderAccountIdSchema = z.enum([
   "replicate",
   "kling",
   "minimax",
-  "volcengine",
+  "volcengine-modelark",
   "elevenlabs",
   "suno",
   "mock",
@@ -40771,6 +41517,7 @@ function hasRequiredOAuth(route, config2) {
   return missingRequiredOAuth(route, config2).length === 0;
 }
 function isEnabled(route, query) {
+  if (query.isRouteExecutable && !query.isRouteExecutable(route)) return false;
   if (route.upstreamId === "local") return true;
   if (route.upstreamId === "mock" && !query.allowMock) return false;
   if (!query.configuredUpstreams && !query.configuredProviders) return true;
@@ -40852,6 +41599,7 @@ function listModelCatalogEntries(options = {}) {
       models,
       configuredProviders: options.configuredProviders,
       configuredUpstreams: options.configuredUpstreams,
+      isRouteExecutable: options.isRouteExecutable,
       allowMock
     };
     const allRoutes = candidateRoutes({ modelCode: model.id, kind: model.kind, models, allowMock });
@@ -40953,6 +41701,18 @@ var CopilotProjectAssetReferenceSchema = z.object({
 var CopilotProjectAssetSubmissionSchema = z.object({
   actionId: z.string().trim().min(1),
   assets: CopilotProjectAssetReferenceSchema.array().min(1)
+}).strict();
+var ProjectTimelineEnvelopeSchema = z.object({
+  name: z.string(),
+  owner: z.union([
+    z.object({ kind: z.literal("project") }).strict(),
+    z.object({
+      kind: z.literal("canvas-action"),
+      canvasId: z.string().min(1),
+      actionNodeId: z.string().min(1)
+    }).strict()
+  ]),
+  state: z.unknown()
 }).strict();
 var TextRevisionActorSchema = z.object({
   actorType: z.enum(["user", "agent"]),
@@ -41088,7 +41848,7 @@ var NonEmptyIdSchema = z.string().trim().min(1).max(500);
 var WORKSPACE_BUNDLE_MANIFEST_PATH = "workspace.json";
 var WORKSPACE_BUNDLE_PROJECT_PATH = "project.bin";
 var WorkspaceBundleRelativePathSchema = z.string().min(1).max(4096).superRefine((value, context) => {
-  if (value.includes("\0") || value.includes("\\") || value.startsWith("/") || /^[A-Za-z]:/u.test(value) || value !== value.normalize("NFC") || value.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
+  if (value.includes("\0") || value.includes("\\") || value.startsWith("/") || /^[A-Za-z]:/u.test(value) || value !== value.normalize("NFC") || value.split("/").some((segment2) => !segment2 || segment2 === "." || segment2 === "..")) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Workspace bundle paths must be safe POSIX-relative paths"
@@ -41100,15 +41860,15 @@ function workspacePortablePathLooksSecret(portableRelativePath) {
   const basename10 = segments.at(-1) ?? "";
   if (basename10 === ".env.example") return false;
   if (basename10.startsWith(".env") || basename10 === ".npmrc") return true;
-  if (segments.some((segment) => segment === ".ssh" || segment === ".aws")) {
+  if (segments.some((segment2) => segment2 === ".ssh" || segment2 === ".aws")) {
     return true;
   }
   if (/\.(?:key|pem|p12|pfx)$/u.test(basename10) || /^id_(?:rsa|dsa|ecdsa|ed25519)(?:\.|$)/u.test(basename10)) {
     return true;
   }
   return segments.some(
-    (segment) => /(?:^|[._-])(?:credentials?|tokens?|secrets?|keys?|private[._-]?key|api[._-]?key)(?:[._-]|$)/u.test(
-      segment
+    (segment2) => /(?:^|[._-])(?:credentials?|tokens?|secrets?|keys?|private[._-]?key|api[._-]?key)(?:[._-]|$)/u.test(
+      segment2
     )
   );
 }
@@ -41730,13 +42490,13 @@ function secretLikePath(portableRelativePath) {
     return true;
   if (basename10 === ".npmrc")
     return true;
-  if (segments.some((segment) => segment === ".ssh" || segment === ".aws")) {
+  if (segments.some((segment2) => segment2 === ".ssh" || segment2 === ".aws")) {
     return true;
   }
   if (/\.(?:key|pem|p12|pfx)$/u.test(basename10) || /^id_(?:rsa|dsa|ecdsa|ed25519)(?:\.|$)/u.test(basename10)) {
     return true;
   }
-  return segments.some((segment) => /(?:^|[._-])(?:credentials?|tokens?|secrets?|keys?|private[._-]?key|api[._-]?key)(?:[._-]|$)/u.test(segment));
+  return segments.some((segment2) => /(?:^|[._-])(?:credentials?|tokens?|secrets?|keys?|private[._-]?key|api[._-]?key)(?:[._-]|$)/u.test(segment2));
 }
 function workspaceTreePathPolicy(portableRelativePath) {
   const exclusion = excludedPath(portableRelativePath);
@@ -42148,8 +42908,8 @@ async function assertRealDirectoryChain(root, relativeDirectory) {
     return;
   }
   let current = (0, import_node_path4.resolve)(root);
-  for (const segment of relativeDirectory.split("/")) {
-    current = (0, import_node_path4.join)(current, segment);
+  for (const segment2 of relativeDirectory.split("/")) {
+    current = (0, import_node_path4.join)(current, segment2);
     const info = await (0, import_promises5.lstat)(current).catch((error51) => {
       throw new WorkspaceBundleIntegrityError("MISSING_FILE", `Workspace bundle directory is missing: ${relativeDirectory}`, { cause: error51 });
     });
@@ -42164,8 +42924,8 @@ async function ensureRealDirectoryChain(root, relativeDirectory) {
     return;
   }
   let current = (0, import_node_path4.resolve)(root);
-  for (const segment of relativeDirectory.split("/")) {
-    current = (0, import_node_path4.join)(current, segment);
+  for (const segment2 of relativeDirectory.split("/")) {
+    current = (0, import_node_path4.join)(current, segment2);
     await (0, import_promises5.mkdir)(current).catch((error51) => {
       if (error51.code !== "EEXIST") {
         throw error51;
@@ -42815,8 +43575,8 @@ function projectIdPathSegment(id2) {
   const encoded = encodeURIComponent(id2).replace(/\./g, "%2E");
   return encoded || "_default";
 }
-function projectWorkspaceId(kind, projectId, cwd) {
-  return `${kind}:${stableWorkspaceHash(`${kind}\0${projectId}\0${normalizePath(cwd)}`)}`;
+function projectWorkspaceId(kind, projectId2, cwd) {
+  return `${kind}:${stableWorkspaceHash(`${kind}\0${projectId2}\0${normalizePath(cwd)}`)}`;
 }
 function projectCollaborationStatus(rawMode, sync = void 0) {
   const raw = typeof rawMode === "string" && rawMode.trim() ? rawMode.trim() : "unknown";
@@ -43029,7 +43789,7 @@ function projectTracePolicy() {
 function joinPath(...segments) {
   const [first = "", ...rest] = segments;
   const prefix = first.startsWith("/") ? "/" : "";
-  const parts = [first, ...rest].flatMap((segment) => segment.split("/")).filter((segment) => segment.length > 0);
+  const parts = [first, ...rest].flatMap((segment2) => segment2.split("/")).filter((segment2) => segment2.length > 0);
   return `${prefix}${parts.join("/")}`;
 }
 function projectMarkerRoot(markerPath) {
@@ -43125,12 +43885,12 @@ async function existingInitialization(markerPath, requestedProjectId) {
   if (!/^schema_version\s*=\s*1\s*$/m.test(source)) {
     throw new Error(`Invalid project marker at ${markerPath}: schema_version must be 1`);
   }
-  const projectId = markerString2(markerPath, source, "project_id");
+  const projectId2 = markerString2(markerPath, source, "project_id");
   const workspaceId = markerString2(markerPath, source, "workspace_id");
-  if (requestedProjectId && requestedProjectId !== projectId) {
-    throw new Error(`Workspace is already bound to project ${projectId}; refusing to rebind it to ${requestedProjectId}`);
+  if (requestedProjectId && requestedProjectId !== projectId2) {
+    throw new Error(`Workspace is already bound to project ${projectId2}; refusing to rebind it to ${requestedProjectId}`);
   }
-  return { projectId, markerPath, workspaceId, reused: true };
+  return { projectId: projectId2, markerPath, workspaceId, reused: true };
 }
 async function initializeClashWorkspace(options = {}) {
   const cwd = (0, import_node_path6.resolve)(options.cwd ?? process.cwd());
@@ -43139,11 +43899,11 @@ async function initializeClashWorkspace(options = {}) {
   const existing = await existingInitialization(markerPath, requestedProjectId);
   if (existing)
     return existing;
-  const projectId = requestedProjectId ?? `local_${(0, import_node_crypto5.randomUUID)()}`;
-  const workspaceId = projectWorkspaceId("managed", projectId, cwd);
+  const projectId2 = requestedProjectId ?? `local_${(0, import_node_crypto5.randomUUID)()}`;
+  const workspaceId = projectWorkspaceId("managed", projectId2, cwd);
   const marker = [
     "schema_version = 1",
-    `project_id = ${JSON.stringify(projectId)}`,
+    `project_id = ${JSON.stringify(projectId2)}`,
     `workspace_id = ${JSON.stringify(workspaceId)}`,
     'store = "managed"',
     ""
@@ -43159,7 +43919,7 @@ async function initializeClashWorkspace(options = {}) {
       return raced;
     throw error51;
   }
-  return { projectId, markerPath, workspaceId, reused: false };
+  return { projectId: projectId2, markerPath, workspaceId, reused: false };
 }
 
 // ../../packages/asset-sdk/dist/project-asset-http-client.js
@@ -43171,10 +43931,10 @@ var ProjectAssetHttpError = class extends Error {
   status;
   body;
   constructor(status, body) {
-    const record2 = body !== null && typeof body === "object" ? body : void 0;
+    const record3 = body !== null && typeof body === "object" ? body : void 0;
     const reason = [
-      cleanErrorField(record2?.code),
-      cleanErrorField(record2?.error)
+      cleanErrorField(record3?.code),
+      cleanErrorField(record3?.error)
     ].filter(Boolean).join(": ");
     super(reason ? `${reason} (Project Asset HTTP ${status})` : `Project Asset request failed with HTTP ${status}`);
     this.status = status;
@@ -43188,19 +43948,19 @@ function required(value, label) {
     throw new Error(`${label} is required`);
   return normalized;
 }
-function projectAssetsUrl(endpoint, projectId) {
-  return `${endpoint.trim().replace(/\/+$/, "")}/api/v1/projects/${encodeURIComponent(projectId)}/assets`;
+function projectAssetsUrl(endpoint, projectId2) {
+  return `${endpoint.trim().replace(/\/+$/, "")}/api/v1/projects/${encodeURIComponent(projectId2)}/assets`;
 }
 function fileNameOf(file2) {
   return "name" in file2 && typeof file2.name === "string" ? file2.name : void 0;
 }
 function snapshotProjectImport(input) {
-  const projectId = required(input.projectId, "project id");
+  const projectId2 = required(input.projectId, "project id");
   const file2 = input.file;
   const sourceFileName = fileNameOf(file2);
   const fileName = required(input.fileName ?? sourceFileName, "file name");
   return {
-    projectId,
+    projectId: projectId2,
     file: file2,
     fileName,
     appendFileName: input.fileName !== void 0 || sourceFileName !== fileName,
@@ -43239,11 +43999,11 @@ function createProjectAssetHttpClient(options = {}) {
     };
   };
   const target = async (projectIdInput, suffix = "") => {
-    const projectId = required(projectIdInput, "project id");
+    const projectId2 = required(projectIdInput, "project id");
     const connected = await connection();
     return {
       connected,
-      url: `${projectAssetsUrl(connected.endpoint, projectId)}${suffix}`
+      url: `${projectAssetsUrl(connected.endpoint, projectId2)}${suffix}`
     };
   };
   const headers = (connected, additions = {}) => ({
@@ -43381,10 +44141,10 @@ var PersonalGlobalAssetHttpError = class extends Error {
   status;
   body;
   constructor(status, body) {
-    const record2 = body !== null && typeof body === "object" ? body : void 0;
+    const record3 = body !== null && typeof body === "object" ? body : void 0;
     const reason = [
-      cleanErrorField2(record2?.code),
-      cleanErrorField2(record2?.error)
+      cleanErrorField2(record3?.code),
+      cleanErrorField2(record3?.error)
     ].filter(Boolean).join(": ");
     super(reason ? `${reason} (Personal Global Asset HTTP ${status})` : `Personal Global Asset request failed with HTTP ${status}`);
     this.status = status;
@@ -43486,7 +44246,7 @@ function createPersonalGlobalAssetHttpClient(options = {}) {
       })));
     },
     async publish(input) {
-      const projectId = required2(input.projectId, "project id");
+      const projectId2 = required2(input.projectId, "project id");
       const projectAssetId = required2(input.projectAssetId, "project asset id");
       const { connected, url: url3 } = await target("/publish");
       return resolvedAsset(await fetch2(url3, requestInit({
@@ -43494,7 +44254,7 @@ function createPersonalGlobalAssetHttpClient(options = {}) {
         headers: headers(connected, {
           "content-type": "application/json"
         }),
-        body: JSON.stringify({ projectId, projectAssetId })
+        body: JSON.stringify({ projectId: projectId2, projectAssetId })
       })));
     },
     async trash(input) {
@@ -43568,9 +44328,9 @@ var ProjectHostHttpError = class extends Error {
   status;
   body;
   constructor(status, body) {
-    const record2 = body !== null && typeof body === "object" ? body : void 0;
-    const code = cleanErrorField3(record2?.code);
-    const detail = cleanErrorField3(record2?.error);
+    const record3 = body !== null && typeof body === "object" ? body : void 0;
+    const code = cleanErrorField3(record3?.code);
+    const detail = cleanErrorField3(record3?.error);
     const reason = [code, detail].filter(Boolean).join(": ");
     super(reason ? `${reason} (Project host HTTP ${status})` : `Project host request failed with HTTP ${status}`);
     this.status = status;
@@ -43581,8 +44341,8 @@ var ProjectHostHttpError = class extends Error {
 function cleanErrorField3(value) {
   return typeof value === "string" && value.trim() ? value.trim() : void 0;
 }
-function projectHostCommandUrl(endpoint, projectId) {
-  return `${endpoint.replace(/\/+$/, "")}/api/v1/projects/${encodeURIComponent(projectId)}/host-command`;
+function projectHostCommandUrl(endpoint, projectId2) {
+  return `${endpoint.replace(/\/+$/, "")}/api/v1/projects/${encodeURIComponent(projectId2)}/host-command`;
 }
 var PROJECT_MARKER = (0, import_node_path7.join)(".clash", "project.toml");
 function cleanProjectId(value) {
@@ -43598,9 +44358,9 @@ function markerProjectId(markerPath, source) {
   }
   try {
     const value = JSON.parse(match[1].trim());
-    const projectId = cleanProjectId(value);
-    if (projectId)
-      return projectId;
+    const projectId2 = cleanProjectId(value);
+    if (projectId2)
+      return projectId2;
   } catch {
   }
   throw new Error(`Invalid project marker at ${markerPath}: project_id must be a string`);
@@ -44014,11 +44774,11 @@ var LOCAL_HOST_PROTOCOL_VERSION = 1;
 function isLocalHostDiscoveryRecord(value) {
   if (!value || typeof value !== "object")
     return false;
-  const record2 = value;
-  return record2.schemaVersion === LOCAL_HOST_RECORD_SCHEMA_VERSION && typeof record2.protocolVersion === "number" && Number.isInteger(record2.protocolVersion) && typeof record2.dataSchemaVersion === "number" && Number.isInteger(record2.dataSchemaVersion) && typeof record2.hostId === "string" && record2.hostId.length > 0 && typeof record2.endpoint === "string" && record2.endpoint.length > 0 && typeof record2.pid === "number" && Number.isInteger(record2.pid) && record2.pid > 0 && isHostLaunchMode(record2.launchMode) && isHostStartedBy(record2.startedBy) && (record2.profile === void 0 || record2.profile === "dev" || record2.profile === "prod") && (record2.agentCliPath === void 0 || typeof record2.agentCliPath === "string" && record2.agentCliPath.length > 0) && (record2.ownerClientId === void 0 || typeof record2.ownerClientId === "string") && typeof record2.startedAt === "string" && typeof record2.updatedAt === "string";
+  const record3 = value;
+  return record3.schemaVersion === LOCAL_HOST_RECORD_SCHEMA_VERSION && typeof record3.protocolVersion === "number" && Number.isInteger(record3.protocolVersion) && typeof record3.dataSchemaVersion === "number" && Number.isInteger(record3.dataSchemaVersion) && typeof record3.hostId === "string" && record3.hostId.length > 0 && typeof record3.endpoint === "string" && record3.endpoint.length > 0 && typeof record3.pid === "number" && Number.isInteger(record3.pid) && record3.pid > 0 && isHostLaunchMode(record3.launchMode) && isHostStartedBy(record3.startedBy) && (record3.profile === void 0 || record3.profile === "dev" || record3.profile === "prod") && (record3.runtimeFingerprint === void 0 || typeof record3.runtimeFingerprint === "string" && record3.runtimeFingerprint.length > 0) && (record3.agentCliPath === void 0 || typeof record3.agentCliPath === "string" && record3.agentCliPath.length > 0) && (record3.ownerClientId === void 0 || typeof record3.ownerClientId === "string") && typeof record3.startedAt === "string" && typeof record3.updatedAt === "string";
 }
-function isCompatibleHost(record2, clientProtocolVersion) {
-  return record2.schemaVersion === LOCAL_HOST_RECORD_SCHEMA_VERSION && record2.protocolVersion <= clientProtocolVersion;
+function isCompatibleHost(record3, clientProtocolVersion) {
+  return record3.schemaVersion === LOCAL_HOST_RECORD_SCHEMA_VERSION && record3.protocolVersion <= clientProtocolVersion;
 }
 function isHostLaunchMode(value) {
   return value === "desktop" || value === "plugin" || value === "cli-once" || value === "user-service" || value === "launchd";
@@ -44029,6 +44789,9 @@ function isHostStartedBy(value) {
 
 // ../../packages/shared-runtime/dist/local-daemon.js
 var DAEMON_SUPPORTED_NODE_RANGE = ">=24.18.0 <25";
+function resolveLocalDaemonRuntimeFingerprint(entryPath) {
+  return `sha256:${(0, import_node_crypto6.createHash)("sha256").update((0, import_node_fs2.readFileSync)(entryPath)).digest("hex")}`;
+}
 function isMissingFile(error51) {
   return Boolean(error51 && typeof error51 === "object" && "code" in error51 && error51.code === "ENOENT");
 }
@@ -44042,6 +44805,8 @@ function processExists(pid) {
 }
 function launchDetachedLocalDaemon(options) {
   const spawnProcess = options.spawnProcess ?? import_node_child_process2.spawn;
+  const launchedProcessExists = options.processExists ?? processExists;
+  const killProcess = options.killProcess ?? process.kill;
   const env = options.env ?? process.env;
   if (options.nodePath && !isDaemonNodeVersionSupported(options.nodeVersion, DAEMON_SUPPORTED_NODE_RANGE)) {
     throw new Error(`Explicit daemon Node ${options.nodeVersion ?? "unknown"} does not satisfy ${DAEMON_SUPPORTED_NODE_RANGE}.`);
@@ -44066,6 +44831,7 @@ function launchDetachedLocalDaemon(options) {
       CLASH_HOST_RUN_DIR: options.runDir,
       CLASH_CLI_ENTRY_PATH: options.cliEntryPath,
       CLASH_LOCAL_API_WRAPPER_ENTRY: "1",
+      CLASH_DAEMON_RUNTIME_FINGERPRINT: options.runtimeFingerprint,
       // Electron Node mode is still a detached Node process; without this
       // explicit opt-in an Electron executable would recursively open the GUI.
       ELECTRON_RUN_AS_NODE: options.electronRunAsNode ? "1" : void 0,
@@ -44082,10 +44848,10 @@ function launchDetachedLocalDaemon(options) {
     pid,
     runtime,
     stop: async () => {
-      if (!processExists(pid))
+      if (!launchedProcessExists(pid))
         return;
       try {
-        process.kill(pid, "SIGTERM");
+        killProcess(process.platform === "win32" ? pid : -pid, "SIGTERM");
       } catch (error51) {
         if (!(error51 && typeof error51 === "object" && "code" in error51 && error51.code === "ESRCH")) {
           throw error51;
@@ -44097,15 +44863,15 @@ function launchDetachedLocalDaemon(options) {
 function delay2(ms) {
   return new Promise((resolve25) => setTimeout(resolve25, ms));
 }
-async function defaultHealthProbe(record2) {
+async function defaultHealthProbe(record3) {
   try {
-    const response = await fetch(new URL("/health", record2.endpoint), {
+    const response = await fetch(new URL("/health", record3.endpoint), {
       signal: AbortSignal.timeout(1e3)
     });
     if (!response.ok)
       return false;
     const body = await response.json();
-    return body.ok === true && body.mode === "local" && body.host?.hostId === record2.hostId && body.host.pid === record2.pid && body.host.profile === (record2.profile ?? "prod") && body.host.protocolVersion === record2.protocolVersion;
+    return body.ok === true && body.mode === "local" && body.host?.hostId === record3.hostId && body.host.pid === record3.pid && body.host.profile === (record3.profile ?? "prod") && body.host.protocolVersion === record3.protocolVersion && body.host.runtimeFingerprint === record3.runtimeFingerprint;
   } catch {
     return false;
   }
@@ -44135,7 +44901,31 @@ async function inspectLocalDaemon(options) {
   if ((value.profile ?? "prod") !== options.profile || !isCompatibleHost(value, LOCAL_HOST_PROTOCOL_VERSION) || !isLoopbackEndpoint(value.endpoint)) {
     return { status: "unhealthy", record: value };
   }
-  return await options.probe(value) ? { status: "healthy", record: value } : { status: "unhealthy", record: value };
+  if (!await options.probe(value)) {
+    return { status: "unhealthy", record: value };
+  }
+  if (options.runtimeFingerprint && value.runtimeFingerprint !== options.runtimeFingerprint) {
+    return { status: "obsolete", record: value };
+  }
+  return { status: "healthy", record: value };
+}
+async function retireLocalDaemon(record3, pidExists) {
+  try {
+    process.kill(record3.pid, "SIGTERM");
+  } catch (error51) {
+    if (!isMissingProcess(error51))
+      throw error51;
+    return;
+  }
+  const deadline = Date.now() + 5e3;
+  while (Date.now() < deadline && pidExists(record3.pid))
+    await delay2(50);
+  if (pidExists(record3.pid)) {
+    throw new Error(`Clash daemon process ${record3.pid} did not stop after its runtime artifact was superseded`);
+  }
+}
+function isMissingProcess(error51) {
+  return Boolean(error51 && typeof error51 === "object" && "code" in error51 && error51.code === "ESRCH");
 }
 async function acquireStartupLock(options) {
   await (0, import_promises9.mkdir)(options.runDir, { recursive: true });
@@ -44184,14 +44974,15 @@ async function acquireStartupLock(options) {
 function createLocalDaemonBootstrap(options) {
   const pidExists = options.pidExists ?? processExists;
   const probe = options.probe ?? defaultHealthProbe;
-  const startupTimeoutMs = options.startupTimeoutMs ?? 1e4;
+  const startupTimeoutMs = options.startupTimeoutMs ?? 3e4;
   const lockTimeoutMs = options.lockTimeoutMs ?? 15e3;
   const pollIntervalMs = options.pollIntervalMs ?? 50;
   const inspectDaemon = () => inspectLocalDaemon({
     runDir: options.runDir,
     profile: options.profile,
     pidExists,
-    probe
+    probe,
+    runtimeFingerprint: options.runtimeFingerprint
   });
   let ensuring;
   let closed = false;
@@ -44215,6 +45006,13 @@ function createLocalDaemonBootstrap(options) {
       const activeAfterLock = await inspectDaemon();
       if (activeAfterLock.status === "healthy")
         return activeAfterLock.record;
+      if (activeAfterLock.status === "obsolete") {
+        await (options.retire ?? ((record3) => retireLocalDaemon(record3, pidExists)))(activeAfterLock.record);
+        const afterRetire = await inspectDaemon();
+        if (afterRetire.status !== "absent") {
+          throw new Error(`Clash daemon process ${activeAfterLock.record.pid} still owns discovery after retirement`);
+        }
+      }
       if (activeAfterLock.status === "unhealthy") {
         throw new Error(`Clash daemon process ${activeAfterLock.record.pid} is alive but unhealthy at ${activeAfterLock.record.endpoint}; refusing to start a second project-state writer`);
       }
@@ -44296,12 +45094,15 @@ async function ensureCliLocalDaemon(options) {
   if (env.CLASH_API_URL?.trim()) return void 0;
   const dataDir = defaultLocalApiDataDir(env);
   const runDir = (0, import_node_path11.join)(clashHomeForLocalDataDir(dataDir), "run");
+  const runtimeFingerprint = options.runtimeFingerprint ?? (options.launch ? void 0 : resolveLocalDaemonRuntimeFingerprint(options.daemonEntryPath));
   const bootstrap = createLocalDaemonBootstrap({
     runDir,
     profile: resolveClashProfile(env),
     probe: options.probeHost,
+    runtimeFingerprint,
     launch: options.launch ?? (async () => launchDetachedLocalDaemon({
       entryPath: options.daemonEntryPath,
+      runtimeFingerprint,
       cliEntryPath: options.cliEntryPath,
       dataDir,
       runDir,
@@ -44314,9 +45115,9 @@ async function ensureCliLocalDaemon(options) {
       }
     }))
   });
-  const record2 = await bootstrap.ensureDaemon();
-  env.CLASH_API_URL = record2.endpoint;
-  return record2;
+  const record3 = await bootstrap.ensureDaemon();
+  env.CLASH_API_URL = record3.endpoint;
+  return record3;
 }
 
 // ../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/esm.mjs
@@ -44337,17 +45138,17 @@ var {
 } = import_index2.default;
 
 // ../../packages/cli/src/commands/assets.ts
-var import_node_fs7 = require("node:fs");
+var import_node_fs8 = require("node:fs");
 var import_node_crypto11 = require("node:crypto");
 var import_node_path24 = require("node:path");
 
 // ../../packages/cli/src/commands/canvas.ts
-var import_node_fs4 = require("node:fs");
+var import_node_fs5 = require("node:fs");
 var import_node_path17 = require("node:path");
 
 // ../../packages/cli/src/lib/config.ts
 var import_node_crypto7 = require("node:crypto");
-var import_node_fs2 = require("node:fs");
+var import_node_fs3 = require("node:fs");
 var import_node_path13 = require("node:path");
 var import_yaml2 = __toESM(require_dist());
 
@@ -44424,9 +45225,9 @@ function isRecord4(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 function readObject(path) {
-  if (!(0, import_node_fs2.existsSync)(path)) return {};
+  if (!(0, import_node_fs3.existsSync)(path)) return {};
   try {
-    const value = JSON.parse((0, import_node_fs2.readFileSync)(path, "utf8"));
+    const value = JSON.parse((0, import_node_fs3.readFileSync)(path, "utf8"));
     return isRecord4(value) ? value : {};
   } catch {
     return {};
@@ -44434,23 +45235,23 @@ function readObject(path) {
 }
 function atomicWrite(path, contents) {
   const temporaryPath = `${path}.${process.pid}.${(0, import_node_crypto7.randomUUID)()}.tmp`;
-  (0, import_node_fs2.writeFileSync)(temporaryPath, contents, { encoding: "utf8", mode: 384 });
-  (0, import_node_fs2.chmodSync)(temporaryPath, 384);
-  (0, import_node_fs2.renameSync)(temporaryPath, path);
-  (0, import_node_fs2.chmodSync)(path, 384);
+  (0, import_node_fs3.writeFileSync)(temporaryPath, contents, { encoding: "utf8", mode: 384 });
+  (0, import_node_fs3.chmodSync)(temporaryPath, 384);
+  (0, import_node_fs3.renameSync)(temporaryPath, path);
+  (0, import_node_fs3.chmodSync)(path, 384);
 }
 function wait(milliseconds) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 function withConfigLock(dir, task) {
-  (0, import_node_fs2.mkdirSync)(dir, { recursive: true, mode: 448 });
-  (0, import_node_fs2.chmodSync)(dir, 448);
+  (0, import_node_fs3.mkdirSync)(dir, { recursive: true, mode: 448 });
+  (0, import_node_fs3.chmodSync)(dir, 448);
   const lockPath = (0, import_node_path13.join)(dir, ".config.lock");
   const deadline = Date.now() + 5e3;
   while (true) {
     try {
-      (0, import_node_fs2.mkdirSync)(lockPath, { mode: 448 });
-      (0, import_node_fs2.writeFileSync)(
+      (0, import_node_fs3.mkdirSync)(lockPath, { mode: 448 });
+      (0, import_node_fs3.writeFileSync)(
         (0, import_node_path13.join)(lockPath, "owner"),
         `pid=${process.pid}
 created_at=${(/* @__PURE__ */ new Date()).toISOString()}
@@ -44462,12 +45263,12 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
       if (error51.code !== "EEXIST") throw error51;
       let stale = false;
       try {
-        stale = Date.now() - (0, import_node_fs2.statSync)(lockPath).mtimeMs > 3e4;
+        stale = Date.now() - (0, import_node_fs3.statSync)(lockPath).mtimeMs > 3e4;
       } catch {
         continue;
       }
       if (stale) {
-        (0, import_node_fs2.rmSync)(lockPath, { recursive: true, force: true });
+        (0, import_node_fs3.rmSync)(lockPath, { recursive: true, force: true });
         continue;
       }
       if (Date.now() >= deadline) {
@@ -44479,11 +45280,11 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
   try {
     return task();
   } finally {
-    (0, import_node_fs2.rmSync)(lockPath, { recursive: true, force: true });
+    (0, import_node_fs3.rmSync)(lockPath, { recursive: true, force: true });
   }
 }
 function updateYamlServerUrl(path, serverUrl) {
-  const document = (0, import_yaml2.parseDocument)((0, import_node_fs2.existsSync)(path) ? (0, import_node_fs2.readFileSync)(path, "utf8") : "");
+  const document = (0, import_yaml2.parseDocument)((0, import_node_fs3.existsSync)(path) ? (0, import_node_fs3.readFileSync)(path, "utf8") : "");
   if (document.errors.length > 0) {
     throw new Error(`Cannot update config.yaml: ${document.errors[0]?.message ?? "invalid YAML"}`);
   }
@@ -44505,11 +45306,11 @@ function updateCliCredential(path, apiKey) {
 function migrateLegacyConfig(env = process.env) {
   const dir = configDir(env);
   const legacyPath = (0, import_node_path13.join)(dir, "config.json");
-  if (!(0, import_node_fs2.existsSync)(legacyPath)) return;
+  if (!(0, import_node_fs3.existsSync)(legacyPath)) return;
   const legacy = readObject(legacyPath);
   const configPath = configFilePath(env);
   const credentialsPath = credentialsFilePath(env);
-  (0, import_node_fs2.mkdirSync)(dir, { recursive: true, mode: 448 });
+  (0, import_node_fs3.mkdirSync)(dir, { recursive: true, mode: 448 });
   withConfigLock(dir, () => {
     const existing = loadConfigFiles(env);
     updateYamlServerUrl(
@@ -44520,15 +45321,15 @@ function migrateLegacyConfig(env = process.env) {
       credentialsPath,
       existing.apiKey ?? (typeof legacy.apiKey === "string" ? legacy.apiKey : void 0)
     );
-    (0, import_node_fs2.unlinkSync)(legacyPath);
+    (0, import_node_fs3.unlinkSync)(legacyPath);
   });
 }
 function loadConfigFiles(env = process.env) {
   let serverUrl;
   const configPath = configFilePath(env);
-  if ((0, import_node_fs2.existsSync)(configPath)) {
+  if ((0, import_node_fs3.existsSync)(configPath)) {
     try {
-      const document = (0, import_yaml2.parseDocument)((0, import_node_fs2.readFileSync)(configPath, "utf8"));
+      const document = (0, import_yaml2.parseDocument)((0, import_node_fs3.readFileSync)(configPath, "utf8"));
       const root = document.toJS();
       if (isRecord4(root) && isRecord4(root.server) && typeof root.server.url === "string") {
         serverUrl = root.server.url;
@@ -44548,7 +45349,7 @@ function loadConfig() {
 }
 function saveConfig(config2) {
   const dir = configDir();
-  (0, import_node_fs2.mkdirSync)(dir, { recursive: true, mode: 448 });
+  (0, import_node_fs3.mkdirSync)(dir, { recursive: true, mode: 448 });
   withConfigLock(dir, () => {
     updateYamlServerUrl(configFilePath(), config2.serverUrl);
     updateCliCredential(credentialsFilePath(), config2.apiKey);
@@ -44559,7 +45360,7 @@ function getApiKey() {
 }
 function discoveredServerUrl() {
   try {
-    const value = JSON.parse((0, import_node_fs2.readFileSync)(getHostDiscoveryPath(), "utf8"));
+    const value = JSON.parse((0, import_node_fs3.readFileSync)(getHostDiscoveryPath(), "utf8"));
     if (!isLocalHostDiscoveryRecord(value)) return void 0;
     if ((value.profile ?? "prod") !== resolveClashProfile()) return void 0;
     try {
@@ -44642,11 +45443,11 @@ function createCliPersonalGlobalAssetHostClient(options = {}) {
     ...options.fetch ? { fetch: options.fetch } : {}
   });
 }
-function sendProjectCommand(projectId, command2) {
+function sendProjectCommand(projectId2, command2) {
   const { endpoint, token } = resolveCliProjectHostConnection();
   return sendProjectHostCommand({
     endpoint,
-    projectId,
+    projectId: projectId2,
     command: command2,
     token
   });
@@ -44702,15 +45503,15 @@ function projectMarkerPath(cwd) {
   return (0, import_node_path14.join)(cwd, MARKER_PATH);
 }
 async function writeProjectMarker(cwd, marker) {
-  const projectId = cleanProjectId2(marker.projectId);
-  if (!projectId) {
+  const projectId2 = cleanProjectId2(marker.projectId);
+  if (!projectId2) {
     throw new Error("Project id is required to write .clash/project.toml.");
   }
   const markerPath = projectMarkerPath(cwd);
   const normalized = {
     ...marker,
     schemaVersion: 1,
-    projectId
+    projectId: projectId2
   };
   await (0, import_promises11.mkdir)((0, import_node_path14.dirname)(markerPath), { recursive: true });
   await (0, import_promises11.writeFile)(markerPath, serializeProjectMarkerToml(normalized), "utf-8");
@@ -44719,11 +45520,11 @@ async function writeProjectMarker(cwd, marker) {
 async function readProjectMarker(markerPath) {
   const text = await (0, import_promises11.readFile)(markerPath, "utf-8");
   const marker = parseProjectMarkerToml(markerPath, text);
-  const projectId = cleanProjectId2(marker.projectId);
-  if (!projectId) {
+  const projectId2 = cleanProjectId2(marker.projectId);
+  if (!projectId2) {
     throw new Error(`Invalid project marker at ${markerPath}: projectId is required.`);
   }
-  return { ...marker, schemaVersion: 1, projectId };
+  return { ...marker, schemaVersion: 1, projectId: projectId2 };
 }
 function parseProjectMarkerToml(markerPath, text) {
   const root = {};
@@ -44838,9 +45639,9 @@ async function resolveProjectContext(options = {}) {
     "No Clash project context found. Run clash init, run clash project link <projectId>, pass --project <id>, or set CLASH_PROJECT_ID."
   );
 }
-function cleanProjectId2(projectId) {
-  if (typeof projectId !== "string") return void 0;
-  const trimmed = projectId.trim();
+function cleanProjectId2(projectId2) {
+  if (typeof projectId2 !== "string") return void 0;
+  const trimmed = projectId2.trim();
   return trimmed.length > 0 ? trimmed : void 0;
 }
 function message(error51) {
@@ -44854,7 +45655,7 @@ var import_node_path16 = require("node:path");
 
 // ../../packages/cli/src/lib/projection-cas.ts
 var import_node_crypto8 = require("node:crypto");
-var import_node_fs3 = require("node:fs");
+var import_node_fs4 = require("node:fs");
 var import_node_path15 = require("node:path");
 function hashProjectionContent(content) {
   return (0, import_node_crypto8.createHash)("sha256").update(content).digest("hex").slice(0, 16);
@@ -44901,7 +45702,7 @@ function assertProjectionPathInsideCwd(options) {
 function assertExistingProjectionPathRealpathInsideCwd(options) {
   let cwdRealPath;
   try {
-    cwdRealPath = import_node_fs3.realpathSync.native(options.cwd);
+    cwdRealPath = import_node_fs4.realpathSync.native(options.cwd);
   } catch {
     return { ok: true };
   }
@@ -44909,7 +45710,7 @@ function assertExistingProjectionPathRealpathInsideCwd(options) {
   if (!existingPath) return { ok: true };
   let existingRealPath;
   try {
-    existingRealPath = import_node_fs3.realpathSync.native(existingPath);
+    existingRealPath = import_node_fs4.realpathSync.native(existingPath);
   } catch {
     return { ok: true };
   }
@@ -44923,7 +45724,7 @@ function assertExistingProjectionPathRealpathInsideCwd(options) {
 }
 function nearestExistingPath(filePath) {
   let candidate = filePath;
-  while (!(0, import_node_fs3.existsSync)(candidate)) {
+  while (!(0, import_node_fs4.existsSync)(candidate)) {
     const parent = (0, import_node_path15.dirname)(candidate);
     if (parent === candidate) return null;
     candidate = parent;
@@ -44979,18 +45780,18 @@ async function requireWorktreeObservation(options) {
 }
 async function recordWorktreeObservation(options) {
   await withWriteLock(options.workspaceRoot, async () => {
-    const projectId = normalize(options.projectId, "project id");
+    const projectId2 = normalize(options.projectId, "project id");
     const previous = await readState(options.workspaceRoot);
-    const state = previous?.projectId === projectId ? previous : { schemaVersion: 1, projectId, versions: {} };
+    const state = previous?.projectId === projectId2 ? previous : { schemaVersion: 1, projectId: projectId2, versions: {} };
     state.versions[observationKey(options)] = normalize(options.revision, "revision");
     await writeState(options.workspaceRoot, state);
   });
 }
 async function forgetWorktreeObservation(options) {
   await withWriteLock(options.workspaceRoot, async () => {
-    const projectId = normalize(options.projectId, "project id");
+    const projectId2 = normalize(options.projectId, "project id");
     const state = await readState(options.workspaceRoot);
-    if (!state || state.projectId !== projectId) return;
+    if (!state || state.projectId !== projectId2) return;
     delete state.versions[observationKey(options)];
     await writeState(options.workspaceRoot, state);
   });
@@ -45131,10 +45932,10 @@ function delay3(milliseconds) {
 }
 function isObservationState(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const record2 = value;
-  if (record2.schemaVersion !== 1 || typeof record2.projectId !== "string") return false;
-  if (!record2.versions || typeof record2.versions !== "object" || Array.isArray(record2.versions)) return false;
-  return Object.entries(record2.versions).every(([key, revision]) => key.length > 0 && typeof revision === "string" && revision.length > 0);
+  const record3 = value;
+  if (record3.schemaVersion !== 1 || typeof record3.projectId !== "string") return false;
+  if (!record3.versions || typeof record3.versions !== "object" || Array.isArray(record3.versions)) return false;
+  return Object.entries(record3.versions).every(([key, revision]) => key.length > 0 && typeof revision === "string" && revision.length > 0);
 }
 function normalize(value, label) {
   const normalized = value.trim();
@@ -45317,8 +46118,8 @@ async function forgetCanvasObservation(options) {
 function publicMutationResult(value) {
   return publicAgentCommandResult(value);
 }
-async function runCommand(projectId, cmd) {
-  return sendProjectCommand(projectId, { ...cmd, canvasId: activeCanvasId });
+async function runCommand(projectId2, cmd) {
+  return sendProjectCommand(projectId2, { ...cmd, canvasId: activeCanvasId });
 }
 function collectNodeOption(value, previous = []) {
   return [...previous, value];
@@ -45328,7 +46129,7 @@ function normalizeNodeIds(nodeIds) {
 }
 async function replaceCanvasAssetNode(options) {
   const context = await resolveCanvasProjectContext({ project: options.project });
-  const projectId = context.projectId;
+  const projectId2 = context.projectId;
   const assetId = String(options.assetId ?? "").trim();
   if (!assetId) throw new Error("asset id is required");
   const observedVersion = await requireCanvasObservation({
@@ -45336,7 +46137,7 @@ async function replaceCanvasAssetNode(options) {
     entityKind: "canvas-node",
     entityId: options.nodeId
   });
-  const hostResult = await runCommand(projectId, {
+  const hostResult = await runCommand(projectId2, {
     action: "asset_cow_replace",
     nodeId: options.nodeId,
     assetId,
@@ -45362,8 +46163,8 @@ Node types: text, group, image, video, audio, image_gen, video_gen, audio_gen, t
   clash init --project <id>       # one-time workspace setup
   clash canvas list --json        # uses cwd marker automatically`);
 canvasCommand.command("list").description("List canvas nodes").option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)").option("--type <type>", "Filter by node type").option("--json", "Output as JSON").action(async (options) => {
-  const projectId = await resolveCanvasProjectId(options);
-  const hostResult = await runCommand(projectId, { action: "list", type: options.type });
+  const projectId2 = await resolveCanvasProjectId(options);
+  const hostResult = await runCommand(projectId2, { action: "list", type: options.type });
   if (hostResult.error) {
     console.error(hostResult.error);
     process.exit(1);
@@ -45380,8 +46181,8 @@ ${hostResult.nodes.length} node(s)`);
 });
 canvasCommand.command("edges").description("List canvas edges").option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)").option("--json", "Output as JSON").action(async (options) => {
   const context = await resolveCanvasProjectContext(options);
-  const projectId = context.projectId;
-  const hostResult = await runCommand(projectId, { action: "edges" });
+  const projectId2 = context.projectId;
+  const hostResult = await runCommand(projectId2, { action: "edges" });
   if (hostResult.error) {
     console.error(hostResult.error);
     process.exit(1);
@@ -45410,9 +46211,9 @@ canvasCommand.command("delete-plan").description("Read a graph-aware batch delet
     process.exit(1);
   }
   const context = await resolveCanvasProjectContext(options);
-  const projectId = context.projectId;
+  const projectId2 = context.projectId;
   const batchId = nodeIds.join(",");
-  const hostResult = await runCommand(projectId, {
+  const hostResult = await runCommand(projectId2, {
     action: "batch_delete_plan",
     nodeIds,
     actorClientType: resolveCanvasPresenceOptions().clientType
@@ -45457,22 +46258,22 @@ function resolvedAssetExtension(asset) {
   if (contentType === "model/gltf+json") return ".gltf";
   return "";
 }
-async function downloadAssetById(assetId, projectId, options = {}) {
+async function downloadAssetById(assetId, projectId2, options = {}) {
   try {
     const cacheDir = options.cacheDir ?? assetCacheDir();
-    (0, import_node_fs4.mkdirSync)(cacheDir, { recursive: true });
-    const safeId = `${projectId}--${assetId}`.replace(/[/\\:]/g, "_");
-    for (const name of (0, import_node_fs4.readdirSync)(cacheDir)) {
+    (0, import_node_fs5.mkdirSync)(cacheDir, { recursive: true });
+    const safeId = `${projectId2}--${assetId}`.replace(/[/\\:]/g, "_");
+    for (const name of (0, import_node_fs5.readdirSync)(cacheDir)) {
       if (name === safeId || name.startsWith(`${safeId}.`)) {
         const cachedPath = (0, import_node_path17.join)(cacheDir, name);
         try {
-          (0, import_node_fs4.chmodSync)(cachedPath, 292);
+          (0, import_node_fs5.chmodSync)(cachedPath, 292);
         } catch {
         }
         return cachedPath;
       }
     }
-    const observed2 = await (options.client ?? createCliProjectAssetHostClient()).get({ projectId, assetId });
+    const observed2 = await (options.client ?? createCliProjectAssetHostClient()).get({ projectId: projectId2, assetId });
     const asset = observed2.value;
     if (asset.id !== assetId || asset.status !== "ready" || !asset.url) {
       return null;
@@ -45482,9 +46283,9 @@ async function downloadAssetById(assetId, projectId, options = {}) {
     const fullUrl = resolveAssetDownloadUrl(asset.url);
     const res = await (options.fetch ?? fetch)(fullUrl);
     if (!res.ok) return null;
-    (0, import_node_fs4.writeFileSync)(filePath, Buffer.from(await res.arrayBuffer()), { mode: 292 });
+    (0, import_node_fs5.writeFileSync)(filePath, Buffer.from(await res.arrayBuffer()), { mode: 292 });
     try {
-      (0, import_node_fs4.chmodSync)(filePath, 292);
+      (0, import_node_fs5.chmodSync)(filePath, 292);
     } catch {
     }
     return filePath;
@@ -45507,10 +46308,10 @@ canvasCommand.command("get").description("Get a specific node. For media nodes, 
   let observation = null;
   let immutable = false;
   const context = await resolveCanvasProjectContext(options);
-  const projectId = context.projectId;
-  const hostResult = await runCommand(projectId, {
+  const projectId2 = context.projectId;
+  const hostResult = await runCommand(projectId2, {
     action: "get",
-    projectId,
+    projectId: projectId2,
     nodeId: options.node,
     actorClientType: agentClientType()
   });
@@ -45532,7 +46333,7 @@ canvasCommand.command("get").description("Get a specific node. For media nodes, 
   const isMedia = ["image", "video", "audio"].includes(node.type);
   let assetPath = null;
   if (isMedia && assetId) {
-    assetPath = await downloadAssetById(assetId, projectId);
+    assetPath = await downloadAssetById(assetId, projectId2);
   }
   if (isJsonMode(options)) {
     printJson({ ...node, immutable: immutable === true, ...assetPath ? { assetPath } : {} });
@@ -45567,7 +46368,7 @@ canvasCommand.command("add").description("Add a text, group, Remotion component,
   "Use an installed executable-plugin action instead of a catalog model. The Host resolves the activated contribution and owns execution. When set, --model is ignored and --param values go into data.customActionParams instead of data.modelParams."
 ).option("--json", "Output as JSON").action(async (options) => {
   const context = await resolveCanvasProjectContext(options);
-  const projectId = context.projectId;
+  const projectId2 = context.projectId;
   const content = await resolveWorkspaceTextInput({
     workspaceRoot: context.workspaceRoot ?? process.cwd(),
     inline: options.content,
@@ -45575,7 +46376,7 @@ canvasCommand.command("add").description("Add a text, group, Remotion component,
   });
   const presence = resolveCanvasPresenceOptions();
   const params = Object.fromEntries(options.param ?? []);
-  const hostResult = await runCommand(projectId, {
+  const hostResult = await runCommand(projectId2, {
     action: "add",
     type: options.type,
     label: options.label,
@@ -45607,7 +46408,7 @@ canvasCommand.command("execute").description(
   "--provider <accountId>",
   "Answer with this provider account only. Fails if it cannot serve the model, rather than using another"
 ).option("--json", "Output as JSON").action(async (options) => {
-  const projectId = await resolveCanvasProjectId(options);
+  const projectId2 = await resolveCanvasProjectId(options);
   const printExecuteResult = (kind, childNodeId, childNodeType) => {
     if (kind === "render") {
       console.log(`Executed video-editor: ${options.node}`);
@@ -45617,7 +46418,7 @@ canvasCommand.command("execute").description(
       console.log(`Created pending asset: ${childNodeId} (${childNodeType})`);
     }
   };
-  const hostResult = await runCommand(projectId, {
+  const hostResult = await runCommand(projectId2, {
     action: "execute",
     nodeId: options.node,
     ...options.provider ? { providerAccountId: options.provider } : {}
@@ -45640,7 +46441,7 @@ canvasCommand.command("update").description("Update a node's data").option("--pr
   []
 ).option("--json", "Output as JSON").action(async (options) => {
   const context = await resolveCanvasProjectContext(options);
-  const projectId = context.projectId;
+  const projectId2 = context.projectId;
   const content = await resolveWorkspaceTextInput({
     workspaceRoot: context.workspaceRoot ?? process.cwd(),
     inline: options.content,
@@ -45669,7 +46470,7 @@ canvasCommand.command("update").description("Update a node's data").option("--pr
     console.error("Provide at least one field to update (--label, --content, --content-file, --asset-id, --data k=v)");
     process.exit(1);
   }
-  const hostResult = await runCommand(projectId, {
+  const hostResult = await runCommand(projectId2, {
     action: "update",
     nodeId: options.node,
     label: options.label,
@@ -45785,7 +46586,7 @@ canvasCommand.command("delete-batch").description("Delete multiple canvas nodes 
     process.exit(1);
   }
   const context = await resolveCanvasProjectContext(options);
-  const projectId = context.projectId;
+  const projectId2 = context.projectId;
   const batchId = nodeIds.join(",");
   let observedVersion;
   try {
@@ -45798,7 +46599,7 @@ canvasCommand.command("delete-batch").description("Delete multiple canvas nodes 
     console.error(error51 instanceof Error ? error51.message : String(error51));
     process.exit(1);
   }
-  const hostResult = await runCommand(projectId, {
+  const hostResult = await runCommand(projectId2, {
     action: "delete_batch",
     nodeIds,
     actorClientType: agentClientType(),
@@ -45828,7 +46629,7 @@ canvasCommand.command("delete").description("Delete a node").option("--project <
     process.exit(1);
   }
   const context = await resolveCanvasProjectContext(options);
-  const projectId = context.projectId;
+  const projectId2 = context.projectId;
   let observedVersion;
   try {
     observedVersion = await requireCanvasObservation({
@@ -45840,7 +46641,7 @@ canvasCommand.command("delete").description("Delete a node").option("--project <
     console.error(error51 instanceof Error ? error51.message : String(error51));
     process.exit(1);
   }
-  const hostResult = await runCommand(projectId, {
+  const hostResult = await runCommand(projectId2, {
     action: "delete",
     nodeId: options.node,
     actorClientType: agentClientType(),
@@ -45859,8 +46660,8 @@ canvasCommand.command("delete").description("Delete a node").option("--project <
   }
 });
 canvasCommand.command("search").description("Search nodes by content").option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)").requiredOption("--query <query>", "Search query").option("--type <types>", "Comma-separated node types to filter").option("--json", "Output as JSON").action(async (options) => {
-  const projectId = await resolveCanvasProjectId(options);
-  const hostResult = await runCommand(projectId, {
+  const projectId2 = await resolveCanvasProjectId(options);
+  const hostResult = await runCommand(projectId2, {
     action: "search",
     query: options.query,
     types: options.type?.split(",") ?? null
@@ -45889,7 +46690,7 @@ canvasCommand.hook("preAction", (_command, actionCommand) => {
 });
 
 // ../../packages/cli/src/commands/asset-metadata.ts
-var import_node_fs5 = require("node:fs");
+var import_node_fs6 = require("node:fs");
 var import_promises15 = require("node:fs/promises");
 var import_node_path21 = require("node:path");
 
@@ -57229,12 +58030,12 @@ function _check(fn, params) {
   return ch;
 }
 // @__NO_SIDE_EFFECTS__
-function describe(description) {
+function describe(description2) {
   const ch = new $ZodCheck({ check: "describe" });
   ch._zod.onattach = [
     (inst) => {
       const existing = globalRegistry.get(inst) ?? {};
-      globalRegistry.add(inst, { ...existing, description });
+      globalRegistry.add(inst, { ...existing, description: description2 });
     }
   ];
   ch._zod.check = () => {
@@ -57692,29 +58493,29 @@ var formatMap = {
   // do not set
 };
 var stringProcessor = (schema, ctx, _json, _params) => {
-  const json2 = _json;
-  json2.type = "string";
+  const json3 = _json;
+  json3.type = "string";
   const { minimum, maximum, format, patterns, contentEncoding } = schema._zod.bag;
   if (typeof minimum === "number")
-    json2.minLength = minimum;
+    json3.minLength = minimum;
   if (typeof maximum === "number")
-    json2.maxLength = maximum;
+    json3.maxLength = maximum;
   if (format) {
-    json2.format = formatMap[format] ?? format;
-    if (json2.format === "")
-      delete json2.format;
+    json3.format = formatMap[format] ?? format;
+    if (json3.format === "")
+      delete json3.format;
     if (format === "time") {
-      delete json2.format;
+      delete json3.format;
     }
   }
   if (contentEncoding)
-    json2.contentEncoding = contentEncoding;
+    json3.contentEncoding = contentEncoding;
   if (patterns && patterns.size > 0) {
     const regexes = [...patterns];
     if (regexes.length === 1)
-      json2.pattern = regexes[0].source;
+      json3.pattern = regexes[0].source;
     else if (regexes.length > 1) {
-      json2.allOf = [
+      json3.allOf = [
         ...regexes.map((regex) => ({
           ...ctx.target === "draft-07" || ctx.target === "draft-04" || ctx.target === "openapi-3.0" ? { type: "string" } : {},
           pattern: regex.source
@@ -57724,40 +58525,40 @@ var stringProcessor = (schema, ctx, _json, _params) => {
   }
 };
 var numberProcessor = (schema, ctx, _json, _params) => {
-  const json2 = _json;
+  const json3 = _json;
   const { minimum, maximum, format, multipleOf, exclusiveMaximum, exclusiveMinimum } = schema._zod.bag;
   if (typeof format === "string" && format.includes("int"))
-    json2.type = "integer";
+    json3.type = "integer";
   else
-    json2.type = "number";
+    json3.type = "number";
   const exMin = typeof exclusiveMinimum === "number" && exclusiveMinimum >= (minimum ?? Number.NEGATIVE_INFINITY);
   const exMax = typeof exclusiveMaximum === "number" && exclusiveMaximum <= (maximum ?? Number.POSITIVE_INFINITY);
   const legacy = ctx.target === "draft-04" || ctx.target === "openapi-3.0";
   if (exMin) {
     if (legacy) {
-      json2.minimum = exclusiveMinimum;
-      json2.exclusiveMinimum = true;
+      json3.minimum = exclusiveMinimum;
+      json3.exclusiveMinimum = true;
     } else {
-      json2.exclusiveMinimum = exclusiveMinimum;
+      json3.exclusiveMinimum = exclusiveMinimum;
     }
   } else if (typeof minimum === "number") {
-    json2.minimum = minimum;
+    json3.minimum = minimum;
   }
   if (exMax) {
     if (legacy) {
-      json2.maximum = exclusiveMaximum;
-      json2.exclusiveMaximum = true;
+      json3.maximum = exclusiveMaximum;
+      json3.exclusiveMaximum = true;
     } else {
-      json2.exclusiveMaximum = exclusiveMaximum;
+      json3.exclusiveMaximum = exclusiveMaximum;
     }
   } else if (typeof maximum === "number") {
-    json2.maximum = maximum;
+    json3.maximum = maximum;
   }
   if (typeof multipleOf === "number")
-    json2.multipleOf = multipleOf;
+    json3.multipleOf = multipleOf;
 };
-var booleanProcessor = (_schema, _ctx, json2, _params) => {
-  json2.type = "boolean";
+var booleanProcessor = (_schema, _ctx, json3, _params) => {
+  json3.type = "boolean";
 };
 var bigintProcessor = (_schema, ctx, _json, _params) => {
   if (ctx.unrepresentable === "throw") {
@@ -57769,13 +58570,13 @@ var symbolProcessor = (_schema, ctx, _json, _params) => {
     throw new Error("Symbols cannot be represented in JSON Schema");
   }
 };
-var nullProcessor = (_schema, ctx, json2, _params) => {
+var nullProcessor = (_schema, ctx, json3, _params) => {
   if (ctx.target === "openapi-3.0") {
-    json2.type = "string";
-    json2.nullable = true;
-    json2.enum = [null];
+    json3.type = "string";
+    json3.nullable = true;
+    json3.enum = [null];
   } else {
-    json2.type = "null";
+    json3.type = "null";
   }
 };
 var undefinedProcessor = (_schema, ctx, _json, _params) => {
@@ -57788,8 +58589,8 @@ var voidProcessor = (_schema, ctx, _json, _params) => {
     throw new Error("Void cannot be represented in JSON Schema");
   }
 };
-var neverProcessor = (_schema, _ctx, json2, _params) => {
-  json2.not = {};
+var neverProcessor = (_schema, _ctx, json3, _params) => {
+  json3.not = {};
 };
 var anyProcessor = (_schema, _ctx, _json, _params) => {
 };
@@ -57800,16 +58601,16 @@ var dateProcessor = (_schema, ctx, _json, _params) => {
     throw new Error("Date cannot be represented in JSON Schema");
   }
 };
-var enumProcessor = (schema, _ctx, json2, _params) => {
+var enumProcessor = (schema, _ctx, json3, _params) => {
   const def = schema._zod.def;
   const values = getEnumValues(def.entries);
   if (values.every((v) => typeof v === "number"))
-    json2.type = "number";
+    json3.type = "number";
   if (values.every((v) => typeof v === "string"))
-    json2.type = "string";
-  json2.enum = values;
+    json3.type = "string";
+  json3.enum = values;
 };
-var literalProcessor = (schema, ctx, json2, _params) => {
+var literalProcessor = (schema, ctx, json3, _params) => {
   const def = schema._zod.def;
   const vals = [];
   for (const val of def.values) {
@@ -57831,22 +58632,22 @@ var literalProcessor = (schema, ctx, json2, _params) => {
   if (vals.length === 0) {
   } else if (vals.length === 1) {
     const val = vals[0];
-    json2.type = val === null ? "null" : typeof val;
+    json3.type = val === null ? "null" : typeof val;
     if (ctx.target === "draft-04" || ctx.target === "openapi-3.0") {
-      json2.enum = [val];
+      json3.enum = [val];
     } else {
-      json2.const = val;
+      json3.const = val;
     }
   } else {
     if (vals.every((v) => typeof v === "number"))
-      json2.type = "number";
+      json3.type = "number";
     if (vals.every((v) => typeof v === "string"))
-      json2.type = "string";
+      json3.type = "string";
     if (vals.every((v) => typeof v === "boolean"))
-      json2.type = "boolean";
+      json3.type = "boolean";
     if (vals.every((v) => v === null))
-      json2.type = "null";
-    json2.enum = vals;
+      json3.type = "null";
+    json3.enum = vals;
   }
 };
 var nanProcessor = (_schema, ctx, _json, _params) => {
@@ -57854,16 +58655,16 @@ var nanProcessor = (_schema, ctx, _json, _params) => {
     throw new Error("NaN cannot be represented in JSON Schema");
   }
 };
-var templateLiteralProcessor = (schema, _ctx, json2, _params) => {
-  const _json = json2;
+var templateLiteralProcessor = (schema, _ctx, json3, _params) => {
+  const _json = json3;
   const pattern = schema._zod.pattern;
   if (!pattern)
     throw new Error("Pattern not found in template literal");
   _json.type = "string";
   _json.pattern = pattern.source;
 };
-var fileProcessor = (schema, _ctx, json2, _params) => {
-  const _json = json2;
+var fileProcessor = (schema, _ctx, json3, _params) => {
+  const _json = json3;
   const file2 = {
     type: "string",
     format: "binary",
@@ -57886,8 +58687,8 @@ var fileProcessor = (schema, _ctx, json2, _params) => {
     Object.assign(_json, file2);
   }
 };
-var successProcessor = (_schema, _ctx, json2, _params) => {
-  json2.type = "boolean";
+var successProcessor = (_schema, _ctx, json3, _params) => {
+  json3.type = "boolean";
 };
 var customProcessor = (_schema, ctx, _json, _params) => {
   if (ctx.unrepresentable === "throw") {
@@ -57915,27 +58716,27 @@ var setProcessor = (_schema, ctx, _json, _params) => {
   }
 };
 var arrayProcessor = (schema, ctx, _json, params) => {
-  const json2 = _json;
+  const json3 = _json;
   const def = schema._zod.def;
   const { minimum, maximum } = schema._zod.bag;
   if (typeof minimum === "number")
-    json2.minItems = minimum;
+    json3.minItems = minimum;
   if (typeof maximum === "number")
-    json2.maxItems = maximum;
-  json2.type = "array";
-  json2.items = process2(def.element, ctx, {
+    json3.maxItems = maximum;
+  json3.type = "array";
+  json3.items = process2(def.element, ctx, {
     ...params,
     path: [...params.path, "items"]
   });
 };
 var objectProcessor = (schema, ctx, _json, params) => {
-  const json2 = _json;
+  const json3 = _json;
   const def = schema._zod.def;
-  json2.type = "object";
-  json2.properties = {};
+  json3.type = "object";
+  json3.properties = {};
   const shape = def.shape;
   for (const key in shape) {
-    json2.properties[key] = process2(shape[key], ctx, {
+    json3.properties[key] = process2(shape[key], ctx, {
       ...params,
       path: [...params.path, "properties", key]
     });
@@ -57950,21 +58751,21 @@ var objectProcessor = (schema, ctx, _json, params) => {
     }
   }));
   if (requiredKeys.size > 0) {
-    json2.required = Array.from(requiredKeys);
+    json3.required = Array.from(requiredKeys);
   }
   if (def.catchall?._zod.def.type === "never") {
-    json2.additionalProperties = false;
+    json3.additionalProperties = false;
   } else if (!def.catchall) {
     if (ctx.io === "output")
-      json2.additionalProperties = false;
+      json3.additionalProperties = false;
   } else if (def.catchall) {
-    json2.additionalProperties = process2(def.catchall, ctx, {
+    json3.additionalProperties = process2(def.catchall, ctx, {
       ...params,
       path: [...params.path, "additionalProperties"]
     });
   }
 };
-var unionProcessor = (schema, ctx, json2, params) => {
+var unionProcessor = (schema, ctx, json3, params) => {
   const def = schema._zod.def;
   const isExclusive = def.inclusive === false;
   const options = def.options.map((x, i) => process2(x, ctx, {
@@ -57972,12 +58773,12 @@ var unionProcessor = (schema, ctx, json2, params) => {
     path: [...params.path, isExclusive ? "oneOf" : "anyOf", i]
   }));
   if (isExclusive) {
-    json2.oneOf = options;
+    json3.oneOf = options;
   } else {
-    json2.anyOf = options;
+    json3.anyOf = options;
   }
 };
-var intersectionProcessor = (schema, ctx, json2, params) => {
+var intersectionProcessor = (schema, ctx, json3, params) => {
   const def = schema._zod.def;
   const a = process2(def.left, ctx, {
     ...params,
@@ -57992,12 +58793,12 @@ var intersectionProcessor = (schema, ctx, json2, params) => {
     ...isSimpleIntersection(a) ? a.allOf : [a],
     ...isSimpleIntersection(b) ? b.allOf : [b]
   ];
-  json2.allOf = allOf;
+  json3.allOf = allOf;
 };
 var tupleProcessor = (schema, ctx, _json, params) => {
-  const json2 = _json;
+  const json3 = _json;
   const def = schema._zod.def;
-  json2.type = "array";
+  json3.type = "array";
   const prefixPath = ctx.target === "draft-2020-12" ? "prefixItems" : "items";
   const restPath = ctx.target === "draft-2020-12" ? "items" : ctx.target === "openapi-3.0" ? "items" : "additionalItems";
   const prefixItems = def.items.map((x, i) => process2(x, ctx, {
@@ -58009,37 +58810,37 @@ var tupleProcessor = (schema, ctx, _json, params) => {
     path: [...params.path, restPath, ...ctx.target === "openapi-3.0" ? [def.items.length] : []]
   }) : null;
   if (ctx.target === "draft-2020-12") {
-    json2.prefixItems = prefixItems;
+    json3.prefixItems = prefixItems;
     if (rest) {
-      json2.items = rest;
+      json3.items = rest;
     }
   } else if (ctx.target === "openapi-3.0") {
-    json2.items = {
+    json3.items = {
       anyOf: prefixItems
     };
     if (rest) {
-      json2.items.anyOf.push(rest);
+      json3.items.anyOf.push(rest);
     }
-    json2.minItems = prefixItems.length;
+    json3.minItems = prefixItems.length;
     if (!rest) {
-      json2.maxItems = prefixItems.length;
+      json3.maxItems = prefixItems.length;
     }
   } else {
-    json2.items = prefixItems;
+    json3.items = prefixItems;
     if (rest) {
-      json2.additionalItems = rest;
+      json3.additionalItems = rest;
     }
   }
   const { minimum, maximum } = schema._zod.bag;
   if (typeof minimum === "number")
-    json2.minItems = minimum;
+    json3.minItems = minimum;
   if (typeof maximum === "number")
-    json2.maxItems = maximum;
+    json3.maxItems = maximum;
 };
 var recordProcessor = (schema, ctx, _json, params) => {
-  const json2 = _json;
+  const json3 = _json;
   const def = schema._zod.def;
-  json2.type = "object";
+  json3.type = "object";
   const keyType = def.keyType;
   const keyBag = keyType._zod.bag;
   const patterns = keyBag?.patterns;
@@ -58048,18 +58849,18 @@ var recordProcessor = (schema, ctx, _json, params) => {
       ...params,
       path: [...params.path, "patternProperties", "*"]
     });
-    json2.patternProperties = {};
+    json3.patternProperties = {};
     for (const pattern of patterns) {
-      json2.patternProperties[pattern.source] = valueSchema;
+      json3.patternProperties[pattern.source] = valueSchema;
     }
   } else {
     if (ctx.target === "draft-07" || ctx.target === "draft-2020-12") {
-      json2.propertyNames = process2(def.keyType, ctx, {
+      json3.propertyNames = process2(def.keyType, ctx, {
         ...params,
         path: [...params.path, "propertyNames"]
       });
     }
-    json2.additionalProperties = process2(def.valueType, ctx, {
+    json3.additionalProperties = process2(def.valueType, ctx, {
       ...params,
       path: [...params.path, "additionalProperties"]
     });
@@ -58068,19 +58869,19 @@ var recordProcessor = (schema, ctx, _json, params) => {
   if (keyValues) {
     const validKeyValues = [...keyValues].filter((v) => typeof v === "string" || typeof v === "number");
     if (validKeyValues.length > 0) {
-      json2.required = validKeyValues;
+      json3.required = validKeyValues;
     }
   }
 };
-var nullableProcessor = (schema, ctx, json2, params) => {
+var nullableProcessor = (schema, ctx, json3, params) => {
   const def = schema._zod.def;
   const inner = process2(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   if (ctx.target === "openapi-3.0") {
     seen.ref = def.innerType;
-    json2.nullable = true;
+    json3.nullable = true;
   } else {
-    json2.anyOf = [inner, { type: "null" }];
+    json3.anyOf = [inner, { type: "null" }];
   }
 };
 var nonoptionalProcessor = (schema, ctx, _json, params) => {
@@ -58089,22 +58890,22 @@ var nonoptionalProcessor = (schema, ctx, _json, params) => {
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
 };
-var defaultProcessor = (schema, ctx, json2, params) => {
+var defaultProcessor = (schema, ctx, json3, params) => {
   const def = schema._zod.def;
   process2(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
-  json2.default = JSON.parse(JSON.stringify(def.defaultValue));
+  json3.default = JSON.parse(JSON.stringify(def.defaultValue));
 };
-var prefaultProcessor = (schema, ctx, json2, params) => {
+var prefaultProcessor = (schema, ctx, json3, params) => {
   const def = schema._zod.def;
   process2(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
   if (ctx.io === "input")
-    json2._prefault = JSON.parse(JSON.stringify(def.defaultValue));
+    json3._prefault = JSON.parse(JSON.stringify(def.defaultValue));
 };
-var catchProcessor = (schema, ctx, json2, params) => {
+var catchProcessor = (schema, ctx, json3, params) => {
   const def = schema._zod.def;
   process2(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
@@ -58115,7 +58916,7 @@ var catchProcessor = (schema, ctx, json2, params) => {
   } catch {
     throw new Error("Dynamic catch values are not supported in JSON Schema");
   }
-  json2.default = catchValue;
+  json3.default = catchValue;
 };
 var pipeProcessor = (schema, ctx, _json, params) => {
   const def = schema._zod.def;
@@ -58125,12 +58926,12 @@ var pipeProcessor = (schema, ctx, _json, params) => {
   const seen = ctx.seen.get(schema);
   seen.ref = innerType;
 };
-var readonlyProcessor = (schema, ctx, json2, params) => {
+var readonlyProcessor = (schema, ctx, json3, params) => {
   const def = schema._zod.def;
   process2(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
-  json2.readOnly = true;
+  json3.readOnly = true;
 };
 var promiseProcessor = (schema, ctx, _json, params) => {
   const def = schema._zod.def;
@@ -58741,9 +59542,9 @@ var ZodType2 = /* @__PURE__ */ $constructor("ZodType", (inst, def) => {
     readonly() {
       return readonly(this);
     },
-    describe(description) {
+    describe(description2) {
       const cl = this.clone();
-      globalRegistry.add(cl, { description });
+      globalRegistry.add(cl, { description: description2 });
       return cl;
     },
     meta(...args) {
@@ -58774,7 +59575,7 @@ var ZodType2 = /* @__PURE__ */ $constructor("ZodType", (inst, def) => {
 var _ZodString = /* @__PURE__ */ $constructor("_ZodString", (inst, def) => {
   $ZodString.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => stringProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => stringProcessor(inst, ctx, json3, params);
   const bag = inst._zod.bag;
   inst.format = bag.format ?? null;
   inst.minLength = bag.minimum ?? null;
@@ -59045,7 +59846,7 @@ function hash(alg, params) {
 var ZodNumber2 = /* @__PURE__ */ $constructor("ZodNumber", (inst, def) => {
   $ZodNumber.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => numberProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => numberProcessor(inst, ctx, json3, params);
   _installLazyMethods(inst, "ZodNumber", {
     gt(value, params) {
       return this.check(_gt(value, params));
@@ -59125,7 +59926,7 @@ function uint32(params) {
 var ZodBoolean2 = /* @__PURE__ */ $constructor("ZodBoolean", (inst, def) => {
   $ZodBoolean.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => booleanProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => booleanProcessor(inst, ctx, json3, params);
 });
 function boolean2(params) {
   return _boolean(ZodBoolean2, params);
@@ -59133,7 +59934,7 @@ function boolean2(params) {
 var ZodBigInt2 = /* @__PURE__ */ $constructor("ZodBigInt", (inst, def) => {
   $ZodBigInt.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => bigintProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => bigintProcessor(inst, ctx, json3, params);
   inst.gte = (value, params) => inst.check(_gte(value, params));
   inst.min = (value, params) => inst.check(_gte(value, params));
   inst.gt = (value, params) => inst.check(_gt(value, params));
@@ -59168,7 +59969,7 @@ function uint64(params) {
 var ZodSymbol2 = /* @__PURE__ */ $constructor("ZodSymbol", (inst, def) => {
   $ZodSymbol.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => symbolProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => symbolProcessor(inst, ctx, json3, params);
 });
 function symbol(params) {
   return _symbol(ZodSymbol2, params);
@@ -59176,7 +59977,7 @@ function symbol(params) {
 var ZodUndefined2 = /* @__PURE__ */ $constructor("ZodUndefined", (inst, def) => {
   $ZodUndefined.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => undefinedProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => undefinedProcessor(inst, ctx, json3, params);
 });
 function _undefined3(params) {
   return _undefined2(ZodUndefined2, params);
@@ -59184,7 +59985,7 @@ function _undefined3(params) {
 var ZodNull2 = /* @__PURE__ */ $constructor("ZodNull", (inst, def) => {
   $ZodNull.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => nullProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => nullProcessor(inst, ctx, json3, params);
 });
 function _null3(params) {
   return _null2(ZodNull2, params);
@@ -59192,7 +59993,7 @@ function _null3(params) {
 var ZodAny2 = /* @__PURE__ */ $constructor("ZodAny", (inst, def) => {
   $ZodAny.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => anyProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => anyProcessor(inst, ctx, json3, params);
 });
 function any() {
   return _any(ZodAny2);
@@ -59200,7 +60001,7 @@ function any() {
 var ZodUnknown2 = /* @__PURE__ */ $constructor("ZodUnknown", (inst, def) => {
   $ZodUnknown.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => unknownProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => unknownProcessor(inst, ctx, json3, params);
 });
 function unknown() {
   return _unknown(ZodUnknown2);
@@ -59208,7 +60009,7 @@ function unknown() {
 var ZodNever2 = /* @__PURE__ */ $constructor("ZodNever", (inst, def) => {
   $ZodNever.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => neverProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => neverProcessor(inst, ctx, json3, params);
 });
 function never(params) {
   return _never(ZodNever2, params);
@@ -59216,7 +60017,7 @@ function never(params) {
 var ZodVoid2 = /* @__PURE__ */ $constructor("ZodVoid", (inst, def) => {
   $ZodVoid.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => voidProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => voidProcessor(inst, ctx, json3, params);
 });
 function _void2(params) {
   return _void(ZodVoid2, params);
@@ -59224,7 +60025,7 @@ function _void2(params) {
 var ZodDate2 = /* @__PURE__ */ $constructor("ZodDate", (inst, def) => {
   $ZodDate.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => dateProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => dateProcessor(inst, ctx, json3, params);
   inst.min = (value, params) => inst.check(_gte(value, params));
   inst.max = (value, params) => inst.check(_lte(value, params));
   const c = inst._zod.bag;
@@ -59237,7 +60038,7 @@ function date3(params) {
 var ZodArray2 = /* @__PURE__ */ $constructor("ZodArray", (inst, def) => {
   $ZodArray.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => arrayProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => arrayProcessor(inst, ctx, json3, params);
   inst.element = def.element;
   _installLazyMethods(inst, "ZodArray", {
     min(n, params) {
@@ -59267,7 +60068,7 @@ function keyof(schema) {
 var ZodObject2 = /* @__PURE__ */ $constructor("ZodObject", (inst, def) => {
   $ZodObjectJIT.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => objectProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => objectProcessor(inst, ctx, json3, params);
   util_exports.defineLazy(inst, "shape", () => {
     return def.shape;
   });
@@ -59340,7 +60141,7 @@ function looseObject(shape, params) {
 var ZodUnion2 = /* @__PURE__ */ $constructor("ZodUnion", (inst, def) => {
   $ZodUnion.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => unionProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => unionProcessor(inst, ctx, json3, params);
   inst.options = def.options;
 });
 function union(options, params) {
@@ -59353,7 +60154,7 @@ function union(options, params) {
 var ZodXor = /* @__PURE__ */ $constructor("ZodXor", (inst, def) => {
   ZodUnion2.init(inst, def);
   $ZodXor.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => unionProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => unionProcessor(inst, ctx, json3, params);
   inst.options = def.options;
 });
 function xor(options, params) {
@@ -59379,7 +60180,7 @@ function discriminatedUnion(discriminator, options, params) {
 var ZodIntersection2 = /* @__PURE__ */ $constructor("ZodIntersection", (inst, def) => {
   $ZodIntersection.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => intersectionProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => intersectionProcessor(inst, ctx, json3, params);
 });
 function intersection(left, right) {
   return new ZodIntersection2({
@@ -59391,7 +60192,7 @@ function intersection(left, right) {
 var ZodTuple2 = /* @__PURE__ */ $constructor("ZodTuple", (inst, def) => {
   $ZodTuple.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => tupleProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => tupleProcessor(inst, ctx, json3, params);
   inst.rest = (rest) => inst.clone({
     ...inst._zod.def,
     rest
@@ -59411,7 +60212,7 @@ function tuple(items, _paramsOrRest, _params) {
 var ZodRecord2 = /* @__PURE__ */ $constructor("ZodRecord", (inst, def) => {
   $ZodRecord.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => recordProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => recordProcessor(inst, ctx, json3, params);
   inst.keyType = def.keyType;
   inst.valueType = def.valueType;
 });
@@ -59453,7 +60254,7 @@ function looseRecord(keyType, valueType, params) {
 var ZodMap2 = /* @__PURE__ */ $constructor("ZodMap", (inst, def) => {
   $ZodMap.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => mapProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => mapProcessor(inst, ctx, json3, params);
   inst.keyType = def.keyType;
   inst.valueType = def.valueType;
   inst.min = (...args) => inst.check(_minSize(...args));
@@ -59472,7 +60273,7 @@ function map(keyType, valueType, params) {
 var ZodSet2 = /* @__PURE__ */ $constructor("ZodSet", (inst, def) => {
   $ZodSet.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => setProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => setProcessor(inst, ctx, json3, params);
   inst.min = (...args) => inst.check(_minSize(...args));
   inst.nonempty = (params) => inst.check(_minSize(1, params));
   inst.max = (...args) => inst.check(_maxSize(...args));
@@ -59488,7 +60289,7 @@ function set(valueType, params) {
 var ZodEnum2 = /* @__PURE__ */ $constructor("ZodEnum", (inst, def) => {
   $ZodEnum.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => enumProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => enumProcessor(inst, ctx, json3, params);
   inst.enum = def.entries;
   inst.options = Object.values(def.entries);
   const keys = new Set(Object.keys(def.entries));
@@ -59541,7 +60342,7 @@ function nativeEnum(entries, params) {
 var ZodLiteral2 = /* @__PURE__ */ $constructor("ZodLiteral", (inst, def) => {
   $ZodLiteral.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => literalProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => literalProcessor(inst, ctx, json3, params);
   inst.values = new Set(def.values);
   Object.defineProperty(inst, "value", {
     get() {
@@ -59562,7 +60363,7 @@ function literal(value, params) {
 var ZodFile = /* @__PURE__ */ $constructor("ZodFile", (inst, def) => {
   $ZodFile.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => fileProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => fileProcessor(inst, ctx, json3, params);
   inst.min = (size, params) => inst.check(_minSize(size, params));
   inst.max = (size, params) => inst.check(_maxSize(size, params));
   inst.mime = (types, params) => inst.check(_mime(Array.isArray(types) ? types : [types], params));
@@ -59573,7 +60374,7 @@ function file(params) {
 var ZodTransform = /* @__PURE__ */ $constructor("ZodTransform", (inst, def) => {
   $ZodTransform.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => transformProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => transformProcessor(inst, ctx, json3, params);
   inst._zod.parse = (payload, _ctx) => {
     if (_ctx.direction === "backward") {
       throw new $ZodEncodeError(inst.constructor.name);
@@ -59613,7 +60414,7 @@ function transform(fn) {
 var ZodOptional2 = /* @__PURE__ */ $constructor("ZodOptional", (inst, def) => {
   $ZodOptional.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => optionalProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => optionalProcessor(inst, ctx, json3, params);
   inst.unwrap = () => inst._zod.def.innerType;
 });
 function optional(innerType) {
@@ -59625,7 +60426,7 @@ function optional(innerType) {
 var ZodExactOptional = /* @__PURE__ */ $constructor("ZodExactOptional", (inst, def) => {
   $ZodExactOptional.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => optionalProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => optionalProcessor(inst, ctx, json3, params);
   inst.unwrap = () => inst._zod.def.innerType;
 });
 function exactOptional(innerType) {
@@ -59637,7 +60438,7 @@ function exactOptional(innerType) {
 var ZodNullable2 = /* @__PURE__ */ $constructor("ZodNullable", (inst, def) => {
   $ZodNullable.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => nullableProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => nullableProcessor(inst, ctx, json3, params);
   inst.unwrap = () => inst._zod.def.innerType;
 });
 function nullable(innerType) {
@@ -59652,7 +60453,7 @@ function nullish2(innerType) {
 var ZodDefault2 = /* @__PURE__ */ $constructor("ZodDefault", (inst, def) => {
   $ZodDefault.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => defaultProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => defaultProcessor(inst, ctx, json3, params);
   inst.unwrap = () => inst._zod.def.innerType;
   inst.removeDefault = inst.unwrap;
 });
@@ -59668,7 +60469,7 @@ function _default2(innerType, defaultValue) {
 var ZodPrefault = /* @__PURE__ */ $constructor("ZodPrefault", (inst, def) => {
   $ZodPrefault.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => prefaultProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => prefaultProcessor(inst, ctx, json3, params);
   inst.unwrap = () => inst._zod.def.innerType;
 });
 function prefault(innerType, defaultValue) {
@@ -59683,7 +60484,7 @@ function prefault(innerType, defaultValue) {
 var ZodNonOptional = /* @__PURE__ */ $constructor("ZodNonOptional", (inst, def) => {
   $ZodNonOptional.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => nonoptionalProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => nonoptionalProcessor(inst, ctx, json3, params);
   inst.unwrap = () => inst._zod.def.innerType;
 });
 function nonoptional(innerType, params) {
@@ -59696,7 +60497,7 @@ function nonoptional(innerType, params) {
 var ZodSuccess = /* @__PURE__ */ $constructor("ZodSuccess", (inst, def) => {
   $ZodSuccess.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => successProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => successProcessor(inst, ctx, json3, params);
   inst.unwrap = () => inst._zod.def.innerType;
 });
 function success(innerType) {
@@ -59708,7 +60509,7 @@ function success(innerType) {
 var ZodCatch2 = /* @__PURE__ */ $constructor("ZodCatch", (inst, def) => {
   $ZodCatch.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => catchProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => catchProcessor(inst, ctx, json3, params);
   inst.unwrap = () => inst._zod.def.innerType;
   inst.removeCatch = inst.unwrap;
 });
@@ -59722,7 +60523,7 @@ function _catch2(innerType, catchValue) {
 var ZodNaN2 = /* @__PURE__ */ $constructor("ZodNaN", (inst, def) => {
   $ZodNaN.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => nanProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => nanProcessor(inst, ctx, json3, params);
 });
 function nan(params) {
   return _nan(ZodNaN2, params);
@@ -59730,7 +60531,7 @@ function nan(params) {
 var ZodPipe = /* @__PURE__ */ $constructor("ZodPipe", (inst, def) => {
   $ZodPipe.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => pipeProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => pipeProcessor(inst, ctx, json3, params);
   inst.in = def.in;
   inst.out = def.out;
 });
@@ -59772,7 +60573,7 @@ var ZodPreprocess = /* @__PURE__ */ $constructor("ZodPreprocess", (inst, def) =>
 var ZodReadonly2 = /* @__PURE__ */ $constructor("ZodReadonly", (inst, def) => {
   $ZodReadonly.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => readonlyProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => readonlyProcessor(inst, ctx, json3, params);
   inst.unwrap = () => inst._zod.def.innerType;
 });
 function readonly(innerType) {
@@ -59784,7 +60585,7 @@ function readonly(innerType) {
 var ZodTemplateLiteral = /* @__PURE__ */ $constructor("ZodTemplateLiteral", (inst, def) => {
   $ZodTemplateLiteral.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => templateLiteralProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => templateLiteralProcessor(inst, ctx, json3, params);
 });
 function templateLiteral(parts, params) {
   return new ZodTemplateLiteral({
@@ -59796,7 +60597,7 @@ function templateLiteral(parts, params) {
 var ZodLazy2 = /* @__PURE__ */ $constructor("ZodLazy", (inst, def) => {
   $ZodLazy.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => lazyProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => lazyProcessor(inst, ctx, json3, params);
   inst.unwrap = () => inst._zod.def.getter();
 });
 function lazy(getter) {
@@ -59808,7 +60609,7 @@ function lazy(getter) {
 var ZodPromise2 = /* @__PURE__ */ $constructor("ZodPromise", (inst, def) => {
   $ZodPromise.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => promiseProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => promiseProcessor(inst, ctx, json3, params);
   inst.unwrap = () => inst._zod.def.innerType;
 });
 function promise(innerType) {
@@ -59820,7 +60621,7 @@ function promise(innerType) {
 var ZodFunction2 = /* @__PURE__ */ $constructor("ZodFunction", (inst, def) => {
   $ZodFunction.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => functionProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => functionProcessor(inst, ctx, json3, params);
 });
 function _function(params) {
   return new ZodFunction2({
@@ -59832,7 +60633,7 @@ function _function(params) {
 var ZodCustom = /* @__PURE__ */ $constructor("ZodCustom", (inst, def) => {
   $ZodCustom.init(inst, def);
   ZodType2.init(inst, def);
-  inst._zod.processJSONSchema = (ctx, json2, params) => customProcessor(inst, ctx, json2, params);
+  inst._zod.processJSONSchema = (ctx, json3, params) => customProcessor(inst, ctx, json3, params);
 });
 function check(fn) {
   const ch = new $ZodCheck({
@@ -60454,7 +61255,7 @@ function compileJsonSchema(kind, schema) {
     if (validate(value)) return [];
     return (validate.errors ?? []).map((raw) => {
       const error51 = raw;
-      const path = (error51.instancePath ?? "").split("/").filter(Boolean).map((segment) => segment.replace(/~1/gu, "/").replace(/~0/gu, "~"));
+      const path = (error51.instancePath ?? "").split("/").filter(Boolean).map((segment2) => segment2.replace(/~1/gu, "/").replace(/~0/gu, "~"));
       if (error51.keyword === "required" && error51.params?.missingProperty) {
         path.push(error51.params.missingProperty);
       }
@@ -60617,10 +61418,10 @@ async function applyProductionMetadataProjection(options) {
     options.assetsPath ?? (0, import_node_path19.join)("assets", "manifest.json"),
     "asset manifest"
   );
-  const projectId = (await resolveProjectContext({ cwd })).projectId;
+  const projectId2 = (await resolveProjectContext({ cwd })).projectId;
   const metadataManifest = await readAssetMetadataManifest(
     metadataManifestPath,
-    projectId
+    projectId2
   );
   if (metadataManifest.metadataPath !== toProjectPath(cwd, metadataPath)) {
     throw new Error(
@@ -60715,11 +61516,11 @@ async function applyProductionMetadataProjection(options) {
   };
 }
 function safeProjectionFileSegment(value, label) {
-  const segment = value.trim();
-  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(segment) || segment === "." || segment === "..") {
+  const segment2 = value.trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(segment2) || segment2 === "." || segment2 === "..") {
     throw new Error(`${label} must be safe for projection file names`);
   }
-  return segment;
+  return segment2;
 }
 function assetMetadataManifestPath(cwd, metadataPath) {
   const extension = (0, import_node_path19.extname)(metadataPath);
@@ -60815,8 +61616,8 @@ function stableJson2(value) {
     return `[${value.map((item) => item === void 0 ? "null" : stableJson2(item)).join(",")}]`;
   }
   if (value && typeof value === "object") {
-    const record2 = value;
-    const keys = Object.keys(record2).filter((key) => record2[key] !== void 0).sort();
+    const record3 = value;
+    const keys = Object.keys(record3).filter((key) => record3[key] !== void 0).sort();
     return `{${keys.map((key) => `${JSON.stringify(key)}:${stableJson2(value[key])}`).join(",")}}`;
   }
   return JSON.stringify(value) ?? "null";
@@ -60847,7 +61648,7 @@ async function reportAssetMetadataIndex(input) {
 }
 async function attachAssetMetadata(options) {
   await loadWorkspaceMetadataKinds(options.cwd);
-  const projectId = (await resolveProjectContext({ cwd: options.cwd })).projectId;
+  const projectId2 = (await resolveProjectContext({ cwd: options.cwd })).projectId;
   const dataDir = options.dataDir ?? defaultLocalApiDataDir();
   const bodyHashField = options.bodyHashField ?? "bodyHash";
   let metadata = {
@@ -60869,7 +61670,7 @@ async function attachAssetMetadata(options) {
   const actionId = `attach-${(0, import_node_crypto10.randomUUID)()}`;
   const target = {
     kind: "project-asset",
-    projectId,
+    projectId: projectId2,
     assetId: options.assetId
   };
   const result = await applyProductionMetadataAction({
@@ -60946,7 +61747,7 @@ var assetMetadataCommand = new Command("metadata").description(
   "Read and attach declared metadata on an asset"
 );
 async function readJsonArgument(value) {
-  const contents = value === "-" ? (0, import_node_fs5.readFileSync)(0, "utf8") : await (0, import_promises15.readFile)(value, "utf8");
+  const contents = value === "-" ? (0, import_node_fs6.readFileSync)(0, "utf8") : await (0, import_promises15.readFile)(value, "utf8");
   return JSON.parse(contents);
 }
 async function readAssetManifest(cwd, assetsPath) {
@@ -61164,7 +61965,7 @@ var import_node_os2 = require("node:os");
 var import_node_path23 = require("node:path");
 
 // ../../packages/cli/src/lib/product-replication-state.ts
-var import_node_fs6 = require("node:fs");
+var import_node_fs7 = require("node:fs");
 var import_node_module2 = require("node:module");
 var import_node_path22 = require("node:path");
 var import_yaml3 = __toESM(require_dist());
@@ -61173,9 +61974,9 @@ function readProductReplicationState(options) {
   const fallback = syncStateFromEnv(options.env ?? {});
   if (fallback.mode === "cloud-sync") return fallback;
   const configPath = (0, import_node_path22.join)(options.localApiDataDir, "..", "config.yaml");
-  if ((0, import_node_fs6.existsSync)(configPath)) {
+  if ((0, import_node_fs7.existsSync)(configPath)) {
     try {
-      const root = (0, import_yaml3.parse)((0, import_node_fs6.readFileSync)(configPath, "utf8"));
+      const root = (0, import_yaml3.parse)((0, import_node_fs7.readFileSync)(configPath, "utf8"));
       if (!isRecord5(root)) return { mode: "unknown" };
       return syncStateFromStoredConfig(root.sync);
     } catch {
@@ -61183,7 +61984,7 @@ function readProductReplicationState(options) {
     }
   }
   const sqlitePath = (0, import_node_path22.join)(options.localApiDataDir, "local.sqlite");
-  if (!(0, import_node_fs6.existsSync)(sqlitePath)) return fallback;
+  if (!(0, import_node_fs7.existsSync)(sqlitePath)) return fallback;
   let db;
   try {
     const { DatabaseSync } = nodeRequire()("node:sqlite");
@@ -61267,9 +62068,9 @@ function projectRecoveryPolicyHint(policy) {
   }
   return " (cloud conflict review required)";
 }
-async function linkProject(projectId, options = {}) {
+async function linkProject(projectId2, options = {}) {
   const cwd = (0, import_node_path23.resolve)(options.cwd ?? process.cwd());
-  const canonicalProjectId = projectId.trim();
+  const canonicalProjectId = projectId2.trim();
   return writeProjectMarker(cwd, {
     schemaVersion: 1,
     projectId: canonicalProjectId,
@@ -61325,13 +62126,13 @@ var initCommand = new Command("init").description("Initialize a local Clash proj
   }
 });
 var projectsCommand = new Command("projects").alias("project").description("Manage projects");
-projectsCommand.command("link").description("Link this directory to a Clash project").argument("<projectId>", "Project ID").option("--json", "Output as JSON").action(async (projectId, options) => {
-  const markerPath = await linkProject(projectId);
-  const result = { projectId, markerPath };
+projectsCommand.command("link").description("Link this directory to a Clash project").argument("<projectId>", "Project ID").option("--json", "Output as JSON").action(async (projectId2, options) => {
+  const markerPath = await linkProject(projectId2);
+  const result = { projectId: projectId2, markerPath };
   if (isJsonMode(options)) {
     printJson(result);
   } else {
-    console.log(`Linked Clash project: ${projectId}`);
+    console.log(`Linked Clash project: ${projectId2}`);
     console.log(`Marker: ${markerPath}`);
   }
 });
@@ -61446,13 +62247,13 @@ projectsCommand.command("delete").description("Delete a project").requiredOption
     console.log(`Deleted project: ${deletedId}${recoveryHint}${policyHint}`);
   }
 });
-projectsCommand.command("restore").description("Restore a soft-deleted local project").argument("<projectId>", "Project ID").option("--json", "Output as JSON").action(async (projectId, options) => {
+projectsCommand.command("restore").description("Restore a soft-deleted local project").argument("<projectId>", "Project ID").option("--json", "Output as JSON").action(async (projectId2, options) => {
   const observedVersion = await requireAgentObservation({
     entityKind: "project",
-    entityId: projectId
+    entityId: projectId2
   });
   const restored = await apiJson(
-    `/api/v1/projects/${encodeURIComponent(projectId)}/restore`,
+    `/api/v1/projects/${encodeURIComponent(projectId2)}/restore`,
     {
       method: "POST",
       headers: projectWriteHeaders({
@@ -61473,10 +62274,10 @@ projectsCommand.command("restore").description("Restore a soft-deleted local pro
     );
   }
 });
-projectsCommand.command("purge").description("Permanently purge a soft-deleted local project recovery point").argument("<projectId>", "Project ID").option("--yes", "Confirm permanent purge without an interactive prompt").option("--json", "Output as JSON").action(async (projectId, options) => {
+projectsCommand.command("purge").description("Permanently purge a soft-deleted local project recovery point").argument("<projectId>", "Project ID").option("--yes", "Confirm permanent purge without an interactive prompt").option("--json", "Output as JSON").action(async (projectId2, options) => {
   const confirmation = requireDestructiveConfirmation(
     options,
-    `project recovery point ${projectId}`
+    `project recovery point ${projectId2}`
   );
   if (!confirmation.ok) {
     console.error(`Error: ${confirmation.error}`);
@@ -61484,16 +62285,16 @@ projectsCommand.command("purge").description("Permanently purge a soft-deleted l
   }
   const observedVersion = await requireAgentObservation({
     entityKind: "project",
-    entityId: projectId
+    entityId: projectId2
   });
-  const purged = await apiJson(`/api/v1/projects/${encodeURIComponent(projectId)}/purge`, {
+  const purged = await apiJson(`/api/v1/projects/${encodeURIComponent(projectId2)}/purge`, {
     method: "DELETE",
     headers: projectWriteHeaders({
       observedVersion
     }),
     body: JSON.stringify({ confirm: "purge" })
   });
-  await forgetAgentObservation({ entityKind: "project", entityId: projectId });
+  await forgetAgentObservation({ entityKind: "project", entityId: projectId2 });
   if (isJsonMode(options)) {
     printJson(purged);
   } else {
@@ -61543,9 +62344,9 @@ function createAssetLink(options) {
     options.name
   );
   const linkPath = (0, import_node_path24.join)(options.assetLinksRoot, linkName);
-  (0, import_node_fs7.mkdirSync)(options.assetLinksRoot, { recursive: true });
-  if ((0, import_node_fs7.existsSync)(linkPath)) {
-    const existing = (0, import_node_fs7.lstatSync)(linkPath);
+  (0, import_node_fs8.mkdirSync)(options.assetLinksRoot, { recursive: true });
+  if ((0, import_node_fs8.existsSync)(linkPath)) {
+    const existing = (0, import_node_fs8.lstatSync)(linkPath);
     if (existing.isDirectory() && !existing.isSymbolicLink()) {
       throw new Error(`asset link path is a directory: ${linkPath}`);
     }
@@ -61555,13 +62356,13 @@ function createAssetLink(options) {
   }
   let method = "symlink";
   try {
-    (options.createSymlink ?? import_node_fs7.symlinkSync)(options.sourcePath, linkPath);
+    (options.createSymlink ?? import_node_fs8.symlinkSync)(options.sourcePath, linkPath);
   } catch (error51) {
     const code = error51 && typeof error51 === "object" && "code" in error51 ? String(error51.code) : "";
     if (!["EPERM", "EACCES", "ENOTSUP", "EOPNOTSUPP"].includes(code))
       throw error51;
-    (0, import_node_fs7.copyFileSync)(options.sourcePath, linkPath);
-    (0, import_node_fs7.chmodSync)(linkPath, 292);
+    (0, import_node_fs8.copyFileSync)(options.sourcePath, linkPath);
+    (0, import_node_fs8.chmodSync)(linkPath, 292);
     method = "copy";
   }
   return { linkPath, method };
@@ -61599,7 +62400,7 @@ async function importAssetFile(options) {
   let snapshot = projectImports.get(options);
   if (!snapshot) {
     const sourcePath = (0, import_node_path24.resolve)(options.filePath);
-    const info = (0, import_node_fs7.statSync)(sourcePath);
+    const info = (0, import_node_fs8.statSync)(sourcePath);
     if (!info.isFile())
       throw new Error(`asset import source is not a file: ${sourcePath}`);
     const status = await resolveProjectStatus({
@@ -61624,7 +62425,7 @@ async function importAssetFile(options) {
       kind: fileType.kind,
       request: {
         projectId: status.projectId,
-        bytes: new Uint8Array((0, import_node_fs7.readFileSync)(sourcePath)),
+        bytes: new Uint8Array((0, import_node_fs8.readFileSync)(sourcePath)),
         fileName: (0, import_node_path24.basename)(sourcePath),
         contentType: fileType.contentType,
         kind: fileType.kind,
@@ -61750,7 +62551,7 @@ async function importPersonalGlobalAssetFile(options) {
   let snapshot = globalImports.get(options);
   if (!snapshot) {
     const sourcePath = (0, import_node_path24.resolve)(options.filePath);
-    const info = (0, import_node_fs7.statSync)(sourcePath);
+    const info = (0, import_node_fs8.statSync)(sourcePath);
     if (!info.isFile()) {
       throw new Error(
         `Global Asset import source is not a file: ${sourcePath}`
@@ -61768,7 +62569,7 @@ async function importPersonalGlobalAssetFile(options) {
     );
     snapshot = {
       request: {
-        bytes: new Uint8Array((0, import_node_fs7.readFileSync)(sourcePath)),
+        bytes: new Uint8Array((0, import_node_fs8.readFileSync)(sourcePath)),
         fileName: (0, import_node_path24.basename)(sourcePath),
         contentType: fileType.contentType,
         kind: fileType.kind,
@@ -61869,11 +62670,11 @@ function publicAssetResult(result) {
 async function resolveAssetProjectId(project) {
   return (await resolveProjectContext({ project })).projectId;
 }
-function projectAssetObservation(projectId, assetId) {
+function projectAssetObservation(projectId2, assetId) {
   return {
     entityKind: "project-asset",
     entityId: assetId,
-    project: projectId
+    project: projectId2
   };
 }
 function personalGlobalAssetObservation(globalAssetId) {
@@ -61892,9 +62693,9 @@ async function recordPersonalGlobalAssetObservation(globalAssetId, deleteOperati
   }
   await forgetAgentObservation(personalGlobalAssetObservation(globalAssetId));
 }
-async function recordProjectAssetObservation(projectId, assetId, receipt) {
+async function recordProjectAssetObservation(projectId2, assetId, receipt) {
   await recordAgentObservation({
-    ...projectAssetObservation(projectId, assetId),
+    ...projectAssetObservation(projectId2, assetId),
     revision: receipt
   });
 }
@@ -61903,8 +62704,8 @@ assetsCommand.command("list").description("List Project Assets resolved by the c
   "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)"
 ).option("--json", "Output result as JSON").action(async (options) => {
   try {
-    const projectId = await resolveAssetProjectId(options.project);
-    const assets = await listProjectAssetRecords({ projectId });
+    const projectId2 = await resolveAssetProjectId(options.project);
+    const assets = await listProjectAssetRecords({ projectId: projectId2 });
     if (isJsonMode(options)) {
       printJson({ assets });
     } else if (assets.length === 0) {
@@ -61925,11 +62726,11 @@ assetsCommand.command("get").description("Read a Project Asset resolved by the c
 ).option("--json", "Output result as JSON").action(
   async (options) => {
     try {
-      const projectId = await resolveAssetProjectId(options.project);
+      const projectId2 = await resolveAssetProjectId(options.project);
       const result = await fetchProjectAssetRecord({
-        projectId,
+        projectId: projectId2,
         assetId: options.asset,
-        onObservation: (receipt) => recordProjectAssetObservation(projectId, options.asset, receipt)
+        onObservation: (receipt) => recordProjectAssetObservation(projectId2, options.asset, receipt)
       });
       if (isJsonMode(options)) {
         printJson(publicAssetResult(result));
@@ -62044,11 +62845,11 @@ assetsCommand.command("refs").description("Show authoritative Action Asset bindi
 ).option("--json", "Output result as JSON").action(
   async (options) => {
     try {
-      const projectId = await resolveAssetProjectId(options.project);
+      const projectId2 = await resolveAssetProjectId(options.project);
       const result = await fetchProjectAssetReferences({
         assetId: options.asset,
-        projectId,
-        onObservation: (receipt) => recordProjectAssetObservation(projectId, options.asset, receipt)
+        projectId: projectId2,
+        onObservation: (receipt) => recordProjectAssetObservation(projectId2, options.asset, receipt)
       });
       if (isJsonMode(options)) {
         printJson(publicAssetResult(result));
@@ -62073,9 +62874,9 @@ assetsCommand.command("admit").description("Admit a personal Global Asset into t
 ).option("--json", "Output result as JSON").action(
   async (options) => {
     try {
-      const projectId = await resolveAssetProjectId(options.project);
+      const projectId2 = await resolveAssetProjectId(options.project);
       const result = await admitPersonalGlobalAsset({
-        projectId,
+        projectId: projectId2,
         globalAssetId: options.globalAsset
       });
       if (isJsonMode(options)) {
@@ -62097,9 +62898,9 @@ assetsCommand.command("publish").description("Publish a Project Asset to the per
 ).option("--json", "Output result as JSON").action(
   async (options) => {
     try {
-      const projectId = await resolveAssetProjectId(options.project);
+      const projectId2 = await resolveAssetProjectId(options.project);
       const result = await publishProjectAssetToPersonalGlobal({
-        projectId,
+        projectId: projectId2,
         projectAssetId: options.asset
       });
       if (isJsonMode(options)) {
@@ -62121,21 +62922,21 @@ assetsCommand.command("delete").description("Move an unreferenced Project Asset 
 ).option("--yes", "Confirm deletion").option("--json", "Output result as JSON").action(
   async (options) => {
     try {
-      const projectId = await resolveAssetProjectId(options.project);
+      const projectId2 = await resolveAssetProjectId(options.project);
       const confirmation = requireDestructiveConfirmation(
         options,
-        `${projectId}:${options.asset}`
+        `${projectId2}:${options.asset}`
       );
       if (!confirmation.ok) throw new Error(confirmation.error);
       const observedVersion = await requireAgentObservation(
-        projectAssetObservation(projectId, options.asset)
+        projectAssetObservation(projectId2, options.asset)
       );
       const result = await trashProjectAsset({
         assetId: options.asset,
-        projectId,
+        projectId: projectId2,
         actorClientType: isAgentInvocation() ? "agent" : void 0,
         observedVersion,
-        onObservation: (receipt) => recordProjectAssetObservation(projectId, options.asset, receipt)
+        onObservation: (receipt) => recordProjectAssetObservation(projectId2, options.asset, receipt)
       });
       if (isJsonMode(options)) {
         printJson(publicAssetResult(result));
@@ -62154,16 +62955,16 @@ assetsCommand.command("restore").description("Restore a trashed Project Asset du
 ).option("--json", "Output result as JSON").action(
   async (options) => {
     try {
-      const projectId = await resolveAssetProjectId(options.project);
+      const projectId2 = await resolveAssetProjectId(options.project);
       const observedVersion = await requireAgentObservation(
-        projectAssetObservation(projectId, options.asset)
+        projectAssetObservation(projectId2, options.asset)
       );
       const result = await restoreProjectAsset({
         assetId: options.asset,
-        projectId,
+        projectId: projectId2,
         actorClientType: isAgentInvocation() ? "agent" : void 0,
         observedVersion,
-        onObservation: (receipt) => recordProjectAssetObservation(projectId, options.asset, receipt)
+        onObservation: (receipt) => recordProjectAssetObservation(projectId2, options.asset, receipt)
       });
       if (isJsonMode(options)) {
         printJson(publicAssetResult(result));
@@ -62312,13 +63113,13 @@ auditCommand.command("mutations").description("List sanitized local host mutatio
     printJson({ records });
     return;
   }
-  printTable(records.map((record2) => ({
-    createdAt: new Date(record2.createdAt).toISOString(),
-    operation: record2.operation,
-    entity: `${record2.entity.kind}:${record2.entity.id}`,
-    actor: record2.actorClientType ?? "",
-    accepted: record2.accepted ? "yes" : "no",
-    reason: record2.reason ?? record2.error ?? ""
+  printTable(records.map((record3) => ({
+    createdAt: new Date(record3.createdAt).toISOString(),
+    operation: record3.operation,
+    entity: `${record3.entity.kind}:${record3.entity.id}`,
+    actor: record3.actorClientType ?? "",
+    accepted: record3.accepted ? "yes" : "no",
+    reason: record3.reason ?? record3.error ?? ""
   })), [
     { key: "createdAt", label: "Created", width: 24 },
     { key: "operation", label: "Operation", width: 22 },
@@ -62741,8 +63542,108 @@ canvasesCommand.command("delete").requiredOption("--canvas <id>", "Canvas ID").o
 
 // ../../packages/cli/src/commands/director.ts
 var import_node_crypto13 = require("node:crypto");
-var import_node_fs8 = require("node:fs");
+var import_node_fs9 = require("node:fs");
 var import_node_path27 = require("node:path");
+
+// ../../packages/shared-runtime/src/generator-client.ts
+var GeneratorHttpError = class extends Error {
+  constructor(status, body) {
+    super(
+      `Generator API error ${status}: ${typeof body === "string" ? body : JSON.stringify(body)}`
+    );
+    this.status = status;
+    this.body = body;
+    this.name = "GeneratorHttpError";
+  }
+};
+function segment(value, label) {
+  const normalized = value.trim();
+  if (!normalized) throw new Error(`${label} is required`);
+  return encodeURIComponent(normalized);
+}
+async function json2(request, path, init) {
+  const response = await request(path, init);
+  const text = await response.text();
+  let body = text;
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+    }
+  }
+  if (!response.ok) throw new GeneratorHttpError(response.status, body);
+  return body;
+}
+function createGeneratorClient(request) {
+  const projectPath = (projectId2) => `/api/v1/projects/${segment(projectId2, "project id")}`;
+  const post = (path, body) => json2(request, path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  return {
+    listDefinitions: () => json2(request, "/api/v1/generator-definitions"),
+    getDefinition: (pluginId, definitionId) => json2(
+      request,
+      `/api/v1/generator-definitions/${segment(pluginId, "plugin id")}/${segment(definitionId, "definition id")}`
+    ),
+    createGenerator: (projectId2, body) => post(`${projectPath(projectId2)}/generators`, body),
+    getGenerator: (projectId2, generatorId) => json2(
+      request,
+      `${projectPath(projectId2)}/generators/${segment(generatorId, "generator id")}`
+    ),
+    advanceGenerator: (projectId2, generatorId, body) => post(
+      `${projectPath(projectId2)}/generators/${segment(generatorId, "generator id")}/revisions`,
+      body
+    ),
+    submitActionRun: (projectId2, generatorId, actionId, body) => post(
+      `${projectPath(projectId2)}/generators/${segment(generatorId, "generator id")}/actions/${segment(actionId, "action id")}/runs`,
+      body
+    ),
+    getActionRun: (projectId2, actionRunId) => json2(
+      request,
+      `${projectPath(projectId2)}/generator-runs/${segment(actionRunId, "action run id")}`
+    ),
+    getOutputCommit: (projectId2, actionRunId, outputSlot) => json2(
+      request,
+      `${projectPath(projectId2)}/generator-runs/${segment(actionRunId, "action run id")}/outputs/${segment(outputSlot, "output slot")}`
+    )
+  };
+}
+
+// ../../packages/shared-runtime/src/generator-readback.ts
+function record2(value) {
+  if (!value || typeof value !== "object") throw new Error("Generator authority returned an invalid response");
+  return value;
+}
+async function readNativeMediaActionRun(options) {
+  const deadline = Date.now() + (options.timeoutMs ?? 6e4);
+  const sleep = options.sleep ?? ((ms) => new Promise((resolve25) => setTimeout(resolve25, ms)));
+  let run;
+  for (; ; ) {
+    const response = record2(await options.generator.getActionRun(options.projectId, options.actionRunId));
+    run = record2(response.run);
+    if (run.status === "succeeded") break;
+    if (run.status === "failed") {
+      const outcome = run.outcome && typeof run.outcome === "object" ? JSON.stringify(run.outcome) : "no failure details";
+      throw new Error(`ActionRun ${options.actionRunId} failed: ${outcome}`);
+    }
+    if (Date.now() >= deadline) throw new Error(`Timed out waiting for ActionRun ${options.actionRunId}`);
+    await sleep(options.pollIntervalMs ?? 250);
+  }
+  const outputs = run.outputContract;
+  if (!Array.isArray(outputs) || outputs.length !== 1) throw new Error(`ActionRun ${options.actionRunId} must freeze exactly one output slot`);
+  const outputSlot = record2(outputs[0]).slot;
+  if (typeof outputSlot !== "string" || !outputSlot.trim()) throw new Error(`ActionRun ${options.actionRunId} has an invalid output slot`);
+  const commitResponse = record2(await options.generator.getOutputCommit(options.projectId, options.actionRunId, outputSlot));
+  const commit = record2(commitResponse.commit);
+  const assetRef = record2(commit.asset);
+  if (assetRef.kind !== "media" || typeof assetRef.projectAssetId !== "string") throw new Error(`ActionRun ${options.actionRunId} has no media OutputCommit`);
+  const asset = await options.getAsset(assetRef.projectAssetId);
+  const bytes = await options.downloadAsset(asset);
+  if (!bytes.byteLength) throw new Error(`Project Asset ${assetRef.projectAssetId} is empty`);
+  return { actionRunId: options.actionRunId, outputSlot, projectAssetId: assetRef.projectAssetId, asset, bytes };
+}
 
 // ../../packages/cli/src/lib/director-stage-projection.ts
 var import_node_path25 = require("node:path");
@@ -62805,17 +63706,17 @@ var StaleProjectionRecoveryError = class extends Error {
 async function recoverStaleProjection(options) {
   const workspaceRoot = (0, import_node_path26.resolve)(options.workspaceRoot);
   const entityId = normalize2(options.entityId, "entity id");
-  const segment = projectionSegment(entityId);
+  const segment2 = projectionSegment(entityId);
   const suffix = options.entityKind === "timeline" ? ".timeline.yaml" : ".director-stage.json";
   const recoveryDirectory = (0, import_node_path26.join)(workspaceRoot, ".clash", "recovery", options.entityKind);
   const latestAbsolutePath = resolveAgentFilePathInsideCwd({
     cwd: workspaceRoot,
-    filePath: (0, import_node_path26.join)(recoveryDirectory, `${segment}.latest${suffix}`),
+    filePath: (0, import_node_path26.join)(recoveryDirectory, `${segment2}.latest${suffix}`),
     writeVerb: "Stale projection recovery"
   });
   const receiptAbsolutePath = resolveAgentFilePathInsideCwd({
     cwd: workspaceRoot,
-    filePath: (0, import_node_path26.join)(recoveryDirectory, `${segment}.recovery.json`),
+    filePath: (0, import_node_path26.join)(recoveryDirectory, `${segment2}.recovery.json`),
     writeVerb: "Stale projection recovery"
   });
   const editedAbsolutePath = resolveAgentFilePathInsideCwd({
@@ -63043,62 +63944,26 @@ async function captureDirectorStageWithReadback(options) {
     }))
   };
   const rendered = await options.capture(request);
-  if (!rendered.captured || rendered.stageId !== options.stageId) {
-    throw new Error("Director Host returned a capture for the wrong Stage");
+  if (!rendered.submitted || rendered.captured !== false || rendered.stageId !== options.stageId) {
+    throw new Error("Director Host returned a capture submission for the wrong Stage");
   }
   if (rendered.sourceStageRevisionId !== before.revisionId) {
     throw new Error(
       `Director Host captured Stage revision ${rendered.sourceStageRevisionId}; expected ${before.revisionId}`
     );
   }
-  if (rendered.renderer.id !== "clash-director-viewport-webgl") {
-    throw new Error(`Unexpected Director renderer: ${rendered.renderer.id}`);
+  if (rendered.runs.length !== times.length) {
+    throw new Error("Director Host returned an incomplete ActionRun set");
   }
-  if (rendered.renderer.contractVersion !== 1) {
-    throw new Error(
-      `Unsupported Director renderer contract: ${rendered.renderer.contractVersion}`
-    );
-  }
-  if (rendered.stateSha256 !== captureSha256(JSON.stringify(before.state))) {
-    throw new Error(
-      "Director renderer state hash does not match the persisted Stage revision"
-    );
-  }
-  if (rendered.frames.length !== times.length) {
-    throw new Error("Director renderer returned an incomplete frame set");
-  }
-  for (const [index, frame] of rendered.frames.entries()) {
+  const nativeFrames = await Promise.all(rendered.runs.map((run) => options.readRunMedia(run.actionRunId)));
+  const stateSha256 = captureSha256(JSON.stringify(before.state));
+  const renderer = { id: "clash-director-viewport-webgl", contractVersion: 1 };
+  for (const [index, frame] of nativeFrames.entries()) {
     const expected = request.frames[index];
-    if (frame.label !== expected.label) {
-      throw new Error(
-        `Director renderer changed frame label ${expected.label}`
-      );
-    }
-    if (frame.timeSeconds !== expected.timeSeconds) {
-      throw new Error(
-        `Director renderer changed frame time for ${expected.label}`
-      );
-    }
-    if (frame.aspectRatio !== expected.aspectRatio) {
-      throw new Error(
-        `Director renderer changed frame aspect ratio for ${expected.label}`
-      );
-    }
-    if (frame.mimeType !== "image/png") {
-      throw new Error(
-        `Director renderer returned a non-PNG frame for ${expected.label}`
-      );
-    }
-    if (!frame.projectAssetId?.trim()) {
-      throw new Error(
-        `Director Host did not publish a Project Asset for ${expected.label}`
-      );
-    }
-    if (!Number.isInteger(frame.width) || frame.width < 1 || !Number.isInteger(frame.height) || frame.height < 1) {
-      throw new Error(
-        `Director renderer returned invalid dimensions for ${expected.label}`
-      );
-    }
+    if (frame.metadata?.contentType !== "image/png") throw new Error(`Director renderer returned a non-PNG frame for ${expected.label}`);
+    if (!frame.projectAssetId.trim()) throw new Error(`Director Host did not publish a Project Asset for ${expected.label}`);
+    if (!Number.isInteger(frame.metadata?.width) || !Number.isInteger(frame.metadata?.height)) throw new Error(`Director renderer returned invalid dimensions for ${expected.label}`);
+    if (!frame.bytes.byteLength || !Buffer.from(frame.bytes).subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw new Error(`Director renderer returned invalid PNG bytes for ${expected.label}`);
   }
   const after = await options.readStage();
   if (after.revisionId !== before.revisionId) {
@@ -63111,28 +63976,24 @@ async function captureDirectorStageWithReadback(options) {
     options.stageId,
     options.outputDir
   );
-  (0, import_node_fs8.mkdirSync)(outputDir, { recursive: true });
-  const renderedFrames = rendered.frames.map((frame, index) => {
+  (0, import_node_fs9.mkdirSync)(outputDir, { recursive: true });
+  const renderedFrames = nativeFrames.map((frame, index) => {
     const artifactId = artifactIds[index];
-    const bytes = Buffer.from(frame.dataBase64, "base64");
-    if (bytes.length === 0 || captureSha256(bytes) !== frame.sha256) {
-      throw new Error(
-        `Director renderer returned invalid bytes for ${artifactId}`
-      );
-    }
+    const expected = request.frames[index];
+    const bytes = Buffer.from(frame.bytes);
     const path = (0, import_node_path27.join)(outputDir, `${artifactId}.png`);
-    (0, import_node_fs8.writeFileSync)(path, bytes);
+    (0, import_node_fs9.writeFileSync)(path, bytes);
     return {
       artifactId,
       projectAssetId: frame.projectAssetId,
-      metadataAttached: frame.metadataAttached ?? false,
-      timeSeconds: frame.timeSeconds,
-      aspectRatio: frame.aspectRatio,
-      ...frame.activeCameraId ? { activeCameraId: frame.activeCameraId } : {},
-      width: frame.width,
-      height: frame.height,
-      mimeType: frame.mimeType,
-      sha256: frame.sha256,
+      metadataAttached: false,
+      timeSeconds: expected.timeSeconds,
+      aspectRatio: expected.aspectRatio,
+      ...before.state.activeCameraId ? { activeCameraId: before.state.activeCameraId } : {},
+      width: frame.metadata.width,
+      height: frame.metadata.height,
+      mimeType: "image/png",
+      sha256: captureSha256(bytes),
       path
     };
   });
@@ -63142,12 +64003,12 @@ async function captureDirectorStageWithReadback(options) {
     stageId: options.stageId,
     sourceStageRevisionId: before.revisionId,
     verifiedStageRevisionId: after.revisionId,
-    renderer: rendered.renderer,
-    stateSha256: rendered.stateSha256,
+    renderer,
+    stateSha256,
     frames: renderedFrames,
     receiptPath
   };
-  (0, import_node_fs8.writeFileSync)(receiptPath, `${JSON.stringify(receipt, null, 2)}
+  (0, import_node_fs9.writeFileSync)(receiptPath, `${JSON.stringify(receipt, null, 2)}
 `, "utf8");
   return receipt;
 }
@@ -63332,6 +64193,28 @@ directorCommand.command("capture").description(
       });
       if (result.error) throw new Error(result.error);
       return result;
+    },
+    readRunMedia: async (actionRunId) => {
+      const connection = resolveCliProjectHostConnection();
+      const authenticatedFetch = (input, init = {}) => fetch(input, {
+        ...init,
+        headers: { ...Object.fromEntries(new Headers(init.headers)), ...connection.token ? { authorization: `Bearer ${connection.token}` } : {} }
+      });
+      const generator = createGeneratorClient((path, init) => authenticatedFetch(new URL(path, connection.endpoint), init));
+      const assets = createCliProjectAssetHostClient({ fetch: authenticatedFetch });
+      const media = await readNativeMediaActionRun({
+        generator,
+        projectId: context.projectId,
+        actionRunId,
+        getAsset: async (projectAssetId) => (await assets.get({ projectId: context.projectId, assetId: projectAssetId })).value,
+        downloadAsset: async (asset) => {
+          if (!asset.url) throw new Error("Project Asset has no public media URL");
+          const response = await authenticatedFetch(asset.url);
+          if (!response.ok) throw new Error(`Project Asset download failed (${response.status})`);
+          return new Uint8Array(await response.arrayBuffer());
+        }
+      });
+      return { projectAssetId: media.projectAssetId, bytes: media.bytes, metadata: media.asset.metadata };
     }
   });
   if (isJsonMode(options)) printJson(receipt);
@@ -63349,8 +64232,8 @@ directorCommand.command("pull").description("Export the current Director Stage r
     stage: stage.id,
     file: options.file
   });
-  (0, import_node_fs8.mkdirSync)((0, import_node_path27.dirname)(filePath), { recursive: true });
-  (0, import_node_fs8.writeFileSync)(filePath, directorStageCanonicalJson(stage.state), "utf8");
+  (0, import_node_fs9.mkdirSync)((0, import_node_path27.dirname)(filePath), { recursive: true });
+  (0, import_node_fs9.writeFileSync)(filePath, directorStageCanonicalJson(stage.state), "utf8");
   const payload = {
     pulled: true,
     projectId: context.projectId,
@@ -63377,7 +64260,7 @@ directorCommand.command("apply").description(
     file: options.file
   });
   const parsed = parseDirectorStageFileForApply(
-    (0, import_node_fs8.readFileSync)(filePath, "utf8")
+    (0, import_node_fs9.readFileSync)(filePath, "utf8")
   );
   if (!parsed.ok) throw new Error(parsed.error);
   let observedVersion;
@@ -64638,33 +65521,33 @@ async function collectSecondaryCanvasRecoveryRestoreReceipts(options) {
   return { restoreReceipts, invalidEntries };
 }
 function parseSecondaryCanvasRecoveryRestoreReceiptSummary(options) {
-  const { input, receiptPath, createdAt, manifestPath, projectId } = options;
+  const { input, receiptPath, createdAt, manifestPath, projectId: projectId2 } = options;
   if (!input || typeof input !== "object") {
     throw new Error(`Invalid secondary canvas recovery restore receipt at ${receiptPath}: expected object`);
   }
-  const record2 = input;
-  const files = Array.isArray(record2.files) ? record2.files : null;
-  if (record2.schemaVersion !== 1 || record2.status !== "restored" || typeof record2.projectId !== "string" || typeof record2.manifestPath !== "string" || typeof record2.expectedReadToken !== "string" || typeof record2.beforeReadToken !== "string" || typeof record2.afterReadToken !== "string" || !files) {
+  const record3 = input;
+  const files = Array.isArray(record3.files) ? record3.files : null;
+  if (record3.schemaVersion !== 1 || record3.status !== "restored" || typeof record3.projectId !== "string" || typeof record3.manifestPath !== "string" || typeof record3.expectedReadToken !== "string" || typeof record3.beforeReadToken !== "string" || typeof record3.afterReadToken !== "string" || !files) {
     throw new Error(`Invalid secondary canvas recovery restore receipt at ${receiptPath}`);
   }
-  if (record2.projectId !== projectId) {
-    throw new Error(`Secondary canvas recovery restore receipt project ${record2.projectId} does not match current project ${projectId}`);
+  if (record3.projectId !== projectId2) {
+    throw new Error(`Secondary canvas recovery restore receipt project ${record3.projectId} does not match current project ${projectId2}`);
   }
-  if ((0, import_node_path28.resolve)(record2.manifestPath) !== (0, import_node_path28.resolve)(manifestPath)) {
-    throw new Error(`Secondary canvas recovery restore receipt manifest ${record2.manifestPath} does not match recovery manifest ${manifestPath}`);
+  if ((0, import_node_path28.resolve)(record3.manifestPath) !== (0, import_node_path28.resolve)(manifestPath)) {
+    throw new Error(`Secondary canvas recovery restore receipt manifest ${record3.manifestPath} does not match recovery manifest ${manifestPath}`);
   }
-  if (typeof record2.receiptPath === "string" && (0, import_node_path28.resolve)(record2.receiptPath) !== (0, import_node_path28.resolve)(receiptPath)) {
-    throw new Error(`Secondary canvas recovery restore receipt path ${record2.receiptPath} does not match inventory path ${receiptPath}`);
+  if (typeof record3.receiptPath === "string" && (0, import_node_path28.resolve)(record3.receiptPath) !== (0, import_node_path28.resolve)(receiptPath)) {
+    throw new Error(`Secondary canvas recovery restore receipt path ${record3.receiptPath} does not match inventory path ${receiptPath}`);
   }
   return {
     receiptPath,
     createdAt,
     status: "restored",
-    projectId: record2.projectId,
-    manifestPath: record2.manifestPath,
-    expectedReadToken: record2.expectedReadToken,
-    beforeReadToken: record2.beforeReadToken,
-    afterReadToken: record2.afterReadToken,
+    projectId: record3.projectId,
+    manifestPath: record3.manifestPath,
+    expectedReadToken: record3.expectedReadToken,
+    beforeReadToken: record3.beforeReadToken,
+    afterReadToken: record3.afterReadToken,
     fileCount: files.length
   };
 }
@@ -64672,16 +65555,16 @@ function parseSecondaryCanvasReplicaManifest(input, manifestPath) {
   if (!input || typeof input !== "object") {
     throw new Error(`Invalid secondary canvas recovery manifest at ${manifestPath}: expected object`);
   }
-  const record2 = input;
-  const canonicalReplica = record2.canonicalReplica;
-  const files = Array.isArray(record2.files) ? record2.files : null;
-  if (record2.schemaVersion !== 1 || typeof record2.projectId !== "string" || typeof record2.createdAt !== "string" || !canonicalReplica || typeof canonicalReplica.replicaRoot !== "string" || typeof canonicalReplica.snapshotPath !== "string" || typeof canonicalReplica.updatesLogPath !== "string" || !files) {
+  const record3 = input;
+  const canonicalReplica = record3.canonicalReplica;
+  const files = Array.isArray(record3.files) ? record3.files : null;
+  if (record3.schemaVersion !== 1 || typeof record3.projectId !== "string" || typeof record3.createdAt !== "string" || !canonicalReplica || typeof canonicalReplica.replicaRoot !== "string" || typeof canonicalReplica.snapshotPath !== "string" || typeof canonicalReplica.updatesLogPath !== "string" || !files) {
     throw new Error(`Invalid secondary canvas recovery manifest at ${manifestPath}`);
   }
   return {
     schemaVersion: 1,
-    projectId: record2.projectId,
-    createdAt: record2.createdAt,
+    projectId: record3.projectId,
+    createdAt: record3.createdAt,
     canonicalReplica: {
       replicaRoot: canonicalReplica.replicaRoot,
       snapshotPath: canonicalReplica.snapshotPath,
@@ -66295,7 +67178,7 @@ effectCommand.command("install").description("Install a validated, immutable eff
 });
 
 // ../../packages/cli/src/commands/public-storage.ts
-var import_node_fs9 = require("node:fs");
+var import_node_fs10 = require("node:fs");
 var PUBLIC_STORAGE_PROVIDERS = /* @__PURE__ */ new Set([
   "r2",
   "aws-s3",
@@ -66323,7 +67206,7 @@ function unquote(value) {
 function credentialRecordFromFile(path) {
   let contents;
   try {
-    contents = (0, import_node_fs9.readFileSync)(path, "utf8").trim();
+    contents = (0, import_node_fs10.readFileSync)(path, "utf8").trim();
   } catch {
     throw new Error(`Cannot read public-storage credentials file ${path}.`);
   }
@@ -66477,6 +67360,84 @@ hostCommand.addCommand(publicStorageCommand);
 hostCommand.command("status").description("Show local host discovery status").option("--json", "Output as JSON").action(async (options) => {
   await runHostStatus({ json: options.json });
 });
+
+// ../../packages/cli/src/commands/generators.ts
+function parseInput(value) {
+  try {
+    return JSON.parse(value);
+  } catch (error51) {
+    throw new Error(`--input must be valid JSON: ${error51.message}`);
+  }
+}
+async function projectId(value) {
+  return (await resolveProjectContext({ project: value })).projectId;
+}
+function createGeneratorsCommand(deps = {}) {
+  const client = createGeneratorClient(deps.request ?? apiFetch);
+  const output = deps.output ?? printJson;
+  const command2 = new Command("generators").description(
+    "Inspect and operate native Project Generators and Action Runs"
+  );
+  command2.command("definitions").description("List registered GeneratorDefinitions").action(async () => output(await client.listDefinitions()));
+  command2.command("definition <pluginId> <definitionId>").description("Read one registered GeneratorDefinition").action(
+    async (pluginId, definitionId) => output(await client.getDefinition(pluginId, definitionId))
+  );
+  command2.command("create").requiredOption("--input <json>", "CreateLocalProjectGeneratorInput JSON").option("--project <id>").action(
+    async (options) => output(
+      await client.createGenerator(
+        await projectId(options.project),
+        parseInput(options.input)
+      )
+    )
+  );
+  command2.command("get <generatorId>").option("--project <id>").action(
+    async (generatorId, options) => output(
+      await client.getGenerator(
+        await projectId(options.project),
+        generatorId
+      )
+    )
+  );
+  command2.command("advance <generatorId>").requiredOption("--input <json>", "AdvanceLocalProjectGeneratorInput JSON").option("--project <id>").action(
+    async (generatorId, options) => output(
+      await client.advanceGenerator(
+        await projectId(options.project),
+        generatorId,
+        parseInput(options.input)
+      )
+    )
+  );
+  const runs = command2.command("runs").description("Submit and read native Generator Action Runs");
+  runs.command("submit <generatorId> <actionId>").requiredOption("--input <json>", "SubmitLocalGeneratorActionInput JSON").option("--project <id>").action(
+    async (generatorId, actionId, options) => output(
+      await client.submitActionRun(
+        await projectId(options.project),
+        generatorId,
+        actionId,
+        parseInput(options.input)
+      )
+    )
+  );
+  runs.command("get <actionRunId>").option("--project <id>").action(
+    async (actionRunId, options) => output(
+      await client.getActionRun(
+        await projectId(options.project),
+        actionRunId
+      )
+    )
+  );
+  runs.command("output <actionRunId> <outputSlot>").option("--project <id>").action(
+    async (actionRunId, outputSlot, options) => output(
+      await client.getOutputCommit(
+        await projectId(options.project),
+        actionRunId,
+        outputSlot
+      )
+    )
+  );
+  return command2;
+}
+var generatorsCommand = createGeneratorsCommand();
 
 // ../../packages/cli/src/commands/models.ts
 var import_promises19 = require("node:fs/promises");
@@ -67642,7 +68603,7 @@ async function confirm(question) {
 }
 
 // ../../packages/cli/src/commands/projection.ts
-var import_node_fs13 = require("node:fs");
+var import_node_fs14 = require("node:fs");
 var import_node_path41 = require("node:path");
 
 // ../../packages/cli/src/lib/timeline-projection.ts
@@ -67805,12 +68766,12 @@ function normalizeItemForYaml(item, trackId, itemIndex) {
 
 // ../../packages/cli/src/commands/timeline.ts
 var import_node_crypto18 = require("node:crypto");
-var import_node_fs11 = require("node:fs");
+var import_node_fs12 = require("node:fs");
 var import_node_path37 = require("node:path");
 
 // ../../packages/cli/src/lib/timeline-transcript-projection.ts
 var import_node_crypto17 = require("node:crypto");
-var import_node_fs10 = require("node:fs");
+var import_node_fs11 = require("node:fs");
 var import_promises22 = require("node:fs/promises");
 var import_node_path36 = require("node:path");
 
@@ -67988,8 +68949,8 @@ async function writeTimelineTranscriptProjection(input) {
         );
         const sourceContents = `${JSON.stringify(timedTranscript, null, 2)}
 `;
-        (0, import_node_fs10.mkdirSync)(sourceDirectory, { recursive: true });
-        (0, import_node_fs10.writeFileSync)(sourceFilePath, sourceContents, "utf8");
+        (0, import_node_fs11.mkdirSync)(sourceDirectory, { recursive: true });
+        (0, import_node_fs11.writeFileSync)(sourceFilePath, sourceContents, "utf8");
         source = {
           sourcePath: projectRelativePath(input.cwd, sourceFilePath),
           sourceHash: `sha256:${(0, import_node_crypto17.createHash)("sha256").update(sourceContents).digest("hex")}`,
@@ -68029,8 +68990,8 @@ async function writeTimelineTranscriptProjection(input) {
     (0, import_node_path36.dirname)(input.timelineFilePath),
     `${timelineProjectionStem(input.timelineFilePath)}.transcript.json`
   );
-  (0, import_node_fs10.mkdirSync)((0, import_node_path36.dirname)(filePath), { recursive: true });
-  (0, import_node_fs10.writeFileSync)(filePath, `${JSON.stringify(projection, null, 2)}
+  (0, import_node_fs11.mkdirSync)((0, import_node_path36.dirname)(filePath), { recursive: true });
+  (0, import_node_fs11.writeFileSync)(filePath, `${JSON.stringify(projection, null, 2)}
 `, "utf8");
   return {
     filePath,
@@ -68101,7 +69062,7 @@ timelineCommand.command("schema").description(TIMELINE_OPERATION_CATALOG.agent["
 });
 timelineCommand.command("validate").description(TIMELINE_OPERATION_CATALOG.agent["timeline.validate"].description).requiredOption("--file <path>", "Timeline YAML or JSON projection to validate").option("--json", "Output the validation result as JSON").action((options) => {
   const filePath = String(options.file);
-  const parsed = parseTimelineFileForApply((0, import_node_fs11.readFileSync)(filePath, "utf8"));
+  const parsed = parseTimelineFileForApply((0, import_node_fs12.readFileSync)(filePath, "utf8"));
   if (!parsed.ok) throw new Error(`TIMELINE_DSL_INVALID: ${parsed.error}`);
   const result = {
     ok: true,
@@ -68325,34 +69286,18 @@ timelineCommand.command("render").description(TIMELINE_OPERATION_CATALOG.agent["
   const deadline = Date.now() + timeoutMs;
   let receipt = { ...base, completed: false, status: "pending" };
   while (true) {
-    let data;
-    if (submitted.target.kind === "project-assets") {
-      const result = await sendProjectCommand(context.projectId, {
-        action: "list_timeline_renders",
-        status: "all"
-      });
-      if (result.error) throw new Error(result.error);
-      const renderNode = result.renders?.map((entry) => entry.node).find((node) => node?.id === submitted.renderNodeId);
-      if (!renderNode) {
-        throw new Error(
-          `Timeline render node ${submitted.renderNodeId} was not returned by Host readback`
-        );
-      }
-      data = renderNode.data ?? {};
-    } else {
-      const result = await sendProjectCommand(context.projectId, {
-        action: "get",
-        canvasId: submitted.target.canvasId,
-        nodeId: submitted.renderNodeId
-      });
-      if (result.error) throw new Error(result.error);
-      if (!result.node || result.node.id !== submitted.renderNodeId) {
-        throw new Error(
-          `Timeline render node ${submitted.renderNodeId} was not returned by Host readback`
-        );
-      }
-      data = result.node.data ?? {};
+    const result = await sendProjectCommand(context.projectId, {
+      action: "list_timeline_renders",
+      status: "all"
+    });
+    if (result.error) throw new Error(result.error);
+    const renderNode = result.renders?.map((entry) => entry.node).find((node) => node?.id === submitted.renderNodeId);
+    if (!renderNode) {
+      throw new Error(
+        `Timeline native render ${submitted.renderNodeId} was not returned by Host readback`
+      );
     }
+    const data = renderNode.data ?? {};
     if (data.status === "completed") {
       if (typeof data.assetId !== "string" || !data.assetId.trim()) {
         receipt = { ...base, completed: false, status: "failed", error: "Timeline render completed without an immutable Asset id" };
@@ -68400,8 +69345,8 @@ timelineCommand.command("pull").description(TIMELINE_OPERATION_CATALOG.agent["ti
   const currentDsl = normalizeTimelineDslForYaml(timeline.state);
   const yaml = timelineDslToYaml(currentDsl);
   const version2 = listed.versions[timeline.id] ?? projectTimelineReadToken(timeline);
-  (0, import_node_fs11.mkdirSync)((0, import_node_path37.dirname)(filePath), { recursive: true });
-  (0, import_node_fs11.writeFileSync)(filePath, yaml, "utf8");
+  (0, import_node_fs12.mkdirSync)((0, import_node_path37.dirname)(filePath), { recursive: true });
+  (0, import_node_fs12.writeFileSync)(filePath, yaml, "utf8");
   const transcriptProjection = await writeTimelineTranscriptProjection({
     cwd: process.cwd(),
     timelineFilePath: filePath,
@@ -68441,7 +69386,7 @@ timelineCommand.command("apply").description(TIMELINE_OPERATION_CATALOG.agent["t
     file: options.file,
     timeline: options.timeline
   });
-  const content = (0, import_node_fs11.readFileSync)(filePath, "utf8");
+  const content = (0, import_node_fs12.readFileSync)(filePath, "utf8");
   const parsed = parseTimelineFileForApply(content);
   if (!parsed.ok) {
     console.error(`error: ${parsed.error}`);
@@ -68546,7 +69491,7 @@ var TIMELINE_CLI_OPERATION_EXECUTORS = Object.freeze({
 });
 
 // ../../packages/cli/src/commands/text.ts
-var import_node_fs12 = require("node:fs");
+var import_node_fs13 = require("node:fs");
 var import_node_path39 = require("node:path");
 
 // ../../packages/cli/src/lib/text-projection.ts
@@ -68624,8 +69569,8 @@ function toProjectPath2(cwd, absolutePath) {
 function stableJsonForHash(value) {
   if (Array.isArray(value)) return `[${value.map(stableJsonForHash).join(",")}]`;
   if (value && typeof value === "object") {
-    const record2 = value;
-    return `{${Object.keys(record2).sort().map((key) => `${JSON.stringify(key)}:${stableJsonForHash(record2[key])}`).join(",")}}`;
+    const record3 = value;
+    return `{${Object.keys(record3).sort().map((key) => `${JSON.stringify(key)}:${stableJsonForHash(record3[key])}`).join(",")}}`;
   }
   return JSON.stringify(value);
 }
@@ -68675,13 +69620,13 @@ apply/replace refuse stale writes.`
 );
 textCommand.command("pull").description("Export a canvas text node's content to a Markdown file").requiredOption("--node <id>", "Text node ID").option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)").option("--file <path>", "Markdown path (default: texts/<node-id>.md)").option("--json", "Output result as JSON").action(async (options) => {
   const context = await resolveCanvasProjectContext(options);
-  const projectId = context.projectId;
+  const projectId2 = context.projectId;
   const filePath = resolveTextFilePath({
     cwd: process.cwd(),
     file: options.file,
     nodeId: options.node
   });
-  const node = await readNode(projectId, options.node);
+  const node = await readNode(projectId2, options.node);
   if (!node) {
     console.error(`Node not found: ${options.node}`);
     process.exit(1);
@@ -68693,13 +69638,13 @@ textCommand.command("pull").description("Export a canvas text node's content to 
     );
   }
   const content = textContentFromNode(node);
-  const version2 = node.readToken ?? textReadToken({ projectId, nodeId: options.node, content });
-  (0, import_node_fs12.mkdirSync)((0, import_node_path39.dirname)(filePath), { recursive: true });
-  (0, import_node_fs12.writeFileSync)(filePath, content, "utf8");
+  const version2 = node.readToken ?? textReadToken({ projectId: projectId2, nodeId: options.node, content });
+  (0, import_node_fs13.mkdirSync)((0, import_node_path39.dirname)(filePath), { recursive: true });
+  (0, import_node_fs13.writeFileSync)(filePath, content, "utf8");
   await recordTextObservation(context, options.node, version2);
   const payload = {
     pulled: true,
-    projectId,
+    projectId: projectId2,
     nodeId: options.node,
     filePath,
     contentHash: textHash(content),
@@ -68711,7 +69656,7 @@ textCommand.command("pull").description("Export a canvas text node's content to 
 });
 textCommand.command("apply").description("Apply a Markdown file back to the canvas text node").requiredOption("--node <id>", "Text node ID").option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)").option("--file <path>", "Markdown path (default: texts/<node-id>.md)").option("--json", "Output result as JSON").action(async (options) => {
   const context = await resolveCanvasProjectContext(options);
-  const projectId = context.projectId;
+  const projectId2 = context.projectId;
   const filePath = resolveTextFilePath({
     cwd: process.cwd(),
     file: options.file,
@@ -68722,8 +69667,8 @@ textCommand.command("apply").description("Apply a Markdown file back to the canv
   const actor = await resolveCanvasActor();
   try {
     const observedVersion = await requireTextObservation(context, options.node);
-    content = (0, import_node_fs12.readFileSync)(filePath, "utf8");
-    result = await applyTextContent(projectId, options.node, content, {
+    content = (0, import_node_fs13.readFileSync)(filePath, "utf8");
+    result = await applyTextContent(projectId2, options.node, content, {
       observedVersion,
       filePath,
       cwd: process.cwd(),
@@ -68734,7 +69679,7 @@ textCommand.command("apply").description("Apply a Markdown file back to the canv
     process.exit(1);
   }
   const textRevision = result.textRevision ?? createTextAppliedRevision({
-    projectId,
+    projectId: projectId2,
     nodeId: options.node,
     cwd: process.cwd(),
     filePath,
@@ -68744,12 +69689,12 @@ textCommand.command("apply").description("Apply a Markdown file back to the canv
   await recordTextObservation(
     context,
     options.node,
-    result.readToken ?? result.version ?? textReadToken({ projectId, nodeId: options.node, content })
+    result.readToken ?? result.version ?? textReadToken({ projectId: projectId2, nodeId: options.node, content })
   );
   const textRevisionIndex = await registerTextRevisionIndex(textRevision, content);
   const payload = {
     ...publicTextMutationResult(result),
-    projectId,
+    projectId: projectId2,
     filePath,
     textRevision,
     textRevisionIndex,
@@ -68767,7 +69712,7 @@ textCommand.command("apply").description("Apply a Markdown file back to the canv
 });
 textCommand.command("replace").description("Create a copy-on-write replacement text node from a Markdown file").requiredOption("--node <id>", "Source text node ID").option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)").option("--file <path>", "Markdown path (default: texts/<node-id>.md)").option("--label <label>", "Label for the replacement text node").option("--new-node <id>", "Replacement node ID (defaults to a generated id)").option("--json", "Output result as JSON").action(async (options) => {
   const context = await resolveCanvasProjectContext(options);
-  const projectId = context.projectId;
+  const projectId2 = context.projectId;
   const filePath = resolveTextFilePath({
     cwd: process.cwd(),
     file: options.file,
@@ -68778,8 +69723,8 @@ textCommand.command("replace").description("Create a copy-on-write replacement t
   const actor = await resolveCanvasActor();
   try {
     const observedVersion = await requireTextObservation(context, options.node);
-    content = (0, import_node_fs12.readFileSync)(filePath, "utf8");
-    result = await replaceTextContent(projectId, options.node, content, {
+    content = (0, import_node_fs13.readFileSync)(filePath, "utf8");
+    result = await replaceTextContent(projectId2, options.node, content, {
       observedVersion,
       filePath,
       cwd: process.cwd(),
@@ -68792,7 +69737,7 @@ textCommand.command("replace").description("Create a copy-on-write replacement t
     process.exit(1);
   }
   const textRevision = result.textRevision ?? createTextAppliedRevision({
-    projectId,
+    projectId: projectId2,
     nodeId: result.newNodeId,
     cwd: process.cwd(),
     filePath,
@@ -68802,12 +69747,12 @@ textCommand.command("replace").description("Create a copy-on-write replacement t
   await recordTextObservation(
     context,
     result.newNodeId,
-    result.readToken ?? result.version ?? textReadToken({ projectId, nodeId: result.newNodeId, content })
+    result.readToken ?? result.version ?? textReadToken({ projectId: projectId2, nodeId: result.newNodeId, content })
   );
   const textRevisionIndex = await registerTextRevisionIndex(textRevision, content);
   const payload = {
     ...publicTextMutationResult(result),
-    projectId,
+    projectId: projectId2,
     filePath,
     textRevision,
     textRevisionIndex,
@@ -68824,7 +69769,7 @@ textCommand.command("replace").description("Create a copy-on-write replacement t
   }
 });
 textCommand.command("history").description("List applied text revisions indexed by the host").option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)").option("--node <id>", "Filter by text node ID").option("--limit <n>", "Maximum revisions to return").option("--json", "Output result as JSON").action(async (options) => {
-  const projectId = await resolveCanvasProjectId(options);
+  const projectId2 = await resolveCanvasProjectId(options);
   let limit;
   try {
     limit = parseTextRevisionLimit(options.limit);
@@ -68833,8 +69778,8 @@ textCommand.command("history").description("List applied text revisions indexed 
     process.exit(1);
   }
   try {
-    const result = await fetchTextRevisionHistory(projectId, { nodeId: options.node, limit });
-    const payload = { projectId, nodeId: options.node, ...result };
+    const result = await fetchTextRevisionHistory(projectId2, { nodeId: options.node, limit });
+    const payload = { projectId: projectId2, nodeId: options.node, ...result };
     if (isJsonMode(options)) {
       printJson(payload);
     } else {
@@ -68859,19 +69804,19 @@ textCommand.command("history").description("List applied text revisions indexed 
   }
 });
 textCommand.command("content").description("Fetch an applied text revision's Markdown content from the host").requiredOption("--revision <id>", "Text revision ID").option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)").option("--out <path>", "Write content to a cwd-contained Markdown file instead of stdout").option("--json", "Output result as JSON").action(async (options) => {
-  const projectId = await resolveCanvasProjectId(options);
+  const projectId2 = await resolveCanvasProjectId(options);
   try {
-    const content = await fetchTextRevisionContent(projectId, options.revision);
+    const content = await fetchTextRevisionContent(projectId2, options.revision);
     if (options.out) {
       const filePath = resolveAgentFilePathInsideCwd({
         cwd: process.cwd(),
         filePath: options.out,
         writeVerb: "Text revision content output"
       });
-      (0, import_node_fs12.mkdirSync)((0, import_node_path39.dirname)(filePath), { recursive: true });
-      (0, import_node_fs12.writeFileSync)(filePath, content, "utf8");
+      (0, import_node_fs13.mkdirSync)((0, import_node_path39.dirname)(filePath), { recursive: true });
+      (0, import_node_fs13.writeFileSync)(filePath, content, "utf8");
       const payload = {
-        projectId,
+        projectId: projectId2,
         revisionId: options.revision,
         filePath,
         bytes: Buffer.byteLength(content, "utf8")
@@ -68882,7 +69827,7 @@ textCommand.command("content").description("Fetch an applied text revision's Mar
       return;
     }
     if (isJsonMode(options)) {
-      printJson({ projectId, revisionId: options.revision, content });
+      printJson({ projectId: projectId2, revisionId: options.revision, content });
     } else {
       process.stdout.write(content);
     }
@@ -68893,19 +69838,19 @@ textCommand.command("content").description("Fetch an applied text revision's Mar
 });
 textCommand.command("restore").description("Restore an applied text revision through an explicit CAS/COW canvas action").requiredOption("--node <id>", "Target text node ID").requiredOption("--revision <id>", "Text revision ID to restore").option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)").option("--mode <mode>", "Restore mode: replace or apply (default: replace)", "replace").option("--file <path>", "Where to materialize the revision Markdown (default: revisions/<revision>.md)").option("--label <label>", "Label for the replacement text node in replace mode").option("--new-node <id>", "Replacement node ID in replace mode").option("--json", "Output result as JSON").action(async (options) => {
   const context = await resolveCanvasProjectContext(options);
-  const projectId = context.projectId;
+  const projectId2 = context.projectId;
   const actor = await resolveCanvasActor();
   try {
-    const currentNode = await readNode(projectId, options.node);
+    const currentNode = await readNode(projectId2, options.node);
     if (!currentNode) throw new Error(`Node not found: ${options.node}`);
     const currentContent = textContentFromNode(currentNode);
     await recordTextObservation(
       context,
       options.node,
-      currentNode.readToken ?? textReadToken({ projectId, nodeId: options.node, content: currentContent })
+      currentNode.readToken ?? textReadToken({ projectId: projectId2, nodeId: options.node, content: currentContent })
     );
     const result = await restoreTextRevisionContent({
-      projectId,
+      projectId: projectId2,
       nodeId: options.node,
       revisionId: options.revision,
       cwd: process.cwd(),
@@ -68936,8 +69881,8 @@ wrote ${result.filePath}
     process.exit(1);
   }
 });
-async function runCommand2(projectId, cmd) {
-  return sendProjectCommand(projectId, cmd);
+async function runCommand2(projectId2, cmd) {
+  return sendProjectCommand(projectId2, cmd);
 }
 async function registerTextRevisionIndex(revision, contentOrRequest, requestOverride) {
   const content = typeof contentOrRequest === "string" ? contentOrRequest : void 0;
@@ -68968,13 +69913,13 @@ async function registerTextRevisionIndex(revision, contentOrRequest, requestOver
     };
   }
 }
-async function fetchTextRevisionHistory(projectId, options = {}, request = apiFetch) {
+async function fetchTextRevisionHistory(projectId2, options = {}, request = apiFetch) {
   const params = new URLSearchParams();
   if (options.nodeId) params.set("nodeId", options.nodeId);
   if (options.limit !== void 0) params.set("limit", String(options.limit));
   const query = params.toString();
   const response = await request(
-    `/api/v1/projects/${encodeURIComponent(projectId)}/text-revisions${query ? `?${query}` : ""}`,
+    `/api/v1/projects/${encodeURIComponent(projectId2)}/text-revisions${query ? `?${query}` : ""}`,
     { method: "GET" }
   );
   if (!response.ok) {
@@ -68998,9 +69943,9 @@ async function fetchTextRevisionHistory(projectId, options = {}, request = apiFe
     })
   };
 }
-async function fetchTextRevisionContent(projectId, revisionId, request = apiFetch) {
+async function fetchTextRevisionContent(projectId2, revisionId, request = apiFetch) {
   const response = await request(
-    `/api/v1/projects/${encodeURIComponent(projectId)}/text-revisions/${encodeURIComponent(revisionId)}/content`,
+    `/api/v1/projects/${encodeURIComponent(projectId2)}/text-revisions/${encodeURIComponent(revisionId)}/content`,
     { method: "GET" }
   );
   if (!response.ok) {
@@ -69019,8 +69964,8 @@ async function restoreTextRevisionContent(options, deps = {}) {
   const apply = deps.apply ?? applyTextContent;
   const replace = deps.replace ?? replaceTextContent;
   const register = deps.register ?? registerTextRevisionIndex;
-  const mkdir14 = deps.mkdir ?? import_node_fs12.mkdirSync;
-  const writeFile9 = deps.writeFile ?? import_node_fs12.writeFileSync;
+  const mkdir14 = deps.mkdir ?? import_node_fs13.mkdirSync;
+  const writeFile9 = deps.writeFile ?? import_node_fs13.writeFileSync;
   const filePath = resolveTextFilePath({
     cwd: options.cwd,
     nodeId: options.nodeId,
@@ -69096,10 +70041,10 @@ function parseTextRevisionLimit(value) {
   }
   return limit;
 }
-async function readNode(projectId, nodeId) {
-  const hostResult = await runCommand2(projectId, {
+async function readNode(projectId2, nodeId) {
+  const hostResult = await runCommand2(projectId2, {
     action: "get",
-    projectId,
+    projectId: projectId2,
     nodeId,
     actorClientType: resolveCanvasPresenceOptions().clientType
   });
@@ -69110,11 +70055,11 @@ async function readNode(projectId, nodeId) {
     readToken: hostResult.textReadToken
   } : null;
 }
-async function applyTextContent(projectId, nodeId, content, cas) {
+async function applyTextContent(projectId2, nodeId, content, cas) {
   resolveAgentFilePathInsideCwd({ filePath: cas.filePath, cwd: cas.cwd, writeVerb: "Text apply" });
-  const hostResult = await runCommand2(projectId, {
+  const hostResult = await runCommand2(projectId2, {
     action: "text_cas_update",
-    projectId,
+    projectId: projectId2,
     nodeId,
     content,
     observedVersion: cas.observedVersion,
@@ -69134,11 +70079,11 @@ async function applyTextContent(projectId, nodeId, content, cas) {
     readToken: hostResult.readToken
   };
 }
-async function replaceTextContent(projectId, nodeId, content, cas) {
+async function replaceTextContent(projectId2, nodeId, content, cas) {
   resolveAgentFilePathInsideCwd({ filePath: cas.filePath, cwd: cas.cwd, writeVerb: "Text replace" });
-  const hostResult = await runCommand2(projectId, {
+  const hostResult = await runCommand2(projectId2, {
     action: "text_cow_replace",
-    projectId,
+    projectId: projectId2,
     nodeId,
     content,
     observedVersion: cas.observedVersion,
@@ -69423,16 +70368,16 @@ projectionCommand.command("pull").description("Write a projectable entity to an 
   try {
     const declared = requireProjectionKind(options.kind);
     const context = await resolveCanvasProjectContext(options);
-    const projectId = context.projectId;
+    const projectId2 = context.projectId;
     const filePath = options.file ?? projectionFilePath({ cwd: process.cwd(), kind: declared.kind, entityId: options.id });
     const { content, revision: version2, immutable } = await readProjection(declared, context, options.id);
-    (0, import_node_fs13.mkdirSync)((0, import_node_path41.dirname)(filePath), { recursive: true });
-    (0, import_node_fs13.writeFileSync)(filePath, content, "utf8");
+    (0, import_node_fs14.mkdirSync)((0, import_node_path41.dirname)(filePath), { recursive: true });
+    (0, import_node_fs14.writeFileSync)(filePath, content, "utf8");
     await recordProjectionObservation(context, declared.kind, options.id, version2);
     const payload = {
       pulled: true,
       kind: declared.kind,
-      projectId,
+      projectId: projectId2,
       entityId: options.id,
       filePath,
       version: version2,
@@ -69451,10 +70396,10 @@ projectionCommand.command("apply").description("Apply an edited projection back 
   try {
     const declared = requireProjectionKind(options.kind);
     const context = await resolveCanvasProjectContext(options);
-    const projectId = context.projectId;
+    const projectId2 = context.projectId;
     const filePath = options.file ?? projectionFilePath({ cwd: process.cwd(), kind: declared.kind, entityId: options.id });
     const expectedVersion = await requireProjectionObservation(context, declared.kind, options.id);
-    const content = (0, import_node_fs13.readFileSync)(filePath, "utf8");
+    const content = (0, import_node_fs14.readFileSync)(filePath, "utf8");
     const written = await writeProjection(
       declared,
       context,
@@ -69468,7 +70413,7 @@ projectionCommand.command("apply").description("Apply an edited projection back 
     const payload = {
       ...written.mutation ? publicTextMutationResult(written.mutation) : { applied: true },
       kind: declared.kind,
-      projectId,
+      projectId: projectId2,
       entityId: options.id,
       filePath,
       revision: written.version,
@@ -69515,7 +70460,7 @@ function assertDeclaredSetting(declaration, key, value) {
 }
 
 // ../../packages/cli/src/commands/providers.ts
-var import_node_fs14 = require("node:fs");
+var import_node_fs15 = require("node:fs");
 async function currentAccounts() {
   try {
     return await apiJson("/api/v1/model-providers");
@@ -69530,7 +70475,7 @@ async function currentAccounts() {
 }
 function resolveValue(raw) {
   if (raw === "-") {
-    const piped = (0, import_node_fs14.readFileSync)(0, "utf8").trim();
+    const piped = (0, import_node_fs15.readFileSync)(0, "utf8").trim();
     if (!piped) throw new Error("Nothing arrived on stdin.");
     return piped;
   }
@@ -69538,7 +70483,7 @@ function resolveValue(raw) {
     const path = raw.slice(1);
     let contents;
     try {
-      contents = (0, import_node_fs14.readFileSync)(path, "utf8").trim();
+      contents = (0, import_node_fs15.readFileSync)(path, "utf8").trim();
     } catch {
       throw new Error(
         `Cannot read the credential file ${path}. A value starting with @ is read from that path; pass the value directly if it is not a file.`
@@ -69738,7 +70683,7 @@ function registerProviderCommands(program2) {
 
 // ../../packages/cli/src/commands/workspace.ts
 var import_node_crypto20 = require("node:crypto");
-var import_node_fs15 = require("node:fs");
+var import_node_fs16 = require("node:fs");
 var import_promises23 = require("node:fs/promises");
 var import_node_path42 = require("node:path");
 var import_node_stream = require("node:stream");
@@ -69912,7 +70857,7 @@ async function publishWorkspaceDirectory(input) {
   const syncDirectory2 = input.syncDirectory ?? syncWorkspaceDirectory;
   const completionSegments = input.completionPath.split("/");
   if (completionSegments.some(
-    (segment) => !segment || segment === "." || segment === ".."
+    (segment2) => !segment2 || segment2 === "." || segment2 === ".."
   ) || input.completionPath.includes("\\")) {
     throw new Error("Workspace publication completion path is invalid");
   }
@@ -70152,7 +71097,7 @@ async function importWorkspace(input) {
     assertImportSessionMatchesManifest(session, manifest);
     for (const slot of session.files) {
       if (slot.state === "present") continue;
-      const nodeStream = (0, import_node_fs15.createReadStream)(
+      const nodeStream = (0, import_node_fs16.createReadStream)(
         (0, import_node_path42.join)(bundlePath, ...slot.path.split("/"))
       );
       const body = import_node_stream.Readable.toWeb(nodeStream);
@@ -70304,12 +71249,12 @@ workspaceCommand.command("import").description("Import a Workspace bundle into a
 });
 
 // ../../packages/cli/src/lib/cli-trace.ts
-var import_node_fs16 = require("node:fs");
+var import_node_fs17 = require("node:fs");
 var import_node_path43 = require("node:path");
 function appendTrace(path, event) {
   try {
-    (0, import_node_fs16.mkdirSync)((0, import_node_path43.dirname)(path), { recursive: true });
-    (0, import_node_fs16.appendFileSync)(path, `${JSON.stringify(event)}
+    (0, import_node_fs17.mkdirSync)((0, import_node_path43.dirname)(path), { recursive: true });
+    (0, import_node_fs17.appendFileSync)(path, `${JSON.stringify(event)}
 `, "utf8");
   } catch {
   }
@@ -70396,6 +71341,7 @@ function createCliProgram(options = {}) {
   program2.addCommand(pluginCommand);
   program2.addCommand(modelsCommand);
   program2.addCommand(hostCommand);
+  program2.addCommand(generatorsCommand);
   registerProviderCommands(program2);
   program2.addCommand(timelineCommand);
   program2.addCommand(doctorCommand);

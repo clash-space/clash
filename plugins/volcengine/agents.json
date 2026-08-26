@@ -1,23 +1,32 @@
 {
-  "summary": "First-party executable plugin contributing separate Volcengine ModelArk and Volcengine Speech Providers.",
+  "summary": "First-party executable plugin contributing separate Volcengine ModelArk, Volcengine Speech, and Volcengine MediaKit Providers, plus a plugin-private video-enhancement model card bound to the MediaKit Provider.",
   "context_hints": [
-    "The plugin id is clash.volcengine; its Provider ids are volcengine and volcengine-speech",
+    "The plugin id is clash.volcengine; its Provider ids are volcengine-modelark, volcengine-speech, and volcengine-mediakit",
     "Each Provider has independent accounts; the Host exposes only the selected account's apiKey/baseUrl through context.store",
     "Provider request translation, submission, and polling stay inside this plugin",
-    "Seedance uses the ModelArk executor and Bearer credentials; Seed Audio uses the OpenSpeech executor and X-Api-Key credentials"
+    "Seedance uses the ModelArk executor and Bearer credentials; Seed Audio uses the OpenSpeech executor and X-Api-Key credentials; video enhancement uses the MediaKit executor and Bearer credentials",
+    "This plugin no longer contributes a generic Generator or action. cards/video-enhance.json is a plugin-private model card (semanticShape video_enhancement) whose only declared consumer is the installed clash.video-enhance / video-enhance / enhance generic Generator; bindings/video-enhance.json binds that card to the volcengine-mediakit Provider's volcengine-mediakit-execute executor",
+    "The MediaKit adapter only accepts a Host-resolved provider-url video reference; it never falls back to bytes/data URLs. mediaOutputDestination is exposed as a card parameter and validated by the adapter to be a non-empty vod:// or tos:// URI (ModelParameterSchema has no regex/pattern, so this validation lives in buildMediaKitRequest and is covered by adapter tests, not by card JSON schema)",
+    "MediaKit's completed result URL expires, so the Host ingests it as a Project Asset immediately after poll returns completed, exactly like Seedance video output"
   ],
   "subdirectories": {
-    "providers": "Independent ModelArk and Volcengine Speech Provider declarations and authentication forms.",
-    "src": "Typed stdio entrypoint plus separate ModelArk and OpenSpeech executors.",
+    "providers": "Independent ModelArk, Volcengine Speech, and MediaKit Provider declarations and authentication forms.",
+    "cards": "Plugin-private video-enhancement model card (semanticShape video_enhancement, kind video, exactly one video input).",
+    "bindings": "Model-provider binding wiring the video-enhancement card to the volcengine-mediakit Provider/executor with a provider-url-only asset input.",
+    "src": "Typed stdio entrypoint plus separate ModelArk, OpenSpeech, and MediaKit provider-executors.",
     "contract-tests": "Declarative activation-gating ABI fixtures."
   },
   "key_files": {
-    "manifest.json": "Versioned executable package and contribution declarations.",
-    "providers/volcengine.json": "ModelArk Provider metadata plus API-key and overrideable Base URL fields.",
+    "manifest.json": "Versioned executable package and contribution declarations: cards, providers, modelBindings, and provider-executor functions only (no generators/actions).",
+    "providers/volcengine-modelark.json": "ModelArk Provider metadata plus API-key and overrideable Base URL fields.",
     "providers/volcengine-speech.json": "OpenSpeech Provider metadata plus its independent API-key and Base URL fields.",
+    "providers/volcengine-mediakit.json": "MediaKit Provider metadata plus its independent Bearer API-key and Base URL fields, distinct from ModelArk.",
+    "cards/video-enhance.json": "Plugin-private video-enhancement model card; visibility.consumers pins the installed clash.video-enhance / video-enhance / enhance generic consumer.",
+    "bindings/video-enhance.json": "Binds the video-enhancement card to volcengine-mediakit with a provider-url-only assetInputs representation.",
     "src/modelark.ts": "Seedance request translation and asynchronous submit/poll lifecycle.",
     "src/speech.ts": "Seed Audio request translation and synchronous OpenSpeech lifecycle.",
-    "src/stdio.ts": "SDK-assembled standard plugin entrypoint."
+    "src/mediakit.ts": "MediaKit enhance-video request translation (tool_version/scene/enhance_style/resolution|resolution_limit/bitrate_level|bitrate/fps/bit_depth/media_output_destination/client_token) and asynchronous submit/poll lifecycle against POST /api/v1/tools/enhance-video and GET /api/v1/tasks/{task_id}. Video references must resolve to a Host provider-url; bytes are rejected.",
+    "src/stdio.ts": "SDK-assembled standard plugin entrypoint exporting exactly three provider-executors."
   },
   "verification": ["pnpm --filter @clash-plugin/volcengine test"]
 }

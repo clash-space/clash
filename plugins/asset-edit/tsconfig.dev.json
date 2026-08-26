@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@clash/action-sdk": ["../../packages/action-sdk/src/index.ts"],
+      "@clash/action-sdk/browser": ["../../packages/action-sdk/src/browser.ts"],
+      "@clash/shared-runtime/browser": [
+        "../../packages/shared-runtime/src/browser.ts"
+      ],
+      "@clash/shared-types": ["../../packages/shared-types/src/index.ts"],
+      "@clash/shared-types/*": ["../../packages/shared-types/src/*.ts"]
+    }
+  }
+}

@@ -132,8 +132,8 @@ describe("model upstream routing", () => {
       kind: "video",
       configuredProviders: [{
         id: "volcengine-primary",
-        providerId: "volcengine",
-        upstreamId: "volcengine",
+        providerId: "volcengine-modelark",
+        upstreamId: "volcengine-modelark",
         enabled: true,
         configuredCredentials: ["apiKey"],
       }],
@@ -172,8 +172,8 @@ describe("model upstream routing", () => {
 
   it("composes provider-specific parameter candidates into the effective catalog card", () => {
     const entryFor = (
-      providerId: "fal" | "volcengine",
-      upstreamId: "fal" | "volcengine",
+      providerId: "fal" | "volcengine-modelark",
+      upstreamId: "fal" | "volcengine-modelark",
       credentials: Omit<ProviderAccountAvailability, "providerId">,
     ) =>
       listModelCatalogEntries({
@@ -181,7 +181,7 @@ describe("model upstream routing", () => {
       }).find((entry) => entry.model.id === "seedance-2-ref");
 
     const fal = entryFor("fal", "fal", { configuredCredentials: ["apiKey"] });
-    const volcengine = entryFor("volcengine", "volcengine", {
+    const volcengine = entryFor("volcengine-modelark", "volcengine-modelark", {
       configuredCredentials: ["apiKey"],
     });
     const options = (entry: typeof fal, id: string) =>
@@ -434,12 +434,12 @@ describe("model upstream routing", () => {
       kind: "video",
       parameters: [],
       defaultParams: {},
-      availableProviders: ["volcengine", "replicate", "fal", "mock"],
-      defaultProvider: "volcengine",
+      availableProviders: ["volcengine-modelark", "replicate", "fal", "mock"],
+      defaultProvider: "volcengine-modelark",
     });
 
-    expect(parsed.availableProviders).toEqual(["volcengine", "replicate", "fal", "mock"]);
-    expect(parsed.defaultProvider).toBe("volcengine");
+    expect(parsed.availableProviders).toEqual(["volcengine-modelark", "replicate", "fal", "mock"]);
+    expect(parsed.defaultProvider).toBe("volcengine-modelark");
   });
 
   it("allows model cards to own provider route implementations", () => {
@@ -986,8 +986,8 @@ describe("model upstream routing", () => {
       {
         modelCode: "seedance-2-ref",
         kind: "video" as const,
-        providerId: "volcengine",
-        upstreamId: "volcengine",
+        providerId: "volcengine-modelark",
+        upstreamId: "volcengine-modelark",
         upstreamModel: "doubao-seedance-2-0-260128",
         apiShape: "modelark",
         credentials: ["apiKey"],
@@ -1047,7 +1047,7 @@ describe("model upstream routing", () => {
       models: [expect.objectContaining({ id: "elevenlabs-tts", apiShape: "elevenlabs" })],
       requiredCredentials: ["apiKey"],
     });
-    expect(byProvider.get("volcengine")?.models.map((model) => model.id)).toContain("seedance-2-ref");
+    expect(byProvider.get("volcengine-modelark")?.models.map((model) => model.id)).toContain("seedance-2-ref");
     expect(byProvider.has("midjourney")).toBe(false);
   });
 

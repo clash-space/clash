@@ -37,6 +37,7 @@ export const CLASH_ROOT_TOOL_NAME = "clash";
 export const CLASH_PLUGIN_TOOL_NAME = "clash_plugin";
 export const CLASH_ASSETS_TOOL_NAME = "clash_assets";
 export const CLASH_CANVAS_TOOL_NAME = "clash_canvas";
+export const CLASH_GENERATORS_TOOL_NAME = "clash_generators";
 export const CLASH_COMPOSITION_TOOL_NAME = "clash_composition";
 
 const MAX_ASSET_CONTRACT_BATCH_SIZE = 8;
@@ -52,6 +53,7 @@ type ClashCompositionKind = "timeline" | "director-stage";
 export const CLASH_MCP_INSTRUCTIONS = [
   "Clash discloses product operations progressively.",
   `Use the root ${CLASH_ROOT_TOOL_NAME} tool for command navigation, ${CLASH_PLUGIN_TOOL_NAME} for executable plugin lifecycle, ${CLASH_ASSETS_TOOL_NAME} for Project and personal Global Assets, ${CLASH_CANVAS_TOOL_NAME} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME} for Timeline or Director Stage composition.`,
+  `${CLASH_GENERATORS_TOOL_NAME} dispatches live registered Project Generators, their Revisions, and their Action Runs.`,
   "Timeline is temporal composition; Director Stage is spatial composition.",
   "Call clash_assets without operation for its lightweight index, then pass contracts for the small set of live Asset contracts needed together; contract remains available for one. Other dispatchers reveal live contracts when operation is omitted.",
   "Composition disclosure and short operations require kind=timeline or kind=director-stage; a complete clash_* leaf name remains accepted for compatibility.",
@@ -401,6 +403,51 @@ export class ClashMcpServer extends McpServer {
       },
     );
 
+    const generatorsDefinition = getClashMcpCommand("generators");
+    super.registerTool(
+      CLASH_GENERATORS_TOOL_NAME,
+      {
+        title: generatorsDefinition.title,
+        description: describeClashTool({
+          useWhen:
+            "the user asks to generate or edit image, video, or audio media for the current Clash Project, or you need to discover, inspect, or run a registered Project Generator",
+          effect:
+            "returns live Generators contracts when operation is omitted, or validates and executes one registered Generators leaf exactly once",
+          returns:
+            "typed Generators operation contracts or the selected leaf operation's exact result",
+          next:
+            "choose the smallest matching operation, submit and poll the Action Run, then read its output commit; never claim complete, finished, or successful project media without that persisted readback",
+        }),
+        inputSchema: {
+          operation: z
+            .string()
+            .min(1)
+            .optional()
+            .describe(
+              "Omit this field entirely to reveal live contracts; never send an empty string, list_operations, or contracts. Otherwise pass a command-local Generators operation or complete clash_generators_* leaf name",
+            ),
+          arguments: z
+            .record(z.string(), z.unknown())
+            .optional()
+            .describe(
+              "Arguments validated against the selected operation's live input schema",
+            ),
+        },
+        _meta: { ui: { visibility: ["model"] } },
+      },
+      async ({ operation, arguments: operationArguments }, extra) => {
+        if (operation) {
+          return this.#dispatchOperation({
+            operation,
+            arguments: operationArguments ?? {},
+            selectedCommand: "generators",
+            extra,
+          });
+        }
+        return this.#commandResult("generators");
+      },
+    );
+
     super.registerTool(
       CLASH_COMPOSITION_TOOL_NAME,
       {
@@ -536,6 +583,7 @@ export class ClashMcpServer extends McpServer {
       name === CLASH_PLUGIN_TOOL_NAME ||
       name === CLASH_ASSETS_TOOL_NAME ||
       name === CLASH_CANVAS_TOOL_NAME ||
+      name === CLASH_GENERATORS_TOOL_NAME ||
       name === CLASH_COMPOSITION_TOOL_NAME ||
       Object.values(LEGACY_CLASH_GROUP_TOOL_NAMES).includes(
         name as (typeof LEGACY_CLASH_GROUP_TOOL_NAMES)[LegacyClashGroupCommandId],
@@ -756,6 +804,9 @@ export class ClashMcpServer extends McpServer {
       if (command.id === "canvas") {
         return { ...command, dispatcher: CLASH_CANVAS_TOOL_NAME };
       }
+      if (command.id === "generators") {
+        return { ...command, dispatcher: CLASH_GENERATORS_TOOL_NAME };
+      }
       const kind: ClashCompositionKind =
         command.id === "timeline" ? "timeline" : "director-stage";
       return { ...command, dispatcher: CLASH_COMPOSITION_TOOL_NAME, kind };
@@ -915,6 +966,7 @@ export class ClashMcpServer extends McpServer {
         tool.name === CLASH_PLUGIN_TOOL_NAME ||
         tool.name === CLASH_ASSETS_TOOL_NAME ||
         tool.name === CLASH_CANVAS_TOOL_NAME ||
+        tool.name === CLASH_GENERATORS_TOOL_NAME ||
         tool.name === CLASH_COMPOSITION_TOOL_NAME ||
         tool.name === "clash_workspace_init"
       )

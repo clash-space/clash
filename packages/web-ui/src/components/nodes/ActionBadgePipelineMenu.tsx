@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useRef } from 'react';
 import { useReactFlow, type Node as RFNode } from '@xyflow/react';
-import { Plus, Image as ImageIcon, VideoCamera, TextT, SpeakerHigh } from '@phosphor-icons/react';
+import { Plus, Image as ImageIcon, VideoCamera, TextT, SpeakerHigh, Cube } from '@phosphor-icons/react';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { useProject } from '../ProjectContext';
 import { useLayoutManager } from '@clash/web-ui/lib/layout';
@@ -28,6 +28,7 @@ const OUTPUT_ICON = {
     video: VideoCamera,
     audio: SpeakerHigh,
     text: TextT,
+    model: Cube,
 } as const;
 
 /**
@@ -50,7 +51,7 @@ const ActionBadgePipelineMenu = ({ nodeId, spawnDraft, canSpawn, disabledReason,
 
     const onNodesMutated = useCallback(
         (prevNodes: RFNode[], nextNodes: RFNode[]) => {
-            if (!loroSync?.connected) return;
+            if (!loroSync) return;
             const patches = collectLayoutNodePatches(prevNodes, nextNodes);
             applyLayoutPatchesToLoro(loroSync, patches);
         },
@@ -114,13 +115,13 @@ const ActionBadgePipelineMenu = ({ nodeId, spawnDraft, canSpawn, disabledReason,
                     );
                     if (!nextNode) return;
 
-                    if (loroSync?.connected) {
+                    if (loroSync) {
                         loroSync.addNode(nextId, nextNode);
                     }
 
                     const edgeId = `${draftNode.id}-${nextId}`;
                     addEdges({ id: edgeId, source: draftNode.id, target: nextId, type: 'default' });
-                    if (loroSync?.connected) {
+                    if (loroSync) {
                         loroSync.addEdge(edgeId, {
                             id: edgeId,
                             source: draftNode.id,

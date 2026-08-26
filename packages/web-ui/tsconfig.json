@@ -17,6 +17,7 @@
     "baseUrl": "src",
     "paths": {
       "@/*": ["./*"],
+      "@clash/action-sdk/browser": ["../../action-sdk/src/browser.ts"],
       "@clash/asset-sdk": ["../../asset-sdk/src/index.ts"],
       "@clash/gui": ["../../gui/src/index.ts"],
       "@clash/gui/*": ["../../gui/src/*"],

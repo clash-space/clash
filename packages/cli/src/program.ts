@@ -9,6 +9,7 @@ import { directorCommand } from "./commands/director";
 import { doctorCommand } from "./commands/doctor";
 import { effectCommand } from "./commands/effects";
 import { hostCommand } from "./commands/host";
+import { generatorsCommand } from "./commands/generators";
 import { modelsCommand } from "./commands/models";
 import { pluginCommand } from "./commands/plugin";
 import { projectionCommand } from "./commands/projection";
@@ -75,6 +76,7 @@ export function createCliProgram(options: CliProgramOptions = {}): Command {
   program.addCommand(pluginCommand);
   program.addCommand(modelsCommand);
   program.addCommand(hostCommand);
+  program.addCommand(generatorsCommand);
   registerProviderCommands(program);
   program.addCommand(timelineCommand);
   program.addCommand(doctorCommand);

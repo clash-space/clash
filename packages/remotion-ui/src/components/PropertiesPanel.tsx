@@ -96,7 +96,7 @@ const inspectorSectionClassName = 'border-t border-warm-border/70 py-4 first:bor
 const sectionTitleClassName = `mb-3 font-semibold tracking-[-0.01em] text-slate-800 dark:text-stone-200 ${editorTypeClassName.item}`;
 const labelClassName = `mb-1 block font-medium text-stone-500 dark:text-stone-400 ${editorTypeClassName.caption}`;
 const controlRadiusClassName = 'rounded-[var(--clash-workbench-control-radius)]';
-const fieldClassName = `h-8 w-full ${controlRadiusClassName} border border-warm-border bg-warm-page/40 px-2.5 text-slate-900 outline-none transition-[border-color,box-shadow,background-color] focus:border-brand/55 focus:bg-warm-surface focus:ring-2 focus:ring-brand/15 dark:text-stone-100 ${editorTypeClassName.item}`;
+const fieldClassName = `h-8 w-full ${controlRadiusClassName} border border-warm-border bg-warm-page/40 px-2.5 text-slate-900 outline-none transition-[border-color,box-shadow,background-color] focus:border-ring/55 focus:bg-warm-surface focus:ring-2 focus:ring-ring/15 dark:text-stone-100 ${editorTypeClassName.item}`;
 const readOnlyFieldClassName = `flex min-h-8 w-full items-center ${controlRadiusClassName} border border-warm-border/75 bg-warm-muted/55 px-2.5 text-stone-500 dark:text-stone-400 ${editorTypeClassName.item}`;
 const colorFieldClassName = `h-8 w-10 shrink-0 cursor-pointer ${controlRadiusClassName} border border-warm-border bg-warm-page/40 p-1`;
 
@@ -120,15 +120,16 @@ const MediaFitControl: React.FC<{
   <div>
     <label className={labelClassName}>Fit</label>
     <RemotionSelect
-      aria-label="Media fit"
+      ariaLabel="Media fit"
       value={value ?? fallback}
-      onChange={(event) => onChange(event.target.value as MediaFit)}
+      onValueChange={(nextValue) => onChange(nextValue as MediaFit)}
+      options={[
+        { value: 'fill', label: 'Fill frame' },
+        { value: 'cover', label: 'Cover' },
+        { value: 'contain', label: 'Contain' },
+      ]}
       className={fieldClassName}
-    >
-      <option value="fill">Fill frame</option>
-      <option value="cover">Cover</option>
-      <option value="contain">Contain</option>
-    </RemotionSelect>
+    />
   </div>
 );
 
@@ -193,13 +194,12 @@ const EffectParameterControl: React.FC<{
       <div>
         <label className={labelClassName}>{name}</label>
         <RemotionSelect
-          aria-label={ariaLabel}
+          ariaLabel={ariaLabel}
           value={String(value)}
-          onChange={(event) => onChange(event.target.value)}
+          onValueChange={onChange}
+          options={definition.values.map((option) => ({ value: option, label: option }))}
           className={fieldClassName}
-        >
-          {definition.values.map((option) => <option key={option} value={option}>{option}</option>)}
-        </RemotionSelect>
+        />
       </div>
     );
   }
@@ -375,18 +375,17 @@ const KeyframeControlHeader: React.FC<KeyframeControlHeaderProps> = ({
         </RemotionButton>
         {currentKey && (
           <RemotionSelect
-            aria-label={`${label} keyframe interpolation`}
+            ariaLabel={`${label} keyframe interpolation`}
             title={`${label} outgoing interpolation`}
             value={currentKey.interpolation}
-            onChange={(event) => onInterpolationChange(event.target.value as 'hold' | 'linear')}
+            onValueChange={onInterpolationChange}
+            options={TIMELINE_KEYFRAME_INTERPOLATIONS.map((interpolation) => ({
+              value: interpolation,
+              label: interpolation === 'linear' ? 'Linear' : 'Hold',
+            }))}
+            containerClassName="min-w-0 flex-1"
             className={`h-6 min-w-0 flex-1 ${controlRadiusClassName} border border-warm-border bg-warm-page/40 px-1 text-stone-600 ${editorTypeClassName.caption}`}
-          >
-            {TIMELINE_KEYFRAME_INTERPOLATIONS.map((interpolation) => (
-              <option key={interpolation} value={interpolation}>
-                {interpolation === 'linear' ? 'Linear' : 'Hold'}
-              </option>
-            ))}
-          </RemotionSelect>
+          />
         )}
       </div>
       )}
@@ -929,15 +928,15 @@ const MaskStaticFieldControl: React.FC<{
         <div>
           <label className={labelClassName}>{control.label}</label>
           <RemotionSelect
-            aria-label={control.ariaLabel}
+            ariaLabel={control.ariaLabel}
             value={String(item.mask[field])}
-            onChange={(event) => onChange(field, event.target.value)}
+            onValueChange={(nextValue) => onChange(field, nextValue)}
+            options={Object.entries(control.options).map(([value, option]) => ({
+              value,
+              label: option.label,
+            }))}
             className={fieldClassName}
-          >
-            {Object.entries(control.options).map(([value, option]) => (
-              <option key={value} value={value}>{option.label}</option>
-            ))}
-          </RemotionSelect>
+          />
         </div>
       );
     case 'toggle': {
@@ -1462,22 +1461,21 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                       {phaseLabel}
                     </p>
                     <div className="grid grid-cols-[minmax(0,1fr)_5rem] gap-2">
-                      <label>
+                      <div>
                         <span className={labelClassName}>Motion</span>
                         <RemotionSelect
-                          aria-label={`${phaseLabel} animation type`}
+                          ariaLabel={`${phaseLabel} animation type`}
                           value={animation?.type ?? 'none'}
-                          onChange={(event) => updateVideoAnimation(phase, {
-                            type: event.target.value as ClipAnimationType | 'none',
+                          onValueChange={(nextValue) => updateVideoAnimation(phase, {
+                            type: nextValue as ClipAnimationType | 'none',
                           })}
+                          options={[
+                            { value: 'none', label: 'None' },
+                            ...CLIP_ANIMATION_OPTIONS,
+                          ]}
                           className={fieldClassName}
-                        >
-                          <option value="none">None</option>
-                          {CLIP_ANIMATION_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
-                          ))}
-                        </RemotionSelect>
-                      </label>
+                        />
+                      </div>
                       <label>
                         <span className={labelClassName}>Frames</span>
                         <RemotionInput
@@ -1602,18 +1600,17 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
             <div className="mb-3">
               <label className={labelClassName}>Type</label>
               <RemotionSelect
+                ariaLabel="Transition type"
                 value={(item as TransitionItem).transitionType}
-                onChange={(e) =>
-                  updateItem({ transitionType: e.target.value as TransitionType } as Partial<typeof item>)
+                onValueChange={(nextValue) =>
+                  updateItem({ transitionType: nextValue as TransitionType } as Partial<typeof item>)
                 }
+                options={TRANSITION_TYPES.map((transitionType) => ({
+                  value: transitionType,
+                  label: transitionType,
+                }))}
                 className={fieldClassName}
-              >
-                {TRANSITION_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </RemotionSelect>
+              />
             </div>
             <div className="mb-3 grid grid-cols-2 gap-2">
               <div>
@@ -1918,21 +1915,22 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                   className={fieldClassName}
                 />
               </label>
-              <label>
+              <div>
                 <span className={labelClassName}>Alignment</span>
                 <RemotionSelect
-                  aria-label="Text alignment"
+                  ariaLabel="Text alignment"
                   value={(item as TextItem).textAlign ?? TIMELINE_SHARED_DEFAULTS.text.textAlign}
-                  onChange={(event) => updateItem({
-                    textAlign: event.target.value as TextItem['textAlign'],
+                  onValueChange={(nextValue) => updateItem({
+                    textAlign: nextValue as TextItem['textAlign'],
                   })}
+                  options={[
+                    { value: 'left', label: 'Left' },
+                    { value: 'center', label: 'Center' },
+                    { value: 'right', label: 'Right' },
+                  ]}
                   className={fieldClassName}
-                >
-                  <option value="left">Left</option>
-                  <option value="center">Center</option>
-                  <option value="right">Right</option>
-                </RemotionSelect>
-              </label>
+                />
+              </div>
             </div>
             <div className="mb-3 grid grid-cols-2 gap-2">
               <label>
@@ -1967,34 +1965,38 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 />
               </label>
             </div>
-            <label className="mb-3 block">
+            <div className="mb-3 block">
               <span className={labelClassName}>Font family</span>
               <RemotionSelect
+                ariaLabel="Text font family"
                 value={(item as TextItem).fontFamily || TIMELINE_SHARED_DEFAULTS.text.fontFamily}
-                onChange={(e) => updateItem({ fontFamily: e.target.value })}
+                onValueChange={(nextValue) => updateItem({ fontFamily: nextValue })}
+                options={[
+                  { value: 'Arial', label: 'Arial' },
+                  { value: 'Helvetica', label: 'Helvetica' },
+                  { value: 'Times New Roman', label: 'Times New Roman' },
+                  { value: 'Georgia', label: 'Georgia' },
+                  { value: 'Courier New', label: 'Courier New' },
+                  { value: 'Verdana', label: 'Verdana' },
+                ]}
                 className={fieldClassName}
-              >
-                <option value="Arial">Arial</option>
-                <option value="Helvetica">Helvetica</option>
-                <option value="Times New Roman">Times New Roman</option>
-                <option value="Georgia">Georgia</option>
-                <option value="Courier New">Courier New</option>
-                <option value="Verdana">Verdana</option>
-              </RemotionSelect>
-            </label>
-            <label className="block">
+              />
+            </div>
+            <div className="block">
               <span className={labelClassName}>Font weight</span>
               <RemotionSelect
+                ariaLabel="Text font weight"
                 value={(item as TextItem).fontWeight || TIMELINE_SHARED_DEFAULTS.text.fontWeight}
-                onChange={(e) => updateItem({ fontWeight: e.target.value })}
+                onValueChange={(nextValue) => updateItem({ fontWeight: nextValue })}
+                options={[
+                  { value: 'normal', label: 'Normal' },
+                  { value: 'bold', label: 'Bold' },
+                  { value: 'lighter', label: 'Lighter' },
+                  { value: 'bolder', label: 'Bolder' },
+                ]}
                 className={fieldClassName}
-              >
-                <option value="normal">Normal</option>
-                <option value="bold">Bold</option>
-                <option value="lighter">Lighter</option>
-                <option value="bolder">Bolder</option>
-              </RemotionSelect>
-            </label>
+              />
+            </div>
           </div>
         )}
 
@@ -2012,24 +2014,25 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
               Cue text is edited in the Captions workspace. These controls style the timed Text item.
             </p>
             <div className="mb-3 grid grid-cols-2 gap-2">
-              <label>
+              <div>
                 <span className={labelClassName}>Position</span>
                 <RemotionSelect
-                  aria-label="Caption position"
+                  ariaLabel="Caption position"
                   value={subtitleItem.style?.position ?? TIMELINE_CAPTION_STYLE_DEFAULTS.position}
-                  onChange={(event) => updateItem({
+                  onValueChange={(nextValue) => updateItem({
                     style: {
                       ...subtitleItem.style,
-                      position: event.target.value as NonNullable<TextItem['style']>['position'],
+                      position: nextValue as NonNullable<TextItem['style']>['position'],
                     },
                   })}
+                  options={[
+                    { value: 'top', label: 'Top' },
+                    { value: 'center', label: 'Center' },
+                    { value: 'bottom', label: 'Bottom' },
+                  ]}
                   className={fieldClassName}
-                >
-                  <option value="top">Top</option>
-                  <option value="center">Center</option>
-                  <option value="bottom">Bottom</option>
-                </RemotionSelect>
-              </label>
+                />
+              </div>
               <label>
                 <span className={labelClassName}>Font size</span>
                 <RemotionInput
@@ -2088,27 +2091,28 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 className={fieldClassName}
               />
             </label>
-            <label className="mt-3 block">
+            <div className="mt-3 block">
               <span className={labelClassName}>Font weight</span>
               <RemotionSelect
-                aria-label="Caption font weight"
+                ariaLabel="Caption font weight"
                 value={String(subtitleItem.style?.fontWeight ?? TIMELINE_CAPTION_STYLE_DEFAULTS.fontWeight)}
-                onChange={(event) => updateItem({
+                onValueChange={(nextValue) => updateItem({
                   style: {
                     ...subtitleItem.style,
-                    fontWeight: parseInt(event.target.value, 10),
+                    fontWeight: parseInt(nextValue, 10),
                   },
                 })}
+                options={[
+                  { value: '400', label: 'Regular' },
+                  { value: '500', label: 'Medium' },
+                  { value: '600', label: 'Semibold' },
+                  { value: '700', label: 'Bold' },
+                  { value: '800', label: 'Extra bold' },
+                  { value: '900', label: 'Black' },
+                ]}
                 className={fieldClassName}
-              >
-                <option value="400">Regular</option>
-                <option value="500">Medium</option>
-                <option value="600">Semibold</option>
-                <option value="700">Bold</option>
-                <option value="800">Extra bold</option>
-                <option value="900">Black</option>
-              </RemotionSelect>
-            </label>
+              />
+            </div>
           </div>
         )}
 

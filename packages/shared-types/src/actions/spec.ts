@@ -1,20 +1,11 @@
-import { z } from 'zod';
-import { AssetKindSchema } from '../assets.js';
+import { z } from "zod";
+import { AssetKindSchema } from "../assets.js";
 
-export const ActionFamilySchema = z.enum(['generate', 'edit', 'custom']);
+export const ActionFamilySchema = z.enum(["generate", "edit", "custom"]);
 export type ActionFamily = z.infer<typeof ActionFamilySchema>;
-
-export const ActionExecutorSchema = z.enum([
-  'model',
-  'client-render',
-  'server-transform',
-  'runtime',
-]);
-export type ActionExecutor = z.infer<typeof ActionExecutorSchema>;
 
 export const ActionOperationSpecSchema = z.object({
   id: z.string().min(1),
-  executor: ActionExecutorSchema,
   outputKind: AssetKindSchema,
 });
 export type ActionOperationSpec = z.infer<typeof ActionOperationSpecSchema>;
@@ -30,19 +21,21 @@ export const ActionSpecSchema = z.object({
 });
 export type ActionSpec = z.infer<typeof ActionSpecSchema>;
 
-export const ActionInvocationModeSchema = z.enum(['explicit', 'implicit']);
+export const ActionInvocationModeSchema = z.enum(["explicit", "implicit"]);
 export type ActionInvocationMode = z.infer<typeof ActionInvocationModeSchema>;
 
-export const ActionSurfaceSchema = z.enum(['canvas', 'asset-preview']);
+export const ActionSurfaceSchema = z.enum(["canvas", "asset-preview"]);
 export type ActionSurface = z.infer<typeof ActionSurfaceSchema>;
 
 export const ACTION_INVOCATION_MODE = {
-  Explicit: 'explicit',
-  Implicit: 'implicit',
+  Explicit: "explicit",
+  Implicit: "implicit",
 } as const satisfies Record<string, ActionInvocationMode>;
 
-export function invocationModeForSurface(surface: ActionSurface): ActionInvocationMode {
-  return surface === 'canvas'
+export function invocationModeForSurface(
+  surface: ActionSurface,
+): ActionInvocationMode {
+  return surface === "canvas"
     ? ACTION_INVOCATION_MODE.Explicit
     : ACTION_INVOCATION_MODE.Implicit;
 }

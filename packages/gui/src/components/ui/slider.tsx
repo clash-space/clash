@@ -59,7 +59,7 @@ export const SliderThumb = forwardRef<
             {...props}
             ref={ref}
             className={[
-                'block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface',
+                'block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface',
                 className,
             ].filter(Boolean).join(' ')}
         />

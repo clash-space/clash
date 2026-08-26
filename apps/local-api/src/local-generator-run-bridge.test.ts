@@ -6,8 +6,10 @@ import { LoroDoc } from "loro-crdt";
 import { createBoundedRetryPolicy } from "@clash/shared-runtime";
 import {
   commitActionRunOutcome,
+  createProjectAsset,
   createProjectGenerator,
   readDocumentAssetRevision,
+  readDocumentAttachment,
   ensureActionRunRequest,
   markActionRunStarted,
   readActionAssetBinding,
@@ -228,7 +230,6 @@ describe("Local Generator Run bridge", () => {
       actionRunId: "run-stage-1",
       outputSlot: "image",
       entry,
-      legacyBinding: binding,
       checkpoint: async () => {
         snapshots.push({
           asset: readProjectAsset(doc, entry.id) !== null,
@@ -244,11 +245,10 @@ describe("Local Generator Run bridge", () => {
     });
 
     expect(snapshots).toEqual([
-      { asset: true, binding: true, commit: true, status: "succeeded" },
+      { asset: true, binding: false, commit: true, status: "succeeded" },
     ]);
     expect(published).toEqual({
       entry,
-      legacyBinding: binding,
       commit: {
         actionRunId: "run-stage-1",
         outputSlot: "image",
@@ -277,7 +277,6 @@ describe("Local Generator Run bridge", () => {
       actionRunId: "run-stage-1",
       outputSlot: "image",
       entry: generatedAsset(),
-      legacyBinding: legacyOutputBinding(),
       checkpoint: async () => undefined,
     });
 
@@ -324,7 +323,6 @@ describe("Local Generator Run bridge", () => {
       actionRunId: "run-stage-1",
       outputSlot: "image",
       entry: generatedAsset(),
-      legacyBinding: legacyOutputBinding(),
       checkpoint: async () => undefined,
     });
 
@@ -338,13 +336,11 @@ describe("Local Generator Run bridge", () => {
       actionRunId: "run-stage-1",
       outputSlot: "image",
       entry: duplicate,
-      legacyBinding: legacyOutputBinding(duplicate.id),
       checkpoint: async () => undefined,
     });
 
     expect(recovered).toMatchObject({
       entry: { id: "asset-courtyard" },
-      legacyBinding: { projectAssetId: "asset-courtyard" },
       commit: {
         asset: { kind: "media", projectAssetId: "asset-courtyard" },
       },
@@ -354,7 +350,7 @@ describe("Local Generator Run bridge", () => {
     expect(readProjectAsset(doc, duplicate.id)).toBeNull();
     expect(
       readActionAssetBinding(doc, "action-asset:run-stage-1:image:output"),
-    ).toEqual(legacyOutputBinding());
+    ).toBeNull();
   });
 
   it("runs an accepted Generator Action through the same export on poll and publishes its contracted output", async () => {
@@ -430,7 +426,6 @@ describe("Local Generator Run bridge", () => {
             actionRunId: run.actionRunId,
             outputSlot: run.outputSlot,
             entry: generatedAsset(),
-            legacyBinding: legacyOutputBinding(),
             checkpoint: async () => undefined,
           });
         },
@@ -767,45 +762,152 @@ describe("Local Generator Run bridge", () => {
     expect(checkpoint).not.toHaveBeenCalled();
   });
 
-  it("rejects a legacy output binding that points at a different Generator revision owner", async () => {
+  it("atomically publishes all required Document outputs or leaves none", async () => {
     const doc = projectDoc();
-    const dataDir = await temporaryDataDir();
-    const bridge = createLocalGeneratorRunBridge({
-      ownerId: "host-1",
-      journal: createSqliteDurableRunJournal(dataDir),
+    const bridge = createLocalGeneratorRunBridge({ ownerId: "host-1", journal: createSqliteDurableRunJournal(await temporaryDataDir()) });
+    const multi = {
+      ...request(), actionId: "analyze",
+      outputContract: ["description", "tags"].map((slot) => ({
+        slot,
+        assetType: { kind: "document" as const, documentKind: `media.analysis.${slot}`, schemaVersion: 1 },
+        cardinality: { minItems: 1, maxItems: 1 },
+      })),
+    };
+    expect(ensureActionRunRequest(doc, multi)).toMatchObject({ ok: true });
+    expect(markActionRunStarted(doc, multi.actionRunId)).toMatchObject({ ok: true });
+    const revision = (slot: string, kind = `media.analysis.${slot}`) => ({
+      id: `batch:${slot}:r1`, documentAssetId: `batch:${slot}`,
+      documentKind: kind, schemaVersion: 1, mutability: "versioned" as const,
+      body: { digest: `sha256:${(slot === "description" ? "a" : "b").repeat(64)}` as const, byteLength: 10, contentType: "application/json" },
+      producer: { kind: "action-run" as const, actionRunId: multi.actionRunId }, sourceRefs: [],
     });
-    await bridge.enqueue({
+    await expect(bridge.publishDocumentBatchSuccess({
+      doc, actionRunId: multi.actionRunId,
+      outputs: [
+        { outputSlot: "description", revision: revision("description") },
+        { outputSlot: "tags", revision: revision("tags", "media.transcript") },
+      ],
+      checkpoint: async () => undefined,
+    })).rejects.toThrow(/Document.*output contract/i);
+    expect(readProjectDocumentAsset(doc, "batch:description")).toBeNull();
+    expect(readOutputCommit(doc, { actionRunId: multi.actionRunId, outputSlot: "description" })).toBeNull();
+
+    await expect(bridge.publishDocumentBatchSuccess({
+      doc, actionRunId: multi.actionRunId,
+      outputs: [
+        { outputSlot: "description", revision: revision("description") },
+        { outputSlot: "tags", revision: revision("tags") },
+      ],
+      checkpoint: async () => undefined,
+    })).resolves.toMatchObject({ run: { status: "succeeded" } });
+  });
+
+  it("attaches each typed analysis Document revision to its frozen source Asset", async () => {
+    const doc = projectDoc();
+    expect(createProjectAsset(doc, {
+      id: "source-asset",
+      kind: "image",
+      source: { kind: "owned", resourceId: "resource-source" },
+      lifecycle: { state: "active" },
+      metadata: { contentType: "image/png" },
+    })).toMatchObject({ ok: true });
+    const requestWithDocument = {
+      ...request(),
+      actionId: "analyze",
+      outputContract: [{
+        slot: "description",
+        assetType: { kind: "document" as const, documentKind: "media.analysis.description", schemaVersion: 1 },
+        cardinality: { minItems: 1, maxItems: 1 },
+      }],
+    };
+    expect(ensureActionRunRequest(doc, requestWithDocument)).toMatchObject({ ok: true });
+    expect(markActionRunStarted(doc, requestWithDocument.actionRunId)).toMatchObject({ ok: true });
+    const bridge = createLocalGeneratorRunBridge({ ownerId: "host-1", journal: createSqliteDurableRunJournal(await temporaryDataDir()) });
+    await bridge.publishDocumentSuccess({
       doc,
-      request: request(),
-      command: generatorActionCommand(),
+      actionRunId: requestWithDocument.actionRunId,
+      outputSlot: "description",
+      revision: {
+        id: "analysis:r1",
+        documentAssetId: "analysis-description",
+        documentKind: "media.analysis.description",
+        schemaVersion: 1,
+        mutability: "versioned",
+        body: { digest: `sha256:${"d".repeat(64)}`, byteLength: 10, contentType: "application/json" },
+        producer: { kind: "action-run", actionRunId: requestWithDocument.actionRunId },
+        sourceRefs: [{ slot: "source", target: { kind: "media", projectAssetId: "source-asset" } }],
+      },
       checkpoint: async () => undefined,
     });
-    const wrongOwner = legacyOutputBinding();
-    wrongOwner.owner = {
-      kind: "run",
-      actionId: "other-generator",
-      actionRevisionId: "other-revision",
-      actionRunId: "run-stage-1",
-    };
+    expect(readDocumentAttachment(doc, "attachment:analysis:r1:source-asset")).toMatchObject({
+      target: { kind: "project-asset", projectAssetId: "source-asset" },
+      slot: "description",
+      document: { documentAssetId: "analysis-description", revisionId: "analysis:r1" },
+    });
+  });
 
-    await expect(
-      bridge.publishMediaSuccess({
+  it("publishes independent optional Document slots without terminalizing before explicit finalization", async () => {
+    const doc = projectDoc();
+    const bridge = createLocalGeneratorRunBridge({
+      ownerId: "host-1",
+      journal: createSqliteDurableRunJournal(await temporaryDataDir()),
+    });
+    const multi = {
+      ...request(),
+      actionId: "analyze",
+      outputContract: ["description", "tags"].map((slot) => ({
+        slot,
+        assetType: {
+          kind: "document" as const,
+          documentKind: `media.analysis.${slot}`,
+          schemaVersion: 1,
+        },
+        cardinality: { minItems: 0, maxItems: 1 },
+      })),
+    };
+    expect(ensureActionRunRequest(doc, multi)).toMatchObject({ ok: true });
+    expect(markActionRunStarted(doc, multi.actionRunId)).toMatchObject({
+      ok: true,
+    });
+
+    for (const slot of ["description", "tags"] as const) {
+      const published = await bridge.publishDocumentSuccess({
         doc,
-        actionRunId: "run-stage-1",
-        outputSlot: "image",
-        entry: generatedAsset(),
-        legacyBinding: wrongOwner,
+        actionRunId: multi.actionRunId,
+        outputSlot: slot,
+        revision: {
+          id: `document-revision:${multi.actionRunId}:${slot}`,
+          documentAssetId: `document:${multi.actionRunId}:${slot}`,
+          documentKind: `media.analysis.${slot}`,
+          schemaVersion: 1,
+          mutability: "versioned",
+          body: {
+            digest: `sha256:${(slot === "description" ? "a" : "b").repeat(64)}`,
+            byteLength: 10,
+            contentType: "application/json",
+          },
+          producer: { kind: "action-run", actionRunId: multi.actionRunId },
+          sourceRefs: [],
+        },
         checkpoint: async () => undefined,
-      }),
-    ).rejects.toThrow(/legacy.*Generator.*revision/i);
-    expect(readProjectAsset(doc, "asset-courtyard")).toBeNull();
-    expect(
-      readOutputCommit(doc, {
-        actionRunId: "run-stage-1",
-        outputSlot: "image",
-      }),
-    ).toBeNull();
-    expect(readProjectActionRun(doc, "run-stage-1")?.status).toBe("running");
+      });
+      expect(published.run.status).toBe("running");
+    }
+
+    const finalized = await bridge.finalizeSuccess({
+      doc,
+      actionRunId: multi.actionRunId,
+      checkpoint: async () => undefined,
+    });
+    expect(finalized.run.status).toBe("succeeded");
+    expect(readOutputCommit(doc, {
+      actionRunId: multi.actionRunId,
+      outputSlot: "description",
+    })).not.toBeNull();
+    expect(readOutputCommit(doc, {
+      actionRunId: multi.actionRunId,
+      outputSlot: "tags",
+    })).not.toBeNull();
   });
 
   it("atomically publishes a typed Document revision, OutputCommit, and succeeded outcome", async () => {
@@ -942,5 +1044,72 @@ describe("Local Generator Run bridge", () => {
       }),
     ).rejects.toThrow(/Document.*output contract/i);
     expect(readProjectDocumentAsset(doc, "wrong")).toBeNull();
+  });
+
+  it("successful two-frame batch uses coherent checkpoints without prefixes", async () => {
+    const doc = projectDoc();
+    const journal = createSqliteDurableRunJournal(await temporaryDataDir());
+    const bridge = createLocalGeneratorRunBridge({ ownerId: "host-1", journal });
+    const entries = ["batch-1", "batch-2"].map((id) => ({ request: request(id), command: durableCommand(id) }));
+    const snapshots: string[][] = [];
+    await bridge.enqueueBatch({ doc, entries, checkpoint: async () => { snapshots.push(entries.map(({ request: item }) => readProjectActionRun(doc, item.actionRunId)?.status ?? "missing")); } });
+    expect(snapshots).toEqual([["pending", "pending"], ["running", "running"]]);
+  });
+
+  it("conflict in second proposal admits zero public Runs and creates zero tasks", async () => {
+    const doc = projectDoc();
+    const journal = createSqliteDurableRunJournal(await temporaryDataDir());
+    const bridge = createLocalGeneratorRunBridge({ ownerId: "host-1", journal });
+    const bad = request("conflict-2");
+    bad.actionId = "other-action";
+    await expect(bridge.enqueueBatch({ doc, entries: [{ request: request("conflict-1"), command: durableCommand("conflict-1") }, { request: bad, command: durableCommand("conflict-2") }], checkpoint: async () => undefined })).rejects.toThrow(/exact Action id/);
+    expect([readProjectActionRun(doc, "conflict-1"), readProjectActionRun(doc, "conflict-2")]).toEqual([null, null]);
+    await expect(Promise.all([journal.load({ actionRunId: "conflict-1", outputSlot: "image" }), journal.load({ actionRunId: "conflict-2", outputSlot: "image" })])).resolves.toEqual([undefined, undefined]);
+  });
+
+  it("failure creating second private task leaves all queued and replay repairs before all run", async () => {
+    const doc = projectDoc();
+    const journal = createSqliteDurableRunJournal(await temporaryDataDir());
+    let fail = true;
+    const controlled = new Proxy(journal, { get(target, property) {
+      if (property === "create") return async (run: Parameters<typeof journal.create>[0]) => {
+        if (fail && run.actionRunId === "repair-2") throw new Error("injected second task failure");
+        return target.create(run);
+      };
+      const value = target[property as keyof typeof target];
+      return typeof value === "function" ? value.bind(target) : value;
+    } });
+    const bridge = createLocalGeneratorRunBridge({ ownerId: "host-1", journal: controlled });
+    const entries = ["repair-1", "repair-2"].map((id) => ({ request: request(id), command: durableCommand(id) }));
+    await expect(bridge.enqueueBatch({ doc, entries, checkpoint: async () => undefined })).rejects.toThrow("injected second task failure");
+    expect(entries.map(({ request: item }) => readProjectActionRun(doc, item.actionRunId)?.status)).toEqual(["pending", "pending"]);
+    await expect(Promise.all(entries.map(({ request: item }) => journal.load({ actionRunId: item.actionRunId, outputSlot: "image" })))).resolves.toEqual([expect.any(Object), undefined]);
+    fail = false;
+    const replay = await bridge.enqueueBatch({ doc, entries, checkpoint: async () => undefined });
+    expect(replay.map((run) => run.status)).toEqual(["running", "running"]);
+    await expect(journal.load({ actionRunId: "repair-2", outputSlot: "image" })).resolves.not.toBeNull();
+  });
+
+  it("exact batch replay is idempotent", async () => {
+    const doc = projectDoc();
+    const bridge = createLocalGeneratorRunBridge({ ownerId: "host-1", journal: createSqliteDurableRunJournal(await temporaryDataDir()) });
+    const entries = ["replay-1", "replay-2"].map((id) => ({ request: request(id), command: durableCommand(id) }));
+    const first = await bridge.enqueueBatch({ doc, entries, checkpoint: async () => undefined });
+    const checkpoint = vi.fn(async () => undefined);
+    await expect(bridge.enqueueBatch({ doc, entries, checkpoint })).resolves.toEqual(first);
+    expect(checkpoint).not.toHaveBeenCalled();
+  });
+
+  it("terminal runs are not recreated", async () => {
+    const doc = projectDoc();
+    const requested = ensureActionRunRequest(doc, request("terminal-1"));
+    if (!requested.ok) throw new Error(requested.error.message);
+    const completed = commitActionRunOutcome(doc, { actionRunId: "terminal-1", status: "failed" });
+    if (!completed.ok) throw new Error(completed.error.message);
+    const journal = createSqliteDurableRunJournal(await temporaryDataDir());
+    const bridge = createLocalGeneratorRunBridge({ ownerId: "host-1", journal });
+    const [run] = await bridge.enqueueBatch({ doc, entries: [{ request: request("terminal-1"), command: durableCommand("terminal-1") }], checkpoint: async () => undefined });
+    expect(run?.status).toBe("failed");
+    await expect(journal.load({ actionRunId: "terminal-1", outputSlot: "image" })).resolves.toBeUndefined();
   });
 });

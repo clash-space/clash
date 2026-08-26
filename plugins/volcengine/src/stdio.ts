@@ -5,11 +5,13 @@ import { fileURLToPath } from "node:url";
 import { assemblePlugin, defineExecutor } from "@clash/action-sdk";
 
 import { volcengineAdapter } from "./modelark.js";
+import { volcengineMediaKitAdapter } from "./mediakit.js";
 import { volcengineSpeechAdapter } from "./speech.js";
 
 export const CONTRIBUTIONS = {
   "volcengine-execute": defineExecutor(volcengineAdapter),
   "volcengine-speech-execute": defineExecutor(volcengineSpeechAdapter),
+  "volcengine-mediakit-execute": defineExecutor(volcengineMediaKitAdapter),
 };
 
 export const plugin = assemblePlugin({

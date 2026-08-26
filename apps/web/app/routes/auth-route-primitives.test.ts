@@ -11,7 +11,9 @@ describe("auth route primitives", () => {
       const source = readRouteSource(file);
 
       expect(source).toContain("@clash/gui/components/ui/button");
+      expect(source).toContain("@clash/gui/components/ui/feedback");
       expect(source).toContain("<Button");
+      expect(source).toContain("<InlineAlert");
       expect(source).not.toContain("<button");
     },
   );

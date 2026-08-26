@@ -13,7 +13,7 @@ export const ToggleGroupItem = forwardRef<
         <ToggleGroupPrimitive.Item
             ref={ref}
             className={cn(
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface',
                 className,
             )}
             {...props}

@@ -9,7 +9,14 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@clash/web-ui/hooks/useRevisionHistory", () => ({
-  useRevisionHistory: () => [],
+  useRevisionHistory: () => ({
+    revisions: [],
+    latest: null,
+    count: 0,
+    loading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
 }));
 
 vi.mock("./MilkdownEditor", async () => {

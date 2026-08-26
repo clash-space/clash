@@ -1,6 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { access, chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import {
+  access,
+  chmod,
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import {
   LOCAL_HOST_DATA_SCHEMA_VERSION,
@@ -34,13 +42,12 @@ export interface HostDiscoveryWriteOptions {
 export function getDefaultHostDiscoveryRunDir(
   env: Record<string, string | undefined> = process.env,
 ): string {
-  return join(
-    clashHomeForLocalDataDir(defaultLocalApiDataDir(env)),
-    "run",
-  );
+  return join(clashHomeForLocalDataDir(defaultLocalApiDataDir(env)), "run");
 }
 
-export function getHostDiscoveryPath(runDir = getDefaultHostDiscoveryRunDir()): string {
+export function getHostDiscoveryPath(
+  runDir = getDefaultHostDiscoveryRunDir(),
+): string {
   return join(runDir, "host.json");
 }
 
@@ -49,6 +56,7 @@ export function createHostDiscoveryRecord(options: {
   launchMode: HostLaunchMode;
   startedBy: HostStartedBy;
   profile?: ClashRuntimeProfile;
+  runtimeFingerprint?: string;
   agentCliPath?: string;
   ownerClientId?: string;
   pid?: number;
@@ -66,6 +74,10 @@ export function createHostDiscoveryRecord(options: {
     launchMode: options.launchMode,
     startedBy: options.startedBy,
     profile: options.profile ?? resolveClashProfile(),
+    runtimeFingerprint:
+      (options.runtimeFingerprint ??
+        process.env.CLASH_DAEMON_RUNTIME_FINGERPRINT?.trim()) ||
+      undefined,
     agentCliPath: options.agentCliPath,
     ownerClientId: options.ownerClientId,
     startedAt: now,
@@ -75,7 +87,9 @@ export function createHostDiscoveryRecord(options: {
 
 export async function writeHostDiscovery(
   record: LocalHostDiscoveryRecord,
-  options: HostDiscoveryWriteOptions & { pidExists?: (pid: number) => boolean } = {},
+  options: HostDiscoveryWriteOptions & {
+    pidExists?: (pid: number) => boolean;
+  } = {},
 ): Promise<void> {
   if (!isLocalHostDiscoveryRecord(record)) {
     throw new Error("Invalid local host discovery record");
@@ -99,17 +113,23 @@ export async function writeHostDiscovery(
     if (!isNotFound(error)) throw error;
   }
   if (
-    isLocalHostDiscoveryRecord(incumbent)
-    && incumbent.pid !== record.pid
-    && pidExists(incumbent.pid)
+    isLocalHostDiscoveryRecord(incumbent) &&
+    incumbent.pid !== record.pid &&
+    pidExists(incumbent.pid)
   ) {
     throw new Error(
       `A local host is already active on ${incumbent.endpoint} (pid ${incumbent.pid}); stop it before starting another.`,
     );
   }
 
-  const tmpPath = join(runDir, `host.${record.hostId}.${process.pid}.${Date.now()}.tmp`);
-  await writeFile(tmpPath, `${JSON.stringify(record, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  const tmpPath = join(
+    runDir,
+    `host.${record.hostId}.${process.pid}.${Date.now()}.tmp`,
+  );
+  await writeFile(tmpPath, `${JSON.stringify(record, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
   await rename(tmpPath, finalPath);
   await chmod(finalPath, 0o600).catch(() => undefined);
 }
@@ -163,12 +183,22 @@ function defaultPidExists(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    return Boolean(error && typeof error === "object" && "code" in error && error.code === "EPERM");
+    return Boolean(
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "EPERM",
+    );
   }
 }
 
 function isNotFound(error: unknown): boolean {
-  return Boolean(error && typeof error === "object" && "code" in error && error.code === "ENOENT");
+  return Boolean(
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    error.code === "ENOENT",
+  );
 }
 
 export async function canReadHostDiscovery(runDir?: string): Promise<boolean> {

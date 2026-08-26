@@ -25,6 +25,8 @@ import { IconButton } from "../ui/icon-button";
 import { Input } from "../ui/input";
 import { Slider, SliderRange, SliderThumb, SliderTrack } from "../ui/slider";
 import { Tooltip } from "../ui/tooltip";
+import { useOptionalLoroSyncContext } from "../LoroSyncContext";
+import { PendingAssetConnectionHint } from "./PendingAssetConnectionHint";
 
 const MEDIA_NODE_CONTROL_CLASS =
   "nodrag nopan bg-black/50 text-white backdrop-blur-sm hover:bg-black/70 focus-visible:ring-white/80 focus-visible:ring-offset-black/20";
@@ -132,6 +134,7 @@ const AudioNode = ({
   const [label, setLabel] = useState(data.label || "Audio Node");
   const { projectId } = useProject();
   const { openAssetPreview } = useMediaViewer();
+  const loroSync = useOptionalLoroSyncContext();
   const projectAssetId =
     typeof data.assetId === "string" && data.assetId.length > 0
       ? data.assetId
@@ -145,6 +148,8 @@ const AudioNode = ({
   const [audioUrl, setAudioUrl] = useState<string | undefined>(
     projectedAudioUrl,
   );
+  const pendingAwaitingConnection =
+    data.status === "pending" && loroSync?.connected === false;
 
   // Duration may come from byte inspection. Inline waveform is migration-only;
   // new Assets derive peaks in the browser and keep them in the bounded cache.
@@ -496,10 +501,16 @@ const AudioNode = ({
                 compact
               />
             ) : isActiveStatus(status) && !audioUrl ? (
-              <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
-                <Spinner size={24} className="animate-spin" />
-                <span className="text-sm font-medium">Generating audio...</span>
-              </div>
+              pendingAwaitingConnection ? (
+                <PendingAssetConnectionHint compact />
+              ) : (
+                <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                  <Spinner size={24} className="animate-spin" />
+                  <span className="text-sm font-medium">
+                    Generating audio...
+                  </span>
+                </div>
+              )
             ) : status === "failed" ? (
               <div className="flex items-center gap-2 text-red-500">
                 <X size={24} weight="bold" />

@@ -28,7 +28,7 @@ export const RadioGroupItem = forwardRef<
         <RadioGroupPrimitive.Item
             ref={ref}
             className={cn(
-                'group/radio flex w-full cursor-pointer items-start gap-2.5 rounded-lg border border-warm-border px-3 py-2 text-left transition-colors hover:bg-warm-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface data-[state=checked]:border-brand data-[state=checked]:bg-brand/10 disabled:cursor-not-allowed disabled:opacity-50 dark:data-[state=checked]:bg-brand/15',
+                'group/radio flex w-full cursor-pointer items-start gap-2.5 rounded-lg border border-warm-border px-3 py-2 text-left transition-colors hover:bg-warm-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface data-[state=checked]:border-brand data-[state=checked]:bg-brand/10 disabled:cursor-not-allowed disabled:opacity-50 dark:data-[state=checked]:bg-brand/15',
                 className,
             )}
             {...props}

@@ -55,6 +55,11 @@ export const ProjectAssetMetadataSchema = z
     channelCount: z.number().int().positive().optional(),
     channelLayout: z.string().trim().min(1).optional(),
     originalName: z.string().trim().min(1).optional(),
+    /** Normalized rig/deform capability a `model` asset exposes, independent from any provider or
+     *  rig format. `0` means static/rigid -- no rig/deform capability. `1` means rigged/deformable.
+     *  This is a normalized capability, not a bone count or physical degree of freedom, and it
+     *  never becomes a `rig` kind of its own -- static and rigged 3-D assets are both `model`. */
+    flexibility: z.number().min(0).max(1).optional(),
   })
   .strict();
 export type ProjectAssetMetadata = z.infer<typeof ProjectAssetMetadataSchema>;

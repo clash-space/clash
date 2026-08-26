@@ -155,7 +155,7 @@ const DraftPlaceholder = ({ nodeId, modality, width, height, compact = false }: 
                 return { ...n, data: { ...n.data, runRequested: true, cascadeToken: token } };
             }),
         );
-        if (loroSync?.connected) {
+        if (loroSync) {
             for (const id of draftIds) {
                 loroSync.updateNode(id, { data: { runRequested: true, cascadeToken: token } });
             }

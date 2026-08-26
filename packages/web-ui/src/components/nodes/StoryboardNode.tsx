@@ -104,7 +104,7 @@ const StoryboardNode = ({ id, data: _data, selected }: NodeProps<Node<Record<str
                         <label className="text-[10px] font-bold uppercase text-slate-700 dark:text-slate-300">Visual Prompt</label>
                     </div>
                     <Textarea
-                        className="w-full h-24 rounded-lg border border-warm-border bg-warm-muted p-2 text-xs text-slate-800 dark:text-slate-200 focus:border-brand focus:ring-1 focus:ring-brand outline-none resize-none"
+                        className="w-full h-24 rounded-lg border border-warm-border bg-warm-muted p-2 text-xs text-slate-800 dark:text-slate-200 focus:border-ring focus:ring-1 focus:ring-ring outline-none resize-none"
                         value={visualPrompt}
                         onChange={(e) => setVisualPrompt(e.target.value)}
                     />

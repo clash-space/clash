@@ -161,6 +161,7 @@ export function createCanvasProjectHostGateway(
             ...(input.parentId?.trim() ? { parentId: input.parentId.trim() } : {}),
             ...(input.modelId?.trim() ? { modelId: input.modelId.trim() } : {}),
             ...(input.actionId?.trim() ? { actionId: input.actionId.trim() } : {}),
+            ...(input.assetId?.trim() ? { assetId: input.assetId.trim() } : {}),
             ...(input.refs ? { refs: input.refs } : {}),
             ...(input.params ? { params: input.params } : {}),
             actorClientType: "mcp",

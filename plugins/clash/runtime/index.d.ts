@@ -16,6 +16,7 @@ type StartHost = (context: {
     dataDir: string;
     env: NodeJS.ProcessEnv;
     startedBy: "cli" | "plugin";
+    runtimeFingerprint?: string;
 }) => Promise<LocalDaemonLaunchResult>;
 interface PluginHostRuntimeLayout {
     source: boolean;
@@ -30,6 +31,7 @@ declare function resolvePluginHostRuntimeLayout(options?: {
     moduleUrl?: string;
     env?: NodeJS.ProcessEnv;
     tsxCliPath?: string;
+    tsxLoaderPath?: string;
 }): PluginHostRuntimeLayout;
 declare function readActivePluginHost(runDir: string, profile?: ClashRuntimeProfile): Promise<PluginHostRecord | undefined>;
 declare function createPluginHostManager(options?: {
@@ -39,6 +41,7 @@ declare function createPluginHostManager(options?: {
     startedBy?: "cli" | "plugin";
     probeHost?: (record: LocalHostDiscoveryRecord) => Promise<boolean>;
     startHost?: StartHost;
+    runtimeFingerprint?: string;
 }): PluginHostManager;
 
 /**

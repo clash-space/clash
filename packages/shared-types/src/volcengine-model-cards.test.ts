@@ -8,7 +8,7 @@ describe("Volcengine Seedance Asset delivery", () => {
       (model.providerImplementations ?? [])
         .filter(
           (route) =>
-            route.providerId === "volcengine" &&
+            route.providerId === "volcengine-modelark" &&
             route.apiShape === "modelark" &&
             model.id.startsWith("seedance-"),
         )

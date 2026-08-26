@@ -1168,6 +1168,46 @@ describe("Hilo Hub credentials and references", () => {
     ).rejects.toThrow(/no accessToken stored/);
   });
 
+  it("adapts media analysis bytes to the verified Hilo request and text envelope", async () => {
+    const { calls, impl } = recordingFetch(() => ({ text: '{"summary":"music"}' }));
+    vi.stubGlobal("fetch", impl);
+    try {
+      const result = await hubAdapter.submit(
+        invocationFor({
+          modelId: "opaque-analysis-card",
+          upstreamModel: "provider-managed",
+          apiShape: "hub-analyse-media",
+          prompt: "summarize the semantic audio content",
+          referenceAudioUrls: [DATA_AUDIO],
+        }),
+        contextWith(
+          { accessToken: "stored-token" },
+          {
+            reference: async () => ({
+              form: "bytes",
+              bytes: new TextEncoder().encode("audio bytes"),
+              mediaType: "audio/wav",
+              kind: "audio",
+            }),
+          },
+        ),
+      );
+      expect(calls[0]?.url).toContain("https://design.minimax.io/api/v1/tool/analyze_media");
+      expect(calls[0]?.body).toEqual({
+        media_data: Buffer.from("audio bytes").toString("base64"),
+        mime_type: "audio/wav",
+        question: "summarize the semantic audio content",
+      });
+      expect(calls[0]?.body).not.toHaveProperty("model");
+      expect(result).toEqual({
+        status: "completed",
+        outputs: [{ slot: "text", kind: "value", value: '{"summary":"music"}' }],
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("reads the token under the key its own declaration names", async () => {
     const { calls, impl } = recordingFetch(defaultResponder);
     const context = contextWith({ accessToken: "stored-token" });

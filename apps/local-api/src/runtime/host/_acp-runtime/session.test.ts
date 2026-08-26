@@ -98,6 +98,32 @@ class ResumeCapableAgent implements Agent {
   }
 }
 
+class McpCapturingAgent implements Agent {
+  newSessionRequest: NewSessionRequest | undefined;
+
+  async initialize(_params: InitializeRequest): Promise<InitializeResponse> {
+    return {
+      protocolVersion: PROTOCOL_VERSION,
+      agentCapabilities: { promptCapabilities: {} },
+    };
+  }
+
+  async newSession(params: NewSessionRequest): Promise<NewSessionResponse> {
+    this.newSessionRequest = params;
+    return { sessionId: "mcp-session" };
+  }
+
+  async authenticate() {
+    return {};
+  }
+
+  async prompt(_params: PromptRequest): Promise<PromptResponse> {
+    return { stopReason: "end_turn" };
+  }
+
+  async cancel() {}
+}
+
 class LoadReplayAgent implements Agent {
   constructor(
     protected readonly connection: AgentConnection,
@@ -340,6 +366,37 @@ class NewSessionCapabilityAgent implements Agent {
 }
 
 describe("AcpSessionImpl resume", () => {
+  it("passes the host-owned MCP descriptor through ACP session/new", async () => {
+    const pair = makeStreamPair();
+    const agent = new McpCapturingAgent();
+    new AgentSideConnection(
+      () => agent,
+      ndJsonStream(pair.agentOutput, pair.agentInput),
+    );
+    const mcpServer = {
+      name: "clash",
+      command: "/opt/clash/node",
+      args: ["/opt/clash/runtime/dispatcher.js", "mcp"],
+      env: [{ name: "CLASH_PROJECT_ID", value: "project-mcp" }],
+    };
+    const session = new AcpSessionImpl({
+      id: "local-session",
+      child: pair.child,
+      options: {
+        agent: { command: "codex-acp", cwd: "/tmp/project" },
+        mcpServers: [mcpServer],
+      },
+    });
+
+    await session.init();
+
+    expect(agent.newSessionRequest).toMatchObject({
+      cwd: "/tmp/project",
+      mcpServers: [mcpServer],
+    });
+    await session.dispose();
+  });
+
   it("surfaces capability updates emitted while creating a new session before the first prompt", async () => {
     const pair = makeStreamPair();
     new AgentSideConnection(

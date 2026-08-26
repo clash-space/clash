@@ -63,7 +63,7 @@ const GroupNode = ({ selected, data, id }: NodeProps<Node<Record<string, any>>>)
     }, [depth, selected]);
 
     const scheduleLoroSync = (nextLabel: string) => {
-        if (!loroSync?.connected) return;
+        if (!loroSync) return;
         if (syncTimeoutRef.current) {
             window.clearTimeout(syncTimeoutRef.current);
         }

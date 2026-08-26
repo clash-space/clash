@@ -38,7 +38,7 @@ const SourceHandleMenu = ({ nodeId, sourceType }: SourceHandleMenuProps) => {
 
     const onNodesMutated = useCallback(
         (prevNodes: Node[], nextNodes: Node[]) => {
-            if (!loroSync?.connected) return;
+            if (!loroSync) return;
             const patches = collectLayoutNodePatches(prevNodes, nextNodes);
             applyLayoutPatchesToLoro(loroSync, patches);
         },
@@ -76,7 +76,7 @@ const SourceHandleMenu = ({ nodeId, sourceType }: SourceHandleMenuProps) => {
 
             if (!newNode) return;
 
-            if (loroSync?.connected) {
+            if (loroSync) {
                 loroSync.addNode(newNode.id, newNode);
             }
 
@@ -88,7 +88,7 @@ const SourceHandleMenu = ({ nodeId, sourceType }: SourceHandleMenuProps) => {
                 type: 'default',
             });
 
-            if (loroSync?.connected) {
+            if (loroSync) {
                 loroSync.addEdge(edgeId, {
                     id: edgeId,
                     source: nodeId,
@@ -128,13 +128,13 @@ const SourceHandleMenu = ({ nodeId, sourceType }: SourceHandleMenuProps) => {
                     n.position,
                     undefined,
                 );
-                if (placed && loroSync?.connected) {
+                if (placed && loroSync) {
                     loroSync.addNode(placed.id, placed);
                 }
             }
             for (const ed of newEdges) {
                 addEdges(ed);
-                if (loroSync?.connected) loroSync.addEdge(ed.id, ed);
+                if (loroSync) loroSync.addEdge(ed.id, ed);
             }
             setCloneDialog(null);
         },

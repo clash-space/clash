@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -16,12 +18,26 @@ afterEach(() => {
 });
 
 describe("transient popup primitives", () => {
-  it("does not keep pointer hover paint after Radix leaves an item highlighted", () => {
+  it("shares semantic item states without pinning page colors", () => {
     const itemClassName = dropdownMenuItemClassName();
 
-    expect(itemClassName).toContain("hover:bg-warm-muted/75");
-    expect(itemClassName).toContain("focus-visible:bg-warm-muted/75");
-    expect(itemClassName).not.toContain("data-[highlighted]:bg-warm-muted/75");
+    expect(itemClassName).toContain("app-select-item");
+    expect(itemClassName).toContain("app-select-focus");
+    expect(itemClassName).not.toContain("warm-muted");
+  });
+
+  it("leaves disclosure and focus state to Radix", () => {
+    const source = readFileSync(
+      join(process.cwd(), "packages/gui/src/components/ui/dropdown-menu.tsx"),
+      "utf8",
+    );
+
+    expect(source).not.toContain("useExclusivePopupOpen");
+    expect(source).not.toContain("usePopupFocusPolicy");
+    expect(source).not.toContain("onPointerDown={(event)");
+    expect(source).not.toContain("onKeyDown={(event)");
+    expect(source).toContain('data-slot="dropdown-menu-content"');
+    expect(source).toContain("app-select-content");
   });
 
   it("toggles a dropdown from the same trigger and dismisses it with Escape", () => {
@@ -78,7 +94,7 @@ describe("transient popup primitives", () => {
     expect(screen.getByRole("menu", { name: "Second trigger" })).toBeTruthy();
   });
 
-  it("keeps trigger focus when a dropdown is opened by pointer", () => {
+  it("moves focus into the native Radix menu when opened", () => {
     render(
       <DropdownMenu>
         <DropdownMenuTrigger>Pointer menu</DropdownMenuTrigger>
@@ -93,7 +109,7 @@ describe("transient popup primitives", () => {
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
 
     expect(screen.getByRole("menu", { name: "Pointer menu" })).toBeTruthy();
-    expect(document.activeElement).toBe(trigger);
+    expect(document.activeElement).toBe(screen.getByRole("menu", { name: "Pointer menu" }));
   });
 
   it("toggles a popover and switches to another popover in one click", () => {

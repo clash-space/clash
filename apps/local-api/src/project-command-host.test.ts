@@ -2,20 +2,131 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   canvasBatchDeleteReadToken,
+  commitActionRunOutcome,
+  createProjectAsset,
+  ensureActionRunRequest,
+  ensureOutputCommit,
+  GeneratorDefinitionSchema,
+  readProjectGenerator,
+  readGeneratorRevision,
+  type GeneratorDefinition,
   canvasNodeReadToken,
   LoroSyncClient,
   MODEL_CARDS,
   PROJECT_ASSET_RENDER_CANVAS_ID,
-  markActionAssetBindingAuthority,
+  resolveOutputCommitAssetType,
   projectDirectorStageReadToken,
   projectDirectorStageRevisionId,
   projectCanvasReadToken,
   projectTimelineReadToken,
-  projectTimelineRevisionId,
-  requestTimelineRender,
 } from "@clash/shared-types";
 import { handleCommandForTest } from "./project-command-host.js";
 import { textHash, textReadToken } from "./project-text-projection.js";
+
+function timelineGeneratorDefinition(): GeneratorDefinition {
+  return GeneratorDefinitionSchema.parse({
+    pluginId: "clash.remotion",
+    definitionId: "timeline",
+    version: "0.1.0",
+    schemaHash: `sha256:${"3".repeat(64)}`,
+    stateSchema: { type: "object" },
+    editPolicy: "advance-head",
+    persistentInputs: [{
+      slot: "timeline:item",
+      accepts: [{ kind: "media", mediaKind: "video" }],
+      cardinality: { minItems: 0, maxItems: null },
+    }],
+    actions: [{
+      id: "render",
+      executorExportId: "render-timeline",
+      parametersSchema: { type: "object" },
+      invocationInputs: [],
+      outputs: [{
+        slot: "render:output",
+        assetType: { kind: "media", mediaKind: "video" },
+        cardinality: { minItems: 1, maxItems: 1 },
+      }],
+    }],
+    projectionSurface: {
+      id: "clash.timeline",
+      stateKey: "timeline",
+      mediaInputSlot: "timeline:item",
+      primaryActionId: "render",
+    },
+  });
+}
+
+function directorStageGeneratorDefinition(): GeneratorDefinition {
+  return GeneratorDefinitionSchema.parse({
+    pluginId: "clash.director", definitionId: "director-stage", version: "1.0.0",
+    schemaHash: `sha256:${"4".repeat(64)}`, stateSchema: { type: "object" }, editPolicy: "advance-head",
+    persistentInputs: [{ slot: "stage:media", accepts: [{ kind: "media", mediaKind: "image" }], cardinality: { minItems: 0, maxItems: null } }],
+    actions: [{ id: "capture-frame", executorExportId: "capture-frame", parametersSchema: { type: "object" }, invocationInputs: [], outputs: [{ slot: "capture:output", assetType: { kind: "media", mediaKind: "image" }, cardinality: { minItems: 1, maxItems: 1 } }] }],
+    projectionSurface: { id: "clash.director-stage", stateKey: "stage", mediaInputSlot: "stage:media", primaryActionId: "capture-frame" },
+  });
+}
+
+test("Timeline commands project native Generator facts and fail closed without the Definition", () => {
+  const client = new LoroSyncClient({
+    serverUrl: "http://localhost:0",
+    projectId: "project-native-timeline-host",
+    token: "test",
+  });
+  const definition = timelineGeneratorDefinition();
+
+  for (const action of ["list_timelines", "create_timeline", "update_timeline_state"]) {
+    const missing = handleCommandForTest(client, {
+      action,
+      timelineId: "native-cut",
+      name: "Native cut",
+      state: { tracks: [] },
+    }) as { code?: string };
+    assert.equal(missing.code, "GENERATOR_PROJECTION_SURFACE_NOT_INSTALLED");
+  }
+
+  const created = handleCommandForTest(client, {
+    action: "create_timeline",
+    timelineId: "native-cut",
+    name: "Native cut",
+    state: { tracks: [] },
+  }, { timelineGeneratorDefinition: definition }) as {
+    timeline: Parameters<typeof projectTimelineReadToken>[0];
+    readToken: string;
+  };
+  assert.equal(client.doc.getMap("timelines").get("native-cut"), undefined);
+  const head = readProjectGenerator(client.doc, "native-cut");
+  assert.ok(head);
+  assert.ok(readGeneratorRevision(client.doc, {
+    generatorId: "native-cut",
+    generatorRevisionId: head.headRevisionId,
+  }));
+
+  const listed = handleCommandForTest(client, { action: "list_timelines" }, {
+    timelineGeneratorDefinition: definition,
+  }) as { timelines: Array<{ id: string }>; versions: Record<string, string> };
+  assert.deepEqual(listed.timelines.map((timeline) => timeline.id), ["native-cut"]);
+
+  const updated = handleCommandForTest(client, {
+    action: "update_timeline_state",
+    timelineId: "native-cut",
+    state: { tracks: [{ id: "dialogue", items: [] }] },
+    actorClientType: "agent",
+    ifMatch: created.readToken,
+  }, { timelineGeneratorDefinition: definition }) as {
+    timeline: Parameters<typeof projectTimelineReadToken>[0];
+  };
+  assert.deepEqual(updated.timeline.state, { tracks: [{ id: "dialogue", items: [] }] });
+  assert.equal(client.doc.getMap("timelines").get("native-cut"), undefined);
+
+  const stale = handleCommandForTest(client, {
+    action: "update_timeline_state",
+    timelineId: "native-cut",
+    state: { tracks: [] },
+    actorClientType: "agent",
+    ifMatch: created.readToken,
+  }, { timelineGeneratorDefinition: definition }) as { code?: string; error?: string };
+  assert.match(`${stale.code} ${stale.error}`, /STALE/);
+});
 
 test("Canvas list exposes host-issued MCP receipts for every returned node", () => {
   const client = new LoroSyncClient({
@@ -64,13 +175,19 @@ test("local-api allocates composition owner ids and the default Director Stage s
     projectId: "project-host-identities",
     token: "test",
   });
+  const definition = timelineGeneratorDefinition();
+  const nativeHandle = (command: Record<string, unknown>) =>
+    handleCommandForTest(client, command, {
+      timelineGeneratorDefinition: definition,
+      directorStageGeneratorDefinition: directorStageGeneratorDefinition(),
+    });
   client.createCanvas({ id: "main", name: "Main" });
-  const createdTimeline = handleCommandForTest(client, {
+  const createdTimeline = nativeHandle({
     action: "create_timeline",
     timelineId: "cut-1",
     name: "Cut",
   }) as { timeline?: { id: string }; readToken?: string };
-  const attachedTimeline = handleCommandForTest(client, {
+  const attachedTimeline = nativeHandle({
     action: "attach_timeline",
     timelineId: "cut-1",
     canvasId: "main",
@@ -79,7 +196,7 @@ test("local-api allocates composition owner ids and the default Director Stage s
   }) as { timeline?: { owner?: { actionNodeId?: string } } };
   assert.match(attachedTimeline.timeline?.owner?.actionNodeId ?? "", /^[a-f0-9-]{8,}$/);
 
-  const createdStage = handleCommandForTest(client, {
+  const createdStage = nativeHandle({
     action: "create_director_stage",
     stageId: "stage-1",
     name: "Blocking",
@@ -564,37 +681,31 @@ test("local-api host manages standalone and Canvas-owned Timelines", () => {
     projectId: "project-timeline-registry",
     token: "test",
   });
+  const definition = timelineGeneratorDefinition();
+  const nativeHandle = (command: Record<string, unknown>) =>
+    handleCommandForTest(client, command, { timelineGeneratorDefinition: definition });
   client.createCanvas({ id: "shots", name: "Shots" });
 
-  const created = handleCommandForTest(client, {
+  const created = nativeHandle({
     action: "create_timeline",
     timelineId: "timeline-1",
     name: "Episode 1",
     state: { tracks: [] },
-  }) as { timeline: unknown; version: string; readToken: string };
-  assert.deepEqual(created.timeline, {
-    id: "timeline-1",
-    name: "Episode 1",
-    owner: { kind: "project" },
-    revisionId: projectTimelineRevisionId("timeline-1", { tracks: [] }),
-    state: { tracks: [] },
-  });
-  assert.equal(created.version, projectTimelineReadToken({
-    id: "timeline-1",
-    name: "Episode 1",
-    owner: { kind: "project" },
-    revisionId: projectTimelineRevisionId("timeline-1", { tracks: [] }),
-    state: { tracks: [] },
-  }));
+  }) as { timeline: Parameters<typeof projectTimelineReadToken>[0]; version: string; readToken: string };
+  assert.equal(created.timeline.id, "timeline-1");
+  assert.equal(created.timeline.name, "Episode 1");
+  assert.deepEqual(created.timeline.owner, { kind: "project" });
+  assert.deepEqual(created.timeline.state, { tracks: [] });
+  assert.equal(created.version, projectTimelineReadToken(created.timeline));
   assert.match(created.readToken, /^timeline-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/);
-  assert.equal((handleCommandForTest(client, {
+  assert.equal((nativeHandle({
     action: "attach_timeline",
     timelineId: "timeline-1",
     canvasId: "main",
     actionNodeId: "timeline-action-1",
     position: { x: 0, y: 0 },
   }) as { timeline?: { owner?: { canvasId?: string } } }).timeline?.owner?.canvasId, "main");
-  assert.equal((handleCommandForTest(client, {
+  assert.equal((nativeHandle({
     action: "copy_timeline_action",
     sourceTimelineId: "timeline-1",
     targetCanvasId: "shots",
@@ -602,128 +713,70 @@ test("local-api host manages standalone and Canvas-owned Timelines", () => {
     newActionNodeId: "timeline-action-2",
     position: { x: 0, y: 0 },
   }) as { timeline?: { id?: string; owner?: { canvasId?: string } } }).timeline?.id, "timeline-2");
-  assert.equal(client.listTimelines().find((timeline) => timeline.id === "timeline-2")?.owner.kind, "canvas-action");
+  const listed = nativeHandle({ action: "list_timelines" }) as {
+    timelines: Array<{ id: string; owner: { kind: string } }>;
+  };
+  assert.equal(listed.timelines.find((timeline) => timeline.id === "timeline-2")?.owner.kind, "canvas-action");
 
-  assert.equal((handleCommandForTest(client, {
+  assert.equal((nativeHandle({
     action: "detach_timeline",
     timelineId: "timeline-1",
   }) as { timeline?: { owner?: { kind?: string } } }).timeline?.owner?.kind, "project");
 });
 
-test("local-api host lists trusted standalone Timeline renders without registering or selecting the internal Canvas", () => {
-  const client = new LoroSyncClient({
-    serverUrl: "http://localhost:0",
-    projectId: "project-timeline-render-readback",
-    token: "test",
-  });
-  const state = {
-    durationInFrames: 24,
-    tracks: [
-      {
-        id: "visuals",
-        items: [{ id: "title", type: "text", from: 0, durationInFrames: 24 }],
-      },
-    ],
-  };
-  const created = client.createTimeline({
-    id: "timeline-1",
-    name: "Episode 1",
-    state,
-  });
-  assert.equal(created.ok, true);
-  if (!created.ok) return;
-  assert.equal(markActionAssetBindingAuthority(client.doc).ok, true);
+test("local-api host plans native Timeline Actions and projects native Runs as legacy render reads", () => {
+  const client = new LoroSyncClient({ serverUrl: "http://localhost:0", projectId: "project-timeline-render-readback", token: "test" });
+  const definition = timelineGeneratorDefinition();
+  const created = handleCommandForTest(client, {
+    action: "create_timeline", timelineId: "timeline-1", name: "Episode 1", state: { tracks: [] },
+  }, { timelineGeneratorDefinition: definition }) as { timeline: Parameters<typeof projectTimelineReadToken>[0]; readToken: string };
 
-  const completed = requestTimelineRender(client.doc, {
-    timelineId: "timeline-1",
-    actorUserId: "user-1",
-    actorAgentId: "agent-1",
-    generateId: () => "render-completed",
+  const plan = handleCommandForTest(client, {
+    action: "request_timeline_render", timelineId: "timeline-1", actorClientType: "agent", ifMatch: created.readToken,
+  }, { timelineGeneratorDefinition: definition, generationId: () => "run-planned" }) as Record<string, unknown>;
+  assert.deepEqual(plan, {
+    kind: "timeline-generator-action-plan", actionRunId: "run-planned", generatorId: "timeline-1",
+    generatorRevisionId: created.timeline.revisionId, actionId: "render", timelineId: "timeline-1",
+    sourceTimelineRevisionId: created.timeline.revisionId, renderNodeId: "run-planned", target: { kind: "project-assets" },
   });
-  const pending = requestTimelineRender(client.doc, {
-    timelineId: "timeline-1",
-    actorUserId: "user-1",
-    actorAgentId: "agent-1",
-    generateId: () => "render-pending",
+  assert.equal(client.doc.getMap("nodes").get("run-planned"), undefined);
+  assert.equal(client.doc.getMap("timelines").size, 0);
+  assert.equal(Object.hasOwn(plan, "submitted"), false);
+
+  const request = (actionRunId: string) => ({
+    actionRunId,
+    generatorRevision: { generatorId: "timeline-1", generatorRevisionId: created.timeline.revisionId },
+    actionId: "render",
+    executor: { pluginId: definition.pluginId, version: definition.version, exportId: "render-timeline", schemaHash: definition.schemaHash },
+    invocationFingerprint: `sha256:${(actionRunId === "run-completed" ? "a" : "b").repeat(64)}`,
+    parameters: {}, invocationInputRefs: [], outputContract: definition.actions[0]!.outputs,
   });
-  assert.equal(completed.ok, true);
-  assert.equal(pending.ok, true);
-  client.doc.getMap("nodes").set("render-completed", {
-    ...(client.doc.getMap("nodes").get("render-completed") as Record<string, unknown>),
-    data: {
-      ...((client.doc.getMap("nodes").get("render-completed") as {
-        data: Record<string, unknown>;
-      }).data),
-      status: "completed",
-      assetId: "asset-render-completed",
-    },
+  assert.equal(ensureActionRunRequest(client.doc, request("run-pending")).ok, true);
+  assert.equal(ensureActionRunRequest(client.doc, request("run-completed")).ok, true);
+  assert.equal(createProjectAsset(client.doc, {
+    id: "asset-render-completed", kind: "video",
+    source: { kind: "owned", resourceId: "resource:asset-render-completed" },
+    lifecycle: { state: "active" }, metadata: { contentType: "video/mp4" },
+  }).ok, true);
+  assert.equal(ensureOutputCommit(client.doc, {
+    actionRunId: "run-completed", outputSlot: "render:output", asset: { kind: "media", projectAssetId: "asset-render-completed" },
+  }, resolveOutputCommitAssetType).ok, true);
+  assert.equal(commitActionRunOutcome(client.doc, { actionRunId: "run-completed", status: "succeeded" }).ok, true);
+
+  const completed = handleCommandForTest(client, { action: "list_timeline_renders" }, { timelineGeneratorDefinition: definition }) as any;
+  assert.deepEqual(completed.renders.map((render: any) => render.node.id), ["run-completed"]);
+  assert.deepEqual(completed.renders[0].node.data, {
+    status: "completed", sourceTimelineId: "timeline-1", sourceTimelineRevisionId: created.timeline.revisionId,
+    assetId: "asset-render-completed",
   });
-  client.doc.commit({ origin: "test:complete-render" });
+  assert.equal(completed.renders[0].version, canvasNodeReadToken(completed.renders[0].node));
+  assert.match(completed.renders[0].readToken, /:receipt:/);
 
-  assert.equal(
-    client.listCanvases().some((canvas) => canvas.id === PROJECT_ASSET_RENDER_CANVAS_ID),
-    false,
-  );
-
-  const genericCanvasRead = handleCommandForTest(client, {
-    action: "get",
-    canvasId: PROJECT_ASSET_RENDER_CANVAS_ID,
-    nodeId: "render-completed",
-  }) as { error?: string };
-  assert.equal(
-    genericCanvasRead.error,
-    `Canvas ${PROJECT_ASSET_RENDER_CANVAS_ID} not found`,
-  );
-
-  const completedOnly = handleCommandForTest(client, {
-    action: "list_timeline_renders",
-  }) as {
-    canvasId?: string;
-    status?: string;
-    renders?: Array<{
-      node: Parameters<typeof canvasNodeReadToken>[0];
-      lineage: {
-        sourceTimelineId?: string;
-        sourceTimelineRevisionId?: string;
-      };
-      version: string;
-      readToken: string;
-    }>;
-    error?: string;
-  };
-  assert.equal(completedOnly.error, undefined);
-  assert.equal(completedOnly.canvasId, PROJECT_ASSET_RENDER_CANVAS_ID);
-  assert.equal(completedOnly.status, "completed");
-  assert.deepEqual(completedOnly.renders?.map((render) => render.node.id), [
-    "render-completed",
+  const all = handleCommandForTest(client, { action: "list_timeline_renders", status: "all" }, { timelineGeneratorDefinition: definition }) as any;
+  assert.deepEqual(all.renders.map((render: any) => [render.node.id, render.node.data.status]), [
+    ["run-completed", "completed"], ["run-pending", "generating"],
   ]);
-  const completedRender = completedOnly.renders?.[0];
-  assert.equal(completedRender?.lineage.sourceTimelineId, "timeline-1");
-  assert.equal(
-    completedRender?.lineage.sourceTimelineRevisionId,
-    created.timeline.revisionId,
-  );
-  assert.equal(
-    completedRender?.version,
-    completedRender && canvasNodeReadToken(completedRender.node),
-  );
-  assert.match(
-    completedRender?.readToken ?? "",
-    new RegExp(`^${completedRender?.version}:receipt:[A-Za-z0-9._~-]+$`),
-  );
-
-  const all = handleCommandForTest(client, {
-    action: "list_timeline_renders",
-    status: "all",
-  }) as {
-    status?: string;
-    renders?: Array<{ node: { id: string } }>;
-  };
-  assert.equal(all.status, "all");
-  assert.deepEqual(
-    all.renders?.map((render) => render.node.id).sort(),
-    ["render-completed", "render-pending"],
-  );
+  assert.equal(client.listCanvases().some((canvas) => canvas.id === PROJECT_ASSET_RENDER_CANVAS_ID), false);
 });
 
 test("local-api host manages independently revisioned Director Stages", () => {
@@ -732,6 +785,10 @@ test("local-api host manages independently revisioned Director Stages", () => {
     projectId: "project-director-stage-registry",
     token: "test",
   });
+  const nativeHandle = (command: Record<string, unknown>) =>
+    handleCommandForTest(client, command, {
+      directorStageGeneratorDefinition: directorStageGeneratorDefinition(),
+    });
   const state = {
     schemaVersion: 1 as const,
     scene: {
@@ -743,18 +800,18 @@ test("local-api host manages independently revisioned Director Stages", () => {
     shots: [],
   };
 
-  const created = handleCommandForTest(client, {
+  const created = nativeHandle({
     action: "create_director_stage",
     stageId: "stage-1",
     name: "Courtyard blocking",
     state,
   }) as { stage?: any; version?: string; readToken?: string; error?: string };
   assert.equal(created.error, undefined);
-  assert.equal(created.stage?.revisionId, projectDirectorStageRevisionId("stage-1", state));
+  assert.notEqual(created.stage?.revisionId, "");
   assert.equal(created.version, created.stage && projectDirectorStageReadToken(created.stage));
   assert.match(created.readToken ?? "", /:receipt:/);
 
-  const attached = handleCommandForTest(client, {
+  const attached = nativeHandle({
     action: "attach_director_stage",
     stageId: "stage-1",
     canvasId: "main",
@@ -771,21 +828,21 @@ test("local-api host manages independently revisioned Director Stages", () => {
       grid: { ...state.scene.grid, snap: true },
     },
   };
-  const updated = handleCommandForTest(client, {
+  const updated = nativeHandle({
     action: "update_director_stage_state",
     stageId: "stage-1",
     state: nextState,
   }) as { stage?: any; error?: string };
   assert.equal(updated.error, undefined);
-  assert.equal(updated.stage?.revisionId, projectDirectorStageRevisionId("stage-1", nextState));
+  assert.notEqual(updated.stage?.revisionId, created.stage?.revisionId);
 
-  const listed = handleCommandForTest(client, {
+  const listed = nativeHandle({
     action: "list_director_stages",
   }) as { stages?: Array<{ id: string }>; versions?: Record<string, string> };
   assert.deepEqual(listed.stages?.map((stage) => stage.id), ["stage-1"]);
   assert.match(listed.versions?.["stage-1"] ?? "", /:receipt:/);
 
-  const detached = handleCommandForTest(client, {
+  const detached = nativeHandle({
     action: "detach_director_stage",
     stageId: "stage-1",
   }) as { stage?: { owner?: { kind?: string } }; error?: string };
@@ -799,29 +856,31 @@ test("local-api host Timeline ownership changes verify the implicit host receipt
     projectId: "project-timeline-cas",
     token: "test",
   });
+  const definition = timelineGeneratorDefinition();
+  const nativeHandle = (command: Record<string, unknown>) =>
+    handleCommandForTest(client, command, { timelineGeneratorDefinition: definition });
   client.createNode("bootstrap", "text", { content: "Bootstrap" });
-  const created = client.createTimeline({
-    id: "timeline-1",
+  const created = nativeHandle({
+    action: "create_timeline",
+    timelineId: "timeline-1",
     name: "Episode 1",
     state: { tracks: [] },
-  });
-  assert.equal(created.ok, true);
-  if (!created.ok) return;
+  }) as { timeline: Parameters<typeof projectTimelineReadToken>[0]; readToken: string };
   const observedVersion = projectTimelineReadToken(created.timeline);
 
-  const listed = handleCommandForTest(client, { action: "list_timelines" }) as {
+  const listed = nativeHandle({ action: "list_timelines" }) as {
     versions?: Record<string, string>;
   };
   const readReceipt = listed.versions?.["timeline-1"] ?? "";
   assert.match(readReceipt, /^timeline-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/);
-  assert.match(JSON.stringify(handleCommandForTest(client, {
+  assert.match(JSON.stringify(nativeHandle({
     action: "attach_timeline",
     timelineId: "timeline-1",
     canvasId: "main",
     actionNodeId: "timeline-action-1",
     actorClientType: "agent",
   })), /READ_REQUIRED/);
-  assert.match(JSON.stringify(handleCommandForTest(client, {
+  assert.match(JSON.stringify(nativeHandle({
     action: "attach_timeline",
     timelineId: "timeline-1",
     canvasId: "main",
@@ -829,7 +888,7 @@ test("local-api host Timeline ownership changes verify the implicit host receipt
     actorClientType: "agent",
     observedVersion: "timeline-v1:stale",
   })), /STALE_READ/);
-  assert.match(JSON.stringify(handleCommandForTest(client, {
+  assert.match(JSON.stringify(nativeHandle({
     action: "attach_timeline",
     timelineId: "timeline-1",
     canvasId: "main",
@@ -838,7 +897,7 @@ test("local-api host Timeline ownership changes verify the implicit host receipt
     ifMatch: `${observedVersion}:receipt:forged`,
   })), /Invalid Timeline attach read receipt/);
 
-  const attached = handleCommandForTest(client, {
+  const attached = nativeHandle({
     action: "attach_timeline",
     timelineId: "timeline-1",
     canvasId: "main",
@@ -859,22 +918,24 @@ test("local-api host Timeline state apply advances its revision under implicit C
     projectId: "project-timeline-state-cas",
     token: "test",
   });
-  const created = client.createTimeline({
-    id: "timeline-1",
+  const definition = timelineGeneratorDefinition();
+  const nativeHandle = (command: Record<string, unknown>) =>
+    handleCommandForTest(client, command, { timelineGeneratorDefinition: definition });
+  const created = nativeHandle({
+    action: "create_timeline",
+    timelineId: "timeline-1",
     name: "Episode 1",
     state: { tracks: [] },
-  });
-  assert.equal(created.ok, true);
-  if (!created.ok) return;
+  }) as { timeline: Parameters<typeof projectTimelineReadToken>[0]; readToken: string };
   const observedVersion = projectTimelineReadToken(created.timeline);
 
-  assert.match(JSON.stringify(handleCommandForTest(client, {
+  assert.match(JSON.stringify(nativeHandle({
     action: "update_timeline_state",
     timelineId: "timeline-1",
     state: { tracks: [{ id: "dialogue", items: [] }] },
     actorClientType: "agent",
   })), /READ_REQUIRED/);
-  assert.match(JSON.stringify(handleCommandForTest(client, {
+  assert.match(JSON.stringify(nativeHandle({
     action: "update_timeline_state",
     timelineId: "timeline-1",
     state: { tracks: [{ id: "dialogue", items: [] }] },
@@ -882,19 +943,19 @@ test("local-api host Timeline state apply advances its revision under implicit C
     observedVersion: "timeline-v1:stale",
   })), /STALE_READ/);
 
-  const result = handleCommandForTest(client, {
+  const result = nativeHandle({
     action: "update_timeline_state",
     timelineId: "timeline-1",
     state: { tracks: [{ id: "dialogue", items: [] }] },
     actorClientType: "agent",
     observedVersion,
   }) as { timeline?: Parameters<typeof projectTimelineReadToken>[0]; version?: string };
-  assert.equal(
-    result.timeline?.revisionId,
-    projectTimelineRevisionId("timeline-1", {
-      tracks: [{ id: "dialogue", items: [] }],
-    }),
-  );
+  assert.notEqual(result.timeline?.revisionId, created.timeline.revisionId);
+  const advancedRevision = result.timeline && readGeneratorRevision(client.doc, {
+    generatorId: "timeline-1",
+    generatorRevisionId: result.timeline.revisionId,
+  });
+  assert.equal(advancedRevision?.parentRevisionId, created.timeline.revisionId);
   assert.equal(result.version, result.timeline && projectTimelineReadToken(result.timeline));
 });
 
@@ -904,10 +965,18 @@ test("local-api host Timeline attach does not create an unknown Canvas", () => {
     projectId: "project-timeline-invalid-canvas",
     token: "test",
   });
+  const definition = timelineGeneratorDefinition();
+  const nativeHandle = (command: Record<string, unknown>) =>
+    handleCommandForTest(client, command, { timelineGeneratorDefinition: definition });
   client.createNode("bootstrap", "text", { content: "Bootstrap" });
-  client.createTimeline({ id: "timeline-1", name: "Episode 1", state: { tracks: [] } });
+  nativeHandle({
+    action: "create_timeline",
+    timelineId: "timeline-1",
+    name: "Episode 1",
+    state: { tracks: [] },
+  });
 
-  const result = handleCommandForTest(client, {
+  const result = nativeHandle({
     action: "attach_timeline",
     timelineId: "timeline-1",
     canvasId: "missing",
@@ -1467,6 +1536,94 @@ test("local-api host asset copy-on-write replace preserves old media references"
   assert.equal(client.canvas.listEdges().some((edge) => edge.source === "image-1" && edge.target === "image-2"), true);
 });
 
+test("local-api host projects an active Project Asset as an independent Canvas media node", () => {
+  const client = new LoroSyncClient({
+    serverUrl: "http://localhost:0",
+    projectId: "project-asset-projection",
+    token: "test",
+  });
+  assert.equal(createProjectAsset(client.doc, {
+    id: "asset-otter",
+    kind: "image",
+    source: { kind: "owned", resourceId: "resource:asset-otter" },
+    lifecycle: { state: "active" },
+    metadata: { contentType: "image/png" },
+  }).ok, true);
+
+  const result = handleCommandForTest(client, {
+    action: "add",
+    type: "image",
+    label: "Deep-space otter",
+    assetId: "asset-otter",
+    actorClientType: "agent",
+  }) as { node_id?: string; error?: string | null };
+
+  assert.equal(result.error, null);
+  assert.ok(result.node_id);
+  const node = client.readNode(result.node_id);
+  assert.equal(node?.id, result.node_id);
+  assert.equal(node?.type, "image");
+  assert.deepEqual(node?.data, {
+    label: "Deep-space otter",
+    assetId: "asset-otter",
+    status: "completed",
+  });
+  assert.equal(node?.parent_id, null);
+  assert.deepEqual(client.canvas.listEdges(), []);
+});
+
+test("local-api host rejects a Canvas media projection without an active matching Project Asset", () => {
+  const client = new LoroSyncClient({
+    serverUrl: "http://localhost:0",
+    projectId: "project-invalid-asset-projection",
+    token: "test",
+  });
+
+  const result = handleCommandForTest(client, {
+    action: "add",
+    type: "image",
+    label: "Fabricated asset",
+    assetId: "asset-missing",
+    actorClientType: "agent",
+  }) as { code?: string; error?: string };
+
+  assert.equal(result.code, "PROJECT_ASSET_NOT_FOUND");
+  assert.match(result.error ?? "", /asset-missing/);
+  assert.deepEqual(client.canvas.listNodes(), []);
+});
+
+test("local-api host refuses copy-on-write replacement for a mutable media node", () => {
+  const client = new LoroSyncClient({
+    serverUrl: "http://localhost:0",
+    projectId: "project-mutable-media",
+    token: "test",
+  });
+  client.createNode("image-1", "image", {
+    label: "Hero",
+    status: "completed",
+    assetId: "asset-old",
+  });
+  const readToken = (handleCommandForTest(client, {
+    action: "get",
+    nodeId: "image-1",
+    actorClientType: "agent",
+  }) as { readToken: string }).readToken;
+
+  const result = handleCommandForTest(client, {
+    action: "asset_cow_replace",
+    nodeId: "image-1",
+    assetId: "asset-new",
+    newNodeId: "image-2",
+    actorClientType: "agent",
+    ifMatch: readToken,
+  }) as { code?: string; mutation?: { accepted?: boolean } };
+
+  assert.equal(result.code, "NODE_NOT_IMMUTABLE");
+  assert.equal(result.mutation?.accepted, false);
+  assert.equal(client.readNode("image-2"), null);
+  assert.deepEqual(client.canvas.listEdges(), []);
+});
+
 test("local-api host asset copy-on-write replace enforces stale agent read proof", () => {
   const client = new LoroSyncClient({
     serverUrl: "http://localhost:0",
@@ -1680,4 +1837,65 @@ test("local-api host text copy-on-write replace still enforces stale CAS", () =>
   assert.match(result.error ?? "", /Stale text replace rejected/);
   assert.equal((result as { mutation?: { accepted?: boolean } }).mutation?.accepted, false);
   assert.equal(client.readNode("script-v2"), null);
+});
+
+test("local-api host add selects a model Card for model_gen", () => {
+  const client = new LoroSyncClient({
+    serverUrl: "http://localhost:0",
+    projectId: "project-model-gen",
+    token: "test",
+  });
+
+  const added = handleCommandForTest(client, {
+    action: "add",
+    type: "model_gen",
+    label: "Statue",
+    prompt: "A marble statue",
+    modelId: "tripo-h3.1",
+  }) as { node_id?: string; error?: string; node?: { data?: Record<string, unknown> } };
+
+  assert.equal(added.error ?? undefined, undefined);
+  assert.equal(added.node?.data?.modelId, "tripo-h3.1");
+  assert.equal(added.node?.data?.actionType, "model-gen");
+});
+
+test("local-api host add picks the default model Card (not an image Card) for model_gen without a modelId", () => {
+  const modelCard = MODEL_CARDS.find((card) => card.id === "tripo-h3.1")!;
+  const imageCard = MODEL_CARDS.find((card) => card.kind === "image")!;
+  const client = new LoroSyncClient({
+    serverUrl: "http://localhost:0",
+    projectId: "project-model-gen-default",
+    token: "test",
+    modelCards: [imageCard, modelCard],
+  } as ConstructorParameters<typeof LoroSyncClient>[0]);
+
+  const added = handleCommandForTest(client, {
+    action: "add",
+    type: "model_gen",
+    label: "Statue",
+    prompt: "A marble statue",
+  }, {
+    effectiveModelCards: [imageCard, modelCard],
+  }) as { node?: { data?: Record<string, unknown> } };
+
+  assert.equal(added.node?.data?.modelId, modelCard.id);
+});
+
+test("local-api host add rejects model_gen for an unknown modelId", () => {
+  const client = new LoroSyncClient({
+    serverUrl: "http://localhost:0",
+    projectId: "project-model-gen-unknown",
+    token: "test",
+  });
+
+  const result = handleCommandForTest(client, {
+    action: "add",
+    type: "model_gen",
+    label: "Statue",
+    prompt: "A marble statue",
+    modelId: "not-a-real-model",
+  }) as { code?: string; error?: string };
+
+  assert.equal(result.code, "MODEL_NOT_AVAILABLE");
+  assert.match(result.error ?? "", /not-a-real-model/);
 });

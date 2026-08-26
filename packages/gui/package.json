@@ -17,7 +17,6 @@
     "./components/copilot/ThinkingIndicator": "./src/components/copilot/ThinkingIndicator.tsx",
     "./components/ui/controllable-state": "./src/components/ui/controllable-state.ts",
     "./components/ui/gesture": "./src/components/ui/gesture.ts",
-    "./components/ui/popup-focus": "./src/components/ui/popup-focus.ts",
     "./components/ui/*": "./src/components/ui/*.tsx"
   },
   "scripts": {
@@ -37,6 +36,7 @@
     "@use-gesture/react": "^10.3.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "framer-motion": "^12.23.24",
     "radix-ui": "^1.4.3",
     "tailwind-merge": "^3.6.0"

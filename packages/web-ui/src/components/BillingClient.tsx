@@ -17,6 +17,8 @@ import {
   createCheckout,
 } from "@clash/web-ui/lib/billingClient";
 import { Button } from "./ui/button";
+import { InlineAlert } from "./ui/feedback";
+import { AppPage, AppPageInset } from "./AppPage";
 
 interface Props {
   balance: Balance | null;
@@ -36,7 +38,7 @@ export default function BillingClient({ balance, plans, packs, ledger, notEnable
   return (
     <div className="min-h-screen bg-warm-page text-slate-950 dark:text-slate-50">
       <Header />
-      <div className="max-w-5xl mx-auto px-6 py-8 space-y-10">
+      <AppPage width="narrow" className="space-y-10">
         {notEnabled ? <ManagedBillingNotice /> : <>
           <BalanceCard balance={balance} />
           <TopupSection packs={packs} />
@@ -44,7 +46,7 @@ export default function BillingClient({ balance, plans, packs, ledger, notEnable
           {ledger.length > 0 && <LedgerSection entries={ledger} />}
         </>}
         {providerUsage.length > 0 && <ProviderUsageSection entries={providerUsage} />}
-      </div>
+      </AppPage>
     </div>
   );
 }
@@ -99,7 +101,7 @@ function ManagedBillingNotice() {
 function Header() {
   return (
     <div className="sticky top-0 z-10 border-b border-warm-border bg-warm-surface/85 backdrop-blur">
-      <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-3">
+      <AppPageInset width="narrow" className="flex items-center gap-3 py-4">
         <Link
           to="/"
           className="text-stone-500 transition-colors hover:text-slate-950 dark:text-stone-400 dark:hover:text-slate-50"
@@ -108,7 +110,7 @@ function Header() {
           <ArrowLeft size={20} />
         </Link>
         <h1 className="font-display text-xl font-semibold tracking-tight">Billing</h1>
-      </div>
+      </AppPageInset>
     </div>
   );
 }
@@ -184,14 +186,15 @@ function PackCard({ pack }: { pack: TopupPack }) {
   const dollars = (pack.price_usd_cents / 100).toFixed(0);
 
   return (
+    <div className={`overflow-hidden rounded-xl border bg-warm-surface/80 ${
+      disabled
+        ? "border-warm-border opacity-50"
+        : "border-warm-border transition-colors hover:border-brand/45 hover:bg-warm-surface"
+    }`}>
     <Button
       onClick={handle}
       disabled={disabled || busy}
-      className={`flex w-full flex-col items-start gap-0 rounded-xl border bg-warm-surface/80 p-5 text-left shadow-none transition-all ${
-        disabled
-          ? "border-warm-border opacity-50 cursor-not-allowed"
-          : "border-warm-border hover:border-brand/45 hover:bg-warm-surface hover:shadow-sm cursor-pointer"
-      }`}
+      className="flex h-full w-full flex-col items-start gap-0 rounded-none border-0 bg-transparent p-5 text-left shadow-none hover:bg-transparent"
     >
       <div className="text-3xl font-bold tabular-nums">${dollars}</div>
       <div className="mt-1 text-sm text-stone-600 dark:text-stone-300">
@@ -209,8 +212,9 @@ function PackCard({ pack }: { pack: TopupPack }) {
         </div>
       )}
       {busy && <div className="mt-3 text-xs text-stone-500">Redirecting…</div>}
-      {err && <div className="mt-3 text-xs text-red-500">{err}</div>}
     </Button>
+      {err ? <InlineAlert tone="error" title={err} className="m-2 mt-0" /> : null}
+    </div>
   );
 }
 
@@ -290,7 +294,7 @@ function PlanCard({ plan }: { plan: Plan }) {
       >
         {free ? "Default plan" : busy ? "Redirecting…" : "Choose"}
       </Button>
-      {err && <div className="mt-2 text-xs text-red-500">{err}</div>}
+      {err ? <InlineAlert tone="error" title={err} className="mt-2" /> : null}
     </div>
   );
 }

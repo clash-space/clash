@@ -17,7 +17,7 @@ interface AssetRelationsPanelProps {
 }
 
 const sectionTitleClass = 'font-display text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-400';
-const relationButtonClass = 'group flex w-full items-center gap-2.5 py-2 text-left text-xs text-slate-700 transition-colors hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand/35';
+const relationButtonClass = 'group flex w-full items-center gap-2.5 py-2 text-left text-xs text-slate-700 transition-colors hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/35';
 
 function Section({
   title,

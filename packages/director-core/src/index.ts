@@ -1,3 +1,17 @@
+export {
+  CLASH_HUMANOID_RIG_V1,
+  inspectHumanoidRig,
+  type HumanoidRigBone,
+  type HumanoidRigIssue,
+  type HumanoidRigReport,
+} from "./inspect-humanoid-rig";
+
+export {
+  retargetHumanoidClip,
+  type HumanoidBoneMapping,
+  type RetargetHumanoidClipOptions,
+} from "./retarget-humanoid-clip";
+
 import type {
   DirectorStageActionClip,
   DirectorStageCamera,

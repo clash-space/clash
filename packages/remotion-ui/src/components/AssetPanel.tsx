@@ -159,7 +159,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
             <RemotionButton
               type="button"
               onClick={onBack}
-              className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-stone-600 transition-colors hover:bg-warm-muted hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 dark:text-stone-400 dark:hover:text-stone-100"
+              className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-stone-600 transition-colors hover:bg-warm-muted hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 dark:text-stone-400 dark:hover:text-stone-100"
               aria-label={backLabel}
             >
               <svg
@@ -185,7 +185,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
             <RemotionButton
               type="button"
               onClick={() => onExport()}
-              className={`flex h-8 items-center justify-center rounded-md bg-brand px-3 font-semibold text-brand-foreground shadow-sm transition-colors hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 ${editorTypeClassName.control}`}
+              className={`flex h-8 items-center justify-center rounded-md bg-brand px-3 font-semibold text-brand-foreground shadow-sm transition-colors hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 ${editorTypeClassName.control}`}
             >
               Export
             </RemotionButton>
@@ -213,7 +213,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
           {onRequestAsset ? (
             <RemotionButton
               onClick={onRequestAsset}
-              className={`h-8 w-full rounded-md bg-brand px-3 font-semibold text-brand-foreground shadow-sm transition-colors hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 ${editorTypeClassName.control}`}
+              className={`h-8 w-full rounded-md bg-brand px-3 font-semibold text-brand-foreground shadow-sm transition-colors hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 ${editorTypeClassName.control}`}
             >
               Add media
             </RemotionButton>
@@ -228,14 +228,14 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
           />
           <RemotionButton
             onClick={() => fileInputRef.current?.click()}
-            className={`h-8 w-full rounded-md bg-brand px-3 font-semibold text-brand-foreground shadow-sm transition-colors hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 disabled:cursor-not-allowed disabled:opacity-50 ${editorTypeClassName.control}`}
+            className={`h-8 w-full rounded-md bg-brand px-3 font-semibold text-brand-foreground shadow-sm transition-colors hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 ${editorTypeClassName.control}`}
             disabled={!onAssetUpload}
           >
             Upload Files
           </RemotionButton>
           <RemotionButton
             onClick={() => setIsPickerOpen(true)}
-            className={`mt-2 h-8 w-full rounded-md border border-warm-border bg-warm-surface/55 px-3 font-semibold text-stone-600 transition-colors hover:bg-warm-muted hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-stone-300 dark:hover:text-stone-100 ${editorTypeClassName.control}`}
+            className={`mt-2 h-8 w-full rounded-md border border-warm-border bg-warm-surface/55 px-3 font-semibold text-stone-600 transition-colors hover:bg-warm-muted hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-stone-300 dark:hover:text-stone-100 ${editorTypeClassName.control}`}
             disabled={availableAssets.length === 0}
           >
             Add From Canvas

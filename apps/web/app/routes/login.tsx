@@ -5,7 +5,9 @@ import { GoogleLogo } from "@phosphor-icons/react";
 import betterAuthClient from "@clash/web-ui/lib/betterAuthClient";
 import Background from "@clash/gui/components/Background";
 import { Button } from "@clash/gui/components/ui/button";
+import { InlineAlert } from "@clash/gui/components/ui/feedback";
 import { Input } from "@clash/gui/components/ui/input";
+import { BrandAsset } from "@clash/web-ui/components/BrandAsset";
 
 type Stage = "email" | "otp" | "password";
 type PwAction = "signin" | "signup";
@@ -18,15 +20,15 @@ function canonicalLocalAuthUrl(path: string): string | null {
 }
 
 const authInputClass =
-  "clash-auth-input w-full rounded-2xl px-5 py-3 text-base text-slate-950 placeholder:text-stone-400 focus:outline-none dark:text-neutral-100 dark:placeholder:text-neutral-500";
+  "clash-auth-input w-full rounded-2xl px-5 py-3 text-base text-content-primary focus:outline-none";
 const authPrimaryClass =
   "clash-auth-primary flex w-full items-center justify-center gap-3 rounded-2xl px-6 py-4 text-base font-semibold disabled:cursor-not-allowed";
 const authSecondaryClass =
   "clash-auth-secondary flex w-full items-center justify-center gap-3 rounded-2xl px-6 py-4 text-base font-medium disabled:cursor-not-allowed";
 const authTextButtonClass =
-  "text-stone-600 transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page dark:text-neutral-400";
+  "text-stone-600 transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page dark:text-neutral-400";
 const authInlineLinkClass =
-  "font-medium text-slate-950 transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page dark:text-neutral-100";
+  "font-medium text-slate-950 transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page dark:text-neutral-100";
 
 export default function LoginRoute() {
   const [stage, setStage] = useState<Stage>("email");
@@ -177,17 +179,15 @@ export default function LoginRoute() {
               whileTap={{ scale: 0.95 }}
             >
               <span className="relative block h-10 w-10">
-                <img
-                  src="/brand/logo-mark.svg"
+                <BrandAsset
+                  name="mark"
                   alt=""
                   className="h-10 w-10 object-contain dark:hidden"
-                  draggable={false}
                 />
-                <img
-                  src="/brand/logo-mark-dark.svg"
+                <BrandAsset
+                  name="markDark"
                   alt=""
                   className="hidden h-10 w-10 object-contain dark:block"
-                  draggable={false}
                 />
               </span>
               <span className="font-display text-2xl font-semibold leading-none text-slate-950 dark:text-neutral-50">
@@ -216,14 +216,10 @@ export default function LoginRoute() {
         </div>
 
         {error && (
-          <div className="clash-auth-alert clash-auth-alert-error mb-4 rounded-2xl px-4 py-3 text-sm">
-            {error}
-          </div>
+          <InlineAlert tone="error" title={error} className="mb-4" />
         )}
         {info && !error && (
-          <div className="clash-auth-alert clash-auth-alert-info mb-4 rounded-2xl px-4 py-3 text-sm">
-            {info}
-          </div>
+          <InlineAlert tone="info" title={info} className="mb-4" />
         )}
 
         {stage === "email" ? (

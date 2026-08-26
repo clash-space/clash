@@ -20,8 +20,7 @@ export function durablePublicFailure(
 ): DurablePublicFailure {
   return {
     code: failure.code,
-    message:
-      "Generation failed. See the owning Host for private diagnostics.",
+    message: "Generation failed. See the owning Host for private diagnostics.",
   };
 }
 
@@ -40,7 +39,7 @@ export type DurableRunPhase =
 export type DurableRunOperation = "submit" | "poll" | "stage" | "publish";
 
 export interface DurableRunOwner {
-  realm: "local" | "cloud";
+  realm: "local" | "cloud" | "client";
   id: string;
 }
 

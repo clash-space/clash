@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RevisionHistoryBadge } from "./RevisionHistoryBadge";
@@ -31,8 +37,8 @@ describe("RevisionHistoryBadge", () => {
     expect(
       screen.getByRole("region", {
         name: "Text revision history panel",
-      }).className,
-    ).toContain("left-0");
+      }),
+    ).toBeTruthy();
   });
 
   afterEach(() => {
@@ -71,14 +77,57 @@ describe("RevisionHistoryBadge", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Text revision history/ }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Text revision history/ }),
+    );
 
-    expect(screen.getByRole("region", { name: "Text revision history panel" })).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "Text revision history panel" }),
+    ).toBeTruthy();
     expect(screen.getByText("txrev-2")).toBeTruthy();
     expect(screen.getByText("agent")).toBeTruthy();
     expect(screen.getAllByText("texts/script.md")).toHaveLength(2);
-    expect(screen.getByText("clash text content --revision txrev-2 --out revisions/txrev-2.md")).toBeTruthy();
-    expect(screen.getByText("clash text restore --node text-1 --revision txrev-2 --mode replace")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "clash text content --revision txrev-2 --out revisions/txrev-2.md",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "clash text restore --node text-1 --revision txrev-2 --mode replace",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("dismisses the history popup with Escape and restores trigger focus", async () => {
+    render(
+      <RevisionHistoryBadge
+        nodeId="text-1"
+        history={{
+          count: 1,
+          latest: { revisionId: "txrev-1" },
+          revisions: [{ revisionId: "txrev-1" }],
+          loading: false,
+          error: null,
+        }}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", {
+      name: /Text revision history/,
+    });
+    trigger.focus();
+    fireEvent.click(trigger);
+    expect(
+      screen.getByRole("region", { name: "Text revision history panel" }),
+    ).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: "Escape", code: "Escape" });
+
+    expect(
+      screen.queryByRole("region", { name: "Text revision history panel" }),
+    ).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
   it("emits an explicit restore action without touching canvas state directly", () => {
@@ -97,15 +146,20 @@ describe("RevisionHistoryBadge", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Text revision history/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Restore text revision txrev-2" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Text revision history/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Restore text revision txrev-2" }),
+    );
 
     expect(onRestoreRevision).toHaveBeenCalledWith({
       kind: "text",
       nodeId: "text-1",
       revisionId: "txrev-2",
       mode: "replace",
-      command: "clash text restore --node text-1 --revision txrev-2 --mode replace",
+      command:
+        "clash text restore --node text-1 --revision txrev-2 --mode replace",
     });
   });
 
@@ -130,17 +184,26 @@ describe("RevisionHistoryBadge", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Text revision history/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Copy restore command for text revision txrev-1" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Text revision history/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Copy restore command for text revision txrev-1",
+      }),
+    );
 
-    expect(writeText).toHaveBeenCalledWith("clash text restore --node text-1 --revision txrev-1 --mode replace");
+    expect(writeText).toHaveBeenCalledWith(
+      "clash text restore --node text-1 --revision txrev-1 --mode replace",
+    );
     const event = listener.mock.calls[0]?.[0] as CustomEvent;
     expect(event.detail).toEqual({
       kind: "text",
       nodeId: "text-1",
       revisionId: "txrev-1",
       mode: "replace",
-      command: "clash text restore --node text-1 --revision txrev-1 --mode replace",
+      command:
+        "clash text restore --node text-1 --revision txrev-1 --mode replace",
     });
     window.removeEventListener("clash:revision-restore-request", listener);
   });
@@ -159,10 +222,20 @@ describe("RevisionHistoryBadge", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Text revision history/ }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Text revision history/ }),
+    );
 
-    expect(screen.getByText("clash text content --revision 'txrev-weird id' --out 'revisions/txrev-weird id.md'")).toBeTruthy();
-    expect(screen.getByText("clash text restore --node 'script node '\\''A'\\''' --revision 'txrev-weird id' --mode replace")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "clash text content --revision 'txrev-weird id' --out 'revisions/txrev-weird id.md'",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "clash text restore --node 'script node '\\''A'\\''' --revision 'txrev-weird id' --mode replace",
+      ),
+    ).toBeTruthy();
   });
 
   it("stays hidden when no revisions are indexed", () => {

@@ -16,6 +16,14 @@ interface LocationLike {
   host: string;
 }
 
+interface DesktopRuntimeBridge {
+  isDesktop?: boolean;
+  refreshRuntime?: () => Promise<RuntimeEndpointConfig>;
+}
+
+let runtimeOverride: RuntimeEndpointConfig | undefined;
+let runtimeRefresh: Promise<ResolvedRuntimeEndpointConfig> | undefined;
+
 function browserLocation(): LocationLike | undefined {
   if (typeof window === "undefined") return undefined;
   return window.location;
@@ -28,7 +36,30 @@ function wsBaseFromLocation(location: LocationLike | undefined): string {
 }
 
 export function getRuntimeConfig(): ResolvedRuntimeEndpointConfig {
-  return resolveRuntimeConfig(globalThis.__CLASH_RUNTIME_CONFIG__ ?? {});
+  return resolveRuntimeConfig(
+    runtimeOverride ?? globalThis.__CLASH_RUNTIME_CONFIG__ ?? {},
+  );
+}
+
+export function setRuntimeConfigOverride(
+  config: RuntimeEndpointConfig | undefined,
+): void {
+  runtimeOverride = config;
+}
+
+function desktopRuntimeBridge(): DesktopRuntimeBridge | undefined {
+  return (
+    globalThis as typeof globalThis & {
+      __CLASH_DESKTOP__?: DesktopRuntimeBridge;
+    }
+  ).__CLASH_DESKTOP__;
+}
+
+export function isDesktopRuntime(): boolean {
+  const desktopBridge = desktopRuntimeBridge();
+  return (
+    desktopBridge?.isDesktop === true || getRuntimeConfig().mode === "desktop"
+  );
 }
 
 export function getRuntimeCapabilities(): RuntimeCapabilities {
@@ -37,6 +68,38 @@ export function getRuntimeCapabilities(): RuntimeCapabilities {
 
 export function runtimeApiUrl(path: string): string {
   return apiUrl(path, getRuntimeConfig());
+}
+
+export async function refreshRuntimeConfig(): Promise<ResolvedRuntimeEndpointConfig> {
+  if (runtimeRefresh) return runtimeRefresh;
+  const refresh = desktopRuntimeBridge()?.refreshRuntime;
+  if (!refresh) return getRuntimeConfig();
+
+  runtimeRefresh = refresh()
+    .then((config) => {
+      setRuntimeConfigOverride(config);
+      return getRuntimeConfig();
+    })
+    .finally(() => {
+      runtimeRefresh = undefined;
+    });
+  return runtimeRefresh;
+}
+
+export async function runtimeFetch(
+  path: string,
+  init?: RequestInit,
+  fetchImpl: typeof fetch = fetch,
+): Promise<Response> {
+  try {
+    return await fetchImpl(runtimeApiUrl(path), init);
+  } catch (error) {
+    if (!isDesktopRuntime() || !desktopRuntimeBridge()?.refreshRuntime) {
+      throw error;
+    }
+    await refreshRuntimeConfig();
+    return fetchImpl(runtimeApiUrl(path), init);
+  }
 }
 
 export function runtimeSyncWebSocketUrl(

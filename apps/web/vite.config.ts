@@ -1,4 +1,5 @@
 import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import wasm from "vite-plugin-wasm";
@@ -15,6 +16,10 @@ const persistStatePath = process.env.CLASH_WEB_E2E_PERSIST_STATE?.trim()
 // generated package exports. This preserves source HMR while allowing Vite to
 // ignore dist writes produced by tests/builds without serving stale modules.
 export const DEV_SOURCE_ALIASES = [
+  {
+    find: /^@clash\/action-sdk\/browser$/,
+    replacement: resolve(repoRoot, "packages/action-sdk/src/browser.ts"),
+  },
   {
     find: /^@clash\/asset-sdk$/,
     replacement: resolve(repoRoot, "packages/asset-sdk/src/index.ts"),
@@ -59,6 +64,11 @@ export const DEV_SOURCE_ALIASES = [
   },
 ];
 
+// Prebundling these breaks the mixed zod v3/v4 graph (see optimizeDeps note
+// below). Shared by the client graph and the auxiliary api-cf worker
+// environment, which does not inherit the top-level exclusion.
+export const NO_PREBUNDLE_DEPS = ["loro-crdt", "zod", "zod-to-json-schema"];
+
 export const DEV_WATCH_IGNORES = ["**/dist/**", "**/release/**", "**/.tmp/**"];
 
 // Pure Vite SPA. index.html is the entry; main.tsx mounts a
@@ -97,6 +107,7 @@ export default defineConfig(async ({ command, isPreview }) => {
       // Skip plugin in build so deploys (which read wrangler.toml directly) get
       // a plain SPA bundle without the plugin's wrangler.json redirect.
       ...cloudflarePlugins,
+      react(),
       tailwindcss(),
       // wasm support for loro-crdt; modern build target lets the runtime
       // handle top-level await natively (no vite-plugin-top-level-await
@@ -156,10 +167,28 @@ export default defineConfig(async ({ command, isPreview }) => {
     preview: {
       port: 3000,
     },
+    // `@cloudflare/vite-plugin` names the auxiliary api-cf worker environment
+    // `clash_api`. Vite environment optimizers do not inherit the top-level
+    // optimizeDeps.exclude, so the worker prebundled its own zod copy into
+    // .vite/deps_clash_api and Timeline DSL startup failed.
+    environments: {
+      clash_api: {
+        optimizeDeps: {
+          exclude: NO_PREBUNDLE_DEPS,
+        },
+      },
+    },
     optimizeDeps: {
       // loro-crdt ships a .wasm alongside JS — exclude from esbuild prebundle so
       // vite-plugin-wasm handles it at request time.
-      exclude: ["loro-crdt"],
+      // zod / zod-to-json-schema: the dev source aliases put shared-types
+      // (zod v3 + zod-to-json-schema 3.24.x) in the same graph as apps/web and
+      // the auxiliary api-cf worker (zod v4). esbuild prebundling collapses the
+      // two majors into one optimized copy, and the v4 runtime then loses v3
+      // internals zod-to-json-schema walks -> "Timeline DSL JSON Schema missing
+      // nested items". Excluding them keeps each importer on its own resolved
+      // copy.
+      exclude: NO_PREBUNDLE_DEPS,
       include: ["react-dom/client", "react/jsx-runtime"],
     },
   };

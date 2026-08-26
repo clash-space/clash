@@ -814,4 +814,57 @@ describe("typed metadata attachment projection index", () => {
     ]);
     expect(await store.listMetadataAttachmentIndex()).toEqual([]);
   });
+
+  it("appends session events without coalescing and replays them by sequence", async () => {
+    const dataDir = await tempDir();
+    const store = createLocalMetadataStore(dataDir);
+
+    await store.appendSessionEvent("session-1", {
+      type: "user_prompt",
+      data: { turn_id: "turn-1", text: "Inspect" },
+      ts: 1_000,
+    });
+    await store.appendSessionEvent("session-1", {
+      type: "session.event",
+      data: {
+        turn_id: "turn-1",
+        event: {
+          sessionUpdate: "agent_thought_chunk",
+          content: { type: "text", text: "Plan" },
+        },
+      },
+      ts: 1_250,
+    });
+    await store.appendSessionEvent("session-1", {
+      type: "turn_completed",
+      data: { turn_id: "turn-1" },
+      ts: 2_000,
+    });
+
+    expect(await store.listSessionEvents("session-1")).toEqual([
+      expect.objectContaining({ seq: 1, type: "user_prompt", ts: 1_000 }),
+      expect.objectContaining({ seq: 2, type: "session.event", ts: 1_250 }),
+      expect.objectContaining({ seq: 3, type: "turn_completed", ts: 2_000 }),
+    ]);
+  });
+
+  it("moves and deletes the canonical session event log with its session", async () => {
+    const dataDir = await tempDir();
+    const store = createLocalMetadataStore(dataDir);
+
+    await store.appendSessionEvent("temporary-session", {
+      type: "user_prompt",
+      data: { turn_id: "turn-1", text: "Inspect" },
+      ts: 1_000,
+    });
+    await store.renameSessionEvents("temporary-session", "final-session");
+
+    expect(await store.listSessionEvents("temporary-session")).toEqual([]);
+    expect(await store.listSessionEvents("final-session")).toEqual([
+      expect.objectContaining({ type: "user_prompt", ts: 1_000 }),
+    ]);
+
+    await store.deleteSessionEvents("final-session");
+    expect(await store.listSessionEvents("final-session")).toEqual([]);
+  });
 });

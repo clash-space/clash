@@ -1,3 +1,13 @@
+export * from "./generator-client.js";
+export * from "./generator-readback.js";
+
+export {
+  createAssetEditPluginModule,
+  invokeAssetEditPlugin,
+  type AssetEditExecutionInput,
+  type AssetEditExecutor,
+} from "./asset-edit-plugin.js";
+
 export {
   apiUrl,
   defaultRuntimeCapabilities,
@@ -248,6 +258,8 @@ export interface LocalHostDiscoveryRecord {
   startedBy: HostStartedBy;
   /** Runtime channel that owns this host. Missing legacy records are production. */
   profile?: "dev" | "prod";
+  /** Content identity of the executable host artifact. */
+  runtimeFingerprint?: string;
   agentCliPath?: string;
   ownerClientId?: string;
   startedAt: string;
@@ -282,6 +294,9 @@ export function isLocalHostDiscoveryRecord(
     (record.profile === undefined ||
       record.profile === "dev" ||
       record.profile === "prod") &&
+    (record.runtimeFingerprint === undefined ||
+      (typeof record.runtimeFingerprint === "string" &&
+        record.runtimeFingerprint.length > 0)) &&
     (record.agentCliPath === undefined ||
       (typeof record.agentCliPath === "string" &&
         record.agentCliPath.length > 0)) &&

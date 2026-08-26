@@ -291,12 +291,7 @@ describe("Local processor Generator v2 opt-in", () => {
           candidate.owner.actionRunId === "run-stage-1" &&
           candidate.direction === "output",
       ),
-    ).toMatchObject([
-      {
-        slot: "image",
-        projectAssetId: staged.projectAssetId,
-      },
-    ]);
+    ).toEqual([]);
     expect(
       await journal.load({
         actionRunId: "run-stage-1",

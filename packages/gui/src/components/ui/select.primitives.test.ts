@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { sourceContains } from "../../../test-support/source-match";
+
 const source = () =>
     readFileSync(
         join(process.cwd(), "packages/gui/src/components/ui/select.tsx"),
@@ -16,11 +18,13 @@ function readFunction(sourceText: string, functionName: string) {
 }
 
 describe("SelectMenu primitives", () => {
-    it("uses semantic neutral surfaces for dark menus", () => {
+    it("shares the select visual adapter across Radix Select and DropdownMenu", () => {
         const selectSource = source();
 
-        expect(selectSource).toContain("dark:bg-warm-surface");
-        expect(selectSource).toContain("dark:hover:bg-warm-muted/80");
+        expect(selectSource).toContain("app-select-trigger");
+        expect(selectSource).toContain("app-select-content");
+        expect(selectSource).toContain("app-select-item");
+        expect(selectSource).toContain("app-select-focus");
         expect(selectSource).not.toMatch(/dark:bg-slate-(?:8|9)00/);
         expect(selectSource).not.toMatch(/dark:border-slate-700/);
     });
@@ -30,8 +34,8 @@ describe("SelectMenu primitives", () => {
         const dropdownSource = readFunction(selectSource, "DropdownSelectMenu");
 
         expect(selectSource).toContain("./button");
-        expect(dropdownSource).toContain("<Button");
-        expect(dropdownSource).toContain("<DropdownMenuPrimitive.Trigger asChild>");
+        expect(sourceContains(dropdownSource, "<Button")).toBe(true);
+        expect(sourceContains(dropdownSource, "<DropdownMenuPrimitive.Trigger asChild>")).toBe(true);
         expect(dropdownSource).not.toContain("<button");
     });
 
@@ -40,7 +44,7 @@ describe("SelectMenu primitives", () => {
         const sectionSource = readFunction(selectSource, "DropdownSelectMenuSection");
 
         expect(selectSource).toContain("const SUBMENU_OFFSET = 2");
-        expect(sectionSource).toContain("sideOffset={SUBMENU_OFFSET}");
-        expect(selectSource).toContain("pl-3 pr-4");
+        expect(sourceContains(sectionSource, "sideOffset={SUBMENU_OFFSET}")).toBe(true);
+        expect(selectSource).toContain("pl-2 pr-3");
     });
 });

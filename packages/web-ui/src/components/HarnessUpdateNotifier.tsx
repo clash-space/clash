@@ -244,7 +244,7 @@ export function HarnessUpdateNotifier() {
           data-harness-update-control="true"
           size={null}
           shape={null}
-          className="desktop-no-drag ml-auto h-7 min-h-0 shrink-0 gap-1.5 rounded-lg border border-brand/25 bg-brand/10 px-2.5 text-[11px] font-semibold text-brand shadow-none hover:bg-brand/15 focus-visible:ring-brand focus-visible:ring-offset-warm-muted dark:border-brand/35 dark:bg-brand/15 dark:hover:bg-brand/20"
+          className="desktop-no-drag ml-auto h-7 min-h-0 shrink-0 gap-1.5 rounded-lg border border-brand/25 bg-brand/10 px-2.5 text-[11px] font-semibold text-brand shadow-none hover:bg-brand/15 focus-visible:ring-ring focus-visible:ring-offset-warm-muted dark:border-brand/35 dark:bg-brand/15 dark:hover:bg-brand/20"
         >
           {activeUpgradeIds.size > 0 ? (
             <CircleNotch

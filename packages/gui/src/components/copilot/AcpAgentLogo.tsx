@@ -21,8 +21,6 @@ function normalizeAgentId(agentId?: string | null) {
     if (agentId.includes('devin')) return 'devin';
     if (agentId.includes('opencode')) return 'opencode';
     if (agentId.includes('qwen')) return 'qwen-code';
-    if (agentId.includes('hermes')) return 'hermes';
-    if (agentId.includes('openclaw')) return 'openclaw';
     return agentId;
 }
 
@@ -82,38 +80,12 @@ export function AcpAgentLogo({
     title,
 }: AcpAgentLogoProps) {
     const normalizedAgentId = normalizeAgentId(agentId);
-    if (normalizedAgentId === 'openclaw') {
-        return (
-            <svg
-                data-acp-agent-logo=""
-                role="img"
-                aria-label={title ?? 'OpenClaw'}
-                viewBox="0 0 120 120"
-                shapeRendering="geometricPrecision"
-                focusable="false"
-                className={className}
-            >
-                <defs>
-                    <linearGradient id="openclaw-logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stopColor="#ff4d4d" />
-                        <stop offset="100%" stopColor="#991b1b" />
-                    </linearGradient>
-                </defs>
-                <path d="M60 10C30 10 15 35 15 55s15 40 30 45v10h10v-10s5 2 10 0v10h10v-10c15-5 30-25 30-45S90 10 60 10Z" fill="url(#openclaw-logo-gradient)" />
-                <path d="M20 45C5 40 0 50 5 60s15 5 20-5c3-7 0-10-5-10ZM100 45c15-5 20 5 15 15s-15 5-20-5c-3-7 0-10 5-10Z" fill="url(#openclaw-logo-gradient)" />
-                <path d="M45 15Q35 5 30 8M75 15Q85 5 90 8" fill="none" stroke="#ff4d4d" strokeWidth="3" strokeLinecap="round" />
-                <circle cx="45" cy="35" r="6" fill="#050810" />
-                <circle cx="75" cy="35" r="6" fill="#050810" />
-                <circle cx="46" cy="34" r="2.5" fill="#00e5cc" />
-                <circle cx="76" cy="34" r="2.5" fill="#00e5cc" />
-            </svg>
-        );
-    }
     const icon = INLINE_ICONS[normalizedAgentId];
     if (icon) {
         return (
             <svg
                 data-acp-agent-logo=""
+                data-slot="agent-provider-logo"
                 role="img"
                 aria-label={title ?? icon.title}
                 viewBox={icon.viewBox ?? '0 0 24 24'}
@@ -135,5 +107,13 @@ export function AcpAgentLogo({
         );
     }
 
-    return <Robot data-acp-agent-logo="" className={className} aria-label={title ?? agentId ?? 'agent'} weight="bold" />;
+    return (
+        <Robot
+            data-acp-agent-logo=""
+            data-slot="agent-provider-logo"
+            className={className}
+            aria-label={title ?? agentId ?? 'agent'}
+            weight="bold"
+        />
+    );
 }

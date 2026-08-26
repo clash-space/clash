@@ -3964,20 +3964,29 @@ async function runCase(input: {
             `${input.agent.adapter} ATIF projection requires the exact locked Agent executable and model`,
           );
         }
-        const atifReceipt = await writeAtifTrajectory({
-          adapter: input.agent.adapter,
-          publicPrompt: prompt,
-          source: { kind: "file", path: agent.stdoutPath },
-          lockedAgent: {
-            name: input.agent.adapter,
-            version:
-              lockedAgent.executable.reportedVersion ??
-              `sha256:${lockedAgent.executable.sha256}`,
-            model: lockedAgent.model.id,
-          },
-          workspaceRoot: workspace,
-          outputDirectory: logsRoot,
-        });
+        let atifReceipt;
+        try {
+          atifReceipt = await writeAtifTrajectory({
+            adapter: input.agent.adapter,
+            publicPrompt: prompt,
+            source: { kind: "file", path: agent.stdoutPath },
+            lockedAgent: {
+              name: input.agent.adapter,
+              version:
+                lockedAgent.executable.reportedVersion ??
+                `sha256:${lockedAgent.executable.sha256}`,
+              model: lockedAgent.model.id,
+            },
+            workspaceRoot: workspace,
+            outputDirectory: logsRoot,
+          });
+        } catch (error) {
+          throw new BenchmarkInfrastructureError(
+            "atif-projection",
+            error instanceof Error ? error.message : String(error),
+            { cause: error },
+          );
+        }
         await writeJson(
           join(logsRoot, "trajectory.atif-receipt.json"),
           atifReceipt,

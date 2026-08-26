@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
 
 import {
   createProviderTestRecordingFetch,
@@ -142,8 +143,11 @@ describe("provider test recorder", () => {
         },
         body: {
           prompt: "Provider conformance test for Mock Image Model",
-          apiKey: "[redacted]",
-          nested: { secret: "[redacted]", ordinary: "kept" },
+          apiKey: expect.stringMatching(/^\[redacted(:[^\]]+)?\]$/),
+          nested: {
+            secret: expect.stringMatching(/^\[redacted(:[^\]]+)?\]$/),
+            ordinary: "kept",
+          },
         },
       },
     });
@@ -266,6 +270,80 @@ describe("provider test recorder", () => {
     }
   });
 
+  it("externalizes repeated large binary payloads to a deduped content-addressed sidecar blob store", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "provider-test-recorder-blobs-"));
+    const filePath = join(dir, "recording.jsonl");
+    const stub = createProviderConformanceStubs({ includeMock: true }).find(
+      (candidate) => candidate.id === "mock:mock::mock-image-model",
+    );
+    expect(stub).toBeTruthy();
+    const recorder = await createJsonlProviderTestRecorder(filePath);
+
+    // Representative of the real Tripo GLB payload that triggered the bug: large enough that
+    // inlining it as base64 (twice, once per recorded response) is what made the JSONL balloon
+    // and the double-normalization pass spend minutes of CPU on a single string.
+    const binaryPayload = new Uint8Array(2 * 1024 * 1024);
+    for (let i = 0; i < binaryPayload.length; i += 1)
+      binaryPayload[i] = i % 256;
+
+    try {
+      const requestIdA = await recorder.recordRequest({
+        stub: stub!,
+        url: "https://provider.example/model-a.glb",
+        method: "GET",
+      });
+      await recorder.recordResponse({
+        requestId: requestIdA,
+        status: 200,
+        headers: { "content-type": "model/gltf-binary" },
+        body: binaryPayload,
+      });
+
+      const requestIdB = await recorder.recordRequest({
+        stub: stub!,
+        url: "https://provider.example/model-b.glb",
+        method: "GET",
+      });
+      await recorder.recordResponse({
+        requestId: requestIdB,
+        status: 200,
+        headers: { "content-type": "model/gltf-binary" },
+        body: binaryPayload,
+      });
+
+      const raw = await readFile(filePath, "utf8");
+      // The JSONL cassette must stay small and never inline the base64 payload directly.
+      expect(raw.length).toBeLessThan(binaryPayload.byteLength);
+      expect(raw).not.toContain(Buffer.from(binaryPayload).toString("base64"));
+
+      const blobDir = `${filePath}.blobs`;
+      const blobFiles = await readdir(blobDir);
+      // Identical binaries recorded twice must dedupe to a single content-addressed blob.
+      expect(blobFiles).toHaveLength(1);
+      const sha256 = createHash("sha256").update(binaryPayload).digest("hex");
+      expect(blobFiles).toEqual([`${sha256}.bin`]);
+
+      const events = await readJsonlProviderTestRecording(filePath);
+      const fixtures = createProviderTestReplayFixtures(events);
+      const replayFetch = createProviderTestReplayFetch(fixtures);
+
+      const responseA = await replayFetch(
+        "https://provider.example/model-a.glb",
+      );
+      expect(new Uint8Array(await responseA.arrayBuffer())).toEqual(
+        binaryPayload,
+      );
+      const responseB = await replayFetch(
+        "https://provider.example/model-b.glb",
+      );
+      expect(new Uint8Array(await responseB.arrayBuffer())).toEqual(
+        binaryPayload,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("wraps live provider fetches with request and response recording", async () => {
     const events: unknown[] = [];
     const stub = createProviderConformanceStubs({ includeMock: true }).find(
@@ -357,7 +435,8 @@ describe("provider test recorder", () => {
   it("records and replays multipart uploads by fields and file content instead of boundary", async () => {
     const events: unknown[] = [];
     const stub = createProviderConformanceStubs({ includeMock: true }).find(
-      (candidate) => candidate.providerId === "mock" && candidate.shape === "video",
+      (candidate) =>
+        candidate.providerId === "mock" && candidate.shape === "video",
     );
     expect(stub).toBeTruthy();
     const recorder = createProviderTestRecorder({
@@ -405,7 +484,8 @@ describe("provider test recorder", () => {
                 name: "reference.mp3",
                 type: "audio/mpeg",
                 byteLength: 4,
-                sha256: "875697501557841c577d32771acb29e50ce512c416ed9a3926f8f3abdaa3c081",
+                sha256:
+                  "875697501557841c577d32771acb29e50ce512c416ed9a3926f8f3abdaa3c081",
               },
             },
           ],
@@ -424,10 +504,12 @@ describe("provider test recorder", () => {
         type: "audio/mpeg",
       }),
     );
-    await expect(replayFetch("https://api.minimax.test/v1/files/upload", {
-      method: "POST",
-      body: sameUpload,
-    }).then((response) => response.json())).resolves.toEqual({ file_id: 42 });
+    await expect(
+      replayFetch("https://api.minimax.test/v1/files/upload", {
+        method: "POST",
+        body: sameUpload,
+      }).then((response) => response.json()),
+    ).resolves.toEqual({ file_id: 42 });
   });
 
   it("redacts OAuth JWT assertions from URL-encoded request bodies", async () => {
@@ -463,7 +545,7 @@ describe("provider test recorder", () => {
       request: {
         body: {
           grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-          assertion: "[redacted]",
+          assertion: expect.stringMatching(/^\[redacted(:[^\]]+)?\]$/),
         },
       },
     });
@@ -529,6 +611,96 @@ describe("provider test recorder", () => {
       download:
         "https://media.example/result?token=%5Bredacted%5D&Signature=%5Bredacted%5D&part=1",
     });
+  });
+
+  it("gives a secret value returned under a sensitive key a stable opaque alias so a later request reusing it under a neutral field still matches on replay", async () => {
+    // Mirrors the live Tripo Auto-Rig flow: step 1 (POST /v3/files) returns a raw provider
+    // secret under a sensitive key (`file_token`); step 2 (POST /v3/animations/rig) sends that
+    // exact same raw value back under a field name that is not itself a secret (`input`). A
+    // recorder that redacts purely by key name serializes the two occurrences differently
+    // ("[redacted]" vs the raw string), which is both a leak and, on replay, unmatchable.
+    const RAW_SECRET = "raw-provider-secret";
+    const events: unknown[] = [];
+    const stub = createProviderConformanceStubs({ includeMock: true }).find(
+      (candidate) => candidate.id === "mock:mock::mock-image-model",
+    );
+    expect(stub).toBeTruthy();
+    const recorder = createProviderTestRecorder({
+      requestId: (() => {
+        let n = 0;
+        return () => `provider-test-correlated-${(n += 1)}`;
+      })(),
+      write: async (event) => {
+        events.push(event);
+      },
+    });
+
+    const uploadRequestId = await recorder.recordRequest({
+      stub: stub!,
+      url: "https://provider.example/v1/files",
+      method: "POST",
+      body: { name: "model.glb" },
+    });
+    await recorder.recordResponse({
+      requestId: uploadRequestId,
+      status: 200,
+      body: { file_token: RAW_SECRET },
+    });
+
+    const rigRequestId = await recorder.recordRequest({
+      stub: stub!,
+      url: "https://provider.example/v1/rig",
+      method: "POST",
+      body: { input: RAW_SECRET, rig_type: "biped" },
+    });
+    await recorder.recordResponse({
+      requestId: rigRequestId,
+      status: 200,
+      body: { status: "queued" },
+    });
+
+    const serialized = events
+      .map((event) => providerTestRecordingEventToJsonl(event))
+      .join("");
+    expect(serialized).not.toContain(RAW_SECRET);
+
+    const uploadResponse = events[1] as {
+      response: { body: { file_token: string } };
+    };
+    const rigRequest = events[2] as {
+      request: { body: { input: string; rig_type: string } };
+    };
+    const alias = uploadResponse.response.body.file_token;
+    expect(alias).not.toBe(RAW_SECRET);
+    expect(alias).toMatch(/^\[redacted(:[^\]]+)?\]$/);
+    expect(rigRequest.request.body.input).toBe(alias);
+
+    // Replay: an adapter reads the alias out of the (already-redacted) step 1 response and
+    // reuses it verbatim as the step 2 request field, exactly as it would reuse a raw secret
+    // live. That must still match the recorded step 2 fixture.
+    const fixtures = createProviderTestReplayFixtures(events as never);
+    const replayFetch = createProviderTestReplayFetch(fixtures);
+
+    const uploadReplay = await replayFetch(
+      "https://provider.example/v1/files",
+      {
+        method: "POST",
+        body: JSON.stringify({ name: "model.glb" }),
+      },
+    );
+    const uploadReplayBody = (await uploadReplay.json()) as {
+      file_token: string;
+    };
+    expect(uploadReplayBody.file_token).toBe(alias);
+
+    const rigReplay = await replayFetch("https://provider.example/v1/rig", {
+      method: "POST",
+      body: JSON.stringify({
+        input: uploadReplayBody.file_token,
+        rig_type: "biped",
+      }),
+    });
+    expect(await rigReplay.json()).toEqual({ status: "queued" });
   });
 
   it("normalizes Google project resource names so a recording replays on another account", async () => {

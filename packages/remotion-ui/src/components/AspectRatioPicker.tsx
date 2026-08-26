@@ -258,7 +258,7 @@ export const AspectRatioPicker = <T extends AspectRatioValue>({
                 aria-label={preset.option?.label ?? preset.label}
                 title={preset.option?.description}
                 onClick={() => choosePreset(preset)}
-                className={`flex h-10 items-center gap-2.5 rounded-md px-3 text-left text-[12px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/35 ${selected
+                className={`flex h-10 items-center gap-2.5 rounded-md px-3 text-left text-[12px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 ${selected
                   ? 'bg-warm-hover text-content-primary'
                   : 'text-content-secondary hover:bg-warm-muted hover:text-content-primary'
                 }`}
@@ -319,7 +319,7 @@ export const AspectRatioPicker = <T extends AspectRatioValue>({
                   event.currentTarget.releasePointerCapture?.(event.pointerId);
                 }}
                 onPointerCancel={() => { dragOrigin.current = null; }}
-                className="absolute -bottom-1 -right-1 h-2 w-2 cursor-nwse-resize rounded-full border border-content-muted bg-[#ededed] shadow-sm outline-none transition-transform hover:scale-125 focus-visible:ring-2 focus-visible:ring-brand/35"
+                className="absolute -bottom-1 -right-1 h-2 w-2 cursor-nwse-resize rounded-full border border-content-muted bg-[#ededed] shadow-sm outline-none transition-transform hover:scale-125 focus-visible:ring-2 focus-visible:ring-ring/35"
               />
             </div>
           </div>

@@ -1266,9 +1266,10 @@ export function createHubRequest(
   fetchImpl: typeof globalThis.fetch,
   accessToken: string,
   operation: "submit" | "poll",
+  origin = HUB_ORIGIN,
 ): HubRequest {
   return async (path, method, body) => {
-    const url = new URL(path, HUB_ORIGIN);
+    const url = new URL(path, origin);
     url.searchParams.set("version_code", "2.0.11");
     const response = await fetchImpl(url.toString(), {
       method,

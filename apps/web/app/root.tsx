@@ -1,6 +1,14 @@
-import { ArrowClockwise, House, Warning } from "@phosphor-icons/react";
+import { ArrowClockwise, House } from "@phosphor-icons/react";
 import { Button } from "@clash/gui/components/ui/button";
+import { AgentMotion } from "@clash/web-ui/components/copilot/AgentMotion";
+import { BrandAsset } from "@clash/web-ui/components/BrandAsset";
+import { useEffect, useState } from "react";
 import { Link, isRouteErrorResponse, useRouteError } from "react-router";
+
+import {
+  isRecoverableRouteModuleError,
+  recoverFailedRouteModule,
+} from "./lib/routeModuleRecovery";
 
 type RouteErrorDetails = {
   code: string;
@@ -58,15 +66,71 @@ function describeRouteError(error: unknown): RouteErrorDetails {
 
 export function HydrateFallback() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-warm-page">
-      <div className="clash-route-error-spinner h-8 w-8 animate-spin rounded-full border-2" />
-    </div>
+    <main
+      role="status"
+      aria-label="Opening Clash"
+      aria-live="polite"
+      className="flex min-h-screen items-center justify-center bg-warm-page"
+    >
+      <AgentMotion
+        state="connecting"
+        decorative={false}
+        label="Clash is opening"
+        className="h-20 w-20"
+      />
+    </main>
+  );
+}
+
+export function RouteModuleRecoveryFallback() {
+  return (
+    <main
+      role="status"
+      aria-label="Reconnecting Clash"
+      aria-live="polite"
+      className="flex min-h-screen flex-col items-center justify-center gap-4 bg-warm-page px-6 text-center"
+    >
+      <AgentMotion
+        state="connecting"
+        decorative={false}
+        label="Clash renderer is reconnecting"
+        className="h-20 w-20"
+      />
+      <p className="text-sm font-medium text-content-secondary">
+        Reconnecting the desktop renderer…
+      </p>
+    </main>
   );
 }
 
 export function ErrorBoundary() {
   const error = useRouteError();
   const { code, detail } = describeRouteError(error);
+  const shouldRecover =
+    import.meta.env.DEV &&
+    isRecoverableRouteModuleError(error, window.location.origin);
+  const [isRecovering, setIsRecovering] = useState(shouldRecover);
+
+  useEffect(() => {
+    setIsRecovering(shouldRecover);
+    if (!shouldRecover) return;
+
+    let active = true;
+    void recoverFailedRouteModule({
+      error,
+      origin: window.location.origin,
+      fetchModule: (url, init) => fetch(url, init),
+      reload: () => window.location.reload(),
+      storage: window.sessionStorage,
+    }).then((result) => {
+      if (active && result !== "reloaded") setIsRecovering(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [error, shouldRecover]);
+
+  if (isRecovering) return <RouteModuleRecoveryFallback />;
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-warm-page px-6 py-16 text-slate-950 dark:text-stone-100">
@@ -91,8 +155,12 @@ export function ErrorBoundary() {
       </div>
 
       <section className="relative w-full max-w-xl">
-        <div className="mb-8 flex items-center gap-3">
-          <img src="/brand/logo-mark-error.svg" alt="Clash" className="h-11 w-11" />
+        <div className="mb-8 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+          <BrandAsset
+            name="error"
+            alt="Clash error avatar"
+            className="h-24 w-24 shrink-0 object-contain sm:h-28 sm:w-28"
+          />
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand">Route paused</p>
             <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">
@@ -101,17 +169,12 @@ export function ErrorBoundary() {
           </div>
         </div>
 
-        <div className="clash-route-error-surface rounded-[28px] p-5 backdrop-blur-sm">
-          <div className="mb-4 flex items-start gap-3">
-            <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-light text-brand ring-1 ring-brand/20">
-              <Warning className="h-5 w-5" weight="fill" aria-hidden="true" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-950 dark:text-stone-100">The canvas is still here.</p>
-              <p className="mt-1 text-sm leading-6 text-stone-600 dark:text-stone-400">
-                Reload this route to try again, or go home and reopen the project from a fresh surface.
-              </p>
-            </div>
+        <div className="clash-route-error-surface rounded-2xl p-5">
+          <div className="mb-4 min-w-0">
+            <p className="text-sm font-semibold text-slate-950 dark:text-stone-100">The canvas is still here.</p>
+            <p className="mt-1 text-sm leading-6 text-stone-600 dark:text-stone-400">
+              Reload this route to try again, or go home and reopen the project from a fresh surface.
+            </p>
           </div>
 
           <dl className="clash-route-error-detail grid gap-3 rounded-2xl p-4 text-left">
@@ -129,14 +192,14 @@ export function ErrorBoundary() {
             <Button
               variant="primary"
               onClick={() => window.location.reload()}
-              className="clash-route-error-primary inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+              className="clash-route-error-primary inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
             >
               <ArrowClockwise className="h-4 w-4" weight="bold" aria-hidden="true" />
               Reload
             </Button>
             <Link
               to="/"
-              className="clash-route-error-secondary inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+              className="clash-route-error-secondary inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
             >
               <House className="h-4 w-4" weight="bold" aria-hidden="true" />
               Go home

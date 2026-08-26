@@ -56,12 +56,22 @@ const stateWithSelectedTransition = (
 });
 
 describe('PropertiesPanel — transition section', () => {
-  // Labels in PropertiesPanel are not htmlFor-associated, so we query by
-  // placeholder/role and pull the type select via its display value.
   const getTypeSelect = () =>
-    screen.getByRole('combobox') as HTMLSelectElement;
+    screen.getByRole('combobox', { name: 'Transition type' }) as HTMLButtonElement;
   const getDurationInput = () =>
     screen.getByRole('spinbutton', { name: 'Transition duration in frames' }) as HTMLInputElement;
+
+  it('renders inspector choices through the shared select primitive instead of native select elements', () => {
+    const { container } = render(
+      <EditorProvider initialState={stateWithSelectedTransition()}>
+        <PropertiesPanel />
+      </EditorProvider>,
+    );
+
+    expect(screen.getByRole('combobox', { name: 'Transition type' }).getAttribute('data-context'))
+      .toBe('timeline');
+    expect(container.querySelector('select')).toBeNull();
+  });
 
   it('shows the transition section when a transition item is selected', () => {
     render(
@@ -71,7 +81,7 @@ describe('PropertiesPanel — transition section', () => {
     );
 
     expect(screen.getByText('Transition')).toBeTruthy();
-    expect(getTypeSelect().value).toBe('push-left');
+    expect(getTypeSelect().textContent).toContain('push-left');
     expect(screen.getByText('clip-A')).toBeTruthy();
     expect(screen.getByText('clip-B')).toBeTruthy();
     expect(screen.queryByText('Transform')).toBeNull();
@@ -84,8 +94,8 @@ describe('PropertiesPanel — transition section', () => {
         <PropertiesPanel />
       </EditorProvider>,
     );
-    const values = Array.from(getTypeSelect().options).map((o) => o.value);
-    expect(values).toEqual([
+    fireEvent.click(getTypeSelect());
+    expect(screen.getAllByRole('option').map((option) => option.textContent?.trim())).toEqual([
       'crossfade',
       'push-left',
       'push-right',
@@ -108,9 +118,10 @@ describe('PropertiesPanel — transition section', () => {
         <PropertiesPanel />
       </EditorProvider>,
     );
-    fireEvent.change(getTypeSelect(), { target: { value: 'circle-wipe' } });
+    fireEvent.click(getTypeSelect());
+    fireEvent.click(screen.getByRole('option', { name: 'circle-wipe' }));
 
-    expect(getTypeSelect().value).toBe('circle-wipe');
+    expect(getTypeSelect().textContent).toContain('circle-wipe');
     const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1];
     const lastCallState = lastCall?.[0] as EditorState;
     const tx = lastCallState.tracks

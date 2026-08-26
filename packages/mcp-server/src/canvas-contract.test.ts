@@ -94,3 +94,20 @@ test("MCP Canvas file content maps to the peer CLI flag without shell expansion"
     contentFile: "component-source/character.tsx",
   }), /mutually exclusive/i);
 });
+
+test("MCP Canvas Project Asset projection maps to the peer CLI asset flag", async () => {
+  const { buildCanvasCliArgs } = await import("./canvas-contract");
+
+  assert.deepEqual(buildCanvasCliArgs("clash_canvas_add", {
+    cwd: "/workspace",
+    type: "image",
+    label: "Deep-space otter",
+    assetId: "asset-otter",
+  }), [
+    "canvas", "add",
+    "--type", "image",
+    "--label", "Deep-space otter",
+    "--asset", "asset-otter",
+    "--json",
+  ]);
+});

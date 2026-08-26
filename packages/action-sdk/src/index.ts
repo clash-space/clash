@@ -52,6 +52,10 @@ export {
   type AssetWriteRequest,
   type DocumentOutputRequest,
   type CodexImageGenerateRequest,
+  type DirectorStageCaptureRequest,
+  type DirectorStageCaptureResult,
+  type MediaAnalyzeRequest,
+  type MediaAnalyzeResult,
   type SpeechTranscribeRequest,
   type SpeechTranscribeResult,
   type PluginDefinition,
@@ -70,6 +74,7 @@ export {
   type AssembleOptions,
   type AssembledPlugin,
   type ManifestFunction,
+  type PluginExecutionRealm,
   type PluginModule,
   type ProjectorFn,
 } from "./assemble.js";

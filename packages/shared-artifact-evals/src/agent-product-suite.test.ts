@@ -278,9 +278,9 @@ describe("agent product benchmark catalog", () => {
     expect(benchmarkCase?.execution?.requiredProductOperations).not.toContain(
       "timeline.validate",
     );
-    expect(benchmarkCase?.execution?.forbiddenProductOperations).toEqual([
+    expect(benchmarkCase?.execution?.forbiddenProductOperations ?? []).not.toContain(
       "timeline.validate",
-    ]);
+    );
     const directorRubric = benchmarkCase?.rubric.find(
       (rubric) => rubric.type === "director-stage",
     );

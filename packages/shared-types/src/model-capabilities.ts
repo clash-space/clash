@@ -23,16 +23,140 @@ import {
   type DirectorReferencePacket,
 } from "./director-reference.js";
 
-export type Modality = "text" | "image" | "video" | "audio";
+/**
+ * The single hand-authored runtime registry for every non-text reference
+ * modality. Adding a modality (image / video / audio / model today) means
+ * adding exactly **one** entry to this array — nothing else. `Modality`,
+ * `MediaReferenceModality`, `MEDIA_REFERENCE_MODALITIES`, `RefPartition`'s
+ * bucket fields, and every loop in this module that iterates modalities all
+ * derive their shape and values from this one array's entries instead of
+ * repeating the modality list by hand a second time.
+ */
+export interface MediaReferenceFieldDescriptor<
+  Modality extends string = string,
+  PartitionField extends string = string,
+> {
+  modality: Modality;
+  /** Field on Canvas node `data` / `BuildPendingAssetNodeInput` carrying this
+   *  modality's Project Asset ids, e.g. `referenceModelAssetIds`. */
+  pendingField: `reference${string}AssetIds`;
+  /** Field on `RefPartition` carrying this modality's Project Asset ids,
+   *  e.g. `modelAssetIds`. */
+  partitionField: PartitionField;
+  /** Stable human label used in `validateReferenceMedia` error messages,
+   *  e.g. "Reference image". */
+  label: string;
+  /** Plain plural noun for "Selected model does not accept reference ___."
+   *  These are irregular by design (English is irregular) — "audio" has no
+   *  plural, the rest do. */
+  pluralNoun: string;
+  /** Count-sensitive noun for "requires at least N ___" / "accepts at most
+   *  N ___ (got X)". Distinct from `pluralNoun` because English pluralizes
+   *  these differently in a counted phrase ("video(s)", "audio clip(s)",
+   *  "model(s)") than in the plain "does not accept" phrasing. */
+  countNoun: string;
+}
+
+/**
+ * The registry. This `as const` array literal is the *only* hand-authored
+ * list of media reference modalities in this module — `MediaReferenceModality`,
+ * `MEDIA_REFERENCE_MODALITIES`, and `RefPartition`'s bucket fields are all
+ * type-level or value-level derivations of it below, so a new modality is a
+ * one-entry addition here rather than a change in two (or more) places. This
+ * is exactly the gap that let `referenceModelAssetIds` silently go missing
+ * from `validateGenerationInput` / `buildPendingAssetNode` /
+ * `buildGenerationPayload` while `RefPartition.modelAssetIds` already
+ * existed — every helper that iterates the registry (`validateRefs`,
+ * `partitionRefs`, `referenceModality`, `mediaReferencePendingFields`,
+ * `mediaReferenceCounts`) now picks a new entry up automatically.
+ */
+export const MEDIA_REFERENCE_FIELDS = [
+  {
+    modality: "image",
+    pendingField: "referenceImageAssetIds",
+    partitionField: "imageAssetIds",
+    label: "Reference image",
+    pluralNoun: "images",
+    countNoun: "images",
+  },
+  {
+    modality: "video",
+    pendingField: "referenceVideoAssetIds",
+    partitionField: "videoAssetIds",
+    label: "Reference video",
+    pluralNoun: "videos",
+    countNoun: "video(s)",
+  },
+  {
+    modality: "audio",
+    pendingField: "referenceAudioAssetIds",
+    partitionField: "audioAssetIds",
+    label: "Reference audio",
+    pluralNoun: "audio",
+    countNoun: "audio clip(s)",
+  },
+  {
+    modality: "model",
+    pendingField: "referenceModelAssetIds",
+    partitionField: "modelAssetIds",
+    label: "Reference model",
+    pluralNoun: "models",
+    countNoun: "model(s)",
+  },
+] as const satisfies readonly MediaReferenceFieldDescriptor[];
+
+/** Reference asset id fields (`referenceImageAssetIds`, etc.), derived from
+ *  the registry's `pendingField` values rather than declared by hand.
+ *  Consumers (`ValidateGenerationInput`, `BuildPendingAssetNodeInput`)
+ *  extend this instead of repeating one optional `string[]` property per
+ *  modality — a new registry entry adds its field to both automatically. */
+export type MediaReferencePendingFields = {
+  [Field in (typeof MEDIA_REFERENCE_FIELDS)[number] as Field["pendingField"]]?: string[];
+};
+
+/** Every non-text reference modality, derived from the registry's `modality`
+ *  values — not declared as a second list. */
+export type MediaReferenceModality =
+  (typeof MEDIA_REFERENCE_FIELDS)[number]["modality"];
+
+export type Modality = "text" | MediaReferenceModality;
+
+/** Value-level modality list, derived by mapping the registry rather than
+ *  declared by hand. */
+export const MEDIA_REFERENCE_MODALITIES: readonly MediaReferenceModality[] =
+  MEDIA_REFERENCE_FIELDS.map((field) => field.modality);
+
+function isMediaReferenceModality(
+  value: unknown,
+): value is MediaReferenceModality {
+  return (MEDIA_REFERENCE_MODALITIES as readonly unknown[]).includes(value);
+}
 
 export function isReferenceModality(value: unknown): value is Modality {
-  return (
-    value === "text" ||
-    value === "image" ||
-    value === "video" ||
-    value === "audio"
-  );
+  return value === "text" || isMediaReferenceModality(value);
 }
+
+/** `RefPartition`'s media buckets are a mapped type over the registry's
+ *  `partitionField` values (`imageAssetIds`, `videoAssetIds`,
+ *  `audioAssetIds`, `modelAssetIds` today), so a new registry entry adds its
+ *  bucket field here automatically instead of needing a matching hand-written
+ *  property. */
+export type RefPartition = {
+  /** Text refs: full content strings, inlined into the prompt. */
+  texts: string[];
+} & {
+  /** Media refs (image / video / audio / model): stable Project Asset ids,
+   *  one bucket per registered modality. The Host resolves Resource
+   *  projections. */
+  [Field in (typeof MEDIA_REFERENCE_FIELDS)[number]["partitionField"]]: string[];
+};
+
+/** Concrete instantiation of `MediaReferenceFieldDescriptor` used by every
+ *  registry consumer in this module. */
+export type MediaReferenceField = MediaReferenceFieldDescriptor<
+  MediaReferenceModality,
+  keyof Omit<RefPartition, "texts">
+>;
 
 export interface RefBound {
   /** Model accepts this modality as a reference at all. */
@@ -56,7 +180,7 @@ export interface Capability {
   outputKind: AigcActionKind;
   /** Whether a non-empty prompt is required. */
   requiresPrompt: boolean;
-  /** Per-modality reference bounds. All four keys always present —
+  /** Per-modality reference bounds. All five keys always present —
    *  unaccepted modalities have `accepts: false, min: 0, max: 0`. */
   ref: Record<Modality, RefBound>;
   /** At least one reference from these modalities must be attached. */
@@ -95,6 +219,25 @@ export interface ReferenceMediaMetadata {
 }
 
 const NO_BOUND: RefBound = { accepts: false, min: 0, max: 0 };
+
+/** Video, audio, and model buckets share one shape (only `image` has the
+ *  start/end-frame exception), so their `RefBound` is built once here
+ *  instead of three near-identical object literals in `capability()`. */
+function refBoundFromSpec(
+  spec: NonNullable<ModelInputMode["videos" | "audios" | "models"]> | undefined,
+): RefBound {
+  return spec
+    ? {
+        accepts: true,
+        min: spec.min ?? 0,
+        max: spec.max,
+        requiresAnyOf: spec.requiresAnyOf,
+        constraints: spec.constraints,
+        conditional: spec.conditional,
+        maxTotalDurationMs: spec.maxTotalDurationMs,
+      }
+    : NO_BOUND;
+}
 
 /**
  * The single derivation for built-in models. Cheap; safe to call in
@@ -137,37 +280,17 @@ export function capability(card: ModelCard): Capability {
     image = NO_BOUND;
   }
 
-  const video: RefBound = im.videos
-    ? {
-        accepts: true,
-        min: im.videos.min ?? 0,
-        max: im.videos.max,
-        requiresAnyOf: im.videos.requiresAnyOf,
-        constraints: im.videos.constraints,
-        conditional: im.videos.conditional,
-        maxTotalDurationMs: im.videos.maxTotalDurationMs,
-      }
-    : NO_BOUND;
-
-  const audio: RefBound = im.audios
-    ? {
-        accepts: true,
-        min: im.audios.min ?? 0,
-        max: im.audios.max,
-        requiresAnyOf: im.audios.requiresAnyOf,
-        constraints: im.audios.constraints,
-        conditional: im.audios.conditional,
-        maxTotalDurationMs: im.audios.maxTotalDurationMs,
-      }
-    : NO_BOUND;
+  const video: RefBound = refBoundFromSpec(im.videos);
+  const audio: RefBound = refBoundFromSpec(im.audios);
+  const model: RefBound = refBoundFromSpec(im.models);
   const text: RefBound = promptModalities.includes("text")
     ? { accepts: true, min: 0, max: Number.MAX_SAFE_INTEGER }
     : NO_BOUND;
 
   return {
-    outputKind: card.kind as "image" | "video" | "audio" | "text",
+    outputKind: card.kind,
     requiresPrompt,
-    ref: { text, image, video, audio },
+    ref: { text, image, video, audio, model },
     requiresAnyReferenceOf: im.requiresAnyOf,
     maxTotalReferences: im.maxTotalReferences,
     maxEmbeddedRequestBytes: im.maxEmbeddedRequestBytes,
@@ -214,8 +337,19 @@ function effectiveRefBound(
   return { ...base, min, max, constraints };
 }
 
+const MEDIA_REFERENCE_FIELD_BY_MODALITY: Readonly<
+  Record<MediaReferenceModality, MediaReferenceField>
+> = Object.fromEntries(
+  MEDIA_REFERENCE_FIELDS.map(
+    (field): [MediaReferenceModality, MediaReferenceField] => [
+      field.modality,
+      field,
+    ],
+  ),
+) as Record<MediaReferenceModality, MediaReferenceField>;
+
 function mediaLabel(modality: ReferenceMediaMetadata["modality"]): string {
-  return `Reference ${modality}`;
+  return MEDIA_REFERENCE_FIELD_BY_MODALITY[modality].label;
 }
 
 function megabytes(bytes: number): string {
@@ -374,7 +508,7 @@ export function validateReferenceMedia(
     }
   }
 
-  for (const modality of ["image", "video", "audio"] as const) {
+  for (const modality of MEDIA_REFERENCE_MODALITIES) {
     const maxTotalDurationMs = cap.ref[modality].maxTotalDurationMs;
     if (maxTotalDurationMs == null) continue;
     const knownTotal = references
@@ -411,6 +545,10 @@ export function capabilityFromCustom(def: CustomActionDefinition): Capability {
     def.promptModalities ?? ["text"];
   const input = def.input ?? {
     requiresPrompt: promptModalities.includes("text"),
+    // Legacy custom actions predate the `model` modality, so this fallback
+    // deliberately stays scoped to image/video/audio rather than iterating
+    // `MEDIA_REFERENCE_MODALITIES` — a marketplace action manifest has never
+    // been able to declare `promptModalities: ['model']` through this path.
     inputMode: Object.fromEntries(
       (["image", "video", "audio"] as const)
         .filter((modality) => promptModalities.includes(modality))
@@ -439,6 +577,47 @@ export function capabilityFromCustom(def: CustomActionDefinition): Capability {
   } as ModelCard);
 }
 
+/** Plain plural noun for "Selected model does not accept reference ___." and
+ *  count-sensitive noun for "requires at least N ___" / "accepts at most N
+ *  ___ (got X)" — both derived from the single `MEDIA_REFERENCE_FIELDS`
+ *  registry entry per modality rather than authored as separate lookup
+ *  tables. */
+const MEDIA_REFERENCE_PLURAL_NOUN: Record<MediaReferenceModality, string> =
+  Object.fromEntries(
+    MEDIA_REFERENCE_FIELDS.map((field) => [field.modality, field.pluralNoun]),
+  ) as Record<MediaReferenceModality, string>;
+
+const MEDIA_REFERENCE_COUNT_NOUN: Record<MediaReferenceModality, string> =
+  Object.fromEntries(
+    MEDIA_REFERENCE_FIELDS.map((field) => [field.modality, field.countNoun]),
+  ) as Record<MediaReferenceModality, string>;
+
+/** Shared min/max bound check for one media modality, used by every modality
+ *  except `image` when it is in its start/end-frame form (that variant has
+ *  its own distinct copy and is validated separately in `validateRefs`).
+ *  `image`'s ordinary (non start/end) case still special-cases `min === 1`
+ *  to keep the "Attach one via @-mention" copy the image affordance has
+ *  always had. */
+function mediaBoundError(
+  modality: MediaReferenceModality,
+  bound: RefBound,
+  count: number,
+  enforceMinimums: boolean,
+): string | null {
+  if (!bound.accepts) return null;
+  const { min, max } = bound;
+  if (enforceMinimums && count < min) {
+    if (modality === "image" && min === 1) {
+      return "Selected model requires a reference image. Attach one via @-mention in the prompt.";
+    }
+    return `Selected model requires at least ${min} reference ${MEDIA_REFERENCE_COUNT_NOUN[modality]}.`;
+  }
+  if (count > max) {
+    return `Selected model accepts at most ${max} reference ${MEDIA_REFERENCE_COUNT_NOUN[modality]} (got ${count}).`;
+  }
+  return null;
+}
+
 /**
  * Validate ref counts (and optionally a prompt) against the model's bounds.
  * Returns the first violation message, or `null` if everything checks out.
@@ -448,7 +627,7 @@ export function capabilityFromCustom(def: CustomActionDefinition): Capability {
  */
 export function validateRefs(
   cardOrCap: ModelCard | Capability,
-  counts: { text?: number; image?: number; video?: number; audio?: number },
+  counts: Partial<Record<Modality, number>>,
   opts: {
     prompt?: string;
     enforceMinimums?: boolean;
@@ -467,24 +646,26 @@ export function validateRefs(
     if (!opts.prompt || !opts.prompt.trim()) return "No prompt provided.";
   }
 
-  const imgCount = counts.image ?? 0;
-  const vidCount = counts.video ?? 0;
-  const audCount = counts.audio ?? 0;
-  const textCount = counts.text ?? 0;
   const countsByModality: Record<Modality, number> = {
-    text: textCount,
-    image: imgCount,
-    video: vidCount,
-    audio: audCount,
+    text: counts.text ?? 0,
+    ...(Object.fromEntries(
+      MEDIA_REFERENCE_MODALITIES.map((modality) => [modality, counts[modality] ?? 0]),
+    ) as Record<MediaReferenceModality, number>),
   };
-  const ref = {
+  const ref: Record<Modality, RefBound> = {
     text: effectiveRefBound(cap, "text", opts.modelParams),
-    image: effectiveRefBound(cap, "image", opts.modelParams),
-    video: effectiveRefBound(cap, "video", opts.modelParams),
-    audio: effectiveRefBound(cap, "audio", opts.modelParams),
+    ...(Object.fromEntries(
+      MEDIA_REFERENCE_MODALITIES.map((modality) => [
+        modality,
+        effectiveRefBound(cap, modality, opts.modelParams),
+      ]),
+    ) as Record<MediaReferenceModality, RefBound>),
   };
 
-  const totalMediaReferences = imgCount + vidCount + audCount;
+  const totalMediaReferences = MEDIA_REFERENCE_MODALITIES.reduce(
+    (total, modality) => total + countsByModality[modality],
+    0,
+  );
   if (
     cap.maxTotalReferences != null &&
     totalMediaReferences > cap.maxTotalReferences
@@ -506,20 +687,16 @@ export function validateRefs(
     return `Selected model requires at least one ${requirement}.`;
   }
 
-  if (textCount > 0 && !ref.text.accepts) {
+  if (countsByModality.text > 0 && !ref.text.accepts) {
     return "Selected model does not accept reference text.";
   }
-  if (imgCount > 0 && !ref.image.accepts) {
-    return "Selected model does not accept reference images.";
-  }
-  if (vidCount > 0 && !ref.video.accepts) {
-    return "Selected model does not accept reference videos.";
-  }
-  if (audCount > 0 && !ref.audio.accepts) {
-    return "Selected model does not accept reference audio.";
+  for (const modality of MEDIA_REFERENCE_MODALITIES) {
+    if (countsByModality[modality] > 0 && !ref[modality].accepts) {
+      return `Selected model does not accept reference ${MEDIA_REFERENCE_PLURAL_NOUN[modality]}.`;
+    }
   }
 
-  for (const modality of ["image", "video", "audio"] as const) {
+  for (const modality of MEDIA_REFERENCE_MODALITIES) {
     const required = ref[modality].requiresAnyOf;
     if (countsByModality[modality] === 0 || !required?.length) continue;
     if (!required.some((companion) => countsByModality[companion] > 0)) {
@@ -533,47 +710,43 @@ export function validateRefs(
 
   const enforceMinimums = opts.enforceMinimums ?? true;
 
+  // Image is the one modality with a structural exception (the start/end
+  // frame convention), so it is validated on its own before the generic
+  // min/max loop runs for every other media modality.
   if (ref.image.isStartEnd) {
-    if (enforceMinimums && imgCount < 1) {
+    if (enforceMinimums && countsByModality.image < 1) {
       return "Selected model needs a start frame. Attach one via @-mention in the prompt.";
     }
-    if (imgCount > 2) {
+    if (countsByModality.image > 2) {
       return "Selected model uses at most two frames (start + optional end).";
     }
-  } else if (ref.image.accepts) {
-    const { min, max } = ref.image;
-    if (enforceMinimums && imgCount < min) {
-      return min === 1
-        ? "Selected model requires a reference image. Attach one via @-mention in the prompt."
-        : `Selected model requires at least ${min} reference images.`;
-    }
-    if (imgCount > max) {
-      return `Selected model accepts at most ${max} reference images (got ${imgCount}).`;
-    }
+  } else {
+    const imageError = mediaBoundError(
+      "image",
+      ref.image,
+      countsByModality.image,
+      enforceMinimums,
+    );
+    if (imageError) return imageError;
   }
 
-  if (ref.video.accepts) {
-    const { min, max } = ref.video;
-    if (enforceMinimums && vidCount < min)
-      return `Selected model requires at least ${min} reference video(s).`;
-    if (vidCount > max) {
-      return `Selected model accepts at most ${max} reference video(s) (got ${vidCount}).`;
-    }
+  for (const modality of MEDIA_REFERENCE_MODALITIES) {
+    if (modality === "image") continue; // handled above
+    const error = mediaBoundError(
+      modality,
+      ref[modality],
+      countsByModality[modality],
+      enforceMinimums,
+    );
+    if (error) return error;
   }
-  if (ref.audio.accepts) {
-    const { min, max } = ref.audio;
-    if (enforceMinimums && audCount < min)
-      return `Selected model requires at least ${min} reference audio clip(s).`;
-    if (audCount > max) {
-      return `Selected model accepts at most ${max} reference audio clip(s) (got ${audCount}).`;
-    }
-  }
+
   if (ref.text.accepts) {
     const { min, max } = ref.text;
-    if (enforceMinimums && textCount < min)
+    if (enforceMinimums && countsByModality.text < min)
       return `Selected model requires at least ${min} reference text node(s).`;
-    if (textCount > max) {
-      return `Selected model accepts at most ${max} reference text node(s) (got ${textCount}).`;
+    if (countsByModality.text > max) {
+      return `Selected model accepts at most ${max} reference text node(s) (got ${countsByModality.text}).`;
     }
   }
 
@@ -601,15 +774,31 @@ export interface RefNodeLike {
   } & Record<string, unknown>;
 }
 
-export interface RefPartition {
-  /** Text refs: full content strings, inlined into the prompt. */
-  texts: string[];
-  /** Image refs: stable Project Asset ids. The Host resolves Resource projections. */
-  imageAssetIds: string[];
-  /** Video refs: stable Project Asset ids. */
-  videoAssetIds: string[];
-  /** Audio refs: stable Project Asset ids. */
-  audioAssetIds: string[];
+/** Read every modality's asset ids off a `RefPartition` as `[pendingField, ids]`
+ *  pairs, skipping empty buckets. Shared by `buildGenerationPayload` (writes
+ *  `BuildPendingAssetNodeInput`) and `validateGenerationInput` callers that
+ *  want counts instead — use `mediaReferenceCounts` for that. */
+export function mediaReferencePendingFields(
+  partition: RefPartition,
+): Partial<Record<MediaReferenceField["pendingField"], string[]>> {
+  const out: Partial<Record<MediaReferenceField["pendingField"], string[]>> = {};
+  for (const field of MEDIA_REFERENCE_FIELDS) {
+    const ids = partition[field.partitionField];
+    if (ids.length > 0) out[field.pendingField] = ids;
+  }
+  return out;
+}
+
+/** Read every modality's reference count off a `RefPartition`, keyed by
+ *  modality (`image`, `video`, `audio`, `model`) for `validateRefs`. */
+export function mediaReferenceCounts(
+  partition: RefPartition,
+): Record<MediaReferenceModality, number> {
+  const out = {} as Record<MediaReferenceModality, number>;
+  for (const field of MEDIA_REFERENCE_FIELDS) {
+    out[field.modality] = partition[field.partitionField].length;
+  }
+  return out;
 }
 
 /**
@@ -623,9 +812,7 @@ export interface RefPartition {
 export function referenceModality(node: RefNodeLike): Modality | undefined {
   if (
     node.type === "text" ||
-    node.type === "image" ||
-    node.type === "video" ||
-    node.type === "audio"
+    isMediaReferenceModality(node.type)
   ) {
     return node.type;
   }
@@ -718,6 +905,7 @@ export function partitionRefs(
     imageAssetIds: [],
     videoAssetIds: [],
     audioAssetIds: [],
+    modelAssetIds: [],
   };
   for (const n of refs) {
     const packet = directorReferencePacket(n);
@@ -741,12 +929,9 @@ export function partitionRefs(
     }
     const aid = referenceAssetId(n);
     if (!aid) continue;
-    if (modality === "image" && cap.ref.image.accepts) {
-      out.imageAssetIds.push(aid);
-    } else if (modality === "video" && cap.ref.video.accepts) {
-      out.videoAssetIds.push(aid);
-    } else if (modality === "audio" && cap.ref.audio.accepts) {
-      out.audioAssetIds.push(aid);
+    const field = MEDIA_REFERENCE_FIELD_BY_MODALITY[modality as MediaReferenceModality];
+    if (field && cap.ref[field.modality].accepts) {
+      out[field.partitionField].push(aid);
     }
   }
   return out;

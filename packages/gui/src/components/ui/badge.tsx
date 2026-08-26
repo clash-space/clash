@@ -3,6 +3,7 @@ import { Slot as SlotPrimitive } from "radix-ui";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "../../lib/cn";
+import { semanticToneSoftClasses, type SemanticTone } from "./tone";
 
 const badgeVariants = cva(
   "inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 gap-1 [&>svg]:pointer-events-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive transition-[color,box-shadow] overflow-hidden",
@@ -27,17 +28,27 @@ const badgeVariants = cva(
 
 function Badge({
   className,
-  variant,
+  variant = "default",
+  tone,
   asChild = false,
   ...props
 }: React.ComponentProps<"span"> &
-  VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
+  VariantProps<typeof badgeVariants> & {
+    asChild?: boolean;
+    tone?: SemanticTone;
+  }) {
   const Comp = asChild ? SlotPrimitive.Slot : "span";
 
   return (
     <Comp
       data-slot="badge"
-      className={cn(badgeVariants({ variant }), className)}
+      data-variant={variant ?? undefined}
+      data-tone={tone}
+      className={cn(
+        badgeVariants({ variant }),
+        tone ? semanticToneSoftClasses[tone] : undefined,
+        className,
+      )}
       {...props}
     />
   );

@@ -3,6 +3,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { sourceMatches } from "../test-support/source-match";
+
 describe("AppFeedback primitives", () => {
   it("uses the shared IconButton primitive for toast dismiss controls", () => {
     const source = readFileSync(
@@ -26,13 +28,13 @@ describe("AppFeedback primitives", () => {
     expect(source).not.toMatch(/<button[\s\S]{0,300}toast\.onAction\(\)/);
   });
 
-  it("uses the shared Button primitive for dialog actions", () => {
+  it("does not keep a second, unused dialog feedback channel", () => {
     const source = readFileSync(
       join(process.cwd(), "packages/web-ui/src/components/AppFeedback.tsx"),
       "utf8",
     );
 
-    expect(source).toMatch(/<Button[\s\S]*className="clash-settings-primary[\s\S]*dialog\?\.actionLabel/);
-    expect(source).not.toMatch(/<button[\s\S]{0,300}className="clash-settings-primary/);
+    expect(sourceMatches(source, /\bshowDialog\b/)).toBe(false);
+    expect(sourceMatches(source, /<Dialog\b/)).toBe(false);
   });
 });

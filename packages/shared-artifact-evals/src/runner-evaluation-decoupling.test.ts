@@ -207,6 +207,7 @@ async function createAgent(
 async function createPiAgent(
   root: string,
   counterPath: string,
+  options: { unsupportedAtifEvent?: boolean } = {},
 ): Promise<BenchmarkAgent> {
   const executable = join(root, "fake-pi");
   await writeFile(
@@ -229,6 +230,11 @@ async function createPiAgent(
       'process.stdout.write(JSON.stringify({type:"turn_start"}) + "\\n")',
       'process.stdout.write(JSON.stringify({type:"turn_end",message:{role:"assistant",provider:"test-provider",model:"test-model",content:[{type:"thinking",thinking:"PRIVATE_PI_REASONING"},{type:"text",text:"Created the requested fixture."}],usage:{input:1,cacheRead:0,cacheWrite:0,output:1,reasoning:1,totalTokens:3}},toolResults:[]}) + "\\n")',
       'process.stdout.write(JSON.stringify({type:"agent_end",messages:[],willRetry:false}) + "\\n")',
+      ...(options.unsupportedAtifEvent
+        ? [
+            'process.stdout.write(JSON.stringify({type:"future_pi_control"}) + "\\n")',
+          ]
+        : []),
       'process.stdout.write(JSON.stringify({type:"agent_settled"}) + "\\n")',
     ].join("\n"),
     "utf8",
@@ -319,6 +325,63 @@ describe("runner Evaluation decoupling", () => {
         path: "logs/trajectory.atif-receipt.json",
       }),
     );
+  }, 90_000);
+
+  it("seals a failed Attempt when Pi ATIF projection encounters an unsupported control event", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-runner-pi-atif-failure-"));
+    roots.push(root);
+    const suiteRoot = join(root, "suite");
+    const outputRoot = join(root, "runs");
+    const counterPath = join(root, "agent-count.txt");
+    await mkdir(suiteRoot);
+    const inputWorkspace = await createInputWorkspace(
+      join(suiteRoot, "environment"),
+    );
+    const benchmarkCase = benchmark(inputWorkspace.integrity.bundleDigest);
+    const agent = await createPiAgent(root, counterPath, {
+      unsupportedAtifEvent: true,
+    });
+
+    const report = await runBenchmarkSuite({
+      suite: {
+        schemaVersion: 1,
+        id: "pi-atif-failure-suite",
+        title: "Pi ATIF failure suite",
+        cases: [benchmarkCase],
+      },
+      suiteRoot,
+      outputRoot,
+      runId: "pi-atif-failure-run",
+      agent,
+      maxInfrastructureAttempts: 1,
+    });
+
+    expect(report.cases[0]).toMatchObject({
+      status: "fail",
+      agent: { status: "completed" },
+      failure: {
+        classification: "infrastructure",
+        retryable: true,
+        phase: "atif-projection",
+        detail: expect.stringMatching(/future_pi_control/iu),
+      },
+    });
+    const caseRoot = join(
+      outputRoot,
+      "pi-atif-failure-run",
+      benchmarkCase.id,
+    );
+    const capture = JSON.parse(
+      await readFile(join(caseRoot, "attempt-capture.json"), "utf8"),
+    ) as { atif: { status: string; detail: string } };
+    expect(capture.atif).toEqual({
+      status: "unsupported",
+      format: "ATIF-v1.7",
+      detail: expect.stringMatching(/future_pi_control/iu),
+    });
+    await expect(
+      verifyBenchmarkAttempt({ caseRoot, suiteRoot }),
+    ).resolves.toMatchObject({ receipt: { path: "attempt.json" } });
   }, 90_000);
 
   it("preserves a completed rollout when final Workspace publication fails", async () => {

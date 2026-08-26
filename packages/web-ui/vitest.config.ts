@@ -3,7 +3,52 @@ import { resolve } from "node:path";
 
 export default defineConfig({
   resolve: {
+    dedupe: ["react", "react-dom"],
     alias: [
+      {
+        find: /^@clash\/action-sdk\/browser$/,
+        replacement: resolve(__dirname, "../action-sdk/src/browser.ts"),
+      },
+      {
+        find: /^react$/,
+        replacement: resolve(__dirname, "node_modules/react/index.js"),
+      },
+      {
+        find: /^react\/jsx-runtime$/,
+        replacement: resolve(__dirname, "node_modules/react/jsx-runtime.js"),
+      },
+      {
+        find: /^react\/jsx-dev-runtime$/,
+        replacement: resolve(
+          __dirname,
+          "node_modules/react/jsx-dev-runtime.js",
+        ),
+      },
+      {
+        find: /^react-dom$/,
+        replacement: resolve(__dirname, "node_modules/react-dom/index.js"),
+      },
+      {
+        find: /^@radix-ui\/react-collapsible$/,
+        replacement: resolve(
+          __dirname,
+          "node_modules/@radix-ui/react-collapsible/dist/index.mjs",
+        ),
+      },
+      {
+        find: /^streamdown$/,
+        replacement: resolve(
+          __dirname,
+          "node_modules/streamdown/dist/index.js",
+        ),
+      },
+      {
+        find: /^lucide-react$/,
+        replacement: resolve(
+          __dirname,
+          "node_modules/lucide-react/dist/esm/lucide-react.mjs",
+        ),
+      },
       {
         find: /^@clash\/asset-sdk$/,
         replacement: resolve(__dirname, "../asset-sdk/src/index.ts"),

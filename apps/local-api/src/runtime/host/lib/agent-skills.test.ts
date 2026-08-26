@@ -18,8 +18,6 @@ describe("agent Skill project directories", () => {
       goose: ".goose/skills",
       cline: ".agents/skills",
       auggie: ".augment/skills",
-      hermes: ".hermes/skills",
-      openclaw: "skills",
     } as const;
 
     expect(
@@ -34,6 +32,8 @@ describe("agent Skill project directories", () => {
 
   it("does not guess a directory for an unknown or custom harness", () => {
     expect(resolveHarnessProjectSkillDirectory("custom-acp")).toBeUndefined();
+    expect(resolveHarnessProjectSkillDirectory("hermes")).toBeUndefined();
+    expect(resolveHarnessProjectSkillDirectory("openclaw")).toBeUndefined();
     expect(resolveHarnessProjectSkillDirectory("")).toBeUndefined();
   });
 });

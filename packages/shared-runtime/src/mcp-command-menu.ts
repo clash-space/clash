@@ -3,6 +3,7 @@ export const CLASH_MCP_COMMAND_IDS = [
   "plugin",
   "assets",
   "canvas",
+  "generators",
   "director",
   "timeline",
 ] as const;
@@ -42,6 +43,12 @@ export const CLASH_MCP_COMMANDS: readonly ClashMcpCommand[] = [
       "creating, finding, connecting, or executing media and generation nodes",
   },
   {
+    id: "generators",
+    title: "Generators",
+    useWhen:
+      "discovering a plugin-registered Project Generator, its head Revision, or running an Action Run against it",
+  },
+  {
     id: "director",
     title: "Director Stage",
     useWhen:
@@ -73,6 +80,7 @@ export function classifyClashMcpTool(name: string): ClashMcpToolFamily {
   if (name.startsWith("clash_plugin_")) return "plugin";
   if (name.startsWith("clash_assets_")) return "assets";
   if (name.startsWith("clash_canvas_")) return "canvas";
+  if (name.startsWith("clash_generators_")) return "generators";
   if (name.startsWith("clash_director_")) return "director";
   if (name.startsWith("clash_timeline_")) return "timeline";
   return "other";

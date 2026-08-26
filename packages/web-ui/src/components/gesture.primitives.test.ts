@@ -19,7 +19,6 @@ describe("Gesture primitives", () => {
   it.each([
     "packages/web-ui/src/components/AwarenessLayer.tsx",
     "packages/web-ui/src/components/ChatbotCopilot.tsx",
-    "packages/web-ui/src/components/GroupChatPanel.tsx",
     "packages/web-ui/src/components/ImageEditorContext.tsx",
     "packages/web-ui/src/components/copilot/AgentMotion.tsx",
   ])("%s routes gesture behavior through the shared primitive", (file) => {

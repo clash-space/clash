@@ -91,6 +91,10 @@ describe("RuntimeSessionTimeline", () => {
         content: { type: "text", text: "Done" },
       },
     });
+    transcript = reduceSessionTranscript(transcript, {
+      type: "turn.complete",
+      turnId: "turn-clash",
+    });
 
     render(
       <RuntimeSessionTimeline

@@ -57,8 +57,14 @@ export interface KnownAgentEntry {
   homepage?: string;
   /** Initial UI seed. Live ACP session config_options override this. */
   configOptions?: KnownAgentConfigOption[];
-  probe?: (command: string, options?: ResolveAgentCommandOptions) => Promise<boolean>;
-  resolveSpec?: (command: string, options?: ResolveAgentCommandOptions) => AgentSpec | Promise<AgentSpec>;
+  probe?: (
+    command: string,
+    options?: ResolveAgentCommandOptions,
+  ) => Promise<boolean>;
+  resolveSpec?: (
+    command: string,
+    options?: ResolveAgentCommandOptions,
+  ) => AgentSpec | Promise<AgentSpec>;
 }
 
 function registryShimName(id: string): string {
@@ -109,7 +115,10 @@ export const KNOWN_ACP_AGENTS: KnownAgentEntry[] = [
   {
     id: "qwen-code",
     label: "Qwen Code",
-    spec: { command: registryShimName("qwen-code"), args: ["--acp", "--experimental-skills"] },
+    spec: {
+      command: registryShimName("qwen-code"),
+      args: ["--acp", "--experimental-skills"],
+    },
     registryId: "qwen-code",
     installSource: "registry",
     homepage: "https://github.com/QwenLM/qwen-code",
@@ -170,24 +179,6 @@ export const KNOWN_ACP_AGENTS: KnownAgentEntry[] = [
     installSource: "registry",
     homepage: "https://www.augmentcode.com/",
   },
-  {
-    id: "hermes",
-    label: "Hermes",
-    spec: { command: "hermes", args: ["acp"] },
-    systemPath: true,
-    macAppBundleNames: ["Hermes.app"],
-    macAppExecutableNames: ["hermes", "Hermes"],
-    homepage: "https://github.com/NousResearch/hermes-agent",
-  },
-  {
-    id: "openclaw",
-    label: "OpenClaw",
-    spec: { command: "openclaw", args: ["acp"] },
-    systemPath: true,
-    macAppBundleNames: ["OpenClaw.app"],
-    macAppExecutableNames: ["openclaw", "OpenClaw"],
-    homepage: "https://docs.openclaw.ai/cli/acp",
-  },
 ];
 
 export interface ResolveAgentCommandOptions {
@@ -199,7 +190,10 @@ export interface ResolveAgentCommandOptions {
   applicationDirs?: string[];
 }
 
-async function isExecutable(path: string, platform = process.platform): Promise<boolean> {
+async function isExecutable(
+  path: string,
+  platform = process.platform,
+): Promise<boolean> {
   try {
     await access(path, platform === "win32" ? constants.F_OK : constants.X_OK);
     return true;
@@ -251,7 +245,10 @@ function candidateSystemDirs(options: ResolveAgentCommandOptions): string[] {
   return [...new Set(dirs)];
 }
 
-async function candidateNodeVersionDirs(root: string, suffix: string[]): Promise<string[]> {
+async function candidateNodeVersionDirs(
+  root: string,
+  suffix: string[],
+): Promise<string[]> {
   const dirs: string[] = [];
   try {
     for (const entry of await readdir(root, { withFileTypes: true })) {
@@ -264,25 +261,38 @@ async function candidateNodeVersionDirs(root: string, suffix: string[]): Promise
   return dirs;
 }
 
-async function candidateSystemBinDirs(options: ResolveAgentCommandOptions): Promise<string[]> {
+async function candidateSystemBinDirs(
+  options: ResolveAgentCommandOptions,
+): Promise<string[]> {
   const env = options.env ?? process.env;
   const dirs = candidateSystemDirs(options);
   const home = env.HOME ?? env.USERPROFILE;
 
   const nvmDir = env.NVM_DIR ?? (home ? join(home, ".nvm") : undefined);
   if (nvmDir) {
-    dirs.push(...(await candidateNodeVersionDirs(join(nvmDir, "versions", "node"), ["bin"])));
+    dirs.push(
+      ...(await candidateNodeVersionDirs(join(nvmDir, "versions", "node"), [
+        "bin",
+      ])),
+    );
   }
 
   const fnmDir = env.FNM_DIR ?? (home ? join(home, ".fnm") : undefined);
   if (fnmDir) {
-    dirs.push(...(await candidateNodeVersionDirs(join(fnmDir, "node-versions"), ["installation", "bin"])));
+    dirs.push(
+      ...(await candidateNodeVersionDirs(join(fnmDir, "node-versions"), [
+        "installation",
+        "bin",
+      ])),
+    );
   }
 
   return [...new Set(dirs)];
 }
 
-function candidateApplicationDirs(options: ResolveAgentCommandOptions): string[] {
+function candidateApplicationDirs(
+  options: ResolveAgentCommandOptions,
+): string[] {
   const env = options.env ?? process.env;
   const home = env.HOME ?? env.USERPROFILE;
   if (options.applicationDirs) return [...new Set(options.applicationDirs)];
@@ -294,7 +304,10 @@ function candidateApplicationDirs(options: ResolveAgentCommandOptions): string[]
   ];
 }
 
-function candidateMacAppExecutables(entry: KnownAgentEntry, options: ResolveAgentCommandOptions): string[] {
+function candidateMacAppExecutables(
+  entry: KnownAgentEntry,
+  options: ResolveAgentCommandOptions,
+): string[] {
   if (process.platform !== "darwin" && !options.applicationDirs) return [];
   const bundleNames = entry.macAppBundleNames ?? [];
   if (bundleNames.length === 0) return [];
@@ -303,14 +316,19 @@ function candidateMacAppExecutables(entry: KnownAgentEntry, options: ResolveAgen
   for (const appDir of candidateApplicationDirs(options)) {
     for (const bundleName of bundleNames) {
       for (const executableName of executableNames) {
-        candidates.push(join(appDir, bundleName, "Contents", "MacOS", executableName));
+        candidates.push(
+          join(appDir, bundleName, "Contents", "MacOS", executableName),
+        );
       }
     }
   }
   return [...new Set(candidates)];
 }
 
-function candidateCommandNames(command: string, options: ResolveAgentCommandOptions): string[] {
+function candidateCommandNames(
+  command: string,
+  options: ResolveAgentCommandOptions,
+): string[] {
   const platform = options.platform ?? process.platform;
   if (platform !== "win32" || extname(command)) return [command];
   const env = options.env ?? process.env;
@@ -327,7 +345,8 @@ async function resolveCommandInDirs(
   options: ResolveAgentCommandOptions,
 ): Promise<string | null> {
   const platform = options.platform ?? process.platform;
-  if (isAbsolute(command)) return await isExecutable(command, platform) ? command : null;
+  if (isAbsolute(command))
+    return (await isExecutable(command, platform)) ? command : null;
   for (const dir of dirs) {
     for (const name of candidateCommandNames(command, options)) {
       const candidate = join(dir, name);
@@ -365,13 +384,18 @@ export async function detectEntry(
   options: ResolveAgentCommandOptions = {},
 ): Promise<KnownAgentEntry | null> {
   const managedCommand = await resolveAgentCommand(entry.spec.command, options);
-  const command = managedCommand ?? (entry.systemPath ? await resolveSystemCommand(entry, options) : null);
+  const command =
+    managedCommand ??
+    (entry.systemPath ? await resolveSystemCommand(entry, options) : null);
   if (!command) return null;
   if (entry.probe && !(await entry.probe(command, options))) return null;
   let spec: AgentSpec;
   if (entry.resolveSpec) {
     spec = await entry.resolveSpec(command, options);
-  } else if ((options.platform ?? process.platform) === "win32" && /\.(?:bat|cmd)$/i.test(command)) {
+  } else if (
+    (options.platform ?? process.platform) === "win32" &&
+    /\.(?:bat|cmd)$/i.test(command)
+  ) {
     const env = options.env ?? process.env;
     spec = {
       ...entry.spec,
@@ -395,14 +419,21 @@ export async function detectEntry(
  * Intentionally Node-only. A web-ui that wants to render a list can call this
  * server-side or in the local host process.
  */
-export async function detect(id: string, options: ResolveAgentCommandOptions = {}): Promise<KnownAgentEntry | null> {
+export async function detect(
+  id: string,
+  options: ResolveAgentCommandOptions = {},
+): Promise<KnownAgentEntry | null> {
   const entry = KNOWN_ACP_AGENTS.find((e) => e.id === id);
   if (!entry) return null;
   return detectEntry(entry, options);
 }
 
 /** Detect every known agent. Useful for "list available agents" UI. */
-export async function detectAll(options: ResolveAgentCommandOptions = {}): Promise<KnownAgentEntry[]> {
-  const results = await Promise.all(KNOWN_ACP_AGENTS.map((e) => detect(e.id, options)));
+export async function detectAll(
+  options: ResolveAgentCommandOptions = {},
+): Promise<KnownAgentEntry[]> {
+  const results = await Promise.all(
+    KNOWN_ACP_AGENTS.map((e) => detect(e.id, options)),
+  );
   return results.filter((e): e is KnownAgentEntry => e !== null);
 }

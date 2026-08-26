@@ -3,6 +3,7 @@ import { resolve, isAbsolute, join, dirname } from 'path';
 import { pathToFileURL } from 'url';
 import { readFileSync } from 'fs';
 import process3 from 'process';
+import '@clash/shared-runtime/generator-client';
 import { CLASH_MCP_COMMAND_IDS, getClashMcpCommand, buildClashMcpCommandMenu, classifyClashMcpTool } from '@clash/shared-runtime';
 import { mkdir, writeFile } from 'fs/promises';
 import { stringify, parse as parse$1 } from 'yaml';
@@ -29691,6 +29692,29 @@ function N3(Z, $, J, X, V) {
   return Z.registerResource($, J, { mimeType: p, ...X }, V);
 }
 
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/index.js
+init_external();
+init_external();
+
+// ../../packages/shared-mcp/dist/tool-guidance.js
+function sentence(label, value) {
+  const trimmed = value.trim();
+  if (!trimmed)
+    throw new Error(`Clash tool guidance ${label} must not be empty`);
+  return `${trimmed.replace(/[.!?]+$/u, "")}.`;
+}
+function describeClashTool(guidance) {
+  return [
+    `Use when: ${sentence("useWhen", guidance.useWhen)}`,
+    `Effect: ${sentence("effect", guidance.effect)}`,
+    `Returns: ${sentence("returns", guidance.returns)}`,
+    `Next: ${sentence("next", guidance.next)}`
+  ].join(" ");
+}
+
+// ../../packages/shared-mcp/dist/generator-tools.js
+external_exports.record(external_exports.string(), external_exports.unknown());
+
 // ../../packages/shared-mcp/dist/wire-schema.js
 var SCHEMA_MAP_KEYWORDS = /* @__PURE__ */ new Set([
   "$defs",
@@ -30694,10 +30718,6 @@ var ExperimentalMcpServerTasks = class {
   }
 };
 
-// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/index.js
-init_external();
-init_external();
-
 // ../../node_modules/.pnpm/@modelcontextprotocol+sdk@1.29.0_@cfworker+json-schema@4.1.1_zod@4.4.3/node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js
 var McpServer = class {
   constructor(serverInfo, options) {
@@ -31489,28 +31509,11 @@ var EMPTY_COMPLETION_RESULT = {
     hasMore: false
   }
 };
-
-// ../../packages/shared-mcp/dist/tool-guidance.js
-function sentence(label, value) {
-  const trimmed = value.trim();
-  if (!trimmed)
-    throw new Error(`Clash tool guidance ${label} must not be empty`);
-  return `${trimmed.replace(/[.!?]+$/u, "")}.`;
-}
-function describeClashTool(guidance) {
-  return [
-    `Use when: ${sentence("useWhen", guidance.useWhen)}`,
-    `Effect: ${sentence("effect", guidance.effect)}`,
-    `Returns: ${sentence("returns", guidance.returns)}`,
-    `Next: ${sentence("next", guidance.next)}`
-  ].join(" ");
-}
-
-// ../../packages/shared-mcp/dist/server.js
 var CLASH_ROOT_TOOL_NAME = "clash";
 var CLASH_PLUGIN_TOOL_NAME = "clash_plugin";
 var CLASH_ASSETS_TOOL_NAME = "clash_assets";
 var CLASH_CANVAS_TOOL_NAME = "clash_canvas";
+var CLASH_GENERATORS_TOOL_NAME = "clash_generators";
 var CLASH_COMPOSITION_TOOL_NAME = "clash_composition";
 var MAX_ASSET_CONTRACT_BATCH_SIZE = 8;
 var LEGACY_CLASH_GROUP_TOOL_NAMES = {
@@ -31520,6 +31523,7 @@ var LEGACY_CLASH_GROUP_TOOL_NAMES = {
 var CLASH_MCP_INSTRUCTIONS = [
   "Clash discloses product operations progressively.",
   `Use the root ${CLASH_ROOT_TOOL_NAME} tool for command navigation, ${CLASH_PLUGIN_TOOL_NAME} for executable plugin lifecycle, ${CLASH_ASSETS_TOOL_NAME} for Project and personal Global Assets, ${CLASH_CANVAS_TOOL_NAME} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME} for Timeline or Director Stage composition.`,
+  `${CLASH_GENERATORS_TOOL_NAME} dispatches live registered Project Generators, their Revisions, and their Action Runs.`,
   "Timeline is temporal composition; Director Stage is spatial composition.",
   "Call clash_assets without operation for its lightweight index, then pass contracts for the small set of live Asset contracts needed together; contract remains available for one. Other dispatchers reveal live contracts when operation is omitted.",
   "Composition disclosure and short operations require kind=timeline or kind=director-stage; a complete clash_* leaf name remains accepted for compatibility.",
@@ -31705,6 +31709,31 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       }
       return this.#commandResult("canvas");
     });
+    const generatorsDefinition = getClashMcpCommand("generators");
+    super.registerTool(CLASH_GENERATORS_TOOL_NAME, {
+      title: generatorsDefinition.title,
+      description: describeClashTool({
+        useWhen: "you need to discover a registered Project Generator, inspect its head Revision, or run an Action Run against it",
+        effect: "returns live Generators contracts when operation is omitted, or validates and executes one registered Generators leaf exactly once",
+        returns: "typed Generators operation contracts or the selected leaf operation's exact result",
+        next: "choose the smallest matching operation, then call clash_generators with operation and arguments"
+      }),
+      inputSchema: {
+        operation: external_exports.string().min(1).optional().describe("Omit this field entirely to reveal live contracts; never send an empty string, list_operations, or contracts. Otherwise pass a command-local Generators operation or complete clash_generators_* leaf name"),
+        arguments: external_exports.record(external_exports.string(), external_exports.unknown()).optional().describe("Arguments validated against the selected operation's live input schema")
+      },
+      _meta: { ui: { visibility: ["model"] } }
+    }, async ({ operation, arguments: operationArguments }, extra) => {
+      if (operation) {
+        return this.#dispatchOperation({
+          operation,
+          arguments: operationArguments ?? {},
+          selectedCommand: "generators",
+          extra
+        });
+      }
+      return this.#commandResult("generators");
+    });
     super.registerTool(CLASH_COMPOSITION_TOOL_NAME, {
       title: "Composition",
       description: describeClashTool({
@@ -31768,7 +31797,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
     }
   }
   registerTool(name, config2, callback) {
-    if (name === CLASH_ROOT_TOOL_NAME || name === CLASH_PLUGIN_TOOL_NAME || name === CLASH_ASSETS_TOOL_NAME || name === CLASH_CANVAS_TOOL_NAME || name === CLASH_COMPOSITION_TOOL_NAME || Object.values(LEGACY_CLASH_GROUP_TOOL_NAMES).includes(name)) {
+    if (name === CLASH_ROOT_TOOL_NAME || name === CLASH_PLUGIN_TOOL_NAME || name === CLASH_ASSETS_TOOL_NAME || name === CLASH_CANVAS_TOOL_NAME || name === CLASH_GENERATORS_TOOL_NAME || name === CLASH_COMPOSITION_TOOL_NAME || Object.values(LEGACY_CLASH_GROUP_TOOL_NAMES).includes(name)) {
       throw new Error(`${name} is provided by ClashMcpServer`);
     }
     const handle = super.registerTool(name, config2, callback);
@@ -31911,6 +31940,9 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
       if (command.id === "canvas") {
         return { ...command, dispatcher: CLASH_CANVAS_TOOL_NAME };
       }
+      if (command.id === "generators") {
+        return { ...command, dispatcher: CLASH_GENERATORS_TOOL_NAME };
+      }
       const kind = command.id === "timeline" ? "timeline" : "director-stage";
       return { ...command, dispatcher: CLASH_COMPOSITION_TOOL_NAME, kind };
     });
@@ -31996,7 +32028,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         return false;
       if (Object.values(LEGACY_CLASH_GROUP_TOOL_NAMES).includes(tool.name))
         return false;
-      if (tool.name === CLASH_ROOT_TOOL_NAME || tool.name === CLASH_PLUGIN_TOOL_NAME || tool.name === CLASH_ASSETS_TOOL_NAME || tool.name === CLASH_CANVAS_TOOL_NAME || tool.name === CLASH_COMPOSITION_TOOL_NAME || tool.name === "clash_workspace_init")
+      if (tool.name === CLASH_ROOT_TOOL_NAME || tool.name === CLASH_PLUGIN_TOOL_NAME || tool.name === CLASH_ASSETS_TOOL_NAME || tool.name === CLASH_CANVAS_TOOL_NAME || tool.name === CLASH_GENERATORS_TOOL_NAME || tool.name === CLASH_COMPOSITION_TOOL_NAME || tool.name === "clash_workspace_init")
         return true;
       return classifyClashMcpTool(tool.name) === "other";
     });
@@ -41360,22 +41392,18 @@ function createTimelineAdapter(options = {}) {
         return { ...base, completed: false, status: "pending" };
       const deadline = Date.now() + (input.timeoutMs ?? 18e5);
       while (true) {
-        const polled = target.kind === "project-assets" ? await request(input, {
+        const polled = await request(input, {
           action: "list_timeline_renders",
           status: "all"
-        }) : await request(input, {
-          action: "get",
-          canvasId: target.canvasId,
-          nodeId: submitted.renderNodeId
         });
-        const renderNode = target.kind === "project-assets" ? Array.isArray(polled.value.renders) ? polled.value.renders.map(
+        const renderNode = Array.isArray(polled.value.renders) ? polled.value.renders.map(
           (entry) => entry && typeof entry === "object" ? entry.node : void 0
         ).find(
           (node) => node && typeof node === "object" && node.id === submitted.renderNodeId
-        ) : void 0 : polled.value.node;
+        ) : void 0;
         if (!renderNode || typeof renderNode !== "object") {
           throw new Error(
-            `Timeline render node ${submitted.renderNodeId} was not returned by Host readback`
+            `Timeline native render ${submitted.renderNodeId} was not returned by Host readback`
           );
         }
         const data = renderNode.data ?? {};

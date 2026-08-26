@@ -2048,3 +2048,156 @@ describe("durable executable Provider generation", () => {
     ]);
   });
 });
+
+const modelPlan: ProviderPluginExecutionPlan = {
+  binding,
+  accountId: "private-account",
+  assetInputs: [],
+  kind: "model",
+  projectId: "project-1",
+  nodeId: "node-1",
+  provider: "test-provider",
+  modelEndpoint: "tripo-h3.1",
+  input: {
+    values: {
+      modelId: "tripo-h3.1",
+      upstreamModel: "tripo-h3.1",
+      prompt: "A ceramic mug",
+      modelParams: {},
+    },
+    references: [],
+  },
+};
+
+function pendingModelDoc(): LoroDoc {
+  const doc = new LoroDoc();
+  doc.getMap("nodes").set("node-1", {
+    id: "node-1",
+    type: "model",
+    position: { x: 0, y: 0 },
+    data: {
+      status: "pending",
+      actionType: "model-gen",
+      modelId: "tripo-h3.1",
+      prompt: "A ceramic mug",
+    },
+  });
+  return doc;
+}
+
+describe("durable model-gen node projection (Tripo H3.1 GLB completion)", () => {
+  it("projects a completed model provider run onto the Canvas model node and publishes the output binding", async () => {
+    const dataDir = await temporaryDataDir();
+    const now = { value: 100 };
+    const doc = pendingModelDoc();
+    let providerTaskId = "";
+    const first = createLocalWorkflowProcessor({
+      dataDir,
+      aigc: aigc(vi.fn(async () => modelPlan)),
+      durableProviderRuns: {
+        ownerId: "local-api",
+        providerPluginExecutor: async (request) => {
+          providerTaskId = request.taskId;
+          return {
+            status: "accepted",
+            binding,
+            pollState: { providerTask: "task-1" },
+            retryAfterMs: 5,
+          };
+        },
+        now: () => now.value,
+      },
+    });
+
+    await first.process({ doc, projectId: "project-1" });
+
+    const staged = await createLocalPluginAssetStagingStore({ dataDir }).stage({
+      projectId: "project-1",
+      taskId: providerTaskId,
+      slot: "media",
+      pluginId: binding.pluginId,
+      pluginVersion: binding.version,
+      invocationId: "provider-poll-result",
+      kind: "model",
+      mediaType: "model/gltf-binary",
+      bytes: new Uint8Array([0, 0, 0, 24]),
+    });
+    now.value = 106;
+    const reopened = createLocalWorkflowProcessor({
+      dataDir,
+      assetInspection: completeByteDerivedInspection(dataDir),
+      aigc: aigc(vi.fn(async () => modelPlan)),
+      durableProviderRuns: {
+        ownerId: "local-api",
+        providerPluginExecutor: async () => ({
+          status: "completed",
+          binding,
+          media: {
+            assetId: staged.projectAssetId,
+            uri: `clash-asset://${staged.projectAssetId}`,
+            kind: "model",
+            mediaType: "model/gltf-binary",
+          },
+        }),
+        now: () => now.value,
+      },
+    });
+
+    await reopened.process({ doc, projectId: "project-1" });
+
+    const target = doc.getMap("nodes").get("node-1") as Record<string, any>;
+    expect(target.data).toMatchObject({
+      status: "completed",
+      assetId: staged.projectAssetId,
+    });
+    expect(readProjectAsset(doc, staged.projectAssetId)).not.toBeNull();
+    const actionRunId = identityFromProviderTaskId(
+      providerTaskId,
+      "media",
+    ).actionRunId;
+    expect(listActionAssetReferences(doc, staged.projectAssetId)).toEqual([
+      expect.objectContaining({
+        direction: "output",
+        slot: "media",
+        projectAssetId: staged.projectAssetId,
+        owner: expect.objectContaining({
+          kind: "run",
+          actionRunId,
+        }),
+      }),
+    ]);
+  });
+
+  it("projects a failed model provider run onto the Canvas model node", async () => {
+    const dataDir = await temporaryDataDir();
+    const now = { value: 100 };
+    const doc = pendingModelDoc();
+    const processor = createLocalWorkflowProcessor({
+      dataDir,
+      aigc: aigc(vi.fn(async () => modelPlan)),
+      durableProviderRuns: {
+        ownerId: "local-api",
+        providerPluginExecutor: async () => ({
+          status: "failed",
+          binding,
+          error: {
+            code: "invalid_request",
+            message: "The reference model could not be processed",
+            retryable: false,
+            requestState: "rejected",
+          },
+        }),
+        now: () => now.value,
+      },
+    });
+
+    await processor.process({ doc, projectId: "project-1" });
+
+    const target = doc.getMap("nodes").get("node-1") as Record<string, any>;
+    expect(target.data).toMatchObject({
+      status: "failed",
+      failureCode: "invalid_request",
+    });
+    expect(typeof target.data.error).toBe("string");
+  });
+});

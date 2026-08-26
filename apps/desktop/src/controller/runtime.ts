@@ -6,6 +6,7 @@ import { app } from "electron";
 import {
   createLocalDaemonBootstrap,
   launchDetachedLocalDaemon,
+  resolveLocalDaemonRuntimeFingerprint,
 } from "@clash/shared-runtime/local-daemon";
 import {
   clashHomeForLocalDataDir,
@@ -24,7 +25,13 @@ import {
   resolveClashHostEntryPath,
   resolveClashSdkPythonPath,
 } from "../paths";
-import { resolveDesktopRuntime, type DesktopRuntime } from "../runtime";
+import {
+  resolveDesktopHostStartupTimeoutMs,
+  resolveDesktopRuntime,
+  resolveDesktopSourceHostNodeArgs,
+  shouldWatchDesktopSourceHost,
+  type DesktopRuntime,
+} from "../runtime";
 import type { DesktopControllerLogger } from "./types";
 
 const require = createRequire(import.meta.url);
@@ -101,19 +108,29 @@ export function createDesktopRuntimeController({
         resourcesPath: process.resourcesPath,
       });
       const sourceHost = hostEntryPath.endsWith(".ts");
+      const watchSourceHost = shouldWatchDesktopSourceHost(
+        process.env.CLASH_DESKTOP_SOURCE_HOST_WATCH,
+      );
+      const runtimeFingerprint =
+        resolveLocalDaemonRuntimeFingerprint(hostEntryPath);
       const daemon = createLocalDaemonBootstrap({
         runDir,
         profile: resolveClashProfile(process.env),
+        runtimeFingerprint,
+        startupTimeoutMs: resolveDesktopHostStartupTimeoutMs(
+          process.env.CLASH_DESKTOP_HOST_STARTUP_TIMEOUT_MS,
+        ),
         launch: async () =>
           launchDetachedLocalDaemon({
             entryPath: hostEntryPath,
+            runtimeFingerprint,
             nodeArgs: sourceHost
-              ? [
-                  require.resolve("tsx/cli"),
-                  "watch",
-                  "--tsconfig",
-                  resolveClashDevTsconfigPath(moduleDir),
-                ]
+              ? resolveDesktopSourceHostNodeArgs({
+                  watch: watchSourceHost,
+                  tsxLoaderPath: require.resolve("tsx"),
+                  tsxCliPath: require.resolve("tsx/cli"),
+                  tsconfigPath: resolveClashDevTsconfigPath(moduleDir),
+                })
               : undefined,
             cliEntryPath: resolveClashCliEntryPath({
               isPackaged: app.isPackaged,

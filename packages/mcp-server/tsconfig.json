@@ -7,7 +7,10 @@
     "declaration": true,
     "strict": true,
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": "..",
+    "paths": {
+      "@clash/shared-mcp": ["../shared-mcp/src/index.ts"]
+    },
     "skipLibCheck": true,
     "esModuleInterop": true
   },

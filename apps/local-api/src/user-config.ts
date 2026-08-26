@@ -91,6 +91,50 @@ export function validateClashUserConfig(value: unknown): asserts value is Record
     validateStringField(section, "model", `audio.${key}`);
   }
 
+  const mediaAnalysis = optionalRecord(value, "media_analysis");
+  if (mediaAnalysis) {
+    if (
+      mediaAnalysis.video_enabled !== undefined &&
+      typeof mediaAnalysis.video_enabled !== "boolean"
+    ) {
+      throw new Error("media_analysis.video_enabled must be a boolean");
+    }
+    validateNullableStringField(mediaAnalysis, "model_id", "media_analysis");
+    if (
+      mediaAnalysis.allowed_categories !== undefined &&
+      mediaAnalysis.allowed_categories !== null &&
+      (!Array.isArray(mediaAnalysis.allowed_categories) ||
+        !mediaAnalysis.allowed_categories.every((category) => typeof category === "string"))
+    ) {
+      throw new Error("media_analysis.allowed_categories must be a string list or null");
+    }
+    const video = optionalRecord(mediaAnalysis, "video");
+    if (video) {
+      if (video.fps !== undefined && typeof video.fps !== "number") {
+        throw new Error("media_analysis.video.fps must be a number");
+      }
+      if (
+        video.media_resolution !== undefined &&
+        video.media_resolution !== "low" &&
+        video.media_resolution !== "medium" &&
+        video.media_resolution !== "high"
+      ) {
+        throw new Error("media_analysis.video.media_resolution must be low, medium or high");
+      }
+      const refinement = optionalRecord(video, "boundary_refinement");
+      if (refinement) {
+        if (refinement.enabled !== undefined && typeof refinement.enabled !== "boolean") {
+          throw new Error("media_analysis.video.boundary_refinement.enabled must be a boolean");
+        }
+        for (const key of ["fps", "safety_margin_seconds"]) {
+          if (refinement[key] !== undefined && typeof refinement[key] !== "number") {
+            throw new Error(`media_analysis.video.boundary_refinement.${key} must be a number`);
+          }
+        }
+      }
+    }
+  }
+
   const sync = optionalRecord(value, "sync");
   if (sync) {
     if (sync.mode !== undefined && sync.mode !== "local-only" && sync.mode !== "cloud-sync") {

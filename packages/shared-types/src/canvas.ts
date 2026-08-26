@@ -29,9 +29,13 @@ import {
   capabilityFromCustom,
   directorReferencePacket,
   hasDirectorReferenceOutput,
+  MEDIA_REFERENCE_FIELDS,
+  mediaReferencePendingFields,
+  mediaReferenceCounts,
   type Capability,
   type RefNodeLike,
   type RefPartition,
+  type MediaReferencePendingFields,
 } from './model-capabilities.js';
 import {
   DirectorReferencePacketSchema,
@@ -72,6 +76,8 @@ export const RF_NODE_TYPE = {
   Video: 'video',
   /** Audio asset (completed generation or upload) */
   Audio: 'audio',
+  /** 3D model asset (completed generation or upload) */
+  Model: 'model',
   /** Agent-authored Remotion TSX component with live Canvas/Timeline preview */
   RemotionComponent: 'remotion-component',
   /** Generation node — renders as ActionBadge */
@@ -84,6 +90,8 @@ export const ACTION_TYPE = {
   VideoGen: 'video-gen',
   AudioGen: 'audio-gen',
   TextGen: 'text-gen',
+  /** 3D model generation (mesh generation, auto-rig, etc.) */
+  ModelGen: 'model-gen',
   /** Custom actions provided by local agents. Full actionType: "custom:<action-id>" */
   Custom: 'custom',
 } as const;
@@ -111,11 +119,13 @@ export const AGENT_NODE_TYPE_MAP = {
   image:     { rfType: RF_NODE_TYPE.Image },
   video:     { rfType: RF_NODE_TYPE.Video },
   audio:     { rfType: RF_NODE_TYPE.Audio },
+  model:     { rfType: RF_NODE_TYPE.Model },
   remotion:  { rfType: RF_NODE_TYPE.RemotionComponent },
   image_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.ImageGen },
   video_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.VideoGen },
   audio_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.AudioGen },
   text_gen:  { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.TextGen },
+  model_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.ModelGen },
 } as const;
 
 // === Node Status ===
@@ -271,19 +281,15 @@ export type LoroDocumentState = z.infer<typeof LoroDocumentStateSchema>;
 
 // === Generation Pre-validation ===
 
-export interface ValidateGenerationInput {
+export type ValidateGenerationInput = MediaReferencePendingFields & {
   prompt: string;
   referenceTextSnippets?: string[];
-  /** D1 asset IDs of image refs (parallel to partitionRefs output). */
-  referenceImageAssetIds?: string[];
-  referenceVideoAssetIds?: string[];
-  referenceAudioAssetIds?: string[];
   modelParams?: Record<string, string | number | boolean | undefined>;
   /** Either supply the raw ModelCard (legacy) or a pre-derived
    *  Capability (the new unified path that covers custom actions too). */
   modelCard?: ModelCard;
   capability?: import("./model-capabilities.js").Capability;
-}
+};
 
 /**
  * Validate generation inputs against the bound's capability. Returns
@@ -297,23 +303,20 @@ export function validateGenerationInput(input: ValidateGenerationInput): string 
   const {
     prompt,
     referenceTextSnippets = [],
-    referenceImageAssetIds = [],
-    referenceVideoAssetIds = [],
-    referenceAudioAssetIds = [],
     modelParams,
     modelCard,
     capability,
   } = input;
   const cardOrCap = capability ?? modelCard;
   if (!cardOrCap) return null;
+  const counts: Partial<Record<string, number>> = { text: referenceTextSnippets.length };
+  for (const field of MEDIA_REFERENCE_FIELDS) {
+    const ids = input[field.pendingField];
+    counts[field.modality] = ids?.length ?? 0;
+  }
   return validateRefs(
     cardOrCap,
-    {
-      text: referenceTextSnippets.length,
-      image: referenceImageAssetIds.length,
-      video: referenceVideoAssetIds.length,
-      audio: referenceAudioAssetIds.length,
-    },
+    counts,
     { prompt, modelParams },
   );
 }
@@ -322,7 +325,7 @@ export function validateGenerationInput(input: ValidateGenerationInput): string 
 // Shared logic for creating a pending image/video node from generation params.
 // Used by both frontend (ActionBadge) and backend (run_generation_node tool).
 
-export interface BuildPendingAssetNodeInput {
+export type BuildPendingAssetNodeInput = MediaReferencePendingFields & {
   nodeId: string;
   prompt: string;
   /** For built-in models: the Clash modelId (`nano-banana-2`, etc.).
@@ -338,16 +341,9 @@ export interface BuildPendingAssetNodeInput {
     | typeof ACTION_TYPE.VideoGen
     | typeof ACTION_TYPE.AudioGen
     | typeof ACTION_TYPE.TextGen
+    | typeof ACTION_TYPE.ModelGen
     | `custom:${string}`;
   label?: string;
-  /** D1 asset IDs of image refs. Server resolves to R2 keys. */
-  referenceImageAssetIds?: string[];
-  /** D1 asset IDs of video refs. Only consumed by video-gen / text-gen
-   *  pending nodes (image-gen / audio-gen ignore them per partitionRefs). */
-  referenceVideoAssetIds?: string[];
-  /** D1 asset IDs of audio refs. Only consumed by video-gen / text-gen
-   *  pending nodes. */
-  referenceAudioAssetIds?: string[];
   referenceMode?: string;
   /** Pipeline status to stamp on the node. The default `'pending'`
    *  fits the executor / Run flow (NodeProcessor picks these up). The
@@ -366,11 +362,11 @@ export interface BuildPendingAssetNodeInput {
   outputType?: 'image' | 'video' | 'audio' | 'text';
   /** Exact executable implementation selected when this node was created. */
   pluginBinding?: ExecutablePluginBinding;
-}
+};
 
 export interface PendingAssetNode {
   id: string;
-  type: typeof RF_NODE_TYPE.Image | typeof RF_NODE_TYPE.Video | typeof RF_NODE_TYPE.Audio | typeof RF_NODE_TYPE.Text;
+  type: typeof RF_NODE_TYPE.Image | typeof RF_NODE_TYPE.Video | typeof RF_NODE_TYPE.Audio | typeof RF_NODE_TYPE.Text | typeof RF_NODE_TYPE.Model;
   data: Record<string, unknown>;
 }
 
@@ -412,7 +408,6 @@ function pendingDurationFallback(modelId: string | undefined): number | string |
 export function buildPendingAssetNode(input: BuildPendingAssetNodeInput): PendingAssetNode {
   const {
     nodeId, prompt, modelId, modelParams, actionType,
-    referenceImageAssetIds, referenceVideoAssetIds, referenceAudioAssetIds,
     referenceMode, customActionId, customActionParams, outputType, pluginBinding,
   } = input;
 
@@ -421,7 +416,7 @@ export function buildPendingAssetNode(input: BuildPendingAssetNodeInput): Pendin
   // dispatch payload, and the output modality comes from the action's
   // declared `outputType` rather than the built-in actionType enum.
   const isCustom = typeof actionType === 'string' && actionType.startsWith('custom:');
-  const effectiveOutputKind: 'image' | 'video' | 'audio' | 'text' = isCustom
+  const effectiveOutputKind: 'image' | 'video' | 'audio' | 'text' | 'model' = isCustom
     ? (outputType ?? 'image')
     : actionType === ACTION_TYPE.VideoGen
       ? 'video'
@@ -429,26 +424,33 @@ export function buildPendingAssetNode(input: BuildPendingAssetNodeInput): Pendin
         ? 'audio'
         : actionType === ACTION_TYPE.TextGen
           ? 'text'
-          : 'image';
+          : actionType === ACTION_TYPE.ModelGen
+            ? 'model'
+            : 'image';
 
   const isImage = effectiveOutputKind === 'image';
   const isVideo = effectiveOutputKind === 'video';
   const isAudio = effectiveOutputKind === 'audio';
   const isText = effectiveOutputKind === 'text';
+  const isModel = effectiveOutputKind === 'model';
   const rfType = isVideo
     ? RF_NODE_TYPE.Video
     : isAudio
       ? RF_NODE_TYPE.Audio
       : isText
         ? RF_NODE_TYPE.Text
-        : RF_NODE_TYPE.Image;
+        : isModel
+          ? RF_NODE_TYPE.Model
+          : RF_NODE_TYPE.Image;
   const defaultLabel = isVideo
     ? 'Generated Video'
     : isAudio
       ? 'Generated Audio'
       : isText
         ? 'Generated Text'
-        : 'Generated Image';
+        : isModel
+          ? 'Generated Model'
+          : 'Generated Image';
   const label = input.label || extractLabelFromPrompt(prompt, defaultLabel);
 
   // image-gen (built-in only) pins `count: 1` on its modelParams the
@@ -488,15 +490,12 @@ export function buildPendingAssetNode(input: BuildPendingAssetNodeInput): Pendin
   // of partitionRefs — for custom this fixes the pre-unification bug
   // where the manifest's `promptModalities` declared (say) image
   // input but the pending node dropped all refs, leaving the action
-  // unable to consume canvas assets.
-  if (referenceImageAssetIds && referenceImageAssetIds.length > 0) {
-    data.referenceImageAssetIds = referenceImageAssetIds;
-  }
-  if (referenceVideoAssetIds && referenceVideoAssetIds.length > 0) {
-    data.referenceVideoAssetIds = referenceVideoAssetIds;
-  }
-  if (referenceAudioAssetIds && referenceAudioAssetIds.length > 0) {
-    data.referenceAudioAssetIds = referenceAudioAssetIds;
+  // unable to consume canvas assets. One field per `MEDIA_REFERENCE_FIELDS`
+  // entry (image / video / audio / model) so a new modality only needs an
+  // entry there, not a new `if` here.
+  for (const field of MEDIA_REFERENCE_FIELDS) {
+    const ids = input[field.pendingField];
+    if (ids && ids.length > 0) data[field.pendingField] = ids;
   }
 
   if (isVideo && !isCustom) {
@@ -585,6 +584,7 @@ export interface BuildGenerationPayloadInput {
     | typeof ACTION_TYPE.VideoGen
     | typeof ACTION_TYPE.AudioGen
     | typeof ACTION_TYPE.TextGen
+    | typeof ACTION_TYPE.ModelGen
     | `custom:${string}`;
   label?: string;
   referenceMode?: string;
@@ -652,7 +652,7 @@ export function buildGenerationPayload(input: BuildGenerationPayloadInput): Buil
       }
       return counts;
     },
-    { text: 0, image: 0, video: 0, audio: 0 },
+    { text: 0, image: 0, video: 0, audio: 0, model: 0 },
   );
   const attachedRefValidationError = cap
     ? validateRefs(cap, attachedRefCounts, {
@@ -672,7 +672,7 @@ export function buildGenerationPayload(input: BuildGenerationPayloadInput): Buil
   //    loaded yet, or a custom def is mid-install) — bucket nothing.
   const partition: RefPartition = cap
     ? partitionRefs(input.refNodes, cap)
-    : { texts: [], imageAssetIds: [], videoAssetIds: [], audioAssetIds: [] };
+    : { texts: [], imageAssetIds: [], videoAssetIds: [], audioAssetIds: [], modelAssetIds: [] };
 
   // Music providers expose the same two product inputs with different wire
   // shapes. Prompt may consume model-supported references; Lyrics is direct
@@ -752,16 +752,16 @@ export function buildGenerationPayload(input: BuildGenerationPayloadInput): Buil
     ? validateGenerationInput({
         prompt: cleanedPrompt,
         referenceTextSnippets: partition.texts,
-        referenceImageAssetIds: partition.imageAssetIds,
-        referenceVideoAssetIds: partition.videoAssetIds,
-        referenceAudioAssetIds: partition.audioAssetIds,
+        ...mediaReferencePendingFields(partition),
         modelParams: referenceValidationModelParams,
         capability: cap,
       })
     : null);
 
-  const totalAssetRefs =
-    partition.imageAssetIds.length + partition.videoAssetIds.length + partition.audioAssetIds.length;
+  const totalAssetRefs = Object.values(mediaReferenceCounts(partition)).reduce(
+    (total, count) => total + count,
+    0,
+  );
   const modelParams: Record<string, string | number | boolean> = input.config.kind === 'model'
     ? { ...input.config.modelParams }
     : {};
@@ -800,11 +800,10 @@ export function buildGenerationPayload(input: BuildGenerationPayloadInput): Buil
             | typeof ACTION_TYPE.ImageGen
             | typeof ACTION_TYPE.VideoGen
             | typeof ACTION_TYPE.AudioGen
-            | typeof ACTION_TYPE.TextGen,
+            | typeof ACTION_TYPE.TextGen
+            | typeof ACTION_TYPE.ModelGen,
           label: input.label,
-          referenceImageAssetIds: partition.imageAssetIds.length > 0 ? partition.imageAssetIds : undefined,
-          referenceVideoAssetIds: partition.videoAssetIds.length > 0 ? partition.videoAssetIds : undefined,
-          referenceAudioAssetIds: partition.audioAssetIds.length > 0 ? partition.audioAssetIds : undefined,
+          ...mediaReferencePendingFields(partition),
           referenceMode:
             input.referenceMode ?? (totalAssetRefs > 0 ? 'image-and-prompt' : undefined),
           pluginBinding: input.pluginBinding,
@@ -825,9 +824,7 @@ export function buildGenerationPayload(input: BuildGenerationPayloadInput): Buil
           label: input.label,
           customActionId: input.config.customDef.id,
           customActionParams: input.config.customActionParams,
-          referenceImageAssetIds: partition.imageAssetIds.length > 0 ? partition.imageAssetIds : undefined,
-          referenceVideoAssetIds: partition.videoAssetIds.length > 0 ? partition.videoAssetIds : undefined,
-          referenceAudioAssetIds: partition.audioAssetIds.length > 0 ? partition.audioAssetIds : undefined,
+          ...mediaReferencePendingFields(partition),
           referenceMode:
             input.referenceMode ?? (totalAssetRefs > 0 ? 'image-and-prompt' : undefined),
           outputType: input.config.customDef.outputType,
@@ -849,16 +846,18 @@ export const NodeType = {
   Image: "image",
   Video: "video",
   Audio: "audio",
+  Model: "model",
   ImageGen: "image_gen",
   VideoGen: "video_gen",
   AudioGen: "audio_gen",
   TextGen: "text_gen",
+  ModelGen: "model_gen",
 } as const;
 
 export const ALL_NODE_TYPES = Object.values(NodeType) as [string, ...string[]];
 export const CONTENT_NODE_TYPES = [NodeType.Text, NodeType.Group] as const;
 export type ContentNodeType = (typeof CONTENT_NODE_TYPES)[number];
-export const GENERATION_NODE_TYPES = [NodeType.ImageGen, NodeType.VideoGen, NodeType.AudioGen, NodeType.TextGen] as const;
+export const GENERATION_NODE_TYPES = [NodeType.ImageGen, NodeType.VideoGen, NodeType.AudioGen, NodeType.TextGen, NodeType.ModelGen] as const;
 export type GenerationNodeType = (typeof GENERATION_NODE_TYPES)[number];
 
 export function isGenerationNodeType(t: string): boolean {

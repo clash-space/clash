@@ -166,6 +166,19 @@ function harness(input: {
 }
 
 describe("DurableRunEngine", () => {
+  it("accepts the client as a first-class Run owner realm", () => {
+    expect(
+      createDurableRunRecord({
+        actionRunId: "client-run",
+        outputSlot: "image",
+        owner: { realm: "client", id: "browser-tab-1" },
+        executorInput: {},
+        createdAt: 1,
+        deadlineAt: 2,
+      }).owner,
+    ).toEqual({ realm: "client", id: "browser-tab-1" });
+  });
+
   const identity = { actionRunId: "run-1", outputSlot: "video" } as const;
 
   it("keeps delimiter-bearing run and output-slot tuples distinct", () => {

@@ -42,8 +42,8 @@ describe("BuildPlanDialog primitives", () => {
     expect(dialogSource).toContain("<Tooltip label={entry.label}>");
     expect(dialogSource).toContain("aria-label={confirmLabel}");
     expect(draftSource).toContain("<Tooltip label={buttonLabel}>");
-    expect(dialogSource).not.toContain("title=");
-    expect(draftSource).not.toContain("title=");
+    expect(dialogSource).not.toMatch(/<[a-z][^>]*\btitle=/);
+    expect(draftSource).not.toMatch(/<[a-z][^>]*\btitle=/);
     expect(dialogSource).not.toContain("TooltipProvider");
     expect(draftSource).not.toContain("TooltipProvider");
   });

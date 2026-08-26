@@ -1,4 +1,7 @@
 import { execFile } from "node:child_process";
+import { access, readFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 interface NpxSkillsInstall {
@@ -16,10 +19,7 @@ export interface NpxSkillsMarketplaceItem extends Record<string, unknown> {
   install: NpxSkillsInstall;
 }
 
-interface InstalledNpxSkill {
-  name?: unknown;
-  path?: unknown;
-  scope?: unknown;
+interface InstalledSkillLockEntry {
   source?: unknown;
   sourceUrl?: unknown;
 }
@@ -43,7 +43,9 @@ async function defaultCommandRunner(
   return { stdout: result.stdout };
 }
 
-function asLazyMarketplaceSkill(value: unknown): NpxSkillsMarketplaceItem | null {
+function asLazyMarketplaceSkill(
+  value: unknown,
+): NpxSkillsMarketplaceItem | null {
   if (!value || typeof value !== "object") return null;
   const skill = value as Record<string, unknown>;
   const install = skill.install;
@@ -77,22 +79,28 @@ function asLazyMarketplaceSkill(value: unknown): NpxSkillsMarketplaceItem | null
   };
 }
 
-function parseInstalledSkills(stdout: string): InstalledNpxSkill[] {
-  const parsed = JSON.parse(stdout) as unknown;
-  if (!Array.isArray(parsed)) {
-    throw new Error("npx skills list returned a non-array JSON payload.");
+async function readInstalledSkillLock(
+  agentsDir: string,
+): Promise<Record<string, InstalledSkillLockEntry>> {
+  try {
+    const parsed = JSON.parse(
+      await readFile(join(agentsDir, ".skill-lock.json"), "utf8"),
+    ) as { skills?: unknown };
+    if (!parsed.skills || typeof parsed.skills !== "object") return {};
+    return parsed.skills as Record<string, InstalledSkillLockEntry>;
+  } catch {
+    return {};
   }
-  return parsed.filter(
-    (entry): entry is InstalledNpxSkill => !!entry && typeof entry === "object",
-  );
 }
 
 export function createNpxSkillsMarketplace({
   registry,
   run = defaultCommandRunner,
+  agentsDir = join(homedir(), ".agents"),
 }: {
   registry: { skills?: unknown };
   run?: CommandRunner;
+  agentsDir?: string;
 }) {
   const rawSkills = Array.isArray(registry.skills) ? registry.skills : [];
   const skills = rawSkills
@@ -110,32 +118,36 @@ export function createNpxSkillsMarketplace({
   return {
     skills,
     async listInstalled(): Promise<Array<Record<string, unknown>>> {
-      const { stdout } = await run(executable, [
-        "--yes",
-        "skills@latest",
-        "list",
-        "--global",
-        "--json",
-      ]);
-      const installedByName = new Map(
-        parseInstalledSkills(stdout)
-          .filter((entry) => typeof entry.name === "string")
-          .map((entry) => [entry.name as string, entry]),
+      const installedByName = await readInstalledSkillLock(agentsDir);
+      const installed = await Promise.all(
+        skills.map(async (skill) => {
+          const lockEntry = installedByName[skill.install.skill];
+          if (!lockEntry) return null;
+          const path = join(agentsDir, "skills", skill.install.skill);
+          try {
+            await access(join(path, "SKILL.md"));
+          } catch {
+            return null;
+          }
+          return {
+            skillId: skill.id,
+            name: skill.name,
+            description: skill.description ?? null,
+            version: skill.sourceVersion ?? null,
+            path,
+            scope: "global",
+            source:
+              typeof lockEntry.source === "string" ? lockEntry.source : null,
+            sourceUrl:
+              typeof lockEntry.sourceUrl === "string"
+                ? lockEntry.sourceUrl
+                : skill.install.source,
+          };
+        }),
       );
-      return skills.flatMap((skill) => {
-        const installed = installedByName.get(skill.install.skill);
-        if (!installed) return [];
-        return [{
-          skillId: skill.id,
-          name: skill.name,
-          description: skill.description ?? null,
-          version: skill.sourceVersion ?? null,
-          path: typeof installed.path === "string" ? installed.path : null,
-          scope: "global",
-          source: typeof installed.source === "string" ? installed.source : null,
-          sourceUrl: typeof installed.sourceUrl === "string" ? installed.sourceUrl : skill.install.source,
-        }];
-      });
+      return installed.filter(
+        (skill): skill is NonNullable<typeof skill> => skill !== null,
+      );
     },
     async install(id: string): Promise<Record<string, unknown>> {
       const skill = requireSkill(id);

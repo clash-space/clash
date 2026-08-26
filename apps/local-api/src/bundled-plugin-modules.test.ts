@@ -55,6 +55,64 @@ describe("trusted bundled Plugin modules", () => {
     expect(loaded.plugin).not.toHaveProperty("start");
   });
 
+  it("loads Asset Edit with both native Generator definitions on the same module", async () => {
+    const loaded = await loadTrustedBundledPluginModule("clash.asset-edit");
+    const manifest = ExecutablePluginManifestSchema.parse(
+      JSON.parse(await readFile(loaded.manifestPath, "utf8")),
+    );
+
+    expect(manifest.contributes.generators.map(({ id }) => id)).toEqual([
+      "image-editor",
+      "video-clipper",
+    ]);
+    expect(loaded.plugin.contributes.map(({ id }) => id)).toEqual([
+      "image-editor",
+      "video-clipper",
+    ]);
+  });
+
+  it("loads clash.meshy with its declared provider and model bindings discoverable", async () => {
+    const loaded = await loadTrustedBundledPluginModule("clash.meshy");
+    const manifest = ExecutablePluginManifestSchema.parse(
+      JSON.parse(await readFile(loaded.manifestPath, "utf8")),
+    );
+
+    expect(manifest.contributes.providers).toEqual([
+      { id: "meshy", kind: "provider", path: "providers/meshy.json" },
+    ]);
+    expect(
+      manifest.contributes.modelBindings.map(({ id }) => id),
+    ).toEqual(["meshy-6", "meshy-7", "meshy-auto-rig"]);
+    expect(
+      manifest.contributes.functions.map(({ id, kind }) => ({ id, kind })),
+    ).toEqual([{ id: "meshy-execute", kind: "provider-executor" }]);
+    expect(loaded.plugin.invoke).toBeTypeOf("function");
+    expect(
+      loaded.plugin.contributes.map(({ id, kind }) => ({ id, kind })),
+    ).toEqual([{ id: "meshy-execute", kind: "provider-executor" }]);
+  });
+
+  it("loads clash.tripo with its declared provider and model bindings discoverable", async () => {
+    const loaded = await loadTrustedBundledPluginModule("clash.tripo");
+    const manifest = ExecutablePluginManifestSchema.parse(
+      JSON.parse(await readFile(loaded.manifestPath, "utf8")),
+    );
+
+    expect(manifest.contributes.providers).toEqual([
+      { id: "tripo", kind: "provider", path: "providers/tripo.json" },
+    ]);
+    expect(
+      manifest.contributes.modelBindings.map(({ id }) => id),
+    ).toEqual(["tripo-h3.1", "tripo-auto-rig"]);
+    expect(
+      manifest.contributes.functions.map(({ id, kind }) => ({ id, kind })),
+    ).toEqual([{ id: "tripo-execute", kind: "provider-executor" }]);
+    expect(loaded.plugin.invoke).toBeTypeOf("function");
+    expect(
+      loaded.plugin.contributes.map(({ id, kind }) => ({ id, kind })),
+    ).toEqual([{ id: "tripo-execute", kind: "provider-executor" }]);
+  });
+
   it("does not let a caller promote an unregistered package into the trusted realm", async () => {
     await expect(
       loadTrustedBundledPluginModule("third.party.plugin"),

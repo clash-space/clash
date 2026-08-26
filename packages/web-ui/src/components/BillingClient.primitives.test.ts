@@ -4,6 +4,17 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("BillingClient primitives", () => {
+  it("uses shared feedback surfaces for checkout failures", () => {
+    const source = readFileSync(
+      join(process.cwd(), "packages/web-ui/src/components/BillingClient.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("./ui/feedback");
+    expect(source).toContain('<InlineAlert tone="error"');
+    expect(source).not.toContain("text-red-500");
+  });
+
   it("uses the shared Button primitive for top-up checkout controls", () => {
     const source = readFileSync(
       join(process.cwd(), "packages/web-ui/src/components/BillingClient.tsx"),

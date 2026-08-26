@@ -21,6 +21,11 @@
       "import": "./dist/assets.js",
       "default": "./dist/assets.js"
     },
+    "./actions/asset-edit": {
+      "types": "./dist/actions/asset-edit.d.ts",
+      "import": "./dist/actions/asset-edit.js",
+      "default": "./dist/actions/asset-edit.js"
+    },
     "./timeline-library": {
       "types": "./dist/timeline-library.d.ts",
       "import": "./dist/timeline-library.js",
@@ -38,7 +43,7 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts src/assets.ts src/timeline-library.ts src/timeline-contract.ts src/executable-plugin.ts --format esm --dts --clean --target es2020",
+    "build": "tsup src/index.ts src/assets.ts src/actions/asset-edit.ts src/timeline-library.ts src/timeline-contract.ts src/executable-plugin.ts --format esm --dts --clean --target es2020",
     "clean": "rm -rf dist",
     "test": "vitest run",
     "test:watch": "vitest",

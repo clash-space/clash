@@ -3,13 +3,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { AssetSourceScope } from "@clash/shared-types";
 import { AssetThumbnail } from "../features/assets/AssetThumbnail";
 import { assetAvailabilityLabel } from "../features/assets/availability";
+import { SearchFilterToolbar } from "./SearchFilterToolbar";
+import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
+import { IconButton } from "./ui/icon-button";
 import type {
   ScopedAssetOption,
   ScopedAssetSection,
 } from "./scopedAssetPickerModel";
-
-type ScopeFilter = "all" | AssetSourceScope;
 
 export function ScopedAssetPicker({
   open,
@@ -28,12 +29,12 @@ export function ScopedAssetPicker({
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
-  const [activeScope, setActiveScope] = useState<ScopeFilter>("all");
+  const [activeScopes, setActiveScopes] = useState<AssetSourceScope[]>([]);
 
   useEffect(() => {
     if (!open) return;
     setQuery("");
-    setActiveScope("all");
+    setActiveScopes([]);
   }, [open]);
 
   const externalSection = sections.find(
@@ -42,7 +43,7 @@ export function ScopedAssetPicker({
   const assets = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
     return sections.flatMap((section) => {
-      if (activeScope !== "all" && activeScope !== section.scope) return [];
+      if (!activeScopes.every((scope) => scope === section.scope)) return [];
       return section.assets.flatMap((asset) => {
         if (
           normalizedQuery &&
@@ -54,10 +55,10 @@ export function ScopedAssetPicker({
         return [{ asset, scopeLabel: section.label }];
       });
     });
-  }, [activeScope, query, sections]);
+  }, [activeScopes, query, sections]);
   const showUpload = Boolean(
     externalSection?.allowLocalUpload &&
-    (activeScope === "all" || activeScope === "external") &&
+    activeScopes.every((scope) => scope === "external") &&
     (!query ||
       "upload from mac local file".includes(query.trim().toLocaleLowerCase())),
   );
@@ -92,7 +93,7 @@ export function ScopedAssetPicker({
           }}
         />
 
-        <header className="shrink-0 px-6 pt-5 sm:px-8 sm:pt-7">
+        <header className="shrink-0 px-6 pb-4 pt-5 sm:px-8 sm:pt-7">
           <div className="mb-4 flex items-center justify-between gap-4">
             <div className="min-w-0">
               <h2 className="font-display text-xl font-semibold tracking-[-0.025em] text-content-primary">
@@ -103,84 +104,61 @@ export function ScopedAssetPicker({
                 workspace.
               </p>
             </div>
-            <button
-              type="button"
-              aria-label="Close"
+            <IconButton
+              label="Close"
+              size="md"
+              shape="circle"
               onClick={onClose}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-content-secondary transition-colors duration-150 hover:bg-warm-muted hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-overlay-surface"
-            >
-              <X className="h-[18px] w-[18px]" weight="bold" />
-            </button>
+              className="h-10 w-10 shrink-0 text-content-secondary hover:bg-warm-muted hover:text-content-primary focus-visible:ring-offset-overlay-surface"
+              icon={<X className="h-[18px] w-[18px]" weight="bold" />}
+            />
           </div>
 
-          <label className="relative block">
-            <span className="sr-only">Search media</span>
-            <MagnifyingGlass
-              aria-hidden="true"
-              className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-content-muted"
-              weight="bold"
-            />
-            <input
-              autoFocus
-              type="search"
-              aria-label="Search media"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search media"
-              className="h-14 w-full rounded-2xl border border-warm-border bg-warm-surface pl-12 pr-16 text-[17px] text-content-primary shadow-sm outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-content-muted focus:border-brand/55 focus:ring-2 focus:ring-brand/15"
-            />
-            <kbd className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 rounded-md border border-warm-border bg-warm-muted px-1.5 py-0.5 font-sans text-[11px] font-medium text-content-muted shadow-sm">
-              ⌘K
-            </kbd>
-          </label>
-
-          <div
-            role="tablist"
-            aria-label="Media scope"
-            className="mt-4 flex gap-2 overflow-x-auto border-b border-warm-border pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          >
-            {[
-              { scope: "all" as const, label: "All" },
-              ...sections.map((section) => ({
-                scope: section.scope,
-                label: section.label,
-              })),
-            ].map((item) => {
-              const selected = activeScope === item.scope;
-              return (
-                <button
-                  key={item.scope}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  onClick={() => setActiveScope(item.scope)}
-                  className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-[background-color,color,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 active:scale-[0.97] ${
-                    selected
-                      ? "bg-brand text-brand-foreground shadow-sm"
-                      : "bg-warm-muted text-content-secondary hover:bg-warm-hover hover:text-content-primary"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              );
-            })}
-          </div>
+          <SearchFilterToolbar
+            query={query}
+            onQueryChange={setQuery}
+            filterGroups={[
+              {
+                id: "scope",
+                label: "Scope",
+                options: sections.map((section) => ({
+                  value: section.scope,
+                  label: section.label,
+                })),
+                selectedValues: activeScopes,
+                onSelectedValuesChange: (values) =>
+                  setActiveScopes(
+                    values.filter((value): value is AssetSourceScope =>
+                      sections.some((section) => section.scope === value),
+                    ),
+                  ),
+              },
+            ]}
+            searchLabel="Search media"
+            context="dialog"
+          />
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5 sm:px-8 sm:py-6">
+        <div
+          role="region"
+          aria-label="Media results"
+          className="min-h-0 flex-1 overflow-y-auto px-6 py-5 outline-none sm:px-8 sm:py-6"
+        >
           {assets.length > 0 || showUpload ? (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(142px,1fr))] gap-x-4 gap-y-6 sm:grid-cols-[repeat(auto-fill,minmax(150px,1fr))]">
               {assets.map(({ asset, scopeLabel }) => (
-                <button
+                <Button
                   key={`${asset.source.kind}:${asset.sourceNodeId ?? asset.assetId}`}
-                  type="button"
+                  variant={null}
+                  size={null}
+                  shape={null}
                   aria-label={`Add ${asset.name}`}
                   disabled={busy || Boolean(asset.disabledReason)}
                   onClick={() => void onSelect(asset)}
                   title={asset.disabledReason}
-                  className="group min-w-0 text-center focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-55"
+                  className="group min-w-0 flex-col gap-0 whitespace-normal text-center focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-55"
                 >
-                  <span className="relative flex aspect-square items-center justify-center overflow-hidden rounded-[22px] bg-warm-muted ring-1 ring-warm-border transition-[transform,box-shadow] duration-200 ease-out group-hover:-translate-y-0.5 group-hover:ring-brand/35 group-hover:shadow-md group-active:translate-y-0 group-active:scale-[0.985] group-focus-visible:ring-2 group-focus-visible:ring-brand group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-overlay-surface motion-reduce:transform-none motion-reduce:transition-none">
+                  <span className="relative flex aspect-square items-center justify-center overflow-hidden rounded-[22px] bg-warm-muted ring-1 ring-warm-border transition-[transform,box-shadow] duration-200 ease-out group-hover:-translate-y-0.5 group-hover:ring-brand/35 group-hover:shadow-md group-active:translate-y-0 group-active:scale-[0.985] group-focus-visible:ring-2 group-focus-visible:ring-ring group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-overlay-surface motion-reduce:transform-none motion-reduce:transition-none">
                     <AssetThumbnail
                       kind={asset.type}
                       src={asset.src}
@@ -202,18 +180,20 @@ export function ScopedAssetPicker({
                       ? asset.type
                       : assetAvailabilityLabel(asset)}
                   </span>
-                </button>
+                </Button>
               ))}
 
               {showUpload ? (
-                <button
-                  type="button"
+                <Button
+                  variant={null}
+                  size={null}
+                  shape={null}
                   aria-label="Upload from Mac"
                   disabled={busy}
                   onClick={() => fileInputRef.current?.click()}
-                  className="group min-w-0 text-center focus-visible:outline-none disabled:cursor-wait disabled:opacity-55"
+                  className="group min-w-0 flex-col gap-0 whitespace-normal text-center focus-visible:outline-none disabled:cursor-wait disabled:opacity-55"
                 >
-                  <span className="flex aspect-square items-center justify-center rounded-[22px] border border-dashed border-warm-border bg-warm-surface text-content-secondary transition-[transform,border-color,background-color,color] duration-200 ease-out group-hover:-translate-y-0.5 group-hover:border-brand/60 group-hover:bg-brand-light/35 group-hover:text-brand group-active:translate-y-0 group-active:scale-[0.985] group-focus-visible:ring-2 group-focus-visible:ring-brand group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-overlay-surface motion-reduce:transform-none motion-reduce:transition-none">
+                  <span className="flex aspect-square items-center justify-center rounded-[22px] border border-dashed border-warm-border bg-warm-surface text-content-secondary transition-[transform,border-color,background-color,color] duration-200 ease-out group-hover:-translate-y-0.5 group-hover:border-brand/60 group-hover:bg-brand-light/35 group-hover:text-brand group-active:translate-y-0 group-active:scale-[0.985] group-focus-visible:ring-2 group-focus-visible:ring-ring group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-overlay-surface motion-reduce:transform-none motion-reduce:transition-none">
                     <UploadSimple className="h-8 w-8" weight="regular" />
                   </span>
                   <span className="mt-2.5 block text-sm font-semibold text-content-primary">
@@ -222,7 +202,7 @@ export function ScopedAssetPicker({
                   <span className="mt-0.5 block text-xs text-content-secondary">
                     Local file
                   </span>
-                </button>
+                </Button>
               ) : null}
             </div>
           ) : (

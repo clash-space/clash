@@ -4,6 +4,18 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("BuildPlanDialog primitives", () => {
+  it("routes blockers and warnings through shared feedback surfaces", () => {
+    const source = readFileSync(
+      join(process.cwd(), "packages/web-ui/src/components/nodes/BuildPlanDialog.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("../ui/feedback");
+    expect(source).toMatch(/<InlineAlert[\s\S]{0,80}tone="error"/);
+    expect(source).toMatch(/<InlineAlert[\s\S]{0,80}tone="warning"/);
+    expect(source).not.toContain("clash-node-alert-error");
+  });
+
   it("uses shared button primitives for close and footer actions", () => {
     const source = readFileSync(
       join(process.cwd(), "packages/web-ui/src/components/nodes/BuildPlanDialog.tsx"),

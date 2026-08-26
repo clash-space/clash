@@ -9,7 +9,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { BUNDLED_PLUGINS, ensureBundledPlugin } from "./bundled-plugins.js";
+import {
+  BUNDLED_PLUGINS,
+  bundledPluginPayloadFiles,
+  ensureBundledPlugin,
+} from "./bundled-plugins.js";
 
 /**
  * First-party Providers ship with the host.
@@ -47,6 +51,16 @@ function pluginSource(id: string) {
 }
 
 describe("bundled plugins", () => {
+  it("registers Asset Edit as one trusted local/cloud/client Generator module", () => {
+    expect(
+      BUNDLED_PLUGINS.find((plugin) => plugin.id === "clash.asset-edit"),
+    ).toEqual({
+      id: "clash.asset-edit",
+      packageName: "@clash-plugin/asset-edit",
+      workspaceDir: "asset-edit",
+    });
+  });
+
   it("registers the Remotion renderer as a trusted bundled Action", () => {
     expect(
       BUNDLED_PLUGINS.find((plugin) => plugin.id === "clash.remotion"),
@@ -54,6 +68,16 @@ describe("bundled plugins", () => {
       id: "clash.remotion",
       packageName: "@clash-plugin/remotion",
       workspaceDir: "remotion",
+    });
+  });
+
+  it("registers first-party media analysis in the closed bundled-module trust root", () => {
+    expect(
+      BUNDLED_PLUGINS.find((plugin) => plugin.id === "clash.media-analysis"),
+    ).toEqual({
+      id: "clash.media-analysis",
+      packageName: "@clash-plugin/media-analysis",
+      workspaceDir: "media-analysis",
     });
   });
 
@@ -67,6 +91,36 @@ describe("bundled plugins", () => {
     );
   });
 
+  it("registers first-party Meshy in the closed bundled-module trust root", () => {
+    expect(
+      BUNDLED_PLUGINS.find((plugin) => plugin.id === "clash.meshy"),
+    ).toEqual({
+      id: "clash.meshy",
+      packageName: "@clash-plugin/meshy",
+      workspaceDir: "meshy",
+    });
+  });
+
+  it("registers first-party Tripo3D in the closed bundled-module trust root", () => {
+    expect(
+      BUNDLED_PLUGINS.find((plugin) => plugin.id === "clash.tripo"),
+    ).toEqual({
+      id: "clash.tripo",
+      packageName: "@clash-plugin/tripo",
+      workspaceDir: "tripo",
+    });
+  });
+
+  it("registers first-party Move AI in the closed bundled-module trust root", () => {
+    expect(
+      BUNDLED_PLUGINS.find((plugin) => plugin.id === "clash.move-ai"),
+    ).toEqual({
+      id: "clash.move-ai",
+      packageName: "@clash-plugin/move-ai",
+      workspaceDir: "move-ai",
+    });
+  });
+
   it("names every first-party Provider, not just one", () => {
     // One plugin per Provider. A list with a single entry is what left clash.google and
     // clash.minimax unseeded after the split.
@@ -76,6 +130,9 @@ describe("bundled plugins", () => {
     expect(ids).toContain("clash.minimax");
     expect(ids).toContain("clash.pika");
     expect(ids).toContain("clash.volcengine");
+    expect(ids).toContain("clash.meshy");
+    expect(ids).toContain("clash.tripo");
+    expect(ids).toContain("clash.move-ai");
   });
 
   it("seeds a plugin into the actions root", async () => {
@@ -169,5 +226,130 @@ describe("bundled plugins", () => {
     expect(
       methods.flatMap((method) => (method.form ?? []).map((item) => item.key)),
     ).toContain("apiKey");
+  });
+
+  it("exposes the Meshy provider and model bindings in the immutable bundled payload", async () => {
+    // `bundledPluginPayloadFiles` is the exact enumeration the Host trusts to seed an actions
+    // install (`ensureBundledPlugin`) or pack a release; a provider/binding document missing from
+    // it is a document Settings and `--set` can never see, no matter what the manifest claims.
+    const workspace = join(__dirname, "../../../plugins/meshy");
+    const manifest = JSON.parse(
+      readFileSync(join(workspace, "manifest.json"), "utf8"),
+    );
+    const files = await bundledPluginPayloadFiles(manifest, workspace);
+    expect(files).toContain("providers/meshy.json");
+    expect(files).toContain("bindings/meshy-6.json");
+    expect(files).toContain("bindings/meshy-7.json");
+    // The auto-rig binding is the one Meshy model that targets an upstream Asset it did not
+    // generate rather than a fresh prompt; losing this document silently strands that model.
+    expect(files).toContain("bindings/meshy-auto-rig.json");
+
+    const declaredProvider = JSON.parse(
+      readFileSync(join(workspace, "providers", "meshy.json"), "utf8"),
+    ) as {
+      spec: {
+        executorExportId?: string;
+        auth?: { methods: { id: string; form?: { key?: string }[] }[] };
+      };
+    };
+    expect(declaredProvider.spec.executorExportId).toBe("meshy-execute");
+    const meshyMethods = declaredProvider.spec.auth?.methods ?? [];
+    expect(meshyMethods.map((method) => method.id)).toEqual(["api-key"]);
+    expect(
+      meshyMethods.flatMap((method) =>
+        (method.form ?? []).map((item) => item.key),
+      ),
+    ).toContain("apiKey");
+
+    const rigBinding = JSON.parse(
+      readFileSync(
+        join(workspace, "bindings", "meshy-auto-rig.json"),
+        "utf8",
+      ),
+    ) as { spec: { modelId?: string; upstreamModel?: string } };
+    expect(rigBinding.spec.modelId).toBe("meshy-auto-rig");
+    expect(rigBinding.spec.upstreamModel).toBe("rig");
+  });
+
+  it("exposes the Tripo3D provider and model bindings in the immutable bundled payload", async () => {
+    const workspace = join(__dirname, "../../../plugins/tripo");
+    const manifest = JSON.parse(
+      readFileSync(join(workspace, "manifest.json"), "utf8"),
+    );
+    const files = await bundledPluginPayloadFiles(manifest, workspace);
+    expect(files).toContain("providers/tripo.json");
+    expect(files).toContain("bindings/tripo-h3.1.json");
+    expect(files).toContain("bindings/tripo-auto-rig.json");
+
+    const declaredProvider = JSON.parse(
+      readFileSync(join(workspace, "providers", "tripo.json"), "utf8"),
+    ) as {
+      spec: {
+        executorExportId?: string;
+        auth?: { methods: { id: string; form?: { key?: string }[] }[] };
+      };
+    };
+    expect(declaredProvider.spec.executorExportId).toBe("tripo-execute");
+    const tripoMethods = declaredProvider.spec.auth?.methods ?? [];
+    expect(tripoMethods.map((method) => method.id)).toEqual(["api-key"]);
+    expect(
+      tripoMethods.flatMap((method) =>
+        (method.form ?? []).map((item) => item.key),
+      ),
+    ).toContain("apiKey");
+
+    const h31Binding = JSON.parse(
+      readFileSync(join(workspace, "bindings", "tripo-h3.1.json"), "utf8"),
+    ) as { spec: { modelId?: string; upstreamModel?: string } };
+    expect(h31Binding.spec.modelId).toBe("tripo-h3.1");
+    expect(h31Binding.spec.upstreamModel).toBe("v3.1-20260211");
+  });
+
+  it("exposes the Move AI provider and model binding in the immutable bundled payload", async () => {
+    const workspace = join(__dirname, "../../../plugins/move-ai");
+    const manifest = JSON.parse(
+      readFileSync(join(workspace, "manifest.json"), "utf8"),
+    );
+    const files = await bundledPluginPayloadFiles(manifest, workspace);
+    expect(files).toContain("providers/move-ai.json");
+    expect(files).toContain("bindings/move-ai-s2.json");
+
+    const declaredProvider = JSON.parse(
+      readFileSync(join(workspace, "providers", "move-ai.json"), "utf8"),
+    ) as {
+      spec: {
+        executorExportId?: string;
+        auth?: { methods: { id: string; form?: { key?: string }[] }[] };
+      };
+    };
+    expect(declaredProvider.spec.executorExportId).toBe("move-ai-execute");
+    const moveAiMethods = declaredProvider.spec.auth?.methods ?? [];
+    expect(moveAiMethods.map((method) => method.id)).toEqual(["api-key"]);
+    expect(
+      moveAiMethods.flatMap((method) =>
+        (method.form ?? []).map((item) => item.key),
+      ),
+    ).toContain("apiKey");
+
+    // Move AI's assetInputs are bytes-only -- it has no provider-fetchable-URL upload mode -- so
+    // this is the one binding in this suite that must not carry "provider-url" here.
+    const binding = JSON.parse(
+      readFileSync(join(workspace, "bindings", "move-ai-s2.json"), "utf8"),
+    ) as {
+      spec: {
+        modelId?: string;
+        upstreamModel?: string;
+        assetInputs?: { representations?: string[] }[];
+      };
+    };
+    expect(binding.spec.modelId).toBe("move-ai-s2");
+    expect(binding.spec.upstreamModel).toBe("S2");
+    expect(binding.spec.assetInputs).toEqual([
+      {
+        match: { kinds: ["video"] },
+        representations: ["bytes"],
+        mediaTypes: ["video/mp4", "video/quicktime", "video/x-msvideo"],
+      },
+    ]);
   });
 });

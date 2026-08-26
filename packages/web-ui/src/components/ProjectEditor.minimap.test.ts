@@ -11,6 +11,49 @@ const globalCss = readFileSync(
   "utf8",
 );
 
+function cssBlock(selector: string): string {
+  const match = globalCss.match(
+    new RegExp(`${selector.replace(".", "\\.")}\\s*\\{([\\s\\S]*?)\\n\\}`),
+  );
+  if (!match?.[1]) throw new Error(`Missing ${selector} CSS block`);
+  return match[1];
+}
+
+function hexToken(block: string, name: string): [number, number, number] {
+  const match = block.match(
+    new RegExp(`--${name}:\\s*#([0-9a-f]{3}|[0-9a-f]{6});`, "i"),
+  );
+  if (!match?.[1]) throw new Error(`Missing hex token --${name}`);
+  const hex =
+    match[1].length === 3
+      ? [...match[1]].map((digit) => `${digit}${digit}`).join("")
+      : match[1];
+  return [0, 2, 4].map((offset) =>
+    Number.parseInt(hex.slice(offset, offset + 2), 16),
+  ) as [number, number, number];
+}
+
+function contrast(
+  first: [number, number, number],
+  second: [number, number, number],
+): number {
+  const luminance = (rgb: [number, number, number]) => {
+    const [red, green, blue] = rgb.map((channel) => {
+      const normalized = channel / 255;
+      return normalized <= 0.04045
+        ? normalized / 12.92
+        : ((normalized + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  };
+  const firstLuminance = luminance(first);
+  const secondLuminance = luminance(second);
+  return (
+    (Math.max(firstLuminance, secondLuminance) + 0.05) /
+    (Math.min(firstLuminance, secondLuminance) + 0.05)
+  );
+}
+
 describe("ProjectEditor canvas minimap", () => {
   it("renders an interactive minimap inside the ReactFlow canvas", () => {
     expect(source).toMatch(
@@ -54,15 +97,23 @@ describe("ProjectEditor canvas minimap", () => {
     ).toBe(true);
   });
 
-  it("keeps the minimap legible against the warm canvas", () => {
-    expect(globalCss).toContain(
-      "--canvas-minimap-mask: rgba(255, 254, 253, 0.2)",
-    );
-    expect(globalCss).toContain("--canvas-minimap-group: #eee9e1");
-    expect(globalCss).toContain("--canvas-minimap-group-stroke: #b8afa4");
-    expect(globalCss).toMatch(
-      /\.dark\s*\{[\s\S]*--canvas-minimap-node: #737373/,
-    );
+  it("keeps the minimap legible in light and dark canvas themes", () => {
+    const lightTokens = cssBlock(":root");
+    const darkTokens = cssBlock(".dark");
+    for (const tokens of [lightTokens, darkTokens]) {
+      expect(
+        contrast(
+          hexToken(tokens, "canvas-minimap-node"),
+          hexToken(tokens, "canvas-minimap-bg"),
+        ),
+      ).toBeGreaterThanOrEqual(3);
+      expect(
+        contrast(
+          hexToken(tokens, "canvas-minimap-group-stroke"),
+          hexToken(tokens, "canvas-minimap-group"),
+        ),
+      ).toBeGreaterThanOrEqual(1.5);
+    }
     expect(source).toMatch(
       /node\.type === "group"\s*\? "var\(--canvas-minimap-group\)"/,
     );
@@ -337,7 +388,7 @@ describe("ProjectEditor canvas minimap", () => {
       "mechanism missing",
     ).toBe(true);
     expect(source).toMatch(
-      /animate=\{\{\s*width: minimapCollapsed\s*\? 36\s*: minimapSize\.width,\s*height: minimapCollapsed\s*\? 36\s*: minimapSize\.height,/,
+      /animate=\{\{\s*width: minimapCollapsed\s*\? 32\s*: minimapSize\.width,\s*height: minimapCollapsed\s*\? 32\s*: minimapSize\.height,/,
     );
     expect(
       sourceContains(source, 'key="expanded-minimap"'),
@@ -381,7 +432,7 @@ describe("ProjectEditor canvas minimap", () => {
     expect(
       sourceContains(
         source,
-        "calc(${minimapCollapsed ? 36 : minimapSize.height}px + var(--clash-project-chrome-gutter) + var(--clash-project-chrome-gutter))",
+        "calc(${minimapCollapsed ? 32 : minimapSize.height}px + var(--clash-project-chrome-gutter) + var(--clash-project-chrome-gutter))",
       ),
       "mechanism missing",
     ).toBe(true);

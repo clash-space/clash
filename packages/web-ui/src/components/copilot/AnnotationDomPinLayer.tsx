@@ -140,7 +140,7 @@ export function AgentAnnotationDomPinLayer({
                   event.stopPropagation();
                   onSelect(pin.id);
                 }}
-                className={`pointer-events-auto absolute flex h-6 min-w-6 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-brand px-1.5 text-[11px] font-semibold leading-none text-white shadow-[0_4px_12px_rgba(215,78,58,0.28)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 ${
+                className={`pointer-events-auto absolute flex h-6 min-w-6 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-brand px-1.5 text-[11px] font-semibold leading-none text-white shadow-[0_4px_12px_rgba(215,78,58,0.28)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 ${
                   activeId === pin.id
                     ? "ring-2 ring-white ring-offset-2 ring-offset-brand"
                     : ""

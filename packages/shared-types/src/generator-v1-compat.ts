@@ -201,8 +201,8 @@ function syntheticDefinition(
 /**
  * Compatibility projection for the historical built-in ActionSpec catalog.
  * The binding addresses one synthetic adapter; each stable operation id selects
- * a method on it. The legacy executor field is a scheduling category, not a
- * Plugin function export, so it never becomes `executorExportId`.
+ * a method on it. Execution realm is Host-private and never becomes semantic
+ * Generator identity or `executorExportId`.
  */
 export function generatorDefinitionFromActionSpec(
   specInput: unknown,

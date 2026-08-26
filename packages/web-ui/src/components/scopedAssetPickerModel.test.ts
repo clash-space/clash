@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildComposerAssetSections,
   buildScopedAssetSections,
   buildScopedTimelineAssetInput,
   commitScopedTimelineAssetInsertion,
@@ -56,6 +57,24 @@ const nodes = [
 ];
 
 describe("buildScopedAssetSections", () => {
+  it("keeps Composer Project and Global library identities in separate scopes", () => {
+    const sections = buildComposerAssetSections({
+      projectAssets,
+      globalAssets,
+    });
+
+    expect(sections[0].assets[0].source).toEqual({
+      kind: "project",
+      assetId: "asset-canvas",
+    });
+    expect(sections[1].label).toBe("Global Assets");
+    expect(sections[1].assets[0].source).toEqual({
+      kind: "global-library",
+      assetId: "asset-global",
+    });
+    expect(sections[1].allowLocalUpload).toBe(true);
+  });
+
   it("gives a Canvas project assets plus one external scope and no parent Canvas section", () => {
     const sections = buildScopedAssetSections({
       target: { kind: "canvas", canvasId: "main" },

@@ -9,6 +9,7 @@ type ProjectAssetProjectionSubscription = {
   readProjection?: (projectId: string) => Promise<ResolvedAsset[]>;
   onProjection: (assets: ResolvedAsset[]) => void;
   onError?: (error: unknown) => void;
+  retryDelayMs?: number;
 };
 
 function projectAssetMembershipFingerprint(doc: LoroDoc): string {
@@ -26,10 +27,37 @@ export function subscribeProjectAssetProjection({
   readProjection = listProjectAssets,
   onProjection,
   onError,
+  retryDelayMs = 500,
 }: ProjectAssetProjectionSubscription): () => void {
   let fingerprint = projectAssetMembershipFingerprint(doc);
   let latestRequest = 0;
   let disposed = false;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearRetry = () => {
+    if (retryTimer === null) return;
+    clearTimeout(retryTimer);
+    retryTimer = null;
+  };
+
+  const refreshProjection = (request: number) => {
+    void readProjection(projectId)
+      .then((assets) => {
+        if (disposed || request !== latestRequest) return;
+        clearRetry();
+        onProjection(assets);
+      })
+      .catch((error) => {
+        if (disposed || request !== latestRequest) return;
+        onError?.(error);
+        clearRetry();
+        retryTimer = setTimeout(() => {
+          retryTimer = null;
+          if (disposed || request !== latestRequest) return;
+          refreshProjection(request);
+        }, retryDelayMs);
+      });
+  };
 
   const unsubscribe = doc.subscribe(() => {
     const nextFingerprint = projectAssetMembershipFingerprint(doc);
@@ -37,20 +65,20 @@ export function subscribeProjectAssetProjection({
     fingerprint = nextFingerprint;
 
     const request = ++latestRequest;
-    void readProjection(projectId)
-      .then((assets) => {
-        if (disposed || request !== latestRequest) return;
-        onProjection(assets);
-      })
-      .catch((error) => {
-        if (disposed || request !== latestRequest) return;
-        onError?.(error);
-      });
+    clearRetry();
+    refreshProjection(request);
   });
+
+  // A subscriber may mount after the Host already committed Project Assets to
+  // Loro (for example after reopening a project or reconnecting a Desktop
+  // Host). Do not wait for another membership mutation before projecting the
+  // current replica into device-local delivery URLs.
+  refreshProjection(++latestRequest);
 
   return () => {
     disposed = true;
     latestRequest += 1;
+    clearRetry();
     unsubscribe();
   };
 }

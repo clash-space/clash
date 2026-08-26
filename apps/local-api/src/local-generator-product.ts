@@ -5,6 +5,7 @@ import {
   advanceProjectGeneratorHead,
   createProjectGenerator as createProjectGeneratorFact,
   ExecutablePluginJsonValueSchema,
+  ensureActionRunRequest,
   GeneratorDefinitionSchema,
   GeneratorInputRefSchema,
   GeneratorRevisionRefSchema,
@@ -14,6 +15,8 @@ import {
   readProjectActionRun,
   readProjectAsset,
   readProjectGenerator,
+  type ActionRunModelRoute,
+  type ActionRunModelSelection,
   type ActionRunRequest,
   type ExecutablePluginInvocation,
   type ExecutablePluginJsonValue,
@@ -181,14 +184,19 @@ function requireResolvedDefinition(
   return definition;
 }
 
+function pluginReferenceSlot(ref: GeneratorInputRef): string {
+  return ref.itemKey === undefined ? ref.slot : `${ref.slot}:${ref.itemKey}`;
+}
+
 function pluginReferences(
   doc: LoroDoc,
   refs: readonly GeneratorInputRef[],
 ): ExecutablePluginReference[] {
   const indexes = new Map<string, number>();
   return refs.map((ref) => {
-    const index = indexes.get(ref.slot) ?? 0;
-    indexes.set(ref.slot, index + 1);
+    const slot = pluginReferenceSlot(ref);
+    const index = indexes.get(slot) ?? 0;
+    indexes.set(slot, index + 1);
     const target = ref.target;
     if ("kind" in target && target.kind === "media") {
       const asset = readProjectAsset(doc, target.projectAssetId);
@@ -199,7 +207,7 @@ function pluginReferences(
         );
       }
       return {
-        slot: ref.slot,
+        slot,
         index,
         asset: {
           assetId: asset.id,
@@ -220,7 +228,7 @@ function pluginReferences(
         );
       }
       return {
-        slot: ref.slot,
+        slot,
         index,
         document: {
           documentAssetId: revision.documentAssetId,
@@ -243,7 +251,9 @@ function outputFileExtension(
   if (output.assetType.kind === "document") return "json";
   if (output.assetType.mediaKind === "image") return "png";
   if (output.assetType.mediaKind === "video") return "mp4";
-  return "wav";
+  if (output.assetType.mediaKind === "audio") return "wav";
+  if (output.assetType.mediaKind === "model") return "glb";
+  throw new Error(`Unsupported Generator media kind: ${output.assetType.mediaKind}`);
 }
 
 /**
@@ -256,13 +266,81 @@ export function buildLocalGeneratorDurableRunCommand(input: {
   built: BuiltLocalGeneratorActionRun;
   actor: ExecutablePluginInvocation["actor"];
   deadlineAt: number;
+  outputSlot?: string;
+  /** Host-selected Card id for a declared model consumer; never caller parameters. */
+  modelId?: string;
 }): LocalDurableRunCreateCommand {
-  const output = input.built.action.outputs[0]!;
+  const outputContract = input.built.request.outputContract;
+  const output = outputContract.find(
+    (candidate) => candidate.slot === (input.outputSlot ?? outputContract[0]?.slot),
+  );
+  if (!output) {
+    throw new LocalGeneratorProductError(
+      "GENERATOR_OUTPUT_NOT_SELECTED",
+      "The durable task output slot is not part of the frozen Run contract.",
+    );
+  }
+  const declaredOutput =
+    input.built.action.outputs.find((candidate) => candidate.slot === output.slot) ??
+    output;
   const allRefs = [
     ...input.built.revision.persistentInputRefs,
     ...input.built.request.invocationInputRefs,
   ];
   const prompt = input.built.revision.state.prompt;
+  const modelConsumer = input.built.action.modelConsumer;
+  const modelSource = modelConsumer
+    ? input.built.request.invocationInputRefs.find(
+        (ref) => ref.slot === modelConsumer.sourceInputSlot,
+      )
+    : undefined;
+  const modelSourceAsset =
+    modelSource && "kind" in modelSource.target && modelSource.target.kind === "media"
+      ? readProjectAsset(input.doc, modelSource.target.projectAssetId)
+      : undefined;
+  const modelSourceAssetId =
+    modelSource && "kind" in modelSource.target && modelSource.target.kind === "media"
+      ? modelSource.target.projectAssetId
+      : undefined;
+  const resolvedModelId = input.built.request.modelSelection?.modelId ?? input.modelId;
+  const frozenModelRoute = input.built.request.modelSelection?.route;
+  if (modelConsumer && (!resolvedModelId || !modelSourceAsset || !modelSourceAssetId)) {
+    throw new LocalGeneratorProductError(
+      "GENERATOR_MODEL_CONSUMER_UNRESOLVED",
+      "Generator model consumer requires a Host-selected model and frozen media source.",
+    );
+  }
+  const modelInvocationValues: Record<string, ExecutablePluginJsonValue> =
+    modelConsumer && resolvedModelId && modelSourceAsset && modelSourceAssetId
+      ? {
+          modelId: resolvedModelId,
+          ...(frozenModelRoute
+            ? { modelRoute: frozenModelRoute as ExecutablePluginJsonValue }
+            : {}),
+          modelConsumer: {
+            semanticShape: modelConsumer.semanticShape,
+            outputs: input.built.request.outputContract.map((selected) => {
+              const declared = input.built.action.outputs.find(
+                (candidate) => candidate.slot === selected.slot,
+              );
+              return {
+                slot: selected.slot,
+                ...(declared?.prompt ? { prompt: declared.prompt } : {}),
+                ...(declared?.promptVersion
+                  ? { promptVersion: declared.promptVersion }
+                  : {}),
+              };
+            }),
+          },
+          source: {
+            projectAssetId: modelSourceAssetId,
+            resourceHash: modelSourceAsset.source.resourceId,
+            kind: modelSourceAsset.kind,
+          },
+          generatorRevisionId: input.built.revision.id,
+          actionRunId: input.built.request.actionRunId,
+        }
+      : {};
   return {
     type: "create",
     actionRunId: input.built.request.actionRunId,
@@ -288,7 +366,7 @@ export function buildLocalGeneratorDurableRunCommand(input: {
               actionId: input.built.revision.generatorId,
               name:
                 `${input.built.revision.generatorId}-` +
-                `${input.built.request.actionRunId}.${outputFileExtension(output)}`,
+                `${input.built.request.actionRunId}.${outputFileExtension(declaredOutput)}`,
               ...(typeof prompt === "string" ? { prompt } : {}),
             },
           }
@@ -297,11 +375,29 @@ export function buildLocalGeneratorDurableRunCommand(input: {
         values: {
           ...input.built.revision.state,
           ...input.built.request.parameters,
+          __generatorActionId: input.built.action.id,
+          ...modelInvocationValues,
+          ...(input.built.action.selectOutputsByParameter
+            ? { [input.built.action.selectOutputsByParameter]: [output.slot] }
+            : {}),
         },
         references: pluginReferences(input.doc, allRefs),
       },
     },
   };
+}
+
+export function buildLocalGeneratorDurableRunCommands(input: {
+  doc: LoroDoc;
+  projectId: string;
+  built: BuiltLocalGeneratorActionRun;
+  actor: ExecutablePluginInvocation["actor"];
+  deadlineAt: number;
+  modelId?: string;
+}): LocalDurableRunCreateCommand[] {
+  return input.built.request.outputContract.map((output) =>
+    buildLocalGeneratorDurableRunCommand({ ...input, outputSlot: output.slot }),
+  );
 }
 
 export function createLocalGeneratorProductService(options: {
@@ -313,6 +409,12 @@ export function createLocalGeneratorProductService(options: {
   ownerId: string;
   journal: SqliteDurableRunJournal;
   actor: ExecutablePluginInvocation["actor"];
+  resolveModelConsumer?: (input: {
+    projectId: string;
+    consumer: { pluginId: string; definitionId: string; actionId: string };
+    semanticShape: string;
+    sourceKind: "image" | "video" | "audio";
+  }) => Promise<{ modelId: string; route: ActionRunModelRoute }>;
   deadlineMs?: number;
   now?: () => number;
 }) {
@@ -323,6 +425,51 @@ export function createLocalGeneratorProductService(options: {
   const deadlineMs =
     options.deadlineMs ?? DEFAULT_LOCAL_PROVIDER_RUN_DEADLINE_MS;
   const now = options.now ?? Date.now;
+  const resolveModelSelection = async (
+    projectId: string,
+    doc: LoroDoc,
+    built: BuiltLocalGeneratorActionRun,
+  ): Promise<ActionRunModelSelection | undefined> => {
+    const declaration = built.action.modelConsumer;
+    if (!declaration) return undefined;
+    const ref = built.request.invocationInputRefs.find(
+      (candidate) => candidate.slot === declaration.sourceInputSlot,
+    );
+    const asset =
+      ref && "kind" in ref.target && ref.target.kind === "media"
+        ? readProjectAsset(doc, ref.target.projectAssetId)
+        : undefined;
+    if (
+      !asset ||
+      (asset.kind !== "image" && asset.kind !== "video" && asset.kind !== "audio")
+    ) {
+      throw new LocalGeneratorProductError(
+        "GENERATOR_MODEL_SOURCE_UNSUPPORTED",
+        "Generator model consumer requires one frozen image, video, or audio source.",
+      );
+    }
+    if (!options.resolveModelConsumer) {
+      throw new LocalGeneratorProductError(
+        "GENERATOR_MODEL_RESOLVER_UNAVAILABLE",
+        `No model resolver is available for semantic shape ${declaration.semanticShape}.`,
+      );
+    }
+    const selected = await options.resolveModelConsumer({
+      projectId,
+      consumer: {
+        pluginId: built.definition.pluginId,
+        definitionId: built.definition.definitionId,
+        actionId: built.action.id,
+      },
+      semanticShape: declaration.semanticShape,
+      sourceKind: asset.kind,
+    });
+    return {
+      semanticShape: declaration.semanticShape,
+      modelId: selected.modelId,
+      route: selected.route,
+    };
+  };
   return {
     async create(
       projectId: string,
@@ -449,6 +596,77 @@ export function createLocalGeneratorProductService(options: {
       });
     },
 
+    async submitBatch(
+      projectId: string,
+      proposals: readonly {
+        generatorId: string;
+        actionId: string;
+        input: SubmitLocalGeneratorActionInput;
+      }[],
+    ) {
+      if (proposals.length === 0) {
+        throw new LocalGeneratorProductError("EMPTY_ACTION_RUN_BATCH", "Generator Action Run batch must not be empty.");
+      }
+      const parsed = proposals.map((proposal) => ({
+        ...proposal,
+        input: SubmitLocalGeneratorActionInputSchema.parse(proposal.input),
+      }));
+      return options.authority.mutate(projectId, async (doc, checkpoint) => {
+        const planned: Array<{ built: BuiltLocalGeneratorActionRun; command: LocalDurableRunCreateCommand }> = [];
+        const validationDoc = doc.fork();
+        for (const proposal of parsed) {
+          const generator = readProjectGenerator(validationDoc, proposal.generatorId);
+          if (!generator) throw new LocalGeneratorProductError("PROJECT_GENERATOR_NOT_FOUND", `Project Generator ${proposal.generatorId} not found.`);
+          const revision = readGeneratorRevision(validationDoc, { generatorId: proposal.generatorId, generatorRevisionId: proposal.input.generatorRevisionId });
+          if (!revision) throw new LocalGeneratorProductError("GENERATOR_REVISION_NOT_FOUND", `Generator revision ${proposal.generatorId}/${proposal.input.generatorRevisionId} not found.`);
+          const definition = requireResolvedDefinition(revision.definitionRef, await options.resolveDefinition(revision.definitionRef.pluginId, revision.definitionRef.definitionId));
+          const initial = buildLocalGeneratorActionRun({ doc: validationDoc, definition, actionRunId: proposal.input.actionRunId, generatorRevision: { generatorId: proposal.generatorId, generatorRevisionId: proposal.input.generatorRevisionId }, actionId: proposal.actionId, parameters: proposal.input.parameters, invocationInputRefs: proposal.input.invocationInputRefs });
+          const modelSelection = await resolveModelSelection(projectId, validationDoc, initial);
+          const built = modelSelection
+            ? buildLocalGeneratorActionRun({
+                doc: validationDoc,
+                definition,
+                actionRunId: proposal.input.actionRunId,
+                generatorRevision: { generatorId: proposal.generatorId, generatorRevisionId: proposal.input.generatorRevisionId },
+                actionId: proposal.actionId,
+                parameters: proposal.input.parameters,
+                modelSelection,
+                invocationInputRefs: proposal.input.invocationInputRefs,
+              })
+            : initial;
+          // Validate all public identities against each other and existing facts before touching authority.
+          const validation = ensureActionRunRequest(validationDoc, built.request);
+          if (!validation.ok) throw new LocalGeneratorProductError(validation.error.code, validation.error.message);
+          const commands: LocalDurableRunCreateCommand[] = [];
+          for (const output of built.request.outputContract) {
+            const existingTask = await options.journal.load({
+              actionRunId: proposal.input.actionRunId,
+              outputSlot: output.slot,
+            });
+            commands.push(
+              buildLocalGeneratorDurableRunCommand({
+                doc: validationDoc,
+                projectId,
+                built,
+                actor: options.actor,
+                deadlineAt: existingTask?.deadlineAt ?? now() + deadlineMs,
+                outputSlot: output.slot,
+              }),
+            );
+          }
+          planned.push(...commands.map((command) => ({ built, command })));
+        }
+        const runs = await bridge.enqueueBatch({
+          doc,
+          entries: planned.map((item) => ({ request: item.built.request, command: item.command })),
+          checkpoint,
+        });
+        return parsed.map((proposal) =>
+          runs.find((run) => run.actionRunId === proposal.input.actionRunId)!,
+        );
+      });
+    },
+
     async submit(
       projectId: string,
       generatorId: string,
@@ -481,7 +699,7 @@ export function createLocalGeneratorProductService(options: {
             frozenRevision.definitionRef.definitionId,
           ),
         );
-        const built = buildLocalGeneratorActionRun({
+        const initial = buildLocalGeneratorActionRun({
           doc,
           definition,
           actionRunId: input.actionRunId,
@@ -493,24 +711,45 @@ export function createLocalGeneratorProductService(options: {
           parameters: input.parameters,
           invocationInputRefs: input.invocationInputRefs,
         });
-        const outputSlot = built.action.outputs[0]!.slot;
-        const existingTask = await options.journal.load({
-          actionRunId: input.actionRunId,
-          outputSlot,
-        });
-        const command = buildLocalGeneratorDurableRunCommand({
-          doc,
-          projectId,
-          built,
-          actor: options.actor,
-          deadlineAt: existingTask?.deadlineAt ?? now() + deadlineMs,
-        });
-        return bridge.enqueue({
-          doc,
-          request: built.request,
-          command,
-          checkpoint,
-        });
+        const modelSelection = await resolveModelSelection(projectId, doc, initial);
+        const built = modelSelection
+          ? buildLocalGeneratorActionRun({
+              doc,
+              definition,
+              actionRunId: input.actionRunId,
+              generatorRevision: {
+                generatorId,
+                generatorRevisionId: input.generatorRevisionId,
+              },
+              actionId,
+              parameters: input.parameters,
+              modelSelection,
+              invocationInputRefs: input.invocationInputRefs,
+            })
+          : initial;
+        const entries: Array<{
+          request: ActionRunRequest;
+          command: LocalDurableRunCreateCommand;
+        }> = [];
+        for (const output of built.request.outputContract) {
+          const existingTask = await options.journal.load({
+            actionRunId: input.actionRunId,
+            outputSlot: output.slot,
+          });
+          entries.push({
+            request: built.request,
+            command: buildLocalGeneratorDurableRunCommand({
+              doc,
+              projectId,
+              built,
+              actor: options.actor,
+              deadlineAt: existingTask?.deadlineAt ?? now() + deadlineMs,
+              outputSlot: output.slot,
+            }),
+          });
+        }
+        const runs = await bridge.enqueueBatch({ doc, entries, checkpoint });
+        return runs[0]!;
       });
     },
 
