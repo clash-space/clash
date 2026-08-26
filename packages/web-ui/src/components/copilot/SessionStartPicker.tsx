@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { RuntimeResumeSession } from '@clash/web-ui/lib/runtimeResume';
 import { Button } from '../ui/button';
+import { InlineAlert } from '../ui/feedback';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 
 export interface AgentTemplate {
@@ -8,7 +9,7 @@ export interface AgentTemplate {
   label: string;
   summary?: string;
   /** Underlying ACP runtime CLI this agent template spawns (claude-agent-acp,
-   *  openclaw, hermes, …). Diagnostic only — picker shows label, not this. */
+   *  plugin-contributed ACP agents). Diagnostic only — picker shows label, not this. */
   agent_id?: string;
 }
 
@@ -110,32 +111,32 @@ export function SessionStartPicker({
       )}
 
       {selectedAgentNeedsAuth && (
-        <div
+        <InlineAlert
+          tone="warning"
           role="alert"
-          className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-950 dark:border-amber-300/25 dark:bg-amber-500/10 dark:text-amber-100"
-        >
-          <div className="font-semibold">Sign in to {selectedAgentName}</div>
-          <div className="mt-0.5 leading-5 text-amber-900/80 dark:text-amber-100/80">
-            {selectedAgent.auth?.message}
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {onRecheckAuth && (
+          aria-live="assertive"
+          title={`Sign in to ${selectedAgentName}`}
+          message={(
+            <>
+              <span className="block">{selectedAgent.auth?.message}</span>
+              {selectedAgent.auth?.command ? (
+                <code className="mt-1 block min-w-0 truncate font-mono text-[11px] opacity-75">
+                  {selectedAgent.auth.command}
+                </code>
+              ) : null}
+            </>
+          )}
+          action={onRecheckAuth ? (
               <Button
                 onClick={onRecheckAuth}
                 disabled={busy}
                 size="sm"
-                className="min-h-0 rounded-lg border-amber-300/70 bg-transparent px-2.5 py-1 text-xs font-semibold text-amber-900 shadow-none hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60 dark:border-amber-300/30 dark:text-amber-100"
+                className="min-h-0 rounded-lg border-current/20 bg-transparent px-2.5 py-1 text-xs font-semibold text-current shadow-none hover:bg-black/5 disabled:cursor-wait disabled:opacity-60"
               >
                 Check again
               </Button>
-            )}
-            {selectedAgent.auth?.command && (
-              <span className="min-w-0 truncate font-mono text-[11px] text-amber-800/75 dark:text-amber-100/70">
-                {selectedAgent.auth.command}
-              </span>
-            )}
-          </div>
-        </div>
+          ) : undefined}
+        />
       )}
 
       {/* Always render Resume even when empty — picker shape stays

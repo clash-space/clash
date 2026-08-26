@@ -126,11 +126,23 @@ export interface RegistryItem {
   version?: string;
   author?: string;
   icon?: string;
+  cover?: {
+    src: string;
+    alt?: string;
+  };
   color?: string;
   tags?: string[];
   secrets?: Array<{ id: string; label: string; required?: boolean }>;
   linkedActionId?: string;
   packageId?: string;
+  source?: string;
+  sourceVersion?: string;
+  kind?: string;
+  executionContract?: string;
+  inputs?: unknown[];
+  outputs?: unknown[];
+  requiredSystemCapabilities?: string[];
+  promptModalities?: string[];
 }
 
 // ───────── Helpers ─────────
@@ -153,6 +165,13 @@ async function jsonFetch<T>(input: string, init: RequestInit = {}): Promise<T> {
 
 export interface CreateProjectOptions {
   startFromPrompt?: boolean;
+}
+
+export interface ProjectListItem {
+  id: string;
+  name: string;
+  deletedAt?: string;
+  updatedAt?: string;
 }
 
 export interface RuntimeRunPreferenceUpdate {
@@ -178,14 +197,82 @@ export async function persistRuntimeRunPreferences(
   );
 }
 
+export async function createProjectRecord(
+  name: string,
+): Promise<{ id: string }> {
+  return jsonFetch<{ id: string }>("/api/v1/projects", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function listProjects(): Promise<ProjectListItem[]> {
+  const data = await jsonFetch<{
+    projects?: Array<{ id?: unknown; name?: unknown }>;
+  }>("/api/v1/projects");
+  if (!Array.isArray(data.projects)) return [];
+  return data.projects.flatMap((project) => {
+    if (typeof project.id !== "string") return [];
+    return [
+      {
+        id: project.id,
+        name:
+          typeof project.name === "string" && project.name.trim()
+            ? project.name
+            : "Untitled",
+      },
+    ];
+  });
+}
+
+export async function listArchivedProjects(): Promise<ProjectListItem[]> {
+  const data = await jsonFetch<{
+    projects?: Array<{
+      id?: unknown;
+      name?: unknown;
+      deletedAt?: unknown;
+      updatedAt?: unknown;
+    }>;
+  }>("/api/v1/projects?archived=only");
+  if (!Array.isArray(data.projects)) return [];
+  return data.projects.flatMap((project) => {
+    if (typeof project.id !== "string") return [];
+    return [
+      {
+        id: project.id,
+        name:
+          typeof project.name === "string" && project.name.trim()
+            ? project.name
+            : "Untitled",
+        ...(typeof project.deletedAt === "string"
+          ? { deletedAt: project.deletedAt }
+          : {}),
+        ...(typeof project.updatedAt === "string"
+          ? { updatedAt: project.updatedAt }
+          : {}),
+      },
+    ];
+  });
+}
+
+export async function restoreProject(id: string): Promise<void> {
+  await jsonFetch(`/api/v1/projects/${encodeURIComponent(id)}/restore`, {
+    method: "POST",
+  });
+}
+
+export async function purgeProject(id: string): Promise<void> {
+  await jsonFetch(`/api/v1/projects/${encodeURIComponent(id)}/purge`, {
+    method: "DELETE",
+    body: JSON.stringify({ confirm: "purge" }),
+  });
+}
+
 export async function createProject(
   prompt: string,
   options: CreateProjectOptions = {},
 ): Promise<void> {
-  const { id } = await jsonFetch<{ id: string }>("/api/v1/projects", {
-    method: "POST",
-    body: JSON.stringify({ name: prompt }),
-  });
+  const { id } = await createProjectRecord(prompt);
   if (typeof window !== "undefined") {
     const shouldStartFromPrompt = options.startFromPrompt ?? true;
     const suffix = shouldStartFromPrompt
@@ -215,7 +302,7 @@ export async function updateProjectCover(
   });
 }
 
-export async function deleteProject(id: string): Promise<void> {
+export async function archiveProject(id: string): Promise<void> {
   await jsonFetch(`/api/v1/projects/${id}`, { method: "DELETE" });
 }
 

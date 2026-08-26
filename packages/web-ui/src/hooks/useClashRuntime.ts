@@ -1,8 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { visibleUserPromptText } from '@clash/shared-runtime';
 import {
+  initialSessionTranscript,
+  reduceSessionTranscript,
+  type SessionTranscript,
+  type SessionTranscriptEvent,
+  type SessionTranscriptNotice,
+} from '@openma/common/session';
+import {
   appendAcpEvent,
-  getAcpEventBlockKey,
   goalStateFromSessionInfoMetadata,
   mergeSessionInfoMetadata,
   parseAcpEvent,
@@ -53,6 +59,22 @@ export interface RuntimeAgentAuth {
   status: 'configured' | 'needs-auth' | 'unknown';
   message: string;
   command?: string;
+  methods?: RuntimeAgentAuthMethod[];
+}
+
+export interface RuntimeAgentAuthMethod {
+  id: string;
+  name?: string;
+  description?: string;
+  type?: string;
+  form?: 'fields';
+  vars?: Array<{
+    name: string;
+    label?: string;
+    secret?: boolean;
+    optional?: boolean;
+  }>;
+  link?: string;
 }
 
 export interface RuntimeProbeOptions {
@@ -140,6 +162,7 @@ interface RuntimeQueueUpdateQueuedPrompt {
 export interface ClashRuntimeSelectOptions {
   projectId?: string;
   resumeAcpSessionId?: string;
+  forkFromAcpSessionId?: string;
   freshSession?: boolean;
   agentId?: string;
   permissionModeId?: string;
@@ -206,6 +229,54 @@ export interface RuntimePermissionRequest {
   options: RuntimePermissionOption[];
 }
 
+export type RuntimeElicitationValue = string | number | boolean | string[];
+
+export interface RuntimeElicitationProperty {
+  type: 'string' | 'number' | 'integer' | 'boolean' | 'array';
+  title?: string;
+  description?: string;
+  default?: RuntimeElicitationValue;
+  enum?: string[];
+  oneOf?: Array<{ const: string; title: string }>;
+  items?: { enum?: string[]; anyOf?: Array<{ const: string; title: string }> };
+  minimum?: number;
+  maximum?: number;
+  minLength?: number;
+  maxLength?: number;
+  minItems?: number;
+  maxItems?: number;
+}
+
+export interface RuntimeElicitationFormRequest {
+  requestId: string;
+  sessionId: string;
+  mode: 'form';
+  message: string;
+  toolCallId?: string;
+  schema: {
+    title?: string;
+    description?: string;
+    properties: Record<string, RuntimeElicitationProperty>;
+    required: string[];
+  };
+}
+
+export interface RuntimeElicitationUrlRequest {
+  requestId: string;
+  sessionId: string;
+  mode: 'url';
+  message: string;
+  elicitationId: string;
+  url: string;
+  toolCallId?: string;
+}
+
+export type RuntimeElicitationRequest = RuntimeElicitationFormRequest | RuntimeElicitationUrlRequest;
+
+export type RuntimeElicitationResponse =
+  | { action: 'accept'; content?: Record<string, RuntimeElicitationValue> }
+  | { action: 'decline' | 'cancel' };
+
 export type RuntimeStartupStatus = 'loading' | 'ready' | 'error';
 
 export interface UseClashRuntimeReturn {
@@ -225,6 +296,10 @@ export interface UseClashRuntimeReturn {
   errorMessage: string | null;
   transientStatus: RuntimeTransientStatus | null;
   diagnostics: RuntimeDiagnostic[];
+  /** Canonical Backchat-compatible turn/queue/notice state. */
+  transcript: SessionTranscript;
+  /** Short-lived operational notice rendered in the composer lane. */
+  notice: SessionTranscriptNotice | null;
   messages: ByoMessage[];
   /** Slash commands the agent currently advertises (replaced per
    *  available_commands_update event). UI uses this for the `/` picker. */
@@ -247,6 +322,8 @@ export interface UseClashRuntimeReturn {
   sessionUsage: RuntimeSessionUsage | null;
   /** Blocking ACP permission requests, kept outside the transcript. */
   permissionRequests: RuntimePermissionRequest[];
+  /** Blocking ACP structured-input requests, kept outside the transcript until answered. */
+  elicitationRequests: RuntimeElicitationRequest[];
   /** Version state of the ACP child currently holding this session. */
   sessionRuntimeStatus: SessionRuntimeStatus | null;
   /** Restart lifecycle shown in the session-scoped update notice. */
@@ -255,9 +332,7 @@ export interface UseClashRuntimeReturn {
   ready: boolean;
   /** Re-fetch the runtime list. Cheap; safe to call from a settings page. */
   refresh: (opts?: RuntimeProbeOptions) => Promise<void>;
-  /** Pick a runtime + optional legacy agent context + project/resume target.
-   *  Current Copilot starts from the selected ACP agent; agentMemberId is only
-   *  kept for legacy group-chat/session resume paths. */
+  /** Pick a runtime plus an optional agent identity and project/resume target. */
   select: (runtimeId: string | null, agentMemberId?: string, opts?: ClashRuntimeSelectOptions) => Promise<void>;
   /** Prepare a blank local-runtime draft. The ACP session is created on first prompt. */
   startDraft: (runtimeId: string | null, agentMemberId?: string, opts?: ClashRuntimeSelectOptions) => void;
@@ -280,7 +355,9 @@ export interface UseClashRuntimeReturn {
   setConfigOption: (configId: string, value: string | boolean) => void;
   setSessionMode: (modeId: string) => void;
   respondPermission: (requestId: string, optionId: string | null) => void;
+  respondElicitation: (requestId: string, response: RuntimeElicitationResponse) => void;
   restartSession: (mode: SessionRestartMode) => Promise<void>;
+  dismissNotice: () => void;
   cancel: () => void;
   shutdown: () => void;
 }
@@ -333,7 +410,48 @@ interface CreateSessionResponse {
   session_id: string;
 }
 
-async function fetchRuntimeSessionMessages(sessionId: string): Promise<ByoMessage[] | null> {
+function storedUserPromptText(events: unknown[]): string {
+  return events
+    .map((part) => part as { type?: string; text?: string })
+    .filter((part) => part?.type === 'text' && typeof part.text === 'string')
+    .map((part) => part.text!)
+    .join('');
+}
+
+/** Non-visual product projection for legacy storage comparison, titles, Goal,
+ * and canvas side effects. Runtime UI must consume `transcript` directly;
+ * this projection is never a second rendering source. */
+export function projectSessionTranscriptMessages(transcript: SessionTranscript): ByoMessage[] {
+  const messages: ByoMessage[] = [];
+  for (const turn of transcript.turns) {
+    // Backchat keeps queued turns in the state machine but gives them one
+    // visual home in composer progress. Clash's editable MCP queue bar is the
+    // equivalent product-specific presentation.
+    if (turn.status === 'queued') continue;
+    if (turn.promptText) {
+      messages.push({
+        id: `user-${turn.id}`,
+        role: 'user',
+        parts: [{ type: 'text', text: turn.promptText }],
+      });
+    }
+
+    let knownIdx: number | undefined;
+    for (const event of turn.events) {
+      const result = appendAcpEvent(messages, turn.id, knownIdx, event.payload);
+      if (knownIdx === undefined && result.idx >= 0) knownIdx = result.idx;
+    }
+    if (turn.status === 'error' && turn.errorMessage) {
+      const next = appendRuntimeError(messages, turn.id, turn.errorMessage);
+      if (next !== messages) {
+        messages.splice(0, messages.length, ...next);
+      }
+    }
+  }
+  return messages;
+}
+
+async function fetchRuntimeSessionTranscript(sessionId: string): Promise<SessionTranscript | null> {
   let res: Response;
   try {
     res = await fetch(runtimeApiUrl(`${SESSIONS_BASE}/${encodeURIComponent(sessionId)}/messages`), {
@@ -358,68 +476,70 @@ async function fetchRuntimeSessionMessages(sessionId: string): Promise<ByoMessag
   } catch {
     return null;
   }
-  const bubbles: ByoMessage[] = [];
+  let transcript = initialSessionTranscript(sessionId);
   for (const row of json.messages ?? []) {
+    const turnId = row.turn_id ?? row.id;
     if (row.sender_kind === 'user') {
-      const parts = (row.events ?? [])
-        .map((part) => part as { type?: string; text?: string })
-        .filter((part) => part?.type === 'text' && typeof part.text === 'string')
-        .map((part) => ({ type: 'text' as const, text: part.text! }));
-      bubbles.push({
-        id: row.turn_id ? `user-${row.turn_id}` : row.id,
-        role: 'user',
-        parts,
+      transcript = reduceSessionTranscript(transcript, {
+        type: 'turn.register',
+        turnId,
+        promptText: storedUserPromptText(row.events ?? []),
+        startedAt: row.created_at * 1_000,
       });
       continue;
     }
 
-    const turnId = row.turn_id ?? row.id;
-    let knownIdx: number | undefined;
     for (const event of row.events ?? []) {
-      const result = appendAcpEvent(bubbles, turnId, knownIdx, event);
-      if (knownIdx === undefined && result.idx >= 0) knownIdx = result.idx;
+      transcript = reduceSessionTranscript(transcript, {
+        type: 'turn.event',
+        turnId,
+        event,
+        receivedAt: row.created_at * 1_000,
+      });
     }
+    transcript = reduceSessionTranscript(transcript, {
+      type: 'turn.complete',
+      turnId,
+      endedAt: row.created_at * 1_000,
+    });
   }
-  return bubbles;
+  return transcript;
 }
 
-function runtimeTranscriptCompleteness(messages: ByoMessage[]) {
-  let userParts = 0;
-  let userTextLength = 0;
-  let assistantParts = 0;
-  let assistantTextLength = 0;
-
-  for (const message of messages) {
-    for (const part of message.parts) {
-      const textLength = part.type === 'text' || part.type === 'thought'
-        ? part.text.length
-        : part.type === 'event_note'
-          ? part.title.length + (part.detail?.length ?? 0)
-          : 0;
-      if (message.role === 'user') {
-        userParts += 1;
-        userTextLength += textLength;
-      } else {
-        assistantParts += 1;
-        assistantTextLength += textLength;
+function runtimeTranscriptCompleteness(transcript: SessionTranscript) {
+  let promptTextLength = 0;
+  let eventCount = 0;
+  let eventPayloadLength = 0;
+  for (const turn of transcript.turns) {
+    promptTextLength += turn.promptText.length;
+    eventCount += turn.events.length;
+    for (const event of turn.events) {
+      try {
+        eventPayloadLength += JSON.stringify(event.payload).length;
+      } catch {
+        eventPayloadLength += String(event.payload).length;
       }
     }
   }
-
-  return { userParts, userTextLength, assistantParts, assistantTextLength };
+  return {
+    turnCount: transcript.turns.length,
+    promptTextLength,
+    eventCount,
+    eventPayloadLength,
+  };
 }
 
-function persistedTranscriptCanReplaceLive(history: ByoMessage[], live: ByoMessage[]): boolean {
-  if (live.length === 0) return true;
-  const persistedAssistantMessages = history.filter((message) => message.role === 'assistant').length;
-  const liveAssistantMessages = live.filter((message) => message.role === 'assistant').length;
-  if (persistedAssistantMessages < liveAssistantMessages) return false;
+function persistedTranscriptCanReplaceLive(
+  history: SessionTranscript,
+  live: SessionTranscript,
+): boolean {
+  if (live.turns.length === 0) return true;
   const persisted = runtimeTranscriptCompleteness(history);
   const streamed = runtimeTranscriptCompleteness(live);
-  return persisted.userParts >= streamed.userParts
-    && persisted.userTextLength >= streamed.userTextLength
-    && persisted.assistantParts >= streamed.assistantParts
-    && persisted.assistantTextLength >= streamed.assistantTextLength;
+  return persisted.turnCount >= streamed.turnCount
+    && persisted.promptTextLength >= streamed.promptTextLength
+    && persisted.eventCount >= streamed.eventCount
+    && persisted.eventPayloadLength >= streamed.eventPayloadLength;
 }
 
 function appendRuntimeError(messages: ByoMessage[], turnId: string | undefined, message: string): ByoMessage[] {
@@ -433,6 +553,21 @@ function appendRuntimeError(messages: ByoMessage[], turnId: string | undefined, 
       parts: [{ type: 'event_note', title: message, tone: 'error' }],
     },
   ];
+}
+
+const ACP_AUTH_FAILURE_PATTERN =
+  /authentication (?:is )?required\b|authentication (?:failed|fails)\b|invalid api key\b|api key[^\n]*\binvalid\b/i;
+
+function redactAuthenticationError(message: string): string {
+  return message
+    .replace(/\bBearer\s+\S+/gi, 'Bearer [redacted]')
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, 'sk-[redacted]')
+    .replace(/\b(api[\s_-]*key|token|secret)\s*[=:]\s*\S+/gi, '$1=[redacted]')
+    .slice(0, 4_000);
+}
+
+function isAuthenticationFailure(code: string | undefined, message: string): boolean {
+  return code === 'auth_required' || ACP_AUTH_FAILURE_PATTERN.test(message);
 }
 
 function normalizeSessionConfigOptions(value: unknown): AcpSessionConfigOption[] | null {
@@ -510,6 +645,35 @@ function normalizeRuntimeAgent(value: unknown): RuntimeAgent | null {
   );
   const sessionModes = normalizeSessionModes(agent.session_modes ?? agent.sessionModes);
   const rawAuth = agent.auth && typeof agent.auth === 'object' ? agent.auth as Record<string, unknown> : null;
+  const authMethods = Array.isArray(rawAuth?.methods)
+    ? rawAuth.methods.flatMap((candidate): RuntimeAgentAuthMethod[] => {
+        if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return [];
+        const method = candidate as Record<string, unknown>;
+        if (typeof method.id !== 'string' || method.id.length === 0) return [];
+        const vars = Array.isArray(method.vars)
+          ? method.vars.flatMap((candidateVar) => {
+              if (!candidateVar || typeof candidateVar !== 'object' || Array.isArray(candidateVar)) return [];
+              const variable = candidateVar as Record<string, unknown>;
+              if (typeof variable.name !== 'string' || variable.name.length === 0) return [];
+              return [{
+                name: variable.name,
+                ...(typeof variable.label === 'string' ? { label: variable.label } : {}),
+                ...(typeof variable.secret === 'boolean' ? { secret: variable.secret } : {}),
+                ...(typeof variable.optional === 'boolean' ? { optional: variable.optional } : {}),
+              }];
+            })
+          : undefined;
+        return [{
+          id: method.id,
+          ...(typeof method.name === 'string' ? { name: method.name } : {}),
+          ...(typeof method.description === 'string' ? { description: method.description } : {}),
+          ...(typeof method.type === 'string' ? { type: method.type } : {}),
+          ...(method.form === 'fields' ? { form: 'fields' as const } : {}),
+          ...(vars?.length ? { vars } : {}),
+          ...(typeof method.link === 'string' ? { link: method.link } : {}),
+        }];
+      })
+    : undefined;
   const auth = rawAuth && (
     rawAuth.status === 'configured' ||
     rawAuth.status === 'needs-auth' ||
@@ -519,6 +683,7 @@ function normalizeRuntimeAgent(value: unknown): RuntimeAgent | null {
         status: rawAuth.status,
         message: rawAuth.message,
         ...(typeof rawAuth.command === 'string' ? { command: rawAuth.command } : {}),
+        ...(authMethods?.length ? { methods: authMethods } : {}),
       } satisfies RuntimeAgentAuth
     : null;
   return {
@@ -671,6 +836,110 @@ function normalizePromptQueue(value: unknown): RuntimeQueuedPrompt[] | null {
     }));
 }
 
+function normalizeElicitationProperty(value: unknown): RuntimeElicitationProperty | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (!['string', 'number', 'integer', 'boolean', 'array'].includes(String(raw.type))) return null;
+  const property: RuntimeElicitationProperty = { type: raw.type as RuntimeElicitationProperty['type'] };
+  if (typeof raw.title === 'string') property.title = raw.title;
+  if (typeof raw.description === 'string') property.description = raw.description;
+  for (const key of ['minimum', 'maximum', 'minLength', 'maxLength', 'minItems', 'maxItems'] as const) {
+    if (typeof raw[key] === 'number' && Number.isFinite(raw[key])) property[key] = raw[key];
+  }
+  if (typeof raw.default === 'string' || typeof raw.default === 'number' || typeof raw.default === 'boolean') {
+    property.default = raw.default;
+  } else if (Array.isArray(raw.default) && raw.default.every((item) => typeof item === 'string')) {
+    property.default = raw.default as string[];
+  }
+  if (Array.isArray(raw.enum) && raw.enum.every((item) => typeof item === 'string')) {
+    property.enum = raw.enum as string[];
+  }
+  const normalizeTitled = (items: unknown): Array<{ const: string; title: string }> | undefined => (
+    Array.isArray(items)
+      ? items.flatMap((item) => {
+          if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+          const option = item as Record<string, unknown>;
+          return typeof option.const === 'string' && typeof option.title === 'string'
+            ? [{ const: option.const, title: option.title }]
+            : [];
+        })
+      : undefined
+  );
+  const oneOf = normalizeTitled(raw.oneOf);
+  if (oneOf?.length) property.oneOf = oneOf;
+  if (raw.items && typeof raw.items === 'object' && !Array.isArray(raw.items)) {
+    const items = raw.items as Record<string, unknown>;
+    const values = Array.isArray(items.enum) && items.enum.every((item) => typeof item === 'string')
+      ? items.enum as string[]
+      : undefined;
+    const anyOf = normalizeTitled(items.anyOf);
+    if (values?.length || anyOf?.length) {
+      property.items = { ...(values ? { enum: values } : {}), ...(anyOf ? { anyOf } : {}) };
+    }
+  }
+  return property;
+}
+
+function normalizeElicitationRequest(msg: Record<string, unknown>): RuntimeElicitationRequest | null {
+  if (msg.mode === 'url') {
+    if (
+      typeof msg.request_id !== 'string' ||
+      typeof msg.session_id !== 'string' ||
+      typeof msg.message !== 'string' ||
+      typeof msg.elicitation_id !== 'string' ||
+      typeof msg.url !== 'string'
+    ) return null;
+    try {
+      const url = new URL(msg.url);
+      if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+      return {
+        requestId: msg.request_id,
+        sessionId: msg.session_id,
+        mode: 'url',
+        message: msg.message,
+        elicitationId: msg.elicitation_id,
+        url: url.toString(),
+        ...(typeof msg.tool_call_id === 'string' ? { toolCallId: msg.tool_call_id } : {}),
+      };
+    } catch {
+      return null;
+    }
+  }
+  if (
+    msg.mode !== 'form' ||
+    typeof msg.request_id !== 'string' ||
+    typeof msg.session_id !== 'string' ||
+    typeof msg.message !== 'string' ||
+    !msg.requested_schema ||
+    typeof msg.requested_schema !== 'object' ||
+    Array.isArray(msg.requested_schema)
+  ) return null;
+  const rawSchema = msg.requested_schema as Record<string, unknown>;
+  if (!rawSchema.properties || typeof rawSchema.properties !== 'object' || Array.isArray(rawSchema.properties)) return null;
+  const properties: Record<string, RuntimeElicitationProperty> = {};
+  for (const [name, value] of Object.entries(rawSchema.properties as Record<string, unknown>)) {
+    const property = normalizeElicitationProperty(value);
+    if (property) properties[name] = property;
+  }
+  if (Object.keys(properties).length === 0) return null;
+  const required = Array.isArray(rawSchema.required)
+    ? rawSchema.required.filter((name): name is string => typeof name === 'string' && name in properties)
+    : [];
+  return {
+    requestId: msg.request_id,
+    sessionId: msg.session_id,
+    mode: 'form',
+    message: msg.message,
+    ...(typeof msg.tool_call_id === 'string' ? { toolCallId: msg.tool_call_id } : {}),
+    schema: {
+      ...(typeof rawSchema.title === 'string' ? { title: rawSchema.title } : {}),
+      ...(typeof rawSchema.description === 'string' ? { description: rawSchema.description } : {}),
+      properties,
+      required,
+    },
+  };
+}
+
 export function useClashRuntime(): UseClashRuntimeReturn {
   const [runtimes, setRuntimes] = useState<Runtime[]>([]);
   const [startupStatus, setStartupStatus] = useState<RuntimeStartupStatus>('loading');
@@ -682,7 +951,9 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [transientStatus, setTransientStatus] = useState<RuntimeTransientStatus | null>(null);
   const [diagnostics, setDiagnostics] = useState<RuntimeDiagnostic[]>([]);
-  const [messages, setMessages] = useState<ByoMessage[]>([]);
+  const [transcript, setTranscriptState] = useState<SessionTranscript>(() => (
+    initialSessionTranscript('draft')
+  ));
   const [availableCommands, setAvailableCommands] = useState<AvailableCommand[]>([]);
   const [promptQueue, setPromptQueue] = useState<RuntimeQueuedPrompt[]>([]);
   const [promptQueueEnabled, setPromptQueueEnabledState] = useState(readPromptQueueEnabled);
@@ -693,6 +964,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const [goal, setGoal] = useState<RuntimeGoalState | null>(null);
   const [sessionUsage, setSessionUsage] = useState<RuntimeSessionUsage | null>(null);
   const [permissionRequests, setPermissionRequests] = useState<RuntimePermissionRequest[]>([]);
+  const [elicitationRequests, setElicitationRequests] = useState<RuntimeElicitationRequest[]>([]);
   const [sessionRuntimeStatus, setSessionRuntimeStatus] = useState<SessionRuntimeStatus | null>(null);
   const [sessionRestartPhase, setSessionRestartPhase] = useState<SessionRestartPhase>('idle');
 
@@ -700,7 +972,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const sessionIdRef = useRef<string | null>(null);
   const statusRef = useRef<ClashRuntimeStatus>('idle');
   const acpSessionIdRef = useRef<string | null>(null);
-  const messagesRef = useRef<ByoMessage[]>([]);
+  const transcriptRef = useRef<SessionTranscript>(transcript);
   const promptQueueRef = useRef<RuntimeQueuedPrompt[]>([]);
   const queuedPromptLookupRef = useRef(new Map<string, RuntimeQueuedPrompt>());
   const promptQueueEnabledRef = useRef(readPromptQueueEnabled());
@@ -715,9 +987,6 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const resendQueuedAfterRestartRef = useRef(false);
   const turnSeq = useRef(0);
   const queuedPromptSeq = useRef(0);
-  const turnToMsgIdx = useRef(new Map<string, number>());
-  const toolCallToMsgIdx = useRef(new Map<string, number>());
-  const turnAssistantSegment = useRef(new Map<string, number>());
   const activeTurnIds = useRef(new Set<string>());
   /** Monotonic selection token. Backchat keys lifecycle state by session;
    * this single-session surface uses the same rule by rejecting async work
@@ -727,19 +996,45 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const restartCompletionTimerRef = useRef<number | null>(null);
 
   const ready = status === 'connected' || status === 'sending' || status === 'streaming';
+  const messages = useMemo(() => projectSessionTranscriptMessages(transcript), [transcript]);
+
+  const replaceTranscript = useCallback((next: SessionTranscript) => {
+    transcriptRef.current = next;
+    setTranscriptState(next);
+  }, []);
+
+  const dispatchTranscript = useCallback((event: SessionTranscriptEvent) => {
+    const next = reduceSessionTranscript(transcriptRef.current, event);
+    if (next !== transcriptRef.current) replaceTranscript(next);
+  }, [replaceTranscript]);
+
+  const dismissNotice = useCallback(() => {
+    dispatchTranscript({ type: 'notice.dismiss' });
+  }, [dispatchTranscript]);
+
+  useEffect(() => {
+    const notice = transcript.notice;
+    if (!notice) return undefined;
+    const timeout = window.setTimeout(() => {
+      if (transcriptRef.current.notice?.id === notice.id) dismissNotice();
+    }, Math.max(0, notice.expiresAt - Date.now()));
+    return () => window.clearTimeout(timeout);
+  }, [dismissNotice, transcript.notice]);
 
   const setRuntimeSessionId = useCallback((next: string | null) => {
     sessionIdRef.current = next;
     setSessionId(next);
-  }, []);
+    const current = transcriptRef.current;
+    const nextTranscript = { ...current, sessionId: next ?? 'draft' };
+    replaceTranscript(nextTranscript);
+  }, [replaceTranscript]);
 
   const hydrateMessagesFromStore = useCallback(async (targetSessionId: string) => {
-    const history = await fetchRuntimeSessionMessages(targetSessionId);
-    if (!history || sessionIdRef.current !== targetSessionId || history.length === 0) return;
-    if (!persistedTranscriptCanReplaceLive(history, messagesRef.current)) return;
-    messagesRef.current = history;
-    setMessages(history);
-  }, []);
+    const history = await fetchRuntimeSessionTranscript(targetSessionId);
+    if (!history || sessionIdRef.current !== targetSessionId || history.turns.length === 0) return;
+    if (!persistedTranscriptCanReplaceLive(history, transcriptRef.current)) return;
+    replaceTranscript(history);
+  }, [replaceTranscript]);
 
   const setRuntimeStatus = useCallback((next: ClashRuntimeStatus | ((prev: ClashRuntimeStatus) => ClashRuntimeStatus)) => {
     const resolved = typeof next === 'function' ? next(statusRef.current) : next;
@@ -868,25 +1163,8 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   }, []);
 
   const handleAcpEvent = useCallback((turnId: string, event: unknown) => {
-    setMessages((prev) => {
-      const messages = prev.slice();
-      const toolBlockKey = getAcpEventBlockKey(event);
-      const toolKey = toolBlockKey ? `${turnId}:${toolBlockKey}` : null;
-      const knownToolIdx = toolKey ? toolCallToMsgIdx.current.get(toolKey) : undefined;
-      const knownTurnIdx = turnToMsgIdx.current.get(turnId);
-      const knownIdx = knownToolIdx ?? knownTurnIdx;
-      const segment = turnAssistantSegment.current.get(turnId) ?? 0;
-      const messageId = segment > 0 ? `asst-${turnId}-${segment}` : `asst-${turnId}`;
-      const result = appendAcpEvent(messages, turnId, knownIdx, event, messageId);
-      if (result.idx >= 0) {
-        if (toolKey) toolCallToMsgIdx.current.set(toolKey, result.idx);
-        if (knownToolIdx === undefined) turnToMsgIdx.current.set(turnId, result.idx);
-      }
-      if (result.commands) setAvailableCommands(result.commands);
-      messagesRef.current = messages;
-      return messages;
-    });
-  }, []);
+    dispatchTranscript({ type: 'turn.event', turnId, event });
+  }, [dispatchTranscript]);
 
   const replacePromptQueue = useCallback((next: RuntimeQueuedPrompt[]) => {
     for (const prompt of next) queuedPromptLookupRef.current.set(prompt.turnId, prompt);
@@ -911,12 +1189,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   }), []);
 
   const appendUserMessage = useCallback((turnId: string, text: string) => {
-    setMessages((prev) => {
-      if (prev.some((message) => message.id === `user-${turnId}`)) return prev;
-      const next: ByoMessage[] = [...prev, { id: `user-${turnId}`, role: 'user', parts: [{ type: 'text', text }] }];
-      messagesRef.current = next;
-      return next;
-    });
+    dispatchTranscript({ type: 'turn.register', turnId, promptText: text });
     const nextTitle = runtimeTitleFromPrompt(text);
     if (nextTitle) {
       pendingTitleRef.current = nextTitle;
@@ -925,7 +1198,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         return { ...session, title: nextTitle };
       });
     }
-  }, []);
+  }, [dispatchTranscript]);
 
   const sendPromptFrame = useCallback((
     prompt: Pick<RuntimeQueuedPrompt, 'turnId' | 'text'>,
@@ -937,7 +1210,16 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return false;
     if (opts.markActive !== false) {
+      const priorActiveTurnId = activeTurnIds.current.values().next().value as string | undefined;
       appendUserMessage(prompt.turnId, prompt.text);
+      if (priorActiveTurnId && priorActiveTurnId !== prompt.turnId) {
+        dispatchTranscript({
+          type: 'turn.steering',
+          turnId: prompt.turnId,
+          activeTurnId: priorActiveTurnId,
+          outcome: 'startedNewTurn',
+        });
+      }
       activeTurnIds.current.add(prompt.turnId);
       setTransientStatus(null);
       setRuntimeStatus('sending');
@@ -949,7 +1231,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       ...(opts.queueMode ? { queue_mode: opts.queueMode } : {}),
     }));
     return true;
-  }, [appendUserMessage, setRuntimeStatus]);
+  }, [appendUserMessage, dispatchTranscript, setRuntimeStatus]);
 
   const enqueuePrompt = useCallback((prompt: RuntimeQueuedPrompt) => {
     if (promptQueueRef.current.some((queued) => queued.turnId === prompt.turnId)) return;
@@ -957,13 +1239,14 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   }, [replacePromptQueue]);
 
   const sendQueuedPromptFrame = useCallback((prompt: RuntimeQueuedPrompt): boolean => {
+    appendUserMessage(prompt.turnId, prompt.text);
     const sent = sendPromptFrame(prompt, {
       queueMode: promptQueueModeRef.current,
       markActive: false,
     });
     if (sent) enqueuePrompt(prompt);
     return sent;
-  }, [enqueuePrompt, sendPromptFrame]);
+  }, [appendUserMessage, enqueuePrompt, sendPromptFrame]);
 
   const setPromptQueueMode = useCallback((mode: RuntimePromptQueueMode) => {
     promptQueueModeRef.current = mode;
@@ -996,17 +1279,13 @@ export function useClashRuntime(): UseClashRuntimeReturn {
 
   const resetRuntimeState = useCallback((opts: { disposeSocket?: boolean } = {}) => {
     closeSessionSocket({ dispose: opts.disposeSocket });
-    turnToMsgIdx.current.clear();
-    toolCallToMsgIdx.current.clear();
-    turnAssistantSegment.current.clear();
     activeTurnIds.current.clear();
     queuedPromptLookupRef.current.clear();
     pendingPromptRef.current = null;
     pendingTitleRef.current = null;
     pendingSessionModeRef.current = null;
     runtimeSnapshotErrorRef.current = null;
-    messagesRef.current = [];
-    setMessages([]);
+    replaceTranscript(initialSessionTranscript('draft'));
     setAvailableCommands([]);
     replacePromptQueue([]);
     setSessionConfigOptions([]);
@@ -1016,12 +1295,13 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     setGoal(null);
     setSessionUsage(null);
     setPermissionRequests([]);
+    setElicitationRequests([]);
     setSessionRuntimeStatus(null);
     setSessionRestartPhase('idle');
     setErrorMessage(null);
     setTransientStatus(null);
     setDiagnostics([]);
-  }, [closeSessionSocket, replacePromptQueue]);
+  }, [closeSessionSocket, replacePromptQueue, replaceTranscript]);
 
   const onWsMessage = useCallback((data: unknown) => {
     let msg: {
@@ -1049,6 +1329,10 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       tool_call?: unknown;
       options?: unknown;
       option_id?: string | null;
+      requested_schema?: unknown;
+      tool_call_id?: string;
+      action?: string;
+      content?: unknown;
     };
     try { msg = JSON.parse(typeof data === 'string' ? data : ''); }
     catch { return; }
@@ -1168,6 +1452,24 @@ export function useClashRuntime(): UseClashRuntimeReturn {
           ));
         }
         return;
+      case 'session.elicitation_request':
+        {
+          const request = normalizeElicitationRequest(msg as Record<string, unknown>);
+          if (request) {
+            setElicitationRequests((current) => [
+              ...current.filter((candidate) => candidate.requestId !== request.requestId),
+              request,
+            ]);
+          }
+        }
+        return;
+      case 'session.elicitation_resolved':
+        if (typeof msg.request_id === 'string') {
+          setElicitationRequests((current) => (
+            current.filter((request) => request.requestId !== msg.request_id)
+          ));
+        }
+        return;
       case 'session.queue_update':
         if (msg.mode === 'single' || msg.mode === 'flush') {
           promptQueueModeRef.current = msg.mode;
@@ -1183,7 +1485,19 @@ export function useClashRuntime(): UseClashRuntimeReturn {
             queuedPromptLookupRef.current.delete(activeQueued.turnId);
           }
           const queue = normalizePromptQueue(msg.queued);
+          const nextQueue = queue ?? promptQueueRef.current;
           if (queue) replacePromptQueue(queue);
+          dispatchTranscript({
+            type: 'queue.update',
+            activeTurnId: typeof msg.active_turn_id === 'string' && msg.active_turn_id.length > 0
+              ? msg.active_turn_id
+              : null,
+            queued: nextQueue.map((prompt) => ({
+              turnId: prompt.turnId,
+              text: prompt.text,
+              createdAt: prompt.createdAt,
+            })),
+          });
         }
         if (typeof msg.active_turn_id === 'string' && msg.active_turn_id.length > 0) {
           activeTurnIds.current.clear();
@@ -1267,11 +1581,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         return;
       case 'session.complete':
         if (msg.turn_id) {
-          turnToMsgIdx.current.delete(msg.turn_id);
-          turnAssistantSegment.current.delete(msg.turn_id);
-          for (const key of toolCallToMsgIdx.current.keys()) {
-            if (key.startsWith(`${msg.turn_id}:`)) toolCallToMsgIdx.current.delete(key);
-          }
+          dispatchTranscript({ type: 'turn.complete', turnId: msg.turn_id });
           activeTurnIds.current.delete(msg.turn_id);
         }
         {
@@ -1291,18 +1601,23 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         return;
       case 'session.error':
         {
-          const message = msg.message ?? 'unknown error';
-          if (msg.turn_id) activeTurnIds.current.delete(msg.turn_id);
-          setErrorMessage(message);
-          if (msg.code === 'auth_required') {
+          const message = redactAuthenticationError(msg.message ?? 'unknown error');
+          const authRequired = isAuthenticationFailure(msg.code, msg.message ?? '');
+          if (authRequired) activeTurnIds.current.clear();
+          else if (msg.turn_id) activeTurnIds.current.delete(msg.turn_id);
+          if (authRequired) {
+            setErrorMessage(null);
             void refresh({ probe: 'config', refresh: true });
+            setTransientStatus(null);
+            setCurrentSession((session) => session ? { ...session, status: 'active' } : session);
+            setRuntimeStatus('connected');
+            return;
           }
+          setErrorMessage(message);
           setTransientStatus(null);
-          setMessages((prev) => {
-            const next = appendRuntimeError(prev, msg.turn_id, message);
-            messagesRef.current = next;
-            return next;
-          });
+          if (msg.turn_id) {
+            dispatchTranscript({ type: 'turn.error', turnId: msg.turn_id, message });
+          }
           setCurrentSession((session) => session ? { ...session, status: 'error' } : session);
         }
         setRuntimeStatus('error');
@@ -1322,7 +1637,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         // No state change — we'd need to re-select to start a new session.
         return;
     }
-  }, [appendUserMessage, handleAcpEvent, hydrateMessagesFromStore, refresh, replacePromptQueue, sendPromptFrame]);
+  }, [appendUserMessage, dispatchTranscript, handleAcpEvent, hydrateMessagesFromStore, refresh, replacePromptQueue, sendPromptFrame]);
 
   const openSessionStream = useCallback((id: string, opts: { replayBacklog?: boolean } = {}) => {
     const replayQuery = opts.replayBacklog === false ? '?replay=0' : '';
@@ -1445,6 +1760,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     try {
       const sessionContextId = agentMemberId?.trim() || undefined;
       const resumeAcpSessionId = resolvedOpts?.freshSession ? undefined : resolvedOpts?.resumeAcpSessionId;
+      const forkFromAcpSessionId = resolvedOpts?.freshSession ? undefined : resolvedOpts?.forkFromAcpSessionId;
       acpSessionIdRef.current = resumeAcpSessionId ?? null;
       const res = await fetch(runtimeApiUrl(`${RUNTIMES_PATH}/${runtimeId}/sessions`), {
         method: 'POST',
@@ -1459,6 +1775,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
           ...(resolvedOpts?.permissionModeId ? { permission_mode: resolvedOpts.permissionModeId } : {}),
           ...(resolvedOpts?.projectId ? { project_id: resolvedOpts.projectId } : {}),
           ...(resumeAcpSessionId ? { resume_session_id: resumeAcpSessionId } : {}),
+          ...(forkFromAcpSessionId ? { fork_session_id: forkFromAcpSessionId } : {}),
         }),
       });
       if (sessionOperationSeq.current !== operation) return;
@@ -1563,12 +1880,11 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     acpSessionIdRef.current = session.acpSessionId ?? null;
     setRuntimeStatus('connecting');
 
-    const history = await fetchRuntimeSessionMessages(session.id);
+    const history = await fetchRuntimeSessionTranscript(session.id);
     if (sessionOperationSeq.current !== operation) return;
     const historyLoaded = history !== null;
     if (historyLoaded) {
-      messagesRef.current = history;
-      setMessages(history);
+      replaceTranscript(history);
       setRuntimeStatus('connected');
     }
 
@@ -1590,7 +1906,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     }
 
     openSessionStream(session.id, { replayBacklog: !historyLoaded });
-  }, [openSessionStream, resetRuntimeState, runtimes]);
+  }, [openSessionStream, replaceTranscript, resetRuntimeState, runtimes]);
 
   const sendMessage = useCallback((text: string) => {
     const prompt = makePrompt(text);
@@ -1657,17 +1973,20 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       return;
     }
     ws.send(JSON.stringify({ type: 'steer_queued_prompt', turn_id: turnId }));
-    for (const activeTurnId of activeTurnIds.current) {
-      turnToMsgIdx.current.delete(activeTurnId);
-      turnAssistantSegment.current.set(
+    const activeTurnId = activeTurnIds.current.values().next().value as string | undefined;
+    if (activeTurnId) {
+      dispatchTranscript({
+        type: 'turn.steering',
+        turnId: queued.turnId,
         activeTurnId,
-        (turnAssistantSegment.current.get(activeTurnId) ?? 0) + 1,
-      );
+        // Clash's local MCP bridge starts a distinct concurrent prompt for
+        // this turn id; Backchat's shared reducer models that explicitly.
+        outcome: 'startedNewTurn',
+      });
     }
-    appendUserMessage(queued.turnId, queued.text);
     queuedPromptLookupRef.current.delete(turnId);
     replacePromptQueue(promptQueueRef.current.filter((prompt) => prompt.turnId !== turnId));
-  }, [appendUserMessage, replacePromptQueue, setRuntimeStatus]);
+  }, [dispatchTranscript, replacePromptQueue, setRuntimeStatus]);
 
   const updateQueuedPrompt = useCallback((turnId: string, text: string) => {
     const nextText = text.trim();
@@ -1678,11 +1997,12 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     const updated = next.find((prompt) => prompt.turnId === turnId);
     if (updated) queuedPromptLookupRef.current.set(turnId, updated);
     replacePromptQueue(next);
+    dispatchTranscript({ type: 'turn.register', turnId, promptText: nextText });
     const ws = wsRef.current;
     if (ws?.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'update_queued_prompt', turn_id: turnId, text: nextText }));
     }
-  }, [replacePromptQueue]);
+  }, [dispatchTranscript, replacePromptQueue]);
 
   const removeQueuedPrompt = useCallback((turnId: string) => {
     queuedPromptLookupRef.current.delete(turnId);
@@ -1760,7 +2080,12 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const cancel = useCallback(() => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    const turnIds = new Set([...activeTurnIds.current, ...turnToMsgIdx.current.keys()]);
+    const turnIds = new Set([
+      ...activeTurnIds.current,
+      ...transcriptRef.current.turns
+        .filter((turn) => turn.status === 'running')
+        .map((turn) => turn.id),
+    ]);
     for (const turnId of turnIds) {
       ws.send(JSON.stringify({ type: 'cancel', turn_id: turnId }));
     }
@@ -1773,6 +2098,16 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       type: 'permission_response',
       request_id: requestId,
       option_id: optionId,
+    }));
+  }, []);
+
+  const respondElicitation = useCallback((requestId: string, response: RuntimeElicitationResponse) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({
+      type: 'elicitation_response',
+      request_id: requestId,
+      ...response,
     }));
   }, []);
 
@@ -1813,6 +2148,8 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     errorMessage,
     transientStatus,
     diagnostics,
+    transcript,
+    notice: transcript.notice ?? null,
     messages,
     availableCommands,
     promptQueue,
@@ -1824,6 +2161,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     goal,
     sessionUsage,
     permissionRequests,
+    elicitationRequests,
     sessionRuntimeStatus,
     sessionRestartPhase,
     ready,
@@ -1844,7 +2182,9 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     setConfigOption,
     setSessionMode,
     respondPermission,
+    respondElicitation,
     restartSession,
+    dismissNotice,
     cancel,
     shutdown,
   };

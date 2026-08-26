@@ -1,8 +1,6 @@
 /**
  * ACP (Agent Client Protocol) event parser + per-turn assistant message
- * accumulator. Used by local and hosted ACP transports and
- * `useGroupChat` (persistent daemon) — they share this so the two
- * surfaces render identical bubbles for the same wire input.
+ * accumulator used by local and hosted ACP transports.
  *
  * Wire shape (verified against @agentclientprotocol/sdk@0.20 types AND
  * a captured chat_message events_json from claude-agent-acp):
@@ -40,7 +38,7 @@
 import {
   mergeStreamingText as mergeOpenMaStreamingText,
   parseAcpEvent as parseOpenMaAcpEvent,
-} from '@openma/common/session-events/acp';
+} from '@openma/common/session';
 
 // ─── ACP wire shapes (subset we use) ────────────────────────────────
 
@@ -485,7 +483,7 @@ function stringMetaField(meta: Record<string, unknown> | undefined, names: strin
   return undefined;
 }
 
-function withMcpIdentity<T extends Partial<AcpToolCallPart> & { toolCallId: string }>(tool: T): T {
+export function withMcpIdentity<T extends Partial<AcpToolCallPart> & { toolCallId: string }>(tool: T): T {
   if (tool.mcp?.serverName) return tool;
   const meta = tool.meta;
   const rawInput = recordValue(tool.rawInput);
@@ -569,17 +567,6 @@ function extractTextBlocks(value: unknown): string | undefined {
 function isTransportDiagnosticText(text: string): boolean {
   const normalized = text.trim();
   return /^Falling back from WebSockets to HTTPS transport\./i.test(normalized);
-}
-
-function agentNoticeNote(notice: string): NonNullable<ParsedEvent['note']> {
-  if (/^Warning: Skill descriptions were shortened to fit the \d+% skills context budget\./i.test(notice.trim())) {
-    return {
-      title: 'Skill context limited',
-      detail: notice,
-      tone: 'warning',
-    };
-  }
-  return { title: notice, tone: 'warning' };
 }
 
 function parseClashAcpEventFallback(event: unknown): ParsedEvent {
@@ -836,11 +823,9 @@ export function parseAcpEvent(event: unknown): ParsedEvent {
         event,
       };
     case 'notice':
-      return {
-        kind: 'note',
-        note: agentNoticeNote(parsed.notice),
-        event,
-      };
+      return parsed.transcript
+        ? { kind: 'text', text: parsed.transcript, event }
+        : { kind: 'silent', event };
     case 'note': {
       const separator = parsed.note.indexOf(': ');
       if (
@@ -879,8 +864,7 @@ export interface AppendResult {
  * should not cache that index). Side info (e.g. command lists) goes
  * out via the `commands` field; caller copies it into hook state.
  *
- * Mutates `messages` — caller is responsible for cloning before this
- * if passing a state slice (for example useGroupChat).
+ * Mutates `messages` — callers must clone state before passing it here.
  */
 export function appendAcpEvent(
   messages: ByoMessage[],

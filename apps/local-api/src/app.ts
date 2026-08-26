@@ -40,6 +40,12 @@ import {
 } from "./local-asset-inspections.js";
 import { localFfmpegPath, localFfprobePath } from "./local-media-binaries.js";
 import {
+  createLocalMediaAnalysisConfigStore,
+  type LocalMediaAnalysisConfig,
+  type LocalMediaAnalysisConfigStore,
+  type MediaAnalysisSourceKind,
+} from "./media-analysis-config.js";
+import {
   importLocalProviderToken,
   type LocalTokenImportAuth,
 } from "./local-token-import.js";
@@ -68,6 +74,7 @@ import {
   canvasNodeReadToken,
   buildEffectiveModelCards,
   composeExecutablePluginModelCards,
+  modelCardVisibleToConsumer,
   CustomActionDefinitionSchema,
   hostMutationRejected,
   hostMutationSucceeded,
@@ -91,6 +98,7 @@ import {
   ProviderOAuthIdSchema,
   readProjectDirectorStage,
   resolveAssetActionOutputKind,
+  resolveGeneratorProjectionDefinition,
   sessionReadToken,
   TextAppliedRevisionSchema,
   UserModelCardConfigSchema,
@@ -141,6 +149,7 @@ import {
   WorkspaceImportFileUploadReceiptSchema,
   WorkspaceImportSessionSchema,
   WorkspaceImportStartSchema,
+  type ActionRunModelRoute,
 } from "@clash/shared-types";
 import type { AssetKind, ResolvedAsset } from "@clash/shared-types/assets";
 
@@ -319,6 +328,7 @@ export interface LocalApiOptions {
     pid: number;
     profile: "dev" | "prod";
     protocolVersion: number;
+    runtimeFingerprint?: string;
   };
   localAcp?: LocalAcpAdapter;
   /** Single process-owned cold-start barrier. Runtime/config consumers wait
@@ -326,6 +336,7 @@ export interface LocalApiOptions {
   localAcpReady?: Promise<void>;
   falMock?: FalMockQueueService;
   audioConfig?: LocalAudioConfigStore;
+  mediaAnalysisConfig?: LocalMediaAnalysisConfigStore;
   syncConfig?: LocalSyncConfigStore;
   /** Machine-level public Asset storage shared by Desktop, CLI, MCP and plugins. */
   publicAssetStorage?: PublicAssetStorageService;
@@ -352,6 +363,13 @@ export interface LocalApiOptions {
     pluginId: string,
     definitionId: string,
   ) => Promise<GeneratorDefinition>;
+  /** Resolve a declared semantic model consumer from Host-owned Settings/catalog authority. */
+  resolveGeneratorModelConsumer?: (input: {
+    projectId: string;
+    consumer: { pluginId: string; definitionId: string; actionId: string };
+    semanticShape: string;
+    sourceKind: "image" | "video" | "audio";
+  }) => Promise<{ modelId: string; route: ActionRunModelRoute }>;
   /** Checkpoint-aware, serial Project authority used by Generator commands. */
   generatorProjectAuthority?: LocalGeneratorProjectAuthority;
   /** Checkpoint-aware, serial Project authority used by typed Document commands. */
@@ -376,6 +394,7 @@ export interface LocalApiOptions {
   ) => Promise<Record<string, unknown>>;
   uninstallMarketplaceAction?: (actionId: string) => Promise<void>;
   marketplaceSkills?: Array<Record<string, unknown> & { id: string }>;
+  marketplaceFeed?: Array<Record<string, unknown> & { id: string }>;
   listInstalledMarketplaceSkills?: () => Promise<
     Array<Record<string, unknown>>
   >;
@@ -557,6 +576,7 @@ export interface LocalAcpCreateSessionParams {
   permissionMode?: string;
   projectId?: string;
   resumeAcpSessionId?: string;
+  forkFromAcpSessionId?: string;
   onReady?: (event: {
     sessionId: string;
     acpSessionId?: string;
@@ -617,7 +637,7 @@ export interface LocalAcpAdapter {
   uninstallHarness?(id: string): Promise<{ harnesses: LocalAcpHarness[] }>;
   authenticateHarness?(
     id: string,
-    options?: { methodId?: string },
+    options?: { methodId?: string; values?: Record<string, string> },
   ): Promise<{ harnesses: LocalAcpHarness[] }>;
   listSessionMessages?(
     sessionId: string,
@@ -630,11 +650,6 @@ export interface LocalAcpAdapter {
     options: { mode: "now" | "after-turn" },
   ): Promise<{ session_id: string; status: "pending" | "restarted" }>;
   setSessionMessageStore?(store: LocalAcpSessionMessageStore): void;
-  pushRoomMention?(
-    projectId: string,
-    agentMemberId: string,
-    mention: Record<string, unknown>,
-  ): Promise<boolean>;
   runTextTask?(params: {
     projectId: string;
     prompt: string;
@@ -795,6 +810,7 @@ function publicLocalSession(session: LocalSession) {
       : {}),
     ...(session.acpSessionId ? { acpSessionId: session.acpSessionId } : {}),
     ...(session.status ? { status: session.status } : {}),
+    ...(session.archivedAt ? { archivedAt: session.archivedAt } : {}),
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     readToken: sessionReceiptReadToken(session),
@@ -2428,7 +2444,7 @@ function validateProjectReadMutation(options: {
 
 function validateSessionReadMutation(options: {
   session: LocalSession;
-  operation: "delete" | "attach";
+  operation: "delete" | "attach" | "archive" | "restore";
   mutationOperation?: string;
   readOperation?: string;
   preconditions: ProjectWritePreconditions;
@@ -3136,6 +3152,14 @@ type ModelProviderTestOutputSummary =
       transcript?: string;
     }
   | {
+      shape: "model";
+      provider?: string;
+      endpoint?: string;
+      requestId?: string;
+      url?: string;
+      contentType: string;
+    }
+  | {
       shape: "text";
       provider?: string;
       endpoint?: string;
@@ -3217,7 +3241,9 @@ function providerTestExecutableOutput(
       ? "video/mp4"
       : shape === "audio"
         ? "audio/mpeg"
-        : "image/png");
+        : shape === "model"
+          ? "model/gltf-binary"
+          : "image/png");
   return {
     shape,
     provider: plan.provider,
@@ -3372,7 +3398,7 @@ async function effectiveModelCards(
         MODEL_CARDS,
         pluginCards,
         pluginModelBindings,
-      ),
+      ).filter((model) => modelCardVisibleToConsumer(model, undefined)),
     ),
   });
 }
@@ -3564,6 +3590,12 @@ function modelRoutesForProviderAccount(
 
 export function createLocalApiApp(options: LocalApiOptions): Hono {
   const userId = options.userId ?? "local-user";
+  const mediaAnalysisConfig =
+    options.mediaAnalysisConfig ??
+    createLocalMediaAnalysisConfigStore({
+      dataDir: options.dataDir,
+      resolveOptions: async () => [],
+    });
   const db = createDb(options.dataDir);
   let importedPluginStore:
     Promise<Awaited<ReturnType<typeof openPluginStore>>> | undefined;
@@ -3758,6 +3790,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           ownerId: options.hostIdentity?.hostId ?? "local-api",
           journal: durableRunJournal,
           actor: { kind: "user", id: userId },
+          ...(options.resolveGeneratorModelConsumer
+            ? { resolveModelConsumer: options.resolveGeneratorModelConsumer }
+            : {}),
           deadlineMs: providerGenerationDeadlineMs,
         })
       : null;
@@ -7028,6 +7063,12 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       skills: options.marketplaceSkills ?? [],
     }),
   );
+  app.get("/api/marketplace/feed", (c) =>
+    c.json({
+      version: 1,
+      featuredPlugins: options.marketplaceFeed ?? [],
+    }),
+  );
   if (options.installMarketplaceAction) {
     app.post("/api/marketplace/actions/:packageId/install", async (c) => {
       const packageId = c.req.param("packageId");
@@ -7189,6 +7230,101 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       );
     }
   });
+  app.get("/api/v1/local/media-analysis", async (c) => {
+    const sourceKind = c.req.query("sourceKind") ?? "image";
+    if (
+      sourceKind !== "image" &&
+      sourceKind !== "video" &&
+      sourceKind !== "audio"
+    ) {
+      return c.json(
+        { error: "sourceKind must be image, video, or audio" },
+        400,
+      );
+    }
+    const [config, modelOptions, definitions] = await Promise.all([
+      mediaAnalysisConfig.get(),
+      mediaAnalysisConfig.modelOptions(sourceKind as MediaAnalysisSourceKind),
+      options.listPluginGenerators?.() ?? Promise.resolve([]),
+    ]);
+    const action = definitions
+      .flatMap((entry) => entry.document.spec.actions)
+      .find(
+        (candidate) =>
+          candidate.modelConsumer?.semanticShape === "media_analysis",
+      );
+    const categoryOptions =
+      action?.outputs.map((output) => ({
+        id: output.slot,
+        title: output.title ?? output.slot,
+        sourceMediaKinds: output.sourceMediaKinds ?? [],
+      })) ?? [];
+    return c.json({ ...config, modelOptions, categoryOptions });
+  });
+
+  app.put("/api/v1/local/media-analysis", async (c) => {
+    try {
+      const input = (await c.req.json()) as Record<string, unknown>;
+      const allowedCategories = input.allowedCategories;
+      if (
+        allowedCategories !== undefined &&
+        allowedCategories !== null &&
+        (!Array.isArray(allowedCategories) ||
+          !allowedCategories.every((category) => typeof category === "string"))
+      ) {
+        throw new Error("allowedCategories must be a string list or null");
+      }
+      let video: LocalMediaAnalysisConfig["video"] | undefined;
+      if (input.video !== undefined) {
+        if (
+          !isRecord(input.video) ||
+          !isRecord(input.video.boundaryRefinement)
+        ) {
+          throw new Error("video and video.boundaryRefinement must be objects");
+        }
+        const refinement = input.video.boundaryRefinement;
+        if (
+          typeof input.video.fps !== "number" ||
+          (input.video.mediaResolution !== "low" &&
+            input.video.mediaResolution !== "medium" &&
+            input.video.mediaResolution !== "high") ||
+          typeof refinement.enabled !== "boolean" ||
+          typeof refinement.fps !== "number" ||
+          typeof refinement.safetyMarginSeconds !== "number"
+        ) {
+          throw new Error("video analysis settings have invalid field types");
+        }
+        video = {
+          fps: input.video.fps,
+          mediaResolution: input.video.mediaResolution,
+          boundaryRefinement: {
+            enabled: refinement.enabled,
+            fps: refinement.fps,
+            safetyMarginSeconds: refinement.safetyMarginSeconds,
+          },
+        };
+      }
+      const config = await mediaAnalysisConfig.update({
+        ...(typeof input.videoEnabled === "boolean"
+          ? { videoEnabled: input.videoEnabled }
+          : {}),
+        ...(input.modelId === null || typeof input.modelId === "string"
+          ? { modelId: input.modelId }
+          : {}),
+        ...(allowedCategories === null || Array.isArray(allowedCategories)
+          ? { allowedCategories: allowedCategories as string[] | null }
+          : {}),
+        ...(video ? { video } : {}),
+      });
+      return c.json(config);
+    } catch (error) {
+      return c.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        400,
+      );
+    }
+  });
+
   app.get("/api/v1/local/audio", async (c) =>
     c.json(publicLocalAudioConfig(await localAudioReadState(audioConfig))),
   );
@@ -8465,6 +8601,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       const body = (await c.req.json().catch(() => ({}))) as {
         method_id?: unknown;
         methodId?: unknown;
+        values?: unknown;
       } & ProjectWriteBody;
       const preconditions = requestProjectWritePreconditions(c, body);
       const needsReadProof =
@@ -8497,9 +8634,31 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           : typeof body.methodId === "string" && body.methodId.length > 0
             ? body.methodId
             : undefined;
+      const values =
+        body.values &&
+        typeof body.values === "object" &&
+        !Array.isArray(body.values)
+          ? Object.fromEntries(
+              Object.entries(body.values)
+                .filter(
+                  (entry): entry is [string, string] =>
+                    entry[0].length > 0 &&
+                    entry[0].length <= 128 &&
+                    typeof entry[1] === "string" &&
+                    entry[1].length <= 32_768,
+                )
+                .slice(0, 32),
+            )
+          : undefined;
+      const authenticateOptions = {
+        ...(methodId ? { methodId } : {}),
+        ...(values && Object.keys(values).length > 0 ? { values } : {}),
+      };
       const result = await options.localAcp.authenticateHarness(
         harnessId,
-        methodId ? { methodId } : undefined,
+        Object.keys(authenticateOptions).length > 0
+          ? authenticateOptions
+          : undefined,
       );
       const afterReadToken = localHarnessesReceiptReadToken(result);
       const mutation = hostMutationSucceeded(
@@ -8596,12 +8755,21 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       permission_mode?: string;
       project_id?: string;
       resume_session_id?: string;
+      fork_session_id?: string;
     } & ProjectWriteBody;
     const preconditions = requestProjectWritePreconditions(c, body);
     let agentTemplateId = body.agent_template_id?.trim() || undefined;
     let agentMemberId = body.agent_member_id?.trim() || undefined;
     const requestedAgentId = body.agent_id?.trim() || undefined;
     const permissionMode = body.permission_mode?.trim() || undefined;
+    if (body.resume_session_id && body.fork_session_id) {
+      return c.json(
+        {
+          error: "resume_session_id and fork_session_id are mutually exclusive",
+        },
+        400,
+      );
+    }
     const configValues =
       body.config_values &&
       typeof body.config_values === "object" &&
@@ -8714,6 +8882,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         ...(body.project_id ? { projectId: body.project_id } : {}),
         ...(body.resume_session_id
           ? { resumeAcpSessionId: body.resume_session_id }
+          : {}),
+        ...(body.fork_session_id
+          ? { forkFromAcpSessionId: body.fork_session_id }
           : {}),
         ...(body.project_id
           ? {
@@ -9060,11 +9231,24 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 
   app.get("/api/v1/projects", async (c) => {
     const state = await db.load();
+    const archived = c.req.query("archived") ?? "active";
+    if (!new Set(["active", "only", "include"]).has(archived)) {
+      return c.json(
+        { error: "archived must be active, only, or include" },
+        400,
+      );
+    }
     try {
       const service = projectAssetServiceAt(requestOrigin(c));
+      const visibleProjects =
+        archived === "only"
+          ? state.projects.filter(isDeletedProject)
+          : archived === "include"
+            ? state.projects
+            : activeProjects(state);
       return c.json({
         projects: await Promise.all(
-          activeProjects(state).map(async (project) => {
+          visibleProjects.map(async (project) => {
             const assets = await service.list(project.id);
             const coverAssetId = await service.readProjectCover(project.id);
             return toV1Project(project, assets, "preview", coverAssetId);
@@ -9624,177 +9808,108 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const hostContext: Parameters<typeof handleProjectCommand>[3] = {
       actorUserId: userId,
     };
-    if (action === "capture_director_stage") {
-      const captureBody = body as Extract<
-        typeof body,
-        { action: "capture_director_stage" }
-      > &
-        DirectorStageRenderRequest;
-      if (
-        typeof captureBody.stageId !== "string" ||
-        !captureBody.stageId.trim()
-      ) {
-        return c.json({ error: "Director Stage id is required" }, 400);
-      }
-      const stageId = captureBody.stageId;
-      if (!options.directorStageRenderer) {
+    const timelineDefinitionActions = new Set([
+      "list_timelines",
+      "create_timeline",
+      "update_timeline_state",
+      "attach_timeline",
+      "detach_timeline",
+      "copy_timeline_action",
+      "request_timeline_render",
+      "list_timeline_renders",
+    ]);
+    if (timelineDefinitionActions.has(action)) {
+      if (!options.listPluginGenerators) {
         return c.json(
-          { error: "Director Stage product renderer is unavailable" },
+          {
+            error: "Timeline Generator projection surface is not installed",
+            code: "GENERATOR_PROJECTION_SURFACE_NOT_INSTALLED",
+          },
           503,
         );
       }
-      const before = await projectCommandReplica.inspect(
-        projectId,
-        (doc) =>
-          handleProjectCommand(projectId, doc, body, hostContext) as {
-            error?: string;
-            code?: string;
-            stage?: {
-              state?: unknown;
-              owner?:
-                | { kind: "project" }
-                | {
-                    kind: "canvas-action";
-                    actionNodeId: string;
-                  };
-            };
-            sourceStageRevisionId?: string;
-          },
-      );
-      if (
-        before.error ||
-        !before.stage?.state ||
-        !before.sourceStageRevisionId
-      ) {
-        return c.json(before);
-      }
-      const sourceStageRevisionId = before.sourceStageRevisionId;
-      const sourceStageOwner = before.stage.owner;
-      const captureActionId =
-        sourceStageOwner?.kind === "canvas-action"
-          ? `node:${sourceStageOwner.actionNodeId}`
-          : `director:${stageId}`;
       try {
-        const rendered = await options.directorStageRenderer.render({
-          state: before.stage.state as DirectorStageRenderRequest["state"],
-          longEdge: captureBody.longEdge,
-          frames: captureBody.frames,
-        });
-        const after = await projectCommandReplica.inspect(
-          projectId,
-          (doc) =>
-            handleProjectCommand(projectId, doc, body, hostContext) as {
-              error?: string;
-              code?: string;
-              sourceStageRevisionId?: string;
-            },
+        const definitions = (await options.listPluginGenerators()).map(
+          generatorDefinitionFromExecutablePluginRegistration,
         );
-        if (
-          after.error ||
-          after.sourceStageRevisionId !== before.sourceStageRevisionId
-        ) {
+        const resolved = resolveGeneratorProjectionDefinition(
+          definitions,
+          "clash.timeline",
+        );
+        if (!resolved.ok) {
           return c.json(
-            after.error
-              ? after
-              : {
-                  code: "STALE_READ",
-                  error: `Director Stage ${body.stageId} changed during capture; read it again`,
-                },
+            {
+              error: `Generator projection surface ${resolved.surfaceId} could not be resolved`,
+              code: resolved.code,
+            },
+            resolved.code === "GENERATOR_PROJECTION_SURFACE_AMBIGUOUS"
+              ? 409
+              : 503,
           );
         }
-        const frames = [];
-        for (const frame of rendered.frames) {
-          const bytes = Buffer.from(frame.dataBase64, "base64");
-          if (
-            bytes.byteLength === 0 ||
-            createHash("sha256").update(bytes).digest("hex") !== frame.sha256
-          ) {
-            throw new Error(
-              `Director renderer returned invalid bytes for ${frame.label}`,
-            );
-          }
-          const projectAssetId = directorCaptureProjectAssetId({
-            stageId,
-            sourceStageRevisionId,
-            artifactId: frame.label,
-            sha256: frame.sha256,
-          });
-          const captureActionRunId = projectAssetId;
-          const assetService = projectAssetServiceAt(requestOrigin(c));
-          const staged = await assetService.stageOwned({
-            kind: "image",
-            bytes,
-            contentType: "image/png",
-            name: `${frame.label}.png`,
-          });
-          await assetService.publishStagedOwnedWithBindings({
-            projectId,
-            projectAssetId,
-            kind: "image",
-            resourceId: staged.resourceId,
-            name: `${frame.label}.png`,
-            metadata: {
-              width: frame.width,
-              height: frame.height,
-              contentType: "image/png",
-              originalName: `${frame.label}.png`,
-            },
-            provenance: {
-              kind: "render",
-              actionRunId: captureActionRunId,
-            },
-            bindings: [
-              {
-                id: `action-asset:${encodeURIComponent(captureActionRunId)}:output:${encodeURIComponent(frame.label)}`,
-                owner: {
-                  kind: "run",
-                  actionId: captureActionId,
-                  actionRevisionId: sourceStageRevisionId,
-                  actionRunId: captureActionRunId,
-                },
-                direction: "output",
-                slot: `director:capture:${frame.label}`,
-                projectAssetId,
-                role: "primary",
-              },
-            ],
-            assertProjectState(doc) {
-              const current = readProjectDirectorStage(doc, stageId);
-              if (
-                !current ||
-                current.revisionId !== sourceStageRevisionId ||
-                JSON.stringify(current.owner) !==
-                  JSON.stringify(sourceStageOwner)
-              ) {
-                throw new AssetSdkContractError(
-                  "STALE_READ",
-                  `Director Stage ${stageId} changed during capture publication; read it again`,
-                );
-              }
-            },
-          });
-          frames.push({
-            ...frame,
-            projectAssetId,
-            metadataAttached: false,
-          });
-        }
-        return c.json({
-          captured: true,
-          stageId: body.stageId,
-          sourceStageRevisionId: before.sourceStageRevisionId,
-          ...rendered,
-          frames,
-        });
+        hostContext.timelineGeneratorDefinition = resolved.definition;
       } catch (error) {
-        if (error instanceof AssetSdkContractError) {
-          return localProjectAssetErrorResponse(error);
-        }
         return c.json(
-          { error: error instanceof Error ? error.message : String(error) },
-          422,
+          {
+            error: error instanceof Error ? error.message : String(error),
+            code: "GENERATOR_REGISTRY_ERROR",
+          },
+          502,
         );
       }
+    }
+    const stageDefinitionActions = new Set([
+      "list_director_stages",
+      "create_director_stage",
+      "update_director_stage_state",
+      "attach_director_stage",
+      "detach_director_stage",
+      "capture_director_stage",
+    ]);
+    if (stageDefinitionActions.has(action)) {
+      if (!options.listPluginGenerators) {
+        return c.json(
+          {
+            error:
+              "Director Stage Generator projection surface is not installed",
+            code: "GENERATOR_PROJECTION_SURFACE_NOT_INSTALLED",
+          },
+          503,
+        );
+      }
+      try {
+        const definitions = (await options.listPluginGenerators()).map(
+          generatorDefinitionFromExecutablePluginRegistration,
+        );
+        const resolved = resolveGeneratorProjectionDefinition(
+          definitions,
+          "clash.director-stage",
+        );
+        if (!resolved.ok) {
+          return c.json(
+            {
+              error: `Generator projection surface ${resolved.surfaceId} could not be resolved`,
+              code: resolved.code,
+            },
+            resolved.code === "GENERATOR_PROJECTION_SURFACE_AMBIGUOUS"
+              ? 409
+              : 503,
+          );
+        }
+        hostContext.directorStageGeneratorDefinition = resolved.definition;
+      } catch (error) {
+        return c.json(
+          {
+            error: error instanceof Error ? error.message : String(error),
+            code: "GENERATOR_REGISTRY_ERROR",
+          },
+          502,
+        );
+      }
+    }
+    if (action === "capture_director_stage") {
+      // Capture is planned by the Project command against the exact native
+      // Generator revision, then submitted below through the generic product.
     }
     if (action === "add" || action === "execute") {
       const [state, pluginCards] = await Promise.all([
@@ -9861,10 +9976,125 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     ) {
       await providerExecutionHandoffs.remove(projectId, handoffNodeId);
     }
+    if ((result as { kind?: unknown }).kind === "director-stage-capture-plan") {
+      if (!generatorProduct)
+        return c.json(
+          { error: "Generator Project authority is unavailable" },
+          503,
+        );
+      const plan = result as {
+        stageId: string;
+        sourceStageRevisionId: string;
+        runs: Array<{
+          actionRunId: string;
+          generatorId: string;
+          generatorRevisionId: string;
+          actionId: string;
+          parameters: Record<string, unknown>;
+        }>;
+      };
+      try {
+        const runs = await generatorProduct.submitBatch(
+          projectId,
+          plan.runs.map((request) => ({
+            generatorId: request.generatorId,
+            actionId: request.actionId,
+            input: {
+              actionRunId: request.actionRunId,
+              generatorRevisionId: request.generatorRevisionId,
+              parameters: request.parameters as Record<
+                string,
+                import("@clash/shared-types").ExecutablePluginJsonValue
+              >,
+              invocationInputRefs: [],
+            },
+          })),
+        );
+        void options
+          .processProjectWork?.(projectId)
+          .catch((error) =>
+            console.error(
+              `[local-api] failed to wake project work for ${projectId}:`,
+              error,
+            ),
+          );
+        return c.json({
+          captured: false,
+          submitted: true,
+          stageId: plan.stageId,
+          sourceStageRevisionId: plan.sourceStageRevisionId,
+          runs,
+          frames: plan.runs.map((request, index) => ({
+            ...request.parameters,
+            actionRunId: request.actionRunId,
+            status: (runs[index] as { status?: string }).status,
+          })),
+        });
+      } catch (error) {
+        if (error instanceof LocalGeneratorProductError)
+          return c.json({ error: error.message, code: error.code }, 409);
+        return c.json(
+          { error: error instanceof Error ? error.message : String(error) },
+          422,
+        );
+      }
+    }
     if (
-      (action === "execute" || action === "request_timeline_render") &&
-      !(result as { error?: unknown }).error
+      (result as { kind?: unknown }).kind === "timeline-generator-action-plan"
     ) {
+      if (!generatorProduct) {
+        return c.json(
+          { error: "Generator Project authority is unavailable" },
+          503,
+        );
+      }
+      const plan = result as {
+        actionRunId: string;
+        generatorId: string;
+        generatorRevisionId: string;
+        actionId: string;
+        timelineId: string;
+        sourceTimelineRevisionId: string;
+        target: unknown;
+      };
+      try {
+        const run = await generatorProduct.submit(
+          projectId,
+          plan.generatorId,
+          plan.actionId,
+          {
+            actionRunId: plan.actionRunId,
+            generatorRevisionId: plan.generatorRevisionId,
+            parameters: {},
+            invocationInputRefs: [],
+          },
+        );
+        void options.processProjectWork?.(projectId).catch((error) => {
+          console.error(
+            `[local-api] failed to wake project work for ${projectId}:`,
+            error instanceof Error ? error.message : String(error),
+          );
+        });
+        return c.json({
+          submitted: true,
+          timelineId: plan.timelineId,
+          sourceTimelineRevisionId: plan.sourceTimelineRevisionId,
+          renderNodeId: plan.actionRunId,
+          target: plan.target,
+          actionRunId: plan.actionRunId,
+          run,
+        });
+      } catch (error) {
+        if (error instanceof LocalGeneratorProductError) {
+          return c.json({ error: error.message, code: error.code }, 409);
+        }
+        return c.json(
+          { error: error instanceof Error ? error.message : String(error) },
+          422,
+        );
+      }
+    }
+    if (action === "execute" && !(result as { error?: unknown }).error) {
       void options.processProjectWork?.(projectId).catch((error) => {
         console.error(
           `[local-api] failed to wake project work for ${projectId}:`,
@@ -11011,20 +11241,33 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.get("/api/v1/sessions", async (c) => {
     const state = await db.load();
     const projectId = c.req.query("projectId");
+    const archiveFilter = c.req.query("archived") ?? "active";
+    if (!["active", "only", "include"].includes(archiveFilter)) {
+      return c.json({ error: "Invalid archived filter" }, 400);
+    }
     const activeProjectIds = new Set(
       activeProjects(state).map((project) => project.id),
     );
+    const filterArchive = (session: LocalSession) =>
+      archiveFilter === "include" ||
+      (archiveFilter === "only"
+        ? session.archivedAt !== undefined
+        : session.archivedAt === undefined);
     return c.json({
       sessions: projectId
         ? (isDeletedKnownProject(state, projectId)
             ? []
-            : state.sessions.filter((s) => s.projectId === projectId)
+            : state.sessions.filter(
+                (session) =>
+                  session.projectId === projectId && filterArchive(session),
+              )
           ).map(publicLocalSession)
         : state.sessions
             .filter(
               (session) =>
-                !isDeletedKnownProject(state, session.projectId) ||
-                activeProjectIds.has(session.projectId),
+                filterArchive(session) &&
+                (!isDeletedKnownProject(state, session.projectId) ||
+                  activeProjectIds.has(session.projectId)),
             )
             .map(publicLocalSession),
     });
@@ -11106,6 +11349,93 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       title: created.session.title,
       mutation,
     });
+  });
+
+  app.patch("/api/v1/sessions/:sessionId", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const body = (await c.req.json().catch(() => ({}))) as {
+      archived?: unknown;
+    } & ProjectWriteBody;
+    if (typeof body.archived !== "boolean") {
+      return c.json({ error: "Missing archived boolean" }, 400);
+    }
+    const preconditions = requestProjectWritePreconditions(c, body);
+    const operation = body.archived ? "archive" : "restore";
+    const result = await db.update((state) => {
+      const session = state.sessions.find(
+        (candidate) => candidate.id === sessionId,
+      );
+      if (!session) {
+        return {
+          status: 404 as const,
+          body: {
+            error: "Not found",
+            mutation: hostMutationRejected(
+              {
+                operation: `session_${operation}`,
+                entity: { kind: "session", id: sessionId },
+              },
+              "Not found",
+            ),
+          },
+        };
+      }
+
+      const requiresReadProofEnvelope =
+        preconditions.actorClientType === "agent" ||
+        Boolean(preconditions.expectedReadToken);
+      const hostMutation = requiresReadProofEnvelope
+        ? validateSessionReadMutation({
+            session,
+            operation,
+            preconditions,
+          })
+        : null;
+      if (hostMutation && !hostMutation.ok) {
+        return {
+          status: 409 as const,
+          body: {
+            error: hostMutation.error,
+            mutation: hostMutation.mutation,
+          },
+        };
+      }
+
+      const at = nowIso();
+      if (body.archived) session.archivedAt = at;
+      else delete session.archivedAt;
+      session.updatedAt = at;
+      const mutation = hostMutationSucceeded(
+        hostMutation?.envelope ?? {
+          operation: `session_${operation}`,
+          entity: { kind: "session", id: sessionId },
+        },
+        {
+          afterReadToken: sessionReadToken(session),
+          resultEntityId: sessionId,
+        },
+      );
+      return {
+        status: 200 as const,
+        body: {
+          ok: true,
+          session: publicLocalSession(session),
+          mutation,
+        },
+      };
+    });
+
+    if (result.status === 200) {
+      const mutation = result.body.mutation as HostMutationRecord;
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: `session ${operation}`,
+        }),
+      );
+    }
+    return c.json(result.body, result.status);
   });
 
   app.delete("/api/v1/sessions", async (c) => {

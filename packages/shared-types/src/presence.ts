@@ -78,26 +78,6 @@ export interface ActivityMessage {
   timestamp: number;
 }
 
-// ─── Project Room (group-chat IM) ─────────────────────────────
-
-export interface RoomMention {
-  user_id?: string;
-  agent_member_id?: string;
-}
-
-/** Server → client: a new room message (matches D1 row + mentions parsed). */
-export interface RoomMessageEvent {
-  type: "room.message";
-  id: string;
-  project_id: string;
-  sender_kind: "user" | "agent";
-  sender_id: string;       // agent member id when 'agent', user_id when 'user'
-  sender_user_id: string;  // always the human (daemon owner for agent)
-  mentions: RoomMention[];
-  text: string;
-  at: number;              // unix seconds
-}
-
 // ─── Live Cursor / Selection Awareness (ephemeral) ────────────
 //
 // These messages ride the same /sync/:projectId WS as the binary Loro CRDT
@@ -144,7 +124,6 @@ export interface AwarenessBroadcastMessage {
 export type SidebandMessage =
   | PresenceMessage
   | ActivityMessage
-  | RoomMessageEvent
   | AwarenessBroadcastMessage;
 
 /**
@@ -153,10 +132,5 @@ export type SidebandMessage =
 export function isSidebandMessage(msg: unknown): msg is SidebandMessage {
   if (!msg || typeof msg !== "object") return false;
   const t = (msg as any).type;
-  return (
-    t === "presence" ||
-    t === "activity" ||
-    t === "room.message" ||
-    t === "awareness.broadcast"
-  );
+  return t === "presence" || t === "activity" || t === "awareness.broadcast";
 }

@@ -516,7 +516,7 @@ describe("appendAcpEvent", () => {
     expect(messages).toEqual([]);
   });
 
-  it("routes Codex skill-budget diagnostics into a warning event instead of assistant prose", () => {
+  it("keeps standalone Codex skill-budget diagnostics out of the message stream", () => {
     const messages: ByoMessage[] = [];
 
     const result = appendAcpEvent(messages, "turn-skill-budget", undefined, {
@@ -527,14 +527,30 @@ describe("appendAcpEvent", () => {
       },
     });
 
-    expect(result.idx).toBe(0);
-    expect(messages[0]?.parts).toEqual([{
-      type: "event_note",
-      title: "Skill context limited",
-      detail: "Warning: Skill descriptions were shortened to fit the 2% skills context budget. Codex can still see every skill.",
-      tone: "warning",
+    expect(result.idx).toBe(-1);
+    expect(messages).toEqual([]);
+  });
+
+  it("keeps a current Codex skill warning out of same-chunk assistant prose", () => {
+    const messages: ByoMessage[] = [];
+    const warning =
+      "Warning: Skill descriptions were shortened to fit the skills context budget. " +
+      "Codex can still see every skill, but some descriptions are shorter. " +
+      "Disable unused skills or plugins to leave more room for the rest.";
+
+    appendAcpEvent(messages, "turn-current-skill-budget", undefined, {
+      sessionUpdate: "agent_message_chunk",
+      content: {
+        type: "text",
+        text: `${warning}\n\n那就先喝两口水。`,
+      },
+    });
+
+    expect(messages).toEqual([{
+      id: "asst-turn-current-skill-budget",
+      role: "assistant",
+      parts: [{ type: "text", text: "那就先喝两口水。" }],
     }]);
-    expect(messages[0]?.parts.some((part) => part.type === "text")).toBe(false);
   });
 
   it("parses snake_case available command updates from ACP implementations", () => {

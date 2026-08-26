@@ -4,5 +4,6 @@ CREATE TABLE `project` (
 	`name` text NOT NULL,
 	`description` text,
 	`created_at` integer DEFAULT (strftime('%s', 'now')),
-	`updated_at` integer DEFAULT (strftime('%s', 'now'))
+	`updated_at` integer DEFAULT (strftime('%s', 'now')),
+	`deleted_at` integer
 );

@@ -2,31 +2,59 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { sourceContains, sourceMatches } from "../test-support/source-match";
+
 const readComponentSource = (file: string) =>
-  readFileSync(join(process.cwd(), "packages/web-ui/src/components", file), "utf8");
+  readFileSync(
+    join(process.cwd(), "packages/web-ui/src/components", file),
+    "utf8",
+  );
 
 describe("ChatbotCopilot primitives", () => {
+  it("uses the shared warning surface for runtime authentication recovery", () => {
+    const source = readComponentSource("ChatbotCopilot.tsx");
+
+    expect(source).toContain("./ui/feedback");
+    expect(sourceMatches(source, /<FeedbackSurface\s+tone="warning"/)).toBe(
+      true,
+    );
+    expect(source).not.toContain("border-amber-200/80 bg-amber-50/80");
+  });
+
   it("renders runtime failures as an error card instead of assistant prose", () => {
     const source = readComponentSource("ChatbotCopilot.tsx");
 
-    expect(source).toContain("part.type === 'event_note'");
-    expect(source).toContain('role="alert"');
+    expect(sourceContains(source, 'part.type === "event_note"')).toBe(true);
+    expect(source).toContain("<InlineAlert");
+    expect(source).toContain('tone="error"');
+    expect(source).not.toContain(
+      'className="text-sm text-red-700 dark:text-red-300"',
+    );
     expect(source).toContain("part.detail");
   });
 
   it("routes local harness recovery to the Agents settings section", () => {
     const source = readComponentSource("ChatbotCopilot.tsx");
 
-    expect(source).toContain("actionLabel: 'Open Agents'");
-    expect(source).toContain("actionHref: '/settings?section=agents'");
-    expect(source).not.toContain("actionLabel: 'Open Runtimes'");
-    expect(source).not.toContain("actionHref: '/settings?section=runtimes'");
+    expect(sourceContains(source, 'actionLabel: "Open Agents"')).toBe(true);
+    expect(
+      sourceContains(source, 'actionHref: "/settings?section=agents"'),
+    ).toBe(true);
+    expect(sourceContains(source, 'actionLabel: "Open Runtimes"')).toBe(false);
+    expect(
+      sourceContains(source, 'actionHref: "/settings?section=runtimes"'),
+    ).toBe(false);
   });
 
   it("uses the shared combobox primitive for the slash command palette", () => {
     const source = readComponentSource("ChatbotCopilot.tsx");
-    const comboboxPath = join(process.cwd(), "packages/gui/src/components/ui/combobox.tsx");
-    const comboboxSource = existsSync(comboboxPath) ? readFileSync(comboboxPath, "utf8") : "";
+    const comboboxPath = join(
+      process.cwd(),
+      "packages/gui/src/components/ui/combobox.tsx",
+    );
+    const comboboxSource = existsSync(comboboxPath)
+      ? readFileSync(comboboxPath, "utf8")
+      : "";
 
     expect(existsSync(comboboxPath)).toBe(true);
     expect(comboboxSource).toContain("@ariakit/react");
@@ -45,7 +73,9 @@ describe("ChatbotCopilot primitives", () => {
     const source = readComponentSource("ChatbotCopilot.tsx");
 
     expect(source).toContain("./ui/tooltip");
-    expect(source).toContain("<Tooltip key={command.name} label={description ?? `/${name}`}>");
+    expect(source).toContain(
+      "<Tooltip key={command.name} label={description ?? `/${name}`}>",
+    );
     expect(source).not.toContain("title={description ?? `/${name}`}");
   });
 
@@ -57,7 +87,9 @@ describe("ChatbotCopilot primitives", () => {
     expect(source).toContain("SheetContent");
     expect(source).not.toContain("useFocusTrap");
     expect(source).not.toContain("aria-modal=");
-    expect(source).not.toContain('role={isMobile && !isCollapsed ? \'dialog\' : undefined}');
+    expect(source).not.toContain(
+      "role={isMobile && !isCollapsed ? 'dialog' : undefined}",
+    );
   });
 
   it("routes queued prompt reordering through the shared sortable primitive", () => {
@@ -91,17 +123,13 @@ describe("ChatbotCopilot primitives", () => {
   it("coalesces desktop resize previews and only commits the width when the gesture ends", () => {
     const source = readComponentSource("ChatbotCopilot.tsx");
 
-    expect(source).toContain(
-      "clampCopilotPanelWidthForViewport",
-    );
+    expect(source).toContain("clampCopilotPanelWidthForViewport");
     expect(source).toContain("requestAnimationFrame");
     expect(source).toContain("cancelAnimationFrame");
     expect(source).toContain("onWidthPreview?.(nextWidth)");
     expect(source).toContain("panelRef.current.style.width");
     expect(source).toMatch(/if \(last\)[\s\S]*?onWidthChange\(nextWidth\)/);
-    expect(source).not.toContain(
-      "const COPILOT_PANEL_MAX_WIDTH_FRACTION",
-    );
+    expect(source).not.toContain("const COPILOT_PANEL_MAX_WIDTH_FRACTION");
     expect(source).not.toContain("const COPILOT_PANEL_MIN_WIDTH");
   });
 
@@ -119,31 +147,29 @@ describe("ChatbotCopilot primitives", () => {
 
   it("lets the history dropdown primitive own open state", () => {
     const source = readComponentSource("ChatbotCopilot.tsx");
-    const historyFallbackStart = source.indexOf("label={t('copilot.header.history')}");
-    const historyStart = source.lastIndexOf("\n                                    <DropdownMenu", historyFallbackStart);
-    const historyEnd = source.indexOf("{!isDesktopLocalMode", historyFallbackStart);
-    const historySource = source.slice(historyStart, historyEnd);
 
-    expect(historyStart).toBeGreaterThan(-1);
+    expect(
+      sourceMatches(
+        source,
+        /<DropdownMenu>.{0,300}<DropdownMenuTrigger asChild>.{0,300}label=\{t\("copilot\.header\.history"\)\}/,
+      ),
+    ).toBe(true);
     expect(source).not.toContain("const [showHistory, setShowHistory]");
     expect(source).not.toContain("setShowHistory(false)");
-    expect(historySource).toContain("<DropdownMenu>");
-    expect(historySource).not.toContain("<DropdownMenu open=");
-    expect(historySource).not.toContain("onOpenChange={setShowHistory}");
+    expect(source).not.toContain("<DropdownMenu open={showHistory}");
+    expect(source).not.toContain("onOpenChange={setShowHistory}");
   });
 
   it("lets the runtime dropdown primitive own open state", () => {
     const source = readComponentSource("ChatbotCopilot.tsx");
-    const runOnStart = source.indexOf("label={t('copilot.header.runOn')}");
-    const runtimeStart = source.lastIndexOf("\n                                            <DropdownMenu", runOnStart);
-    const runtimeEnd = source.indexOf("</DropdownMenu>", runOnStart);
-    const runtimeSource = source.slice(runtimeStart, runtimeEnd);
 
-    expect(runtimeStart).toBeGreaterThan(-1);
+    expect(sourceContains(source, 'label={t("copilot.header.runOn")}')).toBe(
+      true,
+    );
     expect(source).not.toContain("const [runtimeMenuOpen, setRuntimeMenuOpen]");
     expect(source).not.toContain("setRuntimeMenuOpen(false)");
-    expect(runtimeSource).not.toContain("open={runtimeMenuOpen}");
-    expect(runtimeSource).not.toContain("setRuntimeMenuOpen(open)");
+    expect(source).not.toContain("open={runtimeMenuOpen}");
+    expect(source).not.toContain("setRuntimeMenuOpen(open)");
   });
 
   it("lets the shared dropdown primitive own trigger aria state", () => {
@@ -172,7 +198,10 @@ describe("ChatbotCopilot primitives", () => {
     const source = readComponentSource("ChatbotCopilot.tsx");
     const noticeStart = source.indexOf("function RuntimeAuthNotice");
     const fallbackStart = source.indexOf("Manual fallback", noticeStart);
-    const triggerStart = source.lastIndexOf("<CollapsibleTrigger", fallbackStart);
+    const triggerStart = source.lastIndexOf(
+      "<CollapsibleTrigger",
+      fallbackStart,
+    );
     const fallbackEnd = source.indexOf("</Collapsible>", fallbackStart);
     const fallbackSource = source.slice(triggerStart, fallbackEnd);
 
@@ -185,7 +214,9 @@ describe("ChatbotCopilot primitives", () => {
   it("lets the shared collapsible primitive own copilot panel trigger aria state", () => {
     const source = readComponentSource("ChatbotCopilot.tsx");
 
-    expect(source).toContain("Collapsible open={!isCollapsed}");
+    expect(sourceContains(source, "Collapsible open={!isCollapsed}")).toBe(
+      true,
+    );
     expect(source).toContain("CollapsibleTrigger asChild");
     expect(source).not.toContain("aria-expanded={false}");
     expect(source).not.toContain("aria-expanded={true}");

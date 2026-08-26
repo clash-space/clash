@@ -19,7 +19,21 @@
       "title": "Session history",
       "empty": "No history yet",
       "fallbackTitle": "Session {{index}}",
-      "delete": "Delete session"
+      "active": "Active",
+      "archived": "Archived",
+      "archive": "Archive session",
+      "restore": "Restore session",
+      "fork": "Fork session",
+      "actions": "Actions for {{title}}",
+      "close": "Close session history",
+      "retry": "Retry",
+      "archiveLoadError": "Archived sessions could not be loaded.",
+      "archivedEmpty": "No archived sessions",
+      "delete": "Delete session",
+      "deletePermanently": "Delete permanently",
+      "deleteConfirm": "This cannot be undone.",
+      "confirmDelete": "Confirm permanent delete",
+      "cancel": "Cancel"
     },
     "runtime": {
       "menuTitle": "Run on",
@@ -84,16 +98,16 @@
       ],
       "localAgentReady": "Local agent connected. Send a message to start.",
       "desktopLocalStarting": "Connecting to the local agent on this Mac…",
-    "desktopLocalRequired": "No local agent is available on this Mac.",
-    "desktopLocalSetupRequired": "Local agent needs setup on this Mac. Sign in to the agent or add the required API keys, then try again.",
-    "agentHarnessRequiredTitle": "Set up a local agent",
-    "agentHarnessRequired": "Install or enable an agent harness before starting a project chat.",
-    "localRuntimeRequired": "Select or connect a local runtime to chat. Cloud Agent is coming soon.",
-    "slashCommandsMore": "+{{count}} more"
-  },
-  "actions": {
-    "openAgents": "Open Agents"
-  },
+      "desktopLocalRequired": "No local agent is available on this Mac.",
+      "desktopLocalSetupRequired": "Local agent needs setup on this Mac. Sign in to the agent or add the required API keys, then try again.",
+      "agentHarnessRequiredTitle": "Set up a local agent",
+      "agentHarnessRequired": "Install or enable an agent harness before starting a project chat.",
+      "localRuntimeRequired": "Select or connect a local runtime to chat. Cloud Agent is coming soon.",
+      "slashCommandsMore": "+{{count}} more"
+    },
+    "actions": {
+      "openAgents": "Open Agents"
+    },
     "errors": {
       "createSession": "Failed to create session. Please try again.",
       "warningPrefix": "⚠"
@@ -103,9 +117,9 @@
       "noMatches": "No matching slash commands."
     },
     "chatInput": {
-      "placeholderDefault": "Ask anything...",
+      "placeholderDefault": "Ask anything…",
       "placeholderWithSelection": "Ask anything about selected files...",
-      "attach": "Attach files",
+      "attach": "Add media",
       "voice": "Voice input",
       "cancelVoice": "Cancel voice recording",
       "confirmVoice": "Use voice transcript",
@@ -117,6 +131,22 @@
       "uploading_one": "Uploading {{count}} file...",
       "uploading_other": "Uploading {{count}} files...",
       "uploadFailed": "⚠️ Failed to upload {{name}} "
+    },
+    "dashboardComposer": {
+      "newProject": "Create new project",
+      "newProjectHint": "Created when you send",
+      "chooseProject": "Choose a project",
+      "searchProjects": "Search projects",
+      "projects": "Projects",
+      "loadingProjects": "Loading projects…",
+      "projectsUnavailable": "Projects are unavailable.",
+      "noProjects": "No existing projects.",
+      "useProject": "Use {{name}}",
+      "removeProject": "Remove {{name}}",
+      "projectAsset": "Project asset",
+      "globalAsset": "Global asset",
+      "skillReferences": "Skill references",
+      "removeSkill": "Remove {{name}}"
     },
     "approvalCard": {
       "approve": "Approve",

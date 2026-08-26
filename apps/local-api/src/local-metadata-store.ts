@@ -62,6 +62,7 @@ export interface LocalMetadataSession {
   permissionMode?: string;
   acpSessionId?: string;
   status?: LocalMetadataSessionStatus;
+  archivedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -382,6 +383,7 @@ function applySchema(db: SqliteDatabase): void {
       permission_mode TEXT,
       acp_session_id TEXT,
       status TEXT,
+      archived_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -553,6 +555,7 @@ function ensureLocalMetadataColumns(db: SqliteDatabase): void {
     "permission_mode TEXT",
     "acp_session_id TEXT",
     "status TEXT",
+    "archived_at TEXT",
     "created_at TEXT NOT NULL DEFAULT ''",
     "updated_at TEXT NOT NULL DEFAULT ''",
   ]) {
@@ -1077,7 +1080,7 @@ export function createLocalMetadataStore(dataDir: string) {
           `
         SELECT id, project_id, title, type, runtime_id, agent_id,
                agent_template_id, permission_mode, acp_session_id, status,
-               created_at, updated_at
+               archived_at, created_at, updated_at
           FROM runtime_session
          ORDER BY updated_at DESC, created_at DESC
       `,
@@ -1110,6 +1113,9 @@ export function createLocalMetadataStore(dataDir: string) {
                   "status",
                 ) as LocalMetadataSessionStatus,
               }
+            : {}),
+          ...(rowOptionalString(row, "archived_at")
+            ? { archivedAt: rowOptionalString(row, "archived_at") }
             : {}),
           createdAt: rowString(row, "created_at"),
           updatedAt: rowString(row, "updated_at"),
@@ -1285,8 +1291,8 @@ export function createLocalMetadataStore(dataDir: string) {
         const insertSession = db.prepare(`
           INSERT INTO runtime_session (
             id, project_id, title, type, runtime_id, agent_id, agent_template_id,
-            permission_mode, acp_session_id, status, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            permission_mode, acp_session_id, status, archived_at, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         for (const session of metadata.sessions) {
           insertSession.run(
@@ -1300,6 +1306,7 @@ export function createLocalMetadataStore(dataDir: string) {
             session.permissionMode ?? null,
             session.acpSessionId ?? null,
             session.status ?? null,
+            session.archivedAt ?? null,
             session.createdAt,
             session.updatedAt,
           );

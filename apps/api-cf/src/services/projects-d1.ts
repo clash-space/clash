@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { DEV_USER_ID } from "./session";
 import { projects, assets, assetRefs } from "../db/app.schema";
@@ -196,12 +196,21 @@ export async function listProjectsWithAssets(
   env: Env,
   userId: string,
   limit = 10,
+  archive: "active" | "only" | "include" = "active",
 ): Promise<ProjectWithAssets[]> {
   const db = getDb(env.DB);
   if (userId === DEV_USER_ID) await ensureDevUser(db, env);
 
   const projectsData = await db.query.projects.findMany({
-    where: eq(projects.ownerId, userId),
+    where:
+      archive === "include"
+        ? eq(projects.ownerId, userId)
+        : and(
+            eq(projects.ownerId, userId),
+            archive === "only"
+              ? isNotNull(projects.deletedAt)
+              : isNull(projects.deletedAt),
+          ),
     orderBy: [desc(projects.createdAt)],
     limit,
   });
@@ -227,7 +236,11 @@ export async function getProjectById(env: Env, userId: string, id: string) {
   const db = getDb(env.DB);
   if (userId === DEV_USER_ID) await ensureDevUser(db, env);
   const project = await db.query.projects.findFirst({
-    where: and(eq(projects.id, id), eq(projects.ownerId, userId)),
+    where: and(
+      eq(projects.id, id),
+      eq(projects.ownerId, userId),
+      isNull(projects.deletedAt),
+    ),
   });
   if (!project) return project;
   const resolvedAssets = await resolveProjectAssets(env, db, userId, project);

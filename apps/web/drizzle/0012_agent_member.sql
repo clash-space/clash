@@ -4,15 +4,13 @@
 -- Manager) live in the bridge's dist/agent/ as read-only role definitions.
 -- A user "claims" a template + runtime to create a concrete agent member —
 -- e.g. "Alice's Director on alice-mac". From then on, that claimed
--- member is what gets invited into project rooms, what @-mentions
--- target, and what spawns sessions.
+-- member is the durable identity used when spawning sessions.
 --
 -- Why this layer instead of using template_id directly:
 --   - Multi-user: alice and bob both want Director without colliding.
 --   - Multi-runtime: same user can claim Director twice (laptop + desktop)
 --     and have them coexist in different projects.
---   - Identity in room: room mentions encode agent_member_id, which already
---     pins down (template, user, runtime) — no ambiguity at dispatch.
+--   - Stable identity: agent_member_id pins down template, user, and runtime.
 --
 -- Display name defaults to the template label; user can rename to
 -- distinguish multiple instances ("Director — laptop").

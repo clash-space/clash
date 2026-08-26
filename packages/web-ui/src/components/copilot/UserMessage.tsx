@@ -95,11 +95,14 @@ export function UserMessage({
     <div className="flex w-full justify-end">
       <div className="flex max-w-[min(34rem,72%)] flex-col items-end">
         {annotations.length === 0 && cleaned ? (
-          <div className="break-words rounded-[18px] border border-warm-border bg-brand-light px-4 py-2.5 text-slate-900 shadow-sm dark:border-warm-border dark:bg-warm-muted dark:text-slate-100">
+          <div
+            className="clash-user-message-bubble break-words px-3 py-2"
+            data-chat-typography="body"
+          >
             <ReactMarkdown
               components={{
                 p: ({ children }) => (
-                  <p className="text-sm leading-[1.55] mb-1 last:mb-0">
+                  <p className="mb-1 last:mb-0">
                     {children}
                   </p>
                 ),
@@ -120,7 +123,7 @@ export function UserMessage({
                 a: ({ href, children }) => (
                   <a
                     href={href}
-                    className="text-brand underline text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface rounded-sm"
+                    className="rounded-sm text-brand underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
                     target="_blank"
                     rel="noreferrer"
                   >

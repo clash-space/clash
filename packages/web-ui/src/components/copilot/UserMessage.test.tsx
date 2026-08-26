@@ -24,6 +24,16 @@ afterEach(() => {
 });
 
 describe("UserMessage", () => {
+  it("uses the compact workspace message surface instead of a floating card", () => {
+    const { container } = render(<UserMessage content="hi" />);
+    const bubble = container.querySelector(".clash-user-message-bubble");
+
+    expect(bubble).toBeTruthy();
+    expect(bubble).toHaveAttribute("data-chat-typography", "body");
+    expect(bubble?.className).not.toContain("shadow-sm");
+    expect(bubble?.className).not.toContain("rounded-[18px]");
+  });
+
   it("does not sign an object-store key embedded in a legacy mention thumbnail", async () => {
     const fetch = vi.fn(
       async () =>

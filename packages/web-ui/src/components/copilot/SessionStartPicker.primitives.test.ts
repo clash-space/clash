@@ -4,6 +4,17 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("SessionStartPicker primitives", () => {
+  it("uses shared warning feedback for authentication recovery", () => {
+    const source = readFileSync(
+      join(process.cwd(), "packages/web-ui/src/components/copilot/SessionStartPicker.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("../ui/feedback");
+    expect(source).toContain('<InlineAlert\n          tone="warning"');
+    expect(source).not.toContain("border-amber-200");
+  });
+
   it("uses the shared Button primitive for auth refresh and start actions", () => {
     const source = readFileSync(
       join(process.cwd(), "packages/web-ui/src/components/copilot/SessionStartPicker.tsx"),

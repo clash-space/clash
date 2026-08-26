@@ -4,6 +4,7 @@ CREATE TABLE `chat_session` (
   `user_id` text NOT NULL,
   `thread_id` text NOT NULL,
   `title` text,
+  `archived_at` integer,
   `created_at` integer DEFAULT (strftime('%s', 'now')),
   `updated_at` integer DEFAULT (strftime('%s', 'now'))
 );--> statement-breakpoint

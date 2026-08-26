@@ -68,7 +68,7 @@ import {
   readProjectAssetDrag,
 } from "@clash/web-ui/lib/projectAssetDrag";
 import ChatbotCopilot from "./ChatbotCopilot";
-import type { ClashProjectEntity } from "./copilot/AcpMessageList";
+import type { ClashProjectEntity } from "./copilot/AcpInlineRenderers";
 import { clampCopilotPanelWidthForViewport } from "./copilotPanelLayout";
 import { useSessionHistory } from "@clash/web-ui/hooks/useSessionHistory";
 import {
@@ -123,7 +123,7 @@ import { useLoroSync } from "@clash/web-ui/hooks/useLoroSync";
 import { actionIsCheckpointLocked } from "@clash/web-ui/lib/actionCheckpoint";
 import {
   annotationLocateSelector,
-  flashAnnotationLocateHighlight,
+  centerAndHighlightAnnotationTarget,
 } from "@clash/web-ui/lib/agentAnnotationLocate";
 import { LoroSyncProvider } from "./LoroSyncContext";
 import {
@@ -144,7 +144,7 @@ import {
   type ProjectDirectorStage,
 } from "@clash/shared-types";
 import { executeAssetScopeCascade } from "./assetScopeCascadeExecutor";
-import ActivityToast, { useActivityToasts } from "./ActivityToast";
+import { useActivityToasts } from "./ActivityToast";
 import NodeActivityIndicator, {
   useNodeHighlights,
 } from "./NodeActivityIndicator";
@@ -228,10 +228,23 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "./ui/accordion";
+import DesktopAutoHideSidebar, {
+  DesktopSidebarCollapseButton,
+} from "./DesktopAutoHideSidebar";
 import ProjectWorkspaceNavigator, {
+  type ProjectBrowserTab,
   type ProjectTextAsset,
   type ProjectWorkspaceSurface,
 } from "./ProjectWorkspaceNavigator";
+import { ProjectBrowserSurfaces } from "./ProjectBrowserSurfaces";
+import {
+  closeProjectBrowserTab,
+  ensureProjectBrowserTab,
+  loadProjectBrowserSession,
+  openProjectBrowserTab,
+  saveProjectBrowserSession,
+  updateProjectBrowserTab,
+} from "../lib/projectBrowserTabs";
 import {
   preloadTimelineEditor,
   ProjectTimelineEditorSurface,
@@ -629,7 +642,7 @@ function CanvasFolderEntries({
       <button
         type="button"
         onClick={() => onSelect(entry.node)}
-        className={`flex h-[var(--clash-project-control-rhythm)] w-full items-center gap-2 rounded-md pr-2 text-left text-xs text-content-secondary transition-colors hover:bg-warm-hover hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${entry.kind === "group" ? "font-medium" : "font-normal"}`}
+        className={`flex h-[var(--clash-project-control-rhythm)] w-full items-center gap-2 rounded-md pr-2 text-left text-xs text-content-secondary transition-colors hover:bg-warm-hover hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 ${entry.kind === "group" ? "font-medium" : "font-normal"}`}
         style={{
           paddingLeft: `${8 + entry.depth * 14 + (nested ? 8 : 0)}px`,
         }}
@@ -890,6 +903,9 @@ export default function ProjectEditor({
       kind: "canvas",
       canvasId: "main",
     });
+  const [browserTabs, setBrowserTabs] = useState<ProjectBrowserTab[]>([]);
+  const [browserSessionHydratedProjectId, setBrowserSessionHydratedProjectId] =
+    useState<string | null>(null);
   const [previewTextNodeId, setPreviewTextNodeId] = useState<string | null>(
     null,
   );
@@ -916,6 +932,9 @@ export default function ProjectEditor({
       (previous.kind === "asset" &&
         workspaceSurface.kind === "asset" &&
         previous.assetId !== workspaceSurface.assetId) ||
+      (previous.kind === "browser" &&
+        workspaceSurface.kind === "browser" &&
+        previous.browserId !== workspaceSurface.browserId) ||
       (previous.kind === "text-asset" &&
         workspaceSurface.kind === "text-asset" &&
         (previous.nodeId !== workspaceSurface.nodeId ||
@@ -1036,7 +1055,7 @@ export default function ProjectEditor({
     window.dispatchEvent(new CustomEvent(DESKTOP_TAB_TITLE_EVENT, { detail }));
   }, [location.pathname, project.name, projectName]);
 
-  const { toasts, addToast, dismiss: dismissToast } = useActivityToasts();
+  const { addToast } = useActivityToasts();
   const { highlights, addHighlight } = useNodeHighlights();
 
   // Awareness: live cursor + selection over the same WS.
@@ -1283,7 +1302,7 @@ export default function ProjectEditor({
       ),
     [activeCanvasId, loroSync.canvases],
   );
-  const minimapControlOffset = `calc(${minimapCollapsed ? 36 : minimapSize.height}px + var(--clash-project-chrome-gutter) + var(--clash-project-chrome-gutter))`;
+  const minimapControlOffset = `calc(${minimapCollapsed ? 32 : minimapSize.height}px + var(--clash-project-chrome-gutter) + var(--clash-project-chrome-gutter))`;
 
   // Ref to access loroSync in callbacks without causing re-renders
   const loroSyncRef = useRef(loroSync);
@@ -1588,7 +1607,13 @@ export default function ProjectEditor({
   const editorRouter = useNavigate();
   const {
     sessions: sessionHistory,
+    archivedSessions: archivedSessionHistory,
+    archiveStatus,
+    archiveError,
     upsertSession,
+    loadArchivedSessions,
+    archiveSession,
+    restoreSession,
     deleteSession: removeSession,
   } = useSessionHistory(project.id);
 
@@ -1640,16 +1665,24 @@ export default function ProjectEditor({
     [setFollowingAgentMode],
   );
 
-  const handleDeleteSession = useCallback(
-    (id: string) => {
-      removeSession(id);
+  const handleArchiveSession = useCallback(
+    async (id: string) => {
+      await archiveSession(id);
       if (id === threadId) {
         lastAgentTargetRef.current = null;
         setFollowingAgentMode(false);
         setThreadId("");
+        setSessionKey((key) => key + 1);
       }
     },
-    [removeSession, setFollowingAgentMode, threadId],
+    [archiveSession, setFollowingAgentMode, threadId],
+  );
+
+  const handleDeleteSessionPermanently = useCallback(
+    (id: string) => {
+      void removeSession(id);
+    },
+    [removeSession],
   );
 
   const handleCopilotCreateSession = useCallback(
@@ -3624,8 +3657,15 @@ export default function ProjectEditor({
     return buildProjectMentionSources({
       activeCanvasId,
       activeSurface:
-        workspaceSurface.kind === "text-asset"
-          ? { kind: "canvas", canvasId: workspaceSurface.canvasId }
+        workspaceSurface.kind === "text-asset" ||
+        workspaceSurface.kind === "browser"
+          ? {
+              kind: "canvas",
+              canvasId:
+                workspaceSurface.kind === "text-asset"
+                  ? workspaceSurface.canvasId
+                  : activeCanvasId,
+            }
           : workspaceSurface,
       canvases: loroSync.canvases,
       nodes: allNodes,
@@ -3646,9 +3686,15 @@ export default function ProjectEditor({
   const copilotWorkspaceContext = useMemo<CopilotWorkspaceContext>(() => {
     if (
       workspaceSurface.kind === "canvas" ||
-      workspaceSurface.kind === "text-asset"
+      workspaceSurface.kind === "text-asset" ||
+      workspaceSurface.kind === "browser"
     ) {
-      const canvasId = workspaceSurface.canvasId;
+      const canvasId =
+        workspaceSurface.kind === "text-asset"
+          ? workspaceSurface.canvasId
+          : workspaceSurface.kind === "canvas"
+            ? workspaceSurface.canvasId
+            : activeCanvasId;
       const canvas = loroSync.canvases.find(
         (candidate) => candidate.id === canvasId,
       );
@@ -3703,6 +3749,7 @@ export default function ProjectEditor({
       },
     };
   }, [
+    activeCanvasId,
     loroSync.canvases,
     loroSync.directorStages,
     loroSync.timelines,
@@ -4309,6 +4356,90 @@ export default function ProjectEditor({
     [activateCanvasData],
   );
 
+  const createBrowserFromNavigator = useCallback(() => {
+    stopFollowingAgent();
+    const id = globalThis.crypto?.randomUUID?.()
+      ? `browser-${globalThis.crypto.randomUUID()}`
+      : `browser-${Date.now().toString(36)}`;
+    setBrowserTabs((current) => openProjectBrowserTab(current, id).tabs);
+    const surface: ProjectWorkspaceSurface = { kind: "browser", browserId: id };
+    workspaceSurfaceRef.current = surface;
+    setWorkspaceSurface(surface);
+  }, [stopFollowingAgent]);
+
+  const selectBrowserFromNavigator = useCallback(
+    (browserId: string) => {
+      if (!browserTabs.some((tab) => tab.id === browserId)) return;
+      stopFollowingAgent();
+      const surface: ProjectWorkspaceSurface = { kind: "browser", browserId };
+      workspaceSurfaceRef.current = surface;
+      setWorkspaceSurface(surface);
+    },
+    [browserTabs, stopFollowingAgent],
+  );
+
+  const updateBrowserFromSurface = useCallback(
+    (
+      browserId: string,
+      patch: Partial<Pick<ProjectBrowserTab, "title" | "url">>,
+    ) => {
+      setBrowserTabs((current) =>
+        updateProjectBrowserTab(current, browserId, patch),
+      );
+    },
+    [],
+  );
+
+  const closeBrowserFromNavigator = useCallback(
+    (browserId: string) => {
+      const result = closeProjectBrowserTab(browserTabs, browserId);
+      setBrowserTabs(result.tabs);
+      const surface = workspaceSurfaceRef.current;
+      if (surface.kind !== "browser" || surface.browserId !== browserId) return;
+      if (result.nextBrowserId) {
+        const next: ProjectWorkspaceSurface = {
+          kind: "browser",
+          browserId: result.nextBrowserId,
+        };
+        workspaceSurfaceRef.current = next;
+        setWorkspaceSurface(next);
+        return;
+      }
+      selectCanvas(activeCanvasIdRef.current);
+    },
+    [browserTabs, selectCanvas],
+  );
+
+  useEffect(() => {
+    const restored = loadProjectBrowserSession(window.localStorage, project.id);
+    setBrowserTabs(restored?.tabs ?? []);
+    if (restored?.activeBrowserId) {
+      const surface: ProjectWorkspaceSurface = {
+        kind: "browser",
+        browserId: restored.activeBrowserId,
+      };
+      workspaceSurfaceRef.current = surface;
+      setWorkspaceSurface(surface);
+    } else if (workspaceSurfaceRef.current.kind === "browser") {
+      selectCanvas(activeCanvasIdRef.current);
+    }
+    setBrowserSessionHydratedProjectId(project.id);
+  }, [project.id, selectCanvas]);
+
+  useEffect(() => {
+    if (browserSessionHydratedProjectId !== project.id) return;
+    saveProjectBrowserSession(window.localStorage, project.id, {
+      tabs: browserTabs,
+      activeBrowserId:
+        workspaceSurface.kind === "browser" ? workspaceSurface.browserId : null,
+    });
+  }, [
+    browserSessionHydratedProjectId,
+    browserTabs,
+    project.id,
+    workspaceSurface,
+  ]);
+
   const focusPendingAssetRelationTarget = useCallback(() => {
     const target = pendingAssetRelationTargetRef.current;
     const instance = reactFlowInstanceRef.current;
@@ -4722,6 +4853,16 @@ export default function ProjectEditor({
         setWorkspaceSurface({ kind: "timeline", timelineId: target.surfaceId });
       } else if (target.surface === "asset") {
         setWorkspaceSurface({ kind: "asset", assetId: target.surfaceId });
+      } else if (target.surface === "browser") {
+        setBrowserTabs((current) =>
+          ensureProjectBrowserTab(
+            current,
+            target.surfaceId,
+            target.browser?.title || target.surfaceLabel,
+            target.browser?.url || "about:blank",
+          ),
+        );
+        setWorkspaceSurface({ kind: "browser", browserId: target.surfaceId });
       } else {
         setWorkspaceSurface({
           kind: "director-stage",
@@ -4731,8 +4872,10 @@ export default function ProjectEditor({
 
       const isCanvasNode =
         target.surface === "canvas" && target.objectType !== "canvas-edge";
+      const isBrowserAnnotation = target.surface === "browser";
       let attemptsLeft = 16;
       let panned = false;
+      let canvasCenter: Promise<unknown> | null = null;
       const attempt = () => {
         if (isCanvasNode && !panned) {
           const instance = reactFlowInstanceRef.current;
@@ -4749,7 +4892,7 @@ export default function ProjectEditor({
             const width = internalNode?.measured.width ?? layoutRect.width;
             const height = internalNode?.measured.height ?? layoutRect.height;
             const zoom = Math.min(Math.max(instance.getZoom(), 0.9), 1.2);
-            void instance.setCenter(
+            canvasCenter = instance.setCenter(
               absolute.x + width / 2,
               absolute.y + height / 2,
               { zoom, duration: 420 },
@@ -4757,18 +4900,24 @@ export default function ProjectEditor({
             panned = true;
           }
         }
-        const element = document.querySelector<HTMLElement>(
-          annotationLocateSelector(target),
-        );
+        const element = isBrowserAnnotation
+          ? (Array.from(
+              document.querySelectorAll<HTMLElement>(
+                "[data-browser-annotation-marker]",
+              ),
+            ).find(
+              (candidate) =>
+                candidate.dataset.browserAnnotationMarker === annotationId,
+            ) ?? null)
+          : document.querySelector<HTMLElement>(
+              annotationLocateSelector(target),
+            );
         if (element && (!isCanvasNode || panned)) {
-          if (!isCanvasNode) {
-            element.scrollIntoView({
-              behavior: "smooth",
-              block: "center",
-              inline: "center",
-            });
-          }
-          flashAnnotationLocateHighlight(element);
+          const completedCanvasCenter = canvasCenter;
+          centerAndHighlightAnnotationTarget(
+            element,
+            completedCanvasCenter ? () => completedCanvasCenter : undefined,
+          );
           return;
         }
         if (attemptsLeft > 0) {
@@ -6036,14 +6185,6 @@ export default function ProjectEditor({
 
                               {/* Main Canvas Area */}
                               <div className="flex flex-1 overflow-hidden relative">
-                                {/* Activity Toasts */}
-                                <ActivityToast
-                                  toasts={toasts}
-                                  dismiss={dismissToast}
-                                  sidebarWidth={sidebarWidth}
-                                  isSidebarCollapsed={isSidebarCollapsed}
-                                />
-
                                 <div
                                   ref={projectWorkspaceShellRef}
                                   id="project-workspace-shell"
@@ -6063,37 +6204,45 @@ export default function ProjectEditor({
                                   style={{
                                     right: copilotWorkspaceRight,
                                   }}
-                                  className="absolute inset-0 z-0 grid min-h-0 grid-cols-[12rem_minmax(0,1fr)] overflow-hidden transition-[grid-template-columns,right] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] data-[copilot-resizing=true]:duration-0 data-[project-navigator-collapsed=true]:grid-cols-[0_minmax(0,1fr)] [--clash-project-chrome-gutter:0.5rem] [--clash-project-control-height:2rem] [--clash-project-control-rhythm:var(--clash-project-control-height)] [--clash-project-action-phase:var(--clash-project-chrome-gutter)] [--clash-project-search-row-height:calc(var(--clash-project-control-rhythm)+var(--clash-project-action-phase))] [--clash-project-sidebar-header-height:2.5rem] [--clash-project-frame-top:calc(var(--clash-project-sidebar-header-height)+var(--clash-project-chrome-gutter))] [--clash-project-header-content-offset-y:var(--clash-control-gap)] [--clash-project-control-rail-left:var(--clash-project-chrome-gutter)] data-[canvas-folders-open=true]:[--clash-project-control-rail-left:13rem]"
+                                  className="absolute inset-0 z-0 grid min-h-0 grid-cols-[var(--clash-app-sidebar-expanded-width,16rem)_minmax(0,1fr)] overflow-hidden transition-[grid-template-columns,right] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none data-[copilot-resizing=true]:duration-0 data-[project-navigator-collapsed=true]:grid-cols-[0_minmax(0,1fr)] [--clash-project-chrome-gutter:0.5rem] [--clash-project-control-height:2rem] [--clash-project-control-rhythm:var(--clash-project-control-height)] [--clash-project-action-phase:var(--clash-project-chrome-gutter)] [--clash-project-search-row-height:calc(var(--clash-project-control-rhythm)+var(--clash-project-action-phase))] [--clash-project-sidebar-header-height:2.5rem] [--clash-project-frame-top:calc(var(--clash-project-sidebar-header-height)+var(--clash-project-chrome-gutter))] [--clash-project-header-content-offset-y:var(--clash-control-gap)] [--clash-project-control-rail-left:var(--clash-project-chrome-gutter)] data-[canvas-folders-open=true]:[--clash-project-control-rail-left:13rem] clash-auto-hide-sidebar-host"
                                 >
-                                  <ProjectWorkspaceNavigator
-                                    header={
-                                      <div
-                                        id="editor-header"
-                                        className="clash-project-sidebar-header-content clash-project-chrome-header-content flex min-w-0 flex-1 items-center gap-1.5 pointer-events-auto"
-                                      >
-                                        <Tooltip label="Return to projects">
-                                          <IconButton
-                                            label="Return to projects"
-                                            onClick={handleReturnToProjects}
-                                            icon={
-                                              <ArrowLeft
-                                                className="h-4 w-4"
-                                                weight="bold"
-                                              />
-                                            }
-                                            size="sm"
-                                            shape="rounded"
-                                            className={`clash-project-return-button shrink-0 rounded-md text-content-secondary focus-visible:ring-offset-warm-page ${isProjectNavigatorCollapsed ? "" : "-ml-px"}`}
-                                          />
-                                        </Tooltip>
-                                        {!isProjectNavigatorCollapsed ? (
+                                  <DesktopAutoHideSidebar
+                                    collapsed={isProjectNavigatorCollapsed}
+                                    onCollapsedChange={
+                                      setIsProjectNavigatorCollapsed
+                                    }
+                                    expandedWidth="var(--clash-app-sidebar-expanded-width)"
+                                    label="Project navigator"
+                                    widthStorageKey="project-navigator-width"
+                                  >
+                                    <ProjectWorkspaceNavigator
+                                      header={
+                                        <div
+                                          id="editor-header"
+                                          className="clash-project-sidebar-header-content clash-project-chrome-header-content flex min-w-0 flex-1 items-center gap-1.5 pointer-events-auto"
+                                        >
+                                          <Tooltip label="Return to projects">
+                                            <IconButton
+                                              label="Return to projects"
+                                              onClick={handleReturnToProjects}
+                                              icon={
+                                                <ArrowLeft
+                                                  className="h-4 w-4"
+                                                  weight="bold"
+                                                />
+                                              }
+                                              size="sm"
+                                              shape="rounded"
+                                              className="clash-project-return-button -ml-px shrink-0 rounded-md text-content-secondary focus-visible:ring-offset-warm-page"
+                                            />
+                                          </Tooltip>
                                           <form
                                             className="min-w-0 flex-1"
                                             onSubmit={handleProjectNameSubmit}
                                           >
                                             <Input
                                               ref={projectTitleInputRef}
-                                              className="clash-project-name-input h-8 w-full min-w-0 bg-transparent px-1 font-display text-[13px] font-semibold text-content-primary placeholder:text-content-muted focus:outline-none focus:ring-0"
+                                              className="clash-project-name-input h-8 w-full min-w-0 bg-transparent px-1 font-display text-[var(--clash-project-title-size,0.8125rem)] font-semibold text-content-primary placeholder:text-content-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
                                               value={projectName}
                                               onChange={(event) =>
                                                 setProjectName(
@@ -6113,80 +6262,98 @@ export default function ProjectEditor({
                                               placeholder="Untitled"
                                             />
                                           </form>
-                                        ) : null}
-                                      </div>
-                                    }
-                                    footer={<UserControls compact />}
-                                    collapsed={isProjectNavigatorCollapsed}
-                                    canvases={loroSync.canvases}
-                                    timelines={loroSync.timelines}
-                                    directorStages={loroSync.directorStages}
-                                    assets={allProjectAssets}
-                                    textAssets={projectTextAssets}
-                                    globalAssets={activeGlobalProjectAssets}
-                                    surface={workspaceSurface}
-                                    onSelectCanvas={selectCanvasFromNavigator}
-                                    onSelectTimeline={(timelineId) => {
-                                      stopFollowingAgent();
-                                      void preloadTimelineEditor();
-                                      setWorkspaceSurface({
-                                        kind: "timeline",
-                                        timelineId,
-                                      });
-                                    }}
-                                    onSelectDirectorStage={(stageId) => {
-                                      stopFollowingAgent();
-                                      setWorkspaceSurface({
-                                        kind: "director-stage",
-                                        stageId,
-                                      });
-                                    }}
-                                    onSelectAsset={(assetId) => {
-                                      stopFollowingAgent();
-                                      setWorkspaceSurface({
-                                        kind: "asset",
-                                        assetId,
-                                      });
-                                    }}
-                                    onSelectTextAsset={openProjectTextAsset}
-                                    onCreateCanvas={createCanvasFromNavigator}
-                                    onRenameCanvas={renameCanvasFromNavigator}
-                                    onDeleteCanvas={deleteCanvasFromNavigator}
-                                    onCreateTimeline={
-                                      createTimelineFromNavigator
-                                    }
-                                    onAttachTimeline={
-                                      attachTimelineFromNavigator
-                                    }
-                                    onDeleteTimeline={
-                                      deleteTimelineFromNavigator
-                                    }
-                                    onCreateDirectorStage={
-                                      createDirectorStageFromNavigator
-                                    }
-                                    onAttachDirectorStage={
-                                      attachDirectorStageFromNavigator
-                                    }
-                                    onAddAsset={openProjectAssetPicker}
-                                    onAddGlobalAsset={async (assetId) => {
-                                      await addGlobalAssetToProject(assetId);
-                                    }}
-                                    onAddAssetToLibrary={(assetId) => {
-                                      void addProjectAssetToLibrary(assetId);
-                                    }}
-                                    onTrashAsset={
-                                      trashProjectAssetFromNavigator
-                                    }
-                                    onRestoreAsset={
-                                      restoreProjectAssetFromNavigator
-                                    }
-                                    onAnnotate={(target) =>
-                                      queueAgentAnnotation({
-                                        ...target,
-                                        projectId: project.id,
-                                      })
-                                    }
-                                  />
+                                          <DesktopSidebarCollapseButton
+                                            collapsed={
+                                              isProjectNavigatorCollapsed
+                                            }
+                                            label="Project navigator"
+                                            onCollapsedChange={
+                                              setIsProjectNavigatorCollapsed
+                                            }
+                                          />
+                                        </div>
+                                      }
+                                      footer={<UserControls compact />}
+                                      canvases={loroSync.canvases}
+                                      timelines={loroSync.timelines}
+                                      directorStages={loroSync.directorStages}
+                                      assets={allProjectAssets}
+                                      textAssets={projectTextAssets}
+                                      globalAssets={activeGlobalProjectAssets}
+                                      browsers={browserTabs}
+                                      surface={workspaceSurface}
+                                      onSelectCanvas={selectCanvasFromNavigator}
+                                      onSelectTimeline={(timelineId) => {
+                                        stopFollowingAgent();
+                                        void preloadTimelineEditor();
+                                        setWorkspaceSurface({
+                                          kind: "timeline",
+                                          timelineId,
+                                        });
+                                      }}
+                                      onSelectDirectorStage={(stageId) => {
+                                        stopFollowingAgent();
+                                        setWorkspaceSurface({
+                                          kind: "director-stage",
+                                          stageId,
+                                        });
+                                      }}
+                                      onSelectAsset={(assetId) => {
+                                        stopFollowingAgent();
+                                        setWorkspaceSurface({
+                                          kind: "asset",
+                                          assetId,
+                                        });
+                                      }}
+                                      onSelectTextAsset={openProjectTextAsset}
+                                      onSelectBrowser={
+                                        selectBrowserFromNavigator
+                                      }
+                                      onCreateCanvas={createCanvasFromNavigator}
+                                      onRenameCanvas={renameCanvasFromNavigator}
+                                      onDeleteCanvas={deleteCanvasFromNavigator}
+                                      onCreateTimeline={
+                                        createTimelineFromNavigator
+                                      }
+                                      onAttachTimeline={
+                                        attachTimelineFromNavigator
+                                      }
+                                      onDeleteTimeline={
+                                        deleteTimelineFromNavigator
+                                      }
+                                      onCreateDirectorStage={
+                                        createDirectorStageFromNavigator
+                                      }
+                                      onAttachDirectorStage={
+                                        attachDirectorStageFromNavigator
+                                      }
+                                      onAddAsset={openProjectAssetPicker}
+                                      onCreateBrowser={
+                                        globalThis.__CLASH_DESKTOP__?.isDesktop
+                                          ? createBrowserFromNavigator
+                                          : undefined
+                                      }
+                                      onCloseBrowser={closeBrowserFromNavigator}
+                                      onAddGlobalAsset={async (assetId) => {
+                                        await addGlobalAssetToProject(assetId);
+                                      }}
+                                      onAddAssetToLibrary={(assetId) => {
+                                        void addProjectAssetToLibrary(assetId);
+                                      }}
+                                      onTrashAsset={
+                                        trashProjectAssetFromNavigator
+                                      }
+                                      onRestoreAsset={
+                                        restoreProjectAssetFromNavigator
+                                      }
+                                      onAnnotate={(target) =>
+                                        queueAgentAnnotation({
+                                          ...target,
+                                          projectId: project.id,
+                                        })
+                                      }
+                                    />
+                                  </DesktopAutoHideSidebar>
 
                                   <AgentAnnotationContextMenu
                                     target={annotationContextTarget}
@@ -6203,8 +6370,8 @@ export default function ProjectEditor({
                                         );
                                       }}
                                     >
-                                      {workspaceSurface.kind !==
-                                      "text-asset" ? (
+                                      {workspaceSurface.kind !== "text-asset" &&
+                                      workspaceSurface.kind !== "browser" ? (
                                         <AgentSelectionAnnotationOverlay
                                           ref={selectionAnnotationOverlayRef}
                                           target={activeSurfaceAnnotationTarget}
@@ -6218,7 +6385,8 @@ export default function ProjectEditor({
                                         />
                                       ) : null}
                                       {workspaceSurface.kind !== "canvas" &&
-                                      workspaceSurface.kind !== "text-asset" ? (
+                                      workspaceSurface.kind !== "text-asset" &&
+                                      workspaceSurface.kind !== "browser" ? (
                                         <AgentAnnotationDomPinLayer
                                           annotations={pendingAgentAnnotations}
                                           surface={workspaceSurface.kind}
@@ -6236,6 +6404,22 @@ export default function ProjectEditor({
                                           onRemove={removeAgentAnnotation}
                                         />
                                       ) : null}
+                                      <ProjectBrowserSurfaces
+                                        projectId={project.id}
+                                        tabs={browserTabs}
+                                        activeBrowserId={
+                                          workspaceSurface.kind === "browser"
+                                            ? workspaceSurface.browserId
+                                            : null
+                                        }
+                                        annotations={pendingAgentAnnotations}
+                                        activeAnnotationId={activeAnnotationId}
+                                        onTabChange={updateBrowserFromSurface}
+                                        onCreateAnnotation={
+                                          queueAgentAnnotation
+                                        }
+                                        onSelectAnnotation={openAgentAnnotation}
+                                      />
                                       {workspaceSurface.kind ===
                                       "text-asset" ? (
                                         selectedTextNode ? (
@@ -6565,10 +6749,10 @@ export default function ProjectEditor({
                                               initial={false}
                                               animate={{
                                                 width: minimapCollapsed
-                                                  ? 36
+                                                  ? 32
                                                   : minimapSize.width,
                                                 height: minimapCollapsed
-                                                  ? 36
+                                                  ? 32
                                                   : minimapSize.height,
                                               }}
                                               transition={
@@ -6624,7 +6808,7 @@ export default function ProjectEditor({
                                                       onClick={expandMinimap}
                                                       size="sm"
                                                       shape="rounded"
-                                                      className="clash-canvas-minimap-control h-9 min-h-9 w-9 min-w-9 rounded-lg"
+                                                      className="clash-canvas-minimap-control clash-workspace-icon-control"
                                                     />
                                                   </motion.div>
                                                 ) : (
@@ -6713,7 +6897,7 @@ export default function ProjectEditor({
                                                       onPointerCancel={
                                                         finishMinimapResize
                                                       }
-                                                      className="clash-canvas-minimap-resize-handle absolute right-0 top-0 z-10 h-7 w-7 cursor-nesw-resize touch-none rounded-tr-[10px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                                                      className="clash-canvas-minimap-resize-handle absolute right-0 top-0 z-10 h-7 w-7 cursor-nesw-resize touch-none rounded-tr-[10px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                                     >
                                                       <span className="clash-canvas-minimap-resize-grip" />
                                                     </button>
@@ -6784,7 +6968,7 @@ export default function ProjectEditor({
                                                 }}
                                                 size="sm"
                                                 shape="rounded"
-                                                className="clash-canvas-minimap-control absolute left-[var(--clash-project-control-rail-left)] z-10 h-9 min-h-9 w-9 min-w-9 rounded-lg transition-[bottom] duration-200 ease-out"
+                                                className="clash-canvas-minimap-control clash-workspace-icon-control absolute left-[var(--clash-project-control-rail-left)] z-10 transition-[bottom] duration-200 ease-out"
                                               />
                                             </Tooltip>
                                           ) : null}
@@ -6946,7 +7130,7 @@ export default function ProjectEditor({
                                             aria-label="Canvas tools"
                                             orientation="vertical"
                                             loop
-                                            className="clash-canvas-toolbar-surface pointer-events-auto flex w-12 flex-col items-center gap-0 rounded-lg py-[var(--clash-project-action-phase)] transition-colors [--clash-toolbar-section-gap:var(--clash-project-action-phase)]"
+                                            className="clash-canvas-toolbar-surface pointer-events-auto flex flex-col items-center gap-0 py-[var(--clash-project-action-phase)] transition-colors [--clash-toolbar-section-gap:var(--clash-project-action-phase)]"
                                           >
                                             <Toolbar.ToggleGroup
                                               type="single"
@@ -6982,7 +7166,7 @@ export default function ProjectEditor({
                                                     }
                                                     size="sm"
                                                     shape="rounded"
-                                                    className="rounded-md bg-transparent text-content-muted hover:bg-warm-hover hover:text-content-primary data-[state=on]:bg-brand/10 data-[state=on]:text-brand"
+                                                    className="clash-workspace-icon-control clash-toolbar-button text-content-muted hover:text-content-primary"
                                                   />
                                                 </Toolbar.ToggleItem>
                                               </Tooltip>
@@ -7004,7 +7188,7 @@ export default function ProjectEditor({
                                                     }
                                                     size="sm"
                                                     shape="rounded"
-                                                    className="rounded-md bg-transparent text-content-muted hover:bg-warm-hover hover:text-content-primary data-[state=on]:bg-brand/10 data-[state=on]:text-brand"
+                                                    className="clash-workspace-icon-control clash-toolbar-button text-content-muted hover:text-content-primary"
                                                   />
                                                 </Toolbar.ToggleItem>
                                               </Tooltip>
@@ -7013,7 +7197,7 @@ export default function ProjectEditor({
                                             <div className="flex h-[var(--clash-toolbar-section-gap)] w-full shrink-0 items-center justify-center">
                                               <Toolbar.Separator
                                                 orientation="horizontal"
-                                                className="h-px w-8 bg-stone-200/80"
+                                                className="h-px w-8 bg-warm-border/70"
                                               />
                                             </div>
 
@@ -7056,7 +7240,7 @@ export default function ProjectEditor({
                                                               }
                                                               size="sm"
                                                               shape="rounded"
-                                                              className={`${sectionSpacing} clash-toolbar-button rounded-md bg-transparent text-content-muted hover:text-content-primary data-[state=open]:bg-brand/10 data-[state=open]:text-brand`}
+                                                              className={`${sectionSpacing} clash-workspace-icon-control clash-toolbar-button text-content-muted hover:text-content-primary`}
                                                             />
                                                           </Toolbar.Button>
                                                         </DropdownMenuTrigger>
@@ -7122,7 +7306,7 @@ export default function ProjectEditor({
                                                             item.id,
                                                           )
                                                         }
-                                                        className={`${sectionSpacing} clash-toolbar-button rounded-md bg-transparent text-content-muted hover:text-content-primary`}
+                                                        className={`${sectionSpacing} clash-workspace-icon-control clash-toolbar-button text-content-muted hover:text-content-primary`}
                                                       />
                                                     </Toolbar.Button>
                                                   </Tooltip>
@@ -7133,7 +7317,7 @@ export default function ProjectEditor({
                                             <div className="flex h-[var(--clash-toolbar-section-gap)] w-full shrink-0 items-center justify-center">
                                               <Toolbar.Separator
                                                 orientation="horizontal"
-                                                className="h-px w-8 bg-stone-200/80"
+                                                className="h-px w-8 bg-warm-border/70"
                                               />
                                             </div>
 
@@ -7154,7 +7338,7 @@ export default function ProjectEditor({
                                                     onClick={onLayout}
                                                     size="sm"
                                                     shape="rounded"
-                                                    className="clash-toolbar-button rounded-md bg-transparent text-content-muted hover:text-content-primary"
+                                                    className="clash-workspace-icon-control clash-toolbar-button text-content-muted hover:text-content-primary"
                                                   />
                                                 </Toolbar.Button>
                                               </Tooltip>
@@ -7179,7 +7363,7 @@ export default function ProjectEditor({
                                                     }
                                                     size="sm"
                                                     shape="rounded"
-                                                    className="clash-toolbar-button rounded-md bg-transparent text-content-muted hover:text-content-primary"
+                                                    className="clash-workspace-icon-control clash-toolbar-button text-content-muted hover:text-content-primary"
                                                   />
                                                 </Toolbar.Button>
                                               </Tooltip>
@@ -7204,8 +7388,8 @@ export default function ProjectEditor({
                                                     shape="rounded"
                                                     className={`rounded-md ${
                                                       loroSync.canUndo
-                                                        ? "clash-toolbar-button text-content-muted hover:text-content-primary"
-                                                        : "cursor-not-allowed text-content-disabled"
+                                                        ? "clash-workspace-icon-control clash-toolbar-button text-content-muted hover:text-content-primary"
+                                                        : "clash-workspace-icon-control cursor-not-allowed text-content-disabled"
                                                     }`}
                                                   />
                                                 </Toolbar.Button>
@@ -7231,8 +7415,8 @@ export default function ProjectEditor({
                                                     shape="rounded"
                                                     className={`rounded-md ${
                                                       loroSync.canRedo
-                                                        ? "clash-toolbar-button text-content-muted hover:text-content-primary"
-                                                        : "cursor-not-allowed text-content-disabled"
+                                                        ? "clash-workspace-icon-control clash-toolbar-button text-content-muted hover:text-content-primary"
+                                                        : "clash-workspace-icon-control cursor-not-allowed text-content-disabled"
                                                     }`}
                                                   />
                                                 </Toolbar.Button>
@@ -7302,9 +7486,21 @@ export default function ProjectEditor({
                                         }
                                         initialPrompt={chatInitialPrompt}
                                         sessionHistory={sessionHistory}
+                                        archivedSessionHistory={
+                                          archivedSessionHistory
+                                        }
+                                        archiveStatus={archiveStatus}
+                                        archiveError={archiveError}
                                         onNewSession={handleNewSession}
                                         onSwitchSession={handleSwitchSession}
-                                        onDeleteSession={handleDeleteSession}
+                                        onLoadArchivedSessions={
+                                          loadArchivedSessions
+                                        }
+                                        onArchiveSession={handleArchiveSession}
+                                        onRestoreSession={restoreSession}
+                                        onDeleteSession={
+                                          handleDeleteSessionPermanently
+                                        }
                                         onUpsertSession={upsertSession}
                                         onCreateSession={
                                           handleCopilotCreateSession

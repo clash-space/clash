@@ -7,15 +7,23 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation } from "react-router";
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragStartEvent,
+} from "@dnd-kit/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { deleteProject } from "@clash/web-ui/lib/clientActions";
+import { archiveProject } from "@clash/web-ui/lib/clientActions";
 
 import { ConfirmDialogProvider } from "./ConfirmDialog";
 import ProjectCard from "./ProjectCard";
+import type { ProjectReference } from "./dashboardComposerReferences";
 
 vi.mock("@clash/web-ui/lib/clientActions", () => ({
-  deleteProject: vi.fn(),
+  archiveProject: vi.fn(),
 }));
 
 vi.mock("framer-motion", async () => {
@@ -45,41 +53,181 @@ vi.mock("framer-motion", async () => {
   };
 });
 
+function DragHarness({
+  children,
+  onDragStart,
+}: {
+  children: ReactNode;
+  onDragStart?: (event: DragStartEvent) => void;
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
+  return (
+    <DndContext sensors={sensors} onDragStart={onDragStart}>
+      {children}
+    </DndContext>
+  );
+}
+
+function LocationProbe() {
+  const location = useLocation();
+  return <output aria-label="Current location">{location.pathname}</output>;
+}
+
 describe("ProjectCard", () => {
   afterEach(() => {
     cleanup();
-    vi.mocked(deleteProject).mockClear();
+    vi.mocked(archiveProject).mockClear();
     globalThis.__CLASH_RUNTIME_CONFIG__ = undefined;
   });
 
-  function renderCard(projectOverrides: Record<string, unknown> = {}) {
+  function renderCard(
+    projectOverrides: Record<string, unknown> = {},
+    referenceProps: {
+      composerProjectReferenceId?: string | null;
+      onAddProjectReference?: (project: ProjectReference) => void;
+    } = {},
+    onDragStart?: (event: DragStartEvent) => void,
+  ) {
     return render(
       <MemoryRouter>
         <ConfirmDialogProvider>
-          <ProjectCard
-            project={{
-              id: "project-1",
-              name: "Storyboard draft",
-              createdAt: "2026-06-03T00:00:00.000Z",
-              updatedAt: "2026-06-03T00:00:00.000Z",
-              assets: [],
-              ...projectOverrides,
-            }}
-          />
+          <DragHarness onDragStart={onDragStart}>
+            <ProjectCard
+              project={{
+                id: "project-1",
+                name: "Storyboard draft",
+                createdAt: "2026-06-03T00:00:00.000Z",
+                updatedAt: "2026-06-03T00:00:00.000Z",
+                assets: [],
+                ...projectOverrides,
+              }}
+              {...referenceProps}
+            />
+          </DragHarness>
+          <LocationProbe />
         </ConfirmDialogProvider>
       </MemoryRouter>,
     );
   }
 
-  it("keeps destructive controls outside the project link", () => {
+  it("keeps archive controls outside the project link", () => {
     renderCard();
 
     const link = screen.getByRole("link", { name: /storyboard draft/i });
-    const deleteButton = screen.getByRole("button", {
-      name: /delete project storyboard draft/i,
+    const archiveButton = screen.getByRole("button", {
+      name: /archive project storyboard draft/i,
     });
 
-    expect(link.contains(deleteButton)).toBe(false);
+    expect(link.contains(archiveButton)).toBe(false);
+  });
+
+  it("keeps preview actions as unframed icon controls", () => {
+    renderCard({}, { onAddProjectReference: vi.fn() });
+
+    const addButton = screen.getByRole("button", {
+      name: "Add project Storyboard draft to composer",
+    });
+    const archiveButton = screen.getByRole("button", {
+      name: "Archive project Storyboard draft",
+    });
+
+    expect(addButton).not.toHaveClass(
+      "bg-warm-surface/90",
+      "shadow-sm",
+      "backdrop-blur-sm",
+    );
+    expect(archiveButton).not.toHaveClass(
+      "clash-project-card-delete",
+      "backdrop-blur-sm",
+    );
+  });
+
+  it("adds only the stable project reference and keeps its control outside the link", () => {
+    const onAddProjectReference = vi.fn();
+    renderCard({ assets: [{ id: "asset-1" }] }, { onAddProjectReference });
+
+    const link = screen.getByRole("link", { name: /storyboard draft/i });
+    const addButton = screen.getByRole("button", {
+      name: "Add project Storyboard draft to composer",
+    });
+
+    fireEvent.click(addButton);
+    expect(onAddProjectReference).toHaveBeenCalledWith({
+      id: "project-1",
+      name: "Storyboard draft",
+    });
+    expect(link.contains(addButton)).toBe(false);
+    expect(
+      screen.queryByRole("button", {
+        name: "Drag project Storyboard draft to composer",
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps normal project navigation and delete outside pointer dragging", () => {
+    const onDragStart = vi.fn();
+    renderCard({}, { onAddProjectReference: vi.fn() }, onDragStart);
+
+    fireEvent.click(screen.getByRole("link", { name: /storyboard draft/i }));
+    expect(screen.getByLabelText("Current location").textContent).toBe(
+      "/projects/project-1",
+    );
+    expect(onDragStart).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /archive project storyboard draft/i,
+      }),
+    );
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    expect(onDragStart).not.toHaveBeenCalled();
+  });
+
+  it("locks other project reference controls without disabling navigation or archive", () => {
+    const onDragStart = vi.fn();
+    renderCard(
+      {},
+      {
+        composerProjectReferenceId: "project-2",
+        onAddProjectReference: vi.fn(),
+      },
+      onDragStart,
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: "Add project Storyboard draft to composer",
+      }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("link", { name: /storyboard draft/i }),
+    ).not.toHaveAttribute("aria-disabled", "true");
+    expect(
+      screen.getByRole("button", {
+        name: /archive project storyboard draft/i,
+      }),
+    ).not.toBeDisabled();
+
+    const preview = screen
+      .getByRole("link", { name: /storyboard draft/i })
+      .querySelector<HTMLElement>(".clash-project-card-frame");
+    if (!preview) throw new Error("Missing project preview");
+    fireEvent.pointerDown(preview, {
+      button: 0,
+      pointerId: 2,
+      clientX: 10,
+      clientY: 10,
+      isPrimary: true,
+    });
+    fireEvent.pointerMove(document, {
+      pointerId: 2,
+      clientX: 30,
+      clientY: 10,
+      isPrimary: true,
+    });
+    expect(onDragStart).not.toHaveBeenCalled();
   });
 
   it("renders only the explicitly selected Project Asset cover", () => {
@@ -139,8 +287,25 @@ describe("ProjectCard", () => {
       container.querySelector(".clash-project-card-preview-img"),
     ).toBeNull();
     expect(
+      container.querySelector('[data-slot="project-empty-copy"]'),
+    ).toHaveTextContent("Nothing to see. Yet.");
+  });
+
+  it("uses a quiet text-only empty state when no cover exists", () => {
+    const { container } = renderCard();
+
+    expect(
+      container.querySelector('[data-slot="project-empty-artwork"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-slot="project-empty-copy"]'),
+    ).toHaveTextContent("Nothing to see. Yet.");
+    expect(
+      container.querySelector('[data-slot="project-placeholder-avatar"]'),
+    ).toBeNull();
+    expect(
       container.querySelector(".clash-project-card-empty-mark"),
-    ).not.toBeNull();
+    ).toBeNull();
   });
 
   it("does not rewrite a Host-projected preview against the runtime API origin", () => {
@@ -201,30 +366,71 @@ describe("ProjectCard", () => {
       container.querySelector(".clash-project-card-preview-grid"),
     ).toBeNull();
     expect(
-      container.querySelector(".clash-project-card-empty-mark"),
-    ).not.toBeNull();
+      container.querySelector('[data-slot="project-empty-copy"]'),
+    ).toHaveTextContent("Nothing to see. Yet.");
   });
 
-  it("uses the app confirm dialog for destructive deletion", async () => {
+  it("archives projects through a recoverable confirmation", async () => {
     renderCard();
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: /delete project storyboard draft/i,
+        name: /archive project storyboard draft/i,
       }),
     );
 
     const dialog = screen.getByRole("alertdialog");
     expect(dialog.getAttribute("data-state")).toBe("open");
-    expect(dialog.textContent).toContain("Delete project?");
+    expect(dialog.textContent).toContain("Archive project?");
     expect(dialog.textContent).toContain(
-      "Storyboard draft will be removed from this workspace.",
+      "Storyboard draft will be hidden from the project browser.",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
 
     await waitFor(() => {
-      expect(deleteProject).toHaveBeenCalledWith("project-1");
+      expect(archiveProject).toHaveBeenCalledWith("project-1");
+    });
+  });
+
+  it("drags the stable project reference from the whole preview after the pointer threshold", () => {
+    const onDragStart = vi.fn();
+    const { container } = renderCard(
+      {},
+      { onAddProjectReference: vi.fn() },
+      onDragStart,
+    );
+    const preview = container.querySelector<HTMLElement>(
+      ".clash-project-card-frame",
+    );
+    if (!preview) throw new Error("Missing project preview");
+    expect(preview).toHaveAttribute("data-ui", "card");
+
+    fireEvent.pointerDown(preview, {
+      button: 0,
+      pointerId: 1,
+      clientX: 10,
+      clientY: 10,
+      isPrimary: true,
+    });
+    fireEvent.pointerMove(document, {
+      pointerId: 1,
+      clientX: 16,
+      clientY: 10,
+      isPrimary: true,
+    });
+    expect(onDragStart).not.toHaveBeenCalled();
+    fireEvent.pointerMove(document, {
+      pointerId: 1,
+      clientX: 19,
+      clientY: 10,
+      isPrimary: true,
+    });
+
+    expect(onDragStart).toHaveBeenCalledOnce();
+    expect(onDragStart.mock.calls[0]?.[0].active.data.current).toEqual({
+      type: "dashboard-project-reference",
+      reference: { id: "project-1", name: "Storyboard draft" },
     });
   });
 });

@@ -3,30 +3,197 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @source "../../../packages/web-ui/src";
+@source "../../../packages/gui/src";
 @source "../../../packages/remotion-ui/src";
 @source "../../../packages/remotion-components/src";
 @source "../../../packages/remotion-core/src";
+@source "../../../../openma-common/src/session-ui";
 
 :root {
   color-scheme: light;
-  --background: #fbfaf7;
-  --foreground: #171717;
-  --clash-warm-page: #fbfaf7;
-  --clash-warm-surface: #fffefd;
-  --clash-warm-muted: #f4f1eb;
-  --clash-warm-hover: #e9e6df;
-  --clash-warm-border: #e1ddd5;
+  --background: #ffffff;
+  --foreground: #242424;
+  --clash-warm-page: #ffffff;
+  --clash-warm-surface: #ffffff;
+  --clash-warm-muted: #f7f7f7;
+  --clash-warm-hover: #ededed;
+  --clash-warm-border: #e2e2e2;
   /* Core semantic hierarchy shared by editor chrome and transient UI. */
   --clash-content-primary: var(--foreground);
-  --clash-content-secondary: #57534e;
-  --clash-content-muted: #78716c;
-  --clash-content-disabled: #a8a29e;
-  --clash-overlay-surface: rgba(255, 254, 253, 0.98);
-  --clash-overlay-border: rgba(225, 221, 213, 0.9);
-  --clash-overlay-shadow:
-    0 18px 48px rgba(35, 31, 25, 0.1), 0 6px 18px rgba(35, 31, 25, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.82);
-  --clash-accent: #ff6b50;
+  --clash-content-secondary: #5f5e5b;
+  --clash-content-muted: #898885;
+  --clash-content-disabled: #b3b2af;
+  --clash-overlay-surface: rgba(255, 255, 255, 0.98);
+  --clash-overlay-border: rgba(226, 226, 226, 0.96);
+  --clash-shadow-raised:
+    0 1px 2px rgba(0, 0, 0, 0.035), 0 4px 12px rgba(0, 0, 0, 0.035);
+  --clash-shadow-floating:
+    0 2px 8px rgba(0, 0, 0, 0.045), 0 12px 32px rgba(0, 0, 0, 0.055);
+  --clash-overlay-shadow: var(--clash-shadow-floating);
+  --clash-brand: #ff6b50;
+  /* Semantic palette: coral = error/danger/attention/signature only. */
+  --clash-coral: #ff6b50;
+  /* Semantic palette: blue = info/in-progress/action hints only. */
+  --clash-blue: #6f95e8;
+  --clash-blue-soft: #eef4ff;
+  /* General semantic tone ramps. Product pages remain neutral; these four-step
+     ramps are reserved for local meaning in icons, tags and statuses. */
+  --tone-coral-ink: oklch(48% 0.1 32);
+  --tone-coral-soft: oklch(97% 0.012 32);
+  --tone-coral-surface: oklch(93% 0.025 32);
+  --tone-coral-border: oklch(84% 0.035 32);
+  --tone-blue-ink: oklch(47% 0.08 255);
+  --tone-blue-soft: oklch(97% 0.01 255);
+  --tone-blue-surface: oklch(93% 0.022 255);
+  --tone-blue-border: oklch(84% 0.035 255);
+  --tone-sage-ink: oklch(45% 0.06 145);
+  --tone-sage-soft: oklch(97% 0.009 145);
+  --tone-sage-surface: oklch(93% 0.018 145);
+  --tone-sage-border: oklch(84% 0.028 145);
+  --tone-lilac-ink: oklch(47% 0.07 300);
+  --tone-lilac-soft: oklch(97% 0.009 300);
+  --tone-lilac-surface: oklch(93% 0.02 300);
+  --tone-lilac-border: oklch(84% 0.03 300);
+  --tone-amber-ink: oklch(46% 0.07 75);
+  --tone-amber-soft: oklch(97% 0.012 75);
+  --tone-amber-surface: oklch(93% 0.025 75);
+  --tone-amber-border: oklch(84% 0.035 75);
+  --tone-teal-ink: oklch(44% 0.06 190);
+  --tone-teal-soft: oklch(97% 0.008 190);
+  --tone-teal-surface: oklch(93% 0.018 190);
+  --tone-teal-border: oklch(84% 0.028 190);
+
+  /* Semantic tokens. Product chrome stays grayscale; coral and clash-blue are
+     reserved for status, focus and information instead of tinting every control. */
+  --card: #ffffff;
+  --card-foreground: var(--foreground);
+  --popover: #ffffff;
+  --popover-foreground: var(--foreground);
+  --primary: #242424;
+  --primary-foreground: #ffffff;
+  --secondary: #f5f5f5;
+  --secondary-foreground: #242424;
+  --muted: #f5f5f5;
+  --muted-foreground: #737373;
+  --accent: #ededed;
+  --accent-foreground: #242424;
+  --destructive: var(--clash-coral);
+  --destructive-foreground: #35120c;
+  --info: var(--clash-blue);
+  --info-soft: var(--clash-blue-soft);
+  --border: #e2e2e2;
+  --input: #d8d8d8;
+  --ring: var(--clash-blue);
+
+  /* Component tokens. Contexts below remap these without changing component
+     behavior or forking the Radix/cmdk implementation. */
+  --control-height-sm: 1.75rem;
+  --control-height-default: 2.25rem;
+  --control-height-lg: 2.5rem;
+  --control-radius: 0.625rem;
+  --control-bg: transparent;
+  --control-bg-hover: var(--accent);
+  --control-bg-open: var(--info-soft);
+  --control-border: var(--input);
+  --control-focus: var(--ring);
+  --input-placeholder: var(--muted-foreground);
+  --surface-card-bg: var(--card);
+  --surface-card-fg: var(--card-foreground);
+  --surface-card-border: var(--border);
+  --surface-card-hover-bg: var(--clash-warm-muted);
+  --surface-card-hover-border: color-mix(
+    in srgb,
+    var(--clash-content-primary) 28%,
+    var(--border)
+  );
+  --surface-card-radius: 0.75rem;
+  /* Feedback surfaces share one semantic contract from inline validation to
+     transient toasts. Large branded empty/error artwork is composed above
+     these primitives rather than changing their density or color behavior. */
+  --feedback-error-ink: var(--tone-coral-ink);
+  --feedback-error-surface: var(--tone-coral-soft);
+  --feedback-error-border: var(--tone-coral-border);
+  --feedback-warning-ink: var(--tone-amber-ink);
+  --feedback-warning-surface: var(--tone-amber-soft);
+  --feedback-warning-border: var(--tone-amber-border);
+  --feedback-info-ink: var(--tone-blue-ink);
+  --feedback-info-surface: var(--tone-blue-soft);
+  --feedback-info-border: var(--tone-blue-border);
+  --feedback-success-ink: var(--tone-sage-ink);
+  --feedback-success-surface: var(--tone-sage-soft);
+  --feedback-success-border: var(--tone-sage-border);
+  --feedback-inline-radius: 0.625rem;
+  --feedback-panel-radius: 0.75rem;
+  --feedback-toast-radius: 0.75rem;
+  --feedback-toast-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --space-overlay-edge: 1rem;
+  --z-toast: 1000;
+  --artwork-slot-sm: 1.75rem;
+  --artwork-slot-md: 2.5rem;
+  --artwork-slot-lg: 3rem;
+  --artwork-slot-xl: 3.5rem;
+  --motion-feedback-duration: 150ms;
+  --motion-feedback-ease: cubic-bezier(0.2, 0, 0, 1);
+  --select-surface: var(--popover);
+  --select-foreground: var(--popover-foreground);
+  --select-border: var(--border);
+  --select-shadow: var(--clash-shadow-floating);
+  --select-item-height: 2rem;
+  --select-item-gap: 0.25rem;
+  --select-item-focus: var(--accent);
+  --select-item-selected: var(--info-soft);
+  --select-item-selected-foreground: var(--foreground);
+  --select-icon-selected: var(--info);
+  --select-separator: var(--border);
+  /* Clash Settings borrows Linear's restraint, not its exact geometry: controls
+     stay touchable while rows, gaps and radii form one compact rhythm. */
+  --settings-type-size: 0.8125rem;
+  --settings-type-line: 1.125rem;
+  --settings-control-height: 1.875rem;
+  --settings-row-height: 2.25rem;
+  --settings-row-gap: 0.375rem;
+  --settings-row-radius: 0.625rem;
+  --settings-section-gap: 1.25rem;
+  --clash-agent-avatar-ink: var(--foreground);
+  --clash-agent-avatar-accent: var(--clash-coral);
+  --clash-agent-avatar-danger: #8e2f20;
+  --clash-desktop-chrome-height: 2.5rem;
+  --clash-app-sidebar-expanded-width: 16rem;
+  --clash-app-sidebar-header-height: var(--clash-desktop-chrome-height);
+  --clash-app-sidebar-section-gap: 0.375rem;
+  --clash-app-sidebar-search-height: 2.25rem;
+  --clash-app-sidebar-first-control-offset: calc(
+    var(--clash-app-sidebar-header-height) +
+      var(--clash-app-sidebar-section-gap)
+  );
+  /* Project chrome is the compact identity/title tier shared by Project and
+     Home's agent entry row. */
+  --clash-project-chrome-gutter: 0.5rem;
+  --clash-project-control-height: 2rem;
+  --clash-project-sidebar-header-height: var(--clash-desktop-chrome-height);
+  --clash-project-title-size: 0.8125rem;
+  --clash-project-title-weight: 600;
+  /* Authenticated content pages share one inset contract. Width varies with
+     the task, but Home, Projects, Assets and Marketplace start on the same
+     chrome-aligned row and use the same responsive gutters. */
+  --app-page-inline-inset: clamp(1.25rem, 3vw, 2.75rem);
+  --app-page-block-start: var(--clash-app-sidebar-first-control-offset);
+  --app-page-block-end: 6rem;
+  --app-page-header-gap: 2.5rem;
+  --app-page-header-band-height: var(--clash-app-sidebar-header-height);
+  --app-page-sticky-header-top: 6rem;
+  --app-page-content-narrow: 64rem;
+  --app-page-content-standard: 76rem;
+  --app-page-content-wide: 100rem;
+  --clash-home-section-card-gap: var(--clash-project-chrome-gutter);
+  --clash-home-section-stack-gap: 1.5rem;
+  /* Dashboard uses a two-tier composer: a compact editor row plus the shared
+     28px control rail. Project/session composers keep their richer stack. */
+  --clash-dashboard-composer-resting-height: 5rem;
+  /* Collapsed is fully off canvas, not an icon rail: content reclaims the space. */
+  --clash-app-sidebar-collapsed-width: 0px;
+  --clash-home-floating-inline-gap: clamp(0.75rem, 1.5vw, 1.25rem);
+  --clash-accent: var(--clash-brand);
   --clash-accent-foreground: #181713;
   --clash-brand-light: color-mix(
     in oklch,
@@ -67,6 +234,13 @@
   --clash-timeline-item-hover-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.38), 0 4px 9px rgba(74, 60, 47, 0.16);
   --clash-control-gap: 0.25rem;
+  /* Workspace chrome: Project chat and Canvas controls share one compact
+     geometry. Contexts may remap colors, but not size, radius, or spacing. */
+  --clash-workspace-control-size: 2rem;
+  --clash-workspace-control-radius: 0.5rem;
+  --clash-workspace-control-gap: 0.25rem;
+  --clash-workspace-surface-radius: 0.625rem;
+  --clash-workspace-surface-shadow: 0 1px 2px rgba(0, 0, 0, 0.045);
   --clash-document-reading-width: 65ch;
   --clash-document-page-width: 56rem;
   --clash-document-page-inline-gutter: clamp(1.5rem, 7vw, 5rem);
@@ -85,14 +259,14 @@
   --clash-floating-toolbar-shadow:
     0 4px 12px rgba(35, 31, 25, 0.055), 0 1px 3px rgba(35, 31, 25, 0.035),
     inset 0 1px 0 rgba(255, 255, 255, 0.84);
-  --canvas-bg: #fbfaf7;
-  --canvas-dot: #d6d1c8;
-  --canvas-minimap-bg: #fffefd;
-  --canvas-minimap-mask: rgba(255, 254, 253, 0.2);
-  --canvas-minimap-node: #5f574f;
-  --canvas-minimap-node-stroke: #fffefd;
-  --canvas-minimap-group: #eee9e1;
-  --canvas-minimap-group-stroke: #b8afa4;
+  --canvas-bg: #ffffff;
+  --canvas-dot: #dedede;
+  --canvas-minimap-bg: #ffffff;
+  --canvas-minimap-mask: rgba(255, 255, 255, 0.2);
+  --canvas-minimap-node: #5f5f5f;
+  --canvas-minimap-node-stroke: #ffffff;
+  --canvas-minimap-group: #eeeeee;
+  --canvas-minimap-group-stroke: #b8b8b8;
   --canvas-minimap-viewport: var(--clash-accent);
 
   /* Director Stage chrome follows the app theme; only the 3D viewport stays dark. */
@@ -169,6 +343,7 @@
   --font-inter:
     "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     sans-serif;
+  --font-product: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-space-grotesk: "Space Grotesk Variable", var(--font-inter);
   --font-jetbrains-mono: "JetBrains Mono Variable", "Courier New", monospace;
 }
@@ -176,6 +351,59 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  /* Backchat owns transcript structure while Clash owns its visual semantics.
+     These aliases keep the shared surface portable without component-level
+     color forks or undefined utilities falling back to body text. */
+  --color-fg: var(--clash-content-primary);
+  --color-fg-muted: var(--clash-content-muted);
+  --color-fg-subtle: var(--clash-content-disabled);
+  --color-bg-surface: var(--clash-warm-muted);
+  --color-danger: var(--feedback-error-ink);
+  --color-danger-subtle: var(--feedback-error-surface);
+  --color-success: var(--feedback-success-ink);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-tone-coral-ink: var(--tone-coral-ink);
+  --color-tone-coral-soft: var(--tone-coral-soft);
+  --color-tone-coral-surface: var(--tone-coral-surface);
+  --color-tone-coral-border: var(--tone-coral-border);
+  --color-tone-blue-ink: var(--tone-blue-ink);
+  --color-tone-blue-soft: var(--tone-blue-soft);
+  --color-tone-blue-surface: var(--tone-blue-surface);
+  --color-tone-blue-border: var(--tone-blue-border);
+  --color-tone-sage-ink: var(--tone-sage-ink);
+  --color-tone-sage-soft: var(--tone-sage-soft);
+  --color-tone-sage-surface: var(--tone-sage-surface);
+  --color-tone-sage-border: var(--tone-sage-border);
+  --color-tone-lilac-ink: var(--tone-lilac-ink);
+  --color-tone-lilac-soft: var(--tone-lilac-soft);
+  --color-tone-lilac-surface: var(--tone-lilac-surface);
+  --color-tone-lilac-border: var(--tone-lilac-border);
+  --color-tone-amber-ink: var(--tone-amber-ink);
+  --color-tone-amber-soft: var(--tone-amber-soft);
+  --color-tone-amber-surface: var(--tone-amber-surface);
+  --color-tone-amber-border: var(--tone-amber-border);
+  --color-tone-teal-ink: var(--tone-teal-ink);
+  --color-tone-teal-soft: var(--tone-teal-soft);
+  --color-tone-teal-surface: var(--tone-teal-surface);
+  --color-tone-teal-border: var(--tone-teal-border);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
   --color-canvas-bg: var(--canvas-bg);
   --color-canvas-dot: var(--canvas-dot);
 
@@ -218,22 +446,71 @@
 
 .dark {
   color-scheme: dark;
-  --background: #151515;
-  --foreground: #ededed;
-  --clash-warm-page: #151515;
-  --clash-warm-surface: #1c1c1c;
-  --clash-warm-muted: #262626;
-  --clash-warm-hover: #303030;
-  --clash-warm-border: #3a3a3a;
+  --background: #1e1e1e;
+  --foreground: #f5f5f5;
+  --clash-warm-page: #1e1e1e;
+  --clash-warm-surface: #2c2c2c;
+  --clash-warm-muted: #242424;
+  --clash-warm-hover: #383838;
+  --clash-warm-border: #444444;
   --clash-content-primary: var(--foreground);
-  --clash-content-secondary: #c8c8c8;
-  --clash-content-muted: #929292;
-  --clash-content-disabled: #707070;
-  --clash-overlay-surface: rgba(28, 28, 28, 0.98);
-  --clash-overlay-border: rgba(255, 255, 255, 0.14);
-  --clash-overlay-shadow:
-    0 20px 52px rgba(0, 0, 0, 0.34), 0 6px 20px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  --clash-content-secondary: #d0d0d0;
+  --clash-content-muted: #a5a5a5;
+  --clash-content-disabled: #737373;
+  --clash-overlay-surface: rgba(44, 44, 44, 0.98);
+  --clash-overlay-border: rgba(255, 255, 255, 0.16);
+  --clash-shadow-raised:
+    0 1px 2px rgba(0, 0, 0, 0.22), 0 4px 12px rgba(0, 0, 0, 0.18);
+  --clash-shadow-floating:
+    0 2px 8px rgba(0, 0, 0, 0.28), 0 12px 32px rgba(0, 0, 0, 0.28);
+  --clash-overlay-shadow: var(--clash-shadow-floating);
+  --clash-blue: #8fb0f4;
+  --clash-blue-soft: #1c2740;
+  --tone-coral-ink: oklch(78% 0.07 32);
+  --tone-coral-soft: oklch(24% 0.018 32);
+  --tone-coral-surface: oklch(28% 0.03 32);
+  --tone-coral-border: oklch(40% 0.04 32);
+  --tone-blue-ink: oklch(78% 0.06 255);
+  --tone-blue-soft: oklch(24% 0.015 255);
+  --tone-blue-surface: oklch(28% 0.025 255);
+  --tone-blue-border: oklch(40% 0.035 255);
+  --tone-sage-ink: oklch(78% 0.05 145);
+  --tone-sage-soft: oklch(24% 0.012 145);
+  --tone-sage-surface: oklch(28% 0.02 145);
+  --tone-sage-border: oklch(40% 0.03 145);
+  --tone-lilac-ink: oklch(78% 0.055 300);
+  --tone-lilac-soft: oklch(24% 0.014 300);
+  --tone-lilac-surface: oklch(28% 0.022 300);
+  --tone-lilac-border: oklch(40% 0.032 300);
+  --tone-amber-ink: oklch(80% 0.06 75);
+  --tone-amber-soft: oklch(24% 0.016 75);
+  --tone-amber-surface: oklch(28% 0.026 75);
+  --tone-amber-border: oklch(40% 0.036 75);
+  --tone-teal-ink: oklch(78% 0.05 190);
+  --tone-teal-soft: oklch(24% 0.012 190);
+  --tone-teal-surface: oklch(28% 0.02 190);
+  --tone-teal-border: oklch(40% 0.03 190);
+  --card: #242424;
+  --card-foreground: var(--foreground);
+  --popover: #2c2c2c;
+  --popover-foreground: var(--foreground);
+  --primary: #f5f5f5;
+  --primary-foreground: #1e1e1e;
+  --secondary: #2c2c2c;
+  --secondary-foreground: #f5f5f5;
+  --muted: #2c2c2c;
+  --muted-foreground: #a3a3a3;
+  --accent: #383838;
+  --accent-foreground: #fafafa;
+  --destructive: var(--clash-coral);
+  --destructive-foreground: #220b07;
+  --info: var(--clash-blue);
+  --info-soft: var(--clash-blue-soft);
+  --border: #444444;
+  --input: #4b4b4b;
+  --ring: var(--clash-blue);
+  --select-shadow: var(--clash-shadow-floating);
+  --clash-agent-avatar-danger: #ff8069;
   --clash-brand-light: color-mix(
     in oklch,
     var(--clash-accent) 18%,
@@ -280,14 +557,14 @@
   --clash-floating-toolbar-shadow:
     0 8px 22px rgba(0, 0, 0, 0.28), 0 2px 6px rgba(0, 0, 0, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  --canvas-bg: #171717;
-  --canvas-dot: #353535;
-  --canvas-minimap-bg: #1f1f1f;
-  --canvas-minimap-mask: rgba(23, 23, 23, 0.24);
-  --canvas-minimap-node: #737373;
-  --canvas-minimap-node-stroke: #1f1f1f;
-  --canvas-minimap-group: #292929;
-  --canvas-minimap-group-stroke: #707070;
+  --canvas-bg: #1e1e1e;
+  --canvas-dot: #444444;
+  --canvas-minimap-bg: #2c2c2c;
+  --canvas-minimap-mask: rgba(30, 30, 30, 0.24);
+  --canvas-minimap-node: #8a8a8a;
+  --canvas-minimap-node-stroke: #2c2c2c;
+  --canvas-minimap-group: #383838;
+  --canvas-minimap-group-stroke: #737373;
   --canvas-minimap-viewport: var(--clash-accent);
   --clash-director-viewport: #050609;
   --clash-director-panel: rgba(24, 24, 24, 0.96);
@@ -338,9 +615,221 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Stable visual adapters shared by native fields, buttons, Radix menus and
+   cmdk. Component markup declares role/size; context tokens own density. */
+.app-select-trigger,
+.app-control[data-slot="input"],
+.app-control[data-slot="textarea"] {
+  border-color: var(--control-border);
+  border-radius: var(--control-radius);
+}
+
+:where(.app-control[data-size], .app-select-trigger) {
+  min-height: var(--control-height-default);
+}
+
+.app-control[data-slot="input"],
+.app-control[data-slot="textarea"],
+.app-select-trigger {
+  background: var(--control-bg);
+}
+
+:where(.app-control, .app-select-trigger)[data-size="sm"],
+.app-select-trigger[data-variant="inline"] {
+  min-height: var(--control-height-sm);
+}
+
+.app-control[data-size="lg"] {
+  min-height: var(--control-height-lg);
+}
+
+.app-select-trigger:hover:not(:disabled) {
+  background: var(--control-bg-hover);
+}
+
+.app-select-content {
+  border: 1px solid var(--select-border);
+  background: var(--select-surface);
+  color: var(--select-foreground);
+  box-shadow: var(--select-shadow);
+}
+
+.app-select-item {
+  min-height: var(--select-item-height);
+  color: var(--select-foreground);
+}
+
+.app-select-focus:is(
+  [data-highlighted],
+  [data-selected="true"],
+  [data-state="open"],
+  :focus-visible
+) {
+  background: var(--select-item-focus);
+  color: var(--select-foreground);
+}
+
+.app-select-item:is([data-state="checked"], [data-checked="true"]) {
+  background: var(--select-item-selected);
+  color: var(--select-item-selected-foreground);
+}
+
+.app-select-selected {
+  color: var(--select-icon-selected);
+}
+
+.app-select-separator {
+  background: var(--select-separator);
+}
+
+.app-select-content[data-density="compact"] {
+  --select-item-height: 1.75rem;
+  --select-item-selected: var(--clash-warm-hover);
+  --select-item-selected-foreground: var(--clash-content-primary);
+}
+
+.app-select-content[data-density="compact"] [data-slot="command"] {
+  padding: 0.25rem;
+  border: 0;
+  box-shadow: none;
+}
+
+.app-select-content[data-density="compact"]
+  [data-slot="command-input-wrapper"] {
+  padding: 0 0 0.25rem;
+}
+
+.app-select-content[data-density="compact"] .app-command-input-surface {
+  height: 1.75rem;
+  gap: 0.375rem;
+  padding-inline: 0.5rem;
+  border-radius: 0.375rem;
+}
+
+.app-select-content[data-density="compact"] [data-slot="command-item"] {
+  gap: 0.375rem;
+  padding: 0.25rem 0.375rem;
+  border-radius: 0.375rem;
+  font-size: var(--font-size-xs);
+}
+
+.app-select-content[data-density="compact"] [cmdk-list-sizer] {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.app-select-content[data-density="compact"]
+  [data-slot="searchable-select-option-icon"] {
+  width: 1rem;
+  height: 1rem;
+}
+
+.app-select-content[data-density="compact"]
+  [data-slot="searchable-select-option-label"] {
+  line-height: 1rem;
+}
+
+.app-select-content[data-density="compact"]
+  [data-slot="searchable-select-option-description"] {
+  line-height: 0.875rem;
+}
+
+/* Context layer. Direct controls inherit through their surface root; portalled
+   controls carry the same mapping on data-context. */
+:where(
+  .clash-settings-dialog-shell,
+  .clash-settings-page-shell,
+  [data-context="settings"]
+) {
+  --control-height-sm: 1.75rem;
+  --control-height-default: var(--settings-control-height);
+  --control-height-lg: 2.125rem;
+  --control-radius: var(--settings-row-radius);
+  --select-item-height: 1.875rem;
+  --select-surface: var(--popover);
+  --select-border: var(--border);
+  --select-shadow: var(--clash-shadow-floating);
+}
+
+:where(.clash-director-stage-shell, [data-context="director"]) {
+  --control-height-sm: 1.625rem;
+  --control-height-default: 2rem;
+  --control-radius: 0.375rem;
+  --control-bg: var(--clash-director-field);
+  --control-bg-hover: var(--clash-director-panel-hover);
+  --control-border: var(--clash-director-field-border);
+  --select-surface: var(--clash-director-panel);
+  --select-foreground: var(--clash-director-panel-text);
+  --select-border: var(--clash-director-panel-divider);
+  --select-item-height: 1.75rem;
+  --select-item-focus: var(--clash-director-panel-hover);
+  --select-item-selected: var(--clash-blue-soft);
+  --select-shadow: var(--clash-floating-toolbar-shadow);
+}
+
+:where(
+  .clash-timeline-editor,
+  .clash-timeline-panel-surface,
+  [data-context="timeline"]
+) {
+  --control-height-sm: 1.625rem;
+  --control-height-default: 2rem;
+  --control-radius: var(--clash-workbench-control-radius);
+  --control-bg: var(--clash-floating-toolbar-background);
+  --control-bg-hover: var(--clash-warm-hover);
+  --control-border: var(--clash-floating-toolbar-border);
+  --select-surface: var(--clash-floating-panel-background);
+  --select-border: var(--clash-floating-panel-border);
+  --select-item-height: 1.75rem;
+  --select-item-focus: var(--clash-warm-hover);
+  --select-shadow: var(--clash-timeline-panel-shadow);
+}
+
+:where(.clash-chat-input-surface, [data-context="composer"]) {
+  --control-height-sm: var(--clash-workspace-control-size);
+  --control-height-default: 2rem;
+  --control-radius: var(--clash-workspace-control-radius);
+  --control-bg: transparent;
+  --control-bg-hover: var(--muted);
+  --composer-editor-max-height: 15rem;
+  --select-item-height: 2rem;
+  --select-shadow: var(--clash-shadow-floating);
+  --clash-chat-body-size: 0.875rem;
+  --clash-chat-body-leading: 1.5rem;
+  --clash-chat-meta-size: 0.8125rem;
+  --clash-chat-meta-leading: 1.25rem;
+}
+
+[data-chat-typography="body"] {
+  font-size: var(--clash-chat-body-size, 0.875rem);
+  line-height: var(--clash-chat-body-leading, 1.5rem);
+}
+
+[data-chat-typography="meta"] {
+  font-size: var(--clash-chat-meta-size, 0.8125rem);
+  line-height: var(--clash-chat-meta-leading, 1.25rem);
+}
+
+.clash-auto-hide-sidebar-host {
+  z-index: 0;
+  overflow: hidden;
+  --control-bg-open: var(--clash-warm-hover);
+}
+
+.clash-auto-hide-sidebar-host:has(> aside[data-state="preview"]) {
+  z-index: 40;
+  overflow: visible;
+}
+
 .desktop-drag-region {
   -webkit-app-region: drag;
   -webkit-user-select: none;
+  user-select: none;
+}
+
+body.is-resizing-sidebar {
+  cursor: col-resize;
   user-select: none;
 }
 
@@ -357,7 +846,7 @@ h3,
 h4,
 h5,
 h6 {
-  font-family: var(--font-space-grotesk), var(--font-inter), sans-serif;
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
@@ -376,6 +865,28 @@ html.clash-desktop-route,
 html.clash-desktop-route body {
   height: 100%;
   overflow: hidden;
+}
+
+html.clash-desktop-route,
+.clash-home-page {
+  --font-sans: var(--font-product);
+  --font-display: var(--font-product);
+  --clash-app-sidebar-width: var(--clash-app-sidebar-expanded-width);
+  /* Authenticated product chrome is neutral: selection and generic actions
+     use content/surface tokens, never coral or blue. */
+  --clash-accent: var(--clash-content-primary) !important;
+  --clash-accent-foreground: var(--clash-warm-surface) !important;
+  --color-brand: var(--clash-content-primary);
+  --color-brand-light: color-mix(
+    in oklch,
+    var(--clash-content-primary) 8%,
+    var(--clash-warm-surface)
+  );
+  --color-brand-foreground: var(--clash-warm-surface);
+}
+
+html.clash-desktop-route[data-clash-sidebar-collapsed="true"] {
+  --clash-app-sidebar-width: var(--clash-app-sidebar-collapsed-width);
 }
 
 * {
@@ -474,23 +985,35 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 .milkdown-chat-input .ProseMirror {
   width: 100%;
-  font-size: 14px;
-  line-height: 1.5;
+  font-family: var(--font-product);
+  font-size: var(--clash-chat-body-size, 0.875rem);
+  font-weight: 400;
+  line-height: var(--clash-chat-body-leading, 1.5rem);
+  font-kerning: normal;
   min-height: 24px;
   text-align: left;
+  /* The caret follows readable foreground in every theme. */
+  caret-color: var(--clash-content-primary);
 }
 .clash-chat-input-editor--default .milkdown-editor-wrapper {
   padding: 16px 18px 6px !important;
 }
+/* The hero host owns every inset so compact/expanded sizing is one decision. */
 .clash-chat-input-editor--hero .milkdown-editor-wrapper {
-  padding-left: 0 !important;
-  padding-right: 0 !important;
+  padding: 0 !important;
 }
 .clash-chat-input-editor .ProseMirror {
   min-height: inherit;
 }
 .milkdown-chat-input .ProseMirror p {
   margin: 0;
+}
+.milkdown-chat-input .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--clash-content-secondary);
+  pointer-events: none;
 }
 .milkdown-chat-input .ProseMirror img {
   height: 1.2em;
@@ -714,10 +1237,16 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-canvas-toolbar-surface {
-  width: 3rem;
-  min-width: 3rem;
+  width: calc(
+    var(--clash-workspace-control-size) + var(--clash-workspace-control-gap) * 2
+  );
+  min-width: calc(
+    var(--clash-workspace-control-size) + var(--clash-workspace-control-gap) * 2
+  );
   flex: none;
   overflow: visible;
+  border-radius: var(--clash-workspace-surface-radius);
+  box-shadow: var(--clash-workspace-surface-shadow);
 }
 
 .clash-canvas-toolbar-surface > *,
@@ -750,10 +1279,10 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-canvas-minimap-control,
 .clash-canvas-minimap-overlay-control {
-  border: 1px solid rgba(218, 213, 204, 0.86);
-  background: color-mix(in srgb, var(--canvas-minimap-bg) 94%, transparent);
+  border: 1px solid var(--clash-floating-toolbar-border);
+  background: var(--clash-floating-toolbar-background);
   color: rgb(87 83 78);
-  box-shadow: 0 3px 12px rgba(35, 31, 25, 0.08);
+  box-shadow: none;
 }
 
 .clash-canvas-minimap-control:hover,
@@ -800,7 +1329,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .dark .clash-canvas-minimap-overlay-control {
   border-color: var(--clash-warm-border);
   color: rgb(203 203 203);
-  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.28);
+  box-shadow: none;
 }
 
 .dark .clash-canvas-minimap-resize-handle {
@@ -981,33 +1510,14 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-settings-dialog-shell {
   position: relative;
   isolation: isolate;
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 254, 253, 0.98),
-    rgba(247, 246, 242, 0.93)
-  );
-  box-shadow:
-    0 24px 72px rgba(35, 31, 25, 0.15),
-    0 8px 24px rgba(35, 31, 25, 0.07),
-    inset 0 1px 0 rgba(255, 255, 255, 0.86);
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: var(--clash-shadow-floating);
 }
 
 .clash-settings-dialog-shell::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  z-index: 0;
-  background:
-    linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0.22),
-      transparent 34%,
-      rgba(168, 156, 141, 0.08)
-    ),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.36), transparent 46%);
+  content: none;
 }
 
 .clash-settings-dialog-shell > * {
@@ -1016,22 +1526,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-settings-dialog-sidebar {
-  background: linear-gradient(
-    180deg,
-    rgba(241, 239, 234, 0.62),
-    rgba(247, 246, 242, 0.78)
-  );
-  box-shadow:
-    inset -1px 0 0 rgba(255, 255, 255, 0.48),
-    inset 1px 0 0 rgba(255, 255, 255, 0.42);
+  background: var(--muted);
 }
 
 .clash-settings-dialog-content {
-  background: linear-gradient(
-    180deg,
-    rgba(255, 254, 253, 0.9),
-    rgba(255, 254, 253, 0.78)
-  );
+  background: var(--card);
   overflow-x: clip;
   scrollbar-gutter: stable;
 }
@@ -1039,33 +1538,23 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-settings-page-shell {
   position: relative;
   isolation: isolate;
-  background: rgba(255, 254, 253, 0.76);
+  background: var(--background);
 }
 
 .clash-settings-page-sidebar {
-  background: linear-gradient(
-    180deg,
-    rgba(241, 239, 234, 0.76),
-    rgba(247, 246, 242, 0.9)
-  );
+  background: var(--muted);
 }
 
 .clash-settings-page-content {
-  background: linear-gradient(
-    180deg,
-    rgba(255, 254, 253, 0.86),
-    rgba(255, 254, 253, 0.72)
-  );
+  background: var(--background);
   overflow-x: clip;
   scrollbar-gutter: stable;
 }
 
-.clash-settings-primary,
 .clash-billing-primary,
 .clash-chat-input-primary,
 .clash-confirm-primary,
 .clash-copilot-primary,
-.clash-marketplace-primary,
 .clash-node-primary,
 .clash-user-primary {
   background: linear-gradient(
@@ -1084,12 +1573,10 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
     transform 180ms ease;
 }
 
-.clash-settings-primary:hover,
 .clash-billing-primary:hover,
 .clash-chat-input-primary:hover,
 .clash-confirm-primary:hover,
 .clash-copilot-primary:hover,
-.clash-marketplace-primary:hover,
 .clash-node-primary:hover,
 .clash-user-primary:hover {
   filter: saturate(1.04) brightness(1.01);
@@ -1099,12 +1586,10 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
     inset 0 1px 0 rgba(255, 255, 255, 0.38);
 }
 
-.clash-settings-primary:disabled,
 .clash-billing-primary:disabled,
 .clash-chat-input-primary:disabled,
 .clash-confirm-primary:disabled,
 .clash-copilot-primary:disabled,
-.clash-marketplace-primary:disabled,
 .clash-node-primary:disabled,
 .clash-user-primary:disabled {
   cursor: not-allowed;
@@ -1114,18 +1599,12 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-settings-field,
 .clash-select-trigger.clash-settings-select-trigger {
-  min-height: 40px;
-  border: 1px solid rgba(225, 221, 213, 0.88);
-  border-radius: 12px;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 254, 253, 0.94),
-    rgba(247, 246, 242, 0.78)
-  );
-  color: #202839;
-  box-shadow:
-    0 4px 12px rgba(35, 31, 25, 0.026),
-    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  min-height: var(--control-height-default);
+  border: 1px solid var(--control-border);
+  border-radius: var(--control-radius);
+  background: var(--control-bg);
+  color: var(--foreground);
+  box-shadow: none;
   transition:
     border-color 180ms ease,
     background 180ms ease,
@@ -1140,31 +1619,25 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-settings-field::placeholder {
-  color: #8a8176;
+  color: var(--muted-foreground);
 }
 
 .clash-settings-field:hover,
 .clash-select-trigger.clash-settings-select-trigger:hover {
-  border-color: rgba(188, 177, 165, 0.95);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 254, 253, 0.98),
-    rgba(244, 241, 235, 0.88)
+  border-color: color-mix(
+    in srgb,
+    var(--control-border) 72%,
+    var(--foreground)
   );
+  background: var(--control-bg-hover);
 }
 
 .clash-settings-field:focus,
 .clash-select-trigger.clash-settings-select-trigger:focus-visible {
-  border-color: color-mix(in srgb, var(--clash-accent) 46%, transparent);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 254, 253, 0.99),
-    rgba(247, 246, 242, 0.86)
-  );
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--clash-accent) 9%, transparent),
-    0 8px 18px rgba(35, 31, 25, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  border-color: var(--control-focus);
+  background: var(--control-bg);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--control-focus) 18%, transparent);
 }
 
 .clash-settings-field:disabled,
@@ -1175,16 +1648,10 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-settings-secondary {
-  border: 1px solid rgba(225, 221, 213, 0.86);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 254, 253, 0.92),
-    rgba(247, 246, 242, 0.78)
-  );
-  color: #202839;
-  box-shadow:
-    0 6px 14px rgba(35, 31, 25, 0.035),
-    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  box-shadow: var(--clash-shadow-raised);
   transition:
     border-color 180ms ease,
     background 180ms ease,
@@ -1193,17 +1660,10 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-settings-secondary:hover {
-  border-color: color-mix(in srgb, var(--clash-accent) 28%, transparent);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 254, 253, 0.98),
-    color-mix(in srgb, var(--clash-brand-light) 58%, transparent)
-  );
-  color: #202839;
-  box-shadow:
-    0 8px 18px rgba(35, 31, 25, 0.045),
-    0 2px 8px color-mix(in srgb, var(--clash-accent) 6%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  border-color: color-mix(in srgb, var(--border) 72%, var(--foreground));
+  background: var(--accent);
+  color: var(--accent-foreground);
+  box-shadow: var(--clash-shadow-raised);
 }
 
 .clash-settings-secondary:disabled {
@@ -1212,101 +1672,20 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   filter: none;
 }
 
-.dark .clash-settings-field,
-.dark .clash-select-trigger.clash-settings-select-trigger {
-  border-color: var(--clash-warm-border);
-  background: linear-gradient(
-    180deg,
-    rgba(38, 38, 38, 0.96),
-    rgba(28, 28, 28, 0.94)
-  );
-  color: var(--foreground);
-  box-shadow:
-    0 5px 16px rgba(0, 0, 0, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+.clash-settings-primary {
+  border: 1px solid transparent;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: var(--clash-shadow-raised);
 }
 
-.dark .clash-settings-field::placeholder {
-  color: var(--clash-timeline-text-tertiary);
+.clash-settings-primary:hover {
+  background: color-mix(in srgb, var(--primary) 90%, var(--background));
 }
 
-.dark .clash-settings-field:hover,
-.dark .clash-select-trigger.clash-settings-select-trigger:hover {
-  border-color: color-mix(
-    in srgb,
-    var(--clash-warm-border) 78%,
-    var(--foreground)
-  );
-  background: linear-gradient(
-    180deg,
-    rgba(44, 44, 44, 0.98),
-    rgba(30, 30, 30, 0.96)
-  );
-}
-
-.dark .clash-settings-field:focus,
-.dark .clash-select-trigger.clash-settings-select-trigger:focus-visible {
-  border-color: color-mix(in srgb, var(--clash-accent) 54%, transparent);
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--clash-accent) 16%, transparent),
-    0 8px 18px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.09);
-}
-
-.dark .clash-settings-secondary {
-  border-color: var(--clash-warm-border);
-  background: linear-gradient(
-    180deg,
-    rgba(38, 38, 38, 0.96),
-    rgba(28, 28, 28, 0.94)
-  );
-  color: var(--foreground);
-  box-shadow:
-    0 6px 16px rgba(0, 0, 0, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-}
-
-.dark .clash-settings-secondary:hover {
-  border-color: color-mix(in srgb, var(--clash-accent) 40%, transparent);
-  background: linear-gradient(
-    180deg,
-    rgba(48, 48, 48, 0.98),
-    rgba(36, 36, 36, 0.96)
-  );
-  color: var(--foreground);
-}
-
-.clash-chat-input-stop {
-  border: 1px solid rgba(214, 209, 200, 0.9);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 254, 253, 0.96),
-    rgba(243, 240, 235, 0.9)
-  );
-  color: #6d6258;
-  box-shadow:
-    0 1px 2px rgba(35, 31, 25, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.78);
-  transition:
-    background-color 160ms ease,
-    border-color 160ms ease,
-    color 160ms ease,
-    transform 160ms ease;
-}
-
-.clash-chat-input-stop:hover {
-  border-color: rgba(188, 177, 165, 0.95);
-  background: linear-gradient(
-    180deg,
-    rgba(249, 247, 243, 0.98),
-    rgba(236, 232, 225, 0.94)
-  );
-  color: #29231f;
-}
-
-.clash-chat-input-stop:disabled {
+.clash-settings-primary:disabled {
   cursor: not-allowed;
-  opacity: 0.52;
+  opacity: 0.5;
 }
 
 .clash-settings-code,
@@ -1336,16 +1715,16 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   flex: none;
   align-items: center;
   justify-content: center;
-  color: #171412;
+  color: var(--clash-agent-avatar-ink);
   line-height: 0;
-  overflow: hidden;
+  overflow: visible;
   transform-origin: center;
 }
 
 .clash-agent-motion__svg {
   width: 100%;
   height: 100%;
-  overflow: hidden;
+  overflow: visible;
   display: block;
 }
 
@@ -1402,7 +1781,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-agent-motion__pen {
-  fill: #ff6b50;
+  fill: var(--clash-agent-avatar-accent);
   transform-box: fill-box;
   transform-origin: center;
   transform: rotate(26deg);
@@ -1410,7 +1789,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-agent-motion__attached-mark {
-  color: #ff6b50;
+  color: var(--clash-agent-avatar-accent);
   opacity: 0;
   stroke-dasharray: 8 112;
   stroke-dashoffset: 0;
@@ -1471,7 +1850,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-agent-motion--failed {
-  color: #8e2f20;
+  color: var(--clash-agent-avatar-danger);
 }
 
 .clash-agent-motion--failed .clash-agent-motion__avatar {
@@ -1484,7 +1863,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-agent-motion--failed .clash-agent-motion__pen {
-  fill: #ff6b50;
+  fill: var(--clash-agent-avatar-accent);
   opacity: 0.78;
   animation: clash-agent-failed-pen 1.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
 }
@@ -1512,6 +1891,45 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-copilot-launcher:hover .clash-agent-motion {
   filter: drop-shadow(0 12px 22px rgba(35, 31, 25, 0.15))
     drop-shadow(0 3px 9px rgba(255, 107, 80, 0.12));
+}
+
+.clash-collapsible-content[data-state="open"] {
+  animation: clash-collapsible-down 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: top;
+}
+
+.clash-collapsible-content[data-state="closed"] {
+  animation: clash-collapsible-up 150ms cubic-bezier(0.4, 0, 1, 1);
+  transform-origin: top;
+}
+
+@keyframes clash-collapsible-down {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+}
+
+@keyframes clash-collapsible-up {
+  from {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clash-collapsible-content[data-state="open"],
+  .clash-collapsible-content[data-state="closed"] {
+    animation: none;
+  }
 }
 
 @keyframes clash-agent-idle-body {
@@ -1628,30 +2046,30 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
     transform: translate(0, 0) rotate(0deg);
   }
   45% {
-    transform: translate(1px, -2px) rotate(0.8deg);
+    transform: translate(2px, -6px) rotate(1.6deg);
   }
 }
 
 @keyframes clash-agent-working-gaze {
   0%,
   100% {
-    transform: translateX(-3px);
+    transform: translateX(-5px);
   }
   50% {
-    transform: translateX(3px);
+    transform: translateX(5px);
   }
 }
 
 @keyframes clash-agent-working-pen {
   0%,
   100% {
-    transform: translate(-1px, 3px) rotate(18deg);
+    transform: translate(-2px, 5px) rotate(15deg);
   }
   35% {
-    transform: translate(3px, -6px) rotate(35deg);
+    transform: translate(5px, -10px) rotate(40deg);
   }
   70% {
-    transform: translate(-3px, -1px) rotate(24deg);
+    transform: translate(-5px, -2px) rotate(24deg);
   }
 }
 
@@ -1678,27 +2096,27 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
     transform: translateY(0) rotate(0deg);
   }
   44% {
-    transform: translateY(-2px) rotate(-1deg);
+    transform: translateY(-4px) rotate(-2deg);
   }
 }
 
 @keyframes clash-agent-waiting-gaze {
   0%,
   100% {
-    transform: translate(-2px, -3px);
+    transform: translate(-4px, -5px);
   }
   48% {
-    transform: translate(2px, -4px);
+    transform: translate(4px, -6px);
   }
 }
 
 @keyframes clash-agent-waiting-pen {
   0%,
   100% {
-    transform: translate(-2px, 2px) rotate(19deg);
+    transform: translate(-3px, 3px) rotate(17deg);
   }
   50% {
-    transform: translate(-1px, -2px) rotate(24deg);
+    transform: translate(0, -5px) rotate(28deg);
   }
 }
 
@@ -1708,26 +2126,26 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
     transform: translateX(0);
   }
   18% {
-    transform: translateX(-2px) rotate(-1deg);
+    transform: translateX(-4px) rotate(-2deg);
   }
   36% {
-    transform: translateX(2px) rotate(1deg);
+    transform: translateX(4px) rotate(2deg);
   }
   54% {
-    transform: translateX(-1px) rotate(-0.6deg);
+    transform: translateX(-3px) rotate(-1.2deg);
   }
   72% {
-    transform: translateX(1px) rotate(0.4deg);
+    transform: translateX(2px) rotate(0.8deg);
   }
 }
 
 @keyframes clash-agent-failed-pen {
   0%,
   100% {
-    transform: translate(2px, 5px) rotate(39deg);
+    transform: translate(3px, 8px) rotate(43deg);
   }
   50% {
-    transform: translate(1px, 3px) rotate(35deg);
+    transform: translate(1px, 4px) rotate(34deg);
   }
 }
 
@@ -1737,7 +2155,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
     transform: translateY(0) rotate(0deg);
   }
   45% {
-    transform: translateY(-2px) rotate(0.7deg);
+    transform: translate(1px, -3.5px) rotate(1.2deg);
   }
 }
 
@@ -1749,17 +2167,17 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   }
   44%,
   70% {
-    transform: translateX(3px);
+    transform: translateX(5px);
   }
 }
 
 @keyframes clash-agent-review-pen {
   0%,
   100% {
-    transform: translate(1px, -2px) rotate(29deg);
+    transform: translate(2px, -3px) rotate(28deg);
   }
   52% {
-    transform: translate(3px, -5px) rotate(34deg);
+    transform: translate(4px, -8px) rotate(37deg);
   }
 }
 
@@ -1929,31 +2347,6 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   transform: translateY(-1px);
 }
 
-.clash-settings-alert-error,
-.clash-chat-input-alert-error,
-.clash-copilot-alert-error,
-.clash-node-alert-error {
-  border: 1px solid rgba(255, 107, 80, 0.34);
-  background: rgba(255, 240, 237, 0.82);
-  color: #8e2f20;
-  box-shadow:
-    0 8px 20px rgba(35, 31, 25, 0.032),
-    inset 0 1px 0 rgba(255, 255, 255, 0.58);
-}
-
-.clash-chat-input-alert-error {
-  transition:
-    background 180ms ease,
-    border-color 180ms ease,
-    color 180ms ease;
-}
-
-.clash-chat-input-alert-error:hover {
-  border-color: rgba(255, 107, 80, 0.42);
-  background: rgba(255, 240, 237, 0.94);
-  color: #702417;
-}
-
 .clash-node-row-error {
   background: rgba(255, 240, 237, 0.58);
   color: #8e2f20;
@@ -2031,47 +2424,6 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-node-ref-remove:hover {
   border-color: rgba(255, 107, 80, 0.5);
   background: rgba(255, 224, 218, 0.98);
-  color: #702417;
-}
-
-.clash-marketplace-filter-active {
-  border: 1px solid rgba(255, 107, 80, 0.24);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 240, 237, 0.8),
-    rgba(255, 254, 253, 0.7)
-  );
-  color: #202839;
-  box-shadow:
-    0 8px 18px rgba(35, 31, 25, 0.035),
-    inset 0 1px 0 rgba(255, 255, 255, 0.78);
-}
-
-.clash-marketplace-installed {
-  border: 1px solid rgba(255, 107, 80, 0.24);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 240, 237, 0.72),
-    rgba(255, 254, 253, 0.62)
-  );
-  color: #8e2f20;
-  box-shadow:
-    0 6px 16px rgba(35, 31, 25, 0.03),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7);
-  transition:
-    border-color 180ms ease,
-    background 180ms ease,
-    color 180ms ease,
-    box-shadow 180ms ease;
-}
-
-.clash-marketplace-installed:hover {
-  border-color: rgba(255, 107, 80, 0.36);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 240, 237, 0.86),
-    rgba(255, 254, 253, 0.74)
-  );
   color: #702417;
 }
 
@@ -2341,66 +2693,33 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-project-card-frame {
   position: relative;
-  isolation: isolate;
-  border: 1px solid rgba(225, 221, 213, 0.78);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 254, 253, 0.66),
-    rgba(247, 246, 242, 0.54)
-  );
-  box-shadow:
-    0 10px 24px rgba(35, 31, 25, 0.038),
-    0 2px 8px rgba(35, 31, 25, 0.024),
-    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  border-color: var(--surface-card-border);
+  background: var(--surface-card-bg);
+  box-shadow: none;
   transition:
-    border-color 180ms ease,
-    box-shadow 180ms ease,
-    transform 180ms ease,
-    background 180ms ease;
+    border-color var(--motion-feedback-duration) var(--motion-feedback-ease),
+    box-shadow var(--motion-feedback-duration) var(--motion-feedback-ease);
 }
 
 .clash-project-create-tile {
   position: relative;
-  isolation: isolate;
-  border: 0;
-  background: transparent;
+  border: 1px solid var(--surface-card-border);
+  background: var(--clash-warm-muted);
   box-shadow: none;
-  transition: color 180ms ease;
-}
-
-.clash-project-card-empty::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
-  background-size: 20px 20px;
-  opacity: 0.34;
-}
-
-.clash-project-card-frame > *,
-.clash-project-card-empty > * {
-  position: relative;
-  z-index: 1;
+  transition:
+    border-color var(--motion-feedback-duration) var(--motion-feedback-ease),
+    background var(--motion-feedback-duration) var(--motion-feedback-ease),
+    color var(--motion-feedback-duration) var(--motion-feedback-ease);
 }
 
 .clash-project-card-frame:hover {
-  border-color: rgba(255, 107, 80, 0.36);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 254, 253, 0.78),
-    rgba(247, 246, 242, 0.62)
-  );
-  box-shadow:
-    0 14px 32px rgba(35, 31, 25, 0.052),
-    0 4px 12px rgba(35, 31, 25, 0.032),
-    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  border-color: var(--surface-card-hover-border);
+  box-shadow: none;
 }
 
 .clash-project-create-tile:hover {
-  border-color: transparent;
-  background: transparent;
+  border-color: var(--surface-card-hover-border);
+  background: var(--clash-warm-hover);
   box-shadow: none;
 }
 
@@ -2408,26 +2727,32 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 254, 253, 0.36),
-    rgba(241, 239, 234, 0.48)
-  );
+  background: var(--clash-warm-muted);
+}
+
+.clash-project-card-empty-copy {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  transform: translate(-50%, -50%);
+  color: var(--clash-content-muted);
+  font-family: var(--font-product);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  opacity: 0.72;
+  white-space: nowrap;
 }
 
 .clash-project-card-preview-grid {
   overflow: hidden;
-  background: rgba(225, 221, 213, 0.84);
+  background: var(--clash-warm-border);
 }
 
 .clash-project-card-preview-cell {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 254, 253, 0.7),
-    rgba(241, 239, 234, 0.58)
-  );
+  background: var(--clash-warm-muted);
 }
 
 .clash-project-card-preview-img {
@@ -2437,16 +2762,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-project-card-asset-fallback {
   position: absolute;
   inset: 0;
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255, 254, 253, 0.68),
-      rgba(241, 239, 234, 0.58)
-    ),
-    radial-gradient(var(--canvas-dot) 1px, transparent 1px);
-  background-size:
-    auto,
-    18px 18px;
+  background: var(--clash-warm-muted);
 }
 
 .clash-project-card-empty-mark,
@@ -2458,129 +2774,13 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   width: 28px;
   height: 28px;
   color: var(--clash-content-muted);
-  opacity: 0.52;
+  opacity: 0.58;
 }
 
 .clash-project-card-asset-fallback-mark {
   width: 22px;
   height: 22px;
   opacity: 0.46;
-}
-
-.clash-project-card-delete {
-  border: 1px solid rgba(225, 221, 213, 0.72);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 254, 253, 0.9),
-    rgba(247, 246, 242, 0.74)
-  );
-  color: #6a6258;
-  box-shadow:
-    0 8px 18px rgba(35, 31, 25, 0.052),
-    inset 0 1px 0 rgba(255, 255, 255, 0.76);
-  transition:
-    border-color 180ms ease,
-    background 180ms ease,
-    color 180ms ease,
-    box-shadow 180ms ease;
-}
-
-.clash-project-card-delete:hover {
-  border-color: rgba(255, 107, 80, 0.32);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 254, 253, 0.94),
-    rgba(255, 240, 237, 0.62)
-  );
-  color: #d64936;
-  box-shadow:
-    0 10px 22px rgba(35, 31, 25, 0.064),
-    0 2px 8px rgba(255, 107, 80, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.82);
-}
-
-.dark .clash-project-card-frame {
-  border-color: var(--clash-warm-border);
-  background: linear-gradient(
-    180deg,
-    rgba(31, 31, 31, 0.96),
-    rgba(24, 24, 24, 0.98)
-  );
-  box-shadow:
-    0 12px 28px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.045);
-}
-
-.dark .clash-project-card-frame:hover {
-  border-color: color-mix(
-    in srgb,
-    var(--clash-accent) 44%,
-    var(--clash-warm-border)
-  );
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--clash-accent) 5%, #232323),
-    #1a1a1a
-  );
-  box-shadow:
-    0 16px 34px rgba(0, 0, 0, 0.34),
-    0 0 0 1px color-mix(in srgb, var(--clash-accent) 10%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.055);
-}
-
-.dark .clash-project-card-empty {
-  background: linear-gradient(
-    180deg,
-    rgba(31, 31, 31, 0.9),
-    rgba(22, 22, 22, 0.96)
-  );
-}
-
-.dark .clash-project-card-preview-grid {
-  background: var(--clash-warm-border);
-}
-
-.dark .clash-project-card-preview-cell {
-  background: linear-gradient(180deg, #202020, #181818);
-}
-
-.dark .clash-project-card-asset-fallback {
-  background:
-    linear-gradient(180deg, rgba(31, 31, 31, 0.94), rgba(22, 22, 22, 0.98)),
-    radial-gradient(var(--canvas-dot) 1px, transparent 1px);
-}
-
-.dark .clash-project-card-empty-mark,
-.dark .clash-project-card-asset-fallback-mark {
-  color: #8a8a8a;
-  opacity: 0.68;
-}
-
-.dark .clash-project-card-delete {
-  border-color: var(--clash-warm-border);
-  background: linear-gradient(
-    180deg,
-    rgba(42, 42, 42, 0.96),
-    rgba(29, 29, 29, 0.94)
-  );
-  color: #b5b5b5;
-  box-shadow:
-    0 10px 24px rgba(0, 0, 0, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-.dark .clash-project-card-delete:hover {
-  border-color: color-mix(
-    in srgb,
-    var(--clash-accent) 38%,
-    var(--clash-warm-border)
-  );
-  background: color-mix(
-    in srgb,
-    var(--clash-accent) 10%,
-    var(--clash-warm-muted)
-  );
-  color: var(--clash-accent);
 }
 
 .clash-auth-panel {
@@ -2730,82 +2930,17 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   color: #202839;
 }
 
-.clash-auth-alert {
-  border: 1px solid rgba(225, 221, 213, 0.72);
-  box-shadow:
-    0 8px 20px rgba(35, 31, 25, 0.035),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6);
-}
-
-.clash-auth-alert-error {
-  border-color: rgba(255, 107, 80, 0.34);
-  background: rgba(255, 240, 237, 0.82);
-  color: #8e2f20;
-}
-
-.clash-auth-alert-info {
-  border-color: rgba(74, 121, 91, 0.28);
-  background: rgba(238, 246, 239, 0.78);
-  color: #345b3e;
-}
-
-.clash-route-error-spinner {
-  border-color: rgba(225, 221, 213, 0.84);
-  border-top-color: rgba(255, 107, 80, 0.96);
-  box-shadow: 0 0 0 3px rgba(255, 107, 80, 0.045);
-}
-
 .clash-route-error-surface {
-  position: relative;
-  isolation: isolate;
-  border: 1px solid rgba(225, 221, 213, 0.78);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 254, 253, 0.82),
-    rgba(247, 246, 242, 0.58)
-  );
-  box-shadow:
-    0 20px 54px rgba(35, 31, 25, 0.085),
-    0 6px 18px rgba(35, 31, 25, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.78);
-}
-
-.clash-route-error-surface::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background:
-    radial-gradient(
-      circle at 12% 0%,
-      rgba(255, 107, 80, 0.065),
-      transparent 32%
-    ),
-    linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0.22),
-      transparent 36%,
-      rgba(168, 156, 141, 0.07)
-    );
-}
-
-.clash-route-error-surface > * {
-  position: relative;
-  z-index: 1;
+  border: 1px solid var(--surface-card-border);
+  background: var(--surface-card-bg);
+  color: var(--surface-card-fg);
+  box-shadow: var(--clash-shadow-raised);
 }
 
 .clash-route-error-detail {
-  border: 1px solid rgba(225, 221, 213, 0.72);
-  background: linear-gradient(
-    180deg,
-    rgba(241, 239, 234, 0.62),
-    rgba(255, 254, 253, 0.46)
-  );
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.58),
-    0 5px 14px rgba(35, 31, 25, 0.026);
+  border: 1px solid var(--surface-card-border);
+  background: var(--clash-warm-muted);
+  box-shadow: none;
 }
 
 .clash-route-error-primary {
@@ -2887,22 +3022,34 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-toolbar-button,
 .clash-input-icon-button {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.68),
-    inset 0 -1px 0 rgba(210, 204, 194, 0.18);
+  box-shadow: none;
 }
 
 .clash-toolbar-button:hover,
 .clash-input-icon-button:hover {
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.88),
-    rgba(241, 239, 234, 0.96)
-  );
-  box-shadow:
-    0 2px 6px rgba(35, 31, 25, 0.044),
-    inset 0 1px 0 rgba(255, 255, 255, 0.92),
-    inset 0 -1px 0 rgba(210, 204, 194, 0.24);
+  background: var(--control-bg-hover);
+  box-shadow: none;
+}
+
+.clash-workspace-icon-control {
+  width: var(--clash-workspace-control-size);
+  height: var(--clash-workspace-control-size);
+  min-width: var(--clash-workspace-control-size);
+  min-height: var(--clash-workspace-control-size);
+  border-radius: var(--clash-workspace-control-radius);
+  background: transparent;
+  box-shadow: none;
+}
+
+.clash-workspace-icon-control[data-state="on"],
+.clash-workspace-icon-control[aria-pressed="true"] {
+  background: var(--control-bg-open);
+  color: var(--clash-content-primary);
+}
+
+.clash-canvas-toolbar-surface .clash-workspace-icon-control[data-state="open"] {
+  background: var(--control-bg-open);
+  color: var(--clash-content-primary);
 }
 
 .clash-toolbar-button-active,
@@ -2954,20 +3101,35 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-home-hero {
-  min-height: min(
-    43rem,
-    calc(100dvh - var(--clash-desktop-chrome-height, 0px) - 13.5rem)
-  );
-  padding-top: clamp(2rem, 5vh, 4rem);
-  padding-bottom: clamp(2rem, 5vh, 3.5rem);
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  min-height: auto;
+  padding-top: 0;
+  padding-bottom: var(--clash-app-sidebar-section-gap);
+  background: var(--clash-warm-page);
+}
+
+.clash-home-hero-sentinel {
+  width: 1px;
+  height: 1px;
+  margin-bottom: -1px;
+  pointer-events: none;
 }
 
 .clash-home-hero .clash-hero-stage {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
+  width: 100%;
+  max-width: var(--app-page-content-standard);
   min-height: auto;
   padding-top: 0;
+  gap: var(--clash-control-gap, 0.25rem);
+}
+
+.clash-home-hero .clash-hero-stage::before {
+  display: none;
 }
 
 .clash-hero-stage::before {
@@ -3016,16 +3178,421 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   font-weight: inherit;
 }
 
-.clash-home-hero-heading {
-  max-width: min(100%, 62rem);
-  font-size: clamp(3.25rem, 7.6vw, 8rem);
-  line-height: 0.9;
-  text-wrap: balance;
-  overflow-wrap: normal;
+.clash-home-page-header {
+  display: flex;
+  width: 100%;
+  max-width: var(--app-page-content-standard);
+  box-sizing: border-box;
+  min-height: var(--clash-project-sidebar-header-height, 2.5rem);
+  max-height: var(--clash-project-sidebar-header-height, 2.5rem);
+  align-items: center;
+  margin-inline: auto;
+  overflow: hidden;
+  opacity: 1;
 }
 
-.clash-home-hero-copy {
+.clash-home-page-title {
+  display: flex;
+  align-items: center;
+  gap: var(--clash-control-gap, 0.25rem);
+  font-family: var(--font-product);
+  font-size: var(--clash-project-title-size, 0.8125rem);
+  font-weight: var(--clash-project-title-weight, 600);
+  line-height: 1rem;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+.clash-home-page-title-mark {
+  flex: none;
+  color: var(--clash-agent-avatar-ink);
+}
+
+.clash-home-page-title-enter {
+  width: var(--clash-project-control-height, 2rem);
+  height: var(--clash-project-control-height, 2rem);
+  min-width: var(--clash-project-control-height, 2rem);
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+  box-shadow: none;
+}
+
+.clash-home-page-title-accent {
+  color: var(--clash-accent);
+}
+
+.clash-home-composer {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+}
+
+.clash-dashboard-has-composer {
+  padding-bottom: calc(
+    var(--clash-dashboard-composer-resting-height) + var(--control-height-sm) +
+      var(--clash-app-sidebar-section-gap) * 4
+  );
+}
+
+.clash-dashboard-composer-dock {
+  --composer-editor-max-height: 10rem;
+  position: fixed;
+  right: var(--clash-home-floating-inline-gap);
+  bottom: max(0.5rem, env(safe-area-inset-bottom));
+  left: calc(
+    var(--clash-app-sidebar-width) + var(--clash-home-floating-inline-gap)
+  );
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.clash-dashboard-composer-dock-inner {
+  display: flex;
+  width: min(100%, 56rem);
+  flex-direction: column;
+  gap: 0;
+  pointer-events: auto;
+}
+
+.clash-dashboard-composer-transition-surface {
+  display: flex;
+  flex-direction: column;
+}
+
+.clash-dashboard-composer-project-context {
+  --clash-project-context-active-fill: var(--info-soft);
+  display: flex;
+  width: min(14rem, 100%);
+  height: 1.75rem;
+  margin-left: 0.5rem;
+  align-items: center;
+  border: 1px solid var(--surface-card-border);
+  border-bottom: 0;
+  border-radius: 0.5rem 0.5rem 0 0;
+  background: var(--clash-warm-hover);
+}
+
+.clash-dashboard-composer-project-context[data-state="selected"] {
+  background: var(--clash-project-context-active-fill);
+}
+
+.clash-dashboard-composer-project-context:has(
+  .clash-dashboard-composer-project-selector-trigger:hover
+) {
+  background: var(--clash-project-context-active-fill);
+}
+
+.clash-dashboard-composer-project-context:has(
+  .clash-dashboard-composer-project-selector-trigger[data-state="open"]
+) {
+  background: var(--clash-project-context-active-fill);
+}
+
+.clash-dashboard-composer-project-selector-trigger {
+  width: 100%;
+  height: 1.75rem;
+  min-height: 1.75rem;
+  border: 0;
+  border-radius: 0.5rem 0.5rem 0 0;
+  padding: 0 0.375rem;
+  background: transparent;
+  color: var(--clash-content-primary);
+  box-shadow: none;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.clash-dashboard-composer-project-context
+  .clash-dashboard-composer-project-selector-trigger:is(
+    :hover,
+    [data-state="open"]
+  ) {
+  background: transparent;
+  color: var(--clash-content-primary);
+}
+
+.clash-dashboard-composer-project-selector-label {
+  display: flex;
   min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.clash-dashboard-composer-project-selector-label > svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex: none;
+}
+
+.clash-dashboard-composer-project-selector-label > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clash-dashboard-composer-project-picker {
+  max-height: min(22rem, calc(100vh - 2rem));
+}
+
+.clash-chat-input-reference-accessory {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--clash-control-gap, 0.25rem);
+  padding-inline: 0.25rem;
+}
+
+.clash-dashboard-composer-skill-references {
+  display: flex;
+  min-width: 0;
+  flex-wrap: nowrap;
+  gap: var(--clash-control-gap, 0.25rem);
+  overflow-x: auto;
+  padding-inline: 0;
+  scrollbar-width: none;
+}
+
+.clash-dashboard-composer-skill-references::-webkit-scrollbar {
+  display: none;
+}
+
+.clash-dashboard-composer-skill-reference {
+  display: inline-flex;
+  height: var(--control-height-sm);
+  flex: none;
+  min-width: 0;
+  align-items: center;
+  gap: 0.25rem;
+  padding-left: 0.5rem;
+  border-radius: var(--radius-full);
+  color: var(--clash-content-secondary);
+  background: var(--clash-warm-muted);
+  font-size: var(--font-size-xs);
+}
+
+.clash-dashboard-composer-skill-reference > svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex: none;
+}
+
+.clash-dashboard-composer-skill-reference > span {
+  overflow: hidden;
+  max-width: 12rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clash-dashboard-composer-skill-reference [data-slot="button"] {
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  min-width: var(--control-height-sm);
+  background: transparent;
+  box-shadow: none;
+}
+
+.clash-dashboard-composer-dock .clash-chat-input-surface {
+  display: flex;
+  min-height: var(--clash-dashboard-composer-resting-height);
+  align-items: stretch;
+  padding: 0.5rem;
+  border: 0;
+  border-radius: 0.875rem;
+  background: var(--clash-warm-surface);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--clash-content-primary) 16%, transparent),
+    0 3px 10px color-mix(in srgb, var(--clash-content-primary) 7%, transparent);
+}
+
+.clash-dashboard-composer-dock .clash-chat-input-surface:hover {
+  background: var(--clash-warm-surface);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--clash-content-primary) 16%, transparent),
+    0 3px 10px color-mix(in srgb, var(--clash-content-primary) 7%, transparent);
+}
+
+.clash-dashboard-composer-dock
+  .clash-chat-input-surface:has(.clash-chat-input-editor:focus-within) {
+  background: var(--clash-warm-surface);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--clash-content-primary) 28%, transparent),
+    0 4px 12px color-mix(in srgb, var(--clash-content-primary) 9%, transparent);
+}
+
+.clash-dashboard-composer-dock[data-is-over="true"] .clash-chat-input-surface {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--clash-blue) 45%, transparent),
+    var(--clash-shadow-floating);
+}
+
+.clash-dashboard-composer-dock .clash-chat-input-hero-layout {
+  display: flex;
+  width: 100%;
+  min-height: 100%;
+  flex-direction: column;
+  gap: var(--clash-control-gap, 0.25rem);
+}
+
+.clash-dashboard-composer-dock .clash-chat-input-editor--hero {
+  --composer-editor-max-height: 10rem;
+  --composer-text-inline-inset: 0.5rem;
+  --composer-text-block-inset: var(--clash-control-gap, 0.25rem);
+  --composer-text-line-height: 1.3125rem;
+  display: flex;
+  min-height: var(--control-height-default);
+  max-height: var(--composer-editor-max-height);
+  flex: 1 1 auto;
+  align-items: flex-start;
+  padding-block-start: var(--composer-text-block-inset);
+  padding-inline: var(--composer-text-inline-inset);
+}
+
+.clash-dashboard-composer-dock
+  .clash-chat-input-editor--hero
+  .milkdown-editor-wrapper {
+  display: flex;
+  min-height: var(--composer-text-line-height);
+  align-items: flex-start;
+}
+
+.clash-dashboard-composer-dock .clash-chat-input-editor--hero .ProseMirror {
+  min-height: var(--composer-text-line-height);
+  line-height: var(--composer-text-line-height);
+}
+
+.clash-dashboard-composer-dock .clash-chat-input-toolbar-row {
+  display: flex;
+  width: 100%;
+  margin-top: auto;
+  justify-content: space-between;
+  padding: 0;
+}
+
+.clash-dashboard-composer-dock
+  .clash-chat-input-hero-layout[data-input-state="multiline"]
+  .clash-chat-input-editor--hero,
+.clash-dashboard-composer-dock
+  .clash-chat-input-surface[data-composer-visual-state="growing"]
+  .clash-chat-input-editor--hero {
+  display: block;
+  min-height: 3rem;
+  padding-block: 0.375rem;
+}
+
+.clash-dashboard-composer-dock
+  .clash-chat-input-surface[data-composer-visual-state="growing"]
+  .clash-chat-input-editor--hero
+  .milkdown-editor-wrapper {
+  display: block;
+}
+
+html[data-dashboard-composer-transition="source"]
+  .clash-dashboard-composer-transition-surface,
+html[data-dashboard-composer-transition="target"] .clash-chat-input-surface {
+  view-transition-name: clash-dashboard-composer;
+}
+
+@view-transition {
+  navigation: auto;
+}
+
+::view-transition-group(clash-dashboard-composer) {
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(clash-dashboard-composer) {
+    animation-duration: 0s;
+  }
+}
+
+.clash-home-section-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--clash-home-section-stack-gap);
+}
+
+.clash-home-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--clash-home-section-card-gap);
+}
+
+.clash-home-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.clash-home-section-header[data-align="app-chrome"] {
+  min-height: var(--clash-project-sidebar-header-height);
+}
+
+.clash-home-section-title {
+  color: var(--clash-content-primary);
+  font-family: var(--font-product);
+  font-size: var(--clash-project-title-size);
+  font-weight: var(--clash-project-title-weight);
+  line-height: 1.25rem;
+}
+
+.clash-recent-project-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: clamp(17rem, 31%, 24rem);
+  gap: 1.25rem;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  padding-bottom: var(--clash-project-chrome-gutter);
+  scroll-snap-type: inline proximity;
+  touch-action: pan-x;
+}
+
+.clash-recent-project-rail-shell {
+  position: relative;
+  min-width: 0;
+}
+
+.clash-recent-project-rail-shell::before,
+.clash-recent-project-rail-shell::after {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  width: 2.5rem;
+  content: "";
+  pointer-events: none;
+  opacity: 0;
+}
+
+.clash-recent-project-rail-shell::before {
+  left: 0;
+  background: linear-gradient(to right, var(--clash-warm-page), transparent);
+}
+
+.clash-recent-project-rail-shell::after {
+  right: 0;
+  background: linear-gradient(to left, var(--clash-warm-page), transparent);
+}
+
+.clash-recent-project-rail-shell[data-can-scroll-left="true"]::before,
+.clash-recent-project-rail-shell[data-can-scroll-right="true"]::after {
+  opacity: 1;
+}
+
+.clash-recent-project-grid > * {
+  scroll-snap-align: start;
+}
+
+.clash-home-section-action {
+  display: flex;
+  min-width: 0;
+  align-items: center;
 }
 
 .clash-hero-subtitle {
@@ -3246,9 +3813,214 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-hero-prompt {
-  width: min(100%, 72rem);
-  max-width: 72rem;
+  width: min(100%, 64rem);
+  max-width: 64rem;
   margin-inline: auto;
+}
+
+.clash-home-hero .clash-hero-prompt {
+  width: 100%;
+  max-width: var(--app-page-content-standard);
+  margin-inline: auto;
+}
+
+.clash-home-hero .clash-chat-input-surface {
+  min-height: 6.5rem;
+  padding: 0.625rem;
+  box-sizing: border-box;
+  border-radius: 1rem;
+  border-color: var(--clash-warm-border);
+  background: var(--clash-warm-surface);
+  box-shadow: var(--clash-shadow-raised);
+}
+
+.clash-home-hero .clash-chat-input-surface:hover {
+  border-color: color-mix(
+    in srgb,
+    var(--clash-content-primary) 24%,
+    var(--clash-warm-border)
+  );
+  background: var(--clash-warm-surface);
+  box-shadow: var(--clash-shadow-raised);
+}
+
+.clash-home-hero
+  .clash-chat-input-surface:has(.clash-chat-input-editor:focus-within) {
+  border-color: var(--clash-content-muted);
+  background: var(--clash-warm-surface);
+  box-shadow: var(--clash-shadow-raised);
+}
+
+.clash-home-hero .clash-chat-input-hero-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.clash-home-hero .clash-chat-input-editor--hero {
+  min-height: 3rem;
+  max-height: var(--composer-editor-max-height);
+  flex: 1 1 auto;
+  padding: 0.375rem 0.25rem 0.25rem;
+}
+
+.clash-home-hero .clash-chat-input-placeholder--hero {
+  left: 0.25rem;
+  top: 0.375rem;
+  white-space: nowrap;
+}
+
+.clash-home-hero .clash-chat-input-actions {
+  padding: 0;
+}
+
+.clash-home-hero[data-composer-mode="compact"] {
+  min-height: 0;
+  height: 0;
+  padding: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.clash-home-hero[data-composer-mode="compact"] .clash-home-page-header {
+  min-height: 0;
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.clash-home-hero[data-composer-mode="compact"] .clash-home-composer {
+  position: fixed;
+  top: calc(
+    var(--clash-desktop-chrome-height, 2.125rem) +
+      var(--clash-home-floating-inline-gap)
+  );
+  right: var(--clash-home-floating-inline-gap);
+  left: calc(
+    var(--clash-app-sidebar-width) + var(--clash-home-floating-inline-gap)
+  );
+  z-index: 45;
+  width: auto;
+  max-width: 56rem;
+  margin-inline: auto;
+  pointer-events: auto;
+}
+
+.clash-home-composer-enter {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: flex-start;
+  border: 0;
+  border-radius: inherit;
+  padding: 0 0.875rem;
+  background: transparent;
+  color: var(--clash-content-secondary);
+  box-shadow: none;
+}
+
+.clash-home-composer-enter:hover {
+  background: transparent;
+  color: var(--clash-content-primary);
+}
+
+.clash-home-composer-enter-icon {
+  flex: none;
+}
+
+.clash-home-hero[data-composer-mode="compact"] .clash-chat-input-surface {
+  min-height: 0;
+  padding: 0.625rem;
+  border-radius: 1rem;
+  box-shadow: var(--clash-shadow-floating);
+}
+
+.clash-home-hero[data-composer-mode="compact"]
+  .clash-chat-input-surface[data-composer-visual-state="compact"] {
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--clash-warm-border);
+  border-radius: 9999px;
+  background: var(--clash-warm-surface);
+  box-shadow: var(--clash-shadow-floating);
+}
+
+.clash-home-hero[data-composer-mode="compact"]
+  .clash-chat-input-surface[data-composer-visual-state="growing"] {
+  padding: 0.625rem;
+  border-radius: 1rem;
+}
+
+.clash-home-hero[data-composer-mode="compact"] .clash-chat-input-surface > div {
+  display: flex;
+  min-height: 3rem;
+  flex-direction: row;
+  align-items: center;
+  gap: 0;
+}
+
+.clash-home-hero[data-composer-mode="compact"] .clash-chat-input-editor--hero {
+  display: flex;
+  min-height: 2.5rem;
+  max-height: var(--composer-editor-max-height);
+  align-items: center;
+  padding: 0 0.25rem 0 3.25rem;
+}
+
+.clash-home-hero[data-composer-mode="compact"]
+  .clash-chat-input-placeholder--hero {
+  left: 3.25rem;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* One line of text (or none) is centered by the flex line box, so the caret
+   sits on the optical middle of the pill without any offset padding. */
+.clash-home-hero[data-composer-mode="compact"]
+  .clash-chat-input-editor--hero[data-input-state="empty"],
+.clash-home-hero[data-composer-mode="compact"]
+  .clash-chat-input-editor--hero[data-input-state="single-line"] {
+  align-items: center;
+}
+
+/* Multiline is real block flow that scrolls: no vertical centering, just a
+   deliberate block inset so the first line clears the rounded edge. */
+.clash-home-hero[data-composer-mode="compact"]
+  .clash-chat-input-editor--hero[data-input-state="multiline"] {
+  display: block;
+  max-height: var(--composer-editor-max-height);
+  padding-block: 0.375rem;
+}
+
+.clash-home-hero[data-composer-mode="compact"]
+  .clash-chat-input-editor--hero
+  .milkdown-editor-wrapper,
+.clash-home-hero[data-composer-mode="compact"]
+  .clash-chat-input-editor--hero
+  .ProseMirror {
+  min-height: 0;
+}
+
+.clash-home-hero[data-composer-mode="compact"] .clash-chat-input-toolbar-row {
+  display: flex;
+  flex: none;
+  padding: 0 0.5rem 0 0;
+}
+
+.clash-home-hero[data-composer-mode="compact"] .clash-chat-input-toolbar-start {
+  display: none;
+}
+
+.clash-home-hero[data-composer-mode="compact"] .clash-chat-input-toolbar-end {
+  margin-right: 0;
+}
+
+.dark .clash-home-hero .clash-chat-input-surface,
+.dark .clash-home-hero .clash-chat-input-surface:hover,
+.dark
+  .clash-home-hero
+  .clash-chat-input-surface:has(.clash-chat-input-editor:focus-within) {
+  background: var(--clash-warm-surface);
 }
 
 .clash-landing-nav {
@@ -3357,12 +4129,6 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   .clash-hero-heading {
     max-width: min(100%, 21rem);
     font-size: clamp(2.85rem, 11.6vw, 3.55rem);
-    line-height: 0.94;
-  }
-
-  .clash-home-hero-heading {
-    max-width: min(100%, 21rem);
-    font-size: clamp(2.85rem, 15vw, 4rem);
     line-height: 0.94;
   }
 
@@ -4171,51 +4937,49 @@ html.dark .clash-download-card {
   overflow: hidden;
   container-type: inline-size;
   container-name: clash-chat-composer;
-  border-radius: var(--clash-workbench-surface-radius);
-  border: 1px solid rgba(225, 221, 213, 0.88);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 254, 253, 0.92),
-    rgba(247, 246, 242, 0.8)
-  );
-  box-shadow:
-    0 12px 28px rgba(35, 31, 25, 0.052),
-    0 2px 8px rgba(35, 31, 25, 0.032),
-    inset 0 1px 0 rgba(255, 255, 255, 0.84);
-  transition:
-    border-color 180ms ease,
-    box-shadow 180ms ease,
-    background 180ms ease;
+  border-radius: var(--clash-workspace-surface-radius);
+  border: 1px solid var(--clash-warm-border);
+  background: var(--clash-warm-surface);
+  box-shadow: var(--clash-workspace-surface-shadow);
 }
 
 .clash-chat-input-surface:hover {
-  border-color: rgba(210, 204, 194, 0.94);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 254, 253, 0.96),
-    rgba(247, 246, 242, 0.86)
-  );
-  box-shadow:
-    0 14px 32px rgba(35, 31, 25, 0.062),
-    0 3px 10px rgba(35, 31, 25, 0.038),
-    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+  border-color: var(--clash-content-disabled);
+  background: var(--clash-warm-surface);
+  box-shadow: var(--clash-workspace-surface-shadow);
 }
 
+/* Focus is signalled by a neutral border step plus the shared raised shadow.
+   No coloured halo: coral stays reserved for error/attention. */
 .clash-chat-input-surface:has(.clash-chat-input-editor:focus-within) {
-  border-color: rgba(255, 107, 80, 0.38);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 254, 253, 0.98),
-    rgba(247, 246, 242, 0.88)
-  );
-  box-shadow:
-    0 16px 34px rgba(35, 31, 25, 0.07),
-    0 0 0 3px rgba(255, 107, 80, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  border-color: var(--clash-content-muted);
+  background: var(--clash-warm-surface);
+  box-shadow: var(--clash-workspace-surface-shadow);
 }
 
 .clash-chat-input-actions {
   background: transparent;
+}
+
+.clash-chat-input-editor {
+  min-height: 3rem;
+  max-height: var(--composer-editor-max-height);
+  overflow-y: auto;
+}
+
+.clash-chat-input-icon-control {
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  min-width: var(--control-height-sm);
+  min-height: var(--control-height-sm);
+  border-radius: var(--clash-workspace-control-radius);
+}
+
+.clash-user-message-bubble {
+  border-radius: var(--clash-workspace-surface-radius);
+  background: var(--clash-warm-hover);
+  color: var(--clash-content-primary);
+  box-shadow: none;
 }
 
 .clash-chat-input-toolbar-row {
@@ -4255,6 +5019,23 @@ html.dark .clash-download-card {
   width: max-content;
   min-width: max-content;
   max-width: 100%;
+}
+
+.clash-session-config-trigger,
+.clash-session-permission-trigger,
+.clash-inline-session-config-trigger {
+  height: var(--clash-workspace-control-size);
+  min-height: var(--clash-workspace-control-size);
+  border-radius: var(--clash-workspace-control-radius);
+  box-shadow: none;
+}
+
+.clash-chat-input-primary,
+.clash-chat-input-primary:hover {
+  background: var(--clash-content-primary);
+  color: var(--clash-warm-surface);
+  filter: none;
+  box-shadow: none;
 }
 
 @container clash-chat-composer (max-width: 32rem) {
@@ -4344,8 +5125,7 @@ html.dark .clash-download-card {
 }
 
 .clash-auth-input:focus,
-.clash-input-surface:focus-within,
-.clash-chat-input-surface:has(.clash-chat-input-editor:focus-within) {
+.clash-input-surface:focus-within {
   border-color: color-mix(in srgb, var(--clash-accent) 46%, transparent);
 }
 
@@ -4356,8 +5136,7 @@ html.dark .clash-download-card {
 }
 
 .dark .clash-control-surface,
-.dark .clash-input-surface,
-.dark .clash-chat-input-surface {
+.dark .clash-input-surface {
   border-color: var(--clash-warm-border);
   background: linear-gradient(
     180deg,
@@ -4384,8 +5163,7 @@ html.dark .clash-download-card {
     linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 46%);
 }
 
-.dark .clash-input-surface:hover,
-.dark .clash-chat-input-surface:hover {
+.dark .clash-input-surface:hover {
   border-color: color-mix(
     in srgb,
     var(--clash-warm-border) 72%,
@@ -4398,8 +5176,7 @@ html.dark .clash-download-card {
   );
 }
 
-.dark .clash-input-surface:focus-within,
-.dark .clash-chat-input-surface:has(.clash-chat-input-editor:focus-within) {
+.dark .clash-input-surface:focus-within {
   border-color: color-mix(in srgb, var(--clash-accent) 54%, transparent);
   background: linear-gradient(
     180deg,
@@ -4412,9 +5189,25 @@ html.dark .clash-download-card {
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
+/* Dark composer keeps the same neutral, halo-free contract as light. */
+.dark .clash-chat-input-surface,
+.dark .clash-chat-input-surface:hover,
+.dark .clash-chat-input-surface:has(.clash-chat-input-editor:focus-within) {
+  background: var(--clash-warm-surface);
+  box-shadow: var(--clash-workspace-surface-shadow);
+}
+
+.dark .clash-chat-input-surface {
+  border-color: var(--clash-warm-border);
+}
+
+.dark .clash-chat-input-surface:hover,
+.dark .clash-chat-input-surface:has(.clash-chat-input-editor:focus-within) {
+  border-color: var(--clash-content-muted);
+}
+
 .dark .clash-editor-modal-surface,
-.dark .clash-confirm-dialog-surface,
-.dark .clash-settings-dialog-shell {
+.dark .clash-confirm-dialog-surface {
   border-color: rgba(255, 255, 255, 0.13);
   background: linear-gradient(
     180deg,
@@ -4428,8 +5221,7 @@ html.dark .clash-download-card {
     inset 0 1px 0 rgba(255, 255, 255, 0.055);
 }
 
-.dark .clash-editor-modal-surface::before,
-.dark .clash-settings-dialog-shell::before {
+.dark .clash-editor-modal-surface::before {
   background:
     linear-gradient(
       90deg,
@@ -4465,8 +5257,7 @@ html.dark .clash-download-card {
 
 .dark .clash-confirm-secondary,
 .dark .clash-auth-secondary,
-.dark .clash-route-error-secondary,
-.dark .clash-chat-input-stop {
+.dark .clash-route-error-secondary {
   border-color: var(--clash-warm-border);
   background: linear-gradient(
     180deg,
@@ -4479,8 +5270,7 @@ html.dark .clash-download-card {
 
 .dark .clash-confirm-secondary:hover,
 .dark .clash-auth-secondary:hover,
-.dark .clash-route-error-secondary:hover,
-.dark .clash-chat-input-stop:hover {
+.dark .clash-route-error-secondary:hover {
   border-color: color-mix(
     in srgb,
     var(--clash-accent) 34%,
@@ -4492,22 +5282,13 @@ html.dark .clash-download-card {
 
 .dark .clash-settings-dialog-sidebar,
 .dark .clash-settings-page-sidebar {
-  background: linear-gradient(
-    180deg,
-    rgba(32, 32, 32, 0.9),
-    rgba(25, 25, 25, 0.94)
-  );
-  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.035);
+  background: var(--muted);
 }
 
 .dark .clash-settings-dialog-content,
 .dark .clash-settings-page-content,
 .dark .clash-settings-page-shell {
-  background: linear-gradient(
-    180deg,
-    rgba(28, 28, 28, 0.96),
-    rgba(21, 21, 21, 0.94)
-  );
+  background: var(--background);
 }
 
 .dark .clash-copilot-panel-shell {
@@ -4551,7 +5332,7 @@ html.dark .clash-download-card {
 }
 
 .dark .clash-copilot-launcher .clash-agent-motion__pen {
-  fill: #ff6b50;
+  fill: var(--clash-agent-avatar-accent);
 }
 
 .dark .clash-copilot-launcher .clash-agent-motion__attached-mark {
@@ -4605,8 +5386,7 @@ html.dark .clash-download-card {
   );
 }
 
-.dark .clash-auth-panel,
-.dark .clash-route-error-surface {
+.dark .clash-auth-panel {
   border-color: var(--clash-warm-border);
   background: linear-gradient(
     180deg,
@@ -4619,8 +5399,7 @@ html.dark .clash-download-card {
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-.dark .clash-auth-panel::before,
-.dark .clash-route-error-surface::before {
+.dark .clash-auth-panel::before {
   background:
     radial-gradient(
       circle at 12% 0%,
@@ -4632,8 +5411,7 @@ html.dark .clash-download-card {
 
 .dark .clash-auth-input,
 .dark .clash-auth-code,
-.dark .clash-auth-code-inline,
-.dark .clash-route-error-detail {
+.dark .clash-auth-code-inline {
   border-color: var(--clash-warm-border);
   background: linear-gradient(
     180deg,

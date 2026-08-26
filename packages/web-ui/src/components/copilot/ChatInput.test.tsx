@@ -13,7 +13,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, useLocation } from "react-router";
 import type { AgentAnnotationDraft } from "@clash/shared-types";
 
-import { ChatInput } from "./ChatInput";
+import { sourceMatches } from "../../test-support/source-match";
+import { ChatInput, type ChatInputHandle } from "./ChatInput";
 
 const milkdownFocus = vi.hoisted(() => vi.fn());
 const milkdownInsert = vi.hoisted(() => vi.fn());
@@ -21,6 +22,18 @@ const milkdownInsert = vi.hoisted(() => vi.fn());
 const root = resolve(__dirname, "../../../../..");
 const globalCss = readFileSync(
   resolve(root, "apps/web/app/globals.css"),
+  "utf8",
+);
+const chatInputSource = readFileSync(
+  resolve(__dirname, "ChatInput.tsx"),
+  "utf8",
+);
+const heroSource = readFileSync(
+  resolve(__dirname, "../HeroSection.tsx"),
+  "utf8",
+);
+const projectEditorSource = readFileSync(
+  resolve(__dirname, "../ProjectEditor.tsx"),
   "utf8",
 );
 
@@ -36,6 +49,7 @@ vi.mock("../MilkdownEditor", () => ({
     (
       props: {
         onSubmit?: () => void;
+        placeholder?: string;
         promptModalities?: string[];
         mentionableNodes?: Array<{ type: string }>;
       },
@@ -49,6 +63,7 @@ vi.mock("../MilkdownEditor", () => ({
       return (
         <div
           data-testid="milkdown-editor"
+          data-placeholder={props.placeholder}
           data-prompt-modalities={props.promptModalities?.join(",")}
           data-mention-types={props.mentionableNodes
             ?.map((node) => node.type)
@@ -71,6 +86,89 @@ describe("ChatInput", () => {
     milkdownFocus.mockClear();
     milkdownInsert.mockClear();
     vi.restoreAllMocks();
+  });
+
+  it("uses the shared localized hint when a Composer caller has no narrower context", async () => {
+    render(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input=""
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+        />
+      </Suspense>,
+    );
+
+    expect(await screen.findByTestId("milkdown-editor")).toHaveAttribute(
+      "data-placeholder",
+      "Ask anything…",
+    );
+  });
+
+  it("renders structured references inside the shared composer surface", async () => {
+    render(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input=""
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+          referenceAccessory={<div data-testid="skill-references">skills</div>}
+        />
+      </Suspense>,
+    );
+
+    const references = await screen.findByTestId("skill-references");
+    const surface = references.closest(".clash-chat-input-surface");
+    expect(surface).toBeTruthy();
+    expect(surface?.contains(screen.getByTestId("milkdown-editor"))).toBe(true);
+  });
+
+  it("routes the attach control to the shared asset library when provided", async () => {
+    const onOpenAssetPicker = vi.fn();
+    render(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input=""
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+          onOpenAssetPicker={onOpenAssetPicker}
+        />
+      </Suspense>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "copilot.chatInput.attach",
+      }),
+    );
+    expect(onOpenAssetPicker).toHaveBeenCalledOnce();
+  });
+
+  it("inserts a selected Project Asset through the shared editor handle", async () => {
+    const ref = createRef<ChatInputHandle>();
+    render(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          ref={ref}
+          input=""
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+        />
+      </Suspense>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+    ref.current?.insertAssetReference?.({
+      id: "asset-logo",
+      type: "image",
+      label: "Logo master",
+      kind: "asset",
+      scope: "project-assets",
+    });
+
+    expect(milkdownInsert).toHaveBeenCalledWith(
+      "@[Logo master](project-asset:asset-logo) ",
+    );
   });
 
   it("imports project media through the Project Asset endpoint", async () => {
@@ -174,7 +272,9 @@ describe("ChatInput", () => {
       ],
       [],
     );
-    expect(JSON.stringify(onSubmit.mock.calls[0])).not.toContain("url-id/media");
+    expect(JSON.stringify(onSubmit.mock.calls[0])).not.toContain(
+      "url-id/media",
+    );
   });
 
   it("types a Project Asset mention separately from a real Canvas node mention", async () => {
@@ -240,12 +340,76 @@ describe("ChatInput", () => {
     expect(
       screen.queryByRole("button", { name: "copilot.chatInput.attach" }),
     ).toBeNull();
-    const fileInput = container.querySelector<HTMLInputElement>(
-      'input[type="file"]',
-    );
+    const fileInput =
+      container.querySelector<HTMLInputElement>('input[type="file"]');
     expect(fileInput?.accept).toContain("image/*");
     expect(fileInput?.accept).not.toContain("application/pdf");
     expect(fileInput?.accept).not.toContain("text/plain");
+  });
+
+  it("resolves a real Project scope before importing from the dashboard Composer", async () => {
+    const ensureProjectId = vi.fn().mockResolvedValue("draft-project");
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
+      "00000000-0000-4000-8000-000000000002",
+    );
+    const assetId = "asset-00000000-0000-4000-8000-000000000002";
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input) =>
+        String(input).includes("/assets/import-file")
+          ? Response.json({
+              id: assetId,
+              kind: "image",
+              name: "opening.png",
+              metadata: {
+                originalName: "opening.png",
+                contentType: "image/png",
+                bytes: 3,
+              },
+              lifecycle: { state: "active" },
+              status: "ready",
+              url: "https://media.clash.test/opening.png",
+              thumbnailUrl: "https://media.clash.test/opening.png",
+            })
+          : Response.json({
+              asr: {
+                enabled: false,
+                ready: false,
+                provider: "builtin-funasr",
+                base_url: null,
+                model: "iic/SenseVoiceSmall",
+              },
+            }),
+      );
+    const { container } = render(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input=""
+          ensureProjectId={ensureProjectId}
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+          variant="hero"
+        />
+      </Suspense>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+    expect(
+      screen.getByRole("button", { name: "copilot.chatInput.attach" }),
+    ).toBeTruthy();
+    const file = new File(["png"], "opening.png", { type: "image/png" });
+    fireEvent.change(container.querySelector('input[type="file"]')!, {
+      target: { files: [file] },
+    });
+
+    await waitFor(() => expect(ensureProjectId).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/projects/draft-project/assets/import-file",
+        expect.objectContaining({ method: "POST" }),
+      ),
+    );
+    await waitFor(() => expect(milkdownInsert).toHaveBeenCalledOnce());
   });
 
   it("uses the lighter chat-specific input surface classes", async () => {
@@ -301,6 +465,9 @@ describe("ChatInput", () => {
       /\.clash-chat-input-surface\s*\{[\s\S]*?container-type:\s*inline-size;[\s\S]*?container-name:\s*clash-chat-composer;/,
     );
     expect(globalCss).toMatch(
+      /:where\(\.clash-chat-input-surface,\s*\[data-context="composer"\]\)[\s\S]*?--control-height-sm:\s*var\(--clash-workspace-control-size\)/,
+    );
+    expect(globalCss).toMatch(
       /\.clash-chat-input-toolbar-row\s*\{[\s\S]*?grid-template-columns:\s*minmax\(2\.25rem,\s*1fr\)\s+minmax\(0,\s*max-content\);/,
     );
     expect(globalCss).toMatch(
@@ -341,7 +508,7 @@ describe("ChatInput", () => {
     expect(screen.getByTestId("hero-right-accessory")).toBeTruthy();
   });
 
-  it("uses the shared workbench radius instead of a composer-only pill radius", async () => {
+  it("uses the shared workspace radius instead of a composer-only pill radius", async () => {
     const { container } = render(
       <Suspense fallback={<div>Loading</div>}>
         <ChatInput
@@ -357,7 +524,7 @@ describe("ChatInput", () => {
     const surface = container.querySelector(".clash-chat-input-surface");
     expect(surface?.className).not.toContain("rounded-[18px]");
     expect(globalCss).toMatch(
-      /\.clash-chat-input-surface\s*\{[\s\S]*?border-radius:\s*var\(--clash-workbench-surface-radius\)/,
+      /\.clash-chat-input-surface\s*\{[\s\S]*?border-radius:\s*var\(--clash-workspace-surface-radius\)/,
     );
   });
 
@@ -367,6 +534,675 @@ describe("ChatInput", () => {
     );
     expect(globalCss).toMatch(
       /\.clash-chat-input-surface:has\(\.clash-chat-input-editor:focus-within\)\s*\{/,
+    );
+  });
+
+  it("reports an explicit editor input state instead of measuring the caret", async () => {
+    const { container, rerender } = render(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input=""
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+        />
+      </Suspense>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+    const host = () =>
+      container.querySelector<HTMLElement>(".clash-chat-input-editor")!;
+
+    expect(host().dataset.inputState).toBe("empty");
+
+    rerender(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input="one line"
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+        />
+      </Suspense>,
+    );
+    expect(host().dataset.inputState).toBe("single-line");
+
+    rerender(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input={"first line\nsecond line"}
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+        />
+      </Suspense>,
+    );
+    expect(host().dataset.inputState).toBe("multiline");
+
+    rerender(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input="   "
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+        />
+      </Suspense>,
+    );
+    expect(host().dataset.inputState).toBe("empty");
+  });
+
+  it("marks the hero layout wrapper with the same input state as the editor", async () => {
+    const { container, rerender } = render(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input=""
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+          variant="hero"
+        />
+      </Suspense>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+    const layout = () =>
+      container.querySelector<HTMLElement>(".clash-chat-input-hero-layout")!;
+    const editor = () =>
+      container.querySelector<HTMLElement>(".clash-chat-input-editor")!;
+
+    // The wrapper is the grid container, so it must carry the state rows key off.
+    expect(layout().dataset.inputState).toBe("empty");
+    expect(layout().dataset.inputState).toBe(editor().dataset.inputState);
+
+    for (const [value, state] of [
+      ["one line", "single-line"],
+      ["first line\nsecond line", "multiline"],
+      ["   ", "empty"],
+    ] as const) {
+      rerender(
+        <Suspense fallback={<div>Loading</div>}>
+          <ChatInput
+            input={value}
+            onInputChange={() => undefined}
+            onSubmit={() => undefined}
+            variant="hero"
+          />
+        </Suspense>,
+      );
+      expect(layout().dataset.inputState).toBe(state);
+      expect(layout().dataset.inputState).toBe(editor().dataset.inputState);
+    }
+  });
+
+  it("keeps the hero placeholder, editor, and action rail in one shared shell across empty, focus, and text states", async () => {
+    const { container, rerender } = render(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input=""
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+          placeholder="Describe your video idea..."
+          variant="hero"
+        />
+      </Suspense>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+    const shell = container.querySelector<HTMLElement>(
+      ".clash-chat-input-hero-layout",
+    )!;
+    const surface = container.querySelector<HTMLElement>(
+      ".clash-chat-input-surface",
+    )!;
+    const editor = container.querySelector<HTMLElement>(
+      ".clash-chat-input-editor--hero",
+    )!;
+    const actions = container.querySelector<HTMLElement>(
+      ".clash-chat-input-actions",
+    )!;
+
+    expect(screen.getByTestId("milkdown-editor")).toHaveAttribute(
+      "data-placeholder",
+      "Describe your video idea...",
+    );
+    expect(container.querySelector(".clash-chat-input-placeholder")).toBeNull();
+    expect(editor.parentElement).toBe(shell);
+    expect(actions.parentElement).toBe(shell);
+    expect(shell.dataset.inputState).toBe("empty");
+    expect(surface.dataset.inputState).toBe("empty");
+    expect(surface.dataset.composerVisualState).toBe("expanded");
+
+    fireEvent.focus(editor);
+    expect(editor.parentElement).toBe(shell);
+    expect(actions.parentElement).toBe(shell);
+
+    rerender(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input="Build a quiet forest scene"
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+          placeholder="Describe your video idea..."
+          variant="hero"
+          visualState="compact"
+        />
+      </Suspense>,
+    );
+
+    expect(shell.dataset.inputState).toBe("single-line");
+    expect(surface.dataset.inputState).toBe("single-line");
+    expect(surface.dataset.composerVisualState).toBe("compact");
+    expect(screen.queryByText("Describe your video idea...")).toBeNull();
+    expect(editor.parentElement).toBe(shell);
+    expect(actions.parentElement).toBe(shell);
+  });
+
+  it("keeps the expanded hero body above an intact bottom action rail", () => {
+    const expandedShellRule = globalCss.match(
+      /\.clash-home-hero \.clash-chat-input-hero-layout\s*\{[\s\S]{0,220}?\}/,
+    )?.[0];
+    expect(expandedShellRule).toBeTruthy();
+    expect(expandedShellRule).toMatch(/display:\s*flex;/);
+    expect(expandedShellRule).toMatch(/flex-direction:\s*column;/);
+    expect(expandedShellRule).not.toMatch(/display:\s*grid;/);
+
+    const expandedActionsRule = globalCss.match(
+      /\.clash-home-hero \.clash-chat-input-actions\s*\{[\s\S]{0,120}?\}/,
+    )?.[0];
+    expect(expandedActionsRule).toBeTruthy();
+    expect(expandedActionsRule).not.toMatch(/display:\s*contents;/);
+
+    const restingSurface = globalCss.match(
+      /\.clash-home-hero \.clash-chat-input-surface\s*\{[\s\S]*?\}/,
+    )?.[0];
+    expect(restingSurface).toBeTruthy();
+    // 48px body + 28px controls + 10px block insets + 6px gap + borders,
+    // matching Backchat's 104px shared resting composer rhythm.
+    expect(restingSurface).toMatch(/min-height:\s*6\.5rem/);
+    expect(restingSurface).toMatch(/padding:\s*0\.625rem/);
+    expect(
+      sourceMatches(
+        globalCss,
+        /\.clash-home-hero \.clash-chat-input-surface > div\s*\{[^}]*min-height:/,
+      ),
+    ).toBe(false);
+  });
+
+  it("derives the Home title row from the existing Project chrome rhythm", () => {
+    expect(globalCss).toMatch(
+      /--clash-app-sidebar-header-height:\s*var\(--clash-desktop-chrome-height\)/,
+    );
+    const homeHero = globalCss.match(/\.clash-home-hero\s*\{[\s\S]*?\}/)?.[0];
+    expect(homeHero).toMatch(/padding-top:\s*0/);
+    expect(homeHero).not.toMatch(/margin-top:\s*-/);
+    expect(homeHero).not.toMatch(/top:\s*-/);
+
+    const titleHeader = globalCss.match(
+      /\.clash-home-page-header\s*\{[\s\S]*?\}/,
+    )?.[0];
+    expect(titleHeader).toMatch(
+      /min-height:\s*var\(--clash-project-sidebar-header-height/,
+    );
+    expect(titleHeader).toMatch(
+      /max-height:\s*var\(--clash-project-sidebar-header-height/,
+    );
+
+    const stageRule = globalCss.match(
+      /\.clash-home-hero \.clash-hero-stage\s*\{[\s\S]*?\}/,
+    )?.[0];
+    expect(stageRule).toMatch(/gap:\s*var\(--clash-control-gap/);
+
+    const titleRule = globalCss.match(
+      /\.clash-home-page-title\s*\{[\s\S]*?\}/,
+    )?.[0];
+    expect(titleRule).toMatch(/font-size:\s*var\(--clash-project-title-size/);
+    expect(titleRule).toMatch(
+      /font-weight:\s*var\(--clash-project-title-weight/,
+    );
+    for (const rule of globalCss.matchAll(
+      /\.clash-home-page-title\s*\{[\s\S]*?\}/g,
+    )) {
+      expect(rule[0].match(/font-size:\s*([^;]+)/)?.[1]?.trim()).toMatch(
+        /^var\(--clash-project-title-size/,
+      );
+    }
+    expect(projectEditorSource).toContain(
+      "text-[var(--clash-project-title-size,0.8125rem)]",
+    );
+
+    const markButtonRule = globalCss.match(
+      /\.clash-home-page-title-enter\s*\{[\s\S]*?\}/,
+    )?.[0];
+    expect(markButtonRule).toMatch(
+      /(?:width|height):\s*var\(--clash-project-control-height/,
+    );
+  });
+
+  it("changes composer presentation without layout or transition choreography", () => {
+    expect(chatInputSource).not.toContain('layout="size"');
+    expect(heroSource).not.toContain('layout="position"');
+    expect(heroSource).not.toContain('layoutId="clash-home-composer"');
+    expect(heroSource).not.toContain("onVisualTransitionComplete");
+    expect(chatInputSource).not.toContain("onVisualTransitionComplete");
+
+    for (const selector of [
+      ".clash-home-hero",
+      ".clash-home-page-header",
+      ".clash-home-page-title-mark",
+      ".clash-home-composer",
+      ".clash-home-hero .clash-chat-input-surface",
+      ".clash-home-hero .clash-chat-input-editor--hero",
+    ]) {
+      const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const rule = globalCss.match(
+        new RegExp(`${escaped}\\s*\\{[\\s\\S]*?\\}`),
+      )?.[0];
+      expect(rule, selector).toBeTruthy();
+      expect(rule, selector).not.toMatch(/transition\s*:/);
+      expect(rule, selector).not.toMatch(/animation\s*:/);
+    }
+  });
+
+  it("floats compact without reserving a document row and keeps expanded in flow", () => {
+    const expandedOrigin = globalCss.match(
+      /\.clash-home-composer\s*\{[\s\S]*?\}/,
+    )?.[0];
+    expect(expandedOrigin).toMatch(/position:\s*relative/);
+
+    const compactHero = globalCss.match(
+      /\.clash-home-hero\[data-composer-mode="compact"\]\s*\{[\s\S]*?\}/,
+    )?.[0];
+    expect(compactHero).toMatch(/height:\s*0/);
+    expect(compactHero).toMatch(/padding:\s*0/);
+    expect(compactHero).toMatch(/pointer-events:\s*none/);
+
+    const floatingOrigin = globalCss.match(
+      /\.clash-home-hero\[data-composer-mode="compact"\] \.clash-home-composer\s*\{[\s\S]*?\}/,
+    )?.[0];
+    expect(floatingOrigin).toMatch(/position:\s*fixed/);
+    expect(floatingOrigin).toMatch(/var\(--clash-app-sidebar-width\)/);
+    expect(floatingOrigin).toMatch(/var\(--clash-home-floating-inline-gap\)/);
+    expect(floatingOrigin).toMatch(/pointer-events:\s*auto/);
+    expect(floatingOrigin).not.toMatch(/left:\s*\d+px/);
+  });
+
+  it("aligns every shared composer rail action to the 28px context token", async () => {
+    const { container } = render(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input=""
+          projectId="project-1"
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+          toolbarAccessory={<div data-testid="rail-left">permission</div>}
+          rightToolbarAccessory={<div data-testid="rail-right">model</div>}
+          variant="hero"
+        />
+      </Suspense>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+    const attach = screen.getByRole("button", {
+      name: "copilot.chatInput.attach",
+    });
+    const voice = screen.getByRole("button", {
+      name: "copilot.chatInput.voice",
+    });
+    const send = screen.getByRole("button", {
+      name: "copilot.chatInput.send",
+    });
+    expect(attach.classList).toContain("clash-chat-input-icon-control");
+    expect(voice.classList).toContain("clash-chat-input-icon-control");
+    expect(send.classList).toContain("clash-chat-input-icon-control");
+    expect(
+      container.querySelector(".clash-chat-input-toolbar-start")?.className,
+    ).not.toContain("gap-2");
+    expect(
+      container.querySelector(".clash-chat-input-toolbar-end")?.className,
+    ).not.toContain("gap-1.5");
+
+    const densityRule = globalCss.match(
+      /\.clash-chat-input-icon-control\s*\{[\s\S]*?\}/,
+    )?.[0];
+    expect(densityRule).toBeTruthy();
+    expect(densityRule).toMatch(/height:\s*var\(--control-height-sm\)/);
+    expect(densityRule).toMatch(/width:\s*var\(--control-height-sm\)/);
+  });
+
+  it("adapts the shared dashboard Composer into a taller body with a bottom rail", () => {
+    const restingHeight = Number.parseFloat(
+      globalCss.match(
+        /--clash-dashboard-composer-resting-height:\s*([\d.]+)rem/,
+      )?.[1] ?? "0",
+    );
+    expect(restingHeight).toBeGreaterThan(4);
+
+    const surfaceRule = globalCss.match(
+      /\.clash-dashboard-composer-dock \.clash-chat-input-surface\s*\{[\s\S]*?\}/,
+    )?.[0];
+    expect(surfaceRule).toMatch(/display:\s*flex/);
+    expect(surfaceRule).toMatch(/align-items:\s*stretch/);
+    expect(surfaceRule).not.toContain("var(--clash-shadow-floating)");
+    expect(surfaceRule).toMatch(/0 0 0 1px/);
+
+    const layoutRule = globalCss.match(
+      /\.clash-dashboard-composer-dock \.clash-chat-input-hero-layout\s*\{[\s\S]*?\}/,
+    )?.[0];
+    expect(layoutRule).toMatch(/width:\s*100%/);
+    expect(layoutRule).toMatch(/display:\s*flex/);
+    expect(layoutRule).toMatch(/flex-direction:\s*column/);
+
+    const toolbarRule = globalCss.match(
+      /\.clash-dashboard-composer-dock \.clash-chat-input-toolbar-row\s*\{[\s\S]*?\}/,
+    )?.[0];
+    expect(toolbarRule).toMatch(/width:\s*100%/);
+    expect(toolbarRule).toMatch(/margin-top:\s*auto/);
+
+    const dockRule = globalCss.match(
+      /\.clash-dashboard-composer-dock\s*\{[\s\S]*?\}/,
+    )?.[0];
+    expect(dockRule).toMatch(/bottom:\s*max\(\s*0\.5rem/);
+  });
+
+  it("keeps the dashboard Composer shell visible while its editor is focused", () => {
+    const focusRule = globalCss.match(
+      /\.clash-dashboard-composer-dock\s+\.clash-chat-input-surface:has\(\.clash-chat-input-editor:focus-within\)\s*\{[\s\S]*?\}/,
+    )?.[0];
+
+    expect(focusRule).toBeTruthy();
+    expect(
+      sourceMatches(
+        focusRule!,
+        /background:\s*var\(--clash-warm-surface\)/,
+      ),
+    ).toBe(true);
+    expect(sourceMatches(focusRule!, /box-shadow:[\s\S]*?0 0 0 1px/)).toBe(
+      true,
+    );
+  });
+
+  it("keeps the dashboard Composer shell visible while it is hovered", () => {
+    const hoverRule = globalCss.match(
+      /\.clash-dashboard-composer-dock\s+\.clash-chat-input-surface:hover\s*\{[\s\S]*?\}/,
+    )?.[0];
+
+    expect(hoverRule).toBeTruthy();
+    expect(
+      sourceMatches(
+        hoverRule!,
+        /background:\s*var\(--clash-warm-surface\)/,
+      ),
+    ).toBe(true);
+    expect(sourceMatches(hoverRule!, /box-shadow:[\s\S]*?0 0 0 1px/)).toBe(
+      true,
+    );
+  });
+
+  it("does not state-tag the default composer layout wrapper", async () => {
+    const { container } = render(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input=""
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+        />
+      </Suspense>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+    expect(container.querySelector(".clash-chat-input-hero-layout")).toBeNull();
+  });
+
+  it("keeps the expanded editor body before the bottom control row", async () => {
+    const { container } = render(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input=""
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+          variant="hero"
+          projectId="project-1"
+        />
+      </Suspense>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+
+    // The editor and semantic action rail stay direct children of one shell.
+    const layout = container.querySelector<HTMLElement>(
+      ".clash-chat-input-hero-layout",
+    )!;
+    const actions = container.querySelector<HTMLElement>(
+      ".clash-chat-input-actions",
+    )!;
+    const editor = container.querySelector<HTMLElement>(
+      ".clash-chat-input-editor",
+    )!;
+    expect(actions.parentElement).toBe(layout);
+    expect(editor.parentElement).toBe(layout);
+    expect(
+      container.querySelector(".clash-chat-input-toolbar-start")!.parentElement,
+    ).toBe(actions);
+    expect(
+      container.querySelector(".clash-chat-input-toolbar-end")!.parentElement,
+    ).toBe(actions);
+    expect(
+      editor.compareDocumentPosition(actions) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    const expandedStack = globalCss.match(
+      /\.clash-home-hero \.clash-chat-input-hero-layout\s*\{[\s\S]{0,220}?\}/,
+    )?.[0];
+    expect(expandedStack).toBeTruthy();
+
+    expect(sourceMatches(expandedStack!, /display:\s*flex;/)).toBe(true);
+    expect(sourceMatches(expandedStack!, /flex-direction:\s*column;/)).toBe(
+      true,
+    );
+    expect(sourceMatches(expandedStack!, /display:\s*grid;/)).toBe(false);
+  });
+
+  it("never dissolves the expanded action rail with display contents", () => {
+    const actions = globalCss.match(
+      /\.clash-home-hero \.clash-chat-input-actions\s*\{[\s\S]{0,120}?\}/,
+    )?.[0];
+    expect(actions).toBeTruthy();
+    expect(sourceMatches(actions!, /display:\s*contents/)).toBe(false);
+    expect(sourceMatches(actions!, /pointer-events:\s*none/)).toBe(false);
+  });
+
+  it("keeps a real 48px editor body above the expanded controls", () => {
+    const editorBody = globalCss.match(
+      /\.clash-home-hero \.clash-chat-input-editor--hero\s*\{[\s\S]{0,260}?\}/,
+    )?.[0];
+    expect(editorBody).toBeTruthy();
+    expect(sourceMatches(editorBody!, /min-height:\s*3rem/)).toBe(true);
+    expect(sourceMatches(editorBody!, /padding:\s*0\.375rem\s+0\.25rem/)).toBe(
+      true,
+    );
+    expect(sourceMatches(editorBody!, /transform:/)).toBe(false);
+  });
+
+  it("leaves expanded multiline on the natural stacked flow", () => {
+    // Every expanded state stays in the same flex-column shell.
+    expect(
+      sourceMatches(
+        globalCss,
+        /\.clash-chat-input-hero-layout\[data-input-state="multiline"\][\s\S]{0,200}?display:\s*(?:grid|contents)/,
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps the compact pill rules independent of the expanded shared row", () => {
+    // The already-correct compact contract must survive untouched.
+    expect(globalCss).toMatch(
+      /\.clash-home-hero\[data-composer-mode="compact"\] \.clash-chat-input-toolbar-row\s*\{[\s\S]*?display:\s*flex;/,
+    );
+    expect(globalCss).toMatch(
+      /\.clash-home-hero\[data-composer-mode="compact"\] \.clash-chat-input-toolbar-start\s*\{[\s\S]*?display:\s*none;/,
+    );
+
+    const compactPill = globalCss.match(
+      /\.clash-home-hero\[data-composer-mode="compact"\][\s\S]*?\.clash-chat-input-surface\[data-composer-visual-state="compact"\][\s\S]*?\{[\s\S]*?\}/,
+    )?.[0];
+    expect(compactPill).toBeTruthy();
+    expect(compactPill).toMatch(/border-radius:\s*9999px/);
+    expect(compactPill).toMatch(/background:\s*var\(--clash-warm-surface\)/);
+    expect(compactPill).toMatch(/box-shadow:\s*var\(--clash-shadow-floating\)/);
+
+    expect(globalCss).toMatch(
+      /\.clash-home-hero\[data-composer-mode="compact"\][\s\S]*?\.clash-chat-input-surface\[data-composer-visual-state="growing"\][\s\S]*?\{[\s\S]*?border-radius:\s*1rem/,
+    );
+  });
+
+  it("promotes compact content to the shared growing visual state", async () => {
+    const { container } = render(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input={"Line one\nLine two"}
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+          variant="hero"
+          visualState="compact"
+        />
+      </Suspense>,
+    );
+    await screen.findByTestId("milkdown-editor");
+    expect(
+      container.querySelector<HTMLElement>(".clash-chat-input-surface")?.dataset
+        .composerVisualState,
+    ).toBe("growing");
+  });
+
+  it("gives the hero Milkdown wrapper no padding of its own", () => {
+    expect(globalCss).toMatch(
+      /\.clash-chat-input-editor--hero \.milkdown-editor-wrapper\s*\{\s*padding:\s*0 !important;\s*\}/,
+    );
+  });
+
+  it("centers compact single-line content with layout instead of faking the caret", () => {
+    expect(globalCss).not.toMatch(/padding-top:\s*0\.55rem/);
+    const compactEditor = globalCss.match(
+      /\.clash-home-hero\[data-composer-mode="compact"\]\s*\.clash-chat-input-editor--hero\s*\{[\s\S]*?\}/,
+    )?.[0];
+    expect(compactEditor).toBeTruthy();
+    expect(compactEditor).toMatch(/display:\s*flex;/);
+    expect(compactEditor).toMatch(/align-items:\s*center;/);
+
+    // Empty and single-line content is centered by normal flex layout.
+    expect(globalCss).toMatch(
+      /\.clash-home-hero\[data-composer-mode="compact"\]\s*\.clash-chat-input-editor--hero\[data-input-state="empty"\],[\s\S]*?\[data-input-state="single-line"\][\s\S]*?\{[\s\S]*?align-items:\s*center;/,
+    );
+
+    // Multiline scrolls in normal block flow with a deliberate block inset.
+    const compactMultiline = globalCss.match(
+      /\.clash-home-hero\[data-composer-mode="compact"\]\s*\.clash-chat-input-editor--hero\[data-input-state="multiline"\]\s*\{[\s\S]*?\}/,
+    )?.[0];
+    expect(compactMultiline).toBeTruthy();
+    expect(compactMultiline).toMatch(/display:\s*block;/);
+    expect(compactMultiline).toMatch(/padding-block:/);
+  });
+
+  it("lets the compact pill grow from content without a state-specific height branch", () => {
+    const compactParent = globalCss.match(
+      /\.clash-home-hero\[data-composer-mode="compact"\] \.clash-chat-input-surface > div\s*\{[\s\S]*?\}/,
+    )?.[0];
+    expect(compactParent).toBeTruthy();
+    expect(compactParent).toMatch(/min-height:\s*3rem;/);
+    expect(compactParent).not.toMatch(/\n\s*height:\s*3rem;/);
+    expect(compactParent).toMatch(/align-items:\s*center;/);
+
+    expect(globalCss).not.toMatch(
+      /\.clash-chat-input-surface\s*>\s*div:has\(\s*\.clash-chat-input-editor--hero\[data-input-state="multiline"\]/,
+    );
+  });
+
+  it("keeps the composer caret visible with the current content colour", () => {
+    const caretRule = globalCss.match(
+      /\.milkdown-chat-input \.ProseMirror\s*\{[\s\S]*?\}/,
+    )?.[0];
+    expect(caretRule).toMatch(/caret-color:\s*var\(--clash-content-primary\);/);
+    expect(caretRule).not.toMatch(/--clash-coral/);
+    expect(caretRule).not.toMatch(/--clash-blue/);
+  });
+
+  it("uses the authenticated product type and readable hint colour in the real editor", () => {
+    const editorRule = globalCss.match(
+      /\.milkdown-chat-input \.ProseMirror\s*\{[\s\S]*?\}/,
+    )?.[0];
+    const hintRule = globalCss.match(
+      /\.milkdown-chat-input \.ProseMirror p\.is-editor-empty:first-child::before\s*\{[\s\S]*?\}/,
+    )?.[0];
+
+    expect(editorRule).toBeTruthy();
+    expect(
+      sourceMatches(editorRule!, /font-family:\s*var\(--font-product\)/),
+    ).toBe(true);
+    expect(
+      sourceMatches(
+        editorRule!,
+        /font-size:\s*var\(--clash-chat-body-size,\s*0\.875rem\)/,
+      ),
+    ).toBe(true);
+    expect(hintRule).toBeTruthy();
+    expect(
+      sourceMatches(hintRule!, /color:\s*var\(--clash-content-secondary\)/),
+    ).toBe(true);
+  });
+
+  it("starts dashboard text on the first editor line while the toolbar stays pinned below", () => {
+    const editorRule = globalCss.match(
+      /\.clash-dashboard-composer-dock \.clash-chat-input-editor--hero\s*\{[\s\S]*?\}/,
+    )?.[0];
+    const wrapperRule = globalCss.match(
+      /\.clash-dashboard-composer-dock\s*\.clash-chat-input-editor--hero\s*\.milkdown-editor-wrapper\s*\{[\s\S]*?\}/,
+    )?.[0];
+    const proseMirrorRule = globalCss.match(
+      /\.clash-dashboard-composer-dock[\s\S]*?\.clash-chat-input-editor--hero[\s\S]*?\.ProseMirror\s*\{[\s\S]*?\}/,
+    )?.[0];
+    const toolbarRule = globalCss.match(
+      /\.clash-dashboard-composer-dock \.clash-chat-input-toolbar-row\s*\{[\s\S]*?\}/,
+    )?.[0];
+
+    expect(editorRule).toMatch(/--composer-text-inline-inset:\s*0\.5rem/);
+    expect(editorRule).toMatch(/--composer-text-line-height:\s*1\.3125rem/);
+    expect(editorRule).toMatch(/align-items:\s*flex-start/);
+    expect(editorRule).toMatch(
+      /padding-block-start:\s*var\(--composer-text-block-inset\)/,
+    );
+    expect(editorRule).not.toMatch(/align-items:\s*center/);
+    expect(wrapperRule).toMatch(/align-items:\s*flex-start/);
+    expect(proseMirrorRule).toMatch(
+      /line-height:\s*var\(--composer-text-line-height\)/,
+    );
+    expect(toolbarRule).toMatch(/margin-top:\s*auto/);
+  });
+
+  it("uses opaque neutral tokens and a restrained shadow for composer focus", () => {
+    const composerRules = [
+      /(?:^|\n)\.clash-chat-input-surface\s*\{[\s\S]*?\}/,
+      /(?:^|\n)\.clash-chat-input-surface:hover\s*\{[\s\S]*?\}/,
+      /(?:^|\n)\.clash-chat-input-surface:has\(\.clash-chat-input-editor:focus-within\)\s*\{[\s\S]*?\}/,
+      /\.clash-home-hero\s*\.clash-chat-input-surface:has\(\.clash-chat-input-editor:focus-within\)\s*\{[\s\S]*?\}/,
+      /\.dark \.clash-chat-input-surface,\s*\.dark \.clash-chat-input-surface:hover,\s*\.dark \.clash-chat-input-surface:has\(\.clash-chat-input-editor:focus-within\)\s*\{[\s\S]*?\}/,
+    ].map((pattern) => {
+      const rule = globalCss.match(pattern)?.[0];
+      expect(rule).toBeTruthy();
+      return rule!;
+    });
+
+    for (const rule of composerRules) {
+      // No focus halo ring in any theme or override.
+      expect(rule).not.toMatch(/box-shadow:[\s\S]*?0 0 0 \d/);
+      // No brown gradient or raw brown border.
+      expect(rule).not.toMatch(/linear-gradient/);
+      expect(rule).not.toMatch(/rgba\(225, 221, 213/);
+      expect(rule).not.toMatch(/rgba\(210, 204, 194/);
+      expect(rule).not.toMatch(/rgba\(255, 107, 80/);
+      expect(rule).not.toMatch(/--clash-blue/);
+    }
+
+    const [base, , focus] = composerRules;
+    expect(base).toMatch(/background:\s*var\(--clash-warm-surface\);/);
+    expect(focus).toMatch(
+      /box-shadow:\s*var\(--clash-workspace-surface-shadow\);/,
     );
   });
 
@@ -412,8 +1248,9 @@ describe("ChatInput", () => {
     expect(globalCss).toMatch(
       /\.milkdown-chat-input \.ProseMirror\s*\{[\s\S]*text-align:\s*left;/,
     );
+    // The hero host owns the inset, so the wrapper contributes no padding.
     expect(globalCss).toMatch(
-      /\.clash-chat-input-editor--hero \.milkdown-editor-wrapper\s*\{[\s\S]*padding-left:\s*0 !important;/,
+      /\.clash-chat-input-editor--hero \.milkdown-editor-wrapper\s*\{\s*padding:\s*0 !important;\s*\}/,
     );
   });
 
@@ -444,6 +1281,11 @@ describe("ChatInput", () => {
 
     expect(sendButton.disabled).toBe(false);
     expect(stopButton.disabled).toBe(false);
+    expect(stopButton.className).toContain("clash-chat-input-icon-control");
+    expect(stopButton.className).not.toContain("clash-chat-input-stop");
+    expect(
+      document.querySelector(".clash-chat-input-editor"),
+    ).toHaveAttribute("data-chat-typography", "body");
   });
 
   it("does not expose a bare connection status dot in the composer toolbar", async () => {
@@ -500,7 +1342,7 @@ describe("ChatInput", () => {
     ).toContain("pointer-events-none");
   });
 
-  it("renders the placeholder as a disabled composer hint", async () => {
+  it("passes a disabled composer hint to the editor without an overlay", async () => {
     const { container } = render(
       <Suspense fallback={<div>Loading</div>}>
         <ChatInput
@@ -515,14 +1357,11 @@ describe("ChatInput", () => {
 
     await screen.findByTestId("milkdown-editor");
 
-    const hint = screen.getByText(
+    expect(screen.getByTestId("milkdown-editor")).toHaveAttribute(
+      "data-placeholder",
       "Cloud room is unavailable in this local project",
     );
-    expect(hint).toBeTruthy();
-    expect(hint.className).toContain("absolute");
-    expect(
-      container.querySelector(".clash-chat-input-editor")?.className,
-    ).toContain("relative");
+    expect(container.querySelector(".clash-chat-input-placeholder")).toBeNull();
   });
 
   it("exposes focus through an explicit handle instead of requiring DOM queries", async () => {

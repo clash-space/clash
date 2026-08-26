@@ -1,37 +1,115 @@
-
-import { Link } from 'react-router';
-import ProjectCard from './ProjectCard';
-import ProjectCreateTile from './ProjectCreateTile';
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import ProjectCard from "./ProjectCard";
+import ProjectCreateTile from "./ProjectCreateTile";
+import { HomeSectionActionLink, HomeSectionHeader } from "./HomeSectionHeader";
+import type { ProjectReference } from "./dashboardComposerReferences";
 
 interface RecentProjectsProps {
-    projects: any[]; // Relaxed type to accept Drizzle result with assets
-    onCreateProject: (projectName: string) => void | Promise<void>;
+  projects: any[]; // Relaxed type to accept Drizzle result with assets
+  onCreateProject: (projectName: string) => void | Promise<void>;
+  composerProjectReferenceId?: string | null;
+  onAddProjectReference?: (project: ProjectReference) => void;
 }
-
-export default function RecentProjects({ projects, onCreateProject }: RecentProjectsProps) {
-    // We want to show the section even if there are no projects, so the user can see the "New Project" card
-    const projectList = projects || [];
-
-    return (
-        <div className="w-full max-w-[1600px] mx-auto px-6 pb-24 mt-0">
-            <div className="mb-8 flex items-center justify-between px-2">
-                <h2 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50">Recent Projects</h2>
-                <Link
-                    to="/projects"
-                    className="text-lg font-medium text-stone-700 transition-colors hover:text-brand dark:text-stone-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page rounded"
-                >
-                    See All →
-                </Link>
-            </div>
-
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                <ProjectCreateTile ariaLabel="Start a new project" onCreate={onCreateProject} />
-
-                {/* Project Cards */}
-                {projectList.map((project) => (
-                    <ProjectCard key={project.id} project={project} />
-                ))}
-            </div>
-        </div>
+export default function RecentProjects({
+  projects,
+  onCreateProject,
+  composerProjectReferenceId = null,
+  onAddProjectReference,
+}: RecentProjectsProps) {
+  const [archivedProjectIds, setArchivedProjectIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const projectList = (projects || [])
+    .filter((project) => !archivedProjectIds.has(project.id))
+    .slice(0, 5);
+  const railRef = useRef<HTMLDivElement>(null);
+  const [edgeCues, setEdgeCues] = useState({ left: false, right: false });
+  const updateEdgeCues = useCallback(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const maxScrollLeft = Math.max(0, rail.scrollWidth - rail.clientWidth);
+    const next = {
+      left: rail.scrollLeft > 1,
+      right: rail.scrollLeft < maxScrollLeft - 1,
+    };
+    setEdgeCues((current) =>
+      current.left === next.left && current.right === next.right
+        ? current
+        : next,
     );
+  }, []);
+
+  useLayoutEffect(() => {
+    updateEdgeCues();
+    window.addEventListener("resize", updateEdgeCues);
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(updateEdgeCues);
+    if (railRef.current) observer?.observe(railRef.current);
+    return () => {
+      window.removeEventListener("resize", updateEdgeCues);
+      observer?.disconnect();
+    };
+  }, [projectList.length, updateEdgeCues]);
+
+  return (
+    <section
+      aria-labelledby="recent-projects-heading"
+      className="clash-home-section clash-recent-projects"
+    >
+      <HomeSectionHeader
+        id="recent-projects-heading"
+        title="Recently viewed"
+        alignWithChrome
+        action={
+          <div className="flex items-center gap-1">
+            <ProjectCreateTile
+              ariaLabel="Start a new project"
+              presentation="header-action"
+              onCreate={onCreateProject}
+            />
+            <HomeSectionActionLink to="/projects">
+              See all
+            </HomeSectionActionLink>
+          </div>
+        }
+      />
+
+      <div
+        data-slot="recent-project-rail-shell"
+        data-can-scroll-left={String(edgeCues.left)}
+        data-can-scroll-right={String(edgeCues.right)}
+        className="clash-recent-project-rail-shell"
+      >
+        <div
+          ref={railRef}
+          data-slot="recent-project-rail"
+          aria-label="Recently viewed projects"
+          className="clash-recent-project-grid"
+          onScroll={updateEdgeCues}
+        >
+          {projectList.map((project) => (
+            <ProjectCard
+              key={project.id}
+              project={project}
+              composerProjectReferenceId={composerProjectReferenceId}
+              onAddProjectReference={onAddProjectReference}
+              onArchived={(projectId) =>
+                setArchivedProjectIds((current) => {
+                  const next = new Set(current);
+                  next.add(projectId);
+                  return next;
+                })
+              }
+            />
+          ))}
+          <ProjectCreateTile
+            ariaLabel="Create a new project from the recent projects rail"
+            onCreate={onCreateProject}
+          />
+        </div>
+      </div>
+    </section>
+  );
 }

@@ -942,23 +942,6 @@ export class ProjectRoom extends DurableObject<Env> {
     this.ctx.storage.setAlarm(Date.now() + TASK_POLL_URGENT_MS);
   }
 
-  // ─── Room Broadcast (group-chat IM layer) ────────────────────
-
-  /**
-   * RPC invoked by routes/v1/projects.ts after a room message has been
-   * persisted to D1. Fans out a `{type:'room.message', ...}` text frame
-   * to every attached browser WS so all members of the project see the
-   * message in real time.
-   *
-   * The DO does NOT touch D1 or look up mentions — that's the route's
-   * job. This keeps ProjectRoom focused on live broadcast and avoids
-   * dragging the RUNTIME_ROOM binding into here.
-   */
-  async broadcastRoomMessage(payload: Record<string, unknown>): Promise<void> {
-    const text = JSON.stringify({ type: "room.message", ...payload });
-    this.broadcastText(text);
-  }
-
   // ─── HTTP Endpoints (replaces onRequest) ─────────────────────
 
   private extractLoroProjectId(request: Request, url: URL): string {

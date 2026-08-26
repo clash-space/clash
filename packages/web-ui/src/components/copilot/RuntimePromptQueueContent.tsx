@@ -3,10 +3,6 @@ import { NotePencil, Paperclip } from '@phosphor-icons/react';
 import ReactMarkdown from 'react-markdown';
 import { parseUserMessageContent } from './userMessageContent';
 
-export function parseRuntimePromptQueueContent(content: string) {
-    return parseUserMessageContent(content);
-}
-
 /**
  * Compact presentation for a queued runtime prompt.
  *
@@ -16,7 +12,7 @@ export function parseRuntimePromptQueueContent(content: string) {
  */
 export function RuntimePromptQueueContent({ content }: { content: string }) {
     const queuedContent = useMemo(
-        () => parseRuntimePromptQueueContent(content),
+        () => parseUserMessageContent(content),
         [content],
     );
     const firstAnnotation = queuedContent.annotations[0] ?? null;

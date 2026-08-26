@@ -19,7 +19,21 @@
       "title": "历史会话",
       "empty": "暂无历史记录",
       "fallbackTitle": "会话 {{index}}",
-      "delete": "删除会话"
+      "active": "当前",
+      "archived": "归档",
+      "archive": "归档会话",
+      "restore": "恢复会话",
+      "fork": "从此会话分叉",
+      "actions": "{{title}} 的操作",
+      "close": "关闭历史会话",
+      "retry": "重试",
+      "archiveLoadError": "无法加载已归档会话。",
+      "archivedEmpty": "暂无已归档会话",
+      "delete": "删除会话",
+      "deletePermanently": "永久删除",
+      "deleteConfirm": "此操作无法撤销。",
+      "confirmDelete": "确认永久删除",
+      "cancel": "取消"
     },
     "runtime": {
       "menuTitle": "运行环境",
@@ -84,16 +98,16 @@
       ],
       "localAgentReady": "本地 Agent 已连接，发送消息以开始。",
       "desktopLocalStarting": "正在连接这台 Mac 上的本地 Agent…",
-    "desktopLocalRequired": "这台 Mac 上还没有可用的本地 Agent。",
-    "desktopLocalSetupRequired": "这台 Mac 上的本地 Agent 需要配置。登录对应 Agent 或添加需要的 API Key 后再试。",
-    "agentHarnessRequiredTitle": "设置本地 Agent",
-    "agentHarnessRequired": "请先安装或启用一个 Agent Harness，再开始 Project Chat。",
-    "localRuntimeRequired": "请选择或连接本地运行时后再聊天。Cloud Agent 即将推出。",
-    "slashCommandsMore": "+{{count}} 个"
-  },
-  "actions": {
-    "openAgents": "打开 Agents"
-  },
+      "desktopLocalRequired": "这台 Mac 上还没有可用的本地 Agent。",
+      "desktopLocalSetupRequired": "这台 Mac 上的本地 Agent 需要配置。登录对应 Agent 或添加需要的 API Key 后再试。",
+      "agentHarnessRequiredTitle": "设置本地 Agent",
+      "agentHarnessRequired": "请先安装或启用一个 Agent Harness，再开始 Project Chat。",
+      "localRuntimeRequired": "请选择或连接本地运行时后再聊天。Cloud Agent 即将推出。",
+      "slashCommandsMore": "+{{count}} 个"
+    },
+    "actions": {
+      "openAgents": "打开 Agents"
+    },
     "errors": {
       "createSession": "创建会话失败，请重试。",
       "warningPrefix": "⚠"
@@ -103,9 +117,9 @@
       "noMatches": "没有匹配的斜杠命令。"
     },
     "chatInput": {
-      "placeholderDefault": "问任何问题…",
+      "placeholderDefault": "想做点什么？",
       "placeholderWithSelection": "针对所选文件提问…",
-      "attach": "上传附件",
+      "attach": "添加媒体",
       "voice": "语音输入",
       "cancelVoice": "取消语音输入",
       "confirmVoice": "使用语音文本",
@@ -117,6 +131,22 @@
       "uploading_one": "正在上传 {{count}} 个文件…",
       "uploading_other": "正在上传 {{count}} 个文件…",
       "uploadFailed": "⚠️ {{name}} 上传失败 "
+    },
+    "dashboardComposer": {
+      "newProject": "创建新项目",
+      "newProjectHint": "发送时创建",
+      "chooseProject": "选择项目",
+      "searchProjects": "搜索项目",
+      "projects": "项目",
+      "loadingProjects": "正在加载项目…",
+      "projectsUnavailable": "暂时无法读取项目。",
+      "noProjects": "还没有已有项目。",
+      "useProject": "使用 {{name}}",
+      "removeProject": "移除 {{name}}",
+      "projectAsset": "项目资产",
+      "globalAsset": "全局资产",
+      "skillReferences": "技能引用",
+      "removeSkill": "移除 {{name}}"
     },
     "approvalCard": {
       "approve": "同意",

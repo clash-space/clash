@@ -3,7 +3,7 @@ import { useMoveGesture } from '../ui/gesture';
 
 export type AgentMotionState = 'idle' | 'connecting' | 'working' | 'waiting' | 'failed' | 'review';
 
-type AgentMotionProps = {
+export type AgentMotionProps = {
     state?: AgentMotionState;
     className?: string;
     label?: string;
@@ -114,6 +114,8 @@ export function AgentMotion({
         <span
             ref={rootRef}
             className={joinClasses('clash-agent-motion', `clash-agent-motion--${state}`, className)}
+            data-slot="clash-agent-avatar"
+            data-status={state}
             data-agent-motion-state={state}
             data-agent-motion-tracking="false"
             {...accessibilityProps}

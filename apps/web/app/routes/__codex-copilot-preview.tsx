@@ -1,98 +1,84 @@
-import type { ByoMessage } from "@clash/web-ui/lib/acpEvents";
-import { AcpMessageList, AcpProgressPanel, getAcpGlobalState } from "@clash/web-ui/components/copilot/AcpMessageList";
+import {
+  initialSessionTranscript,
+  reduceSessionTranscript,
+} from "@openma/common/session";
+import { RuntimeSessionTimeline } from "@clash/web-ui/components/copilot/RuntimeSessionTimeline";
 import { AcpAgentLogo } from "@clash/gui/components/copilot/AcpAgentLogo";
 import { Button } from "@clash/gui/components/ui/button";
 import { IconButton } from "@clash/gui/components/ui/icon-button";
 import { SelectMenu, type SelectSection } from "@clash/gui/components/ui/select";
 import { useMemo, useState } from "react";
-import { useSearchParams } from "react-router";
 import { ArrowUp, CaretDown, Microphone, Plus, ShieldWarning } from "@phosphor-icons/react";
 
-const messages: ByoMessage[] = [
-  {
-    id: "user-list-canvas",
-    role: "user",
-    parts: [{ type: "text", text: "列出画布上的节点。" }],
-  },
-  {
-    id: "assistant-list-canvas",
-    role: "assistant",
-    parts: [
-      { type: "thought", text: "先确认画布状态，再把节点按类型整理出来。" },
-      {
-        type: "plan",
-        entries: [
-          { content: "读取当前画布节点", status: "completed" },
-          { content: "核对图片和动作节点的元数据", status: "completed" },
-          { content: "用可读格式汇总节点", status: "in_progress" },
-        ],
-      },
-      {
-        type: "tool_call",
-        toolCallId: "tool-list-canvas",
-        title: "List canvas nodes",
-        kind: "list",
-        status: "completed",
-        rawInput: { query: "canvas.nodes", projectId: "mock-project" },
-        rawOutput: [
-          { id: "dianmwa7", type: "action-badge", label: "Image Prompt", action: "image-gen" },
-          { id: "lrcleamx", type: "image", status: "completed", size: "500 x 281" },
-          { id: "upload-1781414847642-oq6cbcl", type: "image", fileName: "258251d8857f30efff6b9b7085302bf5.JPG" },
-        ],
-      },
-      {
-        type: "tool_call",
-        toolCallId: "permission-read-canvas",
-        title: "Read selected canvas context",
-        kind: "permission",
-        status: "pending",
-        rawInput: {
-          reason: "Need selected asset metadata before referencing it in the reply.",
-          locations: ["canvas://selected-assets"],
-        },
-      },
-      {
-        type: "tool_call",
-        toolCallId: "tool-shell-check",
-        title: "node scripts/inspect-canvas.mjs",
-        kind: "execute",
-        status: "completed",
-        rawInput: { command: "node scripts/inspect-canvas.mjs --format=json" },
-        content: [
-          {
-            type: "terminal",
-            output: "Found 3 nodes, 1 selected asset, 0 pending renders.",
-          },
-        ],
-      },
-      {
-        type: "event_note",
-        title: "Turn complete",
-        detail: "Usage updated by ACP session.",
-      },
-      {
+function createPreviewTranscript() {
+  let transcript = initialSessionTranscript("codex-copilot-preview");
+  transcript = reduceSessionTranscript(transcript, {
+    type: "turn.register",
+    turnId: "list-canvas",
+    promptText: "列出画布上的节点。",
+  });
+  transcript = reduceSessionTranscript(transcript, {
+    type: "turn.event",
+    turnId: "list-canvas",
+    event: {
+      sessionUpdate: "agent_thought_chunk",
+      content: {
         type: "text",
-        text: [
-          "画布上当前有 **3 个节点**：",
-          "",
-          "| ID | 类型 | 摘要 |",
-          "| --- | --- | --- |",
-          "| `dianmwa7` | action-badge | Image Prompt / image-gen |",
-          "| `lrcleamx` | image | completed, 500 x 281 |",
-          "| `upload-1781414847642-oq6cbcl` | image | 258251d8857f30efff6b9b7085302bf5.JPG |",
-          "",
-          "其中 `upload-1781414847642-oq6cbcl` 是当前选中的素材引用。",
-        ].join("\n"),
+        text: "先确认画布状态，再把节点按类型整理出来。",
       },
-    ],
-  },
-];
+    },
+  });
+  transcript = reduceSessionTranscript(transcript, {
+    type: "turn.event",
+    turnId: "list-canvas",
+    event: {
+      sessionUpdate: "tool_call",
+      toolCallId: "tool-list-canvas",
+      title: "List canvas nodes",
+      kind: "list",
+      status: "completed",
+      rawInput: { query: "canvas.nodes", projectId: "mock-project" },
+      rawOutput: [
+        {
+          id: "dianmwa7",
+          type: "action-badge",
+          label: "Image Prompt",
+        },
+        {
+          id: "lrcleamx",
+          type: "image",
+          status: "completed",
+          size: "500 x 281",
+        },
+        {
+          id: "upload-1781414847642-oq6cbcl",
+          type: "image",
+          fileName: "258251d8857f30efff6b9b7085302bf5.JPG",
+        },
+      ],
+    },
+  });
+  transcript = reduceSessionTranscript(transcript, {
+    type: "turn.event",
+    turnId: "list-canvas",
+    event: {
+      sessionUpdate: "agent_message_chunk",
+      _meta: { codex: { phase: "final_answer" } },
+      content: {
+        type: "text",
+        text: "画布上当前有 **3 个节点**，其中一个是当前选中的素材引用。",
+      },
+    },
+  });
+  return reduceSessionTranscript(transcript, {
+    type: "turn.complete",
+    turnId: "list-canvas",
+  });
+}
+
+const previewTranscript = createPreviewTranscript();
 
 export default function CodexCopilotPreview() {
-  const [searchParams] = useSearchParams();
-  const openTools = searchParams.get("open") === "1";
-  const openProgress = searchParams.get("progress") === "1";
-  const globalState = getAcpGlobalState(messages);
   const [selectedHarness, setSelectedHarness] = useState("codex");
   const [selectedModel, setSelectedModel] = useState("gpt-5.5");
   const [selectedEffort, setSelectedEffort] = useState("low");
@@ -190,17 +176,15 @@ export default function CodexCopilotPreview() {
             <span className="rounded-full bg-warm-muted px-3 py-1 text-xs text-muted-foreground">
               stream: thought / tool / markdown · progress: plan / outputs
             </span>
-            <AcpProgressPanel
-              planEntries={globalState.planEntries}
-              outputs={globalState.outputs}
-              defaultOpen={openProgress}
-              className="shrink-0"
-            />
           </div>
         </header>
         <div className="relative flex-1 overflow-y-auto px-10 pb-32 pt-8">
           <div className="mx-auto flex max-w-3xl flex-col gap-5">
-            <AcpMessageList messages={messages} defaultOpenTools={openTools} />
+            <RuntimeSessionTimeline
+              transcript={previewTranscript}
+              mentionableNodes={[]}
+              clashEntities={[]}
+            />
           </div>
         </div>
         <div className="border-t border-warm-border/60 bg-background/95 px-10 py-5">

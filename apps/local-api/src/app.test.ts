@@ -1597,7 +1597,7 @@ describe("local API app", () => {
     }
   });
 
-  it("does not expose legacy project room endpoints locally", async () => {
+  it("keeps deleted project messaging endpoints unavailable locally", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 
     const created = await app.request("/api/v1/projects", {
@@ -1852,6 +1852,41 @@ describe("local API app", () => {
         )
       ).status,
     ).toBe(404);
+  });
+
+  it("keeps the configured Marketplace feed separate from the full registry", async () => {
+    const catalogAction = {
+      id: "action-1",
+      name: "Action One",
+      type: "action" as const,
+      packageId: "package.action-1",
+    };
+    const featuredSkill = {
+      id: "skill-1",
+      name: "Skill One",
+      type: "skill" as const,
+    };
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      marketplaceActions: [catalogAction],
+      marketplaceSkills: [featuredSkill],
+      marketplaceFeed: [featuredSkill],
+    });
+
+    await expect(
+      (await app.request("/api/marketplace/registry")).json(),
+    ).resolves.toEqual({
+      version: 1,
+      actions: [catalogAction],
+      skills: [featuredSkill],
+    });
+    await expect(
+      (await app.request("/api/marketplace/feed")).json(),
+    ).resolves.toEqual({
+      version: 1,
+      featuredPlugins: [featuredSkill],
+    });
   });
 
   it("returns a structured conflict when an immutable built-in action is uninstalled", async () => {
@@ -4622,6 +4657,95 @@ describe("local API app", () => {
     expect(execute.mock.calls[0]?.[0]).not.toHaveProperty("pollState");
     expect(execute.mock.calls[1]?.[0]).toMatchObject({
       pollState: { taskId: "minimax-upstream-task" },
+    });
+  });
+
+  it("summarizes a model Provider Asset output with its GLB media type", async () => {
+    const binding = {
+      pluginId: "test.tripo",
+      version: "0.1.0",
+      exportId: "tripo-execute",
+      schemaHash: `sha256:${"a".repeat(64)}` as const,
+    };
+    const modelCard = MODEL_CARDS.find((card) => card.id === "tripo-h3.1")!;
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      providerPluginExecutor: vi.fn(async () => ({
+        status: "completed" as const,
+        binding,
+        media: {
+          assetId: "plugin-output:model-1",
+          uri: "clash-asset://plugin-output:model-1",
+          kind: "model" as const,
+        },
+      })),
+      resolvePluginBinding: async () => binding,
+      listPluginCards: async () => [
+        {
+          pluginId: binding.pluginId,
+          version: binding.version,
+          schemaHash: binding.schemaHash,
+          runtime: {
+            kind: "local" as const,
+            transport: "stdio" as const,
+            entrypoint: "handler.mjs",
+            args: [],
+          },
+          document: {
+            apiVersion: "clash.card/v1" as const,
+            kind: "model-card" as const,
+            spec: modelCard,
+          },
+        },
+      ],
+      listPluginModelBindings: async () => [
+        {
+          pluginId: binding.pluginId,
+          version: binding.version,
+          schemaHash: binding.schemaHash,
+          runtime: {
+            kind: "local" as const,
+            transport: "stdio" as const,
+            entrypoint: "handler.mjs",
+            args: [],
+          },
+          document: {
+            apiVersion: "clash.binding/v1" as const,
+            kind: "model-provider-binding" as const,
+            spec: {
+              id: "test-tripo-h3.1",
+              modelId: modelCard.id,
+              providerId: "test-tripo",
+              upstreamId: "test-tripo",
+              upstreamModel: "tripo-h3.1",
+              apiShape: "tripo",
+              executorExportId: binding.exportId,
+            },
+          },
+        },
+      ],
+    });
+
+    const response = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: {
+          id: "test-tripo-primary",
+          providerId: "test-tripo",
+          upstreamId: "test-tripo",
+          enabled: true,
+        },
+        modelId: modelCard.id,
+        live: true,
+      }),
+    });
+
+    expect(response.status, await response.clone().text()).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      output: { shape: "model", contentType: "model/gltf-binary" },
     });
   });
 
@@ -7858,6 +7982,84 @@ describe("local API app", () => {
     expect(await persistedProjectSessions.json()).toEqual({ sessions: [] });
   });
 
+  it("archives sessions out of the active list and restores them without deleting history", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const created = await app.request("/api/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-archive",
+        title: "Storyboard pass",
+      }),
+    });
+    expect(created.status).toBe(200);
+    const { threadId } = (await created.json()) as { threadId: string };
+
+    const archived = await app.request(`/api/v1/sessions/${threadId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ archived: true }),
+    });
+    expect(archived.status).toBe(200);
+    expect(await archived.json()).toMatchObject({
+      session: {
+        id: threadId,
+        archivedAt: expect.any(String),
+      },
+      mutation: {
+        operation: "session_archive",
+        entity: { kind: "session", id: threadId },
+        accepted: true,
+      },
+    });
+
+    const active = await app.request(
+      "/api/v1/sessions?projectId=project-archive",
+    );
+    expect(await active.json()).toEqual({ sessions: [] });
+
+    const archive = await app.request(
+      "/api/v1/sessions?projectId=project-archive&archived=only",
+    );
+    expect(await archive.json()).toMatchObject({
+      sessions: [{ id: threadId, archivedAt: expect.any(String) }],
+    });
+
+    const restored = await app.request(`/api/v1/sessions/${threadId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ archived: false }),
+    });
+    expect(restored.status).toBe(200);
+    expect(await restored.json()).toMatchObject({
+      session: { id: threadId },
+      mutation: {
+        operation: "session_restore",
+        entity: { kind: "session", id: threadId },
+        accepted: true,
+      },
+    });
+
+    const activeAgain = await app.request(
+      "/api/v1/sessions?projectId=project-archive",
+    );
+    const activeAgainJson = (await activeAgain.json()) as {
+      sessions: Array<{ id: string; archivedAt?: string }>;
+    };
+    expect(activeAgainJson.sessions).toEqual([
+      expect.objectContaining({ id: threadId }),
+    ]);
+    expect(activeAgainJson.sessions[0]).not.toHaveProperty("archivedAt");
+
+    const reopened = createLocalApiApp({ dataDir, userId: "local-user" });
+    const persistedActive = await reopened.request(
+      "/api/v1/sessions?projectId=project-archive",
+    );
+    expect(await persistedActive.json()).toMatchObject({
+      sessions: [{ id: threadId }],
+    });
+  });
+
   it("persists the Clash runtime session before starting ACP and keeps startup errors in history", async () => {
     let sawPrecreatedSession = false;
     const app = createLocalApiApp({
@@ -9191,13 +9393,17 @@ describe("local API app", () => {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ method_id: "api-key" }),
+        body: JSON.stringify({
+          method_id: "api-key",
+          values: { "api-key": "sk-secret" },
+        }),
       },
     );
 
     expect(response.status).toBe(200);
     expect(authenticateHarness).toHaveBeenCalledWith("gemini", {
       methodId: "api-key",
+      values: { "api-key": "sk-secret" },
     });
     expect(await response.json()).toMatchObject({
       harnesses: [{ id: "gemini", auth: { status: "configured" } }],
@@ -10343,6 +10549,11 @@ describe("local API app", () => {
     expect(await (await app.request("/api/v1/projects")).json()).toEqual({
       projects: [],
     });
+    expect(
+      await (await app.request("/api/v1/projects?archived=only")).json(),
+    ).toMatchObject({
+      projects: [{ id, name: "Renamed", deletedAt: expect.any(String) }],
+    });
   });
 
   it("writes sanitized mutation audit records for local project creation", async () => {
@@ -10796,11 +11007,6 @@ describe("local API app", () => {
         },
         tracePolicy: {
           schemaVersion: 1,
-          roomMessages: {
-            kind: "project-chat",
-            syncDefault: "sync-when-project-sync-enabled",
-            rawAgentTrace: false,
-          },
           agentSessionMetadata: {
             kind: "public-session-metadata",
             syncDefault: "sync-when-project-sync-enabled",

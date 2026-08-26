@@ -11,6 +11,18 @@ describe("AgentMotion", () => {
     vi.unstubAllGlobals();
   });
 
+  it("exposes the Clash avatar identity and semantic runtime state", () => {
+    const { container } = render(
+      <AgentMotion state="review" decorative={false} label="Reviewing agent" />,
+    );
+
+    const avatar = container.querySelector('[data-slot="clash-agent-avatar"]');
+    expect(avatar).toBeTruthy();
+    expect(avatar?.getAttribute("data-status")).toBe("review");
+    expect(avatar?.getAttribute("role")).toBe("img");
+    expect(avatar?.getAttribute("aria-label")).toBe("Reviewing agent");
+  });
+
   it("tracks the pointer with CSS eye offsets instead of React state", async () => {
     vi.stubGlobal(
       "matchMedia",

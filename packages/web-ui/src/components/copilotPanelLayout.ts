@@ -9,8 +9,13 @@ export function clampCopilotPanelWidthForViewport(
     COPILOT_PANEL_MIN_WIDTH,
     Math.round(viewportWidth * COPILOT_PANEL_MAX_WIDTH_FRACTION),
   );
-  return Math.max(
-    COPILOT_PANEL_MIN_WIDTH,
-    Math.min(fractionalMaximum, width),
-  );
+  return Math.max(COPILOT_PANEL_MIN_WIDTH, Math.min(fractionalMaximum, width));
+}
+
+export function expandCopilotPanelWidth(
+  baseWidth: number,
+  railWidth: number,
+  viewportWidth: number,
+): number {
+  return Math.min(baseWidth + railWidth, Math.max(0, viewportWidth - 16));
 }

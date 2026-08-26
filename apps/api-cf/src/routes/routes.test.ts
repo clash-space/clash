@@ -211,237 +211,26 @@ describe("Hono routes", () => {
     });
   });
 
-  describe("Project room messages", () => {
-    it("accepts a client-provided room message id for local daemon mirroring", async () => {
-      let insertedArgs: unknown[] = [];
-      const prepare = vi.fn((sql: string) => ({
-        bind: vi.fn((...args: unknown[]) => ({
-          first: vi.fn(async () => {
-            if (sql.includes("SELECT 1 FROM project")) return { ok: 1 };
-            return null;
-          }),
-          run: vi.fn(async () => {
-            if (sql.includes("room_message") && sql.includes("INSERT"))
-              insertedArgs = args;
-            return {};
-          }),
-          all: vi.fn(async () => ({ results: [] })),
-        })),
-      }));
-      const broadcastRoomMessage = vi.fn(async () => undefined);
-      env = makeEnv({
-        DB: { prepare } as any,
-        ROOM: {
-          idFromName: vi.fn().mockReturnValue("room-id"),
-          get: vi.fn().mockReturnValue({ broadcastRoomMessage }),
-        } as any,
-      });
-
-      const res = await app.request(
-        "/api/v1/projects/project-1/room/messages",
-        {
-          method: "POST",
-          headers: { ...USER_HEADERS, "content-type": "application/json" },
-          body: JSON.stringify({
-            id: "local-message-1",
-            text: "mirrored from desktop",
-            mentions: [],
-          }),
-        },
-        env,
-      );
-
-      expect(res.status).toBe(201);
-      expect(await res.json()).toMatchObject({
-        id: "local-message-1",
-        project_id: "project-1",
-        sender_kind: "user",
-        sender_id: "user-1",
-        sender_user_id: "user-1",
-        text: "mirrored from desktop",
-      });
-      expect(insertedArgs[0]).toBe("local-message-1");
-      expect(broadcastRoomMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: "local-message-1",
-          text: "mirrored from desktop",
-        }),
-      );
-    });
-
-    it("keeps agent-member-only mentions and dispatches them", async () => {
-      let insertedArgs: unknown[] = [];
-      const pushRoomMention = vi.fn(async () => undefined);
-      const prepare = vi.fn((sql: string) => ({
-        bind: vi.fn((...args: unknown[]) => ({
-          first: vi.fn(async () => {
-            if (sql.includes("SELECT 1 FROM project")) return { ok: 1 };
-            if (sql.includes("FROM room_message WHERE id")) return null;
-            if (sql.includes("FROM runtime_session"))
-              return { id: "session-1", runtime_id: "runtime-1" };
-            return null;
-          }),
-          run: vi.fn(async () => {
-            if (sql.includes("room_message") && sql.includes("INSERT"))
-              insertedArgs = args;
-            return {};
-          }),
-          all: vi.fn(async () => ({ results: [] })),
-        })),
-      }));
-      env = makeEnv({
-        DB: { prepare } as any,
-        ROOM: {
-          idFromName: vi.fn().mockReturnValue("room-id"),
-          get: vi.fn().mockReturnValue({
-            broadcastRoomMessage: vi.fn(async () => undefined),
-          }),
-        } as any,
-        RUNTIME_ROOM: {
-          idFromName: vi.fn().mockReturnValue("runtime-room-id"),
-          get: vi.fn().mockReturnValue({ pushRoomMention }),
-        } as any,
-      });
-
-      const res = await app.request(
-        "/api/v1/projects/project-1/room/messages",
-        {
-          method: "POST",
-          headers: { ...USER_HEADERS, "content-type": "application/json" },
-          body: JSON.stringify({
-            id: "mention-message-1",
-            text: "ping agent",
-            mentions: [{ agent_member_id: "agent-member-1" }],
-          }),
-        },
-        env,
-      );
-
-      expect(res.status).toBe(201);
-      expect(await res.json()).toMatchObject({
-        mentions: [{ agent_member_id: "agent-member-1" }],
-      });
-      expect(JSON.parse(insertedArgs[5] as string)).toEqual([
-        { agent_member_id: "agent-member-1" },
-      ]);
-      expect(pushRoomMention).toHaveBeenCalledWith(
-        "session-1",
-        expect.objectContaining({
-          message_id: "mention-message-1",
-          from_kind: "user",
-          from_id: "user-1",
-        }),
-      );
-    });
-
-    it("treats identical client-provided room message id replays as idempotent", async () => {
-      const existing = {
-        id: "replayed-message-1",
-        project_id: "project-1",
-        sender_kind: "user",
-        sender_id: "user-1",
-        sender_user_id: "user-1",
-        mentions_json: JSON.stringify([{ agent_member_id: "agent-member-1" }]),
-        text: "already posted",
-        created_at: 1_700_000_000,
-      };
-      const run = vi.fn(async () => ({}));
-      const broadcastRoomMessage = vi.fn(async () => undefined);
+  describe("Retired project messaging", () => {
+    it("keeps the deleted message endpoint unavailable", async () => {
       const prepare = vi.fn((sql: string) => ({
         bind: vi.fn(() => ({
-          first: vi.fn(async () => {
-            if (sql.includes("SELECT 1 FROM project")) return { ok: 1 };
-            if (sql.includes("FROM room_message WHERE id")) return existing;
-            return null;
-          }),
-          run,
+          first: vi.fn(async () =>
+            sql.includes("SELECT 1 FROM project") ? { ok: 1 } : null,
+          ),
           all: vi.fn(async () => ({ results: [] })),
+          run: vi.fn(async () => ({})),
         })),
       }));
-      env = makeEnv({
-        DB: { prepare } as any,
-        ROOM: {
-          idFromName: vi.fn().mockReturnValue("room-id"),
-          get: vi.fn().mockReturnValue({ broadcastRoomMessage }),
-        } as any,
-      });
+      env = makeEnv({ DB: { prepare } as any });
 
       const res = await app.request(
         "/api/v1/projects/project-1/room/messages",
-        {
-          method: "POST",
-          headers: { ...USER_HEADERS, "content-type": "application/json" },
-          body: JSON.stringify({
-            id: "replayed-message-1",
-            text: "already posted",
-            mentions: [{ agent_member_id: "agent-member-1" }],
-          }),
-        },
+        { headers: USER_HEADERS },
         env,
       );
 
-      expect(res.status).toBe(200);
-      expect(await res.json()).toMatchObject({
-        id: "replayed-message-1",
-        project_id: "project-1",
-        text: "already posted",
-        mentions: [{ agent_member_id: "agent-member-1" }],
-      });
-      expect(run).not.toHaveBeenCalled();
-      expect(broadcastRoomMessage).not.toHaveBeenCalled();
-    });
-
-    it("rejects same-project room message id replays with different content", async () => {
-      const existing = {
-        id: "conflicting-message-1",
-        project_id: "project-1",
-        sender_kind: "user",
-        sender_id: "user-1",
-        sender_user_id: "user-1",
-        mentions_json: "[]",
-        text: "original",
-        created_at: 1_700_000_000,
-      };
-      const run = vi.fn(async () => ({}));
-      const broadcastRoomMessage = vi.fn(async () => undefined);
-      const prepare = vi.fn((sql: string) => ({
-        bind: vi.fn(() => ({
-          first: vi.fn(async () => {
-            if (sql.includes("SELECT 1 FROM project")) return { ok: 1 };
-            if (sql.includes("FROM room_message WHERE id")) return existing;
-            return null;
-          }),
-          run,
-          all: vi.fn(async () => ({ results: [] })),
-        })),
-      }));
-      env = makeEnv({
-        DB: { prepare } as any,
-        ROOM: {
-          idFromName: vi.fn().mockReturnValue("room-id"),
-          get: vi.fn().mockReturnValue({ broadcastRoomMessage }),
-        } as any,
-      });
-
-      const res = await app.request(
-        "/api/v1/projects/project-1/room/messages",
-        {
-          method: "POST",
-          headers: { ...USER_HEADERS, "content-type": "application/json" },
-          body: JSON.stringify({
-            id: "conflicting-message-1",
-            text: "changed",
-          }),
-        },
-        env,
-      );
-
-      expect(res.status).toBe(409);
-      expect(await res.json()).toEqual({
-        error: "room message id already exists with different content",
-      });
-      expect(run).not.toHaveBeenCalled();
-      expect(broadcastRoomMessage).not.toHaveBeenCalled();
+      expect(res.status).toBe(404);
     });
   });
 

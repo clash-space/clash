@@ -3,8 +3,8 @@
  *
  * A "claim" couples a bundled agent template (Director / Canvas Editor /
  * …) with one of the user's runtimes, producing a concrete agent member
- * the user can invite into project rooms. See drizzle/0012_agent_member.sql
- * for the why-this-layer rationale.
+ * that provides stable identity across runtime sessions. See
+ * drizzle/0012_agent_member.sql for the why-this-layer rationale.
  *
  * Routes (all auth'd via x-user-id middleware in app.ts):
  *   GET    /api/v1/agents               → { agents: [...] }
@@ -39,8 +39,7 @@ export const agentRoutes = new Hono<{ Bindings: Env }>();
  * Bundled agent templates the Clash runtime ships in runtime/agents/. Server-side
  * allow-list — kept in lockstep with packages/cli/assets/agents/.
  * Adding a new template = ship a new Clash runtime + update this array +
- * the BUILTIN_AGENT lists in the web UI (RuntimePickerDialog,
- * GroupChatPanel). Three places, but each is a one-liner.
+ * the BUILTIN_AGENT list in the web UI RuntimePickerDialog.
  */
 const BUILTIN_TEMPLATES: Record<string, { label: string }> = {
   "director":        { label: "Director" },

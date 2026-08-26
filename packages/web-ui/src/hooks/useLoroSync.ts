@@ -5,7 +5,6 @@ import { runtimeSyncWebSocketUrl } from "../lib/runtimeConfig";
 import type {
   PresenceClient,
   ActivityMessage,
-  RoomMessageEvent,
   AwarenessBroadcastMessage,
 } from "@clash/shared-types";
 import {
@@ -93,8 +92,6 @@ interface LoroSyncOptions {
   onPresenceChange?: (clients: PresenceClient[]) => void;
   onActivity?: (activity: ActivityMessage) => void;
   onMutation?: (mutation: HostMutationRecord) => void;
-  /** Group-chat IM: a new message just landed in this project's room. */
-  onRoomMessage?: (msg: RoomMessageEvent) => void;
   /**
    * Live cursor + selection awareness from peers.
    *
@@ -406,7 +403,6 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     onPresenceChange,
     onActivity,
     onMutation,
-    onRoomMessage,
     onAwareness,
   } = options;
 
@@ -466,7 +462,6 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     onPresenceChange,
     onActivity,
     onMutation,
-    onRoomMessage,
     onAwareness,
   });
   useEffect(() => {
@@ -477,7 +472,6 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       onPresenceChange,
       onActivity,
       onMutation,
-      onRoomMessage,
       onAwareness,
     };
   }, [
@@ -487,7 +481,6 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     onPresenceChange,
     onActivity,
     onMutation,
-    onRoomMessage,
     onAwareness,
   ]);
 
@@ -792,11 +785,6 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
               callbacksRef.current.onActivity
             ) {
               callbacksRef.current.onActivity(msg);
-            } else if (
-              msg.type === "room.message" &&
-              callbacksRef.current.onRoomMessage
-            ) {
-              callbacksRef.current.onRoomMessage(msg);
             } else if (
               msg.type === "awareness.broadcast" &&
               callbacksRef.current.onAwareness

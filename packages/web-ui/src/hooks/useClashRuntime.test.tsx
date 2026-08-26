@@ -34,6 +34,7 @@ class FakeWebSocket {
 describe("useClashRuntime", () => {
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     globalThis.__CLASH_RUNTIME_CONFIG__ = undefined;
     FakeWebSocket.instances = [];
@@ -356,6 +357,137 @@ describe("useClashRuntime", () => {
       });
     });
     expect(result.current.permissionRequests).toEqual([]);
+  });
+
+  it("keeps ACP elicitation out of the transcript and sends a structured response", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+        return new Response(JSON.stringify({ runtimes: [] }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/v1/runtimes/desktop-local/sessions") && init?.method === "POST") {
+        return new Response(JSON.stringify({ session_id: "local-session-elicitation" }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    const { result } = renderHook(() => useClashRuntime());
+    await act(async () => {
+      await result.current.select("desktop-local", undefined, { agentId: "codex-acp" });
+    });
+    const ws = FakeWebSocket.instances.at(-1)!;
+    act(() => {
+      ws.onmessage?.({
+        data: JSON.stringify({
+          type: "session.elicitation_request",
+          session_id: "local-session-elicitation",
+          request_id: "elicitation-1",
+          mode: "form",
+          message: "Choose release settings",
+          requested_schema: {
+            type: "object",
+            properties: { channel: { type: "string", enum: ["stable", "preview"] } },
+            required: ["channel"],
+          },
+        }),
+      });
+    });
+
+    expect(result.current.elicitationRequests).toHaveLength(1);
+    expect(result.current.messages).toEqual([]);
+    act(() => {
+      result.current.respondElicitation("elicitation-1", {
+        action: "accept",
+        content: { channel: "stable" },
+      });
+    });
+    expect(ws.sent.map((frame) => JSON.parse(frame))).toContainEqual({
+      type: "elicitation_response",
+      request_id: "elicitation-1",
+      action: "accept",
+      content: { channel: "stable" },
+    });
+    act(() => {
+      ws.onmessage?.({
+        data: JSON.stringify({
+          type: "session.elicitation_resolved",
+          session_id: "local-session-elicitation",
+          request_id: "elicitation-1",
+          mode: "form",
+          message: "Choose release settings",
+          requested_schema: {
+            type: "object",
+            properties: { channel: { type: "string", enum: ["stable", "preview"] } },
+            required: ["channel"],
+          },
+          action: "accept",
+          content: { channel: "stable" },
+        }),
+      });
+    });
+    expect(result.current.elicitationRequests).toEqual([]);
+    expect(result.current).not.toHaveProperty("elicitationReceipts");
+  });
+
+  it("keeps ACP URL elicitation out of the transcript and sends the user's decision", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+        return new Response(JSON.stringify({ runtimes: [] }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/v1/runtimes/desktop-local/sessions") && init?.method === "POST") {
+        return new Response(JSON.stringify({ session_id: "local-session-url-elicitation" }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    const { result } = renderHook(() => useClashRuntime());
+    await act(async () => {
+      await result.current.select("desktop-local", undefined, { agentId: "codex-acp" });
+    });
+    const ws = FakeWebSocket.instances.at(-1)!;
+
+    act(() => {
+      ws.onmessage?.({
+        data: JSON.stringify({
+          type: "session.elicitation_request",
+          session_id: "local-session-url-elicitation",
+          request_id: "url-elicitation-1",
+          mode: "url",
+          message: "Sign in with GitHub",
+          elicitation_id: "github-oauth-1",
+          url: "https://github.com/login/oauth/authorize?client_id=clash",
+        }),
+      });
+    });
+
+    expect(result.current.elicitationRequests).toEqual([{
+      requestId: "url-elicitation-1",
+      sessionId: "local-session-url-elicitation",
+      mode: "url",
+      message: "Sign in with GitHub",
+      elicitationId: "github-oauth-1",
+      url: "https://github.com/login/oauth/authorize?client_id=clash",
+    }]);
+    expect(result.current.messages).toEqual([]);
+
+    act(() => result.current.respondElicitation("url-elicitation-1", { action: "accept" }));
+    expect(ws.sent.map((frame) => JSON.parse(frame))).toContainEqual({
+      type: "elicitation_response",
+      request_id: "url-elicitation-1",
+      action: "accept",
+    });
   });
 
   it("replaces stale draft config when a fresh startup probe completes", async () => {
@@ -865,7 +997,46 @@ describe("useClashRuntime", () => {
     });
   });
 
-  it("refreshes runtime probes when a session reports ACP auth_required", async () => {
+  it("keeps public agent authentication fields in the runtime snapshot", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      runtimes: [{
+        id: "desktop-local",
+        machine_id: "desktop-local",
+        hostname: "This Mac",
+        os: "darwin/arm64",
+        version: "desktop",
+        status: "online",
+        created_at: 1,
+        agents: [{
+          id: "codex-acp",
+          auth: {
+            status: "needs-auth",
+            message: "Enter an API key.",
+            methods: [{
+              id: "api-key",
+              name: "API key",
+              type: "agent",
+              form: "fields",
+              vars: [{ name: "api-key", label: "API key", secret: true }],
+            }],
+          },
+        }],
+      }],
+    }), { headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useClashRuntime());
+
+    await waitFor(() => expect(result.current.runtimes[0]?.agents[0]?.auth?.methods).toEqual([{
+      id: "api-key",
+      name: "API key",
+      type: "agent",
+      form: "fields",
+      vars: [{ name: "api-key", label: "API key", secret: true }],
+    }]));
+  });
+
+  it("recovers without a transcript error when a session reports an ACP authentication failure", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/api/v1/runtimes?") && !init?.method) {
@@ -900,9 +1071,8 @@ describe("useClashRuntime", () => {
         data: JSON.stringify({
           type: "session.error",
           session_id: "local-session-auth-needed",
-          code: "auth_required",
           agent_id: "cursor",
-          message: "Cursor needs authentication before ACP can start.",
+          message: "Authentication required: token=topsecret Bearer sk-secretvalue123",
           auth: {
             status: "needs-auth",
             message: "Cursor requires ACP authentication.",
@@ -915,7 +1085,9 @@ describe("useClashRuntime", () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => (
       String(input).includes("/api/v1/runtimes?probe=config&refresh=1")
     ))).toBe(true));
-    expect(result.current.errorMessage).toBe("Cursor needs authentication before ACP can start.");
+    expect(result.current.errorMessage).toBeNull();
+    expect(result.current.messages).toEqual([]);
+    expect(result.current.status).toBe("connected");
   });
 
   it("refreshes runtime probes when session creation is blocked by auth", async () => {
@@ -1289,7 +1461,7 @@ describe("useClashRuntime", () => {
     expect((result.current as any).promptQueue.map((item: { text: string }) => item.text)).toEqual(["third"]);
     expect(result.current.messages.filter((message) => message.role === "user").map((message) =>
       message.parts.map((part: any) => part.text).join("")
-    )).toEqual(["first"]);
+    )).toEqual(["first", "second"]);
 
     act(() => {
       ws.onmessage?.({
@@ -1309,6 +1481,142 @@ describe("useClashRuntime", () => {
     expect(result.current.messages.filter((message) => message.role === "user").map((message) =>
       message.parts.map((part: any) => part.text).join("")
     )).toEqual(["first", "second"]);
+  });
+
+  it("keeps a queued prompt before its response when the response event wins the activation race", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+        return new Response(JSON.stringify({ runtimes: [] }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/v1/runtimes/desktop-local/sessions") && init?.method === "POST") {
+        return new Response(JSON.stringify({ session_id: "local-session-order-race" }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    const { result } = renderHook(() => useClashRuntime());
+    await act(async () => {
+      await result.current.select("desktop-local", undefined, { agentId: "codex-acp" });
+    });
+
+    const ws = FakeWebSocket.instances.at(-1)!;
+    act(() => {
+      ws.onmessage?.({
+        data: JSON.stringify({
+          type: "session.ready",
+          session_id: "local-session-order-race",
+        }),
+      });
+      result.current.sendMessage("first");
+      result.current.sendMessage("second");
+    });
+    const prompts = ws.sent
+      .map((frame) => JSON.parse(frame))
+      .filter((frame) => frame.type === "prompt");
+
+    act(() => {
+      ws.onmessage?.({
+        data: JSON.stringify({
+          type: "session.event",
+          session_id: "local-session-order-race",
+          turn_id: prompts[1].turn_id,
+          event: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "second response" },
+          },
+        }),
+      });
+      ws.onmessage?.({
+        data: JSON.stringify({
+          type: "session.queue_update",
+          session_id: "local-session-order-race",
+          mode: "single",
+          active_turn_id: prompts[1].turn_id,
+          queued: [],
+        }),
+      });
+    });
+
+    expect(result.current.messages.map((message) => ({
+      role: message.role,
+      text: message.parts
+        .filter((part: any) => part.type === "text")
+        .map((part: any) => part.text)
+        .join(""),
+    }))).toEqual([
+      { role: "user", text: "first" },
+      { role: "user", text: "second" },
+      { role: "assistant", text: "second response" },
+    ]);
+  });
+
+  it("routes skill warnings to an expiring session notice without losing same-chunk prose", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(1_000));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+        return new Response(JSON.stringify({ runtimes: [] }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/v1/runtimes/desktop-local/sessions") && init?.method === "POST") {
+        return new Response(JSON.stringify({ session_id: "local-session-notice" }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    const { result } = renderHook(() => useClashRuntime());
+    await act(async () => {
+      await result.current.select("desktop-local", undefined, { agentId: "codex-acp" });
+    });
+    const ws = FakeWebSocket.instances.at(-1)!;
+    act(() => {
+      ws.onmessage?.({ data: JSON.stringify({
+        type: "session.ready",
+        session_id: "local-session-notice",
+      }) });
+      result.current.sendMessage("啥都不想做");
+    });
+    const prompt = ws.sent.map((frame) => JSON.parse(frame)).find((frame) => frame.type === "prompt");
+    const warning =
+      "Warning: Skill descriptions were shortened to fit the skills context budget. " +
+      "Codex can still see every skill, but some descriptions are shorter.";
+
+    act(() => {
+      ws.onmessage?.({ data: JSON.stringify({
+        type: "session.event",
+        session_id: "local-session-notice",
+        turn_id: prompt.turn_id,
+        event: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: `${warning}\n\n那就先喝两口水。` },
+        },
+      }) });
+    });
+
+    expect(result.current.notice).toMatchObject({
+      message: warning,
+      tone: "warning",
+      expiresAt: 11_000,
+    });
+    expect(result.current.messages.at(-1)?.parts).toEqual([
+      { type: "text", text: "那就先喝两口水。" },
+    ]);
+
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(result.current.notice).toBeNull();
   });
 
   it("clears the active turn when the backend reports no active queued prompt", async () => {
@@ -1570,12 +1878,12 @@ describe("useClashRuntime", () => {
 
     const firstTurnId = promptFrames()[0].turn_id;
     const steerTurnId = promptFrames()[1].turn_id;
-    const sendSessionEvent = (event: unknown) => {
+    const sendSessionEvent = (event: unknown, turnId = firstTurnId) => {
       ws.onmessage?.({
         data: JSON.stringify({
           type: "session.event",
           session_id: "local-session-steer",
-          turn_id: firstTurnId,
+          turn_id: turnId,
           event,
         }),
       });
@@ -1632,18 +1940,18 @@ describe("useClashRuntime", () => {
         sessionUpdate: "agent_message_chunk",
         messageId: "msg-1",
         content: { type: "text", text: "same message after steer" },
-      });
+      }, steerTurnId);
       sendSessionEvent({
         sessionUpdate: "agent_message_chunk",
         messageId: "msg-1",
         content: { type: "text", text: " still contiguous" },
-      });
+      }, steerTurnId);
       sendSessionEvent({
         sessionUpdate: "tool_call",
         toolCallId: "tool-2",
         title: "ls",
         kind: "execute",
-      });
+      }, steerTurnId);
     });
 
     expect(promptFrames().map((frame) => frame.text)).toEqual(["first", "steer after tool"]);
@@ -2051,6 +2359,46 @@ describe("useClashRuntime", () => {
       project_id: "project-one",
     });
     expect(second.result.current.messages).toEqual([]);
+  });
+
+  it("creates an ACP fork on the first prompt and keeps that prompt visible", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+        return new Response(JSON.stringify({ runtimes: [] }), { headers: { "content-type": "application/json" } });
+      }
+      if (url.endsWith("/api/v1/runtimes/desktop-local/sessions") && init?.method === "POST") {
+        return new Response(JSON.stringify({ session_id: "forked-local-session" }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    const { result } = renderHook(() => useClashRuntime());
+
+    act(() => {
+      result.current.startDraft("desktop-local", undefined, {
+        agentId: "codex-acp",
+        projectId: "project-one",
+        permissionModeId: "codex:full-access",
+        forkFromAcpSessionId: "acp-source",
+      });
+      result.current.sendMessage("Continue from the source session");
+    });
+
+    await waitFor(() => expect(result.current.sessionId).toBe("forked-local-session"));
+    const post = fetchMock.mock.calls.find(([, init]) => init?.method === "POST")!;
+    expect(JSON.parse(String(post[1]?.body))).toMatchObject({
+      agent_id: "codex-acp",
+      project_id: "project-one",
+      permission_mode: "codex:full-access",
+      fork_session_id: "acp-source",
+    });
+    expect(result.current.messages).toEqual([
+      expect.objectContaining({ role: "user", parts: [{ type: "text", text: "Continue from the source session" }] }),
+    ]);
   });
 
   it("does not treat project-scoped runtime cache as Clash session history", async () => {
