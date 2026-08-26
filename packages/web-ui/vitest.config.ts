@@ -1,10 +1,32 @@
 import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
 
+const openmaCommonRoot = resolve(__dirname, "../../../openma-common");
+
 export default defineConfig({
   resolve: {
     dedupe: ["react", "react-dom"],
     alias: [
+      {
+        find: /^@openma\/common\/chat-ui$/,
+        replacement: resolve(openmaCommonRoot, "src/chat-ui/index.ts"),
+      },
+      {
+        find: /^@openma\/common\/agent-ui\/react$/,
+        replacement: resolve(openmaCommonRoot, "src/agent-ui/react.tsx"),
+      },
+      {
+        find: /^@openma\/common\/agent-ui$/,
+        replacement: resolve(openmaCommonRoot, "src/agent-ui/index.ts"),
+      },
+      {
+        find: /^@openma\/common\/session-events\/openma$/,
+        replacement: resolve(openmaCommonRoot, "src/session-events/openma.ts"),
+      },
+      {
+        find: /^@openma\/common\/session-ui$/,
+        replacement: resolve(openmaCommonRoot, "src/session-ui/index.tsx"),
+      },
       {
         find: /^@clash\/action-sdk\/browser$/,
         replacement: resolve(__dirname, "../action-sdk/src/browser.ts"),
@@ -100,6 +122,15 @@ export default defineConfig({
     // whether the suite passes.
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     setupFiles: ["./vitest.setup.ts"],
+    server: {
+      deps: {
+        // The common checkout owns this hook implementation but React must be
+        // resolved from Clash. Transforming it lets the aliases above enforce
+        // the single host React instance instead of externalizing common's
+        // peer-bound node_modules copy.
+        inline: ["use-stick-to-bottom"],
+      },
+    },
     testTimeout: 20_000,
   },
 });

@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { visibleUserPromptText } from "@clash/shared-runtime";
 import {
-  initialSessionTranscript,
-  replaySessionEventLog,
-  reduceSessionTranscript,
-  type PersistedSessionEvent,
-  type SessionTranscript,
-  type SessionTranscriptEvent,
-  type SessionTranscriptNotice,
-} from "@openma/common/session";
+  createAgentUIStore,
+  type AgentUIState,
+  type AgentUIStore,
+} from "@openma/common/agent-ui";
+import { useAgentUIState } from "@openma/common/agent-ui/react";
+import { decodeAcpSessionUpdate } from "@openma/common/protocol/acp";
 import {
-  appendAcpEvent,
+  createOpenMAEvent,
+  type OpenMAEvent,
+} from "@openma/common/session-events/openma";
+import {
   goalStateFromSessionInfoMetadata,
   mergeSessionInfoMetadata,
   parseAcpEvent,
@@ -299,10 +300,9 @@ export interface UseClashRuntimeReturn {
   errorMessage: string | null;
   transientStatus: RuntimeTransientStatus | null;
   diagnostics: RuntimeDiagnostic[];
-  /** Canonical Backchat-compatible turn/queue/notice state. */
-  transcript: SessionTranscript;
-  /** Short-lived operational notice rendered in the composer lane. */
-  notice: SessionTranscriptNotice | null;
+  /** Shared canonical state machine used by Backchat and Clash. */
+  agentUIStore: AgentUIStore;
+  agentUIState: AgentUIState;
   messages: ByoMessage[];
   /** Slash commands the agent currently advertises (replaced per
    *  available_commands_update event). UI uses this for the `/` picker. */
@@ -371,7 +371,6 @@ export interface UseClashRuntimeReturn {
     response: RuntimeElicitationResponse,
   ) => void;
   restartSession: (mode: SessionRestartMode) => Promise<void>;
-  dismissNotice: () => void;
   cancel: () => void;
   shutdown: () => void;
 }
@@ -428,74 +427,102 @@ interface CreateSessionResponse {
   session_id: string;
 }
 
-/** Non-visual product projection for titles, Goal, and canvas side effects.
- * Runtime UI must consume `transcript` directly;
+/** Non-visual product projection for titles and canvas side effects.
+ * Runtime UI consumes `agentUIStore` directly;
  * this projection is never a second rendering source. */
-export function projectSessionTranscriptMessages(
-  transcript: SessionTranscript,
-): ByoMessage[] {
+export function projectAgentUIStateMessages(state: AgentUIState): ByoMessage[] {
   const messages: ByoMessage[] = [];
-  for (const turn of transcript.turns) {
-    // Backchat keeps queued turns in the state machine but gives them one
-    // visual home in composer progress. Clash's editable MCP queue bar is the
-    // equivalent product-specific presentation.
+  for (const turnId of state.turnOrder) {
+    const turn = state.turns[turnId];
+    if (!turn) continue;
     if (turn.status === "queued") continue;
-    if (turn.promptText) {
+    const prompt = turn.items.find(
+      (item) => item.kind === "message" && item.role === "user",
+    );
+    if (prompt?.kind === "message" && prompt.text) {
       messages.push({
         id: `user-${turn.id}`,
         role: "user",
-        parts: [{ type: "text", text: turn.promptText }],
+        parts: [{ type: "text", text: prompt.text }],
       });
     }
 
-    let knownIdx: number | undefined;
-    for (const event of turn.events) {
-      const result = appendAcpEvent(messages, turn.id, knownIdx, event.payload);
-      if (knownIdx === undefined && result.idx >= 0) knownIdx = result.idx;
-    }
-    if (turn.status === "error" && turn.errorMessage) {
-      const next = appendRuntimeError(messages, turn.id, turn.errorMessage);
-      if (next !== messages) {
-        messages.splice(0, messages.length, ...next);
+    const parts: ByoMessage["parts"] = [];
+    for (const item of turn.items) {
+      if (item.kind === "message" && item.role === "assistant") {
+        parts.push({
+          type: "text",
+          text: item.text,
+          ...(item.messageId ? { messageId: item.messageId } : {}),
+          ...(item.phase ? { phase: item.phase } : {}),
+        });
+      } else if (item.kind === "thinking") {
+        parts.push({
+          type: "thought",
+          text: item.text,
+          ...(item.messageId ? { messageId: item.messageId } : {}),
+        });
+      } else if (item.kind === "tool") {
+        parts.push({
+          type: "tool_call",
+          toolCallId: item.id,
+          ...(item.title ? { title: item.title } : {}),
+          ...(item.toolKind ? { kind: item.toolKind } : {}),
+          status: item.status,
+          ...(item.rawInput !== undefined ? { rawInput: item.rawInput } : {}),
+          ...(item.rawOutput !== undefined
+            ? { rawOutput: item.rawOutput }
+            : {}),
+          ...(item.content ? { content: item.content as never[] } : {}),
+          ...(item.locations ? { locations: item.locations } : {}),
+          ...(item.adapterMeta ? { meta: item.adapterMeta } : {}),
+        });
+      } else if (item.kind === "raw") {
+        const data = item.event.data as { payload?: unknown } | undefined;
+        parts.push({ type: "raw_event", event: data?.payload ?? item.event });
+      } else if (item.kind === "notice") {
+        parts.push({ type: "event_note", title: item.text, tone: "neutral" });
       }
     }
+    if (turn.status === "failed" && turn.error) {
+      parts.push({ type: "event_note", title: turn.error, tone: "error" });
+    }
+    if (parts.length > 0)
+      messages.push({ id: `asst-${turn.id}`, role: "assistant", parts });
   }
   return messages;
 }
 
-async function fetchRuntimeSessionTranscript(
-  sessionId: string,
-): Promise<SessionTranscript | null> {
-  let res: Response;
-  try {
-    res = await fetch(
-      runtimeApiUrl(`${SESSIONS_BASE}/${encodeURIComponent(sessionId)}/events`),
-      {
-        credentials: "include",
-      },
-    );
-  } catch {
-    return null;
-  }
-  if (!res.ok) return null;
-  let json: {
-    events?: PersistedSessionEvent[];
-  };
-  try {
-    json = await res.json();
-  } catch {
-    return null;
-  }
-  return replaySessionEventLog(sessionId, json.events ?? []);
-}
-
-function persistedTranscriptCanReplaceLive(
-  history: SessionTranscript,
-  live: SessionTranscript,
-): boolean {
-  // Backchat treats in-memory turns as authoritative. Replaying storage over
-  // a live turn can regress a just-received terminal to an older running row.
-  return live.turns.length === 0 && history.turns.length > 0;
+function canonicalRuntimeEvent({
+  eventId,
+  sessionId,
+  turnId,
+  harness,
+  type,
+  occurredAt,
+  data,
+}: {
+  eventId: string;
+  sessionId: string;
+  turnId?: string;
+  harness?: string | null;
+  type: string;
+  occurredAt: string;
+  data: unknown;
+}): OpenMAEvent {
+  return createOpenMAEvent({
+    event_id: eventId,
+    type,
+    session_id: sessionId,
+    ...(turnId ? { turn_id: turnId } : {}),
+    source: {
+      kind: "harness",
+      harness: harness ?? "acp",
+      adapter: "clash-runtime",
+    },
+    occurred_at: occurredAt,
+    data,
+  }) as OpenMAEvent;
 }
 
 function appendRuntimeError(
@@ -1090,9 +1117,10 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const [transientStatus, setTransientStatus] =
     useState<RuntimeTransientStatus | null>(null);
   const [diagnostics, setDiagnostics] = useState<RuntimeDiagnostic[]>([]);
-  const [transcript, setTranscriptState] = useState<SessionTranscript>(() =>
-    initialSessionTranscript("draft"),
+  const [agentUIStore, setAgentUIStoreState] = useState<AgentUIStore>(() =>
+    createAgentUIStore("draft"),
   );
+  const agentUIState = useAgentUIState(agentUIStore);
   const [availableCommands, setAvailableCommands] = useState<
     AvailableCommand[]
   >([]);
@@ -1131,7 +1159,8 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const sessionIdRef = useRef<string | null>(null);
   const statusRef = useRef<ClashRuntimeStatus>("idle");
   const acpSessionIdRef = useRef<string | null>(null);
-  const transcriptRef = useRef<SessionTranscript>(transcript);
+  const selectedAgentIdRef = useRef<string | null>(null);
+  const agentUIStoreRef = useRef<AgentUIStore>(agentUIStore);
   const promptQueueRef = useRef<RuntimeQueuedPrompt[]>([]);
   const queuedPromptLookupRef = useRef(new Map<string, RuntimeQueuedPrompt>());
   const promptQueueEnabledRef = useRef(readPromptQueueEnabled());
@@ -1151,6 +1180,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const runtimeSnapshotErrorRef = useRef<string | null>(null);
   const resendQueuedAfterRestartRef = useRef(false);
   const turnSeq = useRef(0);
+  const runtimeEventSeq = useRef(0);
   const queuedPromptSeq = useRef(0);
   const activeTurnIds = useRef(new Set<string>());
   /** Monotonic selection token. Backchat keys lifecycle state by session;
@@ -1165,64 +1195,51 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const ready =
     status === "connected" || status === "sending" || status === "streaming";
   const messages = useMemo(
-    () => projectSessionTranscriptMessages(transcript),
-    [transcript],
+    () => projectAgentUIStateMessages(agentUIState),
+    [agentUIState],
   );
 
-  const replaceTranscript = useCallback((next: SessionTranscript) => {
-    transcriptRef.current = next;
-    setTranscriptState(next);
+  const replaceAgentUIStore = useCallback((next: AgentUIStore) => {
+    agentUIStoreRef.current = next;
+    setAgentUIStoreState(next);
   }, []);
 
-  const dispatchTranscript = useCallback(
-    (event: SessionTranscriptEvent) => {
-      const next = reduceSessionTranscript(transcriptRef.current, event);
-      if (next !== transcriptRef.current) replaceTranscript(next);
+  const dispatchRuntimeEvent = useCallback(
+    (type: string, turnId: string | undefined, data: unknown) => {
+      const store = agentUIStoreRef.current;
+      const sessionId = store.getState().sessionId;
+      const occurredAt = new Date().toISOString();
+      const eventId = `clash-runtime:${++runtimeEventSeq.current}:${type}`;
+      store.dispatch(
+        canonicalRuntimeEvent({
+          eventId,
+          sessionId,
+          turnId,
+          harness: selectedAgentIdRef.current,
+          type,
+          occurredAt,
+          data,
+        }),
+      );
     },
-    [replaceTranscript],
+    [],
   );
 
-  const dismissNotice = useCallback(() => {
-    dispatchTranscript({ type: "notice.dismiss" });
-  }, [dispatchTranscript]);
-
-  useEffect(() => {
-    const notice = transcript.notice;
-    if (!notice) return undefined;
-    const timeout = window.setTimeout(
-      () => {
-        if (transcriptRef.current.notice?.id === notice.id) dismissNotice();
-      },
-      Math.max(0, notice.expiresAt - Date.now()),
-    );
-    return () => window.clearTimeout(timeout);
-  }, [dismissNotice, transcript.notice]);
+  const setRuntimeAgentId = useCallback((next: string | null) => {
+    selectedAgentIdRef.current = next;
+    setSelectedAgentId(next);
+  }, []);
 
   const setRuntimeSessionId = useCallback(
     (next: string | null) => {
       sessionIdRef.current = next;
       setSessionId(next);
-      const current = transcriptRef.current;
-      const nextTranscript = { ...current, sessionId: next ?? "draft" };
-      replaceTranscript(nextTranscript);
+      const resolved = next ?? "draft";
+      if (agentUIStoreRef.current.getState().sessionId !== resolved) {
+        replaceAgentUIStore(createAgentUIStore(resolved));
+      }
     },
-    [replaceTranscript],
-  );
-
-  const hydrateMessagesFromStore = useCallback(
-    async (targetSessionId: string) => {
-      const history = await fetchRuntimeSessionTranscript(targetSessionId);
-      if (
-        !history ||
-        sessionIdRef.current !== targetSessionId ||
-        history.turns.length === 0
-      )
-        return;
-      if (!persistedTranscriptCanReplaceLive(history, transcriptRef.current))
-        return;
-      replaceTranscript(history);
-    },
-    [replaceTranscript],
+    [replaceAgentUIStore],
   );
 
   const setRuntimeStatus = useCallback(
@@ -1390,10 +1407,23 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   }, []);
 
   const handleAcpEvent = useCallback(
-    (turnId: string, event: unknown) => {
-      dispatchTranscript({ type: "turn.event", turnId, event });
+    (turnId: string | undefined, event: unknown) => {
+      const store = agentUIStoreRef.current;
+      const sessionId = store.getState().sessionId;
+      const seq = ++runtimeEventSeq.current;
+      store.dispatch(
+        decodeAcpSessionUpdate(sessionId, event, {
+          eventId: `clash-runtime:${seq}:acp`,
+          occurredAt: new Date().toISOString(),
+          ...(turnId ? { turnId } : {}),
+          seq,
+          ...(selectedAgentIdRef.current
+            ? { harness: selectedAgentIdRef.current }
+            : {}),
+        }).event,
+      );
     },
-    [dispatchTranscript],
+    [],
   );
 
   const replacePromptQueue = useCallback((next: RuntimeQueuedPrompt[]) => {
@@ -1424,7 +1454,10 @@ export function useClashRuntime(): UseClashRuntimeReturn {
 
   const appendUserMessage = useCallback(
     (turnId: string, text: string) => {
-      dispatchTranscript({ type: "turn.register", turnId, promptText: text });
+      dispatchRuntimeEvent("user.message", turnId, {
+        message_id: `user-${turnId}`,
+        text,
+      });
       const nextTitle = runtimeTitleFromPrompt(text);
       if (nextTitle) {
         pendingTitleRef.current = nextTitle;
@@ -1435,7 +1468,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         });
       }
     },
-    [dispatchTranscript],
+    [dispatchRuntimeEvent],
   );
 
   const sendPromptFrame = useCallback(
@@ -1453,13 +1486,9 @@ export function useClashRuntime(): UseClashRuntimeReturn {
           .value as string | undefined;
         appendUserMessage(prompt.turnId, prompt.text);
         if (priorActiveTurnId && priorActiveTurnId !== prompt.turnId) {
-          dispatchTranscript({
-            type: "turn.steering",
-            turnId: prompt.turnId,
-            activeTurnId: priorActiveTurnId,
-            outcome: "startedNewTurn",
-          });
+          activeTurnIds.current.delete(priorActiveTurnId);
         }
+        dispatchRuntimeEvent("session.running", prompt.turnId, {});
         activeTurnIds.current.add(prompt.turnId);
         setTransientStatus(null);
         setRuntimeStatus("sending");
@@ -1474,7 +1503,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       );
       return true;
     },
-    [appendUserMessage, dispatchTranscript, setRuntimeStatus],
+    [appendUserMessage, dispatchRuntimeEvent, setRuntimeStatus],
   );
 
   const enqueuePrompt = useCallback(
@@ -1550,7 +1579,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       pendingTitleRef.current = null;
       pendingSessionModeRef.current = null;
       runtimeSnapshotErrorRef.current = null;
-      replaceTranscript(initialSessionTranscript("draft"));
+      replaceAgentUIStore(createAgentUIStore("draft"));
       setAvailableCommands([]);
       replacePromptQueue([]);
       setSessionConfigOptions([]);
@@ -1567,7 +1596,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       setTransientStatus(null);
       setDiagnostics([]);
     },
-    [closeSessionSocket, replacePromptQueue, replaceTranscript],
+    [closeSessionSocket, replaceAgentUIStore, replacePromptQueue],
   );
 
   const onWsMessage = useCallback(
@@ -1797,19 +1826,12 @@ export function useClashRuntime(): UseClashRuntimeReturn {
             const queue = normalizePromptQueue(msg.queued);
             const nextQueue = queue ?? promptQueueRef.current;
             if (queue) replacePromptQueue(queue);
-            dispatchTranscript({
-              type: "queue.update",
-              activeTurnId:
-                typeof msg.active_turn_id === "string" &&
-                msg.active_turn_id.length > 0
-                  ? msg.active_turn_id
-                  : null,
-              queued: nextQueue.map((prompt) => ({
-                turnId: prompt.turnId,
-                text: prompt.text,
-                createdAt: prompt.createdAt,
-              })),
-            });
+            if (
+              typeof msg.active_turn_id === "string" &&
+              msg.active_turn_id.length > 0
+            ) {
+              dispatchRuntimeEvent("session.running", msg.active_turn_id, {});
+            }
           }
           if (
             typeof msg.active_turn_id === "string" &&
@@ -1917,16 +1939,13 @@ export function useClashRuntime(): UseClashRuntimeReturn {
             }
             const parsed = parseAcpEvent(msg.event);
             if (parsed.commands) setAvailableCommands(parsed.commands);
-            if (!msg.turn_id) {
-              return;
-            }
           }
           handleAcpEvent(msg.turn_id, msg.event);
-          setRuntimeStatus("streaming");
+          if (msg.turn_id) setRuntimeStatus("streaming");
           return;
         case "session.complete":
           if (msg.turn_id) {
-            dispatchTranscript({ type: "turn.complete", turnId: msg.turn_id });
+            dispatchRuntimeEvent("turn.completed", msg.turn_id, {});
             activeTurnIds.current.delete(msg.turn_id);
           }
           setTransientStatus(null);
@@ -1937,7 +1956,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
           return;
         case "session.cancelled":
           if (msg.turn_id) {
-            dispatchTranscript({ type: "turn.cancel", turnId: msg.turn_id });
+            dispatchRuntimeEvent("turn.cancelled", msg.turn_id, {});
             activeTurnIds.current.delete(msg.turn_id);
           }
           setTransientStatus(null);
@@ -1973,11 +1992,9 @@ export function useClashRuntime(): UseClashRuntimeReturn {
             setErrorMessage(message);
             setTransientStatus(null);
             if (msg.turn_id) {
-              dispatchTranscript({
-                type: "turn.error",
-                turnId: msg.turn_id,
-                message,
-              });
+              dispatchRuntimeEvent("turn.failed", msg.turn_id, { message });
+            } else {
+              dispatchRuntimeEvent("session.error", undefined, { message });
             }
             setCurrentSession((session) =>
               session ? { ...session, status: "error" } : session,
@@ -2003,9 +2020,8 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     },
     [
       appendUserMessage,
-      dispatchTranscript,
+      dispatchRuntimeEvent,
       handleAcpEvent,
-      hydrateMessagesFromStore,
       refresh,
       replacePromptQueue,
       sendPromptFrame,
@@ -2013,11 +2029,10 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   );
 
   const openSessionStream = useCallback(
-    (id: string, opts: { replayBacklog?: boolean } = {}) => {
-      const replayQuery = opts.replayBacklog === false ? "?replay=0" : "";
+    (id: string) => {
       const ws = new WebSocket(
         runtimeWebSocketUrl(
-          `${SESSIONS_BASE}/${encodeURIComponent(id)}/_stream${replayQuery}`,
+          `${SESSIONS_BASE}/${encodeURIComponent(id)}/_stream`,
         ),
       );
       wsRef.current = ws;
@@ -2082,7 +2097,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
               }
             : current,
         );
-        openSessionStream(targetSessionId, { replayBacklog: false });
+        openSessionStream(targetSessionId);
         setSessionRestartPhase("complete");
         if (restartCompletionTimerRef.current !== null) {
           window.clearTimeout(restartCompletionTimerRef.current);
@@ -2138,7 +2153,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
             }
           : opts;
       setSelectedRuntimeId(runtimeId);
-      setSelectedAgentId(runtimeId ? resolvedAgentId : null);
+      setRuntimeAgentId(runtimeId ? resolvedAgentId : null);
       setSessionConfigOptions(effectiveConfigOptions);
       setAvailableCommands(
         runtimeId
@@ -2219,6 +2234,11 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         const json = (await res.json()) as CreateSessionResponse;
         if (sessionOperationSeq.current !== operation) return;
         setRuntimeSessionId(json.session_id);
+        const pendingPrompt = pendingPromptRef.current;
+        if (pendingPrompt) {
+          appendUserMessage(pendingPrompt.turnId, pendingPrompt.text);
+          dispatchRuntimeEvent("session.running", pendingPrompt.turnId, {});
+        }
         setCurrentSession({
           id: json.session_id,
           threadId: json.session_id,
@@ -2244,7 +2264,13 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         setRuntimeStatus("error");
       }
     },
-    [openSessionStream, runtimes],
+    [
+      appendUserMessage,
+      dispatchRuntimeEvent,
+      openSessionStream,
+      runtimes,
+      setRuntimeAgentId,
+    ],
   );
 
   const select = useCallback(
@@ -2295,7 +2321,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
             }
           : opts;
       setSelectedRuntimeId(runtimeId);
-      setSelectedAgentId(runtimeId ? resolvedAgentId : null);
+      setRuntimeAgentId(runtimeId ? resolvedAgentId : null);
       setSessionConfigOptions(effectiveConfigOptions);
       setAvailableCommands(
         runtimeId
@@ -2315,7 +2341,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       };
       setRuntimeStatus("draft");
     },
-    [resetRuntimeState, runtimes],
+    [resetRuntimeState, runtimes, setRuntimeAgentId],
   );
 
   const attachSession = useCallback(
@@ -2326,7 +2352,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         (candidate) => candidate.id === session.runtimeId,
       );
       setSelectedRuntimeId(session.runtimeId);
-      setSelectedAgentId(session.agentId ?? null);
+      setRuntimeAgentId(session.agentId ?? null);
       setSessionConfigOptions(
         seedConfigOptionsForAgent(runtime, session.agentId),
       );
@@ -2338,14 +2364,6 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       setCurrentSession(session);
       acpSessionIdRef.current = session.acpSessionId ?? null;
       setRuntimeStatus("connecting");
-
-      const history = await fetchRuntimeSessionTranscript(session.id);
-      if (sessionOperationSeq.current !== operation) return;
-      const historyLoaded = history !== null;
-      if (historyLoaded) {
-        replaceTranscript(history);
-        setRuntimeStatus("connected");
-      }
 
       const attach = await fetch(
         runtimeApiUrl(
@@ -2365,13 +2383,9 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         setRuntimeStatus("error");
         return;
       }
-      if (historyLoaded) {
-        setRuntimeStatus("connected");
-      }
-
-      openSessionStream(session.id, { replayBacklog: !historyLoaded });
+      openSessionStream(session.id);
     },
-    [openSessionStream, replaceTranscript, resetRuntimeState, runtimes],
+    [openSessionStream, resetRuntimeState, runtimes, setRuntimeAgentId],
   );
 
   const sendMessage = useCallback(
@@ -2387,6 +2401,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         }
         pendingPromptRef.current = { turnId: prompt.turnId, text: prompt.text };
         appendUserMessage(prompt.turnId, prompt.text);
+        dispatchRuntimeEvent("session.running", prompt.turnId, {});
         setTransientStatus(null);
         setRuntimeStatus("connecting");
         const draft = draftRef.current;
@@ -2430,7 +2445,9 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       sendPromptFrame(prompt);
     },
     [
+      appendUserMessage,
       createRuntimeSession,
+      dispatchRuntimeEvent,
       enqueuePrompt,
       makePrompt,
       sendPromptFrame,
@@ -2461,22 +2478,14 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       ws.send(JSON.stringify({ type: "steer_queued_prompt", turn_id: turnId }));
       const activeTurnId = activeTurnIds.current.values().next().value as
         string | undefined;
-      if (activeTurnId) {
-        dispatchTranscript({
-          type: "turn.steering",
-          turnId: queued.turnId,
-          activeTurnId,
-          // Clash's local MCP bridge starts a distinct concurrent prompt for
-          // this turn id; Backchat's shared reducer models that explicitly.
-          outcome: "startedNewTurn",
-        });
-      }
+      if (activeTurnId)
+        dispatchRuntimeEvent("session.running", queued.turnId, {});
       queuedPromptLookupRef.current.delete(turnId);
       replacePromptQueue(
         promptQueueRef.current.filter((prompt) => prompt.turnId !== turnId),
       );
     },
-    [dispatchTranscript, replacePromptQueue, setRuntimeStatus],
+    [dispatchRuntimeEvent, replacePromptQueue, setRuntimeStatus],
   );
 
   const updateQueuedPrompt = useCallback(
@@ -2489,10 +2498,9 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       const updated = next.find((prompt) => prompt.turnId === turnId);
       if (updated) queuedPromptLookupRef.current.set(turnId, updated);
       replacePromptQueue(next);
-      dispatchTranscript({
-        type: "turn.register",
-        turnId,
-        promptText: nextText,
+      dispatchRuntimeEvent("user.message", turnId, {
+        message_id: `user-${turnId}`,
+        text: nextText,
       });
       const ws = wsRef.current;
       if (ws?.readyState === WebSocket.OPEN) {
@@ -2505,7 +2513,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         );
       }
     },
-    [dispatchTranscript, replacePromptQueue],
+    [dispatchRuntimeEvent, replacePromptQueue],
   );
 
   const removeQueuedPrompt = useCallback(
@@ -2617,9 +2625,13 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const turnIds = new Set([
       ...activeTurnIds.current,
-      ...transcriptRef.current.turns
-        .filter((turn) => turn.status === "running")
-        .map((turn) => turn.id),
+      ...agentUIStoreRef.current
+        .getState()
+        .turnOrder.filter(
+          (turnId) =>
+            agentUIStoreRef.current.getState().turns[turnId]?.status ===
+            "running",
+        ),
     ]);
     for (const turnId of turnIds) {
       ws.send(JSON.stringify({ type: "cancel", turn_id: turnId }));
@@ -2662,12 +2674,12 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     setRuntimeSessionId(null);
     setCurrentSession(null);
     setSelectedRuntimeId(null);
-    setSelectedAgentId(null);
+    setRuntimeAgentId(null);
     draftRef.current = null;
     pendingConfigOptionsRef.current.clear();
     replacePromptQueue([]);
     setRuntimeStatus("idle");
-  }, [replacePromptQueue, resetRuntimeState]);
+  }, [replacePromptQueue, resetRuntimeState, setRuntimeAgentId]);
 
   const loadResumeOptions = useCallback(
     async (runtimeId: string): Promise<RuntimeResumeSession[]> => {
@@ -2699,8 +2711,8 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     errorMessage,
     transientStatus,
     diagnostics,
-    transcript,
-    notice: transcript.notice ?? null,
+    agentUIStore,
+    agentUIState,
     messages,
     availableCommands,
     promptQueue,
@@ -2735,7 +2747,6 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     respondPermission,
     respondElicitation,
     restartSession,
-    dismissNotice,
     cancel,
     shutdown,
   };

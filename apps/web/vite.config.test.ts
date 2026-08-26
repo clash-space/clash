@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createServer } from "vite";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import viteConfig, {
   DEV_SOURCE_ALIASES,
@@ -6,6 +9,7 @@ import viteConfig, {
 } from "./vite.config";
 
 const originalDisableCloudflare = process.env.CLASH_WEB_E2E_NO_CLOUDFLARE;
+const testDirectory = dirname(fileURLToPath(import.meta.url));
 
 function collectPluginNames(value: unknown): string[] {
   if (Array.isArray(value)) return value.flatMap(collectPluginNames);
@@ -28,15 +32,11 @@ afterEach(() => {
 });
 
 describe("Vite workspace source routing", () => {
-  it(
-    "loads the dev copilot preview without unresolved workspace modules",
-    async () => {
-      const route = await import("./app/routes/__codex-copilot-preview");
+  it("loads the dev copilot preview without unresolved workspace modules", async () => {
+    const route = await import("./app/routes/__codex-copilot-preview");
 
-      expect(route.default).toEqual(expect.any(Function));
-    },
-    20_000,
-  );
+    expect(route.default).toEqual(expect.any(Function));
+  }, 20_000);
 
   it("keeps React component state across source updates with Fast Refresh", async () => {
     if (typeof viteConfig !== "function") {
@@ -102,6 +102,42 @@ describe("Vite workspace source routing", () => {
     expect(resolved.server?.watch?.ignored).toBe(DEV_WATCH_IGNORES);
     expect(resolved.server?.port).toBe(3000);
     expect(resolved.preview?.port).toBe(3000);
+  });
+
+  it("resolves linked OpenMA entrypoints from source instead of mutable dist output", async () => {
+    const server = await createServer({
+      configFile: resolve(testDirectory, "vite.config.ts"),
+      mode: "development",
+      server: { middlewareMode: true },
+    });
+
+    try {
+      const importer = resolve(testDirectory, "app/main.tsx");
+      const entrypoints = [
+        ["@openma/common/chat-ui", "/src/chat-ui/index.ts"],
+        ["@openma/common/agent-ui", "/src/agent-ui/index.ts"],
+        ["@openma/common/agent-ui/react", "/src/agent-ui/react.tsx"],
+        ["@openma/common/protocol/acp", "/src/protocol/acp/index.ts"],
+        [
+          "@openma/common/session-events/openma",
+          "/src/session-events/openma.ts",
+        ],
+        ["@openma/common/session-ui", "/src/session-ui/index.tsx"],
+      ] as const;
+
+      for (const [specifier, sourceSuffix] of entrypoints) {
+        const resolved = await server.pluginContainer.resolveId(
+          specifier,
+          importer,
+        );
+
+        expect(resolved?.id).toMatch(/\/openma-common\/src\//u);
+        expect(resolved?.id.endsWith(sourceSuffix)).toBe(true);
+        expect(resolved?.id).not.toContain("/openma-common/dist/");
+      }
+    } finally {
+      await server.close();
+    }
   });
 
   it("excludes zod and zod-to-json-schema from dev prebundling", async () => {

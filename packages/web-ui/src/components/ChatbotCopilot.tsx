@@ -29,7 +29,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { parseAcpEvent } from "@openma/common/session";
 import { UserMessage } from "./copilot/UserMessage";
 import { AgentCard, type AgentLog } from "./copilot/AgentCard";
 import { ToolCall } from "./copilot/ToolCall";
@@ -1392,7 +1391,7 @@ function ChatbotCopilot({
       setSuggestions([]);
       setSessionError(null);
       clearConnectionError();
-      updateStickToBottom(true);
+      if (chatMode === "cloud") updateStickToBottom(true);
 
       if (chatMode !== "runtime") {
         setInput(runtimePrompt);
@@ -1511,8 +1510,8 @@ function ChatbotCopilot({
 
   const cloudIsProcessing = status === "submitted" || status === "streaming";
   const runtimeIsConnecting = clashRt.status === "connecting";
-  const runtimeTranscriptHasTurns = clashRt.transcript.turns.some(
-    (turn) => turn.status !== "queued",
+  const runtimeTranscriptHasTurns = clashRt.agentUIState.turnOrder.some(
+    (turnId) => clashRt.agentUIState.turns[turnId]?.status !== "queued",
   );
   const runtimeTurnIsProcessing =
     clashRt.status === "sending" ||
@@ -1640,27 +1639,21 @@ function ChatbotCopilot({
     !!activityStatusLabel &&
     (showProcessingIndicator || !!completedActivityLabel);
   const goalPlanEntries = useMemo<PlanEntry[]>(() => {
-    let latest: PlanEntry[] = [];
-    for (const turn of clashRt.transcript.turns) {
-      for (const event of turn.events) {
-        const parsed = parseAcpEvent(event.payload);
-        if (parsed.kind !== "plan") continue;
-        latest = parsed.plan.map((entry) => ({
-          content: entry.content,
-          status: entry.status ?? "pending",
-          ...(entry.priority ? { priority: entry.priority } : {}),
-        }));
-      }
-    }
-    return latest;
-  }, [clashRt.transcript.turns]);
+    const planId = clashRt.agentUIState.planOrder.at(-1);
+    const plan = planId ? clashRt.agentUIState.plans[planId] : undefined;
+    return (plan?.entries ?? []).map((entry) => ({
+      content: entry.content,
+      status: entry.status ?? "pending",
+      ...(entry.priority ? { priority: entry.priority } : {}),
+    }));
+  }, [clashRt.agentUIState]);
   const visibleRuntimeUserTurnIds = useMemo(() => {
     return new Set(
-      clashRt.transcript.turns
-        .filter((turn) => turn.status !== "queued")
-        .map((turn) => turn.id),
+      clashRt.agentUIState.turnOrder.filter(
+        (turnId) => clashRt.agentUIState.turns[turnId]?.status !== "queued",
+      ),
     );
-  }, [clashRt.transcript.turns]);
+  }, [clashRt.agentUIState]);
   const visibleRuntimePromptQueue = useMemo(
     () =>
       clashRt.promptQueue.filter(
@@ -1692,7 +1685,6 @@ function ChatbotCopilot({
     !desktopLocalSetupIssue &&
     (showRuntimeActivityRow ||
       (isDesktopLocalMode && (clashRt.status === "draft" || clashRt.ready)));
-
   useEffect(() => {
     if (
       chatMode !== "runtime" ||
@@ -2145,6 +2137,7 @@ function ChatbotCopilot({
   // long as the user is within 120px of the bottom. Matches the prior
   // `distanceToBottom < 120` heuristic.
   useEffect(() => {
+    if (chatMode !== "cloud") return;
     const sentinel = messagesEndRef.current;
     const container = scrollContainerRef.current;
     if (!sentinel || !container) return;
@@ -2154,14 +2147,14 @@ function ChatbotCopilot({
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [isCollapsed, updateStickToBottom]);
+  }, [chatMode, isCollapsed, updateStickToBottom]);
 
   useEffect(() => {
-    if (isCollapsed) return;
+    if (chatMode !== "cloud" || isCollapsed) return;
     scrollToBottom();
   }, [
     chatMode,
-    clashRt.transcript,
+    clashRt.agentUIState,
     isCollapsed,
     messages,
     shouldStickToBottom,
@@ -2306,7 +2299,6 @@ function ChatbotCopilot({
             : clashRt.ready && runtimeTranscriptHasTurns
               ? "review"
               : "idle";
-
   const handleSubmit = async (
     text: string,
     attachments: import("./copilot/ChatInput").UploadedAttachment[] = [],
@@ -2338,7 +2330,7 @@ function ChatbotCopilot({
     setSuggestions([]);
     setSessionError(null);
     clearConnectionError();
-    updateStickToBottom(true);
+    if (chatMode === "cloud") updateStickToBottom(true);
 
     // Persistent-runtime mode: raw prompt, daemon handles the local ACP session.
     if (chatMode === "runtime") {
@@ -2737,8 +2729,11 @@ function ChatbotCopilot({
                     transition={COPILOT_PANEL_TRANSITION}
                     className="relative flex h-full min-w-0"
                   >
-                    <div className="relative flex min-w-0 flex-1 flex-col">
-                      <div className="clash-copilot-panel-header relative z-20 flex shrink-0 items-center gap-2 px-4 py-3">
+                    <div
+                      className="relative flex min-w-0 flex-1 flex-col"
+                      data-chat-surface="main"
+                    >
+                      <div className="clash-copilot-panel-header relative z-20 flex h-[38px] shrink-0 items-center gap-2 px-4">
                         <div className="min-w-0 flex-1">
                           <div className="truncate font-display text-[14px] font-semibold text-slate-900 dark:text-slate-100">
                             {panelTitle}
@@ -2886,66 +2881,49 @@ function ChatbotCopilot({
                         </div>
                       </div>
 
-                      <div
-                        ref={scrollContainerRef}
-                        className="relative flex-1 min-h-0 overflow-y-auto px-4 pt-10 pb-40 sm:px-6"
-                      >
-                        <div className="space-y-3">
-                          {/* Runtime mode produces the local ACP message shape.
-                                        Cloud renders the heavier UIMessage path. */}
-                          {chatMode === "runtime" && (
-                            <>
-                              {showRuntimeConnectingStatus && (
-                                <div
-                                  role="status"
-                                  aria-live="polite"
-                                  className="text-xs text-stone-600 italic dark:text-stone-300"
-                                >
-                                  {t("copilot.status.connecting")}
-                                </div>
-                              )}
-                              {runtimeAlertMessage && (
-                                <InlineAlert
-                                  tone="error"
-                                  title={t("copilot.errors.warningPrefix")}
-                                  message={runtimeAlertMessage}
-                                />
-                              )}
-                              {selectedSessionHarnessAuthTitle &&
-                                selectedSessionHarnessAuth && (
-                                  <RuntimeAuthNotice
-                                    title={selectedSessionHarnessAuthTitle}
-                                    message={
-                                      selectedSessionHarnessAuthMessage ?? ""
-                                    }
-                                    command={
-                                      selectedSessionHarnessAuth?.command
-                                    }
-                                    methods={
-                                      selectedSessionHarnessAuth?.methods
-                                    }
-                                    busy={
-                                      authenticatingHarnessId ===
-                                      effectiveSessionHarnessId
-                                    }
-                                    onAuthenticate={
-                                      handleAuthenticateSessionHarness
-                                    }
-                                    onRecheck={handleRecheckSessionHarness}
+                      {chatMode === "runtime" && (
+                        <RuntimeSessionTimeline
+                          className="flex-1 min-h-0"
+                          store={clashRt.agentUIStore}
+                          agentId={clashRt.selectedAgentId}
+                          phase={runtimeTranscriptHasTurns ? "active" : "draft"}
+                          mentionableNodes={mentionableNodes}
+                          clashEntities={clashProjectEntities}
+                          onOpenClashEntity={onOpenClashEntity}
+                          slots={{
+                            empty: (
+                              <>
+                                {runtimeAlertMessage && (
+                                  <InlineAlert
+                                    tone="error"
+                                    title={t("copilot.errors.warningPrefix")}
+                                    message={runtimeAlertMessage}
                                   />
                                 )}
-                              {switchingRuntimeSessionId ? (
-                                <div
-                                  role="status"
-                                  aria-label="Loading session"
-                                  aria-live="polite"
-                                  className="flex min-h-40 items-center justify-center text-sm text-content-secondary"
-                                >
-                                  Loading session…
-                                </div>
-                              ) : (
-                                <RuntimeMessageList
-                                  transcript={clashRt.transcript}
+                                {selectedSessionHarnessAuthTitle &&
+                                  selectedSessionHarnessAuth && (
+                                    <RuntimeAuthNotice
+                                      title={selectedSessionHarnessAuthTitle}
+                                      message={
+                                        selectedSessionHarnessAuthMessage ?? ""
+                                      }
+                                      command={
+                                        selectedSessionHarnessAuth.command
+                                      }
+                                      methods={
+                                        selectedSessionHarnessAuth.methods
+                                      }
+                                      busy={
+                                        authenticatingHarnessId ===
+                                        effectiveSessionHarnessId
+                                      }
+                                      onAuthenticate={
+                                        handleAuthenticateSessionHarness
+                                      }
+                                      onRecheck={handleRecheckSessionHarness}
+                                    />
+                                  )}
+                                <RuntimeEmptyState
                                   ready={clashRt.ready}
                                   startupPending={desktopRuntimeStartupPending}
                                   desktopLocalMode={isDesktopLocalMode}
@@ -2958,68 +2936,395 @@ function ChatbotCopilot({
                                       : null
                                   }
                                   agentMotionState={agentMotionState}
-                                  mentionableNodes={mentionableNodes}
-                                  clashEntities={clashProjectEntities}
-                                  onOpenClashEntity={onOpenClashEntity}
                                   renderEmptyActivity={
                                     !showRuntimeComposerCompanion
                                   }
                                 />
-                              )}
-                            </>
-                          )}
-                          {chatMode === "cloud" && (
-                            <>
-                              {messages.map((msg: any) => (
-                                <MessageRow
-                                  key={msg.id}
-                                  msg={msg}
-                                  mentionableNodes={mentionableNodes}
-                                />
-                              ))}
-                              {showCloudActivityRow && (
-                                <AgentActivityRow
-                                  label={activityStatusLabel}
-                                  state={agentMotionState}
-                                  gazeTarget={null}
-                                />
-                              )}
-                            </>
-                          )}
+                              </>
+                            ),
+                            beforeComposer: (
+                              <>
+                                {showRuntimeComposerCompanion && (
+                                  <motion.div
+                                    className="clash-copilot-agent-activity-empty-anchor clash-copilot-agent-activity-composer-companion relative z-20 mx-auto w-full max-w-[68rem] px-4 pb-1 sm:px-6"
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: 6 }}
+                                    transition={{
+                                      duration: 0.22,
+                                      ease: [0.16, 1, 0.3, 1],
+                                    }}
+                                  >
+                                    <AgentActivitySlot
+                                      label={
+                                        showRuntimeActivityRow
+                                          ? activityStatusLabel
+                                          : null
+                                      }
+                                      state={
+                                        showRuntimeActivityRow
+                                          ? agentMotionState
+                                          : "idle"
+                                      }
+                                      gazeTarget={null}
+                                      emptyLabel={t(
+                                        "copilot.status.readyWhenYouAre",
+                                      )}
+                                    />
+                                  </motion.div>
+                                )}
+                                {clashRt.permissionRequests.length === 0 &&
+                                  slashCommandQuery !== null && (
+                                    <SlashCommandPalette
+                                      commands={slashCommandOptions}
+                                      onPick={handlePickSlashCommand}
+                                      emptyLabel={t(
+                                        slashCommandCandidates.length > 0
+                                          ? "copilot.slash.noMatches"
+                                          : "copilot.slash.noCommands",
+                                      )}
+                                    />
+                                  )}
+                                {clashRt.promptQueueEnabled &&
+                                  visibleRuntimePromptQueue.length > 0 && (
+                                    <RuntimePromptQueueBar
+                                      items={visibleRuntimePromptQueue}
+                                      onSteer={clashRt.steerQueuedPrompt}
+                                      onEdit={(item) => {
+                                        const content = parseUserMessageContent(
+                                          item.text,
+                                        );
+                                        setEditingQueuedTurnId(item.turnId);
+                                        setEditingQueuedAnnotations(
+                                          content.annotations,
+                                        );
+                                        setInput(content.text);
+                                      }}
+                                      onRemove={clashRt.removeQueuedPrompt}
+                                      onReorder={clashRt.reorderPromptQueue}
+                                    />
+                                  )}
+                                {clashRt.goal ? (
+                                  <GoalSessionBar
+                                    goal={clashRt.goal}
+                                    planEntries={goalPlanEntries}
+                                    onEdit={() =>
+                                      setInput(
+                                        `/goal ${clashRt.goal?.objective ?? ""}`,
+                                      )
+                                    }
+                                    onToggle={() =>
+                                      clashRt.sendMessage(
+                                        clashRt.goal?.status === "active"
+                                          ? "/goal pause"
+                                          : "/goal resume",
+                                      )
+                                    }
+                                    onClear={() =>
+                                      clashRt.sendMessage("/goal clear")
+                                    }
+                                  />
+                                ) : null}
+                              </>
+                            ),
+                            composer: !desktopRuntimeUnavailable ? (
+                              <div className="relative z-20">
+                                <div className="relative z-10">
+                                  {clashRt.elicitationRequests[0] ? (
+                                    <AcpElicitationComposer
+                                      key={
+                                        clashRt.elicitationRequests[0].requestId
+                                      }
+                                      request={clashRt.elicitationRequests[0]}
+                                      onRespond={clashRt.respondElicitation}
+                                    />
+                                  ) : clashRt.permissionRequests[0] ? (
+                                    <AcpPermissionComposer
+                                      request={clashRt.permissionRequests[0]}
+                                      onRespond={clashRt.respondPermission}
+                                    />
+                                  ) : (
+                                    <ChatInput
+                                      input={input}
+                                      onInputChange={setInput}
+                                      onSubmit={handleSubmit}
+                                      onStop={handleStop}
+                                      isProcessing={isProcessing}
+                                      isCreatingSession={isCreatingSession}
+                                      connected={clashRt.ready}
+                                      error={sessionError}
+                                      onDismissError={() => {
+                                        setSessionError(null);
+                                        clearConnectionError();
+                                      }}
+                                      allowSubmitWhileProcessing
+                                      disabled={
+                                        !isDesktopLocalMode && !clashRt.ready
+                                      }
+                                      mentionableNodes={mentionableNodes}
+                                      projectId={projectId}
+                                      annotationBlocks={annotationBlocks}
+                                      onAnnotationOpen={onAnnotationOpen}
+                                      onAnnotationChange={onAnnotationChange}
+                                      onAnnotationRemove={onAnnotationRemove}
+                                      onAnnotationLocate={onAnnotationLocate}
+                                      toolbarAccessory={
+                                        <div className="clash-composer-session-controls flex min-w-0 items-center gap-1">
+                                          {onFollowingAgentChange ? (
+                                            <Tooltip
+                                              label={t(
+                                                followingAgent
+                                                  ? "copilot.follow.stop"
+                                                  : "copilot.follow.start",
+                                              )}
+                                            >
+                                              <IconButton
+                                                label={t(
+                                                  followingAgent
+                                                    ? "copilot.follow.stop"
+                                                    : "copilot.follow.start",
+                                                )}
+                                                aria-pressed={followingAgent}
+                                                variant={
+                                                  followingAgent
+                                                    ? "active"
+                                                    : "default"
+                                                }
+                                                size="sm"
+                                                shape="rounded"
+                                                onClick={() =>
+                                                  onFollowingAgentChange(
+                                                    !followingAgent,
+                                                  )
+                                                }
+                                                icon={
+                                                  <Crosshair
+                                                    className="h-4 w-4"
+                                                    weight={
+                                                      followingAgent
+                                                        ? "bold"
+                                                        : "regular"
+                                                    }
+                                                  />
+                                                }
+                                              />
+                                            </Tooltip>
+                                          ) : null}
+                                          <HarnessPermissionSelector
+                                            agentId={effectiveSessionHarnessId}
+                                            selectedPermissionModeId={
+                                              sessionPermissionModeId
+                                            }
+                                            sessionModes={effectiveSessionModes}
+                                            modeConfigOption={modeConfigOption}
+                                            onSelectPermissionMode={
+                                              handleSelectSessionPermissionMode
+                                            }
+                                          />
+                                          <SessionPlanTag
+                                            configOptions={
+                                              effectiveSessionConfigOptions
+                                            }
+                                            onSelectConfigOption={
+                                              handleSelectSessionConfigOption
+                                            }
+                                          />
+                                          {clashRt.goal ? (
+                                            <SessionGoalTag
+                                              onClear={() =>
+                                                clashRt.sendMessage(
+                                                  "/goal clear",
+                                                )
+                                              }
+                                            />
+                                          ) : null}
+                                          <InlineSessionConfigControls
+                                            configOptions={
+                                              effectiveSessionConfigOptions
+                                            }
+                                            onSelectConfigOption={
+                                              handleSelectSessionConfigOption
+                                            }
+                                          />
+                                        </div>
+                                      }
+                                      rightToolbarAccessory={
+                                        <SessionConfigSelector
+                                          open={sessionConfigOpen}
+                                          onOpenChange={
+                                            handleSessionConfigOpenChange
+                                          }
+                                          embedded
+                                          selectedHarnessId={
+                                            effectiveSessionHarnessId
+                                          }
+                                          statusLabel={null}
+                                          harnessOptions={sessionHarnessOptions}
+                                          harnessLocked={sessionHarnessLocked}
+                                          configOptions={
+                                            effectiveSessionConfigOptions
+                                          }
+                                          modelConfigOption={modelConfigOption}
+                                          onSelectHarness={
+                                            handleSelectSessionHarness
+                                          }
+                                          onSelectConfigOption={
+                                            handleSelectSessionConfigOption
+                                          }
+                                        />
+                                      }
+                                    />
+                                  )}
+                                </div>
+                              </div>
+                            ) : null,
+                            wrapConversationContent: (children) => (
+                              <>
+                                {showRuntimeConnectingStatus && (
+                                  <div
+                                    role="status"
+                                    aria-live="polite"
+                                    className="chat-turn-frame mx-auto w-full max-w-3xl text-xs italic text-stone-600 dark:text-stone-300"
+                                  >
+                                    {t("copilot.status.connecting")}
+                                  </div>
+                                )}
+                                {runtimeAlertMessage && (
+                                  <div className="chat-turn-frame mx-auto w-full max-w-3xl">
+                                    <InlineAlert
+                                      tone="error"
+                                      title={t("copilot.errors.warningPrefix")}
+                                      message={runtimeAlertMessage}
+                                    />
+                                  </div>
+                                )}
+                                {selectedSessionHarnessAuthTitle &&
+                                  selectedSessionHarnessAuth && (
+                                    <div className="chat-turn-frame mx-auto w-full max-w-3xl">
+                                      <RuntimeAuthNotice
+                                        title={selectedSessionHarnessAuthTitle}
+                                        message={
+                                          selectedSessionHarnessAuthMessage ??
+                                          ""
+                                        }
+                                        command={
+                                          selectedSessionHarnessAuth.command
+                                        }
+                                        methods={
+                                          selectedSessionHarnessAuth.methods
+                                        }
+                                        busy={
+                                          authenticatingHarnessId ===
+                                          effectiveSessionHarnessId
+                                        }
+                                        onAuthenticate={
+                                          handleAuthenticateSessionHarness
+                                        }
+                                        onRecheck={handleRecheckSessionHarness}
+                                      />
+                                    </div>
+                                  )}
+                                {switchingRuntimeSessionId ? (
+                                  <div
+                                    role="status"
+                                    aria-label="Loading session"
+                                    aria-live="polite"
+                                    className="flex min-h-40 items-center justify-center text-sm text-content-secondary"
+                                  >
+                                    Loading session…
+                                  </div>
+                                ) : (
+                                  children
+                                )}
+                                {suggestions.length > 0 && !isProcessing && (
+                                  <motion.div
+                                    role="group"
+                                    aria-label="Suggestions"
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="chat-turn-frame mx-auto flex w-full max-w-3xl flex-wrap gap-2 px-1"
+                                  >
+                                    {suggestions.map((suggestion, index) => (
+                                      <Button
+                                        key={index}
+                                        onClick={() =>
+                                          handleSubmit(suggestion.message)
+                                        }
+                                        size="sm"
+                                        className="min-h-[36px] rounded-xl px-4 py-2 text-sm font-medium text-slate-800 hover:border-brand/30 hover:bg-warm-muted dark:text-slate-100 focus-visible:ring-offset-warm-page"
+                                      >
+                                        {suggestion.label}
+                                      </Button>
+                                    ))}
+                                  </motion.div>
+                                )}
+                              </>
+                            ),
+                          }}
+                        />
+                      )}
 
-                          {/* Suggestion chips (e.g. "Continue" after step limit) */}
-                          {suggestions.length > 0 && !isProcessing && (
-                            <motion.div
-                              role="group"
-                              aria-label="Suggestions"
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              className="flex flex-wrap gap-2 px-1"
-                            >
-                              {suggestions.map((s, i) => (
-                                <Button
-                                  key={i}
-                                  onClick={() => handleSubmit(s.message)}
-                                  size="sm"
-                                  className="min-h-[36px] rounded-xl px-4 py-2 text-sm font-medium text-slate-800 hover:border-brand/30 hover:bg-warm-muted dark:text-slate-100 focus-visible:ring-offset-warm-page"
-                                >
-                                  {s.label}
-                                </Button>
-                              ))}
-                            </motion.div>
-                          )}
+                      {chatMode === "cloud" && (
+                        <div
+                          ref={scrollContainerRef}
+                          className="relative flex-1 min-h-0 overflow-y-auto"
+                        >
+                          <div
+                            className="chat-turn-frame mx-auto flex min-h-full w-full max-w-3xl min-w-0 flex-col gap-3 py-6"
+                            data-chat-column="turns"
+                          >
+                            {messages.map((msg: any) => (
+                              <MessageRow
+                                key={msg.id}
+                                msg={msg}
+                                mentionableNodes={mentionableNodes}
+                              />
+                            ))}
+                            {showCloudActivityRow && (
+                              <AgentActivityRow
+                                label={activityStatusLabel}
+                                state={agentMotionState}
+                                gazeTarget={null}
+                              />
+                            )}
 
-                          <div ref={messagesEndRef} />
+                            {/* Suggestion chips (e.g. "Continue" after step limit) */}
+                            {suggestions.length > 0 && !isProcessing && (
+                              <motion.div
+                                role="group"
+                                aria-label="Suggestions"
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="flex flex-wrap gap-2 px-1"
+                              >
+                                {suggestions.map((s, i) => (
+                                  <Button
+                                    key={i}
+                                    onClick={() => handleSubmit(s.message)}
+                                    size="sm"
+                                    className="min-h-[36px] rounded-xl px-4 py-2 text-sm font-medium text-slate-800 hover:border-brand/30 hover:bg-warm-muted dark:text-slate-100 focus-visible:ring-offset-warm-page"
+                                  >
+                                    {s.label}
+                                  </Button>
+                                ))}
+                              </motion.div>
+                            )}
+
+                            <div ref={messagesEndRef} />
+                          </div>
                         </div>
-                      </div>
+                      )}
 
                       {/* Todo List Overlay */}
                       <AnimatePresence>
                         {todoItems.length > 0 && <TodoList items={todoItems} />}
                       </AnimatePresence>
 
-                      {!desktopRuntimeUnavailable && (
-                        <div className="clash-copilot-composer-stack absolute bottom-0 left-0 right-0">
+                      {chatMode === "cloud" && !desktopRuntimeUnavailable && (
+                        <div
+                          className="clash-copilot-composer-stack chat-composer-frame mx-auto w-full max-w-3xl min-w-0 space-y-2"
+                          data-chat-column="composer"
+                        >
                           {showRuntimeComposerCompanion && (
                             <motion.div
                               className="clash-copilot-agent-activity-empty-anchor clash-copilot-agent-activity-composer-companion relative z-20 mx-auto w-full max-w-[68rem] px-4 pb-1 sm:px-6"
@@ -3059,77 +3364,7 @@ function ChatbotCopilot({
                                 )}
                               />
                             )}
-                          {chatMode === "runtime" &&
-                            clashRt.promptQueueEnabled &&
-                            visibleRuntimePromptQueue.length > 0 && (
-                              <RuntimePromptQueueBar
-                                items={visibleRuntimePromptQueue}
-                                onSteer={clashRt.steerQueuedPrompt}
-                                onEdit={(item) => {
-                                  const content = parseUserMessageContent(
-                                    item.text,
-                                  );
-                                  setEditingQueuedTurnId(item.turnId);
-                                  setEditingQueuedAnnotations(
-                                    content.annotations,
-                                  );
-                                  setInput(content.text);
-                                }}
-                                onRemove={clashRt.removeQueuedPrompt}
-                                onReorder={clashRt.reorderPromptQueue}
-                              />
-                            )}
-                          {chatMode === "runtime" && clashRt.goal ? (
-                            <GoalSessionBar
-                              goal={clashRt.goal}
-                              planEntries={goalPlanEntries}
-                              onEdit={() =>
-                                setInput(
-                                  `/goal ${clashRt.goal?.objective ?? ""}`,
-                                )
-                              }
-                              onToggle={() =>
-                                clashRt.sendMessage(
-                                  clashRt.goal?.status === "active"
-                                    ? "/goal pause"
-                                    : "/goal resume",
-                                )
-                              }
-                              onClear={() => clashRt.sendMessage("/goal clear")}
-                            />
-                          ) : null}
-                          {chatMode === "runtime" && clashRt.notice ? (
-                            <div
-                              data-testid="runtime-composer-notice"
-                              className="relative z-20 mx-auto w-full max-w-[68rem] px-4 pb-2 sm:px-6"
-                            >
-                              <InlineAlert
-                                tone="warning"
-                                title={t("copilot.errors.warningPrefix")}
-                                message={clashRt.notice.message}
-                                action={
-                                  <IconButton
-                                    label="Dismiss notice"
-                                    icon={
-                                      <X
-                                        className="h-3.5 w-3.5"
-                                        weight="bold"
-                                      />
-                                    }
-                                    size="sm"
-                                    onClick={clashRt.dismissNotice}
-                                    className="shrink-0 text-current opacity-60 hover:bg-black/5 hover:text-current hover:opacity-100"
-                                  />
-                                }
-                              />
-                            </div>
-                          ) : null}
                           <div className="relative z-20">
-                            <div
-                              aria-hidden="true"
-                              data-testid="composer-bottom-fade"
-                              className="clash-copilot-composer-bottom-fade"
-                            />
                             <div className="relative z-10">
                               {clashRt.elicitationRequests[0] ? (
                                 <AcpElicitationComposer
@@ -3150,31 +3385,14 @@ function ChatbotCopilot({
                                   onStop={handleStop}
                                   isProcessing={isProcessing}
                                   isCreatingSession={
-                                    isCreatingSession ||
-                                    (chatMode === "cloud" && waitingFirstSend)
+                                    isCreatingSession || waitingFirstSend
                                   }
-                                  connected={
-                                    chatMode === "runtime"
-                                      ? clashRt.ready
-                                      : connected
-                                  }
-                                  error={
-                                    chatMode === "cloud"
-                                      ? sessionError || connectionError
-                                      : sessionError
-                                  }
+                                  connected={connected}
+                                  error={sessionError || connectionError}
                                   onDismissError={() => {
                                     setSessionError(null);
                                     clearConnectionError();
                                   }}
-                                  allowSubmitWhileProcessing={
-                                    chatMode === "runtime"
-                                  }
-                                  disabled={
-                                    chatMode === "runtime" &&
-                                    !isDesktopLocalMode &&
-                                    !clashRt.ready
-                                  }
                                   mentionableNodes={mentionableNodes}
                                   projectId={projectId}
                                   annotationBlocks={annotationBlocks}
@@ -4956,10 +5174,7 @@ function RuntimeMenuRow({
   );
 }
 
-/** Backchat owns the runtime transcript. Flat messages remain available only
- * for non-visual product projections (title, canvas patches and goal state). */
-function RuntimeMessageList({
-  transcript,
+function RuntimeEmptyState({
   ready,
   startupPending = false,
   desktopLocalMode,
@@ -4968,12 +5183,8 @@ function RuntimeMessageList({
   status,
   activityLabel,
   agentMotionState,
-  mentionableNodes,
-  clashEntities,
-  onOpenClashEntity,
   renderEmptyActivity = true,
 }: {
-  transcript: ReturnType<typeof useClashRuntime>["transcript"];
   ready: boolean;
   startupPending?: boolean;
   desktopLocalMode?: boolean;
@@ -4982,9 +5193,6 @@ function RuntimeMessageList({
   status: ClashRuntimeStatus;
   activityLabel?: string | null;
   agentMotionState: AgentMotionState;
-  mentionableNodes: MentionNodeRef[];
-  clashEntities: readonly ClashProjectEntity[];
-  onOpenClashEntity?: (entity: ClashProjectEntity) => void;
   renderEmptyActivity?: boolean;
 }) {
   const { t } = useTranslation();
@@ -4993,81 +5201,53 @@ function RuntimeMessageList({
       <RuntimeLoadingStatus label={t("copilot.status.desktopLocalStarting")} />
     );
   }
-  const hasVisibleTurns = transcript.turns.some(
-    (turn) => turn.status !== "queued",
+  const hasLocalAgent =
+    !!localRuntime &&
+    localRuntime.status === "online" &&
+    localRuntime.agents.length > 0;
+  const activitySlot = (
+    <motion.div
+      className="clash-copilot-agent-activity-empty-anchor clash-copilot-agent-activity-composer-companion mx-auto flex min-h-[calc(100dvh-6.5rem)] w-full max-w-[68rem] flex-col justify-end gap-3 pb-0"
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+    >
+      <AgentActivitySlot
+        label={activityLabel ?? null}
+        state={activityLabel ? agentMotionState : "idle"}
+        gazeTarget={null}
+        emptyLabel={t("copilot.status.readyWhenYouAre")}
+      />
+    </motion.div>
   );
-  if (!hasVisibleTurns) {
-    const hasLocalAgent =
-      !!localRuntime &&
-      localRuntime.status === "online" &&
-      localRuntime.agents.length > 0;
-    const activitySlot = (
-      <motion.div
-        className="clash-copilot-agent-activity-empty-anchor clash-copilot-agent-activity-composer-companion mx-auto flex min-h-[calc(100dvh-6.5rem)] w-full max-w-[68rem] flex-col justify-end gap-3 pb-0"
-        initial={{ opacity: 0, y: 18 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -10 }}
-        transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
-      >
-        <AgentActivitySlot
-          label={activityLabel ?? null}
-          state={activityLabel ? agentMotionState : "idle"}
-          gazeTarget={null}
-          emptyLabel={t("copilot.status.readyWhenYouAre")}
-        />
-      </motion.div>
-    );
-    if (activityLabel && renderEmptyActivity) {
-      return activitySlot;
-    }
-    if (setupIssue) return null;
-    if (
-      desktopLocalMode &&
-      !setupIssue &&
-      !ready &&
-      (status === "idle" || status === "connecting") &&
-      (!localRuntime || hasLocalAgent)
-    ) {
-      return (
-        <RuntimeLoadingStatus
-          label={t("copilot.status.desktopLocalStarting")}
-        />
-      );
-    }
-    if (!renderEmptyActivity) {
-      return null;
-    }
-    if (desktopLocalMode && status === "draft" && renderEmptyActivity) {
-      return activitySlot;
-    }
-    if (desktopLocalMode && ready && renderEmptyActivity) {
-      return activitySlot;
-    }
-    const emptyText = setupIssue
-      ? t("copilot.status.desktopLocalSetupRequired")
-      : ready
-        ? t("copilot.status.localAgentReady")
-        : desktopLocalMode
-          ? t(
-              hasLocalAgent
-                ? "copilot.status.desktopLocalStarting"
-                : "copilot.status.desktopLocalRequired",
-            )
-          : t("copilot.status.localRuntimeRequired");
+  if (activityLabel && renderEmptyActivity) return activitySlot;
+  if (setupIssue) return null;
+  if (
+    desktopLocalMode &&
+    !setupIssue &&
+    !ready &&
+    (status === "idle" || status === "connecting") &&
+    (!localRuntime || hasLocalAgent)
+  ) {
     return (
-      <div className="text-center text-sm text-stone-600 py-12 dark:text-stone-300">
-        {emptyText}
-      </div>
+      <RuntimeLoadingStatus label={t("copilot.status.desktopLocalStarting")} />
     );
   }
+  if (!renderEmptyActivity) return null;
+  if (desktopLocalMode && (status === "draft" || ready)) return activitySlot;
+  const emptyText = ready
+    ? t("copilot.status.localAgentReady")
+    : desktopLocalMode
+      ? t(
+          hasLocalAgent
+            ? "copilot.status.desktopLocalStarting"
+            : "copilot.status.desktopLocalRequired",
+        )
+      : t("copilot.status.localRuntimeRequired");
   return (
-    <div className="mx-auto flex w-full max-w-[68rem] flex-col gap-3">
-      <RuntimeSessionTimeline
-        transcript={transcript}
-        mentionableNodes={mentionableNodes}
-        clashEntities={clashEntities}
-        onOpenClashEntity={onOpenClashEntity}
-      />
+    <div className="py-12 text-center text-sm text-stone-600 dark:text-stone-300">
+      {emptyText}
     </div>
   );
 }

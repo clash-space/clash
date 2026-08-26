@@ -57,13 +57,13 @@ export function SessionHistorySidebar({
     <aside
       aria-label={t("copilot.history.title")}
       className={cn(
-        "flex h-full w-72 shrink-0 flex-col border-l border-warm-border bg-warm-muted/35",
+        "app-rail-surface flex h-full w-60 shrink-0 flex-col border-l border-warm-border",
         className,
       )}
       data-session-history-sidebar=""
     >
-      <div className="flex h-12 shrink-0 items-center gap-2 px-3">
-        <div className="min-w-0 flex-1 truncate text-sm font-semibold text-content-primary">
+      <div className="flex h-[38px] shrink-0 items-center gap-2 px-2">
+        <div className="min-w-0 flex-1 truncate px-1 text-xs font-medium text-content-secondary">
           {t("copilot.history.title")}
         </div>
         <IconButton
@@ -75,9 +75,7 @@ export function SessionHistorySidebar({
         />
       </div>
 
-      <div
-        className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-2 outline-none"
-      >
+      <div className="min-h-0 flex-1 overflow-y-auto p-2 outline-none">
         <SessionList
           sessions={activeSessions}
           activeSessionId={activeSessionId}
@@ -122,17 +120,18 @@ function SessionList({
   }
 
   return (
-    <ul className="divide-y divide-warm-border/70">
+    <ul className="space-y-0.5">
       {sessions.map((session, index) => {
         const title =
           session.title ||
           t("copilot.history.fallbackTitle", { index: index + 1 });
         return (
-          <li key={session.threadId} className="py-1">
+          <li key={session.threadId}>
             <div
-              className={`group flex min-h-14 items-center gap-1 rounded-lg px-1.5 transition-colors ${
+              data-session-history-row="true"
+              className={`group flex h-6 items-center gap-2 rounded-md px-2 text-xs transition-colors ${
                 activeSessionId === session.threadId
-                  ? "bg-warm-surface"
+                  ? "app-selected-surface text-content-primary"
                   : "hover:bg-warm-hover"
               }`}
             >
@@ -144,12 +143,12 @@ function SessionList({
                     activeSessionId === session.threadId ? "page" : undefined
                   }
                   aria-label={`${title} ${session.threadId.slice(-6)}`}
-                  className="min-w-0 flex-1 px-1.5 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  className="flex h-full min-w-0 flex-1 items-center text-left outline-none focus-visible:text-content-primary"
                 >
                   <SessionRowText title={title} session={session} />
                 </button>
               ) : (
-                <div className="min-w-0 flex-1 px-1.5 py-2 text-left">
+                <div className="flex h-full min-w-0 flex-1 items-center text-left">
                   <SessionRowText title={title} session={session} />
                 </div>
               )}
@@ -198,12 +197,10 @@ function SessionRowText({
 }) {
   return (
     <>
-      <span className="block truncate text-[13px] font-medium leading-5 text-content-primary">
+      <span className="block truncate text-xs leading-5 text-content-primary">
         {title}
       </span>
-      <span className="block truncate text-[11px] leading-4 text-content-secondary">
-        {sessionMetadata(session)}
-      </span>
+      <span className="sr-only">{sessionMetadata(session)}</span>
     </>
   );
 }
@@ -219,12 +216,13 @@ function SessionActionsMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <IconButton
-          label={t("copilot.history.actions", { title })}
-          size="sm"
-          icon={<DotsThree className="h-4 w-4" weight="bold" />}
-          className="h-8 min-h-8 w-8 min-w-8 shrink-0 opacity-60 group-hover:opacity-100 focus-visible:opacity-100"
-        />
+        <button
+          type="button"
+          aria-label={t("copilot.history.actions", { title })}
+          className="sidebar-row-action shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+        >
+          <DotsThree className="h-3.5 w-3.5" weight="bold" />
+        </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" side="bottom" className="w-48">
         {children}

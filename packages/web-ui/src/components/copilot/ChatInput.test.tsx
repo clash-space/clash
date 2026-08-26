@@ -123,6 +123,47 @@ describe("ChatInput", () => {
     expect(surface?.contains(screen.getByTestId("milkdown-editor"))).toBe(true);
   });
 
+  it("uses the shipped Backchat composer card and action-row structure", async () => {
+    render(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input=""
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+          onOpenAssetPicker={() => undefined}
+          toolbarAccessory={<div data-testid="run-config">config</div>}
+        />
+      </Suspense>,
+    );
+
+    const editor = await screen.findByTestId("milkdown-editor");
+    const stack = editor.closest(".composer-stack-card");
+    const surface = editor.closest(".app-composer-surface");
+    const inlineContent = editor.closest(
+      '[data-slot="composer-inline-content"]',
+    );
+    const runActions = surface?.querySelector(
+      '[data-composer-run-actions="true"]',
+    );
+
+    expect(stack).toBeTruthy();
+    expect(surface).toHaveClass(
+      "composer-control-row-inset",
+      "composer-radius",
+      "composer-card",
+    );
+    expect(inlineContent).toBeTruthy();
+    expect(runActions).toBeTruthy();
+    expect(
+      runActions?.contains(
+        screen.getByRole("button", { name: "copilot.chatInput.send" }),
+      ),
+    ).toBe(true);
+    expect(
+      surface?.querySelector('[data-composer-attach="true"]'),
+    ).toBeTruthy();
+  });
+
   it("routes the attach control to the shared asset library when provided", async () => {
     const onOpenAssetPicker = vi.fn();
     render(
@@ -907,10 +948,7 @@ describe("ChatInput", () => {
 
     expect(focusRule).toBeTruthy();
     expect(
-      sourceMatches(
-        focusRule!,
-        /background:\s*var\(--clash-warm-surface\)/,
-      ),
+      sourceMatches(focusRule!, /background:\s*var\(--clash-warm-surface\)/),
     ).toBe(true);
     expect(sourceMatches(focusRule!, /box-shadow:[\s\S]*?0 0 0 1px/)).toBe(
       true,
@@ -924,10 +962,7 @@ describe("ChatInput", () => {
 
     expect(hoverRule).toBeTruthy();
     expect(
-      sourceMatches(
-        hoverRule!,
-        /background:\s*var\(--clash-warm-surface\)/,
-      ),
+      sourceMatches(hoverRule!, /background:\s*var\(--clash-warm-surface\)/),
     ).toBe(true);
     expect(sourceMatches(hoverRule!, /box-shadow:[\s\S]*?0 0 0 1px/)).toBe(
       true,
@@ -1206,7 +1241,7 @@ describe("ChatInput", () => {
     );
   });
 
-  it("keeps the default composer caret inset from the rounded edge", async () => {
+  it("starts the default composer caret at Backchat's shared body inset", async () => {
     const { container } = render(
       <Suspense fallback={<div>Loading</div>}>
         <ChatInput
@@ -1221,9 +1256,11 @@ describe("ChatInput", () => {
 
     const editorArea = container.querySelector(".clash-chat-input-editor");
     expect(editorArea?.className).toContain("clash-chat-input-editor--default");
-    expect(globalCss).toMatch(
-      /\.clash-chat-input-editor--default \.milkdown-editor-wrapper\s*\{[\s\S]*padding:\s*16px 18px 6px !important;/,
-    );
+    const backchatCaretRule = globalCss.match(
+      /\[data-chat-surface="main"\]\s+\.composer-card\s+\.clash-chat-input-editor--default\s+\.milkdown-editor-wrapper\s*\{[\s\S]*?\}/,
+    )?.[0];
+    expect(backchatCaretRule).toBeTruthy();
+    expect(backchatCaretRule).toMatch(/padding:\s*0 !important;/);
   });
 
   it("left-aligns the hero editor instead of centering the caret", async () => {
@@ -1283,9 +1320,10 @@ describe("ChatInput", () => {
     expect(stopButton.disabled).toBe(false);
     expect(stopButton.className).toContain("clash-chat-input-icon-control");
     expect(stopButton.className).not.toContain("clash-chat-input-stop");
-    expect(
-      document.querySelector(".clash-chat-input-editor"),
-    ).toHaveAttribute("data-chat-typography", "body");
+    expect(document.querySelector(".clash-chat-input-editor")).toHaveAttribute(
+      "data-chat-typography",
+      "body",
+    );
   });
 
   it("does not expose a bare connection status dot in the composer toolbar", async () => {

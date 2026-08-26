@@ -10,7 +10,13 @@ import {
   type ReactNode,
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowUp, Plus, Microphone, CircleNotch, X } from "@phosphor-icons/react";
+import {
+  ArrowUp,
+  Plus,
+  Microphone,
+  CircleNotch,
+  X,
+} from "@phosphor-icons/react";
 import { lazy } from "react";
 import { useTranslation } from "react-i18next";
 import { useDropzone, type Accept } from "react-dropzone";
@@ -253,6 +259,24 @@ const DROPZONE_ACCEPT = {
 } satisfies Accept;
 
 // ─── Component ───────────────────────────────────────────────
+
+function ComposerInlineContent({
+  isHero,
+  children,
+}: {
+  isHero: boolean;
+  children: ReactNode;
+}) {
+  if (isHero) return <>{children}</>;
+  return (
+    <div
+      data-slot="composer-inline-content"
+      className="flex min-h-[var(--composer-body-min-height)] w-full flex-col items-start gap-1.5 px-1"
+    >
+      {children}
+    </div>
+  );
+}
 
 function ChatInputInner(
   {
@@ -621,7 +645,7 @@ function ChatInputInner(
       : visualState;
   return (
     <ControlContextProvider value="composer">
-      <div className={isHero ? "" : "px-4 pb-4"}>
+      <div className={isHero ? "" : "composer-stack-card relative w-full"}>
         <Input
           {...getInputProps({
             "aria-hidden": true,
@@ -632,9 +656,9 @@ function ChatInputInner(
 
         {/* Error banner */}
         <AnimatePresence>
-           {!isHero && error && (
-             <motion.div
-               initial={{ opacity: 0, y: 4 }}
+          {!isHero && error && (
+            <motion.div
+              initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 4 }}
               className="mb-2"
@@ -642,15 +666,17 @@ function ChatInputInner(
               <InlineAlert
                 tone="error"
                 title={error}
-                action={onDismissError ? (
-                  <IconButton
-                    label="Dismiss error"
-                    icon={<X className="h-3.5 w-3.5" weight="bold" />}
-                    size="sm"
-                    onClick={onDismissError}
-                    className="text-current opacity-60 hover:bg-black/5 hover:text-current hover:opacity-100"
-                  />
-                ) : undefined}
+                action={
+                  onDismissError ? (
+                    <IconButton
+                      label="Dismiss error"
+                      icon={<X className="h-3.5 w-3.5" weight="bold" />}
+                      size="sm"
+                      onClick={onDismissError}
+                      className="text-current opacity-60 hover:bg-black/5 hover:text-current hover:opacity-100"
+                    />
+                  ) : undefined
+                }
               />
             </motion.div>
           )}
@@ -659,7 +685,11 @@ function ChatInputInner(
         {/* Main input card */}
         <div
           {...getRootProps({
-            className: `clash-chat-input-surface ${isDragActive ? "ring-2 ring-brand/40 ring-offset-2 ring-offset-warm-surface" : ""}`,
+            className: `clash-chat-input-surface ${
+              isHero
+                ? ""
+                : "composer-control-row-inset composer-radius relative flex flex-col gap-[var(--composer-section-gap)] py-[var(--composer-card-padding-block)] app-composer-surface composer-card transition-shadow"
+            } ${isDragActive ? "ring-2 ring-brand/40 ring-offset-2 ring-offset-warm-surface" : ""}`,
           })}
           data-composer-visual-state={composerVisualState}
           data-input-state={inputState}
@@ -671,75 +701,77 @@ function ChatInputInner(
             className={isHero ? "clash-chat-input-hero-layout" : ""}
             data-input-state={isHero ? inputState : undefined}
           >
-            {referenceAccessory ? (
-              <div
-                data-slot="composer-reference-accessory"
-                className="clash-chat-input-reference-accessory"
-              >
-                {referenceAccessory}
-              </div>
-            ) : null}
-            <AgentAnnotationTray
-              annotations={annotationBlocks}
-              disabled={actionLocked}
-              onOpen={onAnnotationOpen}
-              onChange={onAnnotationChange}
-              onRemove={onAnnotationRemove}
-              onLocate={onAnnotationLocate}
-            />
-            <div
-              ref={editorHostRef}
-              data-input-state={inputState}
-              data-chat-typography="body"
-              aria-disabled={actionLocked || undefined}
-              className={`clash-chat-input-editor relative ${isHero ? "clash-chat-input-editor--hero" : "clash-chat-input-editor--default"} milkdown-chat-input w-full text-left chat-scroll-hidden overflow-y-auto ${actionLocked ? "pointer-events-none opacity-60" : ""}`}
-              onFocusCapture={() =>
-                window.requestAnimationFrame(updateCaretTarget)
-              }
-              onBlurCapture={(event) => {
-                if (
-                  !event.currentTarget.contains(
-                    event.relatedTarget as Node | null,
-                  )
-                ) {
-                  onCaretTargetChange?.(null);
-                }
-              }}
-              onKeyUp={() => window.requestAnimationFrame(updateCaretTarget)}
-              onPointerUp={() =>
-                window.requestAnimationFrame(updateCaretTarget)
-              }
-              onInput={() => window.requestAnimationFrame(updateCaretTarget)}
-            >
-              <MilkdownEditor
-                ref={editorRef}
-                value={input}
-                onChange={onInputChange}
-                onSubmit={handleFormSubmit}
-                placeholder={resolvedPlaceholder}
-                promptModalities={["text", "image", "video", "audio"]}
-                mentionableNodes={mentionableNodes}
-                connectedNodeIds={connectedNodeIds}
-                onMentionAdded={onMentionAdded}
+            <ComposerInlineContent isHero={isHero}>
+              {referenceAccessory ? (
+                <div
+                  data-slot="composer-reference-accessory"
+                  className="clash-chat-input-reference-accessory"
+                >
+                  {referenceAccessory}
+                </div>
+              ) : null}
+              <AgentAnnotationTray
+                annotations={annotationBlocks}
+                disabled={actionLocked}
+                onOpen={onAnnotationOpen}
+                onChange={onAnnotationChange}
+                onRemove={onAnnotationRemove}
+                onLocate={onAnnotationLocate}
               />
-            </div>
-
-            {/* Uploading indicator */}
-            {uploading > 0 && (
               <div
-                role="status"
-                aria-live="polite"
-                className="flex items-center gap-1.5 px-4 pb-1 text-xs text-slate-700 dark:text-slate-300"
+                ref={editorHostRef}
+                data-input-state={inputState}
+                data-chat-typography="body"
+                aria-disabled={actionLocked || undefined}
+                className={`clash-chat-input-editor relative ${isHero ? "clash-chat-input-editor--hero" : "clash-chat-input-editor--default"} milkdown-chat-input w-full text-left chat-scroll-hidden overflow-y-auto ${actionLocked ? "pointer-events-none opacity-60" : ""}`}
+                onFocusCapture={() =>
+                  window.requestAnimationFrame(updateCaretTarget)
+                }
+                onBlurCapture={(event) => {
+                  if (
+                    !event.currentTarget.contains(
+                      event.relatedTarget as Node | null,
+                    )
+                  ) {
+                    onCaretTargetChange?.(null);
+                  }
+                }}
+                onKeyUp={() => window.requestAnimationFrame(updateCaretTarget)}
+                onPointerUp={() =>
+                  window.requestAnimationFrame(updateCaretTarget)
+                }
+                onInput={() => window.requestAnimationFrame(updateCaretTarget)}
               >
-                <CircleNotch
-                  className="w-3 h-3 animate-spin motion-reduce:animate-none"
-                  aria-hidden="true"
+                <MilkdownEditor
+                  ref={editorRef}
+                  value={input}
+                  onChange={onInputChange}
+                  onSubmit={handleFormSubmit}
+                  placeholder={resolvedPlaceholder}
+                  promptModalities={["text", "image", "video", "audio"]}
+                  mentionableNodes={mentionableNodes}
+                  connectedNodeIds={connectedNodeIds}
+                  onMentionAdded={onMentionAdded}
                 />
-                <span>
-                  {t("copilot.chatInput.uploading", { count: uploading })}
-                </span>
               </div>
-            )}
+
+              {/* Uploading indicator */}
+              {uploading > 0 && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="flex items-center gap-1.5 px-4 pb-1 text-xs text-slate-700 dark:text-slate-300"
+                >
+                  <CircleNotch
+                    className="w-3 h-3 animate-spin motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
+                  <span>
+                    {t("copilot.chatInput.uploading", { count: uploading })}
+                  </span>
+                </div>
+              )}
+            </ComposerInlineContent>
 
             {/* Bottom toolbar */}
             {isListening || isTranscribing ? (
@@ -771,6 +803,7 @@ function ChatInputInner(
                       label={t("copilot.chatInput.attach")}
                       shape="rounded"
                       size="sm"
+                      data-composer-attach="true"
                       icon={<Plus className="h-4 w-4" weight="bold" />}
                       className="clash-chat-input-icon-control shrink-0"
                     />
@@ -779,9 +812,11 @@ function ChatInputInner(
               />
             ) : (
               <div
-                className={`clash-chat-input-actions clash-chat-input-toolbar-row items-center ${isHero ? "" : "px-4 pb-2.5 pt-1.5"}`}
+                className={`clash-chat-input-actions clash-chat-input-toolbar-row items-center ${isHero ? "" : "flex items-center justify-between gap-2"}`}
               >
-                <div className="clash-chat-input-toolbar-start flex min-w-0 items-center gap-0.5">
+                <div
+                  className={`clash-chat-input-toolbar-start flex min-w-0 items-center gap-0.5 ${isHero ? "" : "-m-1 flex-1 overflow-hidden p-1"}`}
+                >
                   {attachmentsEnabled ? (
                     <IconButton
                       onClick={openAttachments}
@@ -789,6 +824,7 @@ function ChatInputInner(
                       label={t("copilot.chatInput.attach")}
                       shape="rounded"
                       size="sm"
+                      data-composer-attach="true"
                       icon={<Plus className="w-4 h-4" weight="bold" />}
                       className="clash-chat-input-icon-control"
                     />
@@ -799,7 +835,10 @@ function ChatInputInner(
                     </div>
                   ) : null}
                 </div>
-                <div className="clash-chat-input-toolbar-end flex min-w-0 items-center justify-end gap-0.5">
+                <div
+                  className="clash-chat-input-toolbar-end flex min-w-0 shrink-0 items-center justify-end gap-0.5"
+                  data-composer-run-actions="true"
+                >
                   {rightToolbarAccessory ? (
                     <div className="clash-chat-input-toolbar-config min-w-0">
                       {rightToolbarAccessory}

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
-import type { ToolEntry } from "@openma/common/session";
+import type { AgentUIToolItem } from "@openma/common/agent-ui";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { AcpAssistantTextInline, AcpToolInline } from "./AcpInlineRenderers";
@@ -48,11 +48,13 @@ describe("AcpInlineRenderers", () => {
   });
 
   it("renders a canonical tool entry without creating a message timeline", () => {
-    const tool: ToolEntry = {
-      toolCallId: "tool-read",
+    const tool: AgentUIToolItem = {
+      id: "tool-read",
+      kind: "tool",
       title: "Read project.toml",
-      kind: "read",
+      toolKind: "read",
       status: "completed",
+      outputs: [],
       rawInput: { path: ".clash/project.toml" },
       rawOutput: 'project = "demo"',
     };
@@ -67,11 +69,13 @@ describe("AcpInlineRenderers", () => {
   });
 
   it("keeps the existing trusted Clash MCP product row as an inline tool slot", () => {
-    const tool: ToolEntry = {
-      toolCallId: "tool-canvas",
+    const tool: AgentUIToolItem = {
+      id: "tool-canvas",
+      kind: "tool",
       title: "Open canvas",
-      kind: "execute",
+      toolKind: "execute",
       status: "completed",
+      outputs: [],
       rawInput: {
         server: "clash",
         tool: "clash_canvas_open",
@@ -83,7 +87,7 @@ describe("AcpInlineRenderers", () => {
           structuredContent: { nodes: [{ id: "node-1" }] },
         },
       },
-      meta: {
+      adapterMeta: {
         is_mcp_tool_call: true,
         mcp_server_name: "clash",
         mcp_tool_name: "clash_canvas_open",
@@ -99,10 +103,12 @@ describe("AcpInlineRenderers", () => {
   });
 
   it("leaves permission ownership outside the tool presentation slot", () => {
-    const tool: ToolEntry = {
-      toolCallId: "permission-1",
-      kind: "permission",
+    const tool: AgentUIToolItem = {
+      id: "permission-1",
+      kind: "tool",
+      toolKind: "permission",
       status: "pending",
+      outputs: [],
     };
 
     const { container } = render(<AcpToolInline tool={tool} />);

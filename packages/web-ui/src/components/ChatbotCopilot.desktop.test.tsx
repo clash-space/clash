@@ -19,11 +19,12 @@ import type {
   UseClashRuntimeReturn,
 } from "@clash/web-ui/hooks/useClashRuntime";
 import type { ByoMessage } from "@clash/web-ui/lib/acpEvents";
+import { createAgentUIStore, type AgentUIStore } from "@openma/common/agent-ui";
+import { decodeAcpSessionUpdate } from "@openma/common/protocol/acp";
 import {
-  initialSessionTranscript,
-  reduceSessionTranscript,
-  type SessionTranscript,
-} from "@openma/common/session";
+  createOpenMAEvent,
+  type OpenMAEvent,
+} from "@openma/common/session-events/openma";
 import {
   serializeAgentAnnotationPromptBlock,
   type AgentAnnotationDraft,
@@ -46,8 +47,8 @@ vi.mock("./copilot/AcpInlineRenderers", () => ({
   AcpAssistantTextInline: ({ text }: { text: string }) => (
     <div data-testid="clash-inline-assistant">{text}</div>
   ),
-  AcpToolInline: ({ tool }: { tool: { toolCallId: string } }) => (
-    <div data-testid="clash-inline-tool" data-tool-call-id={tool.toolCallId} />
+  AcpToolInline: ({ tool }: { tool: { id: string } }) => (
+    <div data-testid="clash-inline-tool" data-tool-call-id={tool.id} />
   ),
 }));
 
@@ -323,6 +324,7 @@ const codexAcpConfigOptions = [
 function runtimeState(
   overrides: Partial<UseClashRuntimeReturn> & Record<string, unknown> = {},
 ): UseClashRuntimeReturn {
+  const draftStore = createAgentUIStore("draft");
   const state: UseClashRuntimeReturn = {
     runtimes: [desktopLocalRuntime],
     startupStatus: "ready",
@@ -339,8 +341,8 @@ function runtimeState(
     goal: null,
     transientStatus: null,
     diagnostics: [],
-    transcript: initialSessionTranscript("draft"),
-    notice: null,
+    agentUIStore: draftStore,
+    agentUIState: draftStore.getState(),
     ready: false,
     sessionModes: null,
     permissionRequests: [],
@@ -368,89 +370,142 @@ function runtimeState(
     respondPermission: vi.fn(),
     respondElicitation: vi.fn(),
     restartSession: vi.fn().mockResolvedValue(undefined),
-    dismissNotice: vi.fn(),
     cancel: vi.fn(),
     shutdown: vi.fn(),
     ...overrides,
     sessionUsage: overrides.sessionUsage ?? null,
   };
   if (
-    !Object.prototype.hasOwnProperty.call(overrides, "transcript") &&
+    !Object.prototype.hasOwnProperty.call(overrides, "agentUIStore") &&
+    !Object.prototype.hasOwnProperty.call(overrides, "agentUIState") &&
     Array.isArray(state.messages) &&
     state.messages.length > 0
   ) {
-    state.transcript = transcriptFromMessages(
+    const store = agentUIStoreFromMessages(
       state.messages,
       state.sessionId ?? "test-runtime-session",
       state.status === "sending" || state.status === "streaming",
     );
+    state.agentUIStore = store;
+    state.agentUIState = store.getState();
   }
   return state;
 }
 
-/** Legacy message fixtures are projected into the canonical state machine for
- * these component tests only. Production rendering never accepts flat
- * messages; it consumes SessionTranscript directly. */
-function transcriptFromMessages(
+/** Flat component-test fixtures enter the same canonical Agent UI store used
+ * by the live runtime. Production rendering consumes this store directly. */
+function agentUIStoreFromMessages(
   messages: ByoMessage[],
   sessionId: string,
   leaveLastTurnRunning: boolean,
-): SessionTranscript {
-  let transcript = initialSessionTranscript(sessionId);
+): AgentUIStore {
+  const store = createAgentUIStore(sessionId);
   let currentTurnId: string | null = null;
+  let sequence = 0;
+
+  const dispatch = (event: OpenMAEvent) => store.dispatch(event);
+  const eventContext = (turnId: string) => {
+    sequence += 1;
+    return {
+      eventId: `${sessionId}:fixture:${sequence}`,
+      occurredAt: new Date(sequence * 1_000).toISOString(),
+      turnId,
+      seq: sequence,
+      harness: "codex-acp",
+    };
+  };
+  const complete = (turnId: string) => {
+    const context = eventContext(turnId);
+    dispatch(
+      createOpenMAEvent({
+        event_id: context.eventId,
+        type: "turn.completed",
+        session_id: sessionId,
+        turn_id: turnId,
+        source: { kind: "harness", harness: "codex-acp" },
+        occurred_at: context.occurredAt,
+        seq: context.seq,
+        data: {},
+      }),
+    );
+  };
 
   for (const message of messages) {
     if (message.role === "user") {
       if (currentTurnId) {
-        transcript = reduceSessionTranscript(transcript, {
-          type: "turn.complete",
-          turnId: currentTurnId,
-        });
+        complete(currentTurnId);
       }
       currentTurnId = message.id.startsWith("user-")
         ? message.id.slice("user-".length)
         : message.id;
-      transcript = reduceSessionTranscript(transcript, {
-        type: "turn.register",
-        turnId: currentTurnId,
-        promptText: message.parts
-          .filter(
-            (
-              part,
-            ): part is Extract<ByoMessage["parts"][number], { type: "text" }> =>
-              part.type === "text",
-          )
-          .map((part) => part.text)
-          .join(""),
-      });
+      const context = eventContext(currentTurnId);
+      dispatch(
+        createOpenMAEvent({
+          event_id: context.eventId,
+          type: "user.message",
+          session_id: sessionId,
+          turn_id: currentTurnId,
+          source: { kind: "user" },
+          occurred_at: context.occurredAt,
+          seq: context.seq,
+          data: {
+            text: message.parts
+              .filter(
+                (
+                  part,
+                ): part is Extract<
+                  ByoMessage["parts"][number],
+                  { type: "text" }
+                > => part.type === "text",
+              )
+              .map((part) => part.text)
+              .join(""),
+          },
+        }),
+      );
+      const runningContext = eventContext(currentTurnId);
+      dispatch(
+        createOpenMAEvent({
+          event_id: runningContext.eventId,
+          type: "session.running",
+          session_id: sessionId,
+          turn_id: currentTurnId,
+          source: { kind: "harness", harness: "codex-acp" },
+          occurred_at: runningContext.occurredAt,
+          seq: runningContext.seq,
+          data: {},
+        }),
+      );
       continue;
     }
 
     if (!currentTurnId) {
       currentTurnId = `turn-${message.id}`;
-      transcript = reduceSessionTranscript(transcript, {
-        type: "turn.register",
-        turnId: currentTurnId,
-        promptText: "",
-      });
+      const runningContext = eventContext(currentTurnId);
+      dispatch(
+        createOpenMAEvent({
+          event_id: runningContext.eventId,
+          type: "session.running",
+          session_id: sessionId,
+          turn_id: currentTurnId,
+          source: { kind: "harness", harness: "codex-acp" },
+          occurred_at: runningContext.occurredAt,
+          seq: runningContext.seq,
+          data: {},
+        }),
+      );
     }
     for (const part of message.parts) {
       const event = eventFromMessagePart(part);
-      transcript = reduceSessionTranscript(transcript, {
-        type: "turn.event",
-        turnId: currentTurnId,
-        event,
-      });
+      const context = eventContext(currentTurnId);
+      dispatch(decodeAcpSessionUpdate(sessionId, event, context).event);
     }
   }
 
   if (currentTurnId && !leaveLastTurnRunning) {
-    transcript = reduceSessionTranscript(transcript, {
-      type: "turn.complete",
-      turnId: currentTurnId,
-    });
+    complete(currentTurnId);
   }
-  return transcript;
+  return store;
 }
 
 function eventFromMessagePart(part: ByoMessage["parts"][number]): unknown {
@@ -486,7 +541,7 @@ function eventFromMessagePart(part: ByoMessage["parts"][number]): unknown {
   }
 }
 
-function transcriptWithActivity({
+function agentUIStoreWithActivity({
   sessionId = "runtime-session-one",
   turnId = "runtime-turn-one",
   promptText = "hello desktop runtime helper",
@@ -498,31 +553,66 @@ function transcriptWithActivity({
   promptText?: string;
   startedAt?: number;
   endedAt?: number;
-} = {}): SessionTranscript {
-  let transcript = initialSessionTranscript(sessionId);
-  transcript = reduceSessionTranscript(transcript, {
-    type: "turn.register",
-    turnId,
-    promptText,
-    startedAt,
-  });
-  transcript = reduceSessionTranscript(transcript, {
-    type: "turn.event",
-    turnId,
-    event: {
-      sessionUpdate: "agent_thought_chunk",
-      messageId: `${turnId}-thought`,
-      content: { type: "text", text: "Checking the project" },
-    },
-  });
+} = {}): AgentUIStore {
+  const store = createAgentUIStore(sessionId);
+  const source = { kind: "harness" as const, harness: "codex-acp" };
+  const startedAtIso = new Date(startedAt).toISOString();
+  store.dispatch(
+    createOpenMAEvent({
+      event_id: `${turnId}:user`,
+      type: "user.message",
+      session_id: sessionId,
+      turn_id: turnId,
+      source: { kind: "user" },
+      occurred_at: startedAtIso,
+      data: { text: promptText },
+    }),
+  );
+  store.dispatch(
+    createOpenMAEvent({
+      event_id: `${turnId}:running`,
+      type: "session.running",
+      session_id: sessionId,
+      turn_id: turnId,
+      source,
+      occurred_at: startedAtIso,
+      data: {},
+    }),
+  );
+  store.dispatch(
+    decodeAcpSessionUpdate(
+      sessionId,
+      {
+        sessionUpdate: "agent_thought_chunk",
+        messageId: `${turnId}-thought`,
+        content: { type: "text", text: "Checking the project" },
+      },
+      {
+        eventId: `${turnId}:thought`,
+        occurredAt: startedAtIso,
+        turnId,
+        harness: "codex-acp",
+      },
+    ).event,
+  );
   if (endedAt !== undefined) {
-    transcript = reduceSessionTranscript(transcript, {
-      type: "turn.complete",
-      turnId,
-      endedAt,
-    });
+    store.dispatch(
+      createOpenMAEvent({
+        event_id: `${turnId}:completed`,
+        type: "turn.completed",
+        session_id: sessionId,
+        turn_id: turnId,
+        source,
+        occurred_at: new Date(endedAt).toISOString(),
+        data: {},
+      }),
+    );
   }
-  return transcript;
+  return store;
+}
+
+function agentUIOverrides(store: AgentUIStore) {
+  return { agentUIStore: store, agentUIState: store.getState() };
 }
 
 function cloudState(overrides: Record<string, unknown> = {}) {
@@ -612,47 +702,6 @@ describe("ChatbotCopilot desktop local mode", () => {
     vi.unstubAllGlobals();
     globalThis.__CLASH_RUNTIME_CONFIG__ = undefined;
     window.sessionStorage.clear();
-  });
-
-  it("renders runtime system notices in the composer lane and dismisses them", () => {
-    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
-    vi.stubGlobal(
-      "IntersectionObserver",
-      vi.fn(function IntersectionObserver() {
-        return { observe: vi.fn(), disconnect: vi.fn() };
-      }),
-    );
-    Element.prototype.scrollIntoView = vi.fn();
-    const dismissNotice = vi.fn();
-    mocks.useClashRuntime.mockReturnValue(
-      runtimeState({
-        selectedRuntimeId: "desktop-local",
-        selectedAgentId: "codex-acp",
-        status: "connected",
-        ready: true,
-        notice: {
-          id: "session-one:1000",
-          message: "Skill descriptions were shortened.",
-          tone: "warning",
-          expiresAt: 11_000,
-        },
-        dismissNotice,
-      }),
-    );
-    mocks.useAgentCopilot.mockReturnValue(cloudState());
-
-    renderDesktopCopilot();
-
-    const notice = screen.getByTestId("runtime-composer-notice");
-    const composer = screen.getByTestId("chat-input");
-    expect(
-      notice.compareDocumentPosition(composer) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(notice).toHaveTextContent("Skill descriptions were shortened.");
-
-    fireEvent.click(screen.getByRole("button", { name: "Dismiss notice" }));
-    expect(dismissNotice).toHaveBeenCalledTimes(1);
   });
 
   it("offers an explicit crosshair toggle for following agent actions", () => {
@@ -902,7 +951,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(setupLink.getAttribute("href")).toBe("/settings?section=agents");
   });
 
-  it("renders the composer midpoint fade without blocking the composer", () => {
+  it("keeps the Backchat composer functional without an overlay fade", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",
@@ -928,9 +977,7 @@ describe("ChatbotCopilot desktop local mode", () => {
 
     renderDesktopCopilotWithFeedback();
 
-    const fade = screen.getByTestId("composer-bottom-fade");
-    expect(fade.getAttribute("aria-hidden")).toBe("true");
-    expect(fade.className).toContain("clash-copilot-composer-bottom-fade");
+    expect(screen.queryByTestId("composer-bottom-fade")).toBeNull();
 
     fireEvent.click(screen.getByTestId("submit-chat-input"));
 
@@ -2277,6 +2324,10 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(historySidebar.getAttribute("data-session-history-sidebar")).toBe(
       "",
     );
+    expect(historySidebar).toHaveClass("app-rail-surface", "w-60");
+    expect(
+      historySidebar.querySelector('[data-session-history-row="true"]'),
+    ).toHaveClass("h-6", "rounded-md", "text-xs");
     expect(screen.getByRole("button", { name: /^Run pwd / })).toBeTruthy();
   });
 
@@ -2332,7 +2383,7 @@ describe("ChatbotCopilot desktop local mode", () => {
       Number.parseInt(expandedPanel?.style.width || "0", 10),
     ).toBeGreaterThan(420);
     expect(
-      container.querySelector(".clash-copilot-composer-stack"),
+      container.querySelector('[data-chat-column="composer"]'),
     ).toBeTruthy();
   });
 
@@ -2676,7 +2727,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     );
   });
 
-  it("renders the ACP plan inside the canonical Backchat process, not the header toolbar", () => {
+  it("keeps the canonical ACP item plan out of the transcript like Backchat main", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",
@@ -2688,41 +2739,43 @@ describe("ChatbotCopilot desktop local mode", () => {
       }),
     );
     Element.prototype.scrollIntoView = vi.fn();
+    const planStore = agentUIStoreFromMessages(
+      [
+        {
+          id: "assistant-progress",
+          role: "assistant",
+          parts: [
+            {
+              type: "plan",
+              entries: [
+                { content: "Inspect the panel", status: "in_progress" },
+              ],
+            },
+          ],
+        },
+      ] as any,
+      "plan-session",
+      false,
+    );
     mocks.useClashRuntime.mockReturnValue(
       runtimeState({
         selectedRuntimeId: "desktop-local",
         selectedAgentId: "codex-acp",
         status: "connected",
         ready: true,
-        messages: [
-          {
-            id: "assistant-progress",
-            role: "assistant",
-            parts: [
-              {
-                type: "plan",
-                entries: [
-                  { content: "Inspect the panel", status: "in_progress" },
-                ],
-              },
-            ],
-          },
-        ] as any,
+        ...agentUIOverrides(planStore),
       }),
     );
     mocks.useAgentCopilot.mockReturnValue(cloudState());
 
     const { container } = renderDesktopCopilot();
 
-    const progress = container.querySelector("[data-session-plan='true']");
-    expect(progress).toBeTruthy();
-    expect(progress?.textContent).toContain("Inspect the panel");
-    expect(progress?.closest('[role="toolbar"]')).toBeNull();
-    expect(progress?.closest(".clash-copilot-panel-header")).toBeNull();
-    expect(progress?.closest("[data-session-process='true']")).toBeTruthy();
+    expect(planStore.getState().planOrder).toHaveLength(1);
+    expect(container.querySelector("[data-session-plan='true']")).toBeNull();
+    expect(screen.queryByText("Inspect the panel")).toBeNull();
   });
 
-  it("keeps collapse in the header toolbar instead of reserving a left-side rail", () => {
+  it("keeps Backchat turns avatar-free without replacing the Clash launcher", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",
@@ -2756,21 +2809,25 @@ describe("ChatbotCopilot desktop local mode", () => {
     const headerRail = container.querySelector(
       ".clash-copilot-panel-header [data-copilot-rail-slot]",
     );
-    const processAvatar = container.querySelector(
-      "[data-session-process-avatar='true']",
+    const chatSurface = container.querySelector("[data-chat-surface='main']");
+    const turnColumn = chatSurface?.querySelector("[data-chat-column='turns']");
+    const composerColumn = chatSurface?.querySelector(
+      "[data-chat-column='composer']",
     );
-    const activityMotion = processAvatar?.querySelector(".clash-agent-motion");
     const collapse = screen.getByRole("button", {
       name: "Collapse AI Copilot",
     });
     expect(headerRail).toBeNull();
     expect(collapse.closest('[role="toolbar"]')).toBeTruthy();
-    expect(processAvatar).toBeTruthy();
-    expect(processAvatar?.closest(".clash-copilot-panel-header")).toBeNull();
-    expect(activityMotion?.className).toContain("clash-agent-motion--compact");
+    expect(chatSurface).toBeTruthy();
+    expect(turnColumn).toHaveClass("chat-turn-frame", "max-w-3xl");
+    expect(composerColumn).toHaveClass("chat-composer-frame", "max-w-3xl");
+    expect(
+      chatSurface?.querySelector("[data-session-process-avatar='true']"),
+    ).toBeNull();
   });
 
-  it("moves the collapsed avatar into the production editor header", () => {
+  it("moves the collapsed Clash agent into the production editor header", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",
@@ -2805,6 +2862,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(
       screen.getByRole("button", { name: "copilot.panel.expand" }).className,
     ).toContain("h-8");
+    expect(launcher?.querySelector(".clash-agent-motion")).toBeTruthy();
     expect(panel?.style.transformOrigin).toBe(
       "calc(100% - 16px) calc(0% + 14px)",
     );
@@ -3336,7 +3394,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     );
     Element.prototype.scrollIntoView = vi.fn();
     const sendMessage = vi.fn();
-    const planTranscript = transcriptFromMessages(
+    const planStore = agentUIStoreFromMessages(
       [
         {
           id: "goal-plan",
@@ -3362,7 +3420,7 @@ describe("ChatbotCopilot desktop local mode", () => {
         status: "connected",
         ready: true,
         sendMessage,
-        transcript: planTranscript,
+        ...agentUIOverrides(planStore),
         goal: {
           objective: "Repair the Clash Plan and Goal experience",
           status: "blocked",
@@ -4106,12 +4164,12 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(within(commandList).getByText("/frontend-design")).toBeTruthy();
     expect(within(commandList).getByText("Commands")).toBeTruthy();
     expect(within(commandList).getByText("Skills")).toBeTruthy();
-    const activity = document.querySelector(
-      ".clash-copilot-agent-activity-composer-companion",
+    const emptyActivity = document.querySelector(
+      ".clash-copilot-agent-activity-empty-anchor",
     );
-    expect(activity).toBeTruthy();
+    expect(emptyActivity).toBeTruthy();
     expect(
-      activity!.compareDocumentPosition(commandList) &
+      emptyActivity!.compareDocumentPosition(commandList) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
@@ -4442,7 +4500,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     ).toContain("audio");
   });
 
-  it("keeps the session selector compact while the Backchat process owns the Clash avatar", () => {
+  it("keeps the session selector compact beside the avatar-free Backchat process", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",
@@ -4489,16 +4547,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(trigger.querySelector("[data-acp-agent-logo]")).toBeTruthy();
     expect(statusSlot?.textContent).toBe("");
     expect(process).toBeTruthy();
-    expect(processAvatar).toBeTruthy();
-    expect(
-      processAvatar?.querySelector('[data-agent-motion-state="working"]'),
-    ).toBeTruthy();
-    expect(
-      processAvatar?.querySelector(".clash-agent-motion")?.className,
-    ).toContain("h-5");
-    expect(
-      processAvatar?.querySelector(".clash-agent-motion")?.className,
-    ).toContain("clash-agent-motion--compact");
+    expect(processAvatar).toBeNull();
     expect(container.querySelector(".clash-copilot-agent-perch")).toBeNull();
     expect(
       container.querySelector(".clash-copilot-agent-activity-row"),
@@ -4509,7 +4558,40 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(trigger.textContent).not.toContain("Codex");
   });
 
-  it("retains the Clash avatar beside the latest settled duration summary", () => {
+  it("does not leak runtime identity or a context meter below the composer", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return { observe: vi.fn(), disconnect: vi.fn() };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(
+      runtimeState({
+        selectedRuntimeId: "desktop-local",
+        selectedAgentId: "codex-acp",
+        sessionId: "runtime-session-one",
+        currentSession: {
+          id: "runtime-session-one",
+          threadId: "runtime-session-one",
+          type: "runtime",
+          runtimeId: "desktop-local",
+          agentId: "codex-acp",
+        },
+        status: "connected",
+        ready: true,
+        sessionUsage: { used: 1_500, size: 8_000 },
+      }),
+    );
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    const { container } = renderDesktopCopilot();
+    expect(container.querySelector('[data-session-runtime="true"]')).toBeNull();
+    expect(container.querySelector('[data-context-used="1500"]')).toBeNull();
+  });
+
+  it("keeps the latest settled duration summary avatar-free", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",
@@ -4522,8 +4604,8 @@ describe("ChatbotCopilot desktop local mode", () => {
     );
     Element.prototype.scrollIntoView = vi.fn();
     const startedAt = Date.parse("2026-06-21T00:00:00.000Z");
-    const runningTranscript = transcriptWithActivity({ startedAt });
-    const completedTranscript = transcriptWithActivity({
+    const runningStore = agentUIStoreWithActivity({ startedAt });
+    const completedStore = agentUIStoreWithActivity({
       startedAt,
       endedAt: startedAt + 125_000,
     });
@@ -4532,7 +4614,7 @@ describe("ChatbotCopilot desktop local mode", () => {
       selectedAgentId: "codex-acp",
       status: "sending",
       ready: true,
-      transcript: runningTranscript,
+      ...agentUIOverrides(runningStore),
       messages: [
         {
           id: "runtime-message-one",
@@ -4547,7 +4629,7 @@ describe("ChatbotCopilot desktop local mode", () => {
       sessionId: "runtime-session-one",
       status: "connected",
       ready: true,
-      transcript: completedTranscript,
+      ...agentUIOverrides(completedStore),
       messages: runningState.messages,
     });
     mocks.useClashRuntime.mockReturnValue(runningState);
@@ -4559,7 +4641,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     ).toBeTruthy();
     expect(
       container.querySelector("[data-session-process-avatar='true']"),
-    ).toBeTruthy();
+    ).toBeNull();
 
     mocks.useClashRuntime.mockReturnValue(completedState);
     act(() => {
@@ -4583,7 +4665,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(settled?.textContent).toContain("125");
     expect(
       settled?.querySelector("[data-session-process-avatar-state='retained']"),
-    ).toBeTruthy();
+    ).toBeNull();
     expect(
       settled?.querySelector("button")?.getAttribute("aria-expanded"),
     ).toBe("false");
@@ -4732,10 +4814,10 @@ describe("ChatbotCopilot desktop local mode", () => {
     ).toBe("runtime-message-two");
     expect(
       runningProcesses[0]?.querySelector('[data-agent-motion-state="working"]'),
-    ).toBeTruthy();
+    ).toBeNull();
   });
 
-  it("keeps an empty activity slot in the new chat empty state", () => {
+  it("restores the Clash empty activity after a Backchat turn completes", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-21T00:00:00.000Z"));
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
@@ -4756,7 +4838,7 @@ describe("ChatbotCopilot desktop local mode", () => {
       sessionId: "runtime-session-one",
       status: "sending",
       ready: true,
-      transcript: transcriptWithActivity({ startedAt }),
+      ...agentUIOverrides(agentUIStoreWithActivity({ startedAt })),
       messages: [
         {
           id: "runtime-message-one",
@@ -4771,10 +4853,12 @@ describe("ChatbotCopilot desktop local mode", () => {
       sessionId: "runtime-session-one",
       status: "connected",
       ready: true,
-      transcript: transcriptWithActivity({
-        startedAt,
-        endedAt: startedAt + 125_000,
-      }),
+      ...agentUIOverrides(
+        agentUIStoreWithActivity({
+          startedAt,
+          endedAt: startedAt + 125_000,
+        }),
+      ),
       messages: runningState.messages,
     });
     const newChatState = runtimeState({
@@ -4829,13 +4913,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     });
 
     expect(
-      document.querySelector(".clash-copilot-agent-activity-slot"),
-    ).toBeTruthy();
-    expect(
       document.querySelector(".clash-copilot-agent-activity-empty-anchor"),
-    ).toBeTruthy();
-    expect(
-      document.querySelector(".clash-copilot-agent-activity-row"),
     ).toBeTruthy();
     expect(
       document.querySelector('[data-agent-motion-state="idle"]'),
@@ -4866,7 +4944,7 @@ describe("ChatbotCopilot desktop local mode", () => {
       sessionId: "runtime-session-one",
       status: "sending",
       ready: true,
-      transcript: transcriptWithActivity({ startedAt }),
+      ...agentUIOverrides(agentUIStoreWithActivity({ startedAt })),
       messages: [
         {
           id: "runtime-message-one",
@@ -4881,10 +4959,12 @@ describe("ChatbotCopilot desktop local mode", () => {
       sessionId: "runtime-session-one",
       status: "connected",
       ready: true,
-      transcript: transcriptWithActivity({
-        startedAt,
-        endedAt: startedAt + 125_000,
-      }),
+      ...agentUIOverrides(
+        agentUIStoreWithActivity({
+          startedAt,
+          endedAt: startedAt + 125_000,
+        }),
+      ),
       messages: runningState.messages,
     });
     const newChatState = runtimeState({
@@ -4928,13 +5008,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     renderDesktopCopilot({ threadId: "thread-two" });
 
     expect(
-      document.querySelector(".clash-copilot-agent-activity-slot"),
-    ).toBeTruthy();
-    expect(
       document.querySelector(".clash-copilot-agent-activity-empty-anchor"),
-    ).toBeTruthy();
-    expect(
-      document.querySelector(".clash-copilot-agent-activity-row"),
     ).toBeTruthy();
     expect(
       document.querySelector('[data-agent-motion-state="idle"]'),
@@ -4944,7 +5018,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     vi.useRealTimers();
   });
 
-  it("moves the idle new-chat activity near the composer without anchoring active messages", () => {
+  it("keeps the idle new-chat activity near the composer without anchoring active messages", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",
@@ -4992,7 +5066,7 @@ describe("ChatbotCopilot desktop local mode", () => {
       "clash-copilot-agent-activity-composer-companion",
     );
     expect(emptyAnchor?.className).toContain("pb-1");
-    expect(emptyAnchor?.closest(".clash-copilot-composer-stack")).toBeTruthy();
+    expect(emptyAnchor?.closest('[data-chat-column="composer"]')).toBeTruthy();
     expect(screen.getByText("Ready when you are")).toBeTruthy();
     expect(
       screen.queryByRole("group", { name: "Starter suggestions" }),
@@ -5069,7 +5143,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     ).toBeTruthy();
     expect(
       container.querySelector("[data-session-process-avatar='true']"),
-    ).toBeTruthy();
+    ).toBeNull();
     expect(screen.queryByTestId("acp-message-list")).toBeNull();
   });
 
@@ -5231,221 +5305,44 @@ describe("ChatbotCopilot desktop local mode", () => {
     vi.useRealTimers();
   });
 
-  it("keeps runtime output pinned to the bottom while the user is already at the bottom", () => {
+  it("delegates runtime transcript scrolling to the common chat surface", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
-    let intersectionCallback: IntersectionObserverCallback | null = null;
     vi.stubGlobal(
       "IntersectionObserver",
-      vi.fn(function IntersectionObserver(
-        callback: IntersectionObserverCallback,
-      ) {
-        intersectionCallback = callback;
+      vi.fn(function IntersectionObserver() {
         return {
           observe: vi.fn(),
           disconnect: vi.fn(),
         };
       }),
     );
-    const frameCallbacks: FrameRequestCallback[] = [];
-    const requestAnimationFrameMock = vi.fn(
-      (callback: FrameRequestCallback) => {
-        frameCallbacks.push(callback);
-        return frameCallbacks.length;
-      },
-    );
-    vi.stubGlobal("requestAnimationFrame", requestAnimationFrameMock);
-    globalThis.requestAnimationFrame =
-      requestAnimationFrameMock as unknown as typeof requestAnimationFrame;
-    window.requestAnimationFrame =
-      requestAnimationFrameMock as unknown as typeof window.requestAnimationFrame;
-    const cancelAnimationFrameMock = vi.fn();
-    vi.stubGlobal("cancelAnimationFrame", cancelAnimationFrameMock);
-    globalThis.cancelAnimationFrame =
-      cancelAnimationFrameMock as unknown as typeof cancelAnimationFrame;
-    window.cancelAnimationFrame =
-      cancelAnimationFrameMock as unknown as typeof window.cancelAnimationFrame;
     Element.prototype.scrollIntoView = vi.fn();
-    const firstMessage = {
-      id: "runtime-assistant-one",
-      role: "assistant",
-      parts: [{ type: "text", text: "First chunk" }],
-    };
-    const secondMessage = {
-      id: "runtime-assistant-two",
-      role: "assistant",
-      parts: [{ type: "text", text: "Second chunk" }],
-    };
     mocks.useClashRuntime.mockReturnValue(
       runtimeState({
         selectedRuntimeId: "desktop-local",
         selectedAgentId: "codex-acp",
         status: "streaming",
         ready: true,
-        messages: [firstMessage] as any,
+        messages: [
+          {
+            id: "runtime-assistant-one",
+            role: "assistant",
+            parts: [{ type: "text", text: "First chunk" }],
+          },
+        ] as any,
       }),
     );
     mocks.useAgentCopilot.mockReturnValue(cloudState());
 
-    const { container, rerender } = renderDesktopCopilot();
-    const scroller = container.querySelector(
-      ".overflow-y-auto",
-    ) as HTMLDivElement;
-    Object.defineProperty(scroller, "scrollHeight", {
-      configurable: true,
-      value: 1800,
-    });
-    act(() => {
-      intersectionCallback?.(
-        [{ isIntersecting: true } as IntersectionObserverEntry],
-        {} as IntersectionObserver,
-      );
-      while (frameCallbacks.length > 0) frameCallbacks.shift()?.(0);
-    });
-    scroller.scrollTop = 1200;
+    const { container } = renderDesktopCopilot();
 
-    mocks.useClashRuntime.mockReturnValue(
-      runtimeState({
-        selectedRuntimeId: "desktop-local",
-        selectedAgentId: "codex-acp",
-        status: "streaming",
-        ready: true,
-        messages: [firstMessage, secondMessage] as any,
-      }),
-    );
-    act(() => {
-      rerender(
-        <ChatbotCopilot
-          projectId="project-one"
-          threadId="thread-one"
-          initialMessages={[]}
-          width={420}
-          onWidthChange={() => undefined}
-          isCollapsed={false}
-          onCollapseChange={() => undefined}
-        />,
-      );
-    });
-    const updatedScroller = container.querySelector(
-      ".overflow-y-auto",
-    ) as HTMLDivElement;
-    Object.defineProperty(updatedScroller, "scrollHeight", {
-      configurable: true,
-      value: 1800,
-    });
-    act(() => {
-      while (frameCallbacks.length > 0) frameCallbacks.shift()?.(0);
-    });
-
-    expect(updatedScroller.scrollTop).toBe(1800);
-  });
-
-  it("does not steal scroll when the user has moved away from the bottom", () => {
-    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
-    let intersectionCallback: IntersectionObserverCallback | null = null;
-    vi.stubGlobal(
-      "IntersectionObserver",
-      vi.fn(function IntersectionObserver(
-        callback: IntersectionObserverCallback,
-      ) {
-        intersectionCallback = callback;
-        return {
-          observe: vi.fn(),
-          disconnect: vi.fn(),
-        };
-      }),
-    );
-    const frameCallbacks: FrameRequestCallback[] = [];
-    const requestAnimationFrameMock = vi.fn(
-      (callback: FrameRequestCallback) => {
-        frameCallbacks.push(callback);
-        return frameCallbacks.length;
-      },
-    );
-    vi.stubGlobal("requestAnimationFrame", requestAnimationFrameMock);
-    globalThis.requestAnimationFrame =
-      requestAnimationFrameMock as unknown as typeof requestAnimationFrame;
-    window.requestAnimationFrame =
-      requestAnimationFrameMock as unknown as typeof window.requestAnimationFrame;
-    const cancelAnimationFrameMock = vi.fn();
-    vi.stubGlobal("cancelAnimationFrame", cancelAnimationFrameMock);
-    globalThis.cancelAnimationFrame =
-      cancelAnimationFrameMock as unknown as typeof cancelAnimationFrame;
-    window.cancelAnimationFrame =
-      cancelAnimationFrameMock as unknown as typeof window.cancelAnimationFrame;
-    Element.prototype.scrollIntoView = vi.fn();
-    const firstMessage = {
-      id: "runtime-assistant-one",
-      role: "assistant",
-      parts: [{ type: "text", text: "First chunk" }],
-    };
-    const secondMessage = {
-      id: "runtime-assistant-two",
-      role: "assistant",
-      parts: [{ type: "text", text: "Second chunk" }],
-    };
-    mocks.useClashRuntime.mockReturnValue(
-      runtimeState({
-        selectedRuntimeId: "desktop-local",
-        selectedAgentId: "codex-acp",
-        status: "streaming",
-        ready: true,
-        messages: [firstMessage] as any,
-      }),
-    );
-    mocks.useAgentCopilot.mockReturnValue(cloudState());
-
-    const { container, rerender } = renderDesktopCopilot();
-    const scroller = container.querySelector(
-      ".overflow-y-auto",
-    ) as HTMLDivElement;
-    Object.defineProperty(scroller, "scrollHeight", {
-      configurable: true,
-      value: 1800,
-    });
-    act(() => {
-      intersectionCallback?.(
-        [{ isIntersecting: false } as IntersectionObserverEntry],
-        {} as IntersectionObserver,
-      );
-      while (frameCallbacks.length > 0) frameCallbacks.shift()?.(0);
-    });
-    scroller.scrollTop = 420;
-
-    mocks.useClashRuntime.mockReturnValue(
-      runtimeState({
-        selectedRuntimeId: "desktop-local",
-        selectedAgentId: "codex-acp",
-        status: "streaming",
-        ready: true,
-        messages: [firstMessage, secondMessage] as any,
-      }),
-    );
-    act(() => {
-      rerender(
-        <ChatbotCopilot
-          projectId="project-one"
-          threadId="thread-one"
-          initialMessages={[]}
-          width={420}
-          onWidthChange={() => undefined}
-          isCollapsed={false}
-          onCollapseChange={() => undefined}
-        />,
-      );
-    });
-    const updatedScroller = container.querySelector(
-      ".overflow-y-auto",
-    ) as HTMLDivElement;
-    Object.defineProperty(updatedScroller, "scrollHeight", {
-      configurable: true,
-      value: 1800,
-    });
-    updatedScroller.scrollTop = 420;
-    act(() => {
-      while (frameCallbacks.length > 0) frameCallbacks.shift()?.(0);
-    });
-
-    expect(updatedScroller.scrollTop).toBe(420);
+    expect(screen.getByRole("log")).toBeTruthy();
+    expect(container.querySelector('[data-chat-column="turns"]')).toBeTruthy();
+    expect(
+      container.querySelector('[data-chat-column="composer"]'),
+    ).toBeTruthy();
+    expect(container.querySelector(".clash-copilot-composer-stack")).toBeNull();
+    expect(container.querySelector(".overflow-y-auto")).toBeNull();
   });
 
   it("keeps runtime prompts free of implicit selection context (annotations own that flow)", () => {

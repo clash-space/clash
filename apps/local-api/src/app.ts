@@ -56,7 +56,6 @@ import {
   createBoundedRetryPolicy,
   defaultRuntimeCapabilities,
   durableRunIdempotencyKey,
-  visibleUserPromptText,
   type DurableRunRecord,
   type ProjectRecoveryPolicy,
 } from "@clash/shared-runtime";
@@ -526,25 +525,6 @@ export interface LocalAcpResumeSession {
   modifiedAt: number;
 }
 
-/** Backchat-compatible append-only session history row. `seq` is the
- * canonical replay order and `ts` is the event's original arrival time. */
-export interface LocalAcpSessionEvent {
-  seq: number;
-  type: string;
-  data: unknown;
-  ts: number;
-}
-
-export interface LocalAcpSessionEventStore {
-  appendEvent(
-    sessionId: string,
-    event: Omit<LocalAcpSessionEvent, "seq">,
-  ): Promise<void> | void;
-  listSessionEvents(
-    sessionId: string,
-  ): Promise<{ events: LocalAcpSessionEvent[] } | null>;
-}
-
 export interface LocalAcpSessionRuntimeStatus {
   session_id: string;
   harness_id: string;
@@ -629,9 +609,6 @@ export interface LocalAcpAdapter {
     id: string,
     options?: { methodId?: string; values?: Record<string, string> },
   ): Promise<{ harnesses: LocalAcpHarness[] }>;
-  listSessionEvents?(
-    sessionId: string,
-  ): Promise<{ events: LocalAcpSessionEvent[] } | null>;
   getSessionRuntimeStatus?(
     sessionId: string,
   ): Promise<LocalAcpSessionRuntimeStatus | null>;
@@ -639,7 +616,6 @@ export interface LocalAcpAdapter {
     sessionId: string,
     options: { mode: "now" | "after-turn" },
   ): Promise<{ session_id: string; status: "pending" | "restarted" }>;
-  setSessionEventStore?(store: LocalAcpSessionEventStore): void;
   runTextTask?(params: {
     projectId: string;
     prompt: string;
@@ -765,10 +741,6 @@ const DEFAULT_RUNTIME_SESSION_TITLE = "New session";
 const BUILTIN_AGENT_TEMPLATES: Array<{ id: string; label: string }> = [
   { id: "clash", label: "Clash" },
 ];
-
-function truncateProjectName(prompt: string): string {
-  return prompt.length > 20 ? `${prompt.slice(0, 20)}...` : prompt;
-}
 
 function agentTemplateTitle(agentTemplateId: string): string {
   return (
@@ -929,7 +901,6 @@ async function finalizeRuntimeSessionId(
         : message,
     );
   });
-  await db.renameSessionEvents(temporarySessionId, finalSessionId);
 }
 
 function contentTypeForPath(path: string): string {
@@ -1222,54 +1193,6 @@ function createDb(dataDir: string) {
     return providerStore.listProviderUsageEvents(userId, limit);
   }
 
-  async function appendSessionEvent(
-    sessionId: string,
-    event: Omit<LocalAcpSessionEvent, "seq">,
-  ): Promise<void> {
-    const task = writeQueue
-      .catch(() => undefined)
-      .then(() => metadataStore.appendSessionEvent(sessionId, event));
-    writeQueue = task.then(
-      () => undefined,
-      () => undefined,
-    );
-    return task;
-  }
-
-  async function listSessionEvents(
-    sessionId: string,
-  ): Promise<LocalAcpSessionEvent[]> {
-    await writeQueue.catch(() => undefined);
-    return metadataStore.listSessionEvents(sessionId);
-  }
-
-  async function renameSessionEvents(
-    previousSessionId: string,
-    nextSessionId: string,
-  ): Promise<void> {
-    const task = writeQueue
-      .catch(() => undefined)
-      .then(() =>
-        metadataStore.renameSessionEvents(previousSessionId, nextSessionId),
-      );
-    writeQueue = task.then(
-      () => undefined,
-      () => undefined,
-    );
-    return task;
-  }
-
-  async function deleteSessionEvents(sessionId: string): Promise<void> {
-    const task = writeQueue
-      .catch(() => undefined)
-      .then(() => metadataStore.deleteSessionEvents(sessionId));
-    writeQueue = task.then(
-      () => undefined,
-      () => undefined,
-    );
-    return task;
-  }
-
   return {
     load,
     update,
@@ -1281,10 +1204,6 @@ function createDb(dataDir: string) {
     upsertMetadataAttachmentIndex,
     listMetadataAttachmentIndex,
     listProviderUsageEvents,
-    appendSessionEvent,
-    listSessionEvents,
-    renameSessionEvents,
-    deleteSessionEvents,
   };
 }
 
@@ -1319,76 +1238,6 @@ function mutationAuditRecord(options: {
     resultEntityId: options.mutation.resultEntityId ?? null,
     error: options.mutation.error ?? null,
     mutation: sanitizeMutationForAudit(options.mutation),
-  };
-}
-
-function createLocalSessionEventStore(
-  db: ReturnType<typeof createDb>,
-): LocalAcpSessionEventStore {
-  return {
-    async appendEvent(sessionId, event) {
-      await db.appendSessionEvent(sessionId, event);
-      await db.update((state) => {
-        const session = state.sessions.find(
-          (candidate) => candidate.id === sessionId,
-        );
-        if (!session) return;
-        const data =
-          event.data &&
-          typeof event.data === "object" &&
-          !Array.isArray(event.data)
-            ? (event.data as Record<string, unknown>)
-            : {};
-        if (event.type === "user_prompt" && typeof data.text === "string") {
-          const text = visibleUserPromptText(data.text);
-          if (
-            text &&
-            (!session.title ||
-              session.title === DEFAULT_RUNTIME_SESSION_TITLE ||
-              (!!session.agentTemplateId &&
-                session.title === agentTemplateTitle(session.agentTemplateId)))
-          ) {
-            session.title = truncateProjectName(text);
-          }
-        }
-        if (event.type === "session.event") {
-          const inner =
-            data.event &&
-            typeof data.event === "object" &&
-            !Array.isArray(data.event)
-              ? (data.event as Record<string, unknown>)
-              : {};
-          if (
-            (inner.sessionUpdate === "session_info_update" ||
-              inner.type === "session_info_update") &&
-            typeof inner.title === "string" &&
-            inner.title.trim()
-          ) {
-            session.title = truncateProjectName(inner.title.trim());
-          }
-        }
-        if (event.type === "turn_failed") session.status = "error";
-        session.updatedAt = nowIso();
-      });
-    },
-    async listSessionEvents(sessionId) {
-      const [events, state] = await Promise.all([
-        db.listSessionEvents(sessionId),
-        db.load(),
-      ]);
-      if (
-        events.length === 0 &&
-        !state.sessions.some((session) => session.id === sessionId)
-      ) {
-        return null;
-      }
-      return {
-        events: events.map((event) => ({
-          ...event,
-          data: structuredClone(event.data),
-        })),
-      };
-    },
   };
 }
 
@@ -3661,8 +3510,6 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         projectLease: workspaceProjectLease,
       })
     : undefined;
-  const sessionEventStore = createLocalSessionEventStore(db);
-  options.localAcp?.setSessionEventStore?.(sessionEventStore);
   const falMock = options.falMock ?? createMockFalQueueService();
   const audioConfig =
     options.audioConfig ??
@@ -8873,11 +8720,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     } catch (error) {
       const message = formatLocalAcpSessionError(error);
       if (localSessionId) {
-        await sessionEventStore.appendEvent(localSessionId, {
-          type: "turn_failed",
-          data: { message },
-          ts: Date.now(),
-        });
+        await updateRuntimeSession(db, localSessionId, { status: "error" });
       }
       console.error("[local-api] local ACP session create failed:", message);
       const envelope = {
@@ -8919,17 +8762,6 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     return c.json(
       await options.localAcp.listResumeSessions(c.req.param("runtimeId")),
     );
-  });
-
-  app.get("/api/v1/local-sessions/:sessionId/events", async (c) => {
-    const sessionId = c.req.param("sessionId");
-    const persisted = await sessionEventStore.listSessionEvents(sessionId);
-    if (persisted) return c.json(persisted);
-    if (!options.localAcp?.listSessionEvents) {
-      return c.json({ error: "not found" }, 404);
-    }
-    const history = await options.localAcp.listSessionEvents(sessionId);
-    return history ? c.json(history) : c.json({ error: "not found" }, 404);
   });
 
   app.get("/api/v1/local-sessions/:sessionId/runtime-status", async (c) => {
@@ -11456,7 +11288,6 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     if (result.status === 200) {
       const mutation = result.body.mutation as HostMutationRecord | undefined;
       if (mutation?.accepted === true) {
-        await db.deleteSessionEvents(threadId);
         await db.appendMutationAudit(
           mutationAuditRecord({
             mutation,

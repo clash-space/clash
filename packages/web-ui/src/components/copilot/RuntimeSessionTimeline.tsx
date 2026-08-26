@@ -1,67 +1,249 @@
 "use client";
 
-import type { SessionTranscript } from "@openma/common/session";
-import { BackchatSessionTimeline } from "@openma/common/session-ui";
+import type {
+  AgentUIMessageItem,
+  AgentUIStore,
+  AgentUIToolItem,
+  AgentUITurnState,
+} from "@openma/common/agent-ui";
+import {
+  AgentUIStreamingMarkdown,
+  AgentUIStreamingThoughtProjection,
+  useAgentUIState,
+} from "@openma/common/agent-ui/react";
+import {
+  AgentChatView,
+  AgentUITurnView,
+  ChatThoughtEventRow,
+  projectChatThoughtEvent,
+  type AgentChatViewSlots,
+  type ChatCollapsiblePrimitives,
+  type ChatThoughtEventProjection,
+} from "@openma/common/chat-ui";
+import { ListChecksIcon, Loader2Icon } from "lucide-react";
+import type { ReactNode } from "react";
 
 import type { MentionableNode } from "../MilkdownEditor";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../ui/collapsible";
 import {
   AcpAssistantTextInline,
   AcpToolInline,
   type ClashProjectEntity,
 } from "./AcpInlineRenderers";
-import { AgentMotion } from "./AgentMotion";
 import { UserMessage } from "./UserMessage";
 
-/** Clash's complete runtime-transcript adapter.
- *
- * Backchat owns turn boundaries, process/answer projection, event ordering,
- * and disclosure state. Clash supplies its avatar plus inline-only product
- * capabilities; those slots cannot create a second timeline or move events.
- */
+const CLASH_COLLAPSIBLE_PRIMITIVES: ChatCollapsiblePrimitives = {
+  Root: Collapsible,
+  Trigger: CollapsibleTrigger,
+  Content: CollapsibleContent,
+};
+
 export function RuntimeSessionTimeline({
-  transcript,
+  store,
+  mentionableNodes,
+  clashEntities,
+  onOpenClashEntity,
+  phase = "active",
+  slots,
+  className,
+}: {
+  store: AgentUIStore;
+  agentId?: string | null;
+  mentionableNodes: MentionableNode[];
+  clashEntities: readonly ClashProjectEntity[];
+  onOpenClashEntity?: (entity: ClashProjectEntity) => void;
+  phase?: "missing" | "draft" | "active";
+  slots?: AgentChatViewSlots;
+  className?: string;
+}) {
+  const state = useAgentUIState(store);
+  const turns = state.turnOrder.flatMap((turnId) => {
+    const turn = state.turns[turnId];
+    return turn ? [turn] : [];
+  });
+  return (
+    <div
+      className={className}
+      data-testid="runtime-session-timeline"
+      data-renderer="backchat"
+      data-backchat-session-timeline="true"
+    >
+      <AgentChatView
+        sessionId={state.sessionId}
+        surface="main"
+        phase={phase}
+        turns={turns}
+        slots={slots ?? { composer: null }}
+        renderTurn={({ turn }) => (
+          <RuntimeTurn
+            key={turn.id}
+            store={store}
+            turn={turn}
+            mentionableNodes={mentionableNodes}
+            clashEntities={clashEntities}
+            onOpenClashEntity={onOpenClashEntity}
+          />
+        )}
+      />
+    </div>
+  );
+}
+
+function RuntimeTurn({
+  store,
+  turn,
   mentionableNodes,
   clashEntities,
   onOpenClashEntity,
 }: {
-  transcript: SessionTranscript;
+  store: AgentUIStore;
+  turn: AgentUITurnState;
   mentionableNodes: MentionableNode[];
   clashEntities: readonly ClashProjectEntity[];
   onOpenClashEntity?: (entity: ClashProjectEntity) => void;
 }) {
   return (
-    <div data-testid="runtime-session-timeline" data-renderer="backchat">
-      <BackchatSessionTimeline
-        transcript={transcript}
-        avatar={
-          <AgentMotion
-            state="working"
-            className="clash-agent-motion--compact h-5 w-5"
-            gazeTarget={null}
-          />
-        }
-        slots={{
-          renderPrompt: ({ turn, defaultNode }) =>
-            turn.promptText ? (
-              <UserMessage
-                content={turn.promptText}
-                mentionNodes={mentionableNodes}
-              />
-            ) : (
-              defaultNode
-            ),
-          renderAssistantText: ({ text, section }) => (
-            <AcpAssistantTextInline text={text} section={section} />
-          ),
-          renderTool: ({ tool }) => (
-            <AcpToolInline
-              tool={tool}
-              clashEntities={clashEntities}
-              onOpenClashEntity={onOpenClashEntity}
+    <AgentUITurnView
+      sessionId={store.getState().sessionId}
+      turn={turn}
+      thoughts="history"
+      activityTools="all"
+      collapsiblePrimitives={CLASH_COLLAPSIBLE_PRIMITIVES}
+      className="!max-w-3xl"
+      labels={{
+        workingFor: (seconds) => `正在工作 ${seconds} 秒`,
+        workedFor: (seconds) => `已工作 ${seconds} 秒`,
+        thinking: "正在思考",
+        thoughtFor: () => "已思考",
+        toolActivity: describeTool,
+        toolRunSummary: (tools) => `已执行 ${tools.length} 项操作`,
+      }}
+      slots={{
+        renderPrompt: ({ item }) =>
+          item.text ? (
+            <UserMessage content={item.text} mentionNodes={mentionableNodes} />
+          ) : null,
+        renderAssistant: ({ item, section, live, prefixSkip }) =>
+          live && item.status === "streaming" ? (
+            <AgentUIStreamingMarkdown
+              store={store}
+              turnId={turn.id}
+              kind="assistant"
+              prefixSkip={prefixSkip}
+              paceReplay={section === "process"}
+              className={
+                section === "process"
+                  ? "text-[13px] text-neutral-500"
+                  : "text-[14px]"
+              }
             />
+          ) : (
+            <AcpAssistantTextInline text={item.text} section={section} />
           ),
-        }}
-      />
-    </div>
+        projectThoughtActivity: ({ item, live, prefixSkip }) =>
+          projectClashThought({ store, turn, item, live, prefixSkip }),
+        renderThought: ({ item, live, prefixSkip }) => {
+          const projection = projectClashThought({
+            store,
+            turn,
+            item,
+            live,
+            prefixSkip,
+          });
+          return (
+            <ChatThoughtEventRow
+              live={live}
+              text={item.text}
+              liveFallback="正在思考"
+              completedLabel="已思考"
+              projection={projection}
+              renderBody={() =>
+                live ? (
+                  <AgentUIStreamingMarkdown
+                    store={store}
+                    turnId={turn.id}
+                    kind="thought"
+                    prefixSkip={prefixSkip}
+                    paceReplay
+                    className="text-[13px] text-neutral-500"
+                  />
+                ) : (
+                  <div className="whitespace-pre-wrap text-[13px] leading-6 text-neutral-500">
+                    {item.text}
+                  </div>
+                )
+              }
+            />
+          );
+        },
+        projectToolActivity: ({ tool }) => ({
+          leading: isToolRunning(tool) ? (
+            <Loader2Icon className="chat-activity-icon animate-spin" />
+          ) : (
+            <ListChecksIcon className="chat-activity-icon" />
+          ),
+          summary: describeTool(tool),
+        }),
+        projectToolRun: ({ tools }) => ({
+          leading: (
+            <ListChecksIcon className="chat-activity-icon text-fg-muted" />
+          ),
+          summary: `已执行 ${tools.length} 项操作`,
+        }),
+        renderTool: ({ tool }) => (
+          <AcpToolInline
+            tool={tool}
+            defaultOpen={false}
+            clashEntities={clashEntities}
+            onOpenClashEntity={onOpenClashEntity}
+          />
+        ),
+        renderError: ({ message }) => (
+          <p className="text-sm text-status-down">{message ?? "运行失败"}</p>
+        ),
+      }}
+    />
   );
+}
+
+function projectClashThought({
+  store,
+  turn,
+  item,
+  live,
+  prefixSkip,
+}: {
+  store: AgentUIStore;
+  turn: AgentUITurnState;
+  item: AgentUIMessageItem;
+  live: boolean;
+  prefixSkip: number;
+}): ChatThoughtEventProjection {
+  return projectChatThoughtEvent({
+    text: item.text,
+    live,
+    liveFallback: "正在思考",
+    completedLabel: "已思考",
+    renderLiveSummary: (fallback) => (
+      <AgentUIStreamingThoughtProjection
+        store={store}
+        turnId={turn.id}
+        prefixSkip={prefixSkip}
+        fallback={String(fallback)}
+        mode="body"
+      />
+    ),
+  });
+}
+
+function describeTool(tool: AgentUIToolItem): ReactNode {
+  return tool.title || tool.name || tool.toolKind || "工具调用";
+}
+
+function isToolRunning(tool: AgentUIToolItem): boolean {
+  return tool.status === "pending" || tool.status === "in_progress";
 }

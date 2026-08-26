@@ -14,3 +14,14 @@ import "@testing-library/jest-dom/vitest";
  */
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 process.chdir(repoRoot);
+
+// AgentChatView owns transcript geometry through use-stick-to-bottom. jsdom
+// does not ship the observer used by that primitive, so component tests use a
+// no-op observer while interaction assertions drive disclosure state directly.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}

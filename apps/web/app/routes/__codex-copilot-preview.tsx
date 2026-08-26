@@ -1,142 +1,231 @@
-import {
-  initialSessionTranscript,
-  reduceSessionTranscript,
-} from "@openma/common/session";
+import { createAgentUIStore } from "@openma/common/agent-ui";
+import { decodeAcpSessionUpdate } from "@openma/common/protocol/acp";
+import { createOpenMAEvent } from "@openma/common/session-events/openma";
+import { ChatInput } from "@clash/web-ui/components/copilot/ChatInput";
 import { RuntimeSessionTimeline } from "@clash/web-ui/components/copilot/RuntimeSessionTimeline";
 import { AcpAgentLogo } from "@clash/gui/components/copilot/AcpAgentLogo";
 import { Button } from "@clash/gui/components/ui/button";
-import { IconButton } from "@clash/gui/components/ui/icon-button";
-import { SelectMenu, type SelectSection } from "@clash/gui/components/ui/select";
+import {
+  SelectMenu,
+  type SelectSection,
+} from "@clash/gui/components/ui/select";
 import { useMemo, useState } from "react";
-import { ArrowUp, CaretDown, Microphone, Plus, ShieldWarning } from "@phosphor-icons/react";
+import { CaretDown, ShieldWarning } from "@phosphor-icons/react";
 
-function createPreviewTranscript() {
-  let transcript = initialSessionTranscript("codex-copilot-preview");
-  transcript = reduceSessionTranscript(transcript, {
-    type: "turn.register",
-    turnId: "list-canvas",
-    promptText: "列出画布上的节点。",
+function createPreviewStore() {
+  const sessionId = "codex-copilot-preview";
+  const turnId = "list-canvas";
+  const store = createAgentUIStore(sessionId);
+  const source = { kind: "harness" as const, harness: "codex-acp" };
+  let sequence = 0;
+  const dispatchAcp = (update: unknown) => {
+    sequence += 1;
+    store.dispatch(
+      decodeAcpSessionUpdate(sessionId, update, {
+        eventId: `preview:${sequence}`,
+        occurredAt: new Date(sequence * 1_000).toISOString(),
+        turnId,
+        seq: sequence,
+        harness: "codex-acp",
+      }).event,
+    );
+  };
+
+  store.dispatch(
+    createOpenMAEvent({
+      event_id: "preview:user",
+      type: "user.message",
+      session_id: sessionId,
+      turn_id: turnId,
+      source: { kind: "user" },
+      occurred_at: new Date(0).toISOString(),
+      data: { text: "列出画布上的节点。" },
+    }),
+  );
+  store.dispatch(
+    createOpenMAEvent({
+      event_id: "preview:running",
+      type: "session.running",
+      session_id: sessionId,
+      turn_id: turnId,
+      source,
+      occurred_at: new Date(500).toISOString(),
+      data: {},
+    }),
+  );
+  dispatchAcp({
+    sessionUpdate: "agent_thought_chunk",
+    content: {
+      type: "text",
+      text: "先确认画布状态，再把节点按类型整理出来。",
+    },
   });
-  transcript = reduceSessionTranscript(transcript, {
-    type: "turn.event",
-    turnId: "list-canvas",
-    event: {
-      sessionUpdate: "agent_thought_chunk",
-      content: {
-        type: "text",
-        text: "先确认画布状态，再把节点按类型整理出来。",
+  dispatchAcp({
+    sessionUpdate: "tool_call",
+    toolCallId: "tool-list-canvas",
+    title: "List canvas nodes",
+    kind: "list",
+    status: "completed",
+    rawInput: { query: "canvas.nodes", projectId: "mock-project" },
+    rawOutput: [
+      {
+        id: "dianmwa7",
+        type: "action-badge",
+        label: "Image Prompt",
       },
-    },
-  });
-  transcript = reduceSessionTranscript(transcript, {
-    type: "turn.event",
-    turnId: "list-canvas",
-    event: {
-      sessionUpdate: "tool_call",
-      toolCallId: "tool-list-canvas",
-      title: "List canvas nodes",
-      kind: "list",
-      status: "completed",
-      rawInput: { query: "canvas.nodes", projectId: "mock-project" },
-      rawOutput: [
-        {
-          id: "dianmwa7",
-          type: "action-badge",
-          label: "Image Prompt",
-        },
-        {
-          id: "lrcleamx",
-          type: "image",
-          status: "completed",
-          size: "500 x 281",
-        },
-        {
-          id: "upload-1781414847642-oq6cbcl",
-          type: "image",
-          fileName: "258251d8857f30efff6b9b7085302bf5.JPG",
-        },
-      ],
-    },
-  });
-  transcript = reduceSessionTranscript(transcript, {
-    type: "turn.event",
-    turnId: "list-canvas",
-    event: {
-      sessionUpdate: "agent_message_chunk",
-      _meta: { codex: { phase: "final_answer" } },
-      content: {
-        type: "text",
-        text: "画布上当前有 **3 个节点**，其中一个是当前选中的素材引用。",
+      {
+        id: "lrcleamx",
+        type: "image",
+        status: "completed",
+        size: "500 x 281",
       },
+      {
+        id: "upload-1781414847642-oq6cbcl",
+        type: "image",
+        fileName: "258251d8857f30efff6b9b7085302bf5.JPG",
+      },
+    ],
+  });
+  dispatchAcp({
+    sessionUpdate: "agent_message_chunk",
+    _meta: { codex: { phase: "final_answer" } },
+    content: {
+      type: "text",
+      text: "画布上当前有 **3 个节点**，其中一个是当前选中的素材引用。",
     },
   });
-  return reduceSessionTranscript(transcript, {
-    type: "turn.complete",
-    turnId: "list-canvas",
-  });
+  store.dispatch(
+    createOpenMAEvent({
+      event_id: "preview:completed",
+      type: "turn.completed",
+      session_id: sessionId,
+      turn_id: turnId,
+      source,
+      occurred_at: new Date(5_000).toISOString(),
+      data: {},
+    }),
+  );
+  return store;
 }
 
-const previewTranscript = createPreviewTranscript();
+const previewStore = createPreviewStore();
 
 export default function CodexCopilotPreview() {
+  const [draft, setDraft] = useState("");
+  const [permissionMode, setPermissionMode] = useState<"default" | "full">(
+    "full",
+  );
   const [selectedHarness, setSelectedHarness] = useState("codex");
   const [selectedModel, setSelectedModel] = useState("gpt-5.5");
   const [selectedEffort, setSelectedEffort] = useState("low");
   const modelSections = useMemo<SelectSection<string>[]>(() => {
-    const modelOptions = selectedHarness === "claude"
-      ? [
-        { value: "sonnet-4.6", label: "Claude Sonnet 4.6" },
-        { value: "opus-4.6", label: "Claude Opus 4.6" },
-      ]
-      : selectedHarness === "gemini"
+    const modelOptions =
+      selectedHarness === "claude"
         ? [
-          { value: "3.5-flash", label: "Gemini 3.5 Flash" },
-          { value: "3.1-pro", label: "Gemini 3.1 Pro" },
-        ]
-        : [
-          { value: "gpt-5.5", label: "GPT-5.5" },
-          { value: "gpt-5.4", label: "GPT-5.4" },
-          { value: "gpt-5.3-codex", label: "GPT-5.3 Codex" },
-        ];
-    const effortSections: SelectSection<string>[] = [{
-      id: "codex-effort",
-      label: <span className="text-[11px] font-semibold uppercase tracking-[0.11em]">Effort</span>,
-      options: [
-        { value: "effort:minimal", label: "Minimal", selected: selectedEffort === "minimal" },
-        { value: "effort:low", label: "Low", selected: selectedEffort === "low" },
-        { value: "effort:medium", label: "Medium", selected: selectedEffort === "medium" },
-        { value: "effort:high", label: "High", selected: selectedEffort === "high" },
-        { value: "effort:very-high", label: "Very high", selected: selectedEffort === "very-high" },
-      ],
-    }];
+            { value: "sonnet-4.6", label: "Claude Sonnet 4.6" },
+            { value: "opus-4.6", label: "Claude Opus 4.6" },
+          ]
+        : selectedHarness === "gemini"
+          ? [
+              { value: "3.5-flash", label: "Gemini 3.5 Flash" },
+              { value: "3.1-pro", label: "Gemini 3.1 Pro" },
+            ]
+          : [
+              { value: "gpt-5.5", label: "GPT-5.5" },
+              { value: "gpt-5.4", label: "GPT-5.4" },
+              { value: "gpt-5.3-codex", label: "GPT-5.3 Codex" },
+            ];
+    const effortSections: SelectSection<string>[] = [
+      {
+        id: "codex-effort",
+        label: (
+          <span className="text-[11px] font-semibold uppercase tracking-[0.11em]">
+            Effort
+          </span>
+        ),
+        options: [
+          {
+            value: "effort:minimal",
+            label: "Minimal",
+            selected: selectedEffort === "minimal",
+          },
+          {
+            value: "effort:low",
+            label: "Low",
+            selected: selectedEffort === "low",
+          },
+          {
+            value: "effort:medium",
+            label: "Medium",
+            selected: selectedEffort === "medium",
+          },
+          {
+            value: "effort:high",
+            label: "High",
+            selected: selectedEffort === "high",
+          },
+          {
+            value: "effort:very-high",
+            label: "Very high",
+            selected: selectedEffort === "very-high",
+          },
+        ],
+      },
+    ];
     return [
       {
         id: "harness",
-        label: <span className="text-[11px] font-semibold uppercase tracking-[0.11em]">Harness</span>,
+        label: (
+          <span className="text-[11px] font-semibold uppercase tracking-[0.11em]">
+            Harness
+          </span>
+        ),
         options: [
           {
             value: "harness:codex",
             label: "Codex",
-            icon: <AcpAgentLogo agentId="codex-acp" title="Codex" className="h-4 w-4" />,
+            icon: (
+              <AcpAgentLogo
+                agentId="codex-acp"
+                title="Codex"
+                className="h-4 w-4"
+              />
+            ),
             selected: selectedHarness === "codex",
           },
           {
             value: "harness:claude",
             label: "Claude",
-            icon: <AcpAgentLogo agentId="claude-acp" title="Claude" className="h-4 w-4" />,
+            icon: (
+              <AcpAgentLogo
+                agentId="claude-acp"
+                title="Claude"
+                className="h-4 w-4"
+              />
+            ),
             selected: selectedHarness === "claude",
           },
           {
             value: "harness:gemini",
             label: "Gemini",
-            icon: <AcpAgentLogo agentId="gemini" title="Gemini" className="h-4 w-4" />,
+            icon: (
+              <AcpAgentLogo
+                agentId="gemini"
+                title="Gemini"
+                className="h-4 w-4"
+              />
+            ),
             selected: selectedHarness === "gemini",
           },
         ],
       },
       {
         id: "model",
-        label: <span className="text-[11px] font-semibold uppercase tracking-[0.11em]">Model</span>,
+        label: (
+          <span className="text-[11px] font-semibold uppercase tracking-[0.11em]">
+            Model
+          </span>
+        ),
         options: modelOptions.map((model) => {
           const selected = selectedModel === model.value;
           return {
@@ -145,130 +234,138 @@ export default function CodexCopilotPreview() {
             selected,
             ...(selectedHarness === "codex" && selected
               ? {
-                hasSubmenu: true,
-                submenuLabel: "Effort",
-                submenuSections: effortSections,
-              }
+                  hasSubmenu: true,
+                  submenuLabel: "Effort",
+                  submenuSections: effortSections,
+                }
               : {}),
           };
         }),
       },
     ];
   }, [selectedEffort, selectedHarness, selectedModel]);
-  const selectedModelLabel = modelSections
-    .find((section) => section.id === "model")?.options
-    .find((option) => option.value === `model:${selectedModel}`)?.label ?? "GPT-5.5";
-  const selectedHarnessName = selectedHarness === "claude"
-    ? "Claude"
-    : selectedHarness === "gemini"
-      ? "Gemini"
-      : "Codex";
+  const selectedModelLabel =
+    modelSections
+      .find((section) => section.id === "model")
+      ?.options.find((option) => option.value === `model:${selectedModel}`)
+      ?.label ?? "GPT-5.5";
+  const selectedHarnessName =
+    selectedHarness === "claude"
+      ? "Claude"
+      : selectedHarness === "gemini"
+        ? "Gemini"
+        : "Codex";
+
+  const handleModelChange = (value: string) => {
+    if (value.startsWith("effort:")) {
+      setSelectedEffort(value.slice("effort:".length));
+      return;
+    }
+    if (value.startsWith("harness:")) {
+      const nextHarness = value.slice("harness:".length);
+      setSelectedHarness(nextHarness);
+      setSelectedModel(
+        nextHarness === "claude"
+          ? "sonnet-4.6"
+          : nextHarness === "gemini"
+            ? "3.5-flash"
+            : "gpt-5.5",
+      );
+      return;
+    }
+    setSelectedModel(
+      value.startsWith("model:") ? value.slice("model:".length) : value,
+    );
+  };
 
   return (
     <main className="min-h-screen bg-warm-bg px-10 py-8 text-foreground">
-      <section className="mx-auto flex h-[calc(100vh-4rem)] max-w-4xl flex-col overflow-hidden rounded-[28px] border border-warm-border bg-background shadow-2xl">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-warm-border px-8">
-          <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-status-down">ACP Preview</p>
-            <h1 className="text-lg font-semibold">列出画布上的节点。</h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-full bg-warm-muted px-3 py-1 text-xs text-muted-foreground">
-              stream: thought / tool / markdown · progress: plan / outputs
-            </span>
-          </div>
+      <section
+        className="mx-auto flex h-[calc(100vh-4rem)] max-w-4xl flex-col overflow-hidden rounded-[28px] border border-warm-border bg-background shadow-2xl"
+        data-chat-surface="main"
+      >
+        <header className="clash-copilot-panel-header flex h-[38px] shrink-0 items-center px-4">
+          <h1 className="truncate text-sm font-medium">列出画布上的节点。</h1>
         </header>
-        <div className="relative flex-1 overflow-y-auto px-10 pb-32 pt-8">
-          <div className="mx-auto flex max-w-3xl flex-col gap-5">
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div
+            className="chat-turn-frame mx-auto flex min-h-full w-full max-w-3xl min-w-0 flex-col gap-3 py-6"
+            data-chat-column="turns"
+          >
             <RuntimeSessionTimeline
-              transcript={previewTranscript}
+              store={previewStore}
+              agentId="codex-acp"
               mentionableNodes={[]}
               clashEntities={[]}
             />
           </div>
         </div>
-        <div className="border-t border-warm-border/60 bg-background/95 px-10 py-5">
-          <div className="mx-auto max-w-3xl rounded-2xl border border-warm-border bg-background p-3 shadow-lg">
-            <div className="mb-3 min-h-10 px-2 text-sm text-muted-foreground">Ask anything about the canvas...</div>
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <IconButton
-                  label="Attach"
-                  icon={<Plus className="h-4 w-4" />}
-                  size="sm"
-                  shape="rounded"
-                  className="rounded-xl text-muted-foreground hover:bg-warm-muted"
-                />
-                <Button
-                  variant={null}
-                  size={null}
-                  shape={null}
-                  className="inline-flex h-8 min-h-8 items-center gap-1.5 rounded-full border-0 bg-transparent px-2.5 text-sm font-medium text-status-down shadow-none hover:bg-status-down/10"
-                  aria-label="Permission mode"
-                >
-                  <ShieldWarning className="h-4 w-4" />
-                  <span>Full access</span>
-                  <CaretDown className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-              <div className="flex items-center gap-2">
-                <SelectMenu
-                  className="relative flex justify-start"
-                  triggerClassName="max-w-full text-left"
-                  value={selectedModel}
-                  sections={modelSections}
-                  onValueChange={(value) => {
-                    if (value.startsWith("effort:")) {
-                      setSelectedEffort(value.slice("effort:".length));
-                      return;
-                    }
-                    if (value.startsWith("harness:")) {
-                      const nextHarness = value.slice("harness:".length);
-                      setSelectedHarness(nextHarness);
-                      setSelectedModel(nextHarness === "claude" ? "sonnet-4.6" : nextHarness === "gemini" ? "3.5-flash" : "gpt-5.5");
-                      return;
-                    }
-                    if (value.startsWith("model:")) {
-                      setSelectedModel(value.slice("model:".length));
-                      return;
-                    }
-                    setSelectedModel(value);
-                  }}
-                  ariaLabel="Model"
-                  title={`${selectedHarnessName} · ${selectedModelLabel}`}
-                  variant="inline"
-                  placement="top"
-                  menuWidth={280}
-                  maxMenuHeight={420}
-                  submenuWidth={220}
-                  stopPropagation
-                  triggerPrefix={(
-                    <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-slate-700">
-                      <AcpAgentLogo agentId={`${selectedHarness}-acp`} title={selectedHarnessName} className="h-4 w-4" />
-                    </span>
-                  )}
-                  triggerLabel={selectedHarness === "codex"
+        <div
+          className="chat-composer-frame mx-auto w-full max-w-3xl min-w-0 space-y-2"
+          data-chat-column="composer"
+        >
+          <ChatInput
+            input={draft}
+            onInputChange={setDraft}
+            onSubmit={() => setDraft("")}
+            onOpenAssetPicker={() =>
+              setDraft(
+                (current) =>
+                  current || "@[Preview asset](project-asset:preview) ",
+              )
+            }
+            toolbarAccessory={
+              <Button
+                variant={null}
+                size={null}
+                shape={null}
+                className="inline-flex h-7 min-h-7 items-center gap-1.5 rounded-md border-0 bg-transparent px-1.5 text-xs font-medium text-content-secondary shadow-none hover:bg-warm-hover"
+                aria-label="Permission mode"
+                onClick={() =>
+                  setPermissionMode((current) =>
+                    current === "full" ? "default" : "full",
+                  )
+                }
+              >
+                <ShieldWarning className="h-4 w-4" />
+                <span>
+                  {permissionMode === "full" ? "Full access" : "Default"}
+                </span>
+                <CaretDown className="h-3.5 w-3.5" />
+              </Button>
+            }
+            rightToolbarAccessory={
+              <SelectMenu
+                className="relative flex justify-start"
+                triggerClassName="max-w-full text-left"
+                value={selectedModel}
+                sections={modelSections}
+                onValueChange={handleModelChange}
+                ariaLabel="Model"
+                title={`${selectedHarnessName} · ${selectedModelLabel}`}
+                variant="inline"
+                placement="top"
+                menuWidth={280}
+                maxMenuHeight={420}
+                submenuWidth={220}
+                stopPropagation
+                triggerPrefix={
+                  <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-slate-700">
+                    <AcpAgentLogo
+                      agentId={`${selectedHarness}-acp`}
+                      title={selectedHarnessName}
+                      className="h-4 w-4"
+                    />
+                  </span>
+                }
+                triggerLabel={
+                  selectedHarness === "codex"
                     ? `${selectedModelLabel} ${selectedEffort.replace("-", " ")}`
-                    : selectedModelLabel}
-                />
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                <IconButton
-                  label="Voice"
-                  icon={<Microphone className="h-4 w-4" />}
-                  size="sm"
-                  shape="rounded"
-                  className="rounded-xl text-muted-foreground hover:bg-warm-muted"
-                />
-                <IconButton
-                  label="Send"
-                  icon={<ArrowUp className="h-4 w-4" weight="bold" />}
-                  size="md"
-                  shape="rounded"
-                  className="rounded-xl bg-status-down text-white hover:bg-status-down/90"
-                />
-              </div>
-            </div>
-          </div>
+                    : selectedModelLabel
+                }
+              />
+            }
+          />
         </div>
       </section>
     </main>

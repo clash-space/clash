@@ -847,13 +847,15 @@ describe("useClashRuntime", () => {
       agent_id: "codex-acp",
       project_id: "project-one",
     });
-    expect(result.current.messages).toEqual([
-      {
-        id: expect.stringMatching(/^user-t-/),
-        role: "user",
-        parts: [{ type: "text", text: "hi" }],
-      },
-    ]);
+    await waitFor(() => {
+      expect(result.current.messages).toEqual([
+        {
+          id: expect.stringMatching(/^user-t-/),
+          role: "user",
+          parts: [{ type: "text", text: "hi" }],
+        },
+      ]);
+    });
     expect(result.current.status).toBe("connecting");
 
     const ws = FakeWebSocket.instances.at(-1)!;
@@ -1795,7 +1797,7 @@ describe("useClashRuntime", () => {
       result.current.messages
         .filter((message) => message.role === "user")
         .map((message) => message.parts.map((part: any) => part.text).join("")),
-    ).toEqual(["first", "second"]);
+    ).toEqual(["first"]);
 
     act(() => {
       ws.onmessage?.({
@@ -1913,7 +1915,7 @@ describe("useClashRuntime", () => {
     ]);
   });
 
-  it("routes skill warnings to an expiring session notice without losing same-chunk prose", async () => {
+  it("keeps skill-warning plumbing out of same-chunk assistant prose", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(1_000));
     const fetchMock = vi.fn(
@@ -1978,17 +1980,9 @@ describe("useClashRuntime", () => {
       });
     });
 
-    expect(result.current.notice).toMatchObject({
-      message: warning,
-      tone: "warning",
-      expiresAt: 11_000,
-    });
     expect(result.current.messages.at(-1)?.parts).toEqual([
       { type: "text", text: "那就先喝两口水。" },
     ]);
-
-    act(() => vi.advanceTimersByTime(10_000));
-    expect(result.current.notice).toBeNull();
   });
 
   it("clears the active turn when the backend reports no active queued prompt", async () => {
@@ -2516,7 +2510,7 @@ describe("useClashRuntime", () => {
       {
         role: "assistant",
         text: "same message after steer still contiguous",
-        tools: [{ id: "tool-2", status: undefined, output: undefined }],
+        tools: [{ id: "tool-2", status: "in_progress", output: undefined }],
       },
     ]);
     act(() => {
@@ -3038,12 +3032,14 @@ describe("useClashRuntime", () => {
       permission_mode: "codex:full-access",
       fork_session_id: "acp-source",
     });
-    expect(result.current.messages).toEqual([
-      expect.objectContaining({
-        role: "user",
-        parts: [{ type: "text", text: "Continue from the source session" }],
-      }),
-    ]);
+    await waitFor(() => {
+      expect(result.current.messages).toEqual([
+        expect.objectContaining({
+          role: "user",
+          parts: [{ type: "text", text: "Continue from the source session" }],
+        }),
+      ]);
+    });
   });
 
   it("does not treat project-scoped runtime cache as Clash session history", async () => {
@@ -3203,21 +3199,33 @@ describe("useClashRuntime", () => {
       ),
     ).toBe(true);
     expect(result.current.sessionId).toBe("local-session-old");
-    expect(result.current.status).toBe("connected");
+    expect(result.current.status).toBe("connecting");
     expect(result.current.selectedRuntimeId).toBe("desktop-local");
     expect(result.current.selectedAgentId).toBe("codex-acp");
     expect(result.current.currentSession?.threadId).toBe("local-session-old");
-    expect(result.current.messages.map((message) => message.role)).toEqual([
-      "user",
-      "assistant",
-    ]);
-    expect(result.current.messages.at(1)?.parts).toEqual([
-      { type: "text", text: "/Users/xiaoyang/project" },
-    ]);
+    expect(result.current.messages).toEqual([]);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith(
+          "/api/v1/local-sessions/local-session-old/events",
+        ),
+      ),
+    ).toBe(false);
     const stream = FakeWebSocket.instances.at(-1)!;
     expect(stream.url).toContain(
-      "/api/v1/local-sessions/local-session-old/_stream?replay=0",
+      "/api/v1/local-sessions/local-session-old/_stream",
     );
+    expect(stream.url).not.toContain("replay=");
+
+    act(() => {
+      stream.onmessage?.({
+        data: JSON.stringify({
+          type: "session.ready",
+          session_id: "local-session-old",
+        }),
+      });
+    });
+    expect(result.current.status).toBe("connected");
 
     act(() => {
       stream.onmessage?.({
@@ -3234,10 +3242,9 @@ describe("useClashRuntime", () => {
     });
 
     expect(result.current.messages.map((message) => message.role)).toEqual([
-      "user",
       "assistant",
     ]);
-    expect(result.current.messages.at(1)?.parts).toEqual([
+    expect(result.current.messages.at(0)?.parts).toEqual([
       { type: "text", text: "/Users/xiaoyang/project" },
     ]);
   });
@@ -3303,7 +3310,7 @@ describe("useClashRuntime", () => {
     );
   });
 
-  it("treats loaded attach history as connected while ACP restore is still pending", async () => {
+  it("keeps attach empty and connecting while ACP restore is still pending", async () => {
     let resolveAttach: ((response: Response) => void) | null = null;
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -3392,15 +3399,17 @@ describe("useClashRuntime", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.messages.map((message) => message.role)).toEqual([
-        "user",
-        "assistant",
-      ]);
+      expect(result.current.sessionId).toBe("local-session-slow");
     });
-    expect(result.current.status).toBe("connected");
-    expect(result.current.messages.at(1)?.parts).toEqual([
-      { type: "text", text: "pong" },
-    ]);
+    expect(result.current.status).toBe("connecting");
+    expect(result.current.messages).toEqual([]);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith(
+          "/api/v1/local-sessions/local-session-slow/events",
+        ),
+      ),
+    ).toBe(false);
     expect(FakeWebSocket.instances).toHaveLength(0);
 
     await act(async () => {
@@ -3413,12 +3422,13 @@ describe("useClashRuntime", () => {
 
     await waitFor(() => {
       expect(FakeWebSocket.instances.at(-1)?.url).toContain(
-        "/api/v1/local-sessions/local-session-slow/_stream?replay=0",
+        "/api/v1/local-sessions/local-session-slow/_stream",
       );
+      expect(FakeWebSocket.instances.at(-1)?.url).not.toContain("replay=");
     });
   });
 
-  it("replays runtime backlog when persisted history cannot be loaded during attach", async () => {
+  it("never requests persisted history or runtime backlog during attach", async () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
@@ -3468,7 +3478,14 @@ describe("useClashRuntime", () => {
     expect(stream.url).toContain(
       "/api/v1/local-sessions/local-session-live/_stream",
     );
-    expect(stream.url).not.toContain("replay=0");
+    expect(stream.url).not.toContain("replay=");
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith(
+          "/api/v1/local-sessions/local-session-live/events",
+        ),
+      ),
+    ).toBe(false);
 
     act(() => {
       stream.onmessage?.({
@@ -3581,17 +3598,7 @@ describe("useClashRuntime", () => {
       });
     });
 
-    expect(result.current.transcript.turns[0]).toMatchObject({
-      id: "turn-1",
-      promptText: "Inspect",
-      status: "running",
-      events: [{ receivedAt: 1_250 }, { receivedAt: 1_500 }],
-    });
-    expect(
-      result.current.transcript.turns[0]?.events.map(
-        (event) => (event.payload as { sessionUpdate?: string }).sessionUpdate,
-      ),
-    ).toEqual(["agent_thought_chunk", "tool_call"]);
+    expect(result.current.agentUIState.turnOrder).toEqual([]);
 
     const stream = FakeWebSocket.instances.at(-1)!;
     act(() => {
@@ -3603,7 +3610,9 @@ describe("useClashRuntime", () => {
         }),
       });
     });
-    expect(result.current.transcript.turns[0]?.status).toBe("cancelled");
+    expect(result.current.agentUIState.turns["turn-1"]?.status).toBe(
+      "cancelled",
+    );
   });
 
   it("keeps every streamed event in one stable assistant turn container", async () => {

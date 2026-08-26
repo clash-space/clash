@@ -35,16 +35,14 @@
  * computed at render time, not stored.
  */
 
-import {
-  mergeStreamingText as mergeOpenMaStreamingText,
-  parseAcpEvent as parseOpenMaAcpEvent,
-} from '@openma/common/session';
+import { mergeAgentUIStreamingText } from "@openma/common/agent-ui";
+import { decodeAcpSessionUpdate } from "@openma/common/protocol/acp";
 
 // ─── ACP wire shapes (subset we use) ────────────────────────────────
 
 /** ACP-defined ToolCallContent: text content, file diff, or terminal output. */
 export interface AcpToolCallContent {
-  type: 'content' | 'diff' | 'terminal';
+  type: "content" | "diff" | "terminal";
   /** When type='content', the inner content is { type:'text', text:string } etc. */
   content?: { type?: string; text?: string; [k: string]: unknown };
   /** When type='diff' / 'terminal', other fields populate. We don't render those yet. */
@@ -52,7 +50,7 @@ export interface AcpToolCallContent {
 }
 
 export interface AcpToolCallPart {
-  type: 'tool_call';
+  type: "tool_call";
   /** Stable id for delta updates. */
   toolCallId: string;
   /** ACP-canonical fields, kept verbatim from the wire. */
@@ -80,8 +78,8 @@ export interface AcpToolCallPart {
 
 export interface PlanEntry {
   content: string;
-  priority?: 'high' | 'medium' | 'low' | string;
-  status: 'pending' | 'in_progress' | 'completed' | string;
+  priority?: "high" | "medium" | "low" | string;
+  status: "pending" | "in_progress" | "completed" | string;
 }
 
 export interface AvailableCommand {
@@ -99,14 +97,14 @@ export interface AvailableCommand {
 
 export type AvailableCommandAction =
   | {
-      kind: 'setConfigOption';
+      kind: "setConfigOption";
       configId: string;
       value: string | boolean;
       resetValue?: string | boolean;
       presentation?: string;
     }
   | {
-      kind: 'prefixPrompt';
+      kind: "prefixPrompt";
       presentation?: string;
     };
 
@@ -119,29 +117,32 @@ export function commandActionFromAvailableCommand(
       ? command.metadata
       : null;
   const action = plainRecord(meta?.commandAction) ? meta.commandAction : null;
-  if (!action || typeof action.kind !== 'string') return null;
-  const presentation = typeof action.presentation === 'string' && action.presentation.trim()
-    ? action.presentation.trim()
-    : undefined;
-  if (action.kind === 'prefixPrompt') {
+  if (!action || typeof action.kind !== "string") return null;
+  const presentation =
+    typeof action.presentation === "string" && action.presentation.trim()
+      ? action.presentation.trim()
+      : undefined;
+  if (action.kind === "prefixPrompt") {
     return {
-      kind: 'prefixPrompt',
+      kind: "prefixPrompt",
       ...(presentation ? { presentation } : {}),
     };
   }
   if (
-    action.kind !== 'setConfigOption'
-    || typeof action.configId !== 'string'
-    || !action.configId.trim()
-    || (typeof action.value !== 'string' && typeof action.value !== 'boolean')
+    action.kind !== "setConfigOption" ||
+    typeof action.configId !== "string" ||
+    !action.configId.trim() ||
+    (typeof action.value !== "string" && typeof action.value !== "boolean")
   ) {
     return null;
   }
-  const resetValue = typeof action.resetValue === 'string' || typeof action.resetValue === 'boolean'
-    ? action.resetValue
-    : undefined;
+  const resetValue =
+    typeof action.resetValue === "string" ||
+    typeof action.resetValue === "boolean"
+      ? action.resetValue
+      : undefined;
   return {
-    kind: 'setConfigOption',
+    kind: "setConfigOption",
     configId: action.configId.trim(),
     value: action.value,
     ...(resetValue !== undefined ? { resetValue } : {}),
@@ -176,40 +177,45 @@ export interface AcpSessionInfoStatePatch {
 
 export interface ByoMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   parts: Array<
     | {
-        type: 'text';
+        type: "text";
         text: string;
         messageId?: string;
-        phase?: 'commentary' | 'final_answer';
+        phase?: "commentary" | "final_answer";
       }
-    | { type: 'thought'; text: string; messageId?: string }
+    | { type: "thought"; text: string; messageId?: string }
     | AcpToolCallPart
-    | { type: 'plan'; entries: PlanEntry[] }
-    | { type: 'event_note'; title: string; detail?: string; tone?: 'neutral' | 'warning' | 'error' }
-    | { type: 'raw_event'; event: unknown }
+    | { type: "plan"; entries: PlanEntry[] }
+    | {
+        type: "event_note";
+        title: string;
+        detail?: string;
+        tone?: "neutral" | "warning" | "error";
+      }
+    | { type: "raw_event"; event: unknown }
   >;
 }
 
 // ─── parseAcpEvent ──────────────────────────────────────────────────
 
 type ParsedKind =
-  | 'text'
-  | 'thought'
-  | 'tool_call'      // covers BOTH initial tool_call and any later tool_call/tool_call_update
-  | 'commands'
-  | 'plan'
-  | 'note'
-  | 'silent'
-  | 'raw';
+  | "text"
+  | "thought"
+  | "tool_call" // covers BOTH initial tool_call and any later tool_call/tool_call_update
+  | "commands"
+  | "plan"
+  | "note"
+  | "silent"
+  | "raw";
 
 interface ParsedEvent {
   kind: ParsedKind;
   /** For text / thought. */
   text?: string;
   messageId?: string;
-  phase?: 'commentary' | 'final_answer';
+  phase?: "commentary" | "final_answer";
   /** For tool_call (initial or update). Field set follows the wire —
    *  null fields are dropped, undefined fields stay undefined. */
   tool?: Partial<AcpToolCallPart> & { toolCallId: string };
@@ -217,19 +223,29 @@ interface ParsedEvent {
   commands?: AvailableCommand[];
   /** For plan events — full snapshot. */
   plan?: PlanEntry[];
-  note?: { title: string; detail?: string; tone?: 'neutral' | 'warning' | 'error' };
+  note?: {
+    title: string;
+    detail?: string;
+    tone?: "neutral" | "warning" | "error";
+  };
   /** Original event, used for the raw_event fallback. */
   event: unknown;
 }
 
 function sessionUpdateInner(event: unknown): Record<string, unknown> {
-  const ev = event as { sessionUpdate?: string; update?: Record<string, unknown> & { sessionUpdate?: string } };
+  const ev = event as {
+    sessionUpdate?: string;
+    update?: Record<string, unknown> & { sessionUpdate?: string };
+  };
   return (ev?.update ?? ev) as Record<string, unknown>;
 }
 
-function sessionUpdateType(inner: Record<string, unknown>, event: unknown): string | undefined {
+function sessionUpdateType(
+  inner: Record<string, unknown>,
+  event: unknown,
+): string | undefined {
   const ev = event as { sessionUpdate?: string };
-  const rawType = typeof inner.type === 'string' ? inner.type : undefined;
+  const rawType = typeof inner.type === "string" ? inner.type : undefined;
   return (
     (inner.sessionUpdate as string | undefined) ??
     ev?.sessionUpdate ??
@@ -245,32 +261,37 @@ function sessionUpdateType(inner: Record<string, unknown>, event: unknown): stri
  *   null      — Goal was explicitly cleared
  *   object    — replace the current Goal snapshot
  */
-export function sessionInfoStateFromAcpEvent(event: unknown): AcpSessionInfoStatePatch | undefined {
+export function sessionInfoStateFromAcpEvent(
+  event: unknown,
+): AcpSessionInfoStatePatch | undefined {
   const inner = sessionUpdateInner(event);
-  if (sessionUpdateType(inner, event) !== 'session_info_update') return undefined;
+  if (sessionUpdateType(inner, event) !== "session_info_update")
+    return undefined;
   const patch: AcpSessionInfoStatePatch = {};
-  if (Object.prototype.hasOwnProperty.call(inner, 'title')) {
-    patch.title = typeof inner.title === 'string' ? inner.title : null;
+  if (Object.prototype.hasOwnProperty.call(inner, "title")) {
+    patch.title = typeof inner.title === "string" ? inner.title : null;
   }
-  if (Object.prototype.hasOwnProperty.call(inner, 'updatedAt')) {
-    patch.updatedAt = typeof inner.updatedAt === 'string' ? inner.updatedAt : null;
+  if (Object.prototype.hasOwnProperty.call(inner, "updatedAt")) {
+    patch.updatedAt =
+      typeof inner.updatedAt === "string" ? inner.updatedAt : null;
   }
-  const metaKey = Object.prototype.hasOwnProperty.call(inner, '_meta')
-    ? '_meta'
-    : Object.prototype.hasOwnProperty.call(inner, 'meta')
-      ? 'meta'
+  const metaKey = Object.prototype.hasOwnProperty.call(inner, "_meta")
+    ? "_meta"
+    : Object.prototype.hasOwnProperty.call(inner, "meta")
+      ? "meta"
       : null;
   if (metaKey) {
     const rawMeta = inner[metaKey];
-    patch.metadata = rawMeta && typeof rawMeta === 'object' && !Array.isArray(rawMeta)
-      ? rawMeta as Record<string, unknown>
-      : null;
+    patch.metadata =
+      rawMeta && typeof rawMeta === "object" && !Array.isArray(rawMeta)
+        ? (rawMeta as Record<string, unknown>)
+        : null;
   }
   return patch;
 }
 
 function plainRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
+  return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 export function mergeSessionInfoMetadata(
@@ -280,31 +301,35 @@ export function mergeSessionInfoMetadata(
   const next: Record<string, unknown> = { ...(current ?? {}) };
   for (const [key, value] of Object.entries(patch)) {
     const previous = next[key];
-    next[key] = plainRecord(previous) && plainRecord(value)
-      ? mergeSessionInfoMetadata(previous, value)
-      : value;
+    next[key] =
+      plainRecord(previous) && plainRecord(value)
+        ? mergeSessionInfoMetadata(previous, value)
+        : value;
   }
   return next;
 }
 
 function normalizeGoalState(value: unknown): RuntimeGoalState | null {
   if (!plainRecord(value)) return null;
-  const objective = typeof value.objective === 'string' ? value.objective.trim() : '';
-  const status = typeof value.status === 'string' ? value.status.trim() : '';
+  const objective =
+    typeof value.objective === "string" ? value.objective.trim() : "";
+  const status = typeof value.status === "string" ? value.status.trim() : "";
   if (!objective || !status) return null;
   return {
     objective,
     status,
-    ...(typeof value.tokenBudget === 'number' && Number.isFinite(value.tokenBudget)
+    ...(typeof value.tokenBudget === "number" &&
+    Number.isFinite(value.tokenBudget)
       ? { tokenBudget: value.tokenBudget }
       : {}),
-    ...(typeof value.timeUsedSeconds === 'number' && Number.isFinite(value.timeUsedSeconds)
+    ...(typeof value.timeUsedSeconds === "number" &&
+    Number.isFinite(value.timeUsedSeconds)
       ? { timeUsedSeconds: value.timeUsedSeconds }
       : {}),
-    ...(typeof value.createdAt === 'number' && Number.isFinite(value.createdAt)
+    ...(typeof value.createdAt === "number" && Number.isFinite(value.createdAt)
       ? { createdAt: value.createdAt }
       : {}),
-    ...(typeof value.controlMethod === 'string' && value.controlMethod.trim()
+    ...(typeof value.controlMethod === "string" && value.controlMethod.trim()
       ? { controlMethod: value.controlMethod.trim() }
       : {}),
   };
@@ -322,24 +347,29 @@ export function goalStateFromSessionInfoMetadata(
   return normalizeGoalState(codex?.goal);
 }
 
-export function goalStateFromAcpEvent(event: unknown): RuntimeGoalState | null | undefined {
+export function goalStateFromAcpEvent(
+  event: unknown,
+): RuntimeGoalState | null | undefined {
   const patch = sessionInfoStateFromAcpEvent(event);
   if (!patch || patch.metadata === undefined) return undefined;
   if (patch.metadata === null) return null;
   const codex = plainRecord(patch.metadata.codex) ? patch.metadata.codex : null;
-  if (!codex || !Object.prototype.hasOwnProperty.call(codex, 'goal')) return undefined;
+  if (!codex || !Object.prototype.hasOwnProperty.call(codex, "goal"))
+    return undefined;
   if (codex.goal === null) return null;
   return normalizeGoalState(codex.goal) ?? undefined;
 }
 
-export function usageStateFromAcpEvent(event: unknown): RuntimeSessionUsage | undefined {
+export function usageStateFromAcpEvent(
+  event: unknown,
+): RuntimeSessionUsage | undefined {
   const inner = sessionUpdateInner(event);
-  if (sessionUpdateType(inner, event) !== 'usage_update') return undefined;
+  if (sessionUpdateType(inner, event) !== "usage_update") return undefined;
   if (
-    typeof inner.used !== 'number'
-    || !Number.isFinite(inner.used)
-    || typeof inner.size !== 'number'
-    || !Number.isFinite(inner.size)
+    typeof inner.used !== "number" ||
+    !Number.isFinite(inner.used) ||
+    typeof inner.size !== "number" ||
+    !Number.isFinite(inner.size)
   ) {
     return undefined;
   }
@@ -352,38 +382,46 @@ export function usageStateFromAcpEvent(event: unknown): RuntimeSessionUsage | un
   return {
     used: inner.used,
     size: inner.size,
-    ...(rawCost
-      && typeof rawCost.amount === 'number'
-      && Number.isFinite(rawCost.amount)
-      && typeof rawCost.currency === 'string'
+    ...(rawCost &&
+    typeof rawCost.amount === "number" &&
+    Number.isFinite(rawCost.amount) &&
+    typeof rawCost.currency === "string"
       ? { cost: { amount: rawCost.amount, currency: rawCost.currency } }
       : {}),
     ...(metadata ? { metadata } : {}),
   };
 }
 
-function stringField(raw: Record<string, unknown>, names: string[]): string | undefined {
+function stringField(
+  raw: Record<string, unknown>,
+  names: string[],
+): string | undefined {
   for (const name of names) {
     const value = raw[name];
-    if (typeof value === 'string' && value.length > 0) return value;
+    if (typeof value === "string" && value.length > 0) return value;
   }
   return undefined;
 }
 
 function nestedErrorMessage(value: unknown): string | undefined {
-  if (!value || typeof value !== 'object') return undefined;
+  if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
-  if (typeof record.message === 'string' && record.message.trim()) return record.message.trim();
+  if (typeof record.message === "string" && record.message.trim())
+    return record.message.trim();
   return nestedErrorMessage(record.error);
 }
 
-function promptErrorNote(error: string): NonNullable<ParsedEvent['note']> {
+function promptErrorNote(error: string): NonNullable<ParsedEvent["note"]> {
   const trimmed = error.trim();
   let actionable = trimmed;
 
   // Some adapters prepend a model-metadata warning before the real JSON API
   // error. Parse the structured suffix so transport noise never becomes chat.
-  for (let index = trimmed.indexOf('{'); index >= 0; index = trimmed.indexOf('{', index + 1)) {
+  for (
+    let index = trimmed.indexOf("{");
+    index >= 0;
+    index = trimmed.indexOf("{", index + 1)
+  ) {
     try {
       const parsed = JSON.parse(trimmed.slice(index));
       actionable = nestedErrorMessage(parsed) ?? actionable;
@@ -394,23 +432,38 @@ function promptErrorNote(error: string): NonNullable<ParsedEvent['note']> {
   }
 
   if (/requires a newer version of codex/i.test(actionable)) {
-    return { title: 'Codex update required', detail: actionable, tone: 'error' };
+    return {
+      title: "Codex update required",
+      detail: actionable,
+      tone: "error",
+    };
   }
-  return { title: actionable || 'The agent could not complete this request', tone: 'error' };
+  return {
+    title: actionable || "The agent could not complete this request",
+    tone: "error",
+  };
 }
 
 export function getAcpEventBlockKey(event: unknown): string | null {
   const inner = sessionUpdateInner(event);
   const update = sessionUpdateType(inner, event);
-  if (update === 'tool_call' || update === 'tool_call_update') {
-    const toolCallId = stringField(inner, ['toolCallId', 'tool_call_id', 'id']);
+  if (update === "tool_call" || update === "tool_call_update") {
+    const toolCallId = stringField(inner, ["toolCallId", "tool_call_id", "id"]);
     return toolCallId ? `tool:${toolCallId}` : null;
   }
   if (!update) {
-    if ((inner.type === 'tool_call' || inner.type === 'tool_call_update' || inner.type === 'agent.tool_use') && typeof inner.id === 'string') {
+    if (
+      (inner.type === "tool_call" ||
+        inner.type === "tool_call_update" ||
+        inner.type === "agent.tool_use") &&
+      typeof inner.id === "string"
+    ) {
       return `tool:${inner.id}`;
     }
-    if (inner.type === 'agent.tool_result' && typeof inner.tool_use_id === 'string') {
+    if (
+      inner.type === "agent.tool_result" &&
+      typeof inner.tool_use_id === "string"
+    ) {
       return `tool:${inner.tool_use_id}`;
     }
   }
@@ -419,88 +472,110 @@ export function getAcpEventBlockKey(event: unknown): string | null {
 
 /** Updates we drop silently — they're protocol signaling, not user content. */
 const SILENT_SESSION_UPDATES = new Set([
-  'current_mode_update',
-  'config_option_update',
-  'session_info_update',
-  'usage_update',
+  "current_mode_update",
+  "config_option_update",
+  "session_info_update",
+  "usage_update",
 ]);
 
 const ACP_SESSION_UPDATE_TYPES = new Set([
-  'user_message_chunk',
-  'agent_message_chunk',
-  'agent_thought_chunk',
-  'tool_call',
-  'tool_call_update',
-  'plan',
-  'plan_update',
-  'plan_removed',
-  'available_commands_update',
+  "user_message_chunk",
+  "agent_message_chunk",
+  "agent_thought_chunk",
+  "tool_call",
+  "tool_call_update",
+  "plan",
+  "plan_update",
+  "plan_removed",
+  "available_commands_update",
   ...SILENT_SESSION_UPDATES,
 ]);
 
 /** Normalize a wire ToolCall(Update) object into our ParsedEvent.tool shape.
  *  ACP spec says null/missing fields on an update mean "no change"; we
  *  preserve that by only setting fields whose wire value is non-null. */
-function normalizeToolCall(raw: Record<string, unknown>): Partial<AcpToolCallPart> & { toolCallId: string } {
-  const meta = raw._meta && typeof raw._meta === 'object'
-    ? raw._meta as Record<string, unknown>
-    : undefined;
-  const claudeCode = meta?.claudeCode && typeof meta.claudeCode === 'object'
-    ? meta.claudeCode as { toolName?: string }
-    : undefined;
+function normalizeToolCall(
+  raw: Record<string, unknown>,
+): Partial<AcpToolCallPart> & { toolCallId: string } {
+  const meta =
+    raw._meta && typeof raw._meta === "object"
+      ? (raw._meta as Record<string, unknown>)
+      : undefined;
+  const claudeCode =
+    meta?.claudeCode && typeof meta.claudeCode === "object"
+      ? (meta.claudeCode as { toolName?: string })
+      : undefined;
   const toolCallId = raw.toolCallId ?? raw.tool_call_id ?? raw.id;
   const tc: Partial<AcpToolCallPart> & { toolCallId: string } = {
-    toolCallId: String(toolCallId ?? ''),
+    toolCallId: String(toolCallId ?? ""),
   };
   const title = raw.title ?? raw.name ?? raw.toolName ?? raw.tool_name;
-  if (typeof title === 'string') tc.title = title;
-  if (typeof raw.kind === 'string') tc.kind = raw.kind;
-  if (typeof raw.status === 'string') tc.status = raw.status;
+  if (typeof title === "string") tc.title = title;
+  if (typeof raw.kind === "string") tc.kind = raw.kind;
+  if (typeof raw.status === "string") tc.status = raw.status;
   const rawInput = raw.rawInput ?? raw.raw_input ?? raw.input ?? raw.args;
   const rawOutput = raw.rawOutput ?? raw.raw_output ?? raw.output ?? raw.result;
   if (rawInput !== undefined && rawInput !== null) tc.rawInput = rawInput;
   if (rawOutput !== undefined && rawOutput !== null) tc.rawOutput = rawOutput;
-  if (Array.isArray(raw.content)) tc.content = raw.content as AcpToolCallContent[];
-  if (Array.isArray(raw.locations)) tc.locations = raw.locations as AcpToolCallPart['locations'];
-  const toolName = claudeCode?.toolName ?? raw.toolName ?? raw.tool_name ?? raw.name;
-  if (typeof toolName === 'string') tc.toolName = toolName;
+  if (Array.isArray(raw.content))
+    tc.content = raw.content as AcpToolCallContent[];
+  if (Array.isArray(raw.locations))
+    tc.locations = raw.locations as AcpToolCallPart["locations"];
+  const toolName =
+    claudeCode?.toolName ?? raw.toolName ?? raw.tool_name ?? raw.name;
+  if (typeof toolName === "string") tc.toolName = toolName;
   if (meta) tc.meta = meta;
   return withMcpIdentity(tc);
 }
 
 function recordValue(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
     : undefined;
 }
 
-function stringMetaField(meta: Record<string, unknown> | undefined, names: string[]): string | undefined {
+function stringMetaField(
+  meta: Record<string, unknown> | undefined,
+  names: string[],
+): string | undefined {
   if (!meta) return undefined;
   for (const name of names) {
     const value = meta[name];
-    if (typeof value === 'string' && value.length > 0) return value;
+    if (typeof value === "string" && value.length > 0) return value;
   }
   return undefined;
 }
 
-export function withMcpIdentity<T extends Partial<AcpToolCallPart> & { toolCallId: string }>(tool: T): T {
+export function withMcpIdentity<
+  T extends Partial<AcpToolCallPart> & { toolCallId: string },
+>(tool: T): T {
   if (tool.mcp?.serverName) return tool;
   const meta = tool.meta;
   const rawInput = recordValue(tool.rawInput);
   const explicitMcp =
     meta?.is_mcp_tool_call === true ||
-    stringMetaField(meta, ['mcp_server_name', 'mcpServerName', 'server_id', 'serverId']) !== undefined;
+    stringMetaField(meta, [
+      "mcp_server_name",
+      "mcpServerName",
+      "server_id",
+      "serverId",
+    ]) !== undefined;
   if (!explicitMcp) return tool;
   const serverName =
-    stringMetaField(meta, ['mcp_server_name', 'mcpServerName', 'server_id', 'serverId']) ??
-    (typeof rawInput?.server === 'string' ? rawInput.server : undefined);
+    stringMetaField(meta, [
+      "mcp_server_name",
+      "mcpServerName",
+      "server_id",
+      "serverId",
+    ]) ?? (typeof rawInput?.server === "string" ? rawInput.server : undefined);
   if (!serverName) return tool;
   const mcpToolName =
-    stringMetaField(meta, ['mcp_tool_name', 'mcpToolName']) ??
-    (typeof rawInput?.tool === 'string' ? rawInput.tool : undefined);
-  const renderer = typeof meta?.['clash.renderer'] === 'string'
-    ? meta['clash.renderer']
-    : undefined;
+    stringMetaField(meta, ["mcp_tool_name", "mcpToolName"]) ??
+    (typeof rawInput?.tool === "string" ? rawInput.tool : undefined);
+  const renderer =
+    typeof meta?.["clash.renderer"] === "string"
+      ? meta["clash.renderer"]
+      : undefined;
   tool.mcp = {
     serverName,
     ...(mcpToolName ? { toolName: mcpToolName } : {}),
@@ -509,34 +584,40 @@ export function withMcpIdentity<T extends Partial<AcpToolCallPart> & { toolCallI
   return tool;
 }
 
-function extractContentText(inner: Record<string, unknown>): string | undefined {
-  if (typeof inner.text === 'string') return inner.text;
-  if (typeof inner.delta === 'string') return inner.delta;
-  if (typeof inner.content === 'string') return inner.content;
-  const content = inner.content as { type?: string; text?: string; content?: unknown } | undefined;
-  if (typeof content?.text === 'string') return content.text;
-  if (typeof content?.content === 'string') return content.content;
-  if (content?.content && typeof content.content === 'object') {
+function extractContentText(
+  inner: Record<string, unknown>,
+): string | undefined {
+  if (typeof inner.text === "string") return inner.text;
+  if (typeof inner.delta === "string") return inner.delta;
+  if (typeof inner.content === "string") return inner.content;
+  const content = inner.content as
+    { type?: string; text?: string; content?: unknown } | undefined;
+  if (typeof content?.text === "string") return content.text;
+  if (typeof content?.content === "string") return content.content;
+  if (content?.content && typeof content.content === "object") {
     const nested = content.content as { text?: string };
-    if (typeof nested.text === 'string') return nested.text;
+    if (typeof nested.text === "string") return nested.text;
   }
   return undefined;
 }
 
 function streamMetadata(inner: Record<string, unknown>): {
   messageId?: string;
-  phase?: 'commentary' | 'final_answer';
+  phase?: "commentary" | "final_answer";
 } {
-  const meta = inner._meta && typeof inner._meta === 'object'
-    ? inner._meta as Record<string, unknown>
-    : null;
-  const codex = meta?.codex && typeof meta.codex === 'object'
-    ? meta.codex as Record<string, unknown>
-    : null;
-  const phase = codex?.phase === 'commentary' || codex?.phase === 'final_answer'
-    ? codex.phase
-    : undefined;
-  const messageId = stringField(inner, ['messageId', 'message_id']);
+  const meta =
+    inner._meta && typeof inner._meta === "object"
+      ? (inner._meta as Record<string, unknown>)
+      : null;
+  const codex =
+    meta?.codex && typeof meta.codex === "object"
+      ? (meta.codex as Record<string, unknown>)
+      : null;
+  const phase =
+    codex?.phase === "commentary" || codex?.phase === "final_answer"
+      ? codex.phase
+      : undefined;
+  const messageId = stringField(inner, ["messageId", "message_id"]);
   return {
     ...(messageId ? { messageId } : {}),
     ...(phase ? { phase } : {}),
@@ -544,23 +625,27 @@ function streamMetadata(inner: Record<string, unknown>): {
 }
 
 function extractTextBlocks(value: unknown): string | undefined {
-  if (typeof value === 'string') return value;
+  if (typeof value === "string") return value;
   if (Array.isArray(value)) {
     const text = value
       .map((part) => {
-        if (!part || typeof part !== 'object') return '';
-        const block = part as { type?: unknown; text?: unknown; content?: unknown };
-        if (typeof block.text === 'string') return block.text;
-        if (typeof block.content === 'string') return block.content;
-        return '';
+        if (!part || typeof part !== "object") return "";
+        const block = part as {
+          type?: unknown;
+          text?: unknown;
+          content?: unknown;
+        };
+        if (typeof block.text === "string") return block.text;
+        if (typeof block.content === "string") return block.content;
+        return "";
       })
-      .join('');
+      .join("");
     return text.length > 0 ? text : undefined;
   }
-  if (!value || typeof value !== 'object') return undefined;
+  if (!value || typeof value !== "object") return undefined;
   const block = value as { type?: unknown; text?: unknown; content?: unknown };
-  if (typeof block.text === 'string') return block.text;
-  if (typeof block.content === 'string') return block.content;
+  if (typeof block.text === "string") return block.text;
+  if (typeof block.content === "string") return block.content;
   return undefined;
 }
 
@@ -577,94 +662,144 @@ function parseClashAcpEventFallback(event: unknown): ParsedEvent {
   const update = sessionUpdateType(inner, event);
 
   if (!update) {
-    if (inner.type === 'agent.message_chunk' && typeof inner.delta === 'string') {
-      return { kind: inner.delta.length > 0 ? 'text' : 'silent', text: inner.delta, event };
-    }
-    if (inner.type === 'agent.message') {
-      const text = extractTextBlocks(inner.content);
-      return typeof text === 'string' && text.length > 0
-        ? { kind: 'text', text, event }
-        : { kind: 'silent', event };
-    }
-    if (inner.type === 'agent.thinking_chunk' && typeof inner.delta === 'string') {
-      return { kind: inner.delta.length > 0 ? 'thought' : 'silent', text: inner.delta, event };
-    }
-    if (inner.type === 'agent.thinking') {
-      const text = typeof inner.text === 'string' ? inner.text : extractTextBlocks(inner.content);
-      return typeof text === 'string' && text.length > 0
-        ? { kind: 'thought', text, event }
-        : { kind: 'silent', event };
-    }
-    if (inner.type === 'agent.tool_use' && typeof inner.id === 'string') {
+    if (
+      inner.type === "agent.message_chunk" &&
+      typeof inner.delta === "string"
+    ) {
       return {
-        kind: 'tool_call',
-        tool: {
-          toolCallId: inner.id,
-          title: typeof inner.name === 'string' ? inner.name : 'tool',
-          toolName: typeof inner.name === 'string' ? inner.name : undefined,
-          rawInput: inner.input ?? {},
-          status: 'pending',
-        },
+        kind: inner.delta.length > 0 ? "text" : "silent",
+        text: inner.delta,
         event,
       };
     }
-    if (inner.type === 'agent.tool_result' && typeof inner.tool_use_id === 'string') {
+    if (inner.type === "agent.message") {
+      const text = extractTextBlocks(inner.content);
+      return typeof text === "string" && text.length > 0
+        ? { kind: "text", text, event }
+        : { kind: "silent", event };
+    }
+    if (
+      inner.type === "agent.thinking_chunk" &&
+      typeof inner.delta === "string"
+    ) {
       return {
-        kind: 'tool_call',
+        kind: inner.delta.length > 0 ? "thought" : "silent",
+        text: inner.delta,
+        event,
+      };
+    }
+    if (inner.type === "agent.thinking") {
+      const text =
+        typeof inner.text === "string"
+          ? inner.text
+          : extractTextBlocks(inner.content);
+      return typeof text === "string" && text.length > 0
+        ? { kind: "thought", text, event }
+        : { kind: "silent", event };
+    }
+    if (inner.type === "agent.tool_use" && typeof inner.id === "string") {
+      return {
+        kind: "tool_call",
         tool: {
-          toolCallId: inner.tool_use_id,
-          rawOutput: extractTextBlocks(inner.content) ?? inner.content,
-          status: inner.is_error ? 'failed' : 'completed',
+          toolCallId: inner.id,
+          title: typeof inner.name === "string" ? inner.name : "tool",
+          toolName: typeof inner.name === "string" ? inner.name : undefined,
+          rawInput: inner.input ?? {},
+          status: "pending",
         },
         event,
       };
     }
     if (
-      inner.type === 'agent.message_stream_start' ||
-      inner.type === 'agent.message_stream_end' ||
-      inner.type === 'agent.thinking_stream_start' ||
-      inner.type === 'agent.thinking_stream_end' ||
-      inner.type === 'agent.tool_use_input_stream_start' ||
-      inner.type === 'agent.tool_use_input_chunk' ||
-      inner.type === 'agent.tool_use_input_stream_end' ||
-      inner.type === 'session.status_running' ||
-      inner.type === 'session.status_idle' ||
-      inner.type === 'session.warning'
+      inner.type === "agent.tool_result" &&
+      typeof inner.tool_use_id === "string"
     ) {
-      return { kind: 'silent', event };
+      return {
+        kind: "tool_call",
+        tool: {
+          toolCallId: inner.tool_use_id,
+          rawOutput: extractTextBlocks(inner.content) ?? inner.content,
+          status: inner.is_error ? "failed" : "completed",
+        },
+        event,
+      };
     }
-    if (inner.type === 'session.error' && typeof inner.error === 'string' && inner.error.length > 0) {
-      return { kind: 'note', note: { title: inner.error, tone: 'error' }, event };
+    if (
+      inner.type === "agent.message_stream_start" ||
+      inner.type === "agent.message_stream_end" ||
+      inner.type === "agent.thinking_stream_start" ||
+      inner.type === "agent.thinking_stream_end" ||
+      inner.type === "agent.tool_use_input_stream_start" ||
+      inner.type === "agent.tool_use_input_chunk" ||
+      inner.type === "agent.tool_use_input_stream_end" ||
+      inner.type === "session.status_running" ||
+      inner.type === "session.status_idle" ||
+      inner.type === "session.warning"
+    ) {
+      return { kind: "silent", event };
     }
-    if (inner.type === 'text' && typeof inner.text === 'string' && inner.text.length > 0) {
-      return { kind: 'text', text: inner.text, event };
+    if (
+      inner.type === "session.error" &&
+      typeof inner.error === "string" &&
+      inner.error.length > 0
+    ) {
+      return {
+        kind: "note",
+        note: { title: inner.error, tone: "error" },
+        event,
+      };
     }
-    if (inner.type === 'thought' && typeof inner.text === 'string' && inner.text.length > 0) {
-      return { kind: 'thought', text: inner.text, event };
+    if (
+      inner.type === "text" &&
+      typeof inner.text === "string" &&
+      inner.text.length > 0
+    ) {
+      return { kind: "text", text: inner.text, event };
     }
-    if (inner.type === 'requestPermission') {
-      return { kind: 'silent', event };
+    if (
+      inner.type === "thought" &&
+      typeof inner.text === "string" &&
+      inner.text.length > 0
+    ) {
+      return { kind: "thought", text: inner.text, event };
     }
-    if ((inner.type === 'tool_call' || inner.type === 'tool_call_update') && (typeof inner.toolCallId === 'string' || typeof inner.tool_call_id === 'string' || typeof inner.id === 'string')) {
-      return { kind: 'tool_call', tool: normalizeToolCall(inner), event };
+    if (inner.type === "requestPermission") {
+      return { kind: "silent", event };
     }
-    if (inner.type === 'promptError' && typeof inner.error === 'string' && inner.error.length > 0) {
-      return { kind: 'note', note: promptErrorNote(inner.error), event };
+    if (
+      (inner.type === "tool_call" || inner.type === "tool_call_update") &&
+      (typeof inner.toolCallId === "string" ||
+        typeof inner.tool_call_id === "string" ||
+        typeof inner.id === "string")
+    ) {
+      return { kind: "tool_call", tool: normalizeToolCall(inner), event };
     }
-    if (inner.type === 'promptComplete') {
-      return { kind: 'note', note: { title: 'Turn complete', tone: 'neutral' }, event };
+    if (
+      inner.type === "promptError" &&
+      typeof inner.error === "string" &&
+      inner.error.length > 0
+    ) {
+      return { kind: "note", note: promptErrorNote(inner.error), event };
     }
-    return { kind: 'raw', event };
+    if (inner.type === "promptComplete") {
+      return {
+        kind: "note",
+        note: { title: "Turn complete", tone: "neutral" },
+        event,
+      };
+    }
+    return { kind: "raw", event };
   }
 
   // ─── text / thought (ContentChunk) ──────────────────────────────
-  if (update === 'agent_message_chunk' || update === 'agent_thought_chunk') {
+  if (update === "agent_message_chunk" || update === "agent_thought_chunk") {
     const text = extractContentText(inner);
-    if (typeof text !== 'string') return { kind: 'silent', event };
-    if (text.length === 0) return { kind: 'silent', event };
-    if (update === 'agent_message_chunk' && isTransportDiagnosticText(text)) return { kind: 'silent', event };
+    if (typeof text !== "string") return { kind: "silent", event };
+    if (text.length === 0) return { kind: "silent", event };
+    if (update === "agent_message_chunk" && isTransportDiagnosticText(text))
+      return { kind: "silent", event };
     return {
-      kind: update === 'agent_thought_chunk' ? 'thought' : 'text',
+      kind: update === "agent_thought_chunk" ? "thought" : "text",
       text,
       ...streamMetadata(inner),
       event,
@@ -674,184 +809,243 @@ function parseClashAcpEventFallback(event: unknown): ParsedEvent {
   // user_message_chunk: agent is echoing the user's input back. We
   // already render the user's bubble from the optimistic dispatchPrompt
   // path, so skip silently to avoid a duplicate.
-  if (update === 'user_message_chunk') return { kind: 'silent', event };
+  if (update === "user_message_chunk") return { kind: "silent", event };
 
   // ─── tool_call / tool_call_update (treated identically) ─────────
   // claude-agent-acp emits two `tool_call` events for the same id (a
   // bare skeleton, then the filled-in input/title) before any
   // `tool_call_update`s. All three frames carry the same toolCallId
   // and have the same field shape — coalesce in the merger.
-  if (update === 'tool_call' || update === 'tool_call_update') {
-    if (typeof inner.toolCallId !== 'string' && typeof inner.tool_call_id !== 'string' && typeof inner.id !== 'string') {
-      return { kind: 'raw', event };
+  if (update === "tool_call" || update === "tool_call_update") {
+    if (
+      typeof inner.toolCallId !== "string" &&
+      typeof inner.tool_call_id !== "string" &&
+      typeof inner.id !== "string"
+    ) {
+      return { kind: "raw", event };
     }
-    return { kind: 'tool_call', tool: normalizeToolCall(inner), event };
+    return { kind: "tool_call", tool: normalizeToolCall(inner), event };
   }
 
   // ─── plan ────────────────────────────────────────────────────────
-  if (update === 'plan') {
+  if (update === "plan") {
     const rawEntries = Array.isArray(inner.entries)
       ? inner.entries
-      : (
-          inner.plan &&
-          typeof inner.plan === 'object' &&
-          'entries' in inner.plan &&
+      : inner.plan &&
+          typeof inner.plan === "object" &&
+          "entries" in inner.plan &&
           Array.isArray((inner.plan as { entries?: unknown }).entries)
-        )
-          ? (inner.plan as { entries: unknown[] }).entries
-          : [];
+        ? (inner.plan as { entries: unknown[] }).entries
+        : [];
     const entries = rawEntries
-      .filter((e): e is Record<string, unknown> => Boolean(e) && typeof e === 'object')
+      .filter(
+        (e): e is Record<string, unknown> =>
+          Boolean(e) && typeof e === "object",
+      )
       .map((e) => ({
-        content: typeof e.content === 'string' ? e.content : '',
-        priority: typeof e.priority === 'string' ? e.priority : undefined,
-        status: typeof e.status === 'string' ? e.status : 'pending',
+        content: typeof e.content === "string" ? e.content : "",
+        priority: typeof e.priority === "string" ? e.priority : undefined,
+        status: typeof e.status === "string" ? e.status : "pending",
       }));
-    return { kind: 'plan', plan: entries, event };
+    return { kind: "plan", plan: entries, event };
   }
 
-  if (update === 'plan_update') {
-    const plan = inner.plan && typeof inner.plan === 'object' ? inner.plan as Record<string, unknown> : inner;
-    const content = plan.content && typeof plan.content === 'object'
-      ? plan.content as Record<string, unknown>
-      : plan;
+  if (update === "plan_update") {
+    const plan =
+      inner.plan && typeof inner.plan === "object"
+        ? (inner.plan as Record<string, unknown>)
+        : inner;
+    const content =
+      plan.content && typeof plan.content === "object"
+        ? (plan.content as Record<string, unknown>)
+        : plan;
     if (Array.isArray(content.entries)) {
       const entries = (content.entries as unknown[])
-        .filter((e): e is Record<string, unknown> => Boolean(e) && typeof e === 'object')
+        .filter(
+          (e): e is Record<string, unknown> =>
+            Boolean(e) && typeof e === "object",
+        )
         .map((e) => ({
-          content: typeof e.content === 'string' ? e.content : '',
-          priority: typeof e.priority === 'string' ? e.priority : undefined,
-          status: typeof e.status === 'string' ? e.status : 'pending',
+          content: typeof e.content === "string" ? e.content : "",
+          priority: typeof e.priority === "string" ? e.priority : undefined,
+          status: typeof e.status === "string" ? e.status : "pending",
         }));
-      return { kind: 'plan', plan: entries, event };
+      return { kind: "plan", plan: entries, event };
     }
-    const markdown = typeof content.markdown === 'string'
-      ? content.markdown
-      : typeof content.content === 'string'
-        ? content.content
-        : undefined;
+    const markdown =
+      typeof content.markdown === "string"
+        ? content.markdown
+        : typeof content.content === "string"
+          ? content.content
+          : undefined;
     if (markdown) {
       return {
-        kind: 'plan',
-        plan: [{ content: markdown, status: 'in_progress' }],
+        kind: "plan",
+        plan: [{ content: markdown, status: "in_progress" }],
         event,
       };
     }
     return {
-      kind: 'note',
-      note: { title: 'Plan updated', detail: getEventSummary(inner), tone: 'neutral' },
+      kind: "note",
+      note: {
+        title: "Plan updated",
+        detail: getEventSummary(inner),
+        tone: "neutral",
+      },
       event,
     };
   }
 
-  if (update === 'plan_removed') {
+  if (update === "plan_removed") {
     return {
-      kind: 'note',
+      kind: "note",
       note: {
-        title: 'Plan removed',
-        detail: typeof inner.id === 'string' ? inner.id : undefined,
-        tone: 'neutral',
+        title: "Plan removed",
+        detail: typeof inner.id === "string" ? inner.id : undefined,
+        tone: "neutral",
       },
       event,
     };
   }
 
   // ─── available_commands_update (slash menu) ─────────────────────
-  if (update === 'available_commands_update') {
+  if (update === "available_commands_update") {
     const availableCommands = Array.isArray(inner.availableCommands)
       ? inner.availableCommands
       : Array.isArray(inner.available_commands)
         ? inner.available_commands
         : null;
-    if (!availableCommands) return { kind: 'silent', event };
+    if (!availableCommands) return { kind: "silent", event };
     return {
-      kind: 'commands',
+      kind: "commands",
       commands: availableCommands as AvailableCommand[],
       event,
     };
   }
 
-  if (SILENT_SESSION_UPDATES.has(update)) return { kind: 'silent', event };
-  return { kind: 'raw', event };
+  if (SILENT_SESSION_UPDATES.has(update)) return { kind: "silent", event };
+  return { kind: "raw", event };
 }
 
 export function parseAcpEvent(event: unknown): ParsedEvent {
   const inner = sessionUpdateInner(event);
+  if (inner.type === "promptError") return parseClashAcpEventFallback(event);
 
-  // Clash keeps richer actionable error copy. Everything in the ACP protocol
-  // itself is normalized by @openma/common so Backchat and Clash cannot drift.
-  if (inner.type === 'promptError') {
+  const canonical = decodeAcpSessionUpdate("clash-projection", event, {
+    eventId: "clash-projection",
+    occurredAt: "1970-01-01T00:00:00.000Z",
+  }).event;
+  const data =
+    canonical.data && typeof canonical.data === "object"
+      ? (canonical.data as Record<string, unknown>)
+      : {};
+
+  if (
+    canonical.type === "agent.message_chunk" ||
+    canonical.type === "agent.message"
+  ) {
+    const text = typeof data.text === "string" ? data.text : "";
+    if (!text || isTransportDiagnosticText(text))
+      return { kind: "silent", event };
+    const phase =
+      data.phase === "commentary" || data.phase === "final_answer"
+        ? data.phase
+        : undefined;
+    return {
+      kind: "text",
+      text,
+      ...(typeof data.message_id === "string"
+        ? { messageId: data.message_id }
+        : {}),
+      ...(phase ? { phase } : {}),
+      event,
+    };
+  }
+  if (canonical.type === "agent.thinking") {
+    const text = typeof data.text === "string" ? data.text : "";
+    if (!text) return { kind: "silent", event };
+    return {
+      kind: "thought",
+      text,
+      ...(typeof data.message_id === "string"
+        ? { messageId: data.message_id }
+        : {}),
+      event,
+    };
+  }
+  if (canonical.type.startsWith("tool.")) {
+    const adapterMeta = plainRecord(data.adapter_meta)
+      ? data.adapter_meta
+      : undefined;
+    return {
+      kind: "tool_call",
+      tool: withMcpIdentity({
+        type: "tool_call",
+        toolCallId: String(
+          data.tool_call_id ?? canonical.work_item_id ?? canonical.event_id,
+        ),
+        ...(typeof data.title === "string" ? { title: data.title } : {}),
+        ...(typeof data.kind === "string" ? { kind: data.kind } : {}),
+        ...(typeof data.status === "string" ? { status: data.status } : {}),
+        ...(data.raw_input !== undefined ? { rawInput: data.raw_input } : {}),
+        ...(data.raw_output !== undefined
+          ? { rawOutput: data.raw_output }
+          : {}),
+        ...(Array.isArray(data.content)
+          ? { content: data.content as AcpToolCallContent[] }
+          : {}),
+        ...(Array.isArray(data.locations)
+          ? { locations: data.locations as AcpToolCallPart["locations"] }
+          : {}),
+        ...(typeof data.tool_name === "string"
+          ? { toolName: data.tool_name }
+          : {}),
+        ...(adapterMeta ? { meta: adapterMeta } : {}),
+      }),
+      event,
+    };
+  }
+  if (canonical.type === "command_catalog.updated") {
+    return {
+      kind: "commands",
+      commands: Array.isArray(data.commands)
+        ? (data.commands as AvailableCommand[])
+        : [],
+      event,
+    };
+  }
+  if (canonical.type === "plan.updated") {
+    const entries = Array.isArray(data.entries) ? data.entries : [];
+    return {
+      kind: "plan",
+      plan: entries
+        .filter(
+          (entry): entry is Record<string, unknown> =>
+            plainRecord(entry) !== null,
+        )
+        .map((entry) => ({
+          content: typeof entry.content === "string" ? entry.content : "",
+          ...(typeof entry.priority === "string"
+            ? { priority: entry.priority }
+            : {}),
+          status: typeof entry.status === "string" ? entry.status : "pending",
+        })),
+      event,
+    };
+  }
+  if (canonical.type === "system.notice") return { kind: "silent", event };
+  if (canonical.type === "system.message") {
+    return typeof data.text === "string" && data.text
+      ? { kind: "note", note: { title: data.text, tone: "neutral" }, event }
+      : { kind: "silent", event };
+  }
+  if (canonical.type === "raw.event" || canonical.type === "vendor.event") {
     return parseClashAcpEventFallback(event);
   }
-
-  const parsed = parseOpenMaAcpEvent(event);
-  switch (parsed.kind) {
-    case 'text':
-      if (isTransportDiagnosticText(parsed.text)) return { kind: 'silent', event };
-      return {
-        kind: 'text',
-        text: parsed.text,
-        ...(parsed.messageId ? { messageId: parsed.messageId } : {}),
-        ...(parsed.phase ? { phase: parsed.phase } : {}),
-        event,
-      };
-    case 'thought':
-      return {
-        kind: 'thought',
-        text: parsed.text,
-        ...(parsed.messageId ? { messageId: parsed.messageId } : {}),
-        event,
-      };
-    case 'tool_call':
-      return {
-        kind: 'tool_call',
-        tool: withMcpIdentity(
-          parsed.tool as Partial<AcpToolCallPart> & { toolCallId: string },
-        ),
-        event,
-      };
-    case 'commands':
-      return { kind: 'commands', commands: parsed.commands as AvailableCommand[], event };
-    case 'plan':
-      return {
-        kind: 'plan',
-        plan: parsed.plan.map((entry) => ({
-          content: entry.content,
-          ...(entry.priority ? { priority: entry.priority } : {}),
-          status: entry.status ?? 'pending',
-        })),
-        event,
-      };
-    case 'notice':
-      return parsed.transcript
-        ? { kind: 'text', text: parsed.transcript, event }
-        : { kind: 'silent', event };
-    case 'note': {
-      const separator = parsed.note.indexOf(': ');
-      if (
-        separator > 0 &&
-        (parsed.note.startsWith('Plan removed: ') || parsed.note.startsWith('Plan updated: '))
-      ) {
-        return {
-          kind: 'note',
-          note: {
-            title: parsed.note.slice(0, separator),
-            detail: parsed.note.slice(separator + 2),
-            tone: 'neutral',
-          },
-          event,
-        };
-      }
-      return { kind: 'note', note: { title: parsed.note, tone: 'neutral' }, event };
-    }
-    case 'silent':
-      return { kind: 'silent', event };
-    case 'raw':
-      return parseClashAcpEventFallback(event);
-  }
+  return { kind: "silent", event };
 }
 
-// ─── appendAcpEvent ─────────────────────────────────────────────────
+// ─── appendAcpEvent
 
 export interface AppendResult {
   idx: number;
@@ -874,15 +1068,15 @@ export function appendAcpEvent(
   messageId = `asst-${turnId}`,
 ): AppendResult {
   const parsed = parseAcpEvent(event);
-  if (parsed.kind === 'silent') return { idx: knownIdx ?? -1 };
-  if (parsed.kind === 'commands') {
+  if (parsed.kind === "silent") return { idx: knownIdx ?? -1 };
+  if (parsed.kind === "commands") {
     return { idx: knownIdx ?? -1, commands: parsed.commands };
   }
 
   const ensure = (): number => {
     if (
       knownIdx !== undefined &&
-      messages[knownIdx]?.role === 'assistant' &&
+      messages[knownIdx]?.role === "assistant" &&
       Array.isArray(messages[knownIdx].parts)
     ) {
       return knownIdx;
@@ -890,12 +1084,12 @@ export function appendAcpEvent(
     const existingIdx = messages.findIndex(
       (message) =>
         message.id === messageId &&
-        message.role === 'assistant' &&
+        message.role === "assistant" &&
         Array.isArray(message.parts),
     );
     if (existingIdx >= 0) return existingIdx;
     const newIdx = messages.length;
-    messages.push({ id: messageId, role: 'assistant', parts: [] });
+    messages.push({ id: messageId, role: "assistant", parts: [] });
     return newIdx;
   };
 
@@ -904,10 +1098,10 @@ export function appendAcpEvent(
   // updates its TODO list. Replace any existing plan part on the
   // bubble so the user sees the latest state, not a stack of
   // intermediate plans.
-  if (parsed.kind === 'plan' && parsed.plan) {
+  if (parsed.kind === "plan" && parsed.plan) {
     const i = ensure();
-    const existing = messages[i].parts.findIndex((p) => p.type === 'plan');
-    const planPart = { type: 'plan' as const, entries: parsed.plan };
+    const existing = messages[i].parts.findIndex((p) => p.type === "plan");
+    const planPart = { type: "plan" as const, entries: parsed.plan };
     if (existing >= 0) {
       const parts = [...messages[i].parts];
       parts[existing] = planPart;
@@ -918,11 +1112,14 @@ export function appendAcpEvent(
     return { idx: i };
   }
 
-  if (parsed.kind === 'note' && parsed.note) {
+  if (parsed.kind === "note" && parsed.note) {
     const i = ensure();
     messages[i] = {
       ...messages[i],
-      parts: [...messages[i].parts, { type: 'event_note', ...parsed.note } as ByoMessage['parts'][number]],
+      parts: [
+        ...messages[i].parts,
+        { type: "event_note", ...parsed.note } as ByoMessage["parts"][number],
+      ],
     };
     return { idx: i };
   }
@@ -930,29 +1127,32 @@ export function appendAcpEvent(
   // ─── text / thought: streaming chunk merge ──────────────────────
   // Consecutive chunks of the SAME kind merge into one part (one
   // bubble visually). Different kinds → separate parts.
-  if ((parsed.kind === 'text' || parsed.kind === 'thought') && typeof parsed.text === 'string') {
+  if (
+    (parsed.kind === "text" || parsed.kind === "thought") &&
+    typeof parsed.text === "string"
+  ) {
     const i = ensure();
     const partType = parsed.kind;
     const last = messages[i].parts[messages[i].parts.length - 1];
-    const sameStream = parsed.kind === 'text'
-      ? last?.type === 'text'
-        && last.messageId === parsed.messageId
-        && last.phase === parsed.phase
-      : last?.type === 'thought'
-        && last.messageId === parsed.messageId;
+    const sameStream =
+      parsed.kind === "text"
+        ? last?.type === "text" &&
+          last.messageId === parsed.messageId &&
+          last.phase === parsed.phase
+        : last?.type === "thought" && last.messageId === parsed.messageId;
     const nextPart = {
       type: partType,
       text: parsed.text,
       ...(parsed.messageId ? { messageId: parsed.messageId } : {}),
-      ...(partType === 'text' && parsed.phase ? { phase: parsed.phase } : {}),
-    } as ByoMessage['parts'][number];
-    if (sameStream && (last.type === 'text' || last.type === 'thought')) {
+      ...(partType === "text" && parsed.phase ? { phase: parsed.phase } : {}),
+    } as ByoMessage["parts"][number];
+    if (sameStream && (last.type === "text" || last.type === "thought")) {
       const merged = mergeStreamingText(last.text, parsed.text);
       messages[i] = {
         ...messages[i],
         parts: [
           ...messages[i].parts.slice(0, -1),
-          { ...nextPart, text: merged } as ByoMessage['parts'][number],
+          { ...nextPart, text: merged } as ByoMessage["parts"][number],
         ],
       };
     } else {
@@ -965,11 +1165,11 @@ export function appendAcpEvent(
   }
 
   // ─── tool_call (initial + updates): merge by toolCallId ─────────
-  if (parsed.kind === 'tool_call' && parsed.tool) {
+  if (parsed.kind === "tool_call" && parsed.tool) {
     const i = ensure();
     const inc = parsed.tool;
     const partIdx = messages[i].parts.findIndex(
-      (p) => p.type === 'tool_call' && p.toolCallId === inc.toolCallId,
+      (p) => p.type === "tool_call" && p.toolCallId === inc.toolCallId,
     );
     if (partIdx >= 0) {
       // Merge into existing — only overwrite fields whose incoming
@@ -1005,7 +1205,10 @@ export function appendAcpEvent(
     // New tool call.
     messages[i] = {
       ...messages[i],
-      parts: [...messages[i].parts, { type: 'tool_call', ...inc } as AcpToolCallPart],
+      parts: [
+        ...messages[i].parts,
+        { type: "tool_call", ...inc } as AcpToolCallPart,
+      ],
     };
     return { idx: i };
   }
@@ -1015,7 +1218,7 @@ export function appendAcpEvent(
   const i = ensure();
   messages[i] = {
     ...messages[i],
-    parts: [...messages[i].parts, { type: 'raw_event', event }],
+    parts: [...messages[i].parts, { type: "raw_event", event }],
   };
   return { idx: i };
 }
@@ -1024,7 +1227,7 @@ export function appendAcpEvent(
 
 function isEmptyObject(v: unknown): boolean {
   if (v === undefined || v === null) return true;
-  if (typeof v !== 'object') return false;
+  if (typeof v !== "object") return false;
   return Object.keys(v as Record<string, unknown>).length === 0;
 }
 
@@ -1057,6 +1260,9 @@ function getEventSummary(event: Record<string, unknown>): string | undefined {
 const MIN_OVERLAP = 8;
 const SNAPSHOT_HEAD_PROBE = 16;
 
-export function mergeStreamingText(accumulated: string, incoming: string): string {
-  return mergeOpenMaStreamingText(accumulated, incoming);
+export function mergeStreamingText(
+  accumulated: string,
+  incoming: string,
+): string {
+  return mergeAgentUIStreamingText(accumulated, incoming);
 }

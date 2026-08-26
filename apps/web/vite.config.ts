@@ -8,6 +8,7 @@ import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "../..");
+const openmaCommonRoot = resolve(repoRoot, "../openma-common");
 const persistStatePath = process.env.CLASH_WEB_E2E_PERSIST_STATE?.trim()
   ? resolve(process.env.CLASH_WEB_E2E_PERSIST_STATE)
   : resolve(repoRoot, ".wrangler/state");
@@ -16,6 +17,35 @@ const persistStatePath = process.env.CLASH_WEB_E2E_PERSIST_STATE?.trim()
 // generated package exports. This preserves source HMR while allowing Vite to
 // ignore dist writes produced by tests/builds without serving stale modules.
 export const DEV_SOURCE_ALIASES = [
+  // @openma/common is intentionally linked from a sibling checkout while the
+  // two products are developed together. Its package exports point at dist,
+  // which can be replaced underneath Vite and leave a stale named-export
+  // transform in the module graph. Source aliases make HMR observe the files
+  // that actually changed and keep generated output out of the dev runtime.
+  {
+    find: /^@openma\/common\/chat-ui$/,
+    replacement: resolve(openmaCommonRoot, "src/chat-ui/index.ts"),
+  },
+  {
+    find: /^@openma\/common\/agent-ui\/react$/,
+    replacement: resolve(openmaCommonRoot, "src/agent-ui/react.tsx"),
+  },
+  {
+    find: /^@openma\/common\/agent-ui$/,
+    replacement: resolve(openmaCommonRoot, "src/agent-ui/index.ts"),
+  },
+  {
+    find: /^@openma\/common\/protocol\/acp$/,
+    replacement: resolve(openmaCommonRoot, "src/protocol/acp/index.ts"),
+  },
+  {
+    find: /^@openma\/common\/session-events\/openma$/,
+    replacement: resolve(openmaCommonRoot, "src/session-events/openma.ts"),
+  },
+  {
+    find: /^@openma\/common\/session-ui$/,
+    replacement: resolve(openmaCommonRoot, "src/session-ui/index.tsx"),
+  },
   {
     find: /^@clash\/action-sdk\/browser$/,
     replacement: resolve(repoRoot, "packages/action-sdk/src/browser.ts"),
@@ -158,7 +188,7 @@ export default defineConfig(async ({ command, isPreview }) => {
       // Vite restricts dev fs to cwd by default; in our pnpm monorepo,
       // workspace packages (packages/web-ui, etc.) live above apps/web/.
       // Without this, dynamic imports of those files 403 in dev.
-      fs: { allow: [repoRoot] },
+      fs: { allow: [repoRoot, openmaCommonRoot] },
       // Tests and package builds rewrite workspace dist files. They are not
       // runtime inputs in dev (the aliases above point at source), so watching
       // them only causes expensive full-page reloads and lost editor state.

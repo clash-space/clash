@@ -39,8 +39,6 @@ import type {
   LocalAcpAttachSessionParams,
   LocalAcpCreateSessionParams,
   LocalAcpResumeSession,
-  LocalAcpSessionEvent,
-  LocalAcpSessionEventStore,
 } from "./app.js";
 import {
   installAcpRegistryAgent,
@@ -284,7 +282,6 @@ export interface LocalAcpAdapterOptions {
   hostname?: () => string;
   osTag?: () => string;
   nowSeconds?: () => number;
-  nowMilliseconds?: () => number;
 }
 
 interface BrowserMessage {
@@ -318,12 +315,10 @@ interface LocalAcpSession {
   harnessVersion?: string;
   manager: SessionManagerLike;
   clients: Set<WebSocket>;
-  backlog: unknown[];
   readyMessage?: unknown;
   configOptionsMessage?: unknown;
   modeMessage?: unknown;
   errorMessage?: unknown;
-  events: LocalAcpSessionEvent[];
   promptQueueMode: PromptQueueMode;
   queuedPrompts: QueuedPrompt[];
   scheduledPromptCount: number;
@@ -334,7 +329,6 @@ interface LocalAcpSession {
   restarting?: boolean;
   projectId?: string;
   agentMemberId?: string;
-  persistQueue: Promise<void>;
   promptQueue: Promise<void>;
   disposePromise?: Promise<void>;
   disposedSent?: boolean;
@@ -399,8 +393,6 @@ type UpgradeCapableServer = {
     listener: (request: IncomingMessage, socket: any, head: Buffer) => void,
   ): void;
 };
-
-const MAX_BACKLOG_MESSAGES = 200;
 
 function extractAcpContentText(value: unknown): string | null {
   if (typeof value === "string") return value;
@@ -1262,20 +1254,6 @@ function isSessionCompleteMessage(msg: unknown): msg is {
   );
 }
 
-function isSessionCancelledMessage(msg: unknown): msg is {
-  type: "session.cancelled";
-  session_id: string;
-  turn_id: string;
-} {
-  return (
-    !!msg &&
-    typeof msg === "object" &&
-    (msg as { type?: unknown }).type === "session.cancelled" &&
-    typeof (msg as { session_id?: unknown }).session_id === "string" &&
-    typeof (msg as { turn_id?: unknown }).turn_id === "string"
-  );
-}
-
 function agentTextFromSessionEvent(event: unknown): string | null {
   if (!event || typeof event !== "object") return null;
   const raw = event as {
@@ -1332,15 +1310,13 @@ function publicSessionMessage(msg: unknown): unknown {
   return publicMsg;
 }
 
-function shouldPersistSessionEvent(event: unknown): boolean {
-  const update = getSessionUpdateType(event);
-  return !update || !NON_TRANSCRIPT_SESSION_UPDATES.has(update);
-}
-
-function replayCapabilityEvents(msg: unknown): unknown[] {
+function replaySetupEvents(msg: unknown): unknown[] {
   if (!isSessionReadyMessage(msg) || !Array.isArray(msg.replay_events))
     return [];
-  return msg.replay_events.filter((event) => !shouldPersistSessionEvent(event));
+  return msg.replay_events.filter((event) => {
+    const update = getSessionUpdateType(event);
+    return update !== null && NON_TRANSCRIPT_SESSION_UPDATES.has(update);
+  });
 }
 
 function isPromptQueueMode(value: unknown): value is PromptQueueMode {
@@ -1627,7 +1603,6 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
   private readonly hostname: () => string;
   private readonly osTag: () => string;
   private readonly nowSeconds: () => number;
-  private readonly nowMilliseconds: () => number;
   private readonly sessions = new Map<string, LocalAcpSession>();
   private detectedAgentsCache: DetectedAcpAgent[] | null = null;
   private detectedAgentsCacheProbesAuth = false;
@@ -1650,7 +1625,6 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
   private capabilityCacheWrite: Promise<void> = Promise.resolve();
   private runPreferencesQueue: Promise<void> = Promise.resolve();
   private reconcileQueue: Promise<void> = Promise.resolve();
-  private sessionEventStore: LocalAcpSessionEventStore | null = null;
   private lastReconciledEnabledIds: Set<string> | null = null;
   private shutdownPromise: Promise<void> | null = null;
   private shuttingDown = false;
@@ -1791,7 +1765,6 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     this.osTag = options.osTag ?? defaultOsTag;
     this.nowSeconds =
       options.nowSeconds ?? (() => Math.floor(Date.now() / 1000));
-    this.nowMilliseconds = options.nowMilliseconds ?? Date.now;
     this.harnessDownloadDir = options.harnessDownloadDir ?? null;
     this.fetchImpl = options.fetch ?? fetch;
   }
@@ -1849,14 +1822,12 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     const probedById = new Map(
       (
         await Promise.all(
-          agents
-            .filter(shouldProbe)
-            .map((agent) =>
-              this.probeAgentMetadata(agent, {
-                auth: true,
-                configOptions: true,
-              }),
-            ),
+          agents.filter(shouldProbe).map((agent) =>
+            this.probeAgentMetadata(agent, {
+              auth: true,
+              configOptions: true,
+            }),
+          ),
         )
       ).map((agent) => [agent.id, agent]),
     );
@@ -1873,10 +1844,6 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     this.detectedAgentsCacheProbesConfigOptions = true;
     this.detectedAgentsCacheProbeScope = "enabled";
     this.lastReconciledEnabledIds = enabled;
-  }
-
-  setSessionEventStore(store: LocalAcpSessionEventStore): void {
-    this.sessionEventStore = store;
   }
 
   private async refreshDetectedAgents(
@@ -2754,7 +2721,6 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
         msg,
         agentIdForConfigUpdates,
       );
-      const persisted = this.persistManagerMessage(entry, normalizedMsg);
       const publicMsg = publicSessionMessage(normalizedMsg);
       if (isSessionReadyMessage(normalizedMsg)) {
         if (normalizedMsg.acp_session_id)
@@ -2813,14 +2779,13 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
         if (entry.restarting) return;
       }
       this.sendToSession(entry, publicMsg);
-      for (const event of replayCapabilityEvents(normalizedMsg)) {
+      for (const event of replaySetupEvents(normalizedMsg)) {
         this.sendToSession(entry, {
           type: "session.event",
           session_id: sessionId,
           event,
         });
       }
-      if (persisted) void persisted.catch(() => undefined);
     };
     entry = {
       id: sessionId,
@@ -2836,15 +2801,12 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
           this.brokerElicitationRequest(entry, requestSessionId, request),
       ),
       clients: new Set(),
-      backlog: [],
-      events: [],
       promptQueueMode: "single",
       queuedPrompts: [],
       scheduledPromptCount: 0,
       activePromptTurnId: null,
       restartPending: false,
       restartReadySent: false,
-      persistQueue: Promise.resolve(),
       promptQueue: Promise.resolve(),
       pendingPermissions: new Map(),
       pendingElicitations: new Map(),
@@ -3149,33 +3111,6 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     });
   }
 
-  async listSessionEvents(
-    sessionId: string,
-  ): Promise<{ events: LocalAcpSessionEvent[] } | null> {
-    const persisted =
-      await this.sessionEventStore?.listSessionEvents(sessionId);
-    if (persisted) return persisted;
-    const entry = this.sessions.get(sessionId);
-    if (!entry) return null;
-    return {
-      events: entry.events.map((event) => ({
-        ...event,
-        data: structuredClone(event.data),
-      })),
-    };
-  }
-
-  private enqueuePersistence(
-    entry: LocalAcpSession,
-    task: () => Promise<void> | void,
-  ): Promise<void> {
-    entry.persistQueue = entry.persistQueue.then(
-      () => Promise.resolve(task()),
-      () => Promise.resolve(task()),
-    );
-    return entry.persistQueue;
-  }
-
   private promptQueueSnapshot(entry: LocalAcpSession) {
     return entry.queuedPrompts.map((prompt) => ({
       turn_id: prompt.turnId,
@@ -3218,16 +3153,10 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     entry: LocalAcpSession,
     turnId: string,
     text: string,
-    opts: { persistUserPrompt?: boolean } = {},
   ): Promise<void> {
     entry.scheduledPromptCount += 1;
     this.sendPromptQueueUpdate(entry);
     const runPrompt = async () => {
-      if (opts.persistUserPrompt) {
-        const promptAfterPersist =
-          this.appendUserPrompt(entry, turnId, text) ?? Promise.resolve();
-        await promptAfterPersist;
-      }
       entry.activePromptTurnId = turnId;
       this.sendPromptQueueUpdate(entry);
       try {
@@ -3240,16 +3169,12 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        const errorAfterPersist =
-          this.persistTurnError(entry, turnId, message) ?? Promise.resolve();
-        await errorAfterPersist.finally(() =>
-          this.sendToSession(entry, {
-            type: "session.error",
-            session_id: entry.id,
-            turn_id: turnId,
-            message,
-          }),
-        );
+        this.sendToSession(entry, {
+          type: "session.error",
+          session_id: entry.id,
+          turn_id: turnId,
+          message,
+        });
       } finally {
         if (entry.activePromptTurnId === turnId)
           entry.activePromptTurnId = null;
@@ -3294,7 +3219,6 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     entry.queuedPrompts = entry.queuedPrompts.filter(
       (prompt) => prompt.turnId !== turnId,
     );
-    this.appendUserPrompt(entry, turnId, text);
     entry.scheduledPromptCount += 1;
     this.sendPromptQueueUpdate(entry);
 
@@ -3309,16 +3233,12 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        const errorAfterPersist =
-          this.persistTurnError(entry, turnId, message) ?? Promise.resolve();
-        await errorAfterPersist.finally(() =>
-          this.sendToSession(entry, {
-            type: "session.error",
-            session_id: entry.id,
-            turn_id: turnId,
-            message,
-          }),
-        );
+        this.sendToSession(entry, {
+          type: "session.error",
+          session_id: entry.id,
+          turn_id: turnId,
+          message,
+        });
       } finally {
         entry.scheduledPromptCount = Math.max(
           0,
@@ -3340,7 +3260,6 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
       this.queuePrompt(entry, turnId, text);
       return;
     }
-    this.appendUserPrompt(entry, turnId, text);
     return this.schedulePrompt(entry, turnId, text);
   }
 
@@ -3363,128 +3282,14 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     );
     this.sendPromptQueueUpdate(entry);
     for (const prompt of toSend) {
-      this.schedulePrompt(entry, prompt.turnId, prompt.text, {
-        persistUserPrompt: true,
-      });
+      this.schedulePrompt(entry, prompt.turnId, prompt.text);
     }
     return true;
-  }
-
-  private appendUserPrompt(
-    entry: LocalAcpSession,
-    turnId: string,
-    text: string,
-  ): Promise<void> | null {
-    if (
-      entry.events.some((row) => {
-        if (
-          row.type !== "user_prompt" ||
-          !row.data ||
-          typeof row.data !== "object"
-        )
-          return false;
-        return (row.data as { turn_id?: unknown }).turn_id === turnId;
-      })
-    ) {
-      return this.sessionEventStore ? entry.persistQueue : null;
-    }
-    return this.appendSessionEvent(entry, "user_prompt", {
-      turn_id: turnId,
-      text,
-    });
-  }
-
-  private appendAgentEvent(
-    entry: LocalAcpSession,
-    turnId: string,
-    event: unknown,
-  ): Promise<void> | null {
-    return this.appendSessionEvent(entry, "session.event", {
-      turn_id: turnId,
-      event,
-    });
-  }
-
-  private persistTurnComplete(
-    entry: LocalAcpSession,
-    turnId: string,
-  ): Promise<void> | null {
-    return this.appendSessionEvent(entry, "turn_completed", {
-      turn_id: turnId,
-    });
-  }
-
-  private persistTurnCancelled(
-    entry: LocalAcpSession,
-    turnId: string,
-  ): Promise<void> | null {
-    return this.appendSessionEvent(entry, "turn_cancelled", {
-      turn_id: turnId,
-    });
-  }
-
-  private persistTurnError(
-    entry: LocalAcpSession,
-    turnId: string | null,
-    message: string,
-  ): Promise<void> | null {
-    const safeMessage = redactAuthenticationError(message);
-    return this.appendSessionEvent(entry, "turn_failed", {
-      ...(turnId ? { turn_id: turnId } : {}),
-      message: safeMessage,
-    });
-  }
-
-  private appendSessionEvent(
-    entry: LocalAcpSession,
-    type: string,
-    data: unknown,
-  ): Promise<void> | null {
-    const event: LocalAcpSessionEvent = {
-      seq: (entry.events.at(-1)?.seq ?? 0) + 1,
-      type,
-      data: structuredClone(data),
-      ts: this.nowMilliseconds(),
-    };
-    entry.events.push(event);
-    return this.sessionEventStore
-      ? this.enqueuePersistence(entry, () =>
-          this.sessionEventStore?.appendEvent(entry.id, {
-            type: event.type,
-            data: structuredClone(event.data),
-            ts: event.ts,
-          }),
-        )
-      : null;
-  }
-
-  private persistManagerMessage(
-    entry: LocalAcpSession,
-    msg: unknown,
-  ): Promise<void> | null {
-    if (isSessionEventMessage(msg)) {
-      if (!shouldPersistSessionEvent(msg.event)) return null;
-      return this.appendAgentEvent(entry, msg.turn_id, msg.event);
-    }
-    if (isSessionErrorMessage(msg)) {
-      return this.persistTurnError(entry, msg.turn_id ?? null, msg.message);
-    }
-    if (isSessionCompleteMessage(msg) && msg.turn_id) {
-      return this.persistTurnComplete(entry, msg.turn_id);
-    }
-    if (isSessionCancelledMessage(msg)) {
-      return this.persistTurnCancelled(entry, msg.turn_id);
-    }
-    return null;
   }
 
   private sendToSession(entry: LocalAcpSession, msg: unknown): void {
     const publicMsg = normalizeSessionAuthenticationError(msg, entry.harnessId);
     for (const observer of entry.observers ?? []) observer(publicMsg);
-    entry.backlog.push(publicMsg);
-    if (entry.backlog.length > MAX_BACKLOG_MESSAGES) {
-      entry.backlog.splice(0, entry.backlog.length - MAX_BACKLOG_MESSAGES);
-    }
     for (const client of entry.clients) sendJson(client, publicMsg);
   }
 
@@ -3634,11 +3439,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     return { sessions: await this.listLocalSessions() };
   }
 
-  bindSessionSocket(
-    sessionId: string,
-    ws: WebSocket,
-    opts: { replayBacklog?: boolean } = {},
-  ): void {
+  bindSessionSocket(sessionId: string, ws: WebSocket): void {
     const entry = this.sessions.get(sessionId);
     if (!entry) {
       sendJson(ws, {
@@ -3658,15 +3459,10 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     });
     if (this.promptBusy(entry) || entry.queuedPrompts.length > 0)
       this.sendPromptQueueUpdate(entry);
-    if (opts.replayBacklog === false) {
-      if (entry.readyMessage) sendJson(ws, entry.readyMessage);
-      if (entry.configOptionsMessage) sendJson(ws, entry.configOptionsMessage);
-      if (entry.modeMessage) sendJson(ws, entry.modeMessage);
-      if (entry.errorMessage) sendJson(ws, entry.errorMessage);
-    }
-    if (opts.replayBacklog !== false) {
-      for (const msg of entry.backlog) sendJson(ws, msg);
-    }
+    if (entry.readyMessage) sendJson(ws, entry.readyMessage);
+    if (entry.configOptionsMessage) sendJson(ws, entry.configOptionsMessage);
+    if (entry.modeMessage) sendJson(ws, entry.modeMessage);
+    if (entry.errorMessage) sendJson(ws, entry.errorMessage);
     for (const pending of entry.pendingPermissions.values()) {
       sendJson(ws, pending.message);
     }
@@ -3760,17 +3556,12 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
             } catch (error) {
               const message =
                 error instanceof Error ? error.message : String(error);
-              const errorAfterPersist =
-                this.persistTurnError(entry, msg.turn_id ?? null, message) ??
-                Promise.resolve();
-              void errorAfterPersist.finally(() =>
-                this.sendToSession(entry, {
-                  type: "session.error",
-                  session_id: sessionId,
-                  turn_id: msg.turn_id,
-                  message,
-                }),
-              );
+              this.sendToSession(entry, {
+                type: "session.error",
+                session_id: sessionId,
+                turn_id: msg.turn_id,
+                message,
+              });
             }
           }
           return;
@@ -3846,9 +3637,7 @@ export function attachLocalAcpSessions(
 
     const sessionId = decodeURIComponent(match[1]);
     wss.handleUpgrade(request, socket, head, (ws) => {
-      adapter.bindSessionSocket(sessionId, ws, {
-        replayBacklog: url.searchParams.get("replay") !== "0",
-      });
+      adapter.bindSessionSocket(sessionId, ws);
     });
   });
 }

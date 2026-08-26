@@ -11,19 +11,21 @@ import {
 
 describe("commandActionFromAvailableCommand", () => {
   it("reads an advertised config action without coupling it to an agent id", () => {
-    expect(commandActionFromAvailableCommand({
-      name: "plan",
-      description: "Turn plan mode on.",
-      _meta: {
-        commandAction: {
-          kind: "setConfigOption",
-          configId: "collaboration_mode",
-          value: "plan",
-          resetValue: "default",
-          presentation: "state",
+    expect(
+      commandActionFromAvailableCommand({
+        name: "plan",
+        description: "Turn plan mode on.",
+        _meta: {
+          commandAction: {
+            kind: "setConfigOption",
+            configId: "collaboration_mode",
+            value: "plan",
+            resetValue: "default",
+            presentation: "state",
+          },
         },
-      },
-    })).toEqual({
+      }),
+    ).toEqual({
       kind: "setConfigOption",
       configId: "collaboration_mode",
       value: "plan",
@@ -33,50 +35,56 @@ describe("commandActionFromAvailableCommand", () => {
   });
 
   it("keeps prompt-backed and unknown command actions on the generic prompt path", () => {
-    expect(commandActionFromAvailableCommand({
-      name: "goal",
-      _meta: {
-        commandAction: {
-          kind: "prefixPrompt",
-          presentation: "state",
+    expect(
+      commandActionFromAvailableCommand({
+        name: "goal",
+        _meta: {
+          commandAction: {
+            kind: "prefixPrompt",
+            presentation: "state",
+          },
         },
-      },
-    })).toEqual({
+      }),
+    ).toEqual({
       kind: "prefixPrompt",
       presentation: "state",
     });
-    expect(commandActionFromAvailableCommand({
-      name: "future",
-      _meta: {
-        commandAction: {
-          kind: "openPortal",
-          portal: "future",
+    expect(
+      commandActionFromAvailableCommand({
+        name: "future",
+        _meta: {
+          commandAction: {
+            kind: "openPortal",
+            portal: "future",
+          },
         },
-      },
-    })).toBeNull();
+      }),
+    ).toBeNull();
   });
 });
 
 describe("goalStateFromAcpEvent", () => {
   it("extracts the Codex goal snapshot from ACP session info updates", () => {
-    expect(goalStateFromAcpEvent({
-      sessionId: "acp-session",
-      update: {
-        sessionUpdate: "session_info_update",
-        _meta: {
-          codex: {
-            goal: {
-              objective: "Ship the Plan and Goal composer UX",
-              status: "blocked",
-              tokenBudget: 48_000,
-              timeUsedSeconds: 361,
-              createdAt: 1_785_201_976,
-              controlMethod: "_codex/session/goal_control",
+    expect(
+      goalStateFromAcpEvent({
+        sessionId: "acp-session",
+        update: {
+          sessionUpdate: "session_info_update",
+          _meta: {
+            codex: {
+              goal: {
+                objective: "Ship the Plan and Goal composer UX",
+                status: "blocked",
+                tokenBudget: 48_000,
+                timeUsedSeconds: 361,
+                createdAt: 1_785_201_976,
+                controlMethod: "_codex/session/goal_control",
+              },
             },
           },
         },
-      },
-    })).toEqual({
+      }),
+    ).toEqual({
       objective: "Ship the Plan and Goal composer UX",
       status: "blocked",
       tokenBudget: 48_000,
@@ -87,31 +95,39 @@ describe("goalStateFromAcpEvent", () => {
   });
 
   it("distinguishes an explicit goal clear from unrelated session info", () => {
-    expect(goalStateFromAcpEvent({
-      sessionUpdate: "session_info_update",
-      _meta: { codex: { goal: null } },
-    })).toBeNull();
-    expect(goalStateFromAcpEvent({
-      sessionUpdate: "session_info_update",
-      title: "A generated title",
-    })).toBeUndefined();
-    expect(goalStateFromAcpEvent({
-      sessionUpdate: "usage_update",
-      _meta: { codex: { goal: null } },
-    })).toBeUndefined();
+    expect(
+      goalStateFromAcpEvent({
+        sessionUpdate: "session_info_update",
+        _meta: { codex: { goal: null } },
+      }),
+    ).toBeNull();
+    expect(
+      goalStateFromAcpEvent({
+        sessionUpdate: "session_info_update",
+        title: "A generated title",
+      }),
+    ).toBeUndefined();
+    expect(
+      goalStateFromAcpEvent({
+        sessionUpdate: "usage_update",
+        _meta: { codex: { goal: null } },
+      }),
+    ).toBeUndefined();
   });
 
   it("keeps ACP session metadata generic while Goal remains a namespaced adapter", () => {
-    expect(sessionInfoStateFromAcpEvent({
-      sessionUpdate: "session_info_update",
-      title: "Claude supplied title",
-      updatedAt: "2026-07-28T02:00:00.000Z",
-      _meta: {
-        claude: {
-          branch: "feature/session-state",
+    expect(
+      sessionInfoStateFromAcpEvent({
+        sessionUpdate: "session_info_update",
+        title: "Claude supplied title",
+        updatedAt: "2026-07-28T02:00:00.000Z",
+        _meta: {
+          claude: {
+            branch: "feature/session-state",
+          },
         },
-      },
-    })).toEqual({
+      }),
+    ).toEqual({
       title: "Claude supplied title",
       updatedAt: "2026-07-28T02:00:00.000Z",
       metadata: {
@@ -120,28 +136,35 @@ describe("goalStateFromAcpEvent", () => {
         },
       },
     });
-    expect(goalStateFromAcpEvent({
-      sessionUpdate: "session_info_update",
-      _meta: { claude: { branch: "feature/session-state" } },
-    })).toBeUndefined();
+    expect(
+      goalStateFromAcpEvent({
+        sessionUpdate: "session_info_update",
+        _meta: { claude: { branch: "feature/session-state" } },
+      }),
+    ).toBeUndefined();
   });
 
   it("deep-merges partial namespaced metadata without dropping an active feature", () => {
-    expect(mergeSessionInfoMetadata({
-      codex: {
-        goal: {
-          objective: "Keep Goal alive",
-          status: "active",
+    expect(
+      mergeSessionInfoMetadata(
+        {
+          codex: {
+            goal: {
+              objective: "Keep Goal alive",
+              status: "active",
+            },
+          },
         },
-      },
-    }, {
-      codex: {
-        threadStatus: { type: "idle" },
-      },
-      cursor: {
-        planId: "plan-1",
-      },
-    })).toEqual({
+        {
+          codex: {
+            threadStatus: { type: "idle" },
+          },
+          cursor: {
+            planId: "plan-1",
+          },
+        },
+      ),
+    ).toEqual({
       codex: {
         goal: {
           objective: "Keep Goal alive",
@@ -158,16 +181,18 @@ describe("goalStateFromAcpEvent", () => {
 
 describe("usageStateFromAcpEvent", () => {
   it("normalizes standard ACP usage without adding transcript content", () => {
-    expect(usageStateFromAcpEvent({
-      sessionId: "claude-session",
-      update: {
-        sessionUpdate: "usage_update",
-        used: 12_500,
-        size: 200_000,
-        cost: { amount: 0.42, currency: "USD" },
-        _meta: { "_claude/origin": "first_party" },
-      },
-    })).toEqual({
+    expect(
+      usageStateFromAcpEvent({
+        sessionId: "claude-session",
+        update: {
+          sessionUpdate: "usage_update",
+          used: 12_500,
+          size: 200_000,
+          cost: { amount: 0.42, currency: "USD" },
+          _meta: { "_claude/origin": "first_party" },
+        },
+      }),
+    ).toEqual({
       used: 12_500,
       size: 200_000,
       cost: { amount: 0.42, currency: "USD" },
@@ -213,7 +238,10 @@ describe("appendAcpEvent", () => {
         role: "assistant",
         parts: [
           { type: "text", text: "first" },
-          { type: "raw_event", event: { type: "clash.canvas.patch", operations: [] } },
+          {
+            type: "raw_event",
+            event: { type: "clash.canvas.patch", operations: [] },
+          },
         ],
       },
     ]);
@@ -509,7 +537,8 @@ describe("appendAcpEvent", () => {
 
     const result = appendAcpEvent(messages, "turn-transport", undefined, {
       type: "agent_message_chunk",
-      content: "Falling back from WebSockets to HTTPS transport. request timed out",
+      content:
+        "Falling back from WebSockets to HTTPS transport. request timed out",
     });
 
     expect(result.idx).toBe(-1);
@@ -546,11 +575,13 @@ describe("appendAcpEvent", () => {
       },
     });
 
-    expect(messages).toEqual([{
-      id: "asst-turn-current-skill-budget",
-      role: "assistant",
-      parts: [{ type: "text", text: "那就先喝两口水。" }],
-    }]);
+    expect(messages).toEqual([
+      {
+        id: "asst-turn-current-skill-budget",
+        role: "assistant",
+        parts: [{ type: "text", text: "那就先喝两口水。" }],
+      },
+    ]);
   });
 
   it("parses snake_case available command updates from ACP implementations", () => {
@@ -596,11 +627,13 @@ describe("appendAcpEvent", () => {
       error: "agent crashed",
     });
 
-    expect(messages[0]?.parts).toEqual([{
-      type: "event_note",
-      title: "agent crashed",
-      tone: "error",
-    }]);
+    expect(messages[0]?.parts).toEqual([
+      {
+        type: "event_note",
+        title: "agent crashed",
+        tone: "error",
+      },
+    ]);
   });
 
   it("extracts the actionable message from noisy JSON prompt errors", () => {
@@ -615,21 +648,25 @@ describe("appendAcpEvent", () => {
           status: 400,
           error: {
             type: "invalid_request_error",
-            message: "The 'gpt-5.6-sol' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again.",
+            message:
+              "The 'gpt-5.6-sol' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again.",
           },
         }),
       ].join("\n"),
     });
 
-    expect(messages[0]?.parts).toEqual([{
-      type: "event_note",
-      title: "Codex update required",
-      detail: "The 'gpt-5.6-sol' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again.",
-      tone: "error",
-    }]);
+    expect(messages[0]?.parts).toEqual([
+      {
+        type: "event_note",
+        title: "Codex update required",
+        detail:
+          "The 'gpt-5.6-sol' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again.",
+        tone: "error",
+      },
+    ]);
   });
 
-  it("parses ACP 0.25 plan update and removal events into visible parts", () => {
+  it("parses ACP 0.25 plan updates without rendering plan removal plumbing", () => {
     const messages: ByoMessage[] = [];
 
     appendAcpEvent(messages, "turn-plan", undefined, {
@@ -638,8 +675,16 @@ describe("appendAcpEvent", () => {
         content: {
           type: "plan",
           entries: [
-            { content: "Inspect canvas nodes", status: "completed", priority: "high" },
-            { content: "Summarize nodes", status: "in_progress", priority: "medium" },
+            {
+              content: "Inspect canvas nodes",
+              status: "completed",
+              priority: "high",
+            },
+            {
+              content: "Summarize nodes",
+              status: "in_progress",
+              priority: "medium",
+            },
           ],
         },
       },
@@ -653,15 +698,17 @@ describe("appendAcpEvent", () => {
       {
         type: "plan",
         entries: [
-          { content: "Inspect canvas nodes", status: "completed", priority: "high" },
-          { content: "Summarize nodes", status: "in_progress", priority: "medium" },
+          {
+            content: "Inspect canvas nodes",
+            status: "completed",
+            priority: "high",
+          },
+          {
+            content: "Summarize nodes",
+            status: "in_progress",
+            priority: "medium",
+          },
         ],
-      },
-      {
-        type: "event_note",
-        title: "Plan removed",
-        detail: "plan-1",
-        tone: "neutral",
       },
     ]);
   });
@@ -690,10 +737,12 @@ describe("appendAcpEvent", () => {
   it("renders OpenMA live message chunks and canonical messages without duplicate text", () => {
     const messages: ByoMessage[] = [];
 
-    expect(appendAcpEvent(messages, "turn-openma", undefined, {
-      type: "agent.message_stream_start",
-      message_id: "msg-1",
-    }).idx).toBe(-1);
+    expect(
+      appendAcpEvent(messages, "turn-openma", undefined, {
+        type: "agent.message_stream_start",
+        message_id: "msg-1",
+      }).idx,
+    ).toBe(-1);
     appendAcpEvent(messages, "turn-openma", undefined, {
       type: "agent.message_chunk",
       message_id: "msg-1",
@@ -761,13 +810,17 @@ describe("appendAcpEvent", () => {
   it("keeps OpenMA status and warning events out of assistant prose", () => {
     const messages: ByoMessage[] = [];
 
-    appendAcpEvent(messages, "turn-openma-status", undefined, { type: "session.status_running" });
+    appendAcpEvent(messages, "turn-openma-status", undefined, {
+      type: "session.status_running",
+    });
     appendAcpEvent(messages, "turn-openma-status", undefined, {
       type: "session.warning",
       source: "codex",
       message: "request timed out",
     });
-    appendAcpEvent(messages, "turn-openma-status", undefined, { type: "session.status_idle" });
+    appendAcpEvent(messages, "turn-openma-status", undefined, {
+      type: "session.status_idle",
+    });
 
     expect(messages).toEqual([]);
   });

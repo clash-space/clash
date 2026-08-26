@@ -2761,96 +2761,8 @@ describe("local ACP adapter", () => {
     expect(shutdownSettled).toBe(true);
   });
 
-  it("appends prompts and ACP events to the canonical event store", async () => {
+  it("broadcasts the first agent event immediately", async () => {
     let sendFromManager!: SessionSender;
-    const prompt = vi.fn<SessionManagerLike["prompt"]>(async () => undefined);
-    const eventStore = {
-      appendEvent: vi.fn(async () => undefined),
-      listSessionEvents: vi.fn(async () => null),
-    };
-    const adapter = createLocalAcpAdapter({
-      detectAgents: async () => [
-        {
-          id: "codex-acp",
-          label: "Codex",
-          spec: { command: "codex-acp" },
-        },
-      ],
-      createSessionId: () => "local-acp-store",
-      nowSeconds: () => 1_700_000_000,
-      createSessionManager: (send) => {
-        sendFromManager = send;
-        return {
-          start: vi.fn(),
-          prompt,
-          cancel: vi.fn(),
-          dispose: vi.fn(),
-        };
-      },
-    });
-    adapter.setSessionEventStore(eventStore);
-
-    await adapter.createSession({
-      runtimeId: "desktop-local",
-      agentTemplateId: "clash",
-      agentMemberId: "local-clash",
-    });
-
-    const socket = new FakeSocket();
-    adapter.bindSessionSocket("local-acp-store", socket as never);
-    socket.emit(
-      "message",
-      JSON.stringify({
-        type: "prompt",
-        turn_id: "turn-store",
-        text: "hello",
-      }),
-    );
-
-    await vi.waitFor(() => {
-      expect(eventStore.appendEvent).toHaveBeenCalledWith("local-acp-store", {
-        type: "user_prompt",
-        data: { turn_id: "turn-store", text: "hello" },
-        ts: expect.any(Number),
-      });
-    });
-
-    sendFromManager({
-      type: "session.event",
-      session_id: "local-acp-store",
-      turn_id: "turn-store",
-      event: {
-        type: "agent_message_chunk",
-        content: { type: "text", text: "hi" },
-      },
-    });
-
-    await vi.waitFor(() => {
-      expect(eventStore.appendEvent).toHaveBeenCalledWith("local-acp-store", {
-        type: "session.event",
-        data: {
-          turn_id: "turn-store",
-          event: {
-            type: "agent_message_chunk",
-            content: { type: "text", text: "hi" },
-          },
-        },
-        ts: expect.any(Number),
-      });
-    });
-  });
-
-  it("broadcasts the first agent event before event persistence finishes", async () => {
-    let sendFromManager!: SessionSender;
-    const persistAgent = deferred();
-    const eventStore = {
-      appendEvent: vi.fn(
-        async (_sessionId: string, event: { type: string }) => {
-          if (event.type === "session.event") await persistAgent.promise;
-        },
-      ),
-      listSessionEvents: vi.fn(async () => null),
-    };
     const adapter = createLocalAcpAdapter({
       detectAgents: async () => [
         {
@@ -2870,8 +2782,6 @@ describe("local ACP adapter", () => {
         };
       },
     });
-    adapter.setSessionEventStore(eventStore);
-
     await adapter.createSession({
       runtimeId: "desktop-local",
       agentTemplateId: "clash",
@@ -2911,16 +2821,10 @@ describe("local ACP adapter", () => {
         content: { type: "text", text: "hi immediately" },
       },
     });
-
-    persistAgent.resolve();
   });
 
-  it("drops transport diagnostics instead of persisting them as assistant messages", async () => {
+  it("drops transport diagnostics instead of emitting assistant messages", async () => {
     let sendFromManager!: SessionSender;
-    const eventStore = {
-      appendEvent: vi.fn(async () => undefined),
-      listSessionEvents: vi.fn(async () => null),
-    };
     const adapter = createLocalAcpAdapter({
       detectAgents: async () => [
         {
@@ -2941,8 +2845,6 @@ describe("local ACP adapter", () => {
         };
       },
     });
-    adapter.setSessionEventStore(eventStore);
-
     await adapter.createSession({
       runtimeId: "desktop-local",
       agentId: "codex-acp",
@@ -2967,16 +2869,11 @@ describe("local ACP adapter", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(eventStore.appendEvent).not.toHaveBeenCalled();
     expect(socket.sent).toHaveLength(before);
   });
 
-  it("keeps ACP replay out of the canonical event log", async () => {
+  it("keeps ACP transcript replay out while forwarding setup events", async () => {
     let sendFromManager!: SessionSender;
-    const eventStore = {
-      appendEvent: vi.fn(async () => undefined),
-      listSessionEvents: vi.fn(async () => ({ events: [] })),
-    };
     const adapter = createLocalAcpAdapter({
       detectAgents: async () => [
         {
@@ -2997,8 +2894,6 @@ describe("local ACP adapter", () => {
         };
       },
     });
-    adapter.setSessionEventStore(eventStore);
-
     await adapter.createSession({
       runtimeId: "desktop-local",
       agentId: "codex-acp",
@@ -3030,7 +2925,6 @@ describe("local ACP adapter", () => {
     await vi.waitFor(() => {
       expect(socket.sent).toHaveLength(before + 2);
     });
-    expect(eventStore.appendEvent).not.toHaveBeenCalled();
     const ready = JSON.parse(socket.sent[before] ?? "{}");
     expect(ready).toEqual({
       type: "session.ready",
@@ -3050,12 +2944,8 @@ describe("local ACP adapter", () => {
     });
   });
 
-  it("forwards available commands without persisting them as transcript", async () => {
+  it("forwards available commands as live setup state", async () => {
     let sendFromManager!: SessionSender;
-    const eventStore = {
-      appendEvent: vi.fn(async () => undefined),
-      listSessionEvents: vi.fn(async () => null),
-    };
     const adapter = createLocalAcpAdapter({
       detectAgents: async () => [
         {
@@ -3075,8 +2965,6 @@ describe("local ACP adapter", () => {
         };
       },
     });
-    adapter.setSessionEventStore(eventStore);
-
     await adapter.createSession({
       runtimeId: "desktop-local",
       agentId: "codex-acp",
@@ -3100,7 +2988,6 @@ describe("local ACP adapter", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(eventStore.appendEvent).not.toHaveBeenCalled();
     expect(socket.sent).toHaveLength(before + 1);
     expect(JSON.parse(socket.sent.at(-1) ?? "{}")).toMatchObject({
       type: "session.event",
@@ -3114,12 +3001,8 @@ describe("local ACP adapter", () => {
     });
   });
 
-  it("forwards transient session status without persisting it as transcript", async () => {
+  it("forwards transient session status", async () => {
     let sendFromManager!: SessionSender;
-    const eventStore = {
-      appendEvent: vi.fn(async () => undefined),
-      listSessionEvents: vi.fn(async () => null),
-    };
     const adapter = createLocalAcpAdapter({
       detectAgents: async () => [
         {
@@ -3139,8 +3022,6 @@ describe("local ACP adapter", () => {
         };
       },
     });
-    adapter.setSessionEventStore(eventStore);
-
     await adapter.createSession({
       runtimeId: "desktop-local",
       agentId: "codex-acp",
@@ -3161,7 +3042,6 @@ describe("local ACP adapter", () => {
       maxAttempts: 5,
     });
 
-    expect(eventStore.appendEvent).not.toHaveBeenCalled();
     expect(socket.sent).toHaveLength(before + 1);
     expect(JSON.parse(socket.sent.at(-1) ?? "{}")).toMatchObject({
       type: "session.status",
@@ -3175,12 +3055,8 @@ describe("local ACP adapter", () => {
     });
   });
 
-  it("forwards generic stderr diagnostics without persisting them as transcript", async () => {
+  it("forwards generic stderr diagnostics", async () => {
     let sendFromManager!: SessionSender;
-    const eventStore = {
-      appendEvent: vi.fn(async () => undefined),
-      listSessionEvents: vi.fn(async () => null),
-    };
     const adapter = createLocalAcpAdapter({
       detectAgents: async () => [
         {
@@ -3201,8 +3077,6 @@ describe("local ACP adapter", () => {
         };
       },
     });
-    adapter.setSessionEventStore(eventStore);
-
     await adapter.createSession({
       runtimeId: "desktop-local",
       agentId: "codex-acp",
@@ -3224,7 +3098,6 @@ describe("local ACP adapter", () => {
       },
     });
 
-    expect(eventStore.appendEvent).not.toHaveBeenCalled();
     expect(socket.sent).toHaveLength(before + 1);
     expect(JSON.parse(socket.sent.at(-1) ?? "{}")).toMatchObject({
       type: "session.diagnostic",
@@ -3238,11 +3111,7 @@ describe("local ACP adapter", () => {
     });
   });
 
-  it("persists prompt errors instead of leaving the turn spinning", async () => {
-    const eventStore = {
-      appendEvent: vi.fn(async () => undefined),
-      listSessionEvents: vi.fn(async () => null),
-    };
+  it("emits prompt errors instead of leaving the turn spinning", async () => {
     const adapter = createLocalAcpAdapter({
       detectAgents: async () => [
         {
@@ -3261,8 +3130,6 @@ describe("local ACP adapter", () => {
         dispose: vi.fn(),
       }),
     });
-    adapter.setSessionEventStore(eventStore);
-
     await adapter.createSession({
       runtimeId: "desktop-local",
       agentTemplateId: "clash",
@@ -3280,11 +3147,6 @@ describe("local ACP adapter", () => {
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(eventStore.appendEvent).toHaveBeenCalledWith("local-acp-error", {
-      type: "turn_failed",
-      data: { turn_id: "turn-error", message: "agent exited" },
-      ts: expect.any(Number),
-    });
     expect(
       socket.sent.map(
         (raw) => JSON.parse(raw) as { type: string; message?: string },
@@ -3299,12 +3161,8 @@ describe("local ACP adapter", () => {
     );
   });
 
-  it("classifies and redacts ACP authentication failures before persistence or delivery", async () => {
+  it("classifies and redacts ACP authentication failures before delivery", async () => {
     let sendFromManager!: SessionSender;
-    const eventStore = {
-      appendEvent: vi.fn(async () => undefined),
-      listSessionEvents: vi.fn(async () => null),
-    };
     const adapter = createLocalAcpAdapter({
       detectAgents: async () => [
         {
@@ -3324,8 +3182,6 @@ describe("local ACP adapter", () => {
         };
       },
     });
-    adapter.setSessionEventStore(eventStore);
-
     await adapter.createSession({
       runtimeId: "desktop-local",
       agentId: "codex-acp",
@@ -3342,18 +3198,6 @@ describe("local ACP adapter", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(eventStore.appendEvent).toHaveBeenCalledWith(
-      "local-acp-auth-error",
-      {
-        type: "turn_failed",
-        data: {
-          turn_id: "turn-auth",
-          message:
-            "Authentication required: token=[redacted] Bearer [redacted]",
-        },
-        ts: expect.any(Number),
-      },
-    );
     expect(socket.sent.map((raw) => JSON.parse(raw))).toContainEqual(
       expect.objectContaining({
         type: "session.error",
@@ -3542,96 +3386,6 @@ describe("local ACP adapter", () => {
     });
   });
 
-  it("does not persist queued follow-up prompts until they are dispatched", async () => {
-    const firstRelease = deferred();
-    const prompt = vi.fn<SessionManagerLike["prompt"]>(async (params) => {
-      if (params.turn_id === "turn-1") await firstRelease.promise;
-    });
-    const eventStore = {
-      appendEvent: vi.fn(async () => undefined),
-      listSessionEvents: vi.fn(async () => null),
-    };
-    const adapter = createLocalAcpAdapter({
-      detectAgents: async () => [
-        {
-          id: "codex-acp",
-          label: "Codex",
-          spec: { command: "codex-acp" },
-        },
-      ],
-      createSessionId: () => "local-acp-queue-persistence",
-      nowSeconds: () => 1_700_000_200,
-      createSessionManager: () => ({
-        start: vi.fn(),
-        prompt,
-        cancel: vi.fn(),
-        dispose: vi.fn(),
-      }),
-    });
-    adapter.setSessionEventStore(eventStore);
-
-    await adapter.createSession({
-      runtimeId: "desktop-local",
-      agentTemplateId: "clash",
-    });
-
-    const socket = new FakeSocket();
-    adapter.bindSessionSocket("local-acp-queue-persistence", socket as never);
-    socket.emit(
-      "message",
-      JSON.stringify({
-        type: "prompt",
-        turn_id: "turn-1",
-        text: "first",
-      }),
-    );
-
-    await vi.waitFor(() => {
-      expect(prompt).toHaveBeenCalledTimes(1);
-      expect(eventStore.appendEvent).toHaveBeenCalledWith(
-        "local-acp-queue-persistence",
-        {
-          type: "user_prompt",
-          data: { turn_id: "turn-1", text: "first" },
-          ts: expect.any(Number),
-        },
-      );
-    });
-
-    socket.emit(
-      "message",
-      JSON.stringify({
-        type: "prompt",
-        turn_id: "turn-2",
-        text: "second",
-        queue_mode: "single",
-      }),
-    );
-
-    await vi.waitFor(() => {
-      const queueUpdates = socket.sent
-        .map((raw) => JSON.parse(raw) as any)
-        .filter((msg) => msg.type === "session.queue_update");
-      expect(queueUpdates.at(-1)).toMatchObject({
-        queued: [{ turn_id: "turn-2", text: "second" }],
-      });
-    });
-    expect(eventStore.appendEvent).toHaveBeenCalledTimes(1);
-
-    firstRelease.resolve();
-    await vi.waitFor(() => {
-      expect(prompt).toHaveBeenCalledTimes(2);
-      expect(eventStore.appendEvent).toHaveBeenCalledWith(
-        "local-acp-queue-persistence",
-        {
-          type: "user_prompt",
-          data: { turn_id: "turn-2", text: "second" },
-          ts: expect.any(Number),
-        },
-      );
-    });
-  });
-
   it("flushes all queued follow-up prompts after the current loop when requested", async () => {
     const firstRelease = deferred();
     const prompt = vi.fn<SessionManagerLike["prompt"]>(async (params) => {
@@ -3794,15 +3548,11 @@ describe("local ACP adapter", () => {
     expect(prompt).toHaveBeenCalledTimes(1);
   });
 
-  it("steers an already queued prompt through prompt and persists the user event immediately", async () => {
+  it("steers an already queued prompt through prompt immediately", async () => {
     const firstRelease = deferred();
     const prompt = vi.fn<SessionManagerLike["prompt"]>(async (params) => {
       if (params.turn_id === "turn-1") await firstRelease.promise;
     });
-    const eventStore = {
-      appendEvent: vi.fn(async () => undefined),
-      listSessionEvents: vi.fn(async () => null),
-    };
     const adapter = createLocalAcpAdapter({
       detectAgents: async () => [
         {
@@ -3820,8 +3570,6 @@ describe("local ACP adapter", () => {
       }),
       nowSeconds: () => 1_700_000_000,
     });
-    adapter.setSessionEventStore(eventStore);
-
     await adapter.createSession({
       runtimeId: "desktop-local",
       agentTemplateId: "clash",
@@ -3873,25 +3621,11 @@ describe("local ACP adapter", () => {
       .map((raw) => JSON.parse(raw) as any)
       .filter((msg) => msg.type === "session.queue_update");
     expect(queueUpdates.at(-1)).toMatchObject({ queued: [] });
-    await vi.waitFor(() => {
-      expect(eventStore.appendEvent).toHaveBeenCalledWith(
-        "local-acp-steer-existing-queue",
-        {
-          type: "user_prompt",
-          data: { turn_id: "turn-2", text: "second" },
-          ts: expect.any(Number),
-        },
-      );
-    });
   });
 
   it("dispatches a queued steer immediately without waiting for another tool call", async () => {
     let sendFromManager!: SessionSender;
     const prompt = vi.fn<SessionManagerLike["prompt"]>(async () => undefined);
-    const eventStore = {
-      appendEvent: vi.fn(async () => undefined),
-      listSessionEvents: vi.fn(async () => null),
-    };
     const adapter = createLocalAcpAdapter({
       detectAgents: async () => [
         {
@@ -3911,8 +3645,6 @@ describe("local ACP adapter", () => {
         };
       },
     });
-    adapter.setSessionEventStore(eventStore);
-
     await adapter.createSession({
       runtimeId: "desktop-local",
       agentTemplateId: "clash",
@@ -3978,44 +3710,6 @@ describe("local ACP adapter", () => {
         text: "hi",
       });
     });
-
-    await vi.waitFor(() => {
-      expect(eventStore.appendEvent).toHaveBeenCalledWith(
-        "local-acp-steer-tool-boundary",
-        {
-          type: "user_prompt",
-          data: { turn_id: "turn-hi", text: "hi" },
-          ts: expect.any(Number),
-        },
-      );
-    });
-    const history = await adapter.listSessionEvents(
-      "local-acp-steer-tool-boundary",
-    );
-    expect(history?.events.map((event) => event.type)).toEqual([
-      "user_prompt",
-      "session.event",
-      "session.event",
-      "user_prompt",
-    ]);
-    expect(history?.events.slice(1, 3).map((event) => event.data)).toEqual([
-      {
-        turn_id: "turn-1",
-        event: {
-          sessionUpdate: "tool_call",
-          toolCallId: "tool-1",
-          title: "tool-call-01",
-        },
-      },
-      {
-        turn_id: "turn-1",
-        event: {
-          sessionUpdate: "tool_call",
-          toolCallId: "tool-2",
-          title: "tool-call-02",
-        },
-      },
-    ]);
   });
 
   it("forwards steered queued prompts to the agent immediately while a turn is running", async () => {
@@ -4452,170 +4146,6 @@ describe("local ACP adapter", () => {
     );
   });
 
-  it("persists the Backchat append-only event stream with arrival order and terminal events", async () => {
-    let sendToBrowser!: SessionSender;
-    const prompt = vi.fn<SessionManagerLike["prompt"]>(
-      async ({ session_id, turn_id }) => {
-        sendToBrowser({
-          type: "session.event",
-          session_id,
-          turn_id,
-          event: { type: "text", text: "agent reply" },
-        });
-        sendToBrowser({ type: "session.complete", session_id, turn_id });
-      },
-    );
-    const adapter = createLocalAcpAdapter({
-      detectAgents: async () => [
-        {
-          id: "codex-acp",
-          label: "Codex",
-          spec: { command: "codex-acp" },
-        },
-      ],
-      createSessionManager: (send) => {
-        sendToBrowser = send;
-        return { start: vi.fn(), prompt, cancel: vi.fn(), dispose: vi.fn() };
-      },
-      createSessionId: () => "local-acp-session-history",
-      nowMilliseconds: (() => {
-        const times = [1_000, 1_250, 3_000];
-        return () => times.shift() ?? 3_000;
-      })(),
-    });
-    await adapter.createSession({
-      runtimeId: "desktop-local",
-      agentTemplateId: "clash",
-      agentMemberId: "local-clash",
-      projectId: "project-history",
-    });
-
-    const ws = {
-      OPEN: 1,
-      readyState: 1,
-      send: vi.fn(),
-      on: vi.fn(),
-      close: vi.fn(),
-    } as any;
-    adapter.bindSessionSocket("local-acp-session-history", ws);
-    const messageHandler = ws.on.mock.calls.find(
-      ([event]: [string]) => event === "message",
-    )?.[1];
-    expect(messageHandler).toBeTypeOf("function");
-
-    messageHandler(
-      Buffer.from(
-        JSON.stringify({
-          type: "prompt",
-          turn_id: "turn-1",
-          text: "hello agent",
-        }),
-      ),
-    );
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    await expect(
-      adapter.listSessionEvents("local-acp-session-history"),
-    ).resolves.toEqual({
-      events: [
-        {
-          seq: 1,
-          type: "user_prompt",
-          data: { turn_id: "turn-1", text: "hello agent" },
-          ts: 1_000,
-        },
-        {
-          seq: 2,
-          type: "session.event",
-          data: {
-            turn_id: "turn-1",
-            event: { type: "text", text: "agent reply" },
-          },
-          ts: 1_250,
-        },
-        {
-          seq: 3,
-          type: "turn_completed",
-          data: { turn_id: "turn-1" },
-          ts: 3_000,
-        },
-      ],
-    });
-  });
-
-  it("persists an acknowledged cancellation instead of completing the turn", async () => {
-    let sendToBrowser!: SessionSender;
-    const adapter = createLocalAcpAdapter({
-      detectAgents: async () => [
-        {
-          id: "codex-acp",
-          label: "Codex",
-          spec: { command: "codex-acp" },
-        },
-      ],
-      createSessionManager: (send) => {
-        sendToBrowser = send;
-        return {
-          start: vi.fn(),
-          prompt: vi.fn(async ({ session_id, turn_id }) => {
-            sendToBrowser({
-              type: "session.cancelled",
-              session_id,
-              turn_id,
-            } as SessionSender extends (message: infer Message) => void
-              ? Message
-              : never);
-          }),
-          cancel: vi.fn(),
-          dispose: vi.fn(),
-        };
-      },
-      createSessionId: () => "local-acp-session-cancelled",
-      nowMilliseconds: (() => {
-        const times = [1_000, 2_000];
-        return () => times.shift() ?? 2_000;
-      })(),
-    });
-    await adapter.createSession({
-      runtimeId: "desktop-local",
-      agentTemplateId: "clash",
-      projectId: "project-cancelled",
-    });
-
-    const socket = new FakeSocket();
-    adapter.bindSessionSocket("local-acp-session-cancelled", socket as any);
-    socket.emit(
-      "message",
-      Buffer.from(
-        JSON.stringify({
-          type: "prompt",
-          turn_id: "turn-cancelled",
-          text: "Stop this",
-        }),
-      ),
-    );
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(
-      await adapter.listSessionEvents("local-acp-session-cancelled"),
-    ).toEqual({
-      events: [
-        {
-          seq: 1,
-          type: "user_prompt",
-          data: { turn_id: "turn-cancelled", text: "Stop this" },
-          ts: 1_000,
-        },
-        {
-          seq: 2,
-          type: "turn_cancelled",
-          data: { turn_id: "turn-cancelled" },
-          ts: 2_000,
-        },
-      ],
-    });
-  });
-
   it("keeps the held ACP child session after the last browser socket disconnects", async () => {
     const dispose = vi.fn<SessionManagerLike["dispose"]>(async () => undefined);
     const adapter = createLocalAcpAdapter({
@@ -4660,7 +4190,7 @@ describe("local ACP adapter", () => {
     expect(dispose).not.toHaveBeenCalled();
   });
 
-  it("keeps collecting active turn events after the browser socket disconnects", async () => {
+  it("keeps the active child running after disconnect without retaining its transcript", async () => {
     let sendToBrowser!: SessionSender;
     const promptStarted = deferred<SessionPromptParamsLike>();
     const releasePrompt = deferred();
@@ -4736,33 +4266,6 @@ describe("local ACP adapter", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(dispose).not.toHaveBeenCalled();
-    await expect(
-      adapter.listSessionEvents("local-acp-session-background-turn"),
-    ).resolves.toEqual({
-      events: [
-        {
-          seq: 1,
-          type: "user_prompt",
-          data: { turn_id: "turn-bg", text: "keep running" },
-          ts: expect.any(Number),
-        },
-        {
-          seq: 2,
-          type: "session.event",
-          data: {
-            turn_id: "turn-bg",
-            event: { type: "text", text: "background reply" },
-          },
-          ts: expect.any(Number),
-        },
-        {
-          seq: 3,
-          type: "turn_completed",
-          data: { turn_id: "turn-bg" },
-          ts: expect.any(Number),
-        },
-      ],
-    });
 
     const secondSocket = new FakeSocket();
     adapter.bindSessionSocket(
@@ -4775,21 +4278,10 @@ describe("local ACP adapter", () => {
         session_id: "local-acp-session-background-turn",
         daemon_online: true,
       },
-      {
-        type: "session.event",
-        session_id: "local-acp-session-background-turn",
-        turn_id: "turn-bg",
-        event: { type: "text", text: "background reply" },
-      },
-      {
-        type: "session.complete",
-        session_id: "local-acp-session-background-turn",
-        turn_id: "turn-bg",
-      },
     ]);
   });
 
-  it("can attach a browser socket without replaying transcript backlog while still replaying session state", async () => {
+  it("attaches with current setup state and never replays transcript backlog", async () => {
     let sendToBrowser!: SessionSender;
     const adapter = createLocalAcpAdapter({
       detectAgents: async () => [
@@ -4844,9 +4336,7 @@ describe("local ACP adapter", () => {
     });
 
     const socket = new FakeSocket();
-    adapter.bindSessionSocket("local-acp-session-no-replay", socket as any, {
-      replayBacklog: false,
-    });
+    adapter.bindSessionSocket("local-acp-session-no-replay", socket as any);
 
     expect(socket.sent.map((raw) => JSON.parse(raw))).toEqual([
       {

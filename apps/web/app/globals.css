@@ -8,6 +8,7 @@
 @source "../../../packages/remotion-components/src";
 @source "../../../packages/remotion-core/src";
 @source "../../../../openma-common/src/session-ui";
+@source "../../../../openma-common/src/chat-ui";
 
 :root {
   color-scheme: light;

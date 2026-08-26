@@ -2,7 +2,7 @@
  * This module does not own turn boundaries, chronology, plans, or disclosure
  * state; it can only render the canonical assistant-text and tool slots. */
 
-import type { ToolEntry as SharedToolEntry } from "@openma/common/session";
+import type { AgentUIToolItem } from "@openma/common/agent-ui";
 import {
   withMcpIdentity,
   type AcpToolCallContent,
@@ -1165,23 +1165,23 @@ export function AcpToolInline({
   clashEntities = [],
   onOpenClashEntity,
 }: {
-  tool: SharedToolEntry;
+  tool: AgentUIToolItem;
   defaultOpen?: boolean;
   clashEntities?: readonly ClashProjectEntity[];
   onOpenClashEntity?: (entity: ClashProjectEntity) => void;
 }) {
   const presentedTool = withMcpIdentity({
     type: "tool_call" as const,
-    toolCallId: tool.toolCallId,
+    toolCallId: tool.id,
     title: tool.title,
-    kind: tool.kind,
+    kind: tool.toolKind,
     status: tool.status,
     rawInput: tool.rawInput,
     rawOutput: tool.rawOutput,
     content: tool.content as AcpToolCallContent[] | undefined,
     locations: tool.locations,
-    toolName: tool.toolName,
-    meta: tool.meta,
+    toolName: tool.name,
+    meta: tool.adapterMeta,
   });
   if (presentedTool.kind === "permission") return null;
   if (isClashMcpTool(presentedTool)) {

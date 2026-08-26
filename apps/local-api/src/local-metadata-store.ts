@@ -409,14 +409,6 @@ function applySchema(db: SqliteDatabase): void {
       PRIMARY KEY (session_id, id)
     );
 
-    CREATE TABLE IF NOT EXISTS session_event (
-      seq INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id TEXT NOT NULL,
-      type TEXT NOT NULL,
-      data TEXT NOT NULL,
-      ts INTEGER NOT NULL
-    );
-
 	    CREATE TABLE IF NOT EXISTS mutation_audit (
       id TEXT PRIMARY KEY NOT NULL,
       created_at INTEGER NOT NULL,
@@ -463,7 +455,6 @@ function applySchema(db: SqliteDatabase): void {
     CREATE INDEX IF NOT EXISTS runtime_session_project_idx ON runtime_session(project_id, updated_at);
     CREATE INDEX IF NOT EXISTS agent_member_user_idx ON agent_member(user_id, created_at);
 	    CREATE INDEX IF NOT EXISTS chat_message_session_idx ON chat_message(session_id, created_at);
-	    CREATE INDEX IF NOT EXISTS session_event_session_idx ON session_event(session_id, seq);
 	    CREATE INDEX IF NOT EXISTS mutation_audit_created_idx ON mutation_audit(created_at DESC, id DESC);
     CREATE INDEX IF NOT EXISTS mutation_audit_operation_idx ON mutation_audit(operation, created_at DESC);
     CREATE INDEX IF NOT EXISTS mutation_audit_entity_idx ON mutation_audit(entity_kind, entity_id, created_at DESC);
@@ -927,60 +918,6 @@ export function createLocalMetadataStore(dataDir: string) {
       db.close();
       await chmod(path, 0o600).catch(() => undefined);
     }
-  }
-
-  async function appendSessionEvent(
-    sessionId: string,
-    event: { type: string; data: unknown; ts: number },
-  ): Promise<void> {
-    await withDb((db) => {
-      db.prepare(
-        `INSERT INTO session_event (session_id, type, data, ts) VALUES (?, ?, ?, ?)`,
-      ).run(sessionId, event.type, JSON.stringify(event.data), event.ts);
-    });
-  }
-
-  async function listSessionEvents(sessionId: string): Promise<
-    Array<{
-      seq: number;
-      type: string;
-      data: unknown;
-      ts: number;
-    }>
-  > {
-    return withDb((db) =>
-      db
-        .prepare(
-          `SELECT seq, type, data, ts FROM session_event WHERE session_id = ? ORDER BY seq ASC`,
-        )
-        .all(sessionId)
-        .map((row) => ({
-          seq: rowNumber(row, "seq"),
-          type: rowString(row, "type"),
-          data: parseJson<unknown>(row.data, null),
-          ts: rowNumber(row, "ts"),
-        })),
-    );
-  }
-
-  async function renameSessionEvents(
-    previousSessionId: string,
-    nextSessionId: string,
-  ): Promise<void> {
-    if (previousSessionId === nextSessionId) return;
-    await withDb((db) => {
-      db.prepare(
-        `UPDATE session_event SET session_id = ? WHERE session_id = ?`,
-      ).run(nextSessionId, previousSessionId);
-    });
-  }
-
-  async function deleteSessionEvents(sessionId: string): Promise<void> {
-    await withDb((db) => {
-      db.prepare(`DELETE FROM session_event WHERE session_id = ?`).run(
-        sessionId,
-      );
-    });
   }
 
   function insertMutationAudit(
@@ -2398,10 +2335,6 @@ export function createLocalMetadataStore(dataDir: string) {
     path,
     load,
     save,
-    appendSessionEvent,
-    listSessionEvents,
-    renameSessionEvents,
-    deleteSessionEvents,
     readGlobalAsset,
     listGlobalAssets,
     createGlobalAsset,
