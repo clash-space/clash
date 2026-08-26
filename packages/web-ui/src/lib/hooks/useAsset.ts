@@ -183,6 +183,15 @@ export async function getAsset(
   return getOrFetch(projectId, assetId);
 }
 
+/** List the current Host projections for every Asset admitted to a Project. */
+export async function listProjectAssets(
+  projectId: string,
+): Promise<ResolvedAsset[]> {
+  const assets = await projectAssets.list({ projectId });
+  for (const asset of assets) cacheAsset(projectId, asset);
+  return assets;
+}
+
 /** Re-read the current Host projection, replacing any cached availability or URL. */
 export async function refreshAsset(
   projectId: string,

@@ -176,6 +176,7 @@ import {
   trashProjectAsset as trashProjectAssetThroughHost,
   useAsset,
 } from "@clash/web-ui/lib/hooks/useAsset";
+import { subscribeProjectAssetProjection } from "@clash/web-ui/lib/liveProjectAssets";
 import { runtimeApiUrl } from "@clash/web-ui/lib/runtimeConfig";
 import betterAuthClient from "@clash/web-ui/lib/betterAuthClient";
 import {
@@ -1333,6 +1334,9 @@ export default function ProjectEditor({
   const [locallyAddedProjectAssets, setLocallyAddedProjectAssets] = useState<
     ResolvedAsset[]
   >([]);
+  const [syncedProjectAssets, setSyncedProjectAssets] = useState<
+    ResolvedAsset[]
+  >(project.assets ?? []);
   const [globalProjectAssets, setGlobalProjectAssets] = useState<
     ResolvedAsset[]
   >([]);
@@ -1352,9 +1356,25 @@ export default function ProjectEditor({
 
   useEffect(() => {
     setLocallyAddedProjectAssets([]);
+    setSyncedProjectAssets(project.assets ?? []);
     hydratingProjectAssetIdsRef.current.clear();
     activeProjectAssetProjectIdRef.current = project.id;
-  }, [project.id]);
+  }, [project.assets, project.id]);
+
+  useEffect(() => {
+    if (!loroSync.doc) return;
+    return subscribeProjectAssetProjection({
+      doc: loroSync.doc,
+      projectId: project.id,
+      onProjection: (assets) => {
+        if (activeProjectAssetProjectIdRef.current !== project.id) return;
+        setSyncedProjectAssets(assets);
+        setLocallyAddedProjectAssets([]);
+      },
+      onError: (error) =>
+        console.warn("[Project assets] live projection refresh failed", error),
+    });
+  }, [loroSync.doc, project.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3568,7 +3588,7 @@ export default function ProjectEditor({
     [relayoutParent, ungroup],
   );
   const allProjectAssets = useMemo(() => {
-    const persistedAssets = project.assets ?? [];
+    const persistedAssets = syncedProjectAssets;
     const persistedIds = new Set(persistedAssets.map((asset) => asset.id));
     const localById = new Map(
       locallyAddedProjectAssets.map((asset) => [asset.id, asset]),
@@ -3579,7 +3599,7 @@ export default function ProjectEditor({
       ),
       ...persistedAssets.map((asset) => localById.get(asset.id) ?? asset),
     ];
-  }, [locallyAddedProjectAssets, project.assets]);
+  }, [locallyAddedProjectAssets, syncedProjectAssets]);
   const projectAssets = useMemo(
     () =>
       allProjectAssets.filter((asset) => asset.lifecycle.state === "active"),

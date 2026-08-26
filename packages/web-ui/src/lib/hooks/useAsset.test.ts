@@ -7,6 +7,7 @@ import {
   importPersonalGlobalAssetFile,
   importProjectAssetFile,
   invalidateAsset,
+  listProjectAssets,
   listPersonalGlobalAssets,
   publishDirectorStageOutputFile,
   publishProjectAssetToPersonalLibrary,
@@ -455,6 +456,22 @@ describe("useAsset", () => {
       admitted,
     );
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("lists Project Asset projections through the canonical Project transport", async () => {
+    const asset = makeAsset();
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ assets: [asset] }))
+      .mockResolvedValueOnce(jsonResponse(asset));
+
+    await expect(listProjectAssets("project-1")).resolves.toEqual([asset]);
+    await expect(getAsset("project-1", asset.id)).resolves.toEqual(asset);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/projects/project-1/assets",
+      expect.objectContaining({ method: "GET" }),
+    );
   });
 
   it("uses the personal Global client for list, import, and publish", async () => {
