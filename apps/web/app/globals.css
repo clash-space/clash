@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@openma/common/chat-ui/styles.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -4932,6 +4933,130 @@ html.dark .clash-download-card {
   }
 }
 
+[data-chat-surface="main"] {
+  --surface-panel: var(--clash-warm-surface);
+  --chat-fg: var(--clash-content-primary);
+  --chat-fg-muted: var(--clash-content-muted);
+  --chat-border: var(--clash-warm-border);
+  --chat-bg-surface: var(--clash-warm-muted);
+  --chat-focus-ring: var(--clash-content-secondary);
+  --chat-interaction-bg-hover: color-mix(
+    in srgb,
+    var(--clash-content-primary) 8%,
+    transparent
+  );
+  --composer-radius: 1rem;
+  --control-height-compact: 28px;
+  --control-icon-size: 14px;
+  --control-bg-hover: color-mix(
+    in srgb,
+    var(--clash-content-primary) 8%,
+    transparent
+  );
+  --chat-turn-content-inset: 32px;
+  --chat-activity-icon-size: var(--control-icon-size);
+  --chat-icon-rail-center: calc(
+    var(--chat-turn-content-inset) + (var(--chat-activity-icon-size) / 2)
+  );
+  --composer-card-border-width: 1px;
+  --composer-card-padding-block: 10px;
+  --composer-section-gap: 6px;
+  --composer-card-padding-inline: var(--composer-card-padding-block);
+  --composer-action-edge-inset: calc(
+    var(--composer-card-border-width) + var(--composer-card-padding-inline)
+  );
+  --composer-footer-padding-inline: var(--composer-action-edge-inset);
+  --composer-frame-padding-inline: calc(
+    var(--chat-icon-rail-center) - var(--composer-action-edge-inset) -
+      (var(--control-height-compact) / 2)
+  );
+  --composer-attachment-icon-size: 16px;
+  --bottom-bar-gap-y: 6px;
+  --composer-footer-gap: calc(var(--bottom-bar-gap-y) - 1px);
+  --composer-card-footer-gap: var(--composer-footer-gap);
+  --composer-body-min-height: 48px;
+  --composer-resting-height: calc(
+    var(--composer-card-border-width) + var(--composer-card-border-width) +
+      var(--composer-card-padding-block) + var(--composer-card-padding-block) +
+      var(--composer-body-min-height) + var(--composer-section-gap) +
+      var(--control-height-compact)
+  );
+  --shadow-input-rest: 0 1px 3px -2px rgb(20 20 20 / 0.14);
+  --font-chat:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+.app-composer-surface {
+  border: var(--composer-card-border-width) solid var(--clash-warm-border);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-input-rest);
+}
+
+.app-rail-surface {
+  background: var(--clash-warm-muted);
+}
+
+.app-selected-surface {
+  background: color-mix(
+    in srgb,
+    var(--clash-content-primary) 8%,
+    var(--clash-warm-muted)
+  );
+}
+
+.sidebar-row-action {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  outline: none;
+  color: var(--clash-content-secondary);
+  background: transparent;
+  transition:
+    color 100ms ease,
+    background-color 100ms ease;
+}
+
+.sidebar-row-action:hover,
+.sidebar-row-action:focus-visible,
+.sidebar-row-action[data-state="open"] {
+  color: var(--clash-content-primary);
+  background: var(--clash-warm-hover);
+}
+
+.composer-control-row-inset {
+  padding-inline: var(--composer-card-padding-inline);
+}
+
+.composer-footer-row-inset {
+  padding-inline: var(--composer-footer-padding-inline);
+}
+
+.composer-stack-card {
+  margin-bottom: var(--composer-card-footer-gap) !important;
+}
+
+.composer-card {
+  min-height: var(--composer-resting-height);
+  box-shadow: var(--shadow-input-rest);
+}
+
+.composer-radius {
+  border-radius: var(--composer-radius);
+}
+
+[data-session-turn-prompt],
+[data-session-turn-answer] {
+  font-family: var(--font-chat);
+  font-kerning: normal;
+}
+
 .clash-chat-input-surface {
   position: relative;
   isolation: isolate;
@@ -4956,6 +5081,39 @@ html.dark .clash-download-card {
   border-color: var(--clash-content-muted);
   background: var(--clash-warm-surface);
   box-shadow: var(--clash-workspace-surface-shadow);
+}
+
+[data-chat-surface="main"] .clash-chat-input-surface.composer-card,
+[data-chat-surface="main"] .clash-chat-input-surface.composer-card:hover,
+[data-chat-surface="main"]
+  .clash-chat-input-surface.composer-card:has(
+    .clash-chat-input-editor:focus-within
+  ) {
+  border-color: var(--clash-warm-border);
+  border-radius: var(--composer-radius);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-input-rest);
+}
+
+[data-chat-surface="main"] .composer-card .clash-chat-input-toolbar-row {
+  display: flex;
+}
+
+[data-chat-surface="main"] .composer-card .clash-chat-input-editor {
+  min-height: var(--composer-body-min-height);
+  font-family: var(--font-chat);
+  font-size: 14px;
+  line-height: 1.75rem;
+}
+
+/* Backchat's textarea starts on the composer's shared body inset. Milkdown's
+   generic wrapper padding would add a second inset and move both the caret and
+   placeholder down and to the right. */
+[data-chat-surface="main"]
+  .composer-card
+  .clash-chat-input-editor--default
+  .milkdown-editor-wrapper {
+  padding: 0 !important;
 }
 
 .clash-chat-input-actions {

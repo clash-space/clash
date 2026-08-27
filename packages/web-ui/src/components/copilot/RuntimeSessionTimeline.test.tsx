@@ -113,7 +113,7 @@ describe("RuntimeSessionTimeline", () => {
     );
     expect(screen.getByText("Hi! What can I help you with?")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /已工作/ }));
-    fireEvent.click(screen.getByRole("button", { name: "已思考" }));
+    fireEvent.click(screen.getByRole("button", { name: /已思考 0 秒/ }));
     expect(screen.getByText("Preparing simple hello response")).toBeVisible();
     expect(document.querySelector('[data-thought-block="true"]')).toBeTruthy();
   });
@@ -184,7 +184,7 @@ describe("RuntimeSessionTimeline", () => {
     expect(
       document.querySelector('[data-assistant-section="answer"]'),
     ).toHaveTextContent("Done");
-    fireEvent.click(screen.getByRole("button", { name: "已思考" }));
+    fireEvent.click(screen.getByRole("button", { name: /已思考 0 秒/ }));
     expect(screen.getByText("Checking the runtime")).toBeVisible();
     expect(
       document.querySelector('[data-testid="acp-message-list"]'),

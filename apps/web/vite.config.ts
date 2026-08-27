@@ -23,6 +23,10 @@ export const DEV_SOURCE_ALIASES = [
   // transform in the module graph. Source aliases make HMR observe the files
   // that actually changed and keep generated output out of the dev runtime.
   {
+    find: /^@openma\/common\/chat-ui\/styles\.css$/,
+    replacement: resolve(openmaCommonRoot, "src/chat-ui/styles.css"),
+  },
+  {
     find: /^@openma\/common\/chat-ui$/,
     replacement: resolve(openmaCommonRoot, "src/chat-ui/index.ts"),
   },

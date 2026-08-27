@@ -44,7 +44,11 @@ describe("AcpInlineRenderers", () => {
       "data-chat-typography",
       "body",
     );
-    expect(screen.getByRole("list")).toHaveClass("list-outside", "pl-5");
+    expect(screen.getByRole("list")).toHaveAttribute(
+      "data-streamdown",
+      "unordered-list",
+    );
+    expect(document.querySelector(".chat-markdown")).toBeTruthy();
   });
 
   it("renders a canonical tool entry without creating a message timeline", () => {

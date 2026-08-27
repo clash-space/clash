@@ -4,11 +4,14 @@
 
 import type { AgentUIToolItem } from "@openma/common/agent-ui";
 import {
+  CHAT_ASSISTANT_MARKDOWN_CLASS,
+  ChatMarkdown,
+} from "@openma/common/chat-ui";
+import {
   withMcpIdentity,
   type AcpToolCallContent,
   type AcpToolCallPart,
 } from "@clash/web-ui/lib/acpEvents";
-import { Response } from "../ai-elements";
 import { cn } from "../ai-elements/utils";
 import { CodeBlock } from "../ai-elements/code-block";
 import {
@@ -996,16 +999,7 @@ function AssistantText({
       data-chat-typography={process ? "meta" : "body"}
       className="max-w-[min(64rem,100%)]"
     >
-      <Response
-        className={cn(
-          "font-sans prose-code:!rounded-none prose-code:!bg-transparent prose-code:!px-0 prose-code:!py-0 prose-code:!font-sans prose-code:!font-medium [&_code]:!rounded-none [&_code]:!bg-transparent [&_code]:!px-0 [&_code]:!py-0 [&_code]:!font-sans [&_code]:!font-medium [&_code]:!tracking-normal",
-          process
-            ? "text-[13px] leading-5 text-neutral-500 prose-p:text-neutral-500 prose-li:text-neutral-500 prose-strong:font-medium prose-strong:text-neutral-600 prose-code:!text-neutral-600 dark:text-stone-300 dark:prose-p:text-stone-300 dark:prose-li:text-stone-300 dark:prose-strong:text-stone-200 dark:prose-code:!text-stone-200 dark:[&_code]:!text-stone-200"
-            : "text-[14px] leading-[1.55] text-[#05070d] prose-p:text-[#05070d] prose-li:text-[#05070d] prose-strong:text-[#05070d] prose-code:!text-[#05070d] [&_code]:!text-[#05070d] dark:text-slate-50 dark:prose-p:text-slate-50 dark:prose-li:text-slate-50 dark:prose-strong:text-slate-50 dark:prose-code:!text-slate-50 dark:[&_code]:!text-slate-50",
-        )}
-      >
-        {text}
-      </Response>
+      <ChatMarkdown text={text} className={CHAT_ASSISTANT_MARKDOWN_CLASS} />
     </div>
   );
 }

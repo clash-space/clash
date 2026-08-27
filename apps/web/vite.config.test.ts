@@ -115,6 +115,7 @@ describe("Vite workspace source routing", () => {
       const importer = resolve(testDirectory, "app/main.tsx");
       const entrypoints = [
         ["@openma/common/chat-ui", "/src/chat-ui/index.ts"],
+        ["@openma/common/chat-ui/styles.css", "/src/chat-ui/styles.css"],
         ["@openma/common/agent-ui", "/src/agent-ui/index.ts"],
         ["@openma/common/agent-ui/react", "/src/agent-ui/react.tsx"],
         ["@openma/common/protocol/acp", "/src/protocol/acp/index.ts"],

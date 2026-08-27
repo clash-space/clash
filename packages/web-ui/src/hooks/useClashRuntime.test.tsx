@@ -894,6 +894,215 @@ describe("useClashRuntime", () => {
     });
   });
 
+  it("reconnects a draft-created session for a follow-up instead of creating a second session", async () => {
+    let createCalls = 0;
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+          return Response.json({ runtimes: [] });
+        }
+        if (
+          url.endsWith("/api/v1/runtimes/desktop-local/sessions") &&
+          init?.method === "POST"
+        ) {
+          createCalls += 1;
+          return Response.json({ session_id: `local-session-${createCalls}` });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    const { result } = renderHook(() => useClashRuntime());
+    act(() => {
+      result.current.startDraft("desktop-local", undefined, {
+        agentId: "codex-acp",
+      });
+      result.current.sendMessage("first");
+    });
+
+    await waitFor(() => expect(result.current.sessionId).toBe("local-session-1"));
+    const firstSocket = FakeWebSocket.instances.at(-1)!;
+    act(() => {
+      firstSocket.onmessage?.({
+        data: JSON.stringify({
+          type: "session.ready",
+          session_id: "local-session-1",
+          acp_session_id: "acp-session-1",
+        }),
+      });
+    });
+    const firstPrompt = JSON.parse(firstSocket.sent.at(-1)!);
+    act(() => {
+      firstSocket.onmessage?.({
+        data: JSON.stringify({
+          type: "session.complete",
+          session_id: "local-session-1",
+          turn_id: firstPrompt.turn_id,
+        }),
+      });
+      firstSocket.close();
+      result.current.sendMessage("follow up");
+    });
+
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
+    expect(createCalls).toBe(1);
+    expect(result.current.sessionId).toBe("local-session-1");
+    const reconnect = FakeWebSocket.instances.at(-1)!;
+    expect(reconnect.url).toContain("/local-session-1/_stream");
+
+    act(() => {
+      reconnect.onmessage?.({
+        data: JSON.stringify({
+          type: "session.ready",
+          session_id: "local-session-1",
+          acp_session_id: "acp-session-1",
+        }),
+      });
+    });
+    expect(
+      reconnect.sent.map((frame) => JSON.parse(frame).text).filter(Boolean),
+    ).toEqual(["follow up"]);
+    expect(
+      result.current.messages
+        .filter((message) => message.role === "user")
+        .map((message) => message.parts[0]),
+    ).toEqual([
+      { type: "text", text: "first" },
+      { type: "text", text: "follow up" },
+    ]);
+  });
+
+  it("restores the in-memory transcript when switching back to an attached session", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+          return Response.json({ runtimes: [] });
+        }
+        if (
+          url.endsWith("/api/v1/runtimes/desktop-local/sessions") &&
+          init?.method === "POST"
+        ) {
+          return Response.json({ session_id: "session-one" });
+        }
+        if (url.endsWith("/_attach") && init?.method === "POST") {
+          return Response.json({ attached: true });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    const { result } = renderHook(() => useClashRuntime());
+    await act(async () => {
+      await result.current.select("desktop-local", undefined, {
+        agentId: "codex-acp",
+      });
+    });
+    const firstSocket = FakeWebSocket.instances.at(-1)!;
+    act(() => {
+      firstSocket.onmessage?.({
+        data: JSON.stringify({
+          type: "session.ready",
+          session_id: "session-one",
+          acp_session_id: "acp-one",
+        }),
+      });
+      result.current.sendMessage("remember this");
+    });
+    const prompt = JSON.parse(firstSocket.sent.at(-1)!);
+    act(() => {
+      firstSocket.onmessage?.({
+        data: JSON.stringify({
+          type: "session.event",
+          session_id: "session-one",
+          turn_id: prompt.turn_id,
+          event: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "remembered" },
+          },
+        }),
+      });
+      firstSocket.onmessage?.({
+        data: JSON.stringify({
+          type: "session.complete",
+          session_id: "session-one",
+          turn_id: prompt.turn_id,
+        }),
+      });
+    });
+
+    const firstSession = result.current.currentSession!;
+    await act(async () => {
+      await result.current.attachSession({
+        id: "session-two",
+        threadId: "session-two",
+        type: "runtime",
+        runtimeId: "desktop-local",
+        agentId: "codex-acp",
+        status: "active",
+      });
+    });
+    expect(result.current.messages).toEqual([]);
+
+    await act(async () => {
+      await result.current.attachSession(firstSession);
+    });
+    expect(
+      result.current.messages.map((message) => ({
+        role: message.role,
+        text: message.parts.map((part: any) => part.text ?? "").join(""),
+      })),
+    ).toEqual([
+      { role: "user", text: "remember this" },
+      { role: "assistant", text: "remembered" },
+    ]);
+  });
+
+  it("keeps an attached session visibly running while session.ready is pending", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+          return Response.json({ runtimes: [] });
+        }
+        if (url.endsWith("/_attach") && init?.method === "POST") {
+          return Response.json({ attached: true });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    const { result } = renderHook(() => useClashRuntime());
+    await act(async () => {
+      await result.current.attachSession({
+        id: "session-pending-ready",
+        threadId: "session-pending-ready",
+        type: "runtime",
+        runtimeId: "desktop-local",
+        agentId: "codex-acp",
+        status: "active",
+      });
+    });
+
+    act(() => {
+      result.current.sendMessage("do not look stuck");
+    });
+
+    const activeTurnId = result.current.agentUIState.activeTurnId;
+    expect(activeTurnId).toBeTruthy();
+    expect(result.current.agentUIState.turns[activeTurnId!]?.status).toBe(
+      "running",
+    );
+    expect(FakeWebSocket.instances.at(-1)?.sent).toEqual([]);
+  });
+
   it("shows the runtime create error field from structured local API failures", async () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {

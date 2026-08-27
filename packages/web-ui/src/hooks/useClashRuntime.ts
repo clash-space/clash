@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { visibleUserPromptText } from "@clash/shared-runtime";
 import {
+  createAgentUISessionRegistry,
   createAgentUIStore,
   type AgentUIState,
   type AgentUIStore,
@@ -1117,6 +1118,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const [transientStatus, setTransientStatus] =
     useState<RuntimeTransientStatus | null>(null);
   const [diagnostics, setDiagnostics] = useState<RuntimeDiagnostic[]>([]);
+  const [agentUISessions] = useState(() => createAgentUISessionRegistry());
   const [agentUIStore, setAgentUIStoreState] = useState<AgentUIStore>(() =>
     createAgentUIStore("draft"),
   );
@@ -1234,12 +1236,12 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     (next: string | null) => {
       sessionIdRef.current = next;
       setSessionId(next);
-      const resolved = next ?? "draft";
-      if (agentUIStoreRef.current.getState().sessionId !== resolved) {
-        replaceAgentUIStore(createAgentUIStore(resolved));
-      }
+      const nextStore = next
+        ? agentUISessions.get(next)
+        : createAgentUIStore("draft");
+      if (agentUIStoreRef.current !== nextStore) replaceAgentUIStore(nextStore);
     },
-    [replaceAgentUIStore],
+    [agentUISessions, replaceAgentUIStore],
   );
 
   const setRuntimeStatus = useCallback(
@@ -2233,6 +2235,10 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         }
         const json = (await res.json()) as CreateSessionResponse;
         if (sessionOperationSeq.current !== operation) return;
+        // The draft is a one-shot session creation intent. Keeping it after a
+        // successful create makes a later socket drop turn the next prompt
+        // into another POST /sessions instead of reconnecting this session.
+        draftRef.current = null;
         setRuntimeSessionId(json.session_id);
         const pendingPrompt = pendingPromptRef.current;
         if (pendingPrompt) {
@@ -2348,6 +2354,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     async (session: RuntimeSessionInfo) => {
       const operation = ++sessionOperationSeq.current;
       resetRuntimeState();
+      draftRef.current = null;
       const runtime = runtimes.find(
         (candidate) => candidate.id === session.runtimeId,
       );
@@ -2414,6 +2421,19 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       }
 
       if (!ws || ws.readyState !== WebSocket.OPEN) {
+        const currentSessionId = sessionIdRef.current;
+        if (currentSessionId) {
+          pendingPromptRef.current = {
+            turnId: prompt.turnId,
+            text: prompt.text,
+          };
+          appendUserMessage(prompt.turnId, prompt.text);
+          dispatchRuntimeEvent("session.running", prompt.turnId, {});
+          setTransientStatus(null);
+          setRuntimeStatus("connecting");
+          openSessionStream(currentSessionId);
+          return;
+        }
         setErrorMessage("not connected");
         setRuntimeStatus("error");
         return;
@@ -2427,6 +2447,8 @@ export function useClashRuntime(): UseClashRuntimeReturn {
             text: prompt.text,
           };
           appendUserMessage(prompt.turnId, prompt.text);
+          dispatchRuntimeEvent("session.running", prompt.turnId, {});
+          setTransientStatus(null);
         } else {
           appendUserMessage(prompt.turnId, prompt.text);
           enqueuePrompt(prompt);
@@ -2450,6 +2472,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       dispatchRuntimeEvent,
       enqueuePrompt,
       makePrompt,
+      openSessionStream,
       sendPromptFrame,
       sendQueuedPromptFrame,
     ],

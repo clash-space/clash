@@ -12,8 +12,11 @@ import {
   useAgentUIState,
 } from "@openma/common/agent-ui/react";
 import {
+  CHAT_ASSISTANT_MARKDOWN_CLASS,
+  CHAT_THOUGHT_MARKDOWN_CLASS,
   AgentChatView,
   AgentUITurnView,
+  ChatMarkdown,
   ChatThoughtEventRow,
   projectChatThoughtEvent,
   type AgentChatViewSlots,
@@ -118,7 +121,7 @@ function RuntimeTurn({
         workingFor: (seconds) => `正在工作 ${seconds} 秒`,
         workedFor: (seconds) => `已工作 ${seconds} 秒`,
         thinking: "正在思考",
-        thoughtFor: () => "已思考",
+        thoughtFor: (seconds) => `已思考 ${seconds} 秒`,
         toolActivity: describeTool,
         toolRunSummary: (tools) => `已执行 ${tools.length} 项操作`,
       }}
@@ -135,11 +138,7 @@ function RuntimeTurn({
               kind="assistant"
               prefixSkip={prefixSkip}
               paceReplay={section === "process"}
-              className={
-                section === "process"
-                  ? "text-[13px] text-neutral-500"
-                  : "text-[14px]"
-              }
+              className={CHAT_ASSISTANT_MARKDOWN_CLASS}
             />
           ) : (
             <AcpAssistantTextInline text={item.text} section={section} />
@@ -159,7 +158,7 @@ function RuntimeTurn({
               live={live}
               text={item.text}
               liveFallback="正在思考"
-              completedLabel="已思考"
+              completedLabel={`已思考 ${itemContentNumber(item, "durationSeconds")} 秒`}
               projection={projection}
               renderBody={() =>
                 live ? (
@@ -169,12 +168,13 @@ function RuntimeTurn({
                     kind="thought"
                     prefixSkip={prefixSkip}
                     paceReplay
-                    className="text-[13px] text-neutral-500"
+                    className={CHAT_THOUGHT_MARKDOWN_CLASS}
                   />
                 ) : (
-                  <div className="whitespace-pre-wrap text-[13px] leading-6 text-neutral-500">
-                    {item.text}
-                  </div>
+                  <ChatMarkdown
+                    text={item.text}
+                    className={CHAT_THOUGHT_MARKDOWN_CLASS}
+                  />
                 )
               }
             />
@@ -227,7 +227,7 @@ function projectClashThought({
     text: item.text,
     live,
     liveFallback: "正在思考",
-    completedLabel: "已思考",
+    completedLabel: `已思考 ${itemContentNumber(item, "durationSeconds")} 秒`,
     renderLiveSummary: (fallback) => (
       <AgentUIStreamingThoughtProjection
         store={store}
@@ -238,6 +238,15 @@ function projectClashThought({
       />
     ),
   });
+}
+
+function itemContentNumber(
+  item: AgentUIMessageItem,
+  key: "durationSeconds",
+): number {
+  if (!item.content || typeof item.content !== "object") return 0;
+  const value = (item.content as Record<string, unknown>)[key];
+  return typeof value === "number" ? value : 0;
 }
 
 function describeTool(tool: AgentUIToolItem): ReactNode {
