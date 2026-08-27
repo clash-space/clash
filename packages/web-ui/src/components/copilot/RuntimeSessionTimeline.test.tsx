@@ -237,11 +237,16 @@ describe("RuntimeSessionTimeline", () => {
     fireEvent.click(screen.getByRole("button", { name: /已工作/ }));
     const group = document.querySelector('[data-tool-group-size="4"]');
     expect(group).toBeTruthy();
-    expect(screen.queryAllByTestId("acp-tool-row")).toHaveLength(0);
+    expect(screen.getAllByTestId("acp-tool-row")).toHaveLength(4);
+    const groupBody = group?.querySelector<HTMLElement>(":scope > div");
+    expect(groupBody).toHaveAttribute("hidden");
+    expect(groupBody).toHaveAttribute("inert");
 
     const trigger = group?.querySelector("button");
     expect(trigger).toBeTruthy();
     fireEvent.click(trigger!);
+    expect(groupBody).not.toHaveAttribute("hidden");
+    expect(groupBody).not.toHaveAttribute("inert");
     expect(screen.getAllByTestId("acp-tool-row")).toHaveLength(4);
   });
 });
