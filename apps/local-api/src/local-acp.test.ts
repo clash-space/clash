@@ -5103,6 +5103,87 @@ describe("local ACP adapter", () => {
     }
   });
 
+  it("records the Backchat event stream for prompt, agent output, and terminal state", async () => {
+    let sendFromManager!: SessionSender;
+    const adapter = createLocalAcpAdapter({
+      detectAgents: async () => [
+        {
+          id: "codex-acp",
+          label: "Codex",
+          spec: { command: "codex-acp" },
+        },
+      ],
+      createSessionId: () => "local-acp-session-history",
+      createSessionManager: (send) => {
+        sendFromManager = send;
+        return {
+          start: vi.fn(),
+          prompt: vi.fn(async ({ session_id, turn_id }) => {
+            sendFromManager({
+              type: "session.event",
+              session_id,
+              turn_id,
+              event: {
+                sessionUpdate: "agent_message_chunk",
+                content: { type: "text", text: "restored" },
+              },
+            });
+            sendFromManager({ type: "session.complete", session_id, turn_id });
+          }),
+          cancel: vi.fn(),
+          dispose: vi.fn(),
+        };
+      },
+    });
+    await adapter.createSession({
+      runtimeId: "desktop-local",
+      agentId: "codex-acp",
+      projectId: "project-history",
+    });
+
+    const socket = new FakeSocket();
+    adapter.bindSessionSocket("local-acp-session-history", socket as never);
+    socket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "prompt",
+          turn_id: "turn-history",
+          text: "restore me",
+        }),
+      ),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const history = await adapter.listSessionEvents(
+      "local-acp-session-history",
+    );
+    expect(history?.events.map(({ seq, type, data }) => ({ seq, type, data })))
+      .toEqual([
+        {
+          seq: 1,
+          type: "user_prompt",
+          data: { turn_id: "turn-history", text: "restore me" },
+        },
+        {
+          seq: 2,
+          type: "session.event",
+          data: {
+            turn_id: "turn-history",
+            event: {
+              sessionUpdate: "agent_message_chunk",
+              content: { type: "text", text: "restored" },
+            },
+          },
+        },
+        {
+          seq: 3,
+          type: "turn_completed",
+          data: { turn_id: "turn-history" },
+        },
+      ]);
+  });
+
   it("defers an ACP restart until the active turn completes", async () => {
     const promptStarted = deferred();
     const releasePrompt = deferred();

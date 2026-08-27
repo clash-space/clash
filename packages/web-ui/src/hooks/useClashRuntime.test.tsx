@@ -3311,7 +3311,7 @@ describe("useClashRuntime", () => {
     expect(result.current.currentSession?.acpSessionId).toBeUndefined();
   });
 
-  it("attaches an existing runtime session without creating a new ACP session", async () => {
+  it("reattaches a historical session and restores its persisted transcript", async () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
@@ -3384,6 +3384,7 @@ describe("useClashRuntime", () => {
       await result.current.attachSession({
         id: "local-session-old",
         threadId: "local-session-old",
+        title: "New session",
         type: "runtime",
         projectId: "project-one",
         runtimeId: "desktop-local",
@@ -3412,14 +3413,26 @@ describe("useClashRuntime", () => {
     expect(result.current.selectedRuntimeId).toBe("desktop-local");
     expect(result.current.selectedAgentId).toBe("codex-acp");
     expect(result.current.currentSession?.threadId).toBe("local-session-old");
-    expect(result.current.messages).toEqual([]);
+    expect(result.current.currentSession?.title).toBe("Run pwd");
+    expect(result.current.messages).toEqual([
+      {
+        id: "user-turn-old",
+        role: "user",
+        parts: [{ type: "text", text: "Run pwd" }],
+      },
+      {
+        id: "asst-turn-old",
+        role: "assistant",
+        parts: [{ type: "text", text: "/Users/xiaoyang/project" }],
+      },
+    ]);
     expect(
       fetchMock.mock.calls.some(([input]) =>
         String(input).endsWith(
           "/api/v1/local-sessions/local-session-old/events",
         ),
       ),
-    ).toBe(false);
+    ).toBe(true);
     const stream = FakeWebSocket.instances.at(-1)!;
     expect(stream.url).toContain(
       "/api/v1/local-sessions/local-session-old/_stream",
@@ -3451,9 +3464,10 @@ describe("useClashRuntime", () => {
     });
 
     expect(result.current.messages.map((message) => message.role)).toEqual([
+      "user",
       "assistant",
     ]);
-    expect(result.current.messages.at(0)?.parts).toEqual([
+    expect(result.current.messages.at(1)?.parts).toEqual([
       { type: "text", text: "/Users/xiaoyang/project" },
     ]);
   });
@@ -3519,7 +3533,7 @@ describe("useClashRuntime", () => {
     );
   });
 
-  it("keeps attach empty and connecting while ACP restore is still pending", async () => {
+  it("shows restored transcript while ACP process restore is still pending", async () => {
     let resolveAttach: ((response: Response) => void) | null = null;
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -3611,14 +3625,20 @@ describe("useClashRuntime", () => {
       expect(result.current.sessionId).toBe("local-session-slow");
     });
     expect(result.current.status).toBe("connecting");
-    expect(result.current.messages).toEqual([]);
+    expect(result.current.messages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+    ]);
+    expect(result.current.messages.at(1)?.parts).toEqual([
+      { type: "text", text: "pong" },
+    ]);
     expect(
       fetchMock.mock.calls.some(([input]) =>
         String(input).endsWith(
           "/api/v1/local-sessions/local-session-slow/events",
         ),
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(FakeWebSocket.instances).toHaveLength(0);
 
     await act(async () => {
@@ -3637,7 +3657,7 @@ describe("useClashRuntime", () => {
     });
   });
 
-  it("never requests persisted history or runtime backlog during attach", async () => {
+  it("continues live attach when persisted history is unavailable", async () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
@@ -3694,7 +3714,7 @@ describe("useClashRuntime", () => {
           "/api/v1/local-sessions/local-session-live/events",
         ),
       ),
-    ).toBe(false);
+    ).toBe(true);
 
     act(() => {
       stream.onmessage?.({
@@ -3807,7 +3827,15 @@ describe("useClashRuntime", () => {
       });
     });
 
-    expect(result.current.agentUIState.turnOrder).toEqual([]);
+    expect(result.current.agentUIState.turnOrder).toEqual(["turn-1"]);
+    expect(result.current.agentUIState.turns["turn-1"]).toMatchObject({
+      status: "running",
+      items: [
+        { kind: "message", role: "user", text: "Inspect" },
+        { kind: "thinking", role: "assistant", text: "Planning" },
+        { kind: "tool", id: "tool-1", title: "Read project" },
+      ],
+    });
 
     const stream = FakeWebSocket.instances.at(-1)!;
     act(() => {

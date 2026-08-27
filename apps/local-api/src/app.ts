@@ -56,6 +56,7 @@ import {
   createBoundedRetryPolicy,
   defaultRuntimeCapabilities,
   durableRunIdempotencyKey,
+  visibleUserPromptText,
   type DurableRunRecord,
   type ProjectRecoveryPolicy,
 } from "@clash/shared-runtime";
@@ -525,6 +526,23 @@ export interface LocalAcpResumeSession {
   modifiedAt: number;
 }
 
+export interface LocalAcpSessionEvent {
+  seq: number;
+  type: string;
+  data: unknown;
+  ts: number;
+}
+
+export interface LocalAcpSessionEventStore {
+  appendEvent(
+    sessionId: string,
+    event: Omit<LocalAcpSessionEvent, "seq">,
+  ): Promise<void> | void;
+  listSessionEvents(
+    sessionId: string,
+  ): Promise<{ events: LocalAcpSessionEvent[] } | null>;
+}
+
 export interface LocalAcpSessionRuntimeStatus {
   session_id: string;
   harness_id: string;
@@ -609,6 +627,10 @@ export interface LocalAcpAdapter {
     id: string,
     options?: { methodId?: string; values?: Record<string, string> },
   ): Promise<{ harnesses: LocalAcpHarness[] }>;
+  listSessionEvents?(
+    sessionId: string,
+  ): Promise<{ events: LocalAcpSessionEvent[] } | null>;
+  setSessionEventStore?(store: LocalAcpSessionEventStore): void;
   getSessionRuntimeStatus?(
     sessionId: string,
   ): Promise<LocalAcpSessionRuntimeStatus | null>;
@@ -753,6 +775,10 @@ function initialRuntimeSessionTitle(agentTemplateId?: string): string {
   return agentTemplateId
     ? agentTemplateTitle(agentTemplateId)
     : DEFAULT_RUNTIME_SESSION_TITLE;
+}
+
+function truncateRuntimeSessionTitle(prompt: string): string {
+  return prompt.length > 40 ? `${prompt.slice(0, 39)}…` : prompt;
 }
 
 function publicLocalSession(session: LocalSession) {
@@ -901,6 +927,7 @@ async function finalizeRuntimeSessionId(
         : message,
     );
   });
+  await db.renameSessionEvents(temporarySessionId, finalSessionId);
 }
 
 function contentTypeForPath(path: string): string {
@@ -1193,6 +1220,54 @@ function createDb(dataDir: string) {
     return providerStore.listProviderUsageEvents(userId, limit);
   }
 
+  async function appendSessionEvent(
+    sessionId: string,
+    event: Omit<LocalAcpSessionEvent, "seq">,
+  ): Promise<void> {
+    const task = writeQueue
+      .catch(() => undefined)
+      .then(() => metadataStore.appendSessionEvent(sessionId, event));
+    writeQueue = task.then(
+      () => undefined,
+      () => undefined,
+    );
+    return task;
+  }
+
+  async function listSessionEvents(
+    sessionId: string,
+  ): Promise<LocalAcpSessionEvent[]> {
+    await writeQueue.catch(() => undefined);
+    return metadataStore.listSessionEvents(sessionId);
+  }
+
+  async function renameSessionEvents(
+    previousSessionId: string,
+    nextSessionId: string,
+  ): Promise<void> {
+    const task = writeQueue
+      .catch(() => undefined)
+      .then(() =>
+        metadataStore.renameSessionEvents(previousSessionId, nextSessionId),
+      );
+    writeQueue = task.then(
+      () => undefined,
+      () => undefined,
+    );
+    return task;
+  }
+
+  async function deleteSessionEvents(sessionId: string): Promise<void> {
+    const task = writeQueue
+      .catch(() => undefined)
+      .then(() => metadataStore.deleteSessionEvents(sessionId));
+    writeQueue = task.then(
+      () => undefined,
+      () => undefined,
+    );
+    return task;
+  }
+
   return {
     load,
     update,
@@ -1204,6 +1279,62 @@ function createDb(dataDir: string) {
     upsertMetadataAttachmentIndex,
     listMetadataAttachmentIndex,
     listProviderUsageEvents,
+    appendSessionEvent,
+    listSessionEvents,
+    renameSessionEvents,
+    deleteSessionEvents,
+  };
+}
+
+function createLocalSessionEventStore(
+  db: ReturnType<typeof createDb>,
+): LocalAcpSessionEventStore {
+  return {
+    async appendEvent(sessionId, event) {
+      await db.appendSessionEvent(sessionId, event);
+      await db.update((state) => {
+        const session = state.sessions.find(
+          (candidate) => candidate.id === sessionId,
+        );
+        if (!session) return;
+        const data =
+          event.data && typeof event.data === "object" && !Array.isArray(event.data)
+            ? (event.data as Record<string, unknown>)
+            : {};
+        if (event.type === "user_prompt" && typeof data.text === "string") {
+          const text = visibleUserPromptText(data.text);
+          if (
+            text &&
+            (!session.title ||
+              session.title === DEFAULT_RUNTIME_SESSION_TITLE ||
+              (!!session.agentTemplateId &&
+                session.title === agentTemplateTitle(session.agentTemplateId)))
+          ) {
+            session.title = truncateRuntimeSessionTitle(text);
+          }
+        }
+        if (event.type === "turn_failed") session.status = "error";
+        session.updatedAt = nowIso();
+      });
+    },
+    async listSessionEvents(sessionId) {
+      const [events, state] = await Promise.all([
+        db.listSessionEvents(sessionId),
+        db.load(),
+      ]);
+      if (
+        events.length === 0 &&
+        !state.sessions.some((session) => session.id === sessionId)
+      ) {
+        return null;
+      }
+      return {
+        events: events.map((event) => ({
+          ...event,
+          data: structuredClone(event.data),
+        })),
+      };
+    },
   };
 }
 
@@ -3369,6 +3500,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       resolveOptions: async () => [],
     });
   const db = createDb(options.dataDir);
+  const sessionEventStore = createLocalSessionEventStore(db);
+  options.localAcp?.setSessionEventStore?.(sessionEventStore);
   let importedPluginStore:
     Promise<Awaited<ReturnType<typeof openPluginStore>>> | undefined;
   const pluginStoreForImport = () =>
@@ -8720,7 +8853,11 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     } catch (error) {
       const message = formatLocalAcpSessionError(error);
       if (localSessionId) {
-        await updateRuntimeSession(db, localSessionId, { status: "error" });
+        await sessionEventStore.appendEvent(localSessionId, {
+          type: "turn_failed",
+          data: { message },
+          ts: Date.now(),
+        });
       }
       console.error("[local-api] local ACP session create failed:", message);
       const envelope = {
@@ -8762,6 +8899,17 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     return c.json(
       await options.localAcp.listResumeSessions(c.req.param("runtimeId")),
     );
+  });
+
+  app.get("/api/v1/local-sessions/:sessionId/events", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const persisted = await sessionEventStore.listSessionEvents(sessionId);
+    if (persisted) return c.json(persisted);
+    if (!options.localAcp?.listSessionEvents) {
+      return c.json({ error: "not found" }, 404);
+    }
+    const history = await options.localAcp.listSessionEvents(sessionId);
+    return history ? c.json(history) : c.json({ error: "not found" }, 404);
   });
 
   app.get("/api/v1/local-sessions/:sessionId/runtime-status", async (c) => {
@@ -11288,6 +11436,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     if (result.status === 200) {
       const mutation = result.body.mutation as HostMutationRecord | undefined;
       if (mutation?.accepted === true) {
+        await db.deleteSessionEvents(threadId);
         await db.appendMutationAudit(
           mutationAuditRecord({
             mutation,

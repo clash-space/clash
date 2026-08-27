@@ -814,4 +814,60 @@ describe("typed metadata attachment projection index", () => {
     ]);
     expect(await store.listMetadataAttachmentIndex()).toEqual([]);
   });
+
+  it("persists every runtime session event and replays them by append order", async () => {
+    const dataDir = await tempDir();
+    const store = createLocalMetadataStore(dataDir);
+
+    await store.appendSessionEvent("session-history", {
+      type: "user_prompt",
+      data: { turn_id: "turn-history", text: "Inspect" },
+      ts: 1_000,
+    });
+    await store.appendSessionEvent("session-history", {
+      type: "session.event",
+      data: {
+        turn_id: "turn-history",
+        event: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "Done" },
+        },
+      },
+      ts: 1_250,
+    });
+    await store.appendSessionEvent("session-history", {
+      type: "turn_completed",
+      data: { turn_id: "turn-history" },
+      ts: 2_000,
+    });
+
+    expect(await store.listSessionEvents("session-history")).toEqual([
+      expect.objectContaining({ seq: 1, type: "user_prompt", ts: 1_000 }),
+      expect.objectContaining({ seq: 2, type: "session.event", ts: 1_250 }),
+      expect.objectContaining({ seq: 3, type: "turn_completed", ts: 2_000 }),
+    ]);
+  });
+
+  it("moves and deletes the append-only log with its runtime session", async () => {
+    const dataDir = await tempDir();
+    const store = createLocalMetadataStore(dataDir);
+
+    await store.appendSessionEvent("session-temporary", {
+      type: "user_prompt",
+      data: { turn_id: "turn-history", text: "Keep this transcript" },
+      ts: 1_000,
+    });
+
+    await store.renameSessionEvents("session-temporary", "session-final");
+    expect(await store.listSessionEvents("session-temporary")).toEqual([]);
+    expect(await store.listSessionEvents("session-final")).toEqual([
+      expect.objectContaining({
+        type: "user_prompt",
+        data: { turn_id: "turn-history", text: "Keep this transcript" },
+      }),
+    ]);
+
+    await store.deleteSessionEvents("session-final");
+    expect(await store.listSessionEvents("session-final")).toEqual([]);
+  });
 });

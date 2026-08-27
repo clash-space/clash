@@ -3,8 +3,10 @@ import { visibleUserPromptText } from "@clash/shared-runtime";
 import {
   createAgentUISessionRegistry,
   createAgentUIStore,
+  replayAgentUIEventLog,
   type AgentUIState,
   type AgentUIStore,
+  type PersistedAgentUIEvent,
 } from "@openma/common/agent-ui";
 import { useAgentUIState } from "@openma/common/agent-ui/react";
 import { decodeAcpSessionUpdate } from "@openma/common/protocol/acp";
@@ -524,6 +526,85 @@ function canonicalRuntimeEvent({
     occurred_at: occurredAt,
     data,
   }) as OpenMAEvent;
+}
+
+function persistedEventData(value: unknown): Record<string, unknown> {
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value) as unknown;
+    } catch {
+      return {};
+    }
+  }
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function decodePersistedRuntimeEvent(
+  sessionId: string,
+  harness: string | null,
+  row: PersistedAgentUIEvent,
+): OpenMAEvent | readonly OpenMAEvent[] | null {
+  const data = persistedEventData(row.data);
+  const turnId =
+    typeof data.turn_id === "string" && data.turn_id.length > 0
+      ? data.turn_id
+      : undefined;
+  const occurredAt = new Date(row.ts).toISOString();
+  const canonical = (type: string, eventData: unknown, suffix = type) =>
+    canonicalRuntimeEvent({
+      eventId: `clash-history:${row.seq}:${suffix}`,
+      sessionId,
+      turnId,
+      harness,
+      type,
+      occurredAt,
+      data: eventData,
+    });
+
+  if (row.type === "openma_event") {
+    return data as unknown as OpenMAEvent;
+  }
+  if (row.type === "user_prompt" && turnId) {
+    const text = typeof data.text === "string" ? data.text : "";
+    return [
+      canonical("user.message", {
+        message_id: `user-${turnId}`,
+        text,
+      }, "user"),
+      canonical("session.running", {}, "running"),
+    ];
+  }
+  if (row.type === "session.event" && data.event !== undefined) {
+    return decodeAcpSessionUpdate(sessionId, data.event, {
+      eventId: `clash-history:${row.seq}:acp`,
+      occurredAt,
+      ...(turnId ? { turnId } : {}),
+      seq: row.seq,
+      ...(harness ? { harness } : {}),
+    }).event;
+  }
+  if (row.type === "turn_completed" || row.type === "session.complete") {
+    return turnId ? canonical("turn.completed", {}) : null;
+  }
+  if (row.type === "turn_cancelled" || row.type === "session.cancelled") {
+    return turnId ? canonical("turn.cancelled", {}) : null;
+  }
+  if (
+    row.type === "turn_failed" ||
+    row.type === "prompt_error" ||
+    row.type === "session.error"
+  ) {
+    const message =
+      typeof data.message === "string"
+        ? data.message
+        : typeof data.error === "string"
+          ? data.error
+          : "Runtime turn failed";
+    return canonical(turnId ? "turn.failed" : "session.error", { message });
+  }
+  return null;
 }
 
 function appendRuntimeError(
@@ -1189,6 +1270,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
    * this single-session surface uses the same rule by rejecting async work
    * started for an older selection. */
   const sessionOperationSeq = useRef(0);
+  const historyLoadedSessionIds = useRef(new Set<string>());
   const restartSessionRef = useRef<
     ((mode: SessionRestartMode) => Promise<void>) | null
   >(null);
@@ -1255,6 +1337,64 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       setStatus(resolved);
     },
     [],
+  );
+
+  const hydrateRuntimeSessionHistory = useCallback(
+    async (session: RuntimeSessionInfo, operation: number) => {
+      if (historyLoadedSessionIds.current.has(session.id)) return;
+      let response: Response;
+      try {
+        response = await fetch(
+          runtimeApiUrl(
+            `${SESSIONS_BASE}/${encodeURIComponent(session.id)}/events`,
+          ),
+          { credentials: "include" },
+        );
+      } catch {
+        return;
+      }
+      if (
+        !response.ok ||
+        sessionOperationSeq.current !== operation ||
+        sessionIdRef.current !== session.id
+      ) {
+        return;
+      }
+      const payload = (await response.json()) as { events?: unknown };
+      if (!Array.isArray(payload.events)) return;
+      const rows = payload.events.filter(
+        (value): value is PersistedAgentUIEvent =>
+          !!value &&
+          typeof value === "object" &&
+          !Array.isArray(value) &&
+          typeof (value as { seq?: unknown }).seq === "number" &&
+          typeof (value as { type?: unknown }).type === "string" &&
+          typeof (value as { ts?: unknown }).ts === "number",
+      );
+      const store = agentUISessions.get(session.id);
+      replayAgentUIEventLog(store, rows, (row) =>
+        decodePersistedRuntimeEvent(session.id, session.agentId ?? null, row),
+      );
+      historyLoadedSessionIds.current.add(session.id);
+
+      const firstPrompt = [...rows]
+        .sort((left, right) => left.seq - right.seq)
+        .find((row) => row.type === "user_prompt");
+      const title = firstPrompt
+        ? runtimeTitleFromPrompt(
+            String(persistedEventData(firstPrompt.data).text ?? ""),
+          )
+        : null;
+      if (title) {
+        setCurrentSession((current) =>
+          current?.id === session.id &&
+          shouldReplaceRuntimeSessionTitle(current.title)
+            ? { ...current, title }
+            : current,
+        );
+      }
+    },
+    [agentUISessions],
   );
 
   const refresh = useCallback(async (opts: RuntimeProbeOptions = {}) => {
@@ -2372,6 +2512,9 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       acpSessionIdRef.current = session.acpSessionId ?? null;
       setRuntimeStatus("connecting");
 
+      await hydrateRuntimeSessionHistory(session, operation);
+      if (sessionOperationSeq.current !== operation) return;
+
       const attach = await fetch(
         runtimeApiUrl(
           `/api/v1/local-sessions/${encodeURIComponent(session.id)}/_attach`,
@@ -2392,7 +2535,13 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       }
       openSessionStream(session.id);
     },
-    [openSessionStream, resetRuntimeState, runtimes, setRuntimeAgentId],
+    [
+      hydrateRuntimeSessionHistory,
+      openSessionStream,
+      resetRuntimeState,
+      runtimes,
+      setRuntimeAgentId,
+    ],
   );
 
   const sendMessage = useCallback(
