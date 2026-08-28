@@ -35,6 +35,7 @@ import {
 import {
   AcpAssistantTextInline,
   AcpToolInline,
+  pickToolVerb,
   type ClashProjectEntity,
 } from "./AcpInlineRenderers";
 import { UserMessage } from "./UserMessage";
@@ -180,13 +181,13 @@ function RuntimeTurn({
             />
           );
         },
-        projectToolActivity: ({ tool }) => ({
-          leading: isToolRunning(tool) ? (
+        projectToolActivity: ({ tool, live }) => ({
+          leading: live || isToolRunning(tool) ? (
             <Loader2Icon className="chat-activity-icon animate-spin" />
           ) : (
             <ListChecksIcon className="chat-activity-icon" />
           ),
-          summary: describeTool(tool),
+          summary: describeTool(tool, live),
         }),
         projectToolRun: ({ tools }) => ({
           leading: (
@@ -249,8 +250,10 @@ function itemContentNumber(
   return typeof value === "number" ? value : 0;
 }
 
-function describeTool(tool: AgentUIToolItem): ReactNode {
-  return tool.title || tool.name || tool.toolKind || "工具调用";
+function describeTool(tool: AgentUIToolItem, live = false): ReactNode {
+  const target = tool.title || tool.name || tool.toolKind || "工具调用";
+  const status = live ? "in_progress" : tool.status;
+  return `${pickToolVerb(tool.toolKind, status)} ${target}`.trim();
 }
 
 function isToolRunning(tool: AgentUIToolItem): boolean {

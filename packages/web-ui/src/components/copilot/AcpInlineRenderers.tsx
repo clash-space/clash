@@ -94,7 +94,7 @@ function shortPath(path: string): string {
   return path.replace(/^\/Users\/[^/]+/, "~");
 }
 
-function pickToolVerb(
+export function pickToolVerb(
   kind: string | undefined,
   status: string | undefined,
 ): string {

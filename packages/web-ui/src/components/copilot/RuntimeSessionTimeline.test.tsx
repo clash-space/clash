@@ -249,4 +249,52 @@ describe("RuntimeSessionTimeline", () => {
     expect(groupBody).not.toHaveAttribute("inert");
     expect(screen.getAllByTestId("acp-tool-row")).toHaveLength(4);
   });
+
+  it("keeps the completed tail tool visibly live until another event arrives", () => {
+    const store = createAgentUIStore("session-live-tail-tool");
+    dispatch(store, "user-live-tail", "user.message", {
+      message_id: "user-live-tail",
+      text: "Search the project",
+    });
+    dispatch(store, "running-live-tail", "session.running", {});
+    for (const [index, title] of [
+      "components",
+      "renderer",
+      "dialog",
+    ].entries()) {
+      const toolCallId = `search-${index + 1}`;
+      dispatch(store, `${toolCallId}:start`, "tool.started", {
+        tool_call_id: toolCallId,
+        kind: "search",
+        status: "in_progress",
+        title,
+      });
+      dispatch(store, `${toolCallId}:complete`, "tool.completed", {
+        tool_call_id: toolCallId,
+        kind: "search",
+        status: "completed",
+        title,
+      });
+    }
+
+    render(
+      <RuntimeSessionTimeline
+        store={store}
+        agentId="codex-acp"
+        mentionableNodes={[]}
+        clashEntities={[]}
+      />,
+    );
+
+    const group = document.querySelector('[data-tool-group-size="3"]');
+    const trigger = group?.querySelector<HTMLElement>(":scope > button");
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(trigger).toHaveTextContent("搜索中 dialog");
+    expect(trigger?.querySelector(".animate-spin")).toBeTruthy();
+
+    const rows = screen.getAllByTestId("acp-tool-row");
+    expect(rows).toHaveLength(3);
+    expect(rows.at(-1)).toHaveTextContent("已搜索");
+    expect(rows.at(-1)).not.toHaveClass("animate-pulse");
+  });
 });

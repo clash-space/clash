@@ -43,14 +43,19 @@ vi.mock("@clash/web-ui/hooks/useAgentCopilot", () => ({
   useAgentCopilot: mocks.useAgentCopilot,
 }));
 
-vi.mock("./copilot/AcpInlineRenderers", () => ({
-  AcpAssistantTextInline: ({ text }: { text: string }) => (
-    <div data-testid="clash-inline-assistant">{text}</div>
-  ),
-  AcpToolInline: ({ tool }: { tool: { id: string } }) => (
-    <div data-testid="clash-inline-tool" data-tool-call-id={tool.id} />
-  ),
-}));
+vi.mock("./copilot/AcpInlineRenderers", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./copilot/AcpInlineRenderers")>();
+  return {
+    ...actual,
+    AcpAssistantTextInline: ({ text }: { text: string }) => (
+      <div data-testid="clash-inline-assistant">{text}</div>
+    ),
+    AcpToolInline: ({ tool }: { tool: { id: string } }) => (
+      <div data-testid="clash-inline-tool" data-tool-call-id={tool.id} />
+    ),
+  };
+});
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
