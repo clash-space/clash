@@ -13,6 +13,7 @@ import { flushSync } from "react-dom";
 import type { EditorAssetInput } from "@clash/remotion-core";
 import {
   ReactFlow,
+  BezierEdge,
   Background,
   BackgroundVariant,
   MiniMap,
@@ -24,6 +25,8 @@ import {
   Edge,
   Node,
   NodeChange,
+  type EdgeTypes,
+  type OnError,
   type ReactFlowInstance,
   useViewport,
   SelectionMode,
@@ -725,6 +728,25 @@ const nodeTypes = {
   "video-clipper": VideoClipperNode,
   "director-stage": DirectorStageNode,
 };
+
+export const projectCanvasEdgeTypes: EdgeTypes = {
+  "copy-on-write": BezierEdge,
+  reference: BezierEdge,
+};
+
+export function createProjectCanvasErrorHandler(
+  log: (message: string) => void = console.warn,
+): OnError {
+  const seen = new Set<string>();
+  return (id, message) => {
+    const key = `${id}:${message}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    log(`[React Flow ${id}] ${message}`);
+  };
+}
+
+const projectCanvasOnError = createProjectCanvasErrorHandler();
 
 const defaultImageModel = MODEL_CARDS.find((card) => card.kind === "image");
 const directorPanoramaModel = MODEL_CARDS.find(
@@ -6669,6 +6691,8 @@ export default function ProjectEditor({
                                         <ReactFlow
                                           nodes={nodes}
                                           edges={edges}
+                                          edgeTypes={projectCanvasEdgeTypes}
+                                          onError={projectCanvasOnError}
                                           onInit={(instance) => {
                                             reactFlowInstanceRef.current =
                                               instance;

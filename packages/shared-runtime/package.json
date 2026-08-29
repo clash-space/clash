@@ -28,6 +28,11 @@
       "import": "./dist/local-daemon.js",
       "default": "./dist/local-daemon.js"
     },
+    "./observability": {
+      "types": "./src/observability.ts",
+      "import": "./dist/observability.js",
+      "default": "./dist/observability.js"
+    },
     "./generator-readback": {
       "types": "./src/generator-readback.ts",
       "import": "./src/generator-readback.ts",

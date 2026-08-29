@@ -11,7 +11,10 @@ import {
   protocol,
   shell,
 } from "electron";
-import type { MenuItemConstructorOptions } from "electron";
+import type {
+  MenuItemConstructorOptions,
+  WebContentsConsoleMessageEventParams,
+} from "electron";
 
 import {
   directorVideoBytes,
@@ -31,6 +34,7 @@ import {
 } from "../provider-oauth-window";
 import type { DesktopRuntime } from "../runtime";
 import {
+  createWindowRecoveryGate,
   createWindowRegistry,
   ensureNativeWindowControlsVisible,
   recoverDesktopWindow,
@@ -40,6 +44,7 @@ import {
 } from "../windowing";
 import type { DesktopControllerLogger } from "./types";
 import { openExternalHttpUrl } from "../external-url";
+import { createDeduplicatedLogEmitter } from "../stdio-logger";
 
 function contentTypeForPath(path: string): string {
   if (path.endsWith(".html")) return "text/html";
@@ -74,12 +79,18 @@ export function createDesktopWindowController({
   currentRuntime,
   refreshRuntime,
   log,
+  rendererRecoveryPolicy,
 }: {
   moduleDir: string;
   dataDir: string;
   currentRuntime: () => DesktopRuntime;
   refreshRuntime: () => Promise<DesktopRuntime>;
   log: DesktopControllerLogger;
+  rendererRecoveryPolicy?: {
+    maxAttempts: number;
+    windowMs: number;
+    now?: () => number;
+  };
 }) {
   const windowRegistry = createWindowRegistry<BrowserWindow>();
   let captureCount = 0;
@@ -121,8 +132,50 @@ export function createDesktopWindowController({
   }
 
   function bindWindowEvents(window: BrowserWindow): void {
-    window.webContents.on("console-message", (_event, level, message) => {
-      log.info(`[desktop:renderer:${window.id}:${level}] ${message}`);
+    const rendererRecoveryGate = createWindowRecoveryGate({
+      maxAttempts: rendererRecoveryPolicy?.maxAttempts ?? 3,
+      windowMs: rendererRecoveryPolicy?.windowMs ?? 60_000,
+      now: rendererRecoveryPolicy?.now,
+    });
+    const rendererConsole = createDeduplicatedLogEmitter<{
+      level: WebContentsConsoleMessageEventParams["level"];
+      message: string;
+    }>({
+      emit: ({ level, message }) => {
+        const output = `[desktop:renderer:${window.id}:${level}] ${message}`;
+        const logLevel =
+          level === "error" ? "error" : level === "warning" ? "warn" : "info";
+        if (log.event) {
+          log.event(logLevel, "renderer.console", {
+            windowId: window.id,
+            consoleLevel: level,
+            message,
+          });
+        } else {
+          log[logLevel](output);
+        }
+      },
+      emitSuppressed: ({ suppressedCount, distinctCount }) => {
+        if (log.event) {
+          log.event("warn", "renderer.console_suppressed", {
+            windowId: window.id,
+            suppressedCount,
+            distinctCount,
+          });
+        } else {
+          log.warn(
+            `[desktop:renderer:${window.id}] suppressed ${suppressedCount} console messages across ${distinctCount} fingerprints`,
+          );
+        }
+      },
+      keyOf: ({ level, message }) => `${level}:${message}`,
+      maxEventsPerWindow: 100,
+      windowMs: 10_000,
+    });
+    let recoveringRenderer = false;
+
+    window.webContents.on("console-message", ({ level, message }) => {
+      rendererConsole.emit({ level, message });
     });
     window.webContents.on("dom-ready", () => {
       void logRendererState(`window-${window.id}-dom-ready`, window);
@@ -140,8 +193,53 @@ export function createDesktopWindowController({
       log.error(`[desktop:${window.id}] failed to load ${url}: ${code} ${description}`);
     });
     window.webContents.on("render-process-gone", (_event, details) => {
-      log.error(`[desktop:${window.id}] renderer gone: ${JSON.stringify(details)}`);
+      if (log.event) {
+        log.event("error", "renderer.crashed", {
+          windowId: window.id,
+          reason: details.reason,
+          exitCode: details.exitCode,
+        });
+      } else {
+        log.error(`[desktop:${window.id}] renderer gone: ${JSON.stringify(details)}`);
+      }
+      rendererConsole.flush();
+      if (
+        details.reason === "clean-exit" ||
+        recoveringRenderer ||
+        window.isDestroyed()
+      ) {
+        return;
+      }
+      if (!rendererRecoveryGate.tryAcquire()) {
+        if (log.event) {
+          log.event("error", "renderer.recovery_abandoned", {
+            windowId: window.id,
+            reason: "crash_loop",
+          });
+        } else {
+          log.error(
+            `[desktop:${window.id}] renderer recovery abandoned: crash loop`,
+          );
+        }
+        return;
+      }
+      recoveringRenderer = true;
+      void recoverDesktopWindow(window, currentRuntime().webUrl)
+        .catch((error) => {
+          if (log.event) {
+            log.event("error", "renderer.recovery_failed", {
+              windowId: window.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          } else {
+            log.error(`[desktop:${window.id}] renderer recovery failed`, error);
+          }
+        })
+        .finally(() => {
+          recoveringRenderer = false;
+        });
     });
+    window.on("closed", () => rendererConsole.flush());
 
     const captureIntervalMs = Number(process.env.CLASH_DESKTOP_CAPTURE_INTERVAL_MS ?? 0);
     if (captureIntervalMs > 0) {
@@ -172,8 +270,7 @@ export function createDesktopWindowController({
       if (!window.isDestroyed()) window.show();
     });
 
-    await window.loadURL(currentRuntime().webUrl);
-    if (!window.isDestroyed() && !window.isVisible()) window.show();
+    await recoverDesktopWindow(window, currentRuntime().webUrl);
     return window;
   }
 

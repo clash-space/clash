@@ -461,6 +461,32 @@ test("the bundled host is a persistent user daemon rather than an MCP-owned chil
   );
 });
 
+test("the persistent daemon captures bounded structured logs before starting the host", async () => {
+  const entry = await readFile(
+    new URL("./local-api-entry.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.equal(
+    sourceMatches(
+      entry,
+      /createBoundedJsonlLogSink\(\{[\s\S]*?directory:\s*join\([\s\S]*?"logs"[\s\S]*?"local-api"[\s\S]*?filePrefix:\s*"local-api"[\s\S]*?\}\)/,
+    ),
+    true,
+  );
+  assert.equal(
+    sourceMatches(
+      entry,
+      /installProcessStdioCapture\(\{[\s\S]*?component:\s*"local-api"[\s\S]*?sink:[\s\S]*?\}\)/,
+    ),
+    true,
+  );
+  assert.match(entry, /observability\.event\("info",\s*"process\.started"/);
+  assert.match(entry, /observability\.event\("info",\s*"server\.ready"/);
+  assert.match(entry, /observability\.event\("error",\s*"process\.failed"/);
+  assert.match(entry, /observability\.close\(\)/);
+});
+
 test("the persistent daemon loads Remotion only through its bundled Action plugin", async () => {
   const [
     entry,

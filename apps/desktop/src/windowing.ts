@@ -15,6 +15,7 @@ export interface RecoverableDesktopWindow {
   isMinimized(): boolean;
   loadURL(url: string): Promise<unknown>;
   restore(): unknown;
+  maximize(): unknown;
   show(): unknown;
   focus(): unknown;
 }
@@ -23,6 +24,10 @@ export interface WindowRegistry<TWindow extends TrackableWindow> {
   register(window: TWindow): void;
   count(): number;
   all(): TWindow[];
+}
+
+export interface WindowRecoveryGate {
+  tryAcquire(): boolean;
 }
 
 const windowOffset = 28;
@@ -89,6 +94,32 @@ export function shouldCreateWindowOnActivate(openWindowCount: number): boolean {
   return openWindowCount === 0;
 }
 
+export function createWindowRecoveryGate(options: {
+  maxAttempts: number;
+  windowMs: number;
+  now?: () => number;
+}): WindowRecoveryGate {
+  const now = options.now ?? Date.now;
+  const maxAttempts = Math.max(1, options.maxAttempts);
+  const windowMs = Math.max(1, options.windowMs);
+  const attempts: number[] = [];
+
+  return {
+    tryAcquire() {
+      const currentTime = now();
+      while (
+        attempts.length > 0 &&
+        currentTime - (attempts[0] ?? currentTime) >= windowMs
+      ) {
+        attempts.shift();
+      }
+      if (attempts.length >= maxAttempts) return false;
+      attempts.push(currentTime);
+      return true;
+    },
+  };
+}
+
 export async function recoverDesktopWindow(
   window: RecoverableDesktopWindow,
   url: string,
@@ -97,6 +128,7 @@ export async function recoverDesktopWindow(
   await window.loadURL(url);
   if (window.isDestroyed()) return;
   if (window.isMinimized()) window.restore();
+  window.maximize();
   window.show();
   window.focus();
 }

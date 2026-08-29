@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  createWindowRecoveryGate,
   createWindowRegistry,
   ensureNativeWindowControlsVisible,
   recoverDesktopWindow,
@@ -95,6 +96,7 @@ describe("desktop windowing", () => {
           events.push(`load:${url}`);
         },
         restore: () => events.push("restore"),
+        maximize: () => events.push("maximize"),
         show: () => events.push("show"),
         focus: () => events.push("focus"),
       },
@@ -104,9 +106,26 @@ describe("desktop windowing", () => {
     expect(events).toEqual([
       "load:http://127.0.0.1:3001",
       "restore",
+      "maximize",
       "show",
       "focus",
     ]);
+  });
+
+  it("bounds renderer recovery attempts inside the configured time window", () => {
+    let now = 0;
+    const gate = createWindowRecoveryGate({
+      maxAttempts: 2,
+      windowMs: 1_000,
+      now: () => now,
+    });
+
+    expect(gate.tryAcquire()).toBe(true);
+    expect(gate.tryAcquire()).toBe(true);
+    expect(gate.tryAcquire()).toBe(false);
+
+    now = 1_001;
+    expect(gate.tryAcquire()).toBe(true);
   });
 
   it("keeps native macOS window controls visible in hidden title bar mode", () => {

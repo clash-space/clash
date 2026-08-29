@@ -7,15 +7,23 @@ import { configureDesktopHost } from "./controller/host";
 import { createDesktopRuntimeController } from "./controller/runtime";
 import { createDesktopWindowController } from "./controller/windows";
 import { ownDesktopInstance } from "./single-instance";
-import { createDesktopLogger } from "./stdio-logger";
+import { createDesktopFileLogSink, createDesktopLogger } from "./stdio-logger";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
-const desktopLog = createDesktopLogger();
 let recoverOwnedWindow = () => undefined;
 const ownsDesktopInstance = ownDesktopInstance(app, () => recoverOwnedWindow());
 
 if (ownsDesktopInstance) {
   const { dataDir } = configureDesktopHost();
+  const fileSink = createDesktopFileLogSink({
+    directory: app.getPath("logs"),
+    maxBytes: 5 * 1024 * 1024,
+    maxFiles: 5,
+  });
+  const desktopLog = createDesktopLogger(process.stdout, process.stderr, {
+    fileSink,
+  });
+  app.on("will-quit", () => desktopLog.close());
   const runtimeController = createDesktopRuntimeController({
     moduleDir,
     log: desktopLog,
@@ -31,7 +39,9 @@ if (ownsDesktopInstance) {
     void app
       .whenReady()
       .then(() => windowController.recoverWindow())
-      .catch((error) => desktopLog.error("[desktop] failed to recover window", error));
+      .catch((error) =>
+        desktopLog.error("[desktop] failed to recover window", error),
+      );
   };
 
   app.whenReady().then(async () => {

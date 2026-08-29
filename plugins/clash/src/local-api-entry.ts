@@ -2,6 +2,10 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import {
+  createBoundedJsonlLogSink,
+  installProcessStdioCapture,
+} from "@clash/shared-runtime/observability";
+import {
   clashHomeForLocalDataDir,
   createHeadlessDirectorStageRenderer,
   defaultLocalApiDataDir,
@@ -14,17 +18,35 @@ type LocalApiServer = Awaited<ReturnType<typeof startLocalApiServer>>;
 
 let server: LocalApiServer | undefined;
 let stopping = false;
+const dataDir = defaultLocalApiDataDir(process.env);
+const logSink = createBoundedJsonlLogSink({
+  directory: join(clashHomeForLocalDataDir(dataDir), "logs", "local-api"),
+  filePrefix: "local-api",
+  maxBytes: 5 * 1024 * 1024,
+  maxFiles: 5,
+});
+const observability = installProcessStdioCapture({
+  component: "local-api",
+  sink: logSink,
+  maxEventsPerWindow: 200,
+  windowMs: 10_000,
+});
+observability.event("info", "process.started", { pid: process.pid });
 
 async function closeServer(exitCode: number): Promise<void> {
   if (stopping) return;
   stopping = true;
+  observability.event("info", "server.stopping", { exitCode });
   if (!server) {
+    observability.close();
     process.exit(exitCode);
     return;
   }
   await new Promise<void>((resolveClose) => {
     server!.close(() => resolveClose());
   });
+  observability.event("info", "server.stopped", { exitCode });
+  observability.close();
   process.exit(exitCode);
 }
 
@@ -34,6 +56,12 @@ process.once("SIGINT", () => {
 process.once("SIGTERM", () => {
   void closeServer(0);
 });
+process.once("uncaughtExceptionMonitor", (error, origin) => {
+  observability.event("error", "process.uncaught_exception", {
+    origin,
+    error: error.stack ?? error.message,
+  });
+});
 
 async function main(): Promise<void> {
   const startedBy =
@@ -42,7 +70,6 @@ async function main(): Promise<void> {
       : process.env.CLASH_DAEMON_STARTED_BY === "cli"
         ? "cli"
         : "plugin";
-  const dataDir = defaultLocalApiDataDir(process.env);
   const sourceRuntime = process.env.CLASH_SOURCE_RUNTIME === "1";
   const pluginDevelopment = sourceRuntime
     ? await prepareDevelopmentBundledPlugins({
@@ -100,11 +127,20 @@ async function main(): Promise<void> {
       startedBy,
     },
   });
+  observability.event("info", "server.ready", {
+    pid: process.pid,
+    startedBy,
+  });
 }
 
 void main().catch((error) => {
+  observability.event("error", "process.failed", {
+    error:
+      error instanceof Error ? (error.stack ?? error.message) : String(error),
+  });
   console.error(
     error instanceof Error ? (error.stack ?? error.message) : String(error),
   );
+  observability.close();
   process.exit(1);
 });
