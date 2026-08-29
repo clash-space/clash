@@ -93,7 +93,7 @@ describe("desktop Electron runtime", () => {
     const desktopPrepare =
       rootManifest.scripts?.["prepare:desktop-pack"] ?? "";
     const bundledPluginBuild = desktopPrepare.indexOf(
-      "turbo run build --filter='@clash-plugin/*'",
+      'turbo run build --filter="@clash-plugin/*"',
     );
     const hostBuild = desktopPrepare.indexOf(
       "turbo run build --filter=clash --filter=@clash/web --filter=@clash/desktop",
