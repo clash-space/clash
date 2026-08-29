@@ -14,7 +14,7 @@
     "build:package": "turbo run build --filter",
     "dev:package": "turbo run dev --filter",
     "start:desktop": "pnpm build:package @clash/desktop && pnpm --filter @clash/desktop start",
-    "prepare:desktop-pack": "turbo run build --filter=clash --filter=@clash/web --filter=@clash/desktop && pnpm --filter @clash/cli bundle:agents && pnpm --filter @clash/desktop prepare:pack",
+    "prepare:desktop-pack": "turbo run build --filter='@clash-plugin/*' && turbo run build --filter=clash --filter=@clash/web --filter=@clash/desktop && pnpm --filter @clash/cli bundle:agents && pnpm --filter @clash/desktop prepare:pack",
     "pack:desktop:dir": "pnpm prepare:desktop-pack && pnpm --filter @clash/desktop pack:dir",
     "pack:desktop:dmg": "pnpm prepare:desktop-pack && pnpm --filter @clash/desktop pack:dmg",
     "pack:desktop:mac": "pnpm pack:desktop:mac:arm64",

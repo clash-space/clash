@@ -90,6 +90,16 @@ describe("desktop Electron runtime", () => {
     expect(rootManifest.scripts?.["prepare:desktop-pack"] ?? "").toContain(
       "pnpm --filter @clash/desktop prepare:pack",
     );
+    const desktopPrepare =
+      rootManifest.scripts?.["prepare:desktop-pack"] ?? "";
+    const bundledPluginBuild = desktopPrepare.indexOf(
+      "turbo run build --filter='@clash-plugin/*'",
+    );
+    const hostBuild = desktopPrepare.indexOf(
+      "turbo run build --filter=clash --filter=@clash/web --filter=@clash/desktop",
+    );
+    expect(bundledPluginBuild).toBeGreaterThan(-1);
+    expect(hostBuild).toBeGreaterThan(bundledPluginBuild);
     for (const script of [
       "pack:desktop:mac:arm64",
       "pack:desktop:mac:x64",
