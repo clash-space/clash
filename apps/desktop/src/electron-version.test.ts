@@ -184,11 +184,17 @@ describe("desktop Electron runtime", () => {
     const commonRevision = release.indexOf(
       "git -C ../openma-common checkout 00358ff9c1e4a694171f5617a4715602c61433e7",
     );
+    const commonInstallCommand =
+      "pnpm --dir ../openma-common install --frozen-lockfile";
+    const commonInstall = release.indexOf(commonInstallCommand);
     const install = release.indexOf("pnpm install --frozen-lockfile");
 
     expect(commonCheckout).toBeGreaterThan(-1);
     expect(commonRevision).toBeGreaterThan(commonCheckout);
-    expect(install).toBeGreaterThan(commonRevision);
+    expect(release).toContain(`run: ${commonInstallCommand}\n`);
+    expect(release).not.toContain(`${commonInstallCommand} --prod`);
+    expect(commonInstall).toBeGreaterThan(commonRevision);
+    expect(install).toBeGreaterThan(commonInstall);
   });
 
   it("keeps self-hosted ACP runtimes out of immutable desktop resources", () => {

@@ -49,6 +49,9 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
+      - name: Install OpenMA common runtime dependencies
+        run: pnpm --dir ../openma-common install --frozen-lockfile
+
       - name: Install Linux packaging dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install --yes ffmpeg libfuse2
