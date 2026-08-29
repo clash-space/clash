@@ -35,7 +35,7 @@ jobs:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
       NODE_OPTIONS: "--max-old-space-size=4096"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Checkout OpenMA common for the desktop renderer
         shell: bash
@@ -43,9 +43,9 @@ jobs:
           git clone --filter=blob:none https://github.com/openma-ai/openma-common.git ../openma-common
           git -C ../openma-common checkout 00358ff9c1e4a694171f5617a4715602c61433e7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -61,7 +61,7 @@ jobs:
       - run: pnpm run ${{ matrix.script }}
 
       - name: Upload desktop installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Clash-Desktop-${{ matrix.platform }}
           path: ${{ matrix.asset }}
@@ -74,12 +74,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Download desktop installers
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: Clash-Desktop-*
           path: desktop-artifacts

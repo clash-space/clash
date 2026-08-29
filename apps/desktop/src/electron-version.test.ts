@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
+import { sourceMatches } from "../../../packages/gui/test-support/source-match.js";
 import { describe, expect, it } from "vitest";
 
 interface DesktopPackage {
@@ -174,12 +175,16 @@ describe("desktop Electron runtime", () => {
     );
     expect(release).toContain("windows-latest");
     expect(release).toContain("ubuntu-latest");
-    expect(release).toContain("actions/upload-artifact@v4");
+    expect(
+      sourceMatches(release, /uses:\s*actions\/upload-artifact@v\d+\b/),
+    ).toBe(true);
     expect(release).toContain("Clash-Desktop-${{ matrix.platform }}");
     expect(release).toContain("pnpm run ${{ matrix.script }}");
     expect(release).toContain("script: pack:desktop:mac:arm64");
     expect(release).toContain("publish-desktop-preview:");
-    expect(release).toContain("actions/download-artifact@v4");
+    expect(
+      sourceMatches(release, /uses:\s*actions\/download-artifact@v\d+\b/),
+    ).toBe(true);
     expect(release).toContain("gh release upload desktop-preview");
   });
 
@@ -193,6 +198,39 @@ describe("desktop Electron runtime", () => {
     )?.[1];
 
     expect(Number(heapLimit)).toBeGreaterThanOrEqual(4096);
+  });
+
+  it("runs repository automation on Node 24 based action releases", () => {
+    const ci = readFileSync(
+      new URL("../../../.github/workflows/ci.yml", import.meta.url),
+      "utf8",
+    );
+    const release = readFileSync(
+      new URL("../../../.github/workflows/release.yml", import.meta.url),
+      "utf8",
+    );
+    const publishBeta = readFileSync(
+      new URL("../../../.github/workflows/publish-beta.yml", import.meta.url),
+      "utf8",
+    );
+
+    for (const workflow of [ci, release, publishBeta]) {
+      expect(
+        sourceMatches(workflow, /uses:\s*actions\/checkout@v7\b/),
+      ).toBe(true);
+      expect(
+        sourceMatches(workflow, /uses:\s*pnpm\/action-setup@v6\b/),
+      ).toBe(true);
+      expect(
+        sourceMatches(workflow, /uses:\s*actions\/setup-node@v7\b/),
+      ).toBe(true);
+    }
+    expect(
+      sourceMatches(release, /uses:\s*actions\/upload-artifact@v7\b/),
+    ).toBe(true);
+    expect(
+      sourceMatches(release, /uses:\s*actions\/download-artifact@v8\b/),
+    ).toBe(true);
   });
 
   it("checks out the pinned OpenMA common source before clean desktop packaging", () => {
