@@ -33,6 +33,7 @@ jobs:
             asset: apps/desktop/release/Clash-Desktop-Linux-x64.AppImage
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      NODE_OPTIONS: "--max-old-space-size=4096"
     steps:
       - uses: actions/checkout@v4
 

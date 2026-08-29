@@ -183,6 +183,18 @@ describe("desktop Electron runtime", () => {
     expect(release).toContain("gh release upload desktop-preview");
   });
 
+  it("gives the desktop renderer enough heap on packaging runners", () => {
+    const release = readFileSync(
+      new URL("../../../.github/workflows/release.yml", import.meta.url),
+      "utf8",
+    );
+    const heapLimit = release.match(
+      /NODE_OPTIONS:\s*["']?--max-old-space-size=(\d+)["']?/,
+    )?.[1];
+
+    expect(Number(heapLimit)).toBeGreaterThanOrEqual(4096);
+  });
+
   it("checks out the pinned OpenMA common source before clean desktop packaging", () => {
     const release = readFileSync(
       new URL("../../../.github/workflows/release.yml", import.meta.url),
