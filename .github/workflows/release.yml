@@ -36,6 +36,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout OpenMA common for the desktop renderer
+        shell: bash
+        run: |
+          git clone --filter=blob:none https://github.com/openma-ai/openma-common.git ../openma-common
+          git -C ../openma-common checkout 00358ff9c1e4a694171f5617a4715602c61433e7
+
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4

@@ -173,6 +173,24 @@ describe("desktop Electron runtime", () => {
     expect(release).toContain("gh release upload desktop-preview");
   });
 
+  it("checks out the pinned OpenMA common source before clean desktop packaging", () => {
+    const release = readFileSync(
+      new URL("../../../.github/workflows/release.yml", import.meta.url),
+      "utf8",
+    );
+    const commonCheckout = release.indexOf(
+      "git clone --filter=blob:none https://github.com/openma-ai/openma-common.git ../openma-common",
+    );
+    const commonRevision = release.indexOf(
+      "git -C ../openma-common checkout 00358ff9c1e4a694171f5617a4715602c61433e7",
+    );
+    const install = release.indexOf("pnpm install --frozen-lockfile");
+
+    expect(commonCheckout).toBeGreaterThan(-1);
+    expect(commonRevision).toBeGreaterThan(commonCheckout);
+    expect(install).toBeGreaterThan(commonRevision);
+  });
+
   it("keeps self-hosted ACP runtimes out of immutable desktop resources", () => {
     const builderConfig = readFileSync(
       new URL("../electron-builder.yml", import.meta.url),
