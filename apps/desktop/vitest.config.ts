@@ -5,6 +5,22 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        find: /^@clash\/action-sdk\/(.+)$/,
+        replacement: resolve(__dirname, "../../packages/action-sdk/src/$1.ts"),
+      },
+      {
+        find: /^@clash\/action-sdk$/,
+        replacement: resolve(__dirname, "../../packages/action-sdk/src/index.ts"),
+      },
+      {
+        find: /^@clash\/asset-sdk\/(.+)$/,
+        replacement: resolve(__dirname, "../../packages/asset-sdk/src/$1.ts"),
+      },
+      {
+        find: /^@clash\/asset-sdk$/,
+        replacement: resolve(__dirname, "../../packages/asset-sdk/src/index.ts"),
+      },
+      {
         find: /^@clash\/shared-runtime\/(.+)$/,
         replacement: resolve(__dirname, "../../packages/shared-runtime/src/$1.ts"),
       },
