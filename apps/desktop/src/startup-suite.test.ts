@@ -493,14 +493,28 @@ describe("desktop startup test suite", () => {
     expect(source).toContain("agent-first-local-v1-gate-report.json");
   });
 
-  it("wires the agent-first local v1 release gate into CI policy", () => {
+  it("keeps automatic CI focused on the desktop runtime", () => {
     const ciWorkflow = readRootText(".github/workflows/ci.yml");
     const releaseWorkflow = readRootText(".github/workflows/release.yml");
 
-    expect(ciWorkflow).toContain("agent-first-local-v1");
-    expect(ciWorkflow).toContain("pnpm test:e2e:agent-first-local-v1");
-    expect(releaseWorkflow).toContain("agent-first-local-v1");
-    expect(releaseWorkflow).toContain("pnpm test:e2e:agent-first-local-v1");
+    expect(ciWorkflow).toContain("desktop-checks:");
+    expect(ciWorkflow).toContain("pnpm --filter @clash/desktop typecheck");
+    expect(ciWorkflow).toContain("pnpm --filter @clash/desktop test");
+    expect(ciWorkflow).not.toContain("pnpm lint --concurrency=1");
+    expect(ciWorkflow).not.toContain("pnpm typecheck --concurrency=1");
+    expect(ciWorkflow).not.toContain("pnpm test --concurrency=1");
+    expect(ciWorkflow).not.toContain("pnpm build --concurrency=1");
+    expect(ciWorkflow).not.toContain("package-desktop:");
+
+    expect(releaseWorkflow).toContain("package-desktop:");
+    expect(releaseWorkflow).toContain("publish-desktop-preview:");
+    expect(releaseWorkflow).not.toContain("agent-first-local-v1");
+    expect(releaseWorkflow).not.toContain("changesets/action");
+    expect(
+      existsSync(
+        new URL("../../.github/workflows/build-render-image.yml", desktopRoot),
+      ),
+    ).toBe(false);
   });
 
   it("keeps real Codex transport diagnostics out of assistant text", async () => {

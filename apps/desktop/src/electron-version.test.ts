@@ -146,35 +146,28 @@ describe("desktop Electron runtime", () => {
     );
   });
 
-  it("packages all desktop targets in CI and promotes the same assets to a rolling release", () => {
-    const ci = readFileSync(
-      new URL("../../../.github/workflows/ci.yml", import.meta.url),
-      "utf8",
-    );
+  it("packages all desktop targets and promotes the same assets to a rolling release", () => {
     const release = readFileSync(
       new URL("../../../.github/workflows/release.yml", import.meta.url),
       "utf8",
     );
 
-    for (const workflow of [ci, release]) {
-      expect(workflow).toContain("package-desktop:");
-      expect(workflow).toContain("macos-latest");
-      expect(workflow).toContain("platform: macOS-arm64");
-      expect(workflow).toContain("platform: macOS-x64");
-      expect(workflow).toContain(
-        "apps/desktop/release/Clash-Desktop-macOS-arm64.dmg",
-      );
-      expect(workflow).toContain(
-        "apps/desktop/release/Clash-Desktop-macOS-x64.dmg",
-      );
-      expect(workflow).toContain("windows-latest");
-      expect(workflow).toContain("ubuntu-latest");
-      expect(workflow).toContain("actions/upload-artifact@v4");
-      expect(workflow).toContain("Clash-Desktop-${{ matrix.platform }}");
-    }
-    expect(ci).toContain("pnpm run ${{ matrix.script }}");
-    expect(ci).toContain("script: pack:desktop:mac:arm64");
+    expect(release).toContain("package-desktop:");
+    expect(release).toContain("macos-latest");
+    expect(release).toContain("platform: macOS-arm64");
+    expect(release).toContain("platform: macOS-x64");
+    expect(release).toContain(
+      "apps/desktop/release/Clash-Desktop-macOS-arm64.dmg",
+    );
+    expect(release).toContain(
+      "apps/desktop/release/Clash-Desktop-macOS-x64.dmg",
+    );
+    expect(release).toContain("windows-latest");
+    expect(release).toContain("ubuntu-latest");
+    expect(release).toContain("actions/upload-artifact@v4");
+    expect(release).toContain("Clash-Desktop-${{ matrix.platform }}");
     expect(release).toContain("pnpm run ${{ matrix.script }}");
+    expect(release).toContain("script: pack:desktop:mac:arm64");
     expect(release).toContain("publish-desktop-preview:");
     expect(release).toContain("actions/download-artifact@v4");
     expect(release).toContain("gh release upload desktop-preview");
