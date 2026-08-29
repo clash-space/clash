@@ -98,6 +98,18 @@ describe("desktop startup test suite", () => {
     expect(pkg.scripts["test:e2e:qa-agent"]).toContain("qa-agent-codex.mjs");
   });
 
+  it("typechecks the desktop source graph without prebuilt workspace SDK artifacts", () => {
+    const tsconfig = JSON.parse(readText("tsconfig.dev.json")) as {
+      compilerOptions: { paths: Record<string, string[]> };
+    };
+
+    expect(tsconfig.compilerOptions.paths).toMatchObject({
+      "@clash/action-sdk": ["../../packages/action-sdk/src/index.ts"],
+      "@clash/action-sdk/*": ["../../packages/action-sdk/src/*.ts"],
+      "@clash/asset-sdk": ["../../packages/asset-sdk/src/index.ts"],
+    });
+  });
+
   it("stages the root-built unified Clash runtime without nested workspace builds", () => {
     const source = readText("scripts/prepare-clash-cli.mjs");
 
@@ -184,9 +196,7 @@ describe("desktop startup test suite", () => {
     expect(runtime).toContain("resolveDesktopSourceHostNodeArgs");
     expect(runtime).toContain("CLASH_DESKTOP_SOURCE_HOST_WATCH");
     expect(runtime).toContain("resolveClashDevTsconfigPath(moduleDir)");
-    expect(dev).toContain(
-      'process.env.CLASH_DESKTOP_SOURCE_HOST_WATCH ?? "1"',
-    );
+    expect(dev).toContain('process.env.CLASH_DESKTOP_SOURCE_HOST_WATCH ?? "1"');
   });
 
   it("injects the packaged Python SDK into local-model subprocess discovery", () => {
@@ -213,7 +223,9 @@ describe("desktop startup test suite", () => {
     const windows = readText("src/controller/windows.ts");
     const preload = readText("src/preload.ts");
 
-    expect(main).toContain("refreshRuntime: () => runtimeController.initialize(dataDir)");
+    expect(main).toContain(
+      "refreshRuntime: () => runtimeController.initialize(dataDir)",
+    );
     expect(windows).toContain('ipcMain.handle("clash:refresh-runtime"');
     expect(preload).toContain(
       'refreshRuntime: () => ipcRenderer.invoke("clash:refresh-runtime")',

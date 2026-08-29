@@ -3,6 +3,9 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
+      "@clash/action-sdk": ["../../packages/action-sdk/src/index.ts"],
+      "@clash/action-sdk/*": ["../../packages/action-sdk/src/*.ts"],
+      "@clash/asset-sdk": ["../../packages/asset-sdk/src/index.ts"],
       "@clash/shared-types": ["../../packages/shared-types/src/index.ts"],
       "@clash/shared-types/*": ["../../packages/shared-types/src/*.ts"],
       "@clash/shared-layout": ["../../packages/shared-layout/src/index.ts"],
