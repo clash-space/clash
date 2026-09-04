@@ -27,8 +27,15 @@ describe("UserMessage", () => {
   it("uses the compact workspace message surface instead of a floating card", () => {
     const { container } = render(<UserMessage content="hi" />);
     const bubble = container.querySelector(".clash-user-message-bubble");
+    const message = container.querySelector<HTMLElement>(
+      '[data-chat-user-message="true"]',
+    );
 
     expect(bubble).toBeTruthy();
+    expect(message).toBeTruthy();
+    expect(message?.style.maxWidth).toBe(
+      "min(34rem, var(--chat-user-message-max-width, 72%))",
+    );
     expect(bubble).toHaveAttribute("data-chat-typography", "body");
     expect(bubble?.className).not.toContain("shadow-sm");
     expect(bubble?.className).not.toContain("rounded-[18px]");

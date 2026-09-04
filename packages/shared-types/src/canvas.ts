@@ -3,7 +3,7 @@
  * 
  * These are the canonical type definitions used across:
  * - TypeScript frontend (apps/web)
- * - TypeScript sync server (apps/loro-sync-server)
+ * - TypeScript replica hosts (local-api and api-cf)
  * - Python API (via generated types)
  */
 
@@ -15,6 +15,7 @@ import {
   ModelParameterSchema,
   normalizeModelId,
   resolveAspectRatio,
+  resolveAspectRatioParameter,
   type ModelCard,
 } from './models.js';
 import {
@@ -362,6 +363,8 @@ export type BuildPendingAssetNodeInput = MediaReferencePendingFields & {
   outputType?: 'image' | 'video' | 'audio' | 'text';
   /** Exact executable implementation selected when this node was created. */
   pluginBinding?: ExecutablePluginBinding;
+  /** Canonical W:H used to size pending media independently of provider aliases. */
+  aspectRatio?: string;
 };
 
 export interface PendingAssetNode {
@@ -407,7 +410,7 @@ function pendingDurationFallback(modelId: string | undefined): number | string |
 
 export function buildPendingAssetNode(input: BuildPendingAssetNodeInput): PendingAssetNode {
   const {
-    nodeId, prompt, modelId, modelParams, actionType,
+    nodeId, prompt, modelId, modelParams, actionType, aspectRatio,
     referenceMode, customActionId, customActionParams, outputType, pluginBinding,
   } = input;
 
@@ -482,7 +485,9 @@ export function buildPendingAssetNode(input: BuildPendingAssetNodeInput): Pendin
   if (isText) {
     data.content = '';
   } else {
-    if (!isCustom) data.aspectRatio = resolveAspectRatio(modelId, modelParams);
+    const resolvedAspectRatio = aspectRatio
+      ?? (!isCustom ? resolveAspectRatio(modelId, modelParams) : undefined);
+    if (resolvedAspectRatio) data.aspectRatio = resolvedAspectRatio;
     data.referenceMode = referenceMode || 'none';
   }
 
@@ -824,6 +829,12 @@ export function buildGenerationPayload(input: BuildGenerationPayloadInput): Buil
           label: input.label,
           customActionId: input.config.customDef.id,
           customActionParams: input.config.customActionParams,
+          aspectRatio: resolveAspectRatioParameter(
+            input.config.customDef.parameters.find(
+              (parameter) => parameter.id === 'aspect_ratio',
+            ),
+            input.config.customActionParams.aspect_ratio,
+          ),
           ...mediaReferencePendingFields(partition),
           referenceMode:
             input.referenceMode ?? (totalAssetRefs > 0 ? 'image-and-prompt' : undefined),

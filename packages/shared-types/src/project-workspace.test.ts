@@ -292,6 +292,46 @@ describe("Project workspace model", () => {
     });
   });
 
+  it("creates a generator-free plugin View node on the implicit Main Canvas", () => {
+    const doc = new LoroDoc();
+
+    const created = (workspace as any).createProjectPluginView(doc, {
+      nodeId: "storyboard-draft",
+      label: "Storyboard",
+      view: {
+        pluginId: "community.storyboard",
+        definitionId: "storyboard",
+        version: "1.0.0",
+        schemaHash: `sha256:${"a".repeat(64)}`,
+      },
+      state: {
+        keyElements: [],
+        shots: [],
+        audioLayers: [],
+        uncategorized: [],
+      },
+    });
+
+    expect(created).toMatchObject({ ok: true, nodeId: "storyboard-draft" });
+    expect((workspace as any).listProjectCanvases(doc)).toEqual([
+      expect.objectContaining({ id: "main", name: "Main" }),
+    ]);
+    expect(
+      new Canvas(doc, () => {}, "main").readNode("storyboard-draft"),
+    ).toMatchObject({
+      type: "plugin-view",
+      data: {
+        label: "Storyboard",
+        view: {
+          pluginId: "community.storyboard",
+          definitionId: "storyboard",
+        },
+      },
+    });
+    expect(new Canvas(doc, () => {}, "main")
+      .readNode("storyboard-draft")?.data).not.toHaveProperty("generatorId");
+  });
+
   it("does not register a Canvas merely because a scoped reader was constructed", () => {
     const doc = new LoroDoc();
     const missing = new Canvas(doc, () => {}, "typo");

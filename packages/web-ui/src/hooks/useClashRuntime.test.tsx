@@ -867,6 +867,7 @@ describe("useClashRuntime", () => {
           type: "session.ready",
           session_id: "local-session-draft",
           acp_session_id: "acp-draft-one",
+          supports_session_fork: true,
         }),
       });
     });
@@ -891,6 +892,7 @@ describe("useClashRuntime", () => {
       agentId: "codex-acp",
       projectId: "project-one",
       acpSessionId: "acp-draft-one",
+      supportsSessionFork: true,
     });
   });
 
@@ -923,7 +925,9 @@ describe("useClashRuntime", () => {
       result.current.sendMessage("first");
     });
 
-    await waitFor(() => expect(result.current.sessionId).toBe("local-session-1"));
+    await waitFor(() =>
+      expect(result.current.sessionId).toBe("local-session-1"),
+    );
     const firstSocket = FakeWebSocket.instances.at(-1)!;
     act(() => {
       firstSocket.onmessage?.({
@@ -3953,6 +3957,209 @@ describe("useClashRuntime", () => {
       "tool_call",
       "thought",
       "text",
+    ]);
+  });
+
+  it("keeps the live thought as the turn tail until visible answer text arrives", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+          return new Response(JSON.stringify({ runtimes: [] }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (
+          url.endsWith("/api/v1/local-sessions/local-session-handoff/events") &&
+          !init?.method
+        ) {
+          return new Response(JSON.stringify({ events: [] }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (
+          url.endsWith(
+            "/api/v1/local-sessions/local-session-handoff/_attach",
+          ) &&
+          init?.method === "POST"
+        ) {
+          return new Response(
+            JSON.stringify({ session_id: "local-session-handoff" }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response("not found", { status: 404 });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    const { result } = renderHook(() => useClashRuntime());
+    await act(async () => {
+      await result.current.attachSession({
+        id: "local-session-handoff",
+        threadId: "local-session-handoff",
+        type: "runtime",
+        projectId: "project-one",
+        runtimeId: "desktop-local",
+        agentId: "codex-acp",
+        status: "active",
+      });
+    });
+
+    const stream = FakeWebSocket.instances.at(-1)!;
+    act(() => {
+      stream.onmessage?.({
+        data: JSON.stringify({
+          type: "session.ready",
+          session_id: "local-session-handoff",
+        }),
+      });
+      result.current.sendMessage("是不是");
+    });
+    const prompt = stream.sent
+      .map((frame) => JSON.parse(frame))
+      .find((frame) => frame.type === "prompt");
+
+    act(() => {
+      stream.onmessage?.({
+        data: JSON.stringify({
+          type: "session.event",
+          session_id: "local-session-handoff",
+          turn_id: prompt.turn_id,
+          event: {
+            sessionUpdate: "agent_thought_chunk",
+            messageId: "thought-handoff",
+            content: { type: "text", text: "正在判断" },
+          },
+        }),
+      });
+      stream.onmessage?.({
+        data: JSON.stringify({
+          type: "session.event",
+          session_id: "local-session-handoff",
+          turn_id: prompt.turn_id,
+          event: {
+            sessionUpdate: "agent_message_chunk",
+            messageId: "answer-handoff",
+            content: { type: "text", text: "" },
+          },
+        }),
+      });
+    });
+
+    expect(
+      result.current.agentUIState.turns[prompt.turn_id]?.items.at(-1),
+    ).toMatchObject({ kind: "thinking", text: "正在判断" });
+  });
+
+  it("keeps a pure-answer turn free of invisible process events", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+          return new Response(JSON.stringify({ runtimes: [] }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (
+          url.endsWith("/api/v1/local-sessions/local-session-answer/events") &&
+          !init?.method
+        ) {
+          return new Response(JSON.stringify({ events: [] }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (
+          url.endsWith("/api/v1/local-sessions/local-session-answer/_attach") &&
+          init?.method === "POST"
+        ) {
+          return new Response(
+            JSON.stringify({ session_id: "local-session-answer" }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response("not found", { status: 404 });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    const { result } = renderHook(() => useClashRuntime());
+    await act(async () => {
+      await result.current.attachSession({
+        id: "local-session-answer",
+        threadId: "local-session-answer",
+        type: "runtime",
+        projectId: "project-one",
+        runtimeId: "desktop-local",
+        agentId: "codex-acp",
+        status: "active",
+      });
+    });
+
+    const stream = FakeWebSocket.instances.at(-1)!;
+    act(() => {
+      stream.onmessage?.({
+        data: JSON.stringify({
+          type: "session.ready",
+          session_id: "local-session-answer",
+        }),
+      });
+      result.current.sendMessage("是吗");
+    });
+    const prompt = stream.sent
+      .map((frame) => JSON.parse(frame))
+      .find((frame) => frame.type === "prompt");
+    const sendEvent = (event: unknown) => {
+      stream.onmessage?.({
+        data: JSON.stringify({
+          type: "session.event",
+          session_id: "local-session-answer",
+          turn_id: prompt.turn_id,
+          event,
+        }),
+      });
+    };
+
+    act(() => {
+      sendEvent({ type: "agent.thinking_stream_start" });
+      sendEvent({
+        sessionUpdate: "agent_thought_chunk",
+        messageId: "empty-thought",
+        content: { type: "text", text: "" },
+      });
+      sendEvent({ type: "agent.thinking_stream_end" });
+      sendEvent({
+        sessionUpdate: "agent_message_chunk",
+        content: {
+          type: "text",
+          text:
+            "Warning: Skill descriptions were shortened to fit the skills context budget. " +
+            "Codex can still see every skill.",
+        },
+      });
+      sendEvent({
+        sessionUpdate: "agent_message_chunk",
+        messageId: "answer-only",
+        content: { type: "text", text: "是呀" },
+      });
+      stream.onmessage?.({
+        data: JSON.stringify({
+          type: "session.complete",
+          session_id: "local-session-answer",
+          turn_id: prompt.turn_id,
+        }),
+      });
+    });
+
+    expect(result.current.agentUIState.turns[prompt.turn_id]?.items).toEqual([
+      expect.objectContaining({ kind: "message", role: "user", text: "是吗" }),
+      expect.objectContaining({
+        kind: "message",
+        role: "assistant",
+        text: "是呀",
+      }),
     ]);
   });
 

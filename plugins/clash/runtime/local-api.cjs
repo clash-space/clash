@@ -23337,8 +23337,6577 @@ var require_saxes = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/ws@8.21.0/node_modules/ws/lib/constants.js
+// ../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/is.js
+var require_is = __commonJS({
+  "../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/is.js"(exports2, module2) {
+    var defined = (val) => typeof val !== "undefined" && val !== null;
+    var object2 = (val) => typeof val === "object";
+    var plainObject = (val) => Object.prototype.toString.call(val) === "[object Object]";
+    var fn = (val) => typeof val === "function";
+    var bool = (val) => typeof val === "boolean";
+    var buffer = (val) => val instanceof Buffer;
+    var typedArray = (val) => {
+      if (defined(val)) {
+        switch (val.constructor) {
+          case Uint8Array:
+          case Uint8ClampedArray:
+          case Int8Array:
+          case Uint16Array:
+          case Int16Array:
+          case Uint32Array:
+          case Int32Array:
+          case Float32Array:
+          case Float64Array:
+            return true;
+        }
+      }
+      return false;
+    };
+    var arrayBuffer = (val) => val instanceof ArrayBuffer;
+    var string4 = (val) => typeof val === "string" && val.length > 0;
+    var number4 = (val) => typeof val === "number" && !Number.isNaN(val);
+    var integer2 = (val) => Number.isInteger(val);
+    var inRange = (val, min, max) => val >= min && val <= max;
+    var inArray = (val, list2) => list2.includes(val);
+    var invalidParameterError = (name, expected, actual) => new Error(
+      `Expected ${expected} for ${name} but received ${actual} of type ${typeof actual}`
+    );
+    var nativeError = (native, context) => {
+      context.message = native.message;
+      return context;
+    };
+    module2.exports = {
+      defined,
+      object: object2,
+      plainObject,
+      fn,
+      bool,
+      buffer,
+      typedArray,
+      arrayBuffer,
+      string: string4,
+      number: number4,
+      integer: integer2,
+      inRange,
+      inArray,
+      invalidParameterError,
+      nativeError
+    };
+  }
+});
+
+// ../../node_modules/.pnpm/detect-libc@2.1.2/node_modules/detect-libc/lib/process.js
+var require_process = __commonJS({
+  "../../node_modules/.pnpm/detect-libc@2.1.2/node_modules/detect-libc/lib/process.js"(exports2, module2) {
+    "use strict";
+    var isLinux = () => process.platform === "linux";
+    var report = null;
+    var getReport = () => {
+      if (!report) {
+        if (isLinux() && process.report) {
+          const orig = process.report.excludeNetwork;
+          process.report.excludeNetwork = true;
+          report = process.report.getReport();
+          process.report.excludeNetwork = orig;
+        } else {
+          report = {};
+        }
+      }
+      return report;
+    };
+    module2.exports = { isLinux, getReport };
+  }
+});
+
+// ../../node_modules/.pnpm/detect-libc@2.1.2/node_modules/detect-libc/lib/filesystem.js
+var require_filesystem = __commonJS({
+  "../../node_modules/.pnpm/detect-libc@2.1.2/node_modules/detect-libc/lib/filesystem.js"(exports2, module2) {
+    "use strict";
+    var fs = require("fs");
+    var LDD_PATH = "/usr/bin/ldd";
+    var SELF_PATH = "/proc/self/exe";
+    var MAX_LENGTH = 2048;
+    var readFileSync4 = (path) => {
+      const fd = fs.openSync(path, "r");
+      const buffer = Buffer.alloc(MAX_LENGTH);
+      const bytesRead = fs.readSync(fd, buffer, 0, MAX_LENGTH, 0);
+      fs.close(fd, () => {
+      });
+      return buffer.subarray(0, bytesRead);
+    };
+    var readFile35 = (path) => new Promise((resolve18, reject) => {
+      fs.open(path, "r", (err, fd) => {
+        if (err) {
+          reject(err);
+        } else {
+          const buffer = Buffer.alloc(MAX_LENGTH);
+          fs.read(fd, buffer, 0, MAX_LENGTH, 0, (_, bytesRead) => {
+            resolve18(buffer.subarray(0, bytesRead));
+            fs.close(fd, () => {
+            });
+          });
+        }
+      });
+    });
+    module2.exports = {
+      LDD_PATH,
+      SELF_PATH,
+      readFileSync: readFileSync4,
+      readFile: readFile35
+    };
+  }
+});
+
+// ../../node_modules/.pnpm/detect-libc@2.1.2/node_modules/detect-libc/lib/elf.js
+var require_elf = __commonJS({
+  "../../node_modules/.pnpm/detect-libc@2.1.2/node_modules/detect-libc/lib/elf.js"(exports2, module2) {
+    "use strict";
+    var interpreterPath = (elf) => {
+      if (elf.length < 64) {
+        return null;
+      }
+      if (elf.readUInt32BE(0) !== 2135247942) {
+        return null;
+      }
+      if (elf.readUInt8(4) !== 2) {
+        return null;
+      }
+      if (elf.readUInt8(5) !== 1) {
+        return null;
+      }
+      const offset = elf.readUInt32LE(32);
+      const size = elf.readUInt16LE(54);
+      const count = elf.readUInt16LE(56);
+      for (let i5 = 0; i5 < count; i5++) {
+        const headerOffset = offset + i5 * size;
+        const type = elf.readUInt32LE(headerOffset);
+        if (type === 3) {
+          const fileOffset = elf.readUInt32LE(headerOffset + 8);
+          const fileSize = elf.readUInt32LE(headerOffset + 32);
+          return elf.subarray(fileOffset, fileOffset + fileSize).toString().replace(/\0.*$/g, "");
+        }
+      }
+      return null;
+    };
+    module2.exports = {
+      interpreterPath
+    };
+  }
+});
+
+// ../../node_modules/.pnpm/detect-libc@2.1.2/node_modules/detect-libc/lib/detect-libc.js
+var require_detect_libc = __commonJS({
+  "../../node_modules/.pnpm/detect-libc@2.1.2/node_modules/detect-libc/lib/detect-libc.js"(exports2, module2) {
+    "use strict";
+    var childProcess = require("child_process");
+    var { isLinux, getReport } = require_process();
+    var { LDD_PATH, SELF_PATH, readFile: readFile35, readFileSync: readFileSync4 } = require_filesystem();
+    var { interpreterPath } = require_elf();
+    var cachedFamilyInterpreter;
+    var cachedFamilyFilesystem;
+    var cachedVersionFilesystem;
+    var command6 = "getconf GNU_LIBC_VERSION 2>&1 || true; ldd --version 2>&1 || true";
+    var commandOut = "";
+    var safeCommand = () => {
+      if (!commandOut) {
+        return new Promise((resolve18) => {
+          childProcess.exec(command6, (err, out) => {
+            commandOut = err ? " " : out;
+            resolve18(commandOut);
+          });
+        });
+      }
+      return commandOut;
+    };
+    var safeCommandSync = () => {
+      if (!commandOut) {
+        try {
+          commandOut = childProcess.execSync(command6, { encoding: "utf8" });
+        } catch (_err) {
+          commandOut = " ";
+        }
+      }
+      return commandOut;
+    };
+    var GLIBC = "glibc";
+    var RE_GLIBC_VERSION = /LIBC[a-z0-9 \-).]*?(\d+\.\d+)/i;
+    var MUSL = "musl";
+    var isFileMusl = (f5) => f5.includes("libc.musl-") || f5.includes("ld-musl-");
+    var familyFromReport = () => {
+      const report = getReport();
+      if (report.header && report.header.glibcVersionRuntime) {
+        return GLIBC;
+      }
+      if (Array.isArray(report.sharedObjects)) {
+        if (report.sharedObjects.some(isFileMusl)) {
+          return MUSL;
+        }
+      }
+      return null;
+    };
+    var familyFromCommand = (out) => {
+      const [getconf, ldd1] = out.split(/[\r\n]+/);
+      if (getconf && getconf.includes(GLIBC)) {
+        return GLIBC;
+      }
+      if (ldd1 && ldd1.includes(MUSL)) {
+        return MUSL;
+      }
+      return null;
+    };
+    var familyFromInterpreterPath = (path) => {
+      if (path) {
+        if (path.includes("/ld-musl-")) {
+          return MUSL;
+        } else if (path.includes("/ld-linux-")) {
+          return GLIBC;
+        }
+      }
+      return null;
+    };
+    var getFamilyFromLddContent = (content) => {
+      content = content.toString();
+      if (content.includes("musl")) {
+        return MUSL;
+      }
+      if (content.includes("GNU C Library")) {
+        return GLIBC;
+      }
+      return null;
+    };
+    var familyFromFilesystem = async () => {
+      if (cachedFamilyFilesystem !== void 0) {
+        return cachedFamilyFilesystem;
+      }
+      cachedFamilyFilesystem = null;
+      try {
+        const lddContent = await readFile35(LDD_PATH);
+        cachedFamilyFilesystem = getFamilyFromLddContent(lddContent);
+      } catch (e5) {
+      }
+      return cachedFamilyFilesystem;
+    };
+    var familyFromFilesystemSync = () => {
+      if (cachedFamilyFilesystem !== void 0) {
+        return cachedFamilyFilesystem;
+      }
+      cachedFamilyFilesystem = null;
+      try {
+        const lddContent = readFileSync4(LDD_PATH);
+        cachedFamilyFilesystem = getFamilyFromLddContent(lddContent);
+      } catch (e5) {
+      }
+      return cachedFamilyFilesystem;
+    };
+    var familyFromInterpreter = async () => {
+      if (cachedFamilyInterpreter !== void 0) {
+        return cachedFamilyInterpreter;
+      }
+      cachedFamilyInterpreter = null;
+      try {
+        const selfContent = await readFile35(SELF_PATH);
+        const path = interpreterPath(selfContent);
+        cachedFamilyInterpreter = familyFromInterpreterPath(path);
+      } catch (e5) {
+      }
+      return cachedFamilyInterpreter;
+    };
+    var familyFromInterpreterSync = () => {
+      if (cachedFamilyInterpreter !== void 0) {
+        return cachedFamilyInterpreter;
+      }
+      cachedFamilyInterpreter = null;
+      try {
+        const selfContent = readFileSync4(SELF_PATH);
+        const path = interpreterPath(selfContent);
+        cachedFamilyInterpreter = familyFromInterpreterPath(path);
+      } catch (e5) {
+      }
+      return cachedFamilyInterpreter;
+    };
+    var family = async () => {
+      let family2 = null;
+      if (isLinux()) {
+        family2 = await familyFromInterpreter();
+        if (!family2) {
+          family2 = await familyFromFilesystem();
+          if (!family2) {
+            family2 = familyFromReport();
+          }
+          if (!family2) {
+            const out = await safeCommand();
+            family2 = familyFromCommand(out);
+          }
+        }
+      }
+      return family2;
+    };
+    var familySync = () => {
+      let family2 = null;
+      if (isLinux()) {
+        family2 = familyFromInterpreterSync();
+        if (!family2) {
+          family2 = familyFromFilesystemSync();
+          if (!family2) {
+            family2 = familyFromReport();
+          }
+          if (!family2) {
+            const out = safeCommandSync();
+            family2 = familyFromCommand(out);
+          }
+        }
+      }
+      return family2;
+    };
+    var isNonGlibcLinux = async () => isLinux() && await family() !== GLIBC;
+    var isNonGlibcLinuxSync = () => isLinux() && familySync() !== GLIBC;
+    var versionFromFilesystem = async () => {
+      if (cachedVersionFilesystem !== void 0) {
+        return cachedVersionFilesystem;
+      }
+      cachedVersionFilesystem = null;
+      try {
+        const lddContent = await readFile35(LDD_PATH);
+        const versionMatch = lddContent.match(RE_GLIBC_VERSION);
+        if (versionMatch) {
+          cachedVersionFilesystem = versionMatch[1];
+        }
+      } catch (e5) {
+      }
+      return cachedVersionFilesystem;
+    };
+    var versionFromFilesystemSync = () => {
+      if (cachedVersionFilesystem !== void 0) {
+        return cachedVersionFilesystem;
+      }
+      cachedVersionFilesystem = null;
+      try {
+        const lddContent = readFileSync4(LDD_PATH);
+        const versionMatch = lddContent.match(RE_GLIBC_VERSION);
+        if (versionMatch) {
+          cachedVersionFilesystem = versionMatch[1];
+        }
+      } catch (e5) {
+      }
+      return cachedVersionFilesystem;
+    };
+    var versionFromReport = () => {
+      const report = getReport();
+      if (report.header && report.header.glibcVersionRuntime) {
+        return report.header.glibcVersionRuntime;
+      }
+      return null;
+    };
+    var versionSuffix = (s2) => s2.trim().split(/\s+/)[1];
+    var versionFromCommand = (out) => {
+      const [getconf, ldd1, ldd2] = out.split(/[\r\n]+/);
+      if (getconf && getconf.includes(GLIBC)) {
+        return versionSuffix(getconf);
+      }
+      if (ldd1 && ldd2 && ldd1.includes(MUSL)) {
+        return versionSuffix(ldd2);
+      }
+      return null;
+    };
+    var version2 = async () => {
+      let version3 = null;
+      if (isLinux()) {
+        version3 = await versionFromFilesystem();
+        if (!version3) {
+          version3 = versionFromReport();
+        }
+        if (!version3) {
+          const out = await safeCommand();
+          version3 = versionFromCommand(out);
+        }
+      }
+      return version3;
+    };
+    var versionSync = () => {
+      let version3 = null;
+      if (isLinux()) {
+        version3 = versionFromFilesystemSync();
+        if (!version3) {
+          version3 = versionFromReport();
+        }
+        if (!version3) {
+          const out = safeCommandSync();
+          version3 = versionFromCommand(out);
+        }
+      }
+      return version3;
+    };
+    module2.exports = {
+      GLIBC,
+      MUSL,
+      family,
+      familySync,
+      isNonGlibcLinux,
+      isNonGlibcLinuxSync,
+      version: version2,
+      versionSync
+    };
+  }
+});
+
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/debug.js
+var require_debug = __commonJS({
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/debug.js"(exports2, module2) {
+    "use strict";
+    var debug = typeof process === "object" && process.env && process.env.NODE_DEBUG && /\bsemver\b/i.test(process.env.NODE_DEBUG) ? (...args) => console.error("SEMVER", ...args) : () => {
+    };
+    module2.exports = debug;
+  }
+});
+
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/constants.js
 var require_constants = __commonJS({
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/constants.js"(exports2, module2) {
+    "use strict";
+    var SEMVER_SPEC_VERSION = "2.0.0";
+    var MAX_LENGTH = 256;
+    var MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER || /* istanbul ignore next */
+    9007199254740991;
+    var MAX_SAFE_COMPONENT_LENGTH = 16;
+    var MAX_SAFE_BUILD_LENGTH = MAX_LENGTH - 6;
+    var RELEASE_TYPES = [
+      "major",
+      "premajor",
+      "minor",
+      "preminor",
+      "patch",
+      "prepatch",
+      "prerelease"
+    ];
+    module2.exports = {
+      MAX_LENGTH,
+      MAX_SAFE_COMPONENT_LENGTH,
+      MAX_SAFE_BUILD_LENGTH,
+      MAX_SAFE_INTEGER,
+      RELEASE_TYPES,
+      SEMVER_SPEC_VERSION,
+      FLAG_INCLUDE_PRERELEASE: 1,
+      FLAG_LOOSE: 2
+    };
+  }
+});
+
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/re.js
+var require_re = __commonJS({
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/re.js"(exports2, module2) {
+    "use strict";
+    var {
+      MAX_SAFE_COMPONENT_LENGTH,
+      MAX_SAFE_BUILD_LENGTH,
+      MAX_LENGTH
+    } = require_constants();
+    var debug = require_debug();
+    exports2 = module2.exports = {};
+    var re = exports2.re = [];
+    var safeRe = exports2.safeRe = [];
+    var src = exports2.src = [];
+    var safeSrc = exports2.safeSrc = [];
+    var t = exports2.t = {};
+    var R = 0;
+    var LETTERDASHNUMBER = "[a-zA-Z0-9-]";
+    var safeRegexReplacements = [
+      ["\\s", 1],
+      ["\\d", MAX_LENGTH],
+      [LETTERDASHNUMBER, MAX_SAFE_BUILD_LENGTH]
+    ];
+    var makeSafeRegex = (value) => {
+      for (const [token, max] of safeRegexReplacements) {
+        value = value.split(`${token}*`).join(`${token}{0,${max}}`).split(`${token}+`).join(`${token}{1,${max}}`);
+      }
+      return value;
+    };
+    var createToken = (name, value, isGlobal) => {
+      const safe = makeSafeRegex(value);
+      const index = R++;
+      debug(name, index, value);
+      t[name] = index;
+      src[index] = value;
+      safeSrc[index] = safe;
+      re[index] = new RegExp(value, isGlobal ? "g" : void 0);
+      safeRe[index] = new RegExp(safe, isGlobal ? "g" : void 0);
+    };
+    createToken("NUMERICIDENTIFIER", "0|[1-9]\\d*");
+    createToken("NUMERICIDENTIFIERLOOSE", "\\d+");
+    createToken("NONNUMERICIDENTIFIER", `\\d*[a-zA-Z-]${LETTERDASHNUMBER}*`);
+    createToken("MAINVERSION", `(${src[t.NUMERICIDENTIFIER]})\\.(${src[t.NUMERICIDENTIFIER]})\\.(${src[t.NUMERICIDENTIFIER]})`);
+    createToken("MAINVERSIONLOOSE", `(${src[t.NUMERICIDENTIFIERLOOSE]})\\.(${src[t.NUMERICIDENTIFIERLOOSE]})\\.(${src[t.NUMERICIDENTIFIERLOOSE]})`);
+    createToken("PRERELEASEIDENTIFIER", `(?:${src[t.NONNUMERICIDENTIFIER]}|${src[t.NUMERICIDENTIFIER]})`);
+    createToken("PRERELEASEIDENTIFIERLOOSE", `(?:${src[t.NONNUMERICIDENTIFIER]}|${src[t.NUMERICIDENTIFIERLOOSE]})`);
+    createToken("PRERELEASE", `(?:-(${src[t.PRERELEASEIDENTIFIER]}(?:\\.${src[t.PRERELEASEIDENTIFIER]})*))`);
+    createToken("PRERELEASELOOSE", `(?:-?(${src[t.PRERELEASEIDENTIFIERLOOSE]}(?:\\.${src[t.PRERELEASEIDENTIFIERLOOSE]})*))`);
+    createToken("BUILDIDENTIFIER", `${LETTERDASHNUMBER}+`);
+    createToken("BUILD", `(?:\\+(${src[t.BUILDIDENTIFIER]}(?:\\.${src[t.BUILDIDENTIFIER]})*))`);
+    createToken("FULLPLAIN", `v?${src[t.MAINVERSION]}${src[t.PRERELEASE]}?${src[t.BUILD]}?`);
+    createToken("FULL", `^${src[t.FULLPLAIN]}$`);
+    createToken("LOOSEPLAIN", `[v=\\s]*${src[t.MAINVERSIONLOOSE]}${src[t.PRERELEASELOOSE]}?${src[t.BUILD]}?`);
+    createToken("LOOSE", `^${src[t.LOOSEPLAIN]}$`);
+    createToken("GTLT", "((?:<|>)?=?)");
+    createToken("XRANGEIDENTIFIERLOOSE", `${src[t.NUMERICIDENTIFIERLOOSE]}|x|X|\\*`);
+    createToken("XRANGEIDENTIFIER", `${src[t.NUMERICIDENTIFIER]}|x|X|\\*`);
+    createToken("XRANGEPLAIN", `[v=\\s]*(${src[t.XRANGEIDENTIFIER]})(?:\\.(${src[t.XRANGEIDENTIFIER]})(?:\\.(${src[t.XRANGEIDENTIFIER]})(?:${src[t.PRERELEASE]})?${src[t.BUILD]}?)?)?`);
+    createToken("XRANGEPLAINLOOSE", `[v=\\s]*(${src[t.XRANGEIDENTIFIERLOOSE]})(?:\\.(${src[t.XRANGEIDENTIFIERLOOSE]})(?:\\.(${src[t.XRANGEIDENTIFIERLOOSE]})(?:${src[t.PRERELEASELOOSE]})?${src[t.BUILD]}?)?)?`);
+    createToken("XRANGE", `^${src[t.GTLT]}\\s*${src[t.XRANGEPLAIN]}$`);
+    createToken("XRANGELOOSE", `^${src[t.GTLT]}\\s*${src[t.XRANGEPLAINLOOSE]}$`);
+    createToken("COERCEPLAIN", `${"(^|[^\\d])(\\d{1,"}${MAX_SAFE_COMPONENT_LENGTH}})(?:\\.(\\d{1,${MAX_SAFE_COMPONENT_LENGTH}}))?(?:\\.(\\d{1,${MAX_SAFE_COMPONENT_LENGTH}}))?`);
+    createToken("COERCE", `${src[t.COERCEPLAIN]}(?:$|[^\\d])`);
+    createToken("COERCEFULL", src[t.COERCEPLAIN] + `(?:${src[t.PRERELEASE]})?(?:${src[t.BUILD]})?(?:$|[^\\d])`);
+    createToken("COERCERTL", src[t.COERCE], true);
+    createToken("COERCERTLFULL", src[t.COERCEFULL], true);
+    createToken("LONETILDE", "(?:~>?)");
+    createToken("TILDETRIM", `(\\s*)${src[t.LONETILDE]}\\s+`, true);
+    exports2.tildeTrimReplace = "$1~";
+    createToken("TILDE", `^${src[t.LONETILDE]}${src[t.XRANGEPLAIN]}$`);
+    createToken("TILDELOOSE", `^${src[t.LONETILDE]}${src[t.XRANGEPLAINLOOSE]}$`);
+    createToken("LONECARET", "(?:\\^)");
+    createToken("CARETTRIM", `(\\s*)${src[t.LONECARET]}\\s+`, true);
+    exports2.caretTrimReplace = "$1^";
+    createToken("CARET", `^${src[t.LONECARET]}${src[t.XRANGEPLAIN]}$`);
+    createToken("CARETLOOSE", `^${src[t.LONECARET]}${src[t.XRANGEPLAINLOOSE]}$`);
+    createToken("COMPARATORLOOSE", `^${src[t.GTLT]}\\s*(${src[t.LOOSEPLAIN]})$|^$`);
+    createToken("COMPARATOR", `^${src[t.GTLT]}\\s*(${src[t.FULLPLAIN]})$|^$`);
+    createToken("COMPARATORTRIM", `(\\s*)${src[t.GTLT]}\\s*(${src[t.LOOSEPLAIN]}|${src[t.XRANGEPLAIN]})`, true);
+    exports2.comparatorTrimReplace = "$1$2$3";
+    createToken("HYPHENRANGE", `^\\s*(${src[t.XRANGEPLAIN]})\\s+-\\s+(${src[t.XRANGEPLAIN]})\\s*$`);
+    createToken("HYPHENRANGELOOSE", `^\\s*(${src[t.XRANGEPLAINLOOSE]})\\s+-\\s+(${src[t.XRANGEPLAINLOOSE]})\\s*$`);
+    createToken("STAR", "(<|>)?=?\\s*\\*");
+    createToken("GTE0", "^\\s*>=\\s*0\\.0\\.0\\s*$");
+    createToken("GTE0PRE", "^\\s*>=\\s*0\\.0\\.0-0\\s*$");
+  }
+});
+
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/parse-options.js
+var require_parse_options = __commonJS({
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/parse-options.js"(exports2, module2) {
+    "use strict";
+    var looseOption = Object.freeze({ loose: true });
+    var emptyOpts = Object.freeze({});
+    var parseOptions = (options) => {
+      if (!options) {
+        return emptyOpts;
+      }
+      if (typeof options !== "object") {
+        return looseOption;
+      }
+      return options;
+    };
+    module2.exports = parseOptions;
+  }
+});
+
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/identifiers.js
+var require_identifiers = __commonJS({
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/identifiers.js"(exports2, module2) {
+    "use strict";
+    var numeric = /^[0-9]+$/;
+    var compareIdentifiers = (a5, b5) => {
+      if (typeof a5 === "number" && typeof b5 === "number") {
+        return a5 === b5 ? 0 : a5 < b5 ? -1 : 1;
+      }
+      const anum = numeric.test(a5);
+      const bnum = numeric.test(b5);
+      if (anum && bnum) {
+        a5 = +a5;
+        b5 = +b5;
+      }
+      return a5 === b5 ? 0 : anum && !bnum ? -1 : bnum && !anum ? 1 : a5 < b5 ? -1 : 1;
+    };
+    var rcompareIdentifiers = (a5, b5) => compareIdentifiers(b5, a5);
+    module2.exports = {
+      compareIdentifiers,
+      rcompareIdentifiers
+    };
+  }
+});
+
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/semver.js
+var require_semver = __commonJS({
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/semver.js"(exports2, module2) {
+    "use strict";
+    var debug = require_debug();
+    var { MAX_LENGTH, MAX_SAFE_INTEGER } = require_constants();
+    var { safeRe: re, t } = require_re();
+    var parseOptions = require_parse_options();
+    var { compareIdentifiers } = require_identifiers();
+    var isPrereleaseIdentifier = (prerelease, identifier) => {
+      const identifiers = identifier.split(".");
+      if (identifiers.length > prerelease.length) {
+        return false;
+      }
+      for (let i5 = 0; i5 < identifiers.length; i5++) {
+        if (compareIdentifiers(prerelease[i5], identifiers[i5]) !== 0) {
+          return false;
+        }
+      }
+      return true;
+    };
+    var SemVer = class _SemVer {
+      constructor(version2, options) {
+        options = parseOptions(options);
+        if (version2 instanceof _SemVer) {
+          if (version2.loose === !!options.loose && version2.includePrerelease === !!options.includePrerelease) {
+            return version2;
+          } else {
+            version2 = version2.version;
+          }
+        } else if (typeof version2 !== "string") {
+          throw new TypeError(`Invalid version. Must be a string. Got type "${typeof version2}".`);
+        }
+        if (version2.length > MAX_LENGTH) {
+          throw new TypeError(
+            `version is longer than ${MAX_LENGTH} characters`
+          );
+        }
+        debug("SemVer", version2, options);
+        this.options = options;
+        this.loose = !!options.loose;
+        this.includePrerelease = !!options.includePrerelease;
+        const m3 = version2.trim().match(options.loose ? re[t.LOOSE] : re[t.FULL]);
+        if (!m3) {
+          throw new TypeError(`Invalid Version: ${version2}`);
+        }
+        this.raw = version2;
+        this.major = +m3[1];
+        this.minor = +m3[2];
+        this.patch = +m3[3];
+        if (this.major > MAX_SAFE_INTEGER || this.major < 0) {
+          throw new TypeError("Invalid major version");
+        }
+        if (this.minor > MAX_SAFE_INTEGER || this.minor < 0) {
+          throw new TypeError("Invalid minor version");
+        }
+        if (this.patch > MAX_SAFE_INTEGER || this.patch < 0) {
+          throw new TypeError("Invalid patch version");
+        }
+        if (!m3[4]) {
+          this.prerelease = [];
+        } else {
+          this.prerelease = m3[4].split(".").map((id2) => {
+            if (/^[0-9]+$/.test(id2)) {
+              const num = +id2;
+              if (num >= 0 && num < MAX_SAFE_INTEGER) {
+                return num;
+              }
+            }
+            return id2;
+          });
+        }
+        this.build = m3[5] ? m3[5].split(".") : [];
+        this.format();
+      }
+      format() {
+        this.version = `${this.major}.${this.minor}.${this.patch}`;
+        if (this.prerelease.length) {
+          this.version += `-${this.prerelease.join(".")}`;
+        }
+        return this.version;
+      }
+      toString() {
+        return this.version;
+      }
+      compare(other) {
+        debug("SemVer.compare", this.version, this.options, other);
+        if (!(other instanceof _SemVer)) {
+          if (typeof other === "string" && other === this.version) {
+            return 0;
+          }
+          other = new _SemVer(other, this.options);
+        }
+        if (other.version === this.version) {
+          return 0;
+        }
+        return this.compareMain(other) || this.comparePre(other);
+      }
+      compareMain(other) {
+        if (!(other instanceof _SemVer)) {
+          other = new _SemVer(other, this.options);
+        }
+        if (this.major < other.major) {
+          return -1;
+        }
+        if (this.major > other.major) {
+          return 1;
+        }
+        if (this.minor < other.minor) {
+          return -1;
+        }
+        if (this.minor > other.minor) {
+          return 1;
+        }
+        if (this.patch < other.patch) {
+          return -1;
+        }
+        if (this.patch > other.patch) {
+          return 1;
+        }
+        return 0;
+      }
+      comparePre(other) {
+        if (!(other instanceof _SemVer)) {
+          other = new _SemVer(other, this.options);
+        }
+        if (this.prerelease.length && !other.prerelease.length) {
+          return -1;
+        } else if (!this.prerelease.length && other.prerelease.length) {
+          return 1;
+        } else if (!this.prerelease.length && !other.prerelease.length) {
+          return 0;
+        }
+        let i5 = 0;
+        do {
+          const a5 = this.prerelease[i5];
+          const b5 = other.prerelease[i5];
+          debug("prerelease compare", i5, a5, b5);
+          if (a5 === void 0 && b5 === void 0) {
+            return 0;
+          } else if (b5 === void 0) {
+            return 1;
+          } else if (a5 === void 0) {
+            return -1;
+          } else if (a5 === b5) {
+            continue;
+          } else {
+            return compareIdentifiers(a5, b5);
+          }
+        } while (++i5);
+      }
+      compareBuild(other) {
+        if (!(other instanceof _SemVer)) {
+          other = new _SemVer(other, this.options);
+        }
+        let i5 = 0;
+        do {
+          const a5 = this.build[i5];
+          const b5 = other.build[i5];
+          debug("build compare", i5, a5, b5);
+          if (a5 === void 0 && b5 === void 0) {
+            return 0;
+          } else if (b5 === void 0) {
+            return 1;
+          } else if (a5 === void 0) {
+            return -1;
+          } else if (a5 === b5) {
+            continue;
+          } else {
+            return compareIdentifiers(a5, b5);
+          }
+        } while (++i5);
+      }
+      // preminor will bump the version up to the next minor release, and immediately
+      // down to pre-release. premajor and prepatch work the same way.
+      inc(release2, identifier, identifierBase) {
+        if (release2.startsWith("pre")) {
+          if (!identifier && identifierBase === false) {
+            throw new Error("invalid increment argument: identifier is empty");
+          }
+          if (identifier) {
+            const match2 = `-${identifier}`.match(this.options.loose ? re[t.PRERELEASELOOSE] : re[t.PRERELEASE]);
+            if (!match2 || match2[1] !== identifier) {
+              throw new Error(`invalid identifier: ${identifier}`);
+            }
+          }
+        }
+        switch (release2) {
+          case "premajor":
+            this.prerelease.length = 0;
+            this.patch = 0;
+            this.minor = 0;
+            this.major++;
+            this.inc("pre", identifier, identifierBase);
+            break;
+          case "preminor":
+            this.prerelease.length = 0;
+            this.patch = 0;
+            this.minor++;
+            this.inc("pre", identifier, identifierBase);
+            break;
+          case "prepatch":
+            this.prerelease.length = 0;
+            this.inc("patch", identifier, identifierBase);
+            this.inc("pre", identifier, identifierBase);
+            break;
+          // If the input is a non-prerelease version, this acts the same as
+          // prepatch.
+          case "prerelease":
+            if (this.prerelease.length === 0) {
+              this.inc("patch", identifier, identifierBase);
+            }
+            this.inc("pre", identifier, identifierBase);
+            break;
+          case "release":
+            if (this.prerelease.length === 0) {
+              throw new Error(`version ${this.raw} is not a prerelease`);
+            }
+            this.prerelease.length = 0;
+            break;
+          case "major":
+            if (this.minor !== 0 || this.patch !== 0 || this.prerelease.length === 0) {
+              this.major++;
+            }
+            this.minor = 0;
+            this.patch = 0;
+            this.prerelease = [];
+            break;
+          case "minor":
+            if (this.patch !== 0 || this.prerelease.length === 0) {
+              this.minor++;
+            }
+            this.patch = 0;
+            this.prerelease = [];
+            break;
+          case "patch":
+            if (this.prerelease.length === 0) {
+              this.patch++;
+            }
+            this.prerelease = [];
+            break;
+          // This probably shouldn't be used publicly.
+          // 1.0.0 'pre' would become 1.0.0-0 which is the wrong direction.
+          case "pre": {
+            const base = Number(identifierBase) ? 1 : 0;
+            if (this.prerelease.length === 0) {
+              this.prerelease = [base];
+            } else {
+              let i5 = this.prerelease.length;
+              while (--i5 >= 0) {
+                if (typeof this.prerelease[i5] === "number") {
+                  this.prerelease[i5]++;
+                  i5 = -2;
+                }
+              }
+              if (i5 === -1) {
+                if (identifier === this.prerelease.join(".") && identifierBase === false) {
+                  throw new Error("invalid increment argument: identifier already exists");
+                }
+                this.prerelease.push(base);
+              }
+            }
+            if (identifier) {
+              let prerelease = [identifier, base];
+              if (identifierBase === false) {
+                prerelease = [identifier];
+              }
+              if (isPrereleaseIdentifier(this.prerelease, identifier)) {
+                const prereleaseBase = this.prerelease[identifier.split(".").length];
+                if (isNaN(prereleaseBase)) {
+                  this.prerelease = prerelease;
+                }
+              } else {
+                this.prerelease = prerelease;
+              }
+            }
+            break;
+          }
+          default:
+            throw new Error(`invalid increment argument: ${release2}`);
+        }
+        this.raw = this.format();
+        if (this.build.length) {
+          this.raw += `+${this.build.join(".")}`;
+        }
+        return this;
+      }
+    };
+    module2.exports = SemVer;
+  }
+});
+
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/parse.js
+var require_parse = __commonJS({
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/parse.js"(exports2, module2) {
+    "use strict";
+    var SemVer = require_semver();
+    var parse5 = (version2, options, throwErrors = false) => {
+      if (version2 instanceof SemVer) {
+        return version2;
+      }
+      try {
+        return new SemVer(version2, options);
+      } catch (er) {
+        if (!throwErrors) {
+          return null;
+        }
+        throw er;
+      }
+    };
+    module2.exports = parse5;
+  }
+});
+
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/coerce.js
+var require_coerce = __commonJS({
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/coerce.js"(exports2, module2) {
+    "use strict";
+    var SemVer = require_semver();
+    var parse5 = require_parse();
+    var { safeRe: re, t } = require_re();
+    var coerce2 = (version2, options) => {
+      if (version2 instanceof SemVer) {
+        return version2;
+      }
+      if (typeof version2 === "number") {
+        version2 = String(version2);
+      }
+      if (typeof version2 !== "string") {
+        return null;
+      }
+      options = options || {};
+      let match2 = null;
+      if (!options.rtl) {
+        match2 = version2.match(options.includePrerelease ? re[t.COERCEFULL] : re[t.COERCE]);
+      } else {
+        const coerceRtlRegex = options.includePrerelease ? re[t.COERCERTLFULL] : re[t.COERCERTL];
+        let next;
+        while ((next = coerceRtlRegex.exec(version2)) && (!match2 || match2.index + match2[0].length !== version2.length)) {
+          if (!match2 || next.index + next[0].length !== match2.index + match2[0].length) {
+            match2 = next;
+          }
+          coerceRtlRegex.lastIndex = next.index + next[1].length + next[2].length;
+        }
+        coerceRtlRegex.lastIndex = -1;
+      }
+      if (match2 === null) {
+        return null;
+      }
+      const major = match2[2];
+      const minor = match2[3] || "0";
+      const patch = match2[4] || "0";
+      const prerelease = options.includePrerelease && match2[5] ? `-${match2[5]}` : "";
+      const build2 = options.includePrerelease && match2[6] ? `+${match2[6]}` : "";
+      return parse5(`${major}.${minor}.${patch}${prerelease}${build2}`, options);
+    };
+    module2.exports = coerce2;
+  }
+});
+
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/compare.js
+var require_compare = __commonJS({
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/compare.js"(exports2, module2) {
+    "use strict";
+    var SemVer = require_semver();
+    var compare = (a5, b5, loose) => new SemVer(a5, loose).compare(new SemVer(b5, loose));
+    module2.exports = compare;
+  }
+});
+
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/gte.js
+var require_gte = __commonJS({
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/gte.js"(exports2, module2) {
+    "use strict";
+    var compare = require_compare();
+    var gte = (a5, b5, loose) => compare(a5, b5, loose) >= 0;
+    module2.exports = gte;
+  }
+});
+
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/lrucache.js
+var require_lrucache = __commonJS({
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/lrucache.js"(exports2, module2) {
+    "use strict";
+    var LRUCache = class {
+      constructor() {
+        this.max = 1e3;
+        this.map = /* @__PURE__ */ new Map();
+      }
+      get(key) {
+        const value = this.map.get(key);
+        if (value === void 0) {
+          return void 0;
+        } else {
+          this.map.delete(key);
+          this.map.set(key, value);
+          return value;
+        }
+      }
+      delete(key) {
+        return this.map.delete(key);
+      }
+      set(key, value) {
+        const deleted = this.delete(key);
+        if (!deleted && value !== void 0) {
+          if (this.map.size >= this.max) {
+            const firstKey = this.map.keys().next().value;
+            this.delete(firstKey);
+          }
+          this.map.set(key, value);
+        }
+        return this;
+      }
+    };
+    module2.exports = LRUCache;
+  }
+});
+
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/eq.js
+var require_eq = __commonJS({
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/eq.js"(exports2, module2) {
+    "use strict";
+    var compare = require_compare();
+    var eq = (a5, b5, loose) => compare(a5, b5, loose) === 0;
+    module2.exports = eq;
+  }
+});
+
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/neq.js
+var require_neq = __commonJS({
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/neq.js"(exports2, module2) {
+    "use strict";
+    var compare = require_compare();
+    var neq = (a5, b5, loose) => compare(a5, b5, loose) !== 0;
+    module2.exports = neq;
+  }
+});
+
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/gt.js
+var require_gt = __commonJS({
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/gt.js"(exports2, module2) {
+    "use strict";
+    var compare = require_compare();
+    var gt = (a5, b5, loose) => compare(a5, b5, loose) > 0;
+    module2.exports = gt;
+  }
+});
+
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/lt.js
+var require_lt = __commonJS({
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/lt.js"(exports2, module2) {
+    "use strict";
+    var compare = require_compare();
+    var lt = (a5, b5, loose) => compare(a5, b5, loose) < 0;
+    module2.exports = lt;
+  }
+});
+
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/lte.js
+var require_lte = __commonJS({
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/lte.js"(exports2, module2) {
+    "use strict";
+    var compare = require_compare();
+    var lte = (a5, b5, loose) => compare(a5, b5, loose) <= 0;
+    module2.exports = lte;
+  }
+});
+
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/cmp.js
+var require_cmp = __commonJS({
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/cmp.js"(exports2, module2) {
+    "use strict";
+    var eq = require_eq();
+    var neq = require_neq();
+    var gt = require_gt();
+    var gte = require_gte();
+    var lt = require_lt();
+    var lte = require_lte();
+    var cmp = (a5, op2, b5, loose) => {
+      switch (op2) {
+        case "===":
+          if (typeof a5 === "object") {
+            a5 = a5.version;
+          }
+          if (typeof b5 === "object") {
+            b5 = b5.version;
+          }
+          return a5 === b5;
+        case "!==":
+          if (typeof a5 === "object") {
+            a5 = a5.version;
+          }
+          if (typeof b5 === "object") {
+            b5 = b5.version;
+          }
+          return a5 !== b5;
+        case "":
+        case "=":
+        case "==":
+          return eq(a5, b5, loose);
+        case "!=":
+          return neq(a5, b5, loose);
+        case ">":
+          return gt(a5, b5, loose);
+        case ">=":
+          return gte(a5, b5, loose);
+        case "<":
+          return lt(a5, b5, loose);
+        case "<=":
+          return lte(a5, b5, loose);
+        default:
+          throw new TypeError(`Invalid operator: ${op2}`);
+      }
+    };
+    module2.exports = cmp;
+  }
+});
+
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/comparator.js
+var require_comparator = __commonJS({
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/comparator.js"(exports2, module2) {
+    "use strict";
+    var ANY = Symbol("SemVer ANY");
+    var Comparator = class _Comparator {
+      static get ANY() {
+        return ANY;
+      }
+      constructor(comp, options) {
+        options = parseOptions(options);
+        if (comp instanceof _Comparator) {
+          if (comp.loose === !!options.loose) {
+            return comp;
+          } else {
+            comp = comp.value;
+          }
+        }
+        comp = comp.trim().split(/\s+/).join(" ");
+        debug("comparator", comp, options);
+        this.options = options;
+        this.loose = !!options.loose;
+        this.parse(comp);
+        if (this.semver === ANY) {
+          this.value = "";
+        } else {
+          this.value = this.operator + this.semver.version;
+        }
+        debug("comp", this);
+      }
+      parse(comp) {
+        const r5 = this.options.loose ? re[t.COMPARATORLOOSE] : re[t.COMPARATOR];
+        const m3 = comp.match(r5);
+        if (!m3) {
+          throw new TypeError(`Invalid comparator: ${comp}`);
+        }
+        this.operator = m3[1] !== void 0 ? m3[1] : "";
+        if (this.operator === "=") {
+          this.operator = "";
+        }
+        if (!m3[2]) {
+          this.semver = ANY;
+        } else {
+          this.semver = new SemVer(m3[2], this.options.loose);
+        }
+      }
+      toString() {
+        return this.value;
+      }
+      test(version2) {
+        debug("Comparator.test", version2, this.options.loose);
+        if (this.semver === ANY || version2 === ANY) {
+          return true;
+        }
+        if (typeof version2 === "string") {
+          try {
+            version2 = new SemVer(version2, this.options);
+          } catch (er) {
+            return false;
+          }
+        }
+        return cmp(version2, this.operator, this.semver, this.options);
+      }
+      intersects(comp, options) {
+        if (!(comp instanceof _Comparator)) {
+          throw new TypeError("a Comparator is required");
+        }
+        if (this.operator === "") {
+          if (this.value === "") {
+            return true;
+          }
+          return new Range(comp.value, options).test(this.value);
+        } else if (comp.operator === "") {
+          if (comp.value === "") {
+            return true;
+          }
+          return new Range(this.value, options).test(comp.semver);
+        }
+        options = parseOptions(options);
+        if (options.includePrerelease && (this.value === "<0.0.0-0" || comp.value === "<0.0.0-0")) {
+          return false;
+        }
+        if (!options.includePrerelease && (this.value.startsWith("<0.0.0") || comp.value.startsWith("<0.0.0"))) {
+          return false;
+        }
+        if (this.operator.startsWith(">") && comp.operator.startsWith(">")) {
+          return true;
+        }
+        if (this.operator.startsWith("<") && comp.operator.startsWith("<")) {
+          return true;
+        }
+        if (this.semver.version === comp.semver.version && this.operator.includes("=") && comp.operator.includes("=")) {
+          return true;
+        }
+        if (cmp(this.semver, "<", comp.semver, options) && this.operator.startsWith(">") && comp.operator.startsWith("<")) {
+          return true;
+        }
+        if (cmp(this.semver, ">", comp.semver, options) && this.operator.startsWith("<") && comp.operator.startsWith(">")) {
+          return true;
+        }
+        return false;
+      }
+    };
+    module2.exports = Comparator;
+    var parseOptions = require_parse_options();
+    var { safeRe: re, t } = require_re();
+    var cmp = require_cmp();
+    var debug = require_debug();
+    var SemVer = require_semver();
+    var Range = require_range();
+  }
+});
+
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/range.js
+var require_range = __commonJS({
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/range.js"(exports2, module2) {
+    "use strict";
+    var SPACE_CHARACTERS = /\s+/g;
+    var Range = class _Range {
+      constructor(range2, options) {
+        options = parseOptions(options);
+        if (range2 instanceof _Range) {
+          if (range2.loose === !!options.loose && range2.includePrerelease === !!options.includePrerelease) {
+            return range2;
+          } else {
+            return new _Range(range2.raw, options);
+          }
+        }
+        if (range2 instanceof Comparator) {
+          this.raw = range2.value;
+          this.set = [[range2]];
+          this.formatted = void 0;
+          return this;
+        }
+        this.options = options;
+        this.loose = !!options.loose;
+        this.includePrerelease = !!options.includePrerelease;
+        this.raw = range2.trim().replace(SPACE_CHARACTERS, " ");
+        this.set = this.raw.split("||").map((r5) => this.parseRange(r5.trim())).filter((c5) => c5.length);
+        if (!this.set.length) {
+          throw new TypeError(`Invalid SemVer Range: ${this.raw}`);
+        }
+        if (this.set.length > 1) {
+          const first = this.set[0];
+          this.set = this.set.filter((c5) => !isNullSet(c5[0]));
+          if (this.set.length === 0) {
+            this.set = [first];
+          } else if (this.set.length > 1) {
+            for (const c5 of this.set) {
+              if (c5.length === 1 && isAny(c5[0])) {
+                this.set = [c5];
+                break;
+              }
+            }
+          }
+        }
+        this.formatted = void 0;
+      }
+      get range() {
+        if (this.formatted === void 0) {
+          this.formatted = "";
+          for (let i5 = 0; i5 < this.set.length; i5++) {
+            if (i5 > 0) {
+              this.formatted += "||";
+            }
+            const comps = this.set[i5];
+            for (let k5 = 0; k5 < comps.length; k5++) {
+              if (k5 > 0) {
+                this.formatted += " ";
+              }
+              this.formatted += comps[k5].toString().trim();
+            }
+          }
+        }
+        return this.formatted;
+      }
+      format() {
+        return this.range;
+      }
+      toString() {
+        return this.range;
+      }
+      parseRange(range2) {
+        range2 = range2.replace(BUILDSTRIPRE, "");
+        const memoOpts = (this.options.includePrerelease && FLAG_INCLUDE_PRERELEASE) | (this.options.loose && FLAG_LOOSE);
+        const memoKey = memoOpts + ":" + range2;
+        const cached2 = cache5.get(memoKey);
+        if (cached2) {
+          return cached2;
+        }
+        const loose = this.options.loose;
+        const hr = loose ? re[t.HYPHENRANGELOOSE] : re[t.HYPHENRANGE];
+        range2 = range2.replace(hr, hyphenReplace(this.options.includePrerelease));
+        debug("hyphen replace", range2);
+        range2 = range2.replace(re[t.COMPARATORTRIM], comparatorTrimReplace);
+        debug("comparator trim", range2);
+        range2 = range2.replace(re[t.TILDETRIM], tildeTrimReplace);
+        debug("tilde trim", range2);
+        range2 = range2.replace(re[t.CARETTRIM], caretTrimReplace);
+        debug("caret trim", range2);
+        let rangeList = range2.split(" ").map((comp) => parseComparator(comp, this.options)).join(" ").split(/\s+/).map((comp) => replaceGTE0(comp, this.options));
+        if (loose) {
+          rangeList = rangeList.filter((comp) => {
+            debug("loose invalid filter", comp, this.options);
+            return !!comp.match(re[t.COMPARATORLOOSE]);
+          });
+        }
+        debug("range list", rangeList);
+        const rangeMap = /* @__PURE__ */ new Map();
+        const comparators = rangeList.map((comp) => new Comparator(comp, this.options));
+        for (const comp of comparators) {
+          if (isNullSet(comp)) {
+            return [comp];
+          }
+          rangeMap.set(comp.value, comp);
+        }
+        if (rangeMap.size > 1 && rangeMap.has("")) {
+          rangeMap.delete("");
+        }
+        const result = [...rangeMap.values()];
+        cache5.set(memoKey, result);
+        return result;
+      }
+      intersects(range2, options) {
+        if (!(range2 instanceof _Range)) {
+          throw new TypeError("a Range is required");
+        }
+        return this.set.some((thisComparators) => {
+          return isSatisfiable(thisComparators, options) && range2.set.some((rangeComparators) => {
+            return isSatisfiable(rangeComparators, options) && thisComparators.every((thisComparator) => {
+              return rangeComparators.every((rangeComparator) => {
+                return thisComparator.intersects(rangeComparator, options);
+              });
+            });
+          });
+        });
+      }
+      // if ANY of the sets match ALL of its comparators, then pass
+      test(version2) {
+        if (!version2) {
+          return false;
+        }
+        if (typeof version2 === "string") {
+          try {
+            version2 = new SemVer(version2, this.options);
+          } catch (er) {
+            return false;
+          }
+        }
+        for (let i5 = 0; i5 < this.set.length; i5++) {
+          if (testSet(this.set[i5], version2, this.options)) {
+            return true;
+          }
+        }
+        return false;
+      }
+    };
+    module2.exports = Range;
+    var LRU = require_lrucache();
+    var cache5 = new LRU();
+    var parseOptions = require_parse_options();
+    var Comparator = require_comparator();
+    var debug = require_debug();
+    var SemVer = require_semver();
+    var {
+      safeRe: re,
+      src,
+      t,
+      comparatorTrimReplace,
+      tildeTrimReplace,
+      caretTrimReplace
+    } = require_re();
+    var { FLAG_INCLUDE_PRERELEASE, FLAG_LOOSE } = require_constants();
+    var BUILDSTRIPRE = new RegExp(src[t.BUILD], "g");
+    var isNullSet = (c5) => c5.value === "<0.0.0-0";
+    var isAny = (c5) => c5.value === "";
+    var isSatisfiable = (comparators, options) => {
+      let result = true;
+      const remainingComparators = comparators.slice();
+      let testComparator = remainingComparators.pop();
+      while (result && remainingComparators.length) {
+        result = remainingComparators.every((otherComparator) => {
+          return testComparator.intersects(otherComparator, options);
+        });
+        testComparator = remainingComparators.pop();
+      }
+      return result;
+    };
+    var parseComparator = (comp, options) => {
+      comp = comp.replace(re[t.BUILD], "");
+      debug("comp", comp, options);
+      comp = replaceCarets(comp, options);
+      debug("caret", comp);
+      comp = replaceTildes(comp, options);
+      debug("tildes", comp);
+      comp = replaceXRanges(comp, options);
+      debug("xrange", comp);
+      comp = replaceStars(comp, options);
+      debug("stars", comp);
+      return comp;
+    };
+    var isX = (id2) => !id2 || id2.toLowerCase() === "x" || id2 === "*";
+    var invalidXRangeOrder = (M2, m3, p3) => isX(M2) && !isX(m3) || isX(m3) && p3 && !isX(p3);
+    var replaceTildes = (comp, options) => {
+      return comp.trim().split(/\s+/).map((c5) => replaceTilde(c5, options)).join(" ");
+    };
+    var replaceTilde = (comp, options) => {
+      const r5 = options.loose ? re[t.TILDELOOSE] : re[t.TILDE];
+      const z3 = options.includePrerelease ? "-0" : "";
+      return comp.replace(r5, (_, M2, m3, p3, pr) => {
+        debug("tilde", comp, _, M2, m3, p3, pr);
+        let ret;
+        if (isX(M2)) {
+          ret = "";
+        } else if (isX(m3)) {
+          ret = `>=${M2}.0.0${z3} <${+M2 + 1}.0.0-0`;
+        } else if (isX(p3)) {
+          ret = `>=${M2}.${m3}.0${z3} <${M2}.${+m3 + 1}.0-0`;
+        } else if (pr) {
+          debug("replaceTilde pr", pr);
+          ret = `>=${M2}.${m3}.${p3}-${pr} <${M2}.${+m3 + 1}.0-0`;
+        } else {
+          ret = `>=${M2}.${m3}.${p3} <${M2}.${+m3 + 1}.0-0`;
+        }
+        debug("tilde return", ret);
+        return ret;
+      });
+    };
+    var replaceCarets = (comp, options) => {
+      return comp.trim().split(/\s+/).map((c5) => replaceCaret(c5, options)).join(" ");
+    };
+    var replaceCaret = (comp, options) => {
+      debug("caret", comp, options);
+      const r5 = options.loose ? re[t.CARETLOOSE] : re[t.CARET];
+      const z3 = options.includePrerelease ? "-0" : "";
+      return comp.replace(r5, (_, M2, m3, p3, pr) => {
+        debug("caret", comp, _, M2, m3, p3, pr);
+        let ret;
+        if (isX(M2)) {
+          ret = "";
+        } else if (isX(m3)) {
+          ret = `>=${M2}.0.0${z3} <${+M2 + 1}.0.0-0`;
+        } else if (isX(p3)) {
+          if (M2 === "0") {
+            ret = `>=${M2}.${m3}.0${z3} <${M2}.${+m3 + 1}.0-0`;
+          } else {
+            ret = `>=${M2}.${m3}.0${z3} <${+M2 + 1}.0.0-0`;
+          }
+        } else if (pr) {
+          debug("replaceCaret pr", pr);
+          if (M2 === "0") {
+            if (m3 === "0") {
+              ret = `>=${M2}.${m3}.${p3}-${pr} <${M2}.${m3}.${+p3 + 1}-0`;
+            } else {
+              ret = `>=${M2}.${m3}.${p3}-${pr} <${M2}.${+m3 + 1}.0-0`;
+            }
+          } else {
+            ret = `>=${M2}.${m3}.${p3}-${pr} <${+M2 + 1}.0.0-0`;
+          }
+        } else {
+          debug("no pr");
+          if (M2 === "0") {
+            if (m3 === "0") {
+              ret = `>=${M2}.${m3}.${p3} <${M2}.${m3}.${+p3 + 1}-0`;
+            } else {
+              ret = `>=${M2}.${m3}.${p3} <${M2}.${+m3 + 1}.0-0`;
+            }
+          } else {
+            ret = `>=${M2}.${m3}.${p3} <${+M2 + 1}.0.0-0`;
+          }
+        }
+        debug("caret return", ret);
+        return ret;
+      });
+    };
+    var replaceXRanges = (comp, options) => {
+      debug("replaceXRanges", comp, options);
+      return comp.split(/\s+/).map((c5) => replaceXRange(c5, options)).join(" ");
+    };
+    var replaceXRange = (comp, options) => {
+      comp = comp.trim();
+      const r5 = options.loose ? re[t.XRANGELOOSE] : re[t.XRANGE];
+      return comp.replace(r5, (ret, gtlt, M2, m3, p3, pr) => {
+        debug("xRange", comp, ret, gtlt, M2, m3, p3, pr);
+        if (invalidXRangeOrder(M2, m3, p3)) {
+          return comp;
+        }
+        const xM = isX(M2);
+        const xm = xM || isX(m3);
+        const xp = xm || isX(p3);
+        const anyX = xp;
+        if (gtlt === "=" && anyX) {
+          gtlt = "";
+        }
+        pr = options.includePrerelease ? "-0" : "";
+        if (xM) {
+          if (gtlt === ">" || gtlt === "<") {
+            ret = "<0.0.0-0";
+          } else {
+            ret = "*";
+          }
+        } else if (gtlt && anyX) {
+          if (xm) {
+            m3 = 0;
+          }
+          p3 = 0;
+          if (gtlt === ">") {
+            gtlt = ">=";
+            if (xm) {
+              M2 = +M2 + 1;
+              m3 = 0;
+              p3 = 0;
+            } else {
+              m3 = +m3 + 1;
+              p3 = 0;
+            }
+          } else if (gtlt === "<=") {
+            gtlt = "<";
+            if (xm) {
+              M2 = +M2 + 1;
+            } else {
+              m3 = +m3 + 1;
+            }
+          }
+          if (gtlt === "<") {
+            pr = "-0";
+          }
+          ret = `${gtlt + M2}.${m3}.${p3}${pr}`;
+        } else if (xm) {
+          ret = `>=${M2}.0.0${pr} <${+M2 + 1}.0.0-0`;
+        } else if (xp) {
+          ret = `>=${M2}.${m3}.0${pr} <${M2}.${+m3 + 1}.0-0`;
+        }
+        debug("xRange return", ret);
+        return ret;
+      });
+    };
+    var replaceStars = (comp, options) => {
+      debug("replaceStars", comp, options);
+      return comp.trim().replace(re[t.STAR], "");
+    };
+    var replaceGTE0 = (comp, options) => {
+      debug("replaceGTE0", comp, options);
+      return comp.trim().replace(re[options.includePrerelease ? t.GTE0PRE : t.GTE0], "");
+    };
+    var hyphenReplace = (incPr) => ($0, from, fM, fm, fp, fpr, fb, to, tM, tm, tp, tpr) => {
+      if (isX(fM)) {
+        from = "";
+      } else if (isX(fm)) {
+        from = `>=${fM}.0.0${incPr ? "-0" : ""}`;
+      } else if (isX(fp)) {
+        from = `>=${fM}.${fm}.0${incPr ? "-0" : ""}`;
+      } else if (fpr) {
+        from = `>=${from}`;
+      } else {
+        from = `>=${from}${incPr ? "-0" : ""}`;
+      }
+      if (isX(tM)) {
+        to = "";
+      } else if (isX(tm)) {
+        to = `<${+tM + 1}.0.0-0`;
+      } else if (isX(tp)) {
+        to = `<${tM}.${+tm + 1}.0-0`;
+      } else if (tpr) {
+        to = `<=${tM}.${tm}.${tp}-${tpr}`;
+      } else if (incPr) {
+        to = `<${tM}.${tm}.${+tp + 1}-0`;
+      } else {
+        to = `<=${to}`;
+      }
+      return `${from} ${to}`.trim();
+    };
+    var testSet = (set2, version2, options) => {
+      for (let i5 = 0; i5 < set2.length; i5++) {
+        if (!set2[i5].test(version2)) {
+          return false;
+        }
+      }
+      if (version2.prerelease.length && !options.includePrerelease) {
+        for (let i5 = 0; i5 < set2.length; i5++) {
+          debug(set2[i5].semver);
+          if (set2[i5].semver === Comparator.ANY) {
+            continue;
+          }
+          if (set2[i5].semver.prerelease.length > 0) {
+            const allowed = set2[i5].semver;
+            if (allowed.major === version2.major && allowed.minor === version2.minor && allowed.patch === version2.patch) {
+              return true;
+            }
+          }
+        }
+        return false;
+      }
+      return true;
+    };
+  }
+});
+
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/satisfies.js
+var require_satisfies = __commonJS({
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/satisfies.js"(exports2, module2) {
+    "use strict";
+    var Range = require_range();
+    var satisfies = (version2, range2, options) => {
+      try {
+        range2 = new Range(range2, options);
+      } catch (er) {
+        return false;
+      }
+      return range2.test(version2);
+    };
+    module2.exports = satisfies;
+  }
+});
+
+// ../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/package.json
+var require_package = __commonJS({
+  "../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/package.json"(exports2, module2) {
+    module2.exports = {
+      name: "sharp",
+      description: "High performance Node.js image processing, the fastest module to resize JPEG, PNG, WebP, GIF, AVIF and TIFF images",
+      version: "0.34.5",
+      author: "Lovell Fuller <npm@lovell.info>",
+      homepage: "https://sharp.pixelplumbing.com",
+      contributors: [
+        "Pierre Inglebert <pierre.inglebert@gmail.com>",
+        "Jonathan Ong <jonathanrichardong@gmail.com>",
+        "Chanon Sajjamanochai <chanon.s@gmail.com>",
+        "Juliano Julio <julianojulio@gmail.com>",
+        "Daniel Gasienica <daniel@gasienica.ch>",
+        "Julian Walker <julian@fiftythree.com>",
+        "Amit Pitaru <pitaru.amit@gmail.com>",
+        "Brandon Aaron <hello.brandon@aaron.sh>",
+        "Andreas Lind <andreas@one.com>",
+        "Maurus Cuelenaere <mcuelenaere@gmail.com>",
+        "Linus Unneb\xE4ck <linus@folkdatorn.se>",
+        "Victor Mateevitsi <mvictoras@gmail.com>",
+        "Alaric Holloway <alaric.holloway@gmail.com>",
+        "Bernhard K. Weisshuhn <bkw@codingforce.com>",
+        "Chris Riley <criley@primedia.com>",
+        "David Carley <dacarley@gmail.com>",
+        "John Tobin <john@limelightmobileinc.com>",
+        "Kenton Gray <kentongray@gmail.com>",
+        "Felix B\xFCnemann <Felix.Buenemann@gmail.com>",
+        "Samy Al Zahrani <samyalzahrany@gmail.com>",
+        "Chintan Thakkar <lemnisk8@gmail.com>",
+        "F. Orlando Galashan <frulo@gmx.de>",
+        "Kleis Auke Wolthuizen <info@kleisauke.nl>",
+        "Matt Hirsch <mhirsch@media.mit.edu>",
+        "Matthias Thoemmes <thoemmes@gmail.com>",
+        "Patrick Paskaris <patrick@paskaris.gr>",
+        "J\xE9r\xE9my Lal <kapouer@melix.org>",
+        "Rahul Nanwani <r.nanwani@gmail.com>",
+        "Alice Monday <alice0meta@gmail.com>",
+        "Kristo Jorgenson <kristo.jorgenson@gmail.com>",
+        "YvesBos <yves_bos@outlook.com>",
+        "Guy Maliar <guy@tailorbrands.com>",
+        "Nicolas Coden <nicolas@ncoden.fr>",
+        "Matt Parrish <matt.r.parrish@gmail.com>",
+        "Marcel Bretschneider <marcel.bretschneider@gmail.com>",
+        "Matthew McEachen <matthew+github@mceachen.org>",
+        "Jarda Kot\u011B\u0161ovec <jarda.kotesovec@gmail.com>",
+        "Kenric D'Souza <kenric.dsouza@gmail.com>",
+        "Oleh Aleinyk <oleg.aleynik@gmail.com>",
+        "Marcel Bretschneider <marcel.bretschneider@gmail.com>",
+        "Andrea Bianco <andrea.bianco@unibas.ch>",
+        "Rik Heywood <rik@rik.org>",
+        "Thomas Parisot <hi@oncletom.io>",
+        "Nathan Graves <nathanrgraves+github@gmail.com>",
+        "Tom Lokhorst <tom@lokhorst.eu>",
+        "Espen Hovlandsdal <espen@hovlandsdal.com>",
+        "Sylvain Dumont <sylvain.dumont35@gmail.com>",
+        "Alun Davies <alun.owain.davies@googlemail.com>",
+        "Aidan Hoolachan <ajhoolachan21@gmail.com>",
+        "Axel Eirola <axel.eirola@iki.fi>",
+        "Freezy <freezy@xbmc.org>",
+        "Daiz <taneli.vatanen@gmail.com>",
+        "Julian Aubourg <j@ubourg.net>",
+        "Keith Belovay <keith@picthrive.com>",
+        "Michael B. Klein <mbklein@gmail.com>",
+        "Jordan Prudhomme <jordan@raboland.fr>",
+        "Ilya Ovdin <iovdin@gmail.com>",
+        "Andargor <andargor@yahoo.com>",
+        "Paul Neave <paul.neave@gmail.com>",
+        "Brendan Kennedy <brenwken@gmail.com>",
+        "Brychan Bennett-Odlum <git@brychan.io>",
+        "Edward Silverton <e.silverton@gmail.com>",
+        "Roman Malieiev <aromaleev@gmail.com>",
+        "Tomas Szabo <tomas.szabo@deftomat.com>",
+        "Robert O'Rourke <robert@o-rourke.org>",
+        "Guillermo Alfonso Varela Chouci\xF1o <guillevch@gmail.com>",
+        "Christian Flintrup <chr@gigahost.dk>",
+        "Manan Jadhav <manan@motionden.com>",
+        "Leon Radley <leon@radley.se>",
+        "alza54 <alza54@thiocod.in>",
+        "Jacob Smith <jacob@frende.me>",
+        "Michael Nutt <michael@nutt.im>",
+        "Brad Parham <baparham@gmail.com>",
+        "Taneli Vatanen <taneli.vatanen@gmail.com>",
+        "Joris Dugu\xE9 <zaruike10@gmail.com>",
+        "Chris Banks <christopher.bradley.banks@gmail.com>",
+        "Ompal Singh <ompal.hitm09@gmail.com>",
+        "Brodan <christopher.hranj@gmail.com>",
+        "Ankur Parihar <ankur.github@gmail.com>",
+        "Brahim Ait elhaj <brahima@gmail.com>",
+        "Mart Jansink <m.jansink@gmail.com>",
+        "Lachlan Newman <lachnewman007@gmail.com>",
+        "Dennis Beatty <dennis@dcbeatty.com>",
+        "Ingvar Stepanyan <me@rreverser.com>",
+        "Don Denton <don@happycollision.com>"
+      ],
+      scripts: {
+        build: "node install/build.js",
+        install: "node install/check.js || npm run build",
+        clean: "rm -rf src/build/ .nyc_output/ coverage/ test/fixtures/output.*",
+        test: "npm run lint && npm run test-unit",
+        lint: "npm run lint-cpp && npm run lint-js && npm run lint-types",
+        "lint-cpp": "cpplint --quiet src/*.h src/*.cc",
+        "lint-js": "biome lint",
+        "lint-types": "tsd --files ./test/types/sharp.test-d.ts",
+        "test-leak": "./test/leak/leak.sh",
+        "test-unit": "node --experimental-test-coverage test/unit.mjs",
+        "package-from-local-build": "node npm/from-local-build.js",
+        "package-release-notes": "node npm/release-notes.js",
+        "docs-build": "node docs/build.mjs",
+        "docs-serve": "cd docs && npm start",
+        "docs-publish": "cd docs && npm run build && npx firebase-tools deploy --project pixelplumbing --only hosting:pixelplumbing-sharp"
+      },
+      type: "commonjs",
+      main: "lib/index.js",
+      types: "lib/index.d.ts",
+      files: [
+        "install",
+        "lib",
+        "src/*.{cc,h,gyp}"
+      ],
+      repository: {
+        type: "git",
+        url: "git://github.com/lovell/sharp.git"
+      },
+      keywords: [
+        "jpeg",
+        "png",
+        "webp",
+        "avif",
+        "tiff",
+        "gif",
+        "svg",
+        "jp2",
+        "dzi",
+        "image",
+        "resize",
+        "thumbnail",
+        "crop",
+        "embed",
+        "libvips",
+        "vips"
+      ],
+      dependencies: {
+        "@img/colour": "^1.0.0",
+        "detect-libc": "^2.1.2",
+        semver: "^7.7.3"
+      },
+      optionalDependencies: {
+        "@img/sharp-darwin-arm64": "0.34.5",
+        "@img/sharp-darwin-x64": "0.34.5",
+        "@img/sharp-libvips-darwin-arm64": "1.2.4",
+        "@img/sharp-libvips-darwin-x64": "1.2.4",
+        "@img/sharp-libvips-linux-arm": "1.2.4",
+        "@img/sharp-libvips-linux-arm64": "1.2.4",
+        "@img/sharp-libvips-linux-ppc64": "1.2.4",
+        "@img/sharp-libvips-linux-riscv64": "1.2.4",
+        "@img/sharp-libvips-linux-s390x": "1.2.4",
+        "@img/sharp-libvips-linux-x64": "1.2.4",
+        "@img/sharp-libvips-linuxmusl-arm64": "1.2.4",
+        "@img/sharp-libvips-linuxmusl-x64": "1.2.4",
+        "@img/sharp-linux-arm": "0.34.5",
+        "@img/sharp-linux-arm64": "0.34.5",
+        "@img/sharp-linux-ppc64": "0.34.5",
+        "@img/sharp-linux-riscv64": "0.34.5",
+        "@img/sharp-linux-s390x": "0.34.5",
+        "@img/sharp-linux-x64": "0.34.5",
+        "@img/sharp-linuxmusl-arm64": "0.34.5",
+        "@img/sharp-linuxmusl-x64": "0.34.5",
+        "@img/sharp-wasm32": "0.34.5",
+        "@img/sharp-win32-arm64": "0.34.5",
+        "@img/sharp-win32-ia32": "0.34.5",
+        "@img/sharp-win32-x64": "0.34.5"
+      },
+      devDependencies: {
+        "@biomejs/biome": "^2.3.4",
+        "@cpplint/cli": "^0.1.0",
+        "@emnapi/runtime": "^1.7.0",
+        "@img/sharp-libvips-dev": "1.2.4",
+        "@img/sharp-libvips-dev-wasm32": "1.2.4",
+        "@img/sharp-libvips-win32-arm64": "1.2.4",
+        "@img/sharp-libvips-win32-ia32": "1.2.4",
+        "@img/sharp-libvips-win32-x64": "1.2.4",
+        "@types/node": "*",
+        emnapi: "^1.7.0",
+        "exif-reader": "^2.0.2",
+        "extract-zip": "^2.0.1",
+        icc: "^3.0.0",
+        "jsdoc-to-markdown": "^9.1.3",
+        "node-addon-api": "^8.5.0",
+        "node-gyp": "^11.5.0",
+        "tar-fs": "^3.1.1",
+        tsd: "^0.33.0"
+      },
+      license: "Apache-2.0",
+      engines: {
+        node: "^18.17.0 || ^20.3.0 || >=21.0.0"
+      },
+      config: {
+        libvips: ">=8.17.3"
+      },
+      funding: {
+        url: "https://opencollective.com/libvips"
+      }
+    };
+  }
+});
+
+// ../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/libvips.js
+var require_libvips = __commonJS({
+  "../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/libvips.js"(exports2, module2) {
+    var { spawnSync: spawnSync2 } = require("node:child_process");
+    var { createHash: createHash32 } = require("node:crypto");
+    var semverCoerce = require_coerce();
+    var semverGreaterThanOrEqualTo = require_gte();
+    var semverSatisfies = require_satisfies();
+    var detectLibc = require_detect_libc();
+    var { config: config2, engines, optionalDependencies } = require_package();
+    var minimumLibvipsVersionLabelled = process.env.npm_package_config_libvips || config2.libvips;
+    var minimumLibvipsVersion = semverCoerce(minimumLibvipsVersionLabelled).version;
+    var prebuiltPlatforms = [
+      "darwin-arm64",
+      "darwin-x64",
+      "linux-arm",
+      "linux-arm64",
+      "linux-ppc64",
+      "linux-riscv64",
+      "linux-s390x",
+      "linux-x64",
+      "linuxmusl-arm64",
+      "linuxmusl-x64",
+      "win32-arm64",
+      "win32-ia32",
+      "win32-x64"
+    ];
+    var spawnSyncOptions = {
+      encoding: "utf8",
+      shell: true
+    };
+    var log2 = (item) => {
+      if (item instanceof Error) {
+        console.error(`sharp: Installation error: ${item.message}`);
+      } else {
+        console.log(`sharp: ${item}`);
+      }
+    };
+    var runtimeLibc = () => detectLibc.isNonGlibcLinuxSync() ? detectLibc.familySync() : "";
+    var runtimePlatformArch = () => `${process.platform}${runtimeLibc()}-${process.arch}`;
+    var buildPlatformArch = () => {
+      if (isEmscripten()) {
+        return "wasm32";
+      }
+      const { npm_config_arch, npm_config_platform, npm_config_libc } = process.env;
+      const libc = typeof npm_config_libc === "string" ? npm_config_libc : runtimeLibc();
+      return `${npm_config_platform || process.platform}${libc}-${npm_config_arch || process.arch}`;
+    };
+    var buildSharpLibvipsIncludeDir = () => {
+      try {
+        return require(`@img/sharp-libvips-dev-${buildPlatformArch()}/include`);
+      } catch {
+        try {
+          return require("@img/sharp-libvips-dev/include");
+        } catch {
+        }
+      }
+      return "";
+    };
+    var buildSharpLibvipsCPlusPlusDir = () => {
+      try {
+        return require("@img/sharp-libvips-dev/cplusplus");
+      } catch {
+      }
+      return "";
+    };
+    var buildSharpLibvipsLibDir = () => {
+      try {
+        return require(`@img/sharp-libvips-dev-${buildPlatformArch()}/lib`);
+      } catch {
+        try {
+          return require(`@img/sharp-libvips-${buildPlatformArch()}/lib`);
+        } catch {
+        }
+      }
+      return "";
+    };
+    var isUnsupportedNodeRuntime = () => {
+      if (process.release?.name === "node" && process.versions) {
+        if (!semverSatisfies(process.versions.node, engines.node)) {
+          return { found: process.versions.node, expected: engines.node };
+        }
+      }
+    };
+    var isEmscripten = () => {
+      const { CC } = process.env;
+      return Boolean(CC?.endsWith("/emcc"));
+    };
+    var isRosetta = () => {
+      if (process.platform === "darwin" && process.arch === "x64") {
+        const translated = spawnSync2("sysctl sysctl.proc_translated", spawnSyncOptions).stdout;
+        return (translated || "").trim() === "sysctl.proc_translated: 1";
+      }
+      return false;
+    };
+    var sha512 = (s2) => createHash32("sha512").update(s2).digest("hex");
+    var yarnLocator = () => {
+      try {
+        const identHash = sha512(`imgsharp-libvips-${buildPlatformArch()}`);
+        const npmVersion = semverCoerce(optionalDependencies[`@img/sharp-libvips-${buildPlatformArch()}`], {
+          includePrerelease: true
+        }).version;
+        return sha512(`${identHash}npm:${npmVersion}`).slice(0, 10);
+      } catch {
+      }
+      return "";
+    };
+    var spawnRebuild = () => spawnSync2(`node-gyp rebuild --directory=src ${isEmscripten() ? "--nodedir=emscripten" : ""}`, {
+      ...spawnSyncOptions,
+      stdio: "inherit"
+    }).status;
+    var globalLibvipsVersion = () => {
+      if (process.platform !== "win32") {
+        const globalLibvipsVersion2 = spawnSync2("pkg-config --modversion vips-cpp", {
+          ...spawnSyncOptions,
+          env: {
+            ...process.env,
+            PKG_CONFIG_PATH: pkgConfigPath()
+          }
+        }).stdout;
+        return (globalLibvipsVersion2 || "").trim();
+      } else {
+        return "";
+      }
+    };
+    var pkgConfigPath = () => {
+      if (process.platform !== "win32") {
+        const brewPkgConfigPath = spawnSync2(
+          'which brew >/dev/null 2>&1 && brew environment --plain | grep PKG_CONFIG_LIBDIR | cut -d" " -f2',
+          spawnSyncOptions
+        ).stdout || "";
+        return [
+          brewPkgConfigPath.trim(),
+          process.env.PKG_CONFIG_PATH,
+          "/usr/local/lib/pkgconfig",
+          "/usr/lib/pkgconfig",
+          "/usr/local/libdata/pkgconfig",
+          "/usr/libdata/pkgconfig"
+        ].filter(Boolean).join(":");
+      } else {
+        return "";
+      }
+    };
+    var skipSearch = (status, reason, logger2) => {
+      if (logger2) {
+        logger2(`Detected ${reason}, skipping search for globally-installed libvips`);
+      }
+      return status;
+    };
+    var useGlobalLibvips = (logger2) => {
+      if (Boolean(process.env.SHARP_IGNORE_GLOBAL_LIBVIPS) === true) {
+        return skipSearch(false, "SHARP_IGNORE_GLOBAL_LIBVIPS", logger2);
+      }
+      if (Boolean(process.env.SHARP_FORCE_GLOBAL_LIBVIPS) === true) {
+        return skipSearch(true, "SHARP_FORCE_GLOBAL_LIBVIPS", logger2);
+      }
+      if (isRosetta()) {
+        return skipSearch(false, "Rosetta", logger2);
+      }
+      const globalVipsVersion = globalLibvipsVersion();
+      return !!globalVipsVersion && semverGreaterThanOrEqualTo(globalVipsVersion, minimumLibvipsVersion);
+    };
+    module2.exports = {
+      minimumLibvipsVersion,
+      prebuiltPlatforms,
+      buildPlatformArch,
+      buildSharpLibvipsIncludeDir,
+      buildSharpLibvipsCPlusPlusDir,
+      buildSharpLibvipsLibDir,
+      isUnsupportedNodeRuntime,
+      runtimePlatformArch,
+      log: log2,
+      yarnLocator,
+      spawnRebuild,
+      globalLibvipsVersion,
+      pkgConfigPath,
+      useGlobalLibvips
+    };
+  }
+});
+
+// ../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/sharp.js
+var require_sharp = __commonJS({
+  "../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/sharp.js"(exports2, module2) {
+    var { familySync, versionSync } = require_detect_libc();
+    var { runtimePlatformArch, isUnsupportedNodeRuntime, prebuiltPlatforms, minimumLibvipsVersion } = require_libvips();
+    var runtimePlatform = runtimePlatformArch();
+    var paths2 = [
+      `../src/build/Release/sharp-${runtimePlatform}.node`,
+      "../src/build/Release/sharp-wasm32.node",
+      `@img/sharp-${runtimePlatform}/sharp.node`,
+      "@img/sharp-wasm32/sharp.node"
+    ];
+    var path;
+    var sharp3;
+    var errors = [];
+    for (path of paths2) {
+      try {
+        sharp3 = require(path);
+        break;
+      } catch (err) {
+        errors.push(err);
+      }
+    }
+    if (sharp3 && path.startsWith("@img/sharp-linux-x64") && !sharp3._isUsingX64V2()) {
+      const err = new Error("Prebuilt binaries for linux-x64 require v2 microarchitecture");
+      err.code = "Unsupported CPU";
+      errors.push(err);
+      sharp3 = null;
+    }
+    if (sharp3) {
+      module2.exports = sharp3;
+    } else {
+      const [isLinux, isMacOs, isWindows] = ["linux", "darwin", "win32"].map((os) => runtimePlatform.startsWith(os));
+      const help = [`Could not load the "sharp" module using the ${runtimePlatform} runtime`];
+      errors.forEach((err) => {
+        if (err.code !== "MODULE_NOT_FOUND") {
+          help.push(`${err.code}: ${err.message}`);
+        }
+      });
+      const messages = errors.map((err) => err.message).join(" ");
+      help.push("Possible solutions:");
+      if (isUnsupportedNodeRuntime()) {
+        const { found, expected } = isUnsupportedNodeRuntime();
+        help.push(
+          "- Please upgrade Node.js:",
+          `    Found ${found}`,
+          `    Requires ${expected}`
+        );
+      } else if (prebuiltPlatforms.includes(runtimePlatform)) {
+        const [os, cpu] = runtimePlatform.split("-");
+        const libc = os.endsWith("musl") ? " --libc=musl" : "";
+        help.push(
+          "- Ensure optional dependencies can be installed:",
+          "    npm install --include=optional sharp",
+          "- Ensure your package manager supports multi-platform installation:",
+          "    See https://sharp.pixelplumbing.com/install#cross-platform",
+          "- Add platform-specific dependencies:",
+          `    npm install --os=${os.replace("musl", "")}${libc} --cpu=${cpu} sharp`
+        );
+      } else {
+        help.push(
+          `- Manually install libvips >= ${minimumLibvipsVersion}`,
+          "- Add experimental WebAssembly-based dependencies:",
+          "    npm install --cpu=wasm32 sharp",
+          "    npm install @img/sharp-wasm32"
+        );
+      }
+      if (isLinux && /(symbol not found|CXXABI_)/i.test(messages)) {
+        try {
+          const { config: config2 } = require(`@img/sharp-libvips-${runtimePlatform}/package`);
+          const libcFound = `${familySync()} ${versionSync()}`;
+          const libcRequires = `${config2.musl ? "musl" : "glibc"} ${config2.musl || config2.glibc}`;
+          help.push(
+            "- Update your OS:",
+            `    Found ${libcFound}`,
+            `    Requires ${libcRequires}`
+          );
+        } catch (_errEngines) {
+        }
+      }
+      if (isLinux && /\/snap\/core[0-9]{2}/.test(messages)) {
+        help.push(
+          "- Remove the Node.js Snap, which does not support native modules",
+          "    snap remove node"
+        );
+      }
+      if (isMacOs && /Incompatible library version/.test(messages)) {
+        help.push(
+          "- Update Homebrew:",
+          "    brew update && brew upgrade vips"
+        );
+      }
+      if (errors.some((err) => err.code === "ERR_DLOPEN_DISABLED")) {
+        help.push("- Run Node.js without using the --no-addons flag");
+      }
+      if (isWindows && /The specified procedure could not be found/.test(messages)) {
+        help.push(
+          "- Using the canvas package on Windows?",
+          "    See https://sharp.pixelplumbing.com/install#canvas-and-windows",
+          "- Check for outdated versions of sharp in the dependency tree:",
+          "    npm ls sharp"
+        );
+      }
+      help.push(
+        "- Consult the installation documentation:",
+        "    See https://sharp.pixelplumbing.com/install"
+      );
+      throw new Error(help.join("\n"));
+    }
+  }
+});
+
+// ../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/constructor.js
+var require_constructor = __commonJS({
+  "../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/constructor.js"(exports2, module2) {
+    var util2 = require("node:util");
+    var stream = require("node:stream");
+    var is = require_is();
+    require_sharp();
+    var debuglog = util2.debuglog("sharp");
+    var queueListener = (queueLength) => {
+      Sharp.queue.emit("change", queueLength);
+    };
+    var Sharp = function(input, options) {
+      if (arguments.length === 1 && !is.defined(input)) {
+        throw new Error("Invalid input");
+      }
+      if (!(this instanceof Sharp)) {
+        return new Sharp(input, options);
+      }
+      stream.Duplex.call(this);
+      this.options = {
+        // resize options
+        topOffsetPre: -1,
+        leftOffsetPre: -1,
+        widthPre: -1,
+        heightPre: -1,
+        topOffsetPost: -1,
+        leftOffsetPost: -1,
+        widthPost: -1,
+        heightPost: -1,
+        width: -1,
+        height: -1,
+        canvas: "crop",
+        position: 0,
+        resizeBackground: [0, 0, 0, 255],
+        angle: 0,
+        rotationAngle: 0,
+        rotationBackground: [0, 0, 0, 255],
+        rotateBefore: false,
+        orientBefore: false,
+        flip: false,
+        flop: false,
+        extendTop: 0,
+        extendBottom: 0,
+        extendLeft: 0,
+        extendRight: 0,
+        extendBackground: [0, 0, 0, 255],
+        extendWith: "background",
+        withoutEnlargement: false,
+        withoutReduction: false,
+        affineMatrix: [],
+        affineBackground: [0, 0, 0, 255],
+        affineIdx: 0,
+        affineIdy: 0,
+        affineOdx: 0,
+        affineOdy: 0,
+        affineInterpolator: this.constructor.interpolators.bilinear,
+        kernel: "lanczos3",
+        fastShrinkOnLoad: true,
+        // operations
+        tint: [-1, 0, 0, 0],
+        flatten: false,
+        flattenBackground: [0, 0, 0],
+        unflatten: false,
+        negate: false,
+        negateAlpha: true,
+        medianSize: 0,
+        blurSigma: 0,
+        precision: "integer",
+        minAmpl: 0.2,
+        sharpenSigma: 0,
+        sharpenM1: 1,
+        sharpenM2: 2,
+        sharpenX1: 2,
+        sharpenY2: 10,
+        sharpenY3: 20,
+        threshold: 0,
+        thresholdGrayscale: true,
+        trimBackground: [],
+        trimThreshold: -1,
+        trimLineArt: false,
+        dilateWidth: 0,
+        erodeWidth: 0,
+        gamma: 0,
+        gammaOut: 0,
+        greyscale: false,
+        normalise: false,
+        normaliseLower: 1,
+        normaliseUpper: 99,
+        claheWidth: 0,
+        claheHeight: 0,
+        claheMaxSlope: 3,
+        brightness: 1,
+        saturation: 1,
+        hue: 0,
+        lightness: 0,
+        booleanBufferIn: null,
+        booleanFileIn: "",
+        joinChannelIn: [],
+        extractChannel: -1,
+        removeAlpha: false,
+        ensureAlpha: -1,
+        colourspace: "srgb",
+        colourspacePipeline: "last",
+        composite: [],
+        // output
+        fileOut: "",
+        formatOut: "input",
+        streamOut: false,
+        keepMetadata: 0,
+        withMetadataOrientation: -1,
+        withMetadataDensity: 0,
+        withIccProfile: "",
+        withExif: {},
+        withExifMerge: true,
+        withXmp: "",
+        resolveWithObject: false,
+        loop: -1,
+        delay: [],
+        // output format
+        jpegQuality: 80,
+        jpegProgressive: false,
+        jpegChromaSubsampling: "4:2:0",
+        jpegTrellisQuantisation: false,
+        jpegOvershootDeringing: false,
+        jpegOptimiseScans: false,
+        jpegOptimiseCoding: true,
+        jpegQuantisationTable: 0,
+        pngProgressive: false,
+        pngCompressionLevel: 6,
+        pngAdaptiveFiltering: false,
+        pngPalette: false,
+        pngQuality: 100,
+        pngEffort: 7,
+        pngBitdepth: 8,
+        pngDither: 1,
+        jp2Quality: 80,
+        jp2TileHeight: 512,
+        jp2TileWidth: 512,
+        jp2Lossless: false,
+        jp2ChromaSubsampling: "4:4:4",
+        webpQuality: 80,
+        webpAlphaQuality: 100,
+        webpLossless: false,
+        webpNearLossless: false,
+        webpSmartSubsample: false,
+        webpSmartDeblock: false,
+        webpPreset: "default",
+        webpEffort: 4,
+        webpMinSize: false,
+        webpMixed: false,
+        gifBitdepth: 8,
+        gifEffort: 7,
+        gifDither: 1,
+        gifInterFrameMaxError: 0,
+        gifInterPaletteMaxError: 3,
+        gifKeepDuplicateFrames: false,
+        gifReuse: true,
+        gifProgressive: false,
+        tiffQuality: 80,
+        tiffCompression: "jpeg",
+        tiffBigtiff: false,
+        tiffPredictor: "horizontal",
+        tiffPyramid: false,
+        tiffMiniswhite: false,
+        tiffBitdepth: 8,
+        tiffTile: false,
+        tiffTileHeight: 256,
+        tiffTileWidth: 256,
+        tiffXres: 1,
+        tiffYres: 1,
+        tiffResolutionUnit: "inch",
+        heifQuality: 50,
+        heifLossless: false,
+        heifCompression: "av1",
+        heifEffort: 4,
+        heifChromaSubsampling: "4:4:4",
+        heifBitdepth: 8,
+        jxlDistance: 1,
+        jxlDecodingTier: 0,
+        jxlEffort: 7,
+        jxlLossless: false,
+        rawDepth: "uchar",
+        tileSize: 256,
+        tileOverlap: 0,
+        tileContainer: "fs",
+        tileLayout: "dz",
+        tileFormat: "last",
+        tileDepth: "last",
+        tileAngle: 0,
+        tileSkipBlanks: -1,
+        tileBackground: [255, 255, 255, 255],
+        tileCentre: false,
+        tileId: "https://example.com/iiif",
+        tileBasename: "",
+        timeoutSeconds: 0,
+        linearA: [],
+        linearB: [],
+        pdfBackground: [255, 255, 255, 255],
+        // Function to notify of libvips warnings
+        debuglog: (warning2) => {
+          this.emit("warning", warning2);
+          debuglog(warning2);
+        },
+        // Function to notify of queue length changes
+        queueListener
+      };
+      this.options.input = this._createInputDescriptor(input, options, { allowStream: true });
+      return this;
+    };
+    Object.setPrototypeOf(Sharp.prototype, stream.Duplex.prototype);
+    Object.setPrototypeOf(Sharp, stream.Duplex);
+    function clone2() {
+      const clone3 = this.constructor.call();
+      const { debuglog: debuglog2, queueListener: queueListener2, ...options } = this.options;
+      clone3.options = structuredClone(options);
+      clone3.options.debuglog = debuglog2;
+      clone3.options.queueListener = queueListener2;
+      if (this._isStreamInput()) {
+        this.on("finish", () => {
+          this._flattenBufferIn();
+          clone3.options.input.buffer = this.options.input.buffer;
+          clone3.emit("finish");
+        });
+      }
+      return clone3;
+    }
+    Object.assign(Sharp.prototype, { clone: clone2 });
+    module2.exports = Sharp;
+  }
+});
+
+// ../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/input.js
+var require_input = __commonJS({
+  "../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/input.js"(exports2, module2) {
+    var is = require_is();
+    var sharp3 = require_sharp();
+    var align = {
+      left: "low",
+      top: "low",
+      low: "low",
+      center: "centre",
+      centre: "centre",
+      right: "high",
+      bottom: "high",
+      high: "high"
+    };
+    var inputStreamParameters = [
+      // Limits and error handling
+      "failOn",
+      "limitInputPixels",
+      "unlimited",
+      // Format-generic
+      "animated",
+      "autoOrient",
+      "density",
+      "ignoreIcc",
+      "page",
+      "pages",
+      "sequentialRead",
+      // Format-specific
+      "jp2",
+      "openSlide",
+      "pdf",
+      "raw",
+      "svg",
+      "tiff",
+      // Deprecated
+      "failOnError",
+      "openSlideLevel",
+      "pdfBackground",
+      "tiffSubifd"
+    ];
+    function _inputOptionsFromObject(obj) {
+      const params = inputStreamParameters.filter((p3) => is.defined(obj[p3])).map((p3) => [p3, obj[p3]]);
+      return params.length ? Object.fromEntries(params) : void 0;
+    }
+    function _createInputDescriptor(input, inputOptions, containerOptions) {
+      const inputDescriptor = {
+        autoOrient: false,
+        failOn: "warning",
+        limitInputPixels: 16383 ** 2,
+        ignoreIcc: false,
+        unlimited: false,
+        sequentialRead: true
+      };
+      if (is.string(input)) {
+        inputDescriptor.file = input;
+      } else if (is.buffer(input)) {
+        if (input.length === 0) {
+          throw Error("Input Buffer is empty");
+        }
+        inputDescriptor.buffer = input;
+      } else if (is.arrayBuffer(input)) {
+        if (input.byteLength === 0) {
+          throw Error("Input bit Array is empty");
+        }
+        inputDescriptor.buffer = Buffer.from(input, 0, input.byteLength);
+      } else if (is.typedArray(input)) {
+        if (input.length === 0) {
+          throw Error("Input Bit Array is empty");
+        }
+        inputDescriptor.buffer = Buffer.from(input.buffer, input.byteOffset, input.byteLength);
+      } else if (is.plainObject(input) && !is.defined(inputOptions)) {
+        inputOptions = input;
+        if (_inputOptionsFromObject(inputOptions)) {
+          inputDescriptor.buffer = [];
+        }
+      } else if (!is.defined(input) && !is.defined(inputOptions) && is.object(containerOptions) && containerOptions.allowStream) {
+        inputDescriptor.buffer = [];
+      } else if (Array.isArray(input)) {
+        if (input.length > 1) {
+          if (!this.options.joining) {
+            this.options.joining = true;
+            this.options.join = input.map((i5) => this._createInputDescriptor(i5));
+          } else {
+            throw new Error("Recursive join is unsupported");
+          }
+        } else {
+          throw new Error("Expected at least two images to join");
+        }
+      } else {
+        throw new Error(`Unsupported input '${input}' of type ${typeof input}${is.defined(inputOptions) ? ` when also providing options of type ${typeof inputOptions}` : ""}`);
+      }
+      if (is.object(inputOptions)) {
+        if (is.defined(inputOptions.failOnError)) {
+          if (is.bool(inputOptions.failOnError)) {
+            inputDescriptor.failOn = inputOptions.failOnError ? "warning" : "none";
+          } else {
+            throw is.invalidParameterError("failOnError", "boolean", inputOptions.failOnError);
+          }
+        }
+        if (is.defined(inputOptions.failOn)) {
+          if (is.string(inputOptions.failOn) && is.inArray(inputOptions.failOn, ["none", "truncated", "error", "warning"])) {
+            inputDescriptor.failOn = inputOptions.failOn;
+          } else {
+            throw is.invalidParameterError("failOn", "one of: none, truncated, error, warning", inputOptions.failOn);
+          }
+        }
+        if (is.defined(inputOptions.autoOrient)) {
+          if (is.bool(inputOptions.autoOrient)) {
+            inputDescriptor.autoOrient = inputOptions.autoOrient;
+          } else {
+            throw is.invalidParameterError("autoOrient", "boolean", inputOptions.autoOrient);
+          }
+        }
+        if (is.defined(inputOptions.density)) {
+          if (is.inRange(inputOptions.density, 1, 1e5)) {
+            inputDescriptor.density = inputOptions.density;
+          } else {
+            throw is.invalidParameterError("density", "number between 1 and 100000", inputOptions.density);
+          }
+        }
+        if (is.defined(inputOptions.ignoreIcc)) {
+          if (is.bool(inputOptions.ignoreIcc)) {
+            inputDescriptor.ignoreIcc = inputOptions.ignoreIcc;
+          } else {
+            throw is.invalidParameterError("ignoreIcc", "boolean", inputOptions.ignoreIcc);
+          }
+        }
+        if (is.defined(inputOptions.limitInputPixels)) {
+          if (is.bool(inputOptions.limitInputPixels)) {
+            inputDescriptor.limitInputPixels = inputOptions.limitInputPixels ? 16383 ** 2 : 0;
+          } else if (is.integer(inputOptions.limitInputPixels) && is.inRange(inputOptions.limitInputPixels, 0, Number.MAX_SAFE_INTEGER)) {
+            inputDescriptor.limitInputPixels = inputOptions.limitInputPixels;
+          } else {
+            throw is.invalidParameterError("limitInputPixels", "positive integer", inputOptions.limitInputPixels);
+          }
+        }
+        if (is.defined(inputOptions.unlimited)) {
+          if (is.bool(inputOptions.unlimited)) {
+            inputDescriptor.unlimited = inputOptions.unlimited;
+          } else {
+            throw is.invalidParameterError("unlimited", "boolean", inputOptions.unlimited);
+          }
+        }
+        if (is.defined(inputOptions.sequentialRead)) {
+          if (is.bool(inputOptions.sequentialRead)) {
+            inputDescriptor.sequentialRead = inputOptions.sequentialRead;
+          } else {
+            throw is.invalidParameterError("sequentialRead", "boolean", inputOptions.sequentialRead);
+          }
+        }
+        if (is.defined(inputOptions.raw)) {
+          if (is.object(inputOptions.raw) && is.integer(inputOptions.raw.width) && inputOptions.raw.width > 0 && is.integer(inputOptions.raw.height) && inputOptions.raw.height > 0 && is.integer(inputOptions.raw.channels) && is.inRange(inputOptions.raw.channels, 1, 4)) {
+            inputDescriptor.rawWidth = inputOptions.raw.width;
+            inputDescriptor.rawHeight = inputOptions.raw.height;
+            inputDescriptor.rawChannels = inputOptions.raw.channels;
+            switch (input.constructor) {
+              case Uint8Array:
+              case Uint8ClampedArray:
+                inputDescriptor.rawDepth = "uchar";
+                break;
+              case Int8Array:
+                inputDescriptor.rawDepth = "char";
+                break;
+              case Uint16Array:
+                inputDescriptor.rawDepth = "ushort";
+                break;
+              case Int16Array:
+                inputDescriptor.rawDepth = "short";
+                break;
+              case Uint32Array:
+                inputDescriptor.rawDepth = "uint";
+                break;
+              case Int32Array:
+                inputDescriptor.rawDepth = "int";
+                break;
+              case Float32Array:
+                inputDescriptor.rawDepth = "float";
+                break;
+              case Float64Array:
+                inputDescriptor.rawDepth = "double";
+                break;
+              default:
+                inputDescriptor.rawDepth = "uchar";
+                break;
+            }
+          } else {
+            throw new Error("Expected width, height and channels for raw pixel input");
+          }
+          inputDescriptor.rawPremultiplied = false;
+          if (is.defined(inputOptions.raw.premultiplied)) {
+            if (is.bool(inputOptions.raw.premultiplied)) {
+              inputDescriptor.rawPremultiplied = inputOptions.raw.premultiplied;
+            } else {
+              throw is.invalidParameterError("raw.premultiplied", "boolean", inputOptions.raw.premultiplied);
+            }
+          }
+          inputDescriptor.rawPageHeight = 0;
+          if (is.defined(inputOptions.raw.pageHeight)) {
+            if (is.integer(inputOptions.raw.pageHeight) && inputOptions.raw.pageHeight > 0 && inputOptions.raw.pageHeight <= inputOptions.raw.height) {
+              if (inputOptions.raw.height % inputOptions.raw.pageHeight !== 0) {
+                throw new Error(`Expected raw.height ${inputOptions.raw.height} to be a multiple of raw.pageHeight ${inputOptions.raw.pageHeight}`);
+              }
+              inputDescriptor.rawPageHeight = inputOptions.raw.pageHeight;
+            } else {
+              throw is.invalidParameterError("raw.pageHeight", "positive integer", inputOptions.raw.pageHeight);
+            }
+          }
+        }
+        if (is.defined(inputOptions.animated)) {
+          if (is.bool(inputOptions.animated)) {
+            inputDescriptor.pages = inputOptions.animated ? -1 : 1;
+          } else {
+            throw is.invalidParameterError("animated", "boolean", inputOptions.animated);
+          }
+        }
+        if (is.defined(inputOptions.pages)) {
+          if (is.integer(inputOptions.pages) && is.inRange(inputOptions.pages, -1, 1e5)) {
+            inputDescriptor.pages = inputOptions.pages;
+          } else {
+            throw is.invalidParameterError("pages", "integer between -1 and 100000", inputOptions.pages);
+          }
+        }
+        if (is.defined(inputOptions.page)) {
+          if (is.integer(inputOptions.page) && is.inRange(inputOptions.page, 0, 1e5)) {
+            inputDescriptor.page = inputOptions.page;
+          } else {
+            throw is.invalidParameterError("page", "integer between 0 and 100000", inputOptions.page);
+          }
+        }
+        if (is.object(inputOptions.openSlide) && is.defined(inputOptions.openSlide.level)) {
+          if (is.integer(inputOptions.openSlide.level) && is.inRange(inputOptions.openSlide.level, 0, 256)) {
+            inputDescriptor.openSlideLevel = inputOptions.openSlide.level;
+          } else {
+            throw is.invalidParameterError("openSlide.level", "integer between 0 and 256", inputOptions.openSlide.level);
+          }
+        } else if (is.defined(inputOptions.level)) {
+          if (is.integer(inputOptions.level) && is.inRange(inputOptions.level, 0, 256)) {
+            inputDescriptor.openSlideLevel = inputOptions.level;
+          } else {
+            throw is.invalidParameterError("level", "integer between 0 and 256", inputOptions.level);
+          }
+        }
+        if (is.object(inputOptions.tiff) && is.defined(inputOptions.tiff.subifd)) {
+          if (is.integer(inputOptions.tiff.subifd) && is.inRange(inputOptions.tiff.subifd, -1, 1e5)) {
+            inputDescriptor.tiffSubifd = inputOptions.tiff.subifd;
+          } else {
+            throw is.invalidParameterError("tiff.subifd", "integer between -1 and 100000", inputOptions.tiff.subifd);
+          }
+        } else if (is.defined(inputOptions.subifd)) {
+          if (is.integer(inputOptions.subifd) && is.inRange(inputOptions.subifd, -1, 1e5)) {
+            inputDescriptor.tiffSubifd = inputOptions.subifd;
+          } else {
+            throw is.invalidParameterError("subifd", "integer between -1 and 100000", inputOptions.subifd);
+          }
+        }
+        if (is.object(inputOptions.svg)) {
+          if (is.defined(inputOptions.svg.stylesheet)) {
+            if (is.string(inputOptions.svg.stylesheet)) {
+              inputDescriptor.svgStylesheet = inputOptions.svg.stylesheet;
+            } else {
+              throw is.invalidParameterError("svg.stylesheet", "string", inputOptions.svg.stylesheet);
+            }
+          }
+          if (is.defined(inputOptions.svg.highBitdepth)) {
+            if (is.bool(inputOptions.svg.highBitdepth)) {
+              inputDescriptor.svgHighBitdepth = inputOptions.svg.highBitdepth;
+            } else {
+              throw is.invalidParameterError("svg.highBitdepth", "boolean", inputOptions.svg.highBitdepth);
+            }
+          }
+        }
+        if (is.object(inputOptions.pdf) && is.defined(inputOptions.pdf.background)) {
+          inputDescriptor.pdfBackground = this._getBackgroundColourOption(inputOptions.pdf.background);
+        } else if (is.defined(inputOptions.pdfBackground)) {
+          inputDescriptor.pdfBackground = this._getBackgroundColourOption(inputOptions.pdfBackground);
+        }
+        if (is.object(inputOptions.jp2) && is.defined(inputOptions.jp2.oneshot)) {
+          if (is.bool(inputOptions.jp2.oneshot)) {
+            inputDescriptor.jp2Oneshot = inputOptions.jp2.oneshot;
+          } else {
+            throw is.invalidParameterError("jp2.oneshot", "boolean", inputOptions.jp2.oneshot);
+          }
+        }
+        if (is.defined(inputOptions.create)) {
+          if (is.object(inputOptions.create) && is.integer(inputOptions.create.width) && inputOptions.create.width > 0 && is.integer(inputOptions.create.height) && inputOptions.create.height > 0 && is.integer(inputOptions.create.channels)) {
+            inputDescriptor.createWidth = inputOptions.create.width;
+            inputDescriptor.createHeight = inputOptions.create.height;
+            inputDescriptor.createChannels = inputOptions.create.channels;
+            inputDescriptor.createPageHeight = 0;
+            if (is.defined(inputOptions.create.pageHeight)) {
+              if (is.integer(inputOptions.create.pageHeight) && inputOptions.create.pageHeight > 0 && inputOptions.create.pageHeight <= inputOptions.create.height) {
+                if (inputOptions.create.height % inputOptions.create.pageHeight !== 0) {
+                  throw new Error(`Expected create.height ${inputOptions.create.height} to be a multiple of create.pageHeight ${inputOptions.create.pageHeight}`);
+                }
+                inputDescriptor.createPageHeight = inputOptions.create.pageHeight;
+              } else {
+                throw is.invalidParameterError("create.pageHeight", "positive integer", inputOptions.create.pageHeight);
+              }
+            }
+            if (is.defined(inputOptions.create.noise)) {
+              if (!is.object(inputOptions.create.noise)) {
+                throw new Error("Expected noise to be an object");
+              }
+              if (inputOptions.create.noise.type !== "gaussian") {
+                throw new Error("Only gaussian noise is supported at the moment");
+              }
+              inputDescriptor.createNoiseType = inputOptions.create.noise.type;
+              if (!is.inRange(inputOptions.create.channels, 1, 4)) {
+                throw is.invalidParameterError("create.channels", "number between 1 and 4", inputOptions.create.channels);
+              }
+              inputDescriptor.createNoiseMean = 128;
+              if (is.defined(inputOptions.create.noise.mean)) {
+                if (is.number(inputOptions.create.noise.mean) && is.inRange(inputOptions.create.noise.mean, 0, 1e4)) {
+                  inputDescriptor.createNoiseMean = inputOptions.create.noise.mean;
+                } else {
+                  throw is.invalidParameterError("create.noise.mean", "number between 0 and 10000", inputOptions.create.noise.mean);
+                }
+              }
+              inputDescriptor.createNoiseSigma = 30;
+              if (is.defined(inputOptions.create.noise.sigma)) {
+                if (is.number(inputOptions.create.noise.sigma) && is.inRange(inputOptions.create.noise.sigma, 0, 1e4)) {
+                  inputDescriptor.createNoiseSigma = inputOptions.create.noise.sigma;
+                } else {
+                  throw is.invalidParameterError("create.noise.sigma", "number between 0 and 10000", inputOptions.create.noise.sigma);
+                }
+              }
+            } else if (is.defined(inputOptions.create.background)) {
+              if (!is.inRange(inputOptions.create.channels, 3, 4)) {
+                throw is.invalidParameterError("create.channels", "number between 3 and 4", inputOptions.create.channels);
+              }
+              inputDescriptor.createBackground = this._getBackgroundColourOption(inputOptions.create.background);
+            } else {
+              throw new Error("Expected valid noise or background to create a new input image");
+            }
+            delete inputDescriptor.buffer;
+          } else {
+            throw new Error("Expected valid width, height and channels to create a new input image");
+          }
+        }
+        if (is.defined(inputOptions.text)) {
+          if (is.object(inputOptions.text) && is.string(inputOptions.text.text)) {
+            inputDescriptor.textValue = inputOptions.text.text;
+            if (is.defined(inputOptions.text.height) && is.defined(inputOptions.text.dpi)) {
+              throw new Error("Expected only one of dpi or height");
+            }
+            if (is.defined(inputOptions.text.font)) {
+              if (is.string(inputOptions.text.font)) {
+                inputDescriptor.textFont = inputOptions.text.font;
+              } else {
+                throw is.invalidParameterError("text.font", "string", inputOptions.text.font);
+              }
+            }
+            if (is.defined(inputOptions.text.fontfile)) {
+              if (is.string(inputOptions.text.fontfile)) {
+                inputDescriptor.textFontfile = inputOptions.text.fontfile;
+              } else {
+                throw is.invalidParameterError("text.fontfile", "string", inputOptions.text.fontfile);
+              }
+            }
+            if (is.defined(inputOptions.text.width)) {
+              if (is.integer(inputOptions.text.width) && inputOptions.text.width > 0) {
+                inputDescriptor.textWidth = inputOptions.text.width;
+              } else {
+                throw is.invalidParameterError("text.width", "positive integer", inputOptions.text.width);
+              }
+            }
+            if (is.defined(inputOptions.text.height)) {
+              if (is.integer(inputOptions.text.height) && inputOptions.text.height > 0) {
+                inputDescriptor.textHeight = inputOptions.text.height;
+              } else {
+                throw is.invalidParameterError("text.height", "positive integer", inputOptions.text.height);
+              }
+            }
+            if (is.defined(inputOptions.text.align)) {
+              if (is.string(inputOptions.text.align) && is.string(this.constructor.align[inputOptions.text.align])) {
+                inputDescriptor.textAlign = this.constructor.align[inputOptions.text.align];
+              } else {
+                throw is.invalidParameterError("text.align", "valid alignment", inputOptions.text.align);
+              }
+            }
+            if (is.defined(inputOptions.text.justify)) {
+              if (is.bool(inputOptions.text.justify)) {
+                inputDescriptor.textJustify = inputOptions.text.justify;
+              } else {
+                throw is.invalidParameterError("text.justify", "boolean", inputOptions.text.justify);
+              }
+            }
+            if (is.defined(inputOptions.text.dpi)) {
+              if (is.integer(inputOptions.text.dpi) && is.inRange(inputOptions.text.dpi, 1, 1e6)) {
+                inputDescriptor.textDpi = inputOptions.text.dpi;
+              } else {
+                throw is.invalidParameterError("text.dpi", "integer between 1 and 1000000", inputOptions.text.dpi);
+              }
+            }
+            if (is.defined(inputOptions.text.rgba)) {
+              if (is.bool(inputOptions.text.rgba)) {
+                inputDescriptor.textRgba = inputOptions.text.rgba;
+              } else {
+                throw is.invalidParameterError("text.rgba", "bool", inputOptions.text.rgba);
+              }
+            }
+            if (is.defined(inputOptions.text.spacing)) {
+              if (is.integer(inputOptions.text.spacing) && is.inRange(inputOptions.text.spacing, -1e6, 1e6)) {
+                inputDescriptor.textSpacing = inputOptions.text.spacing;
+              } else {
+                throw is.invalidParameterError("text.spacing", "integer between -1000000 and 1000000", inputOptions.text.spacing);
+              }
+            }
+            if (is.defined(inputOptions.text.wrap)) {
+              if (is.string(inputOptions.text.wrap) && is.inArray(inputOptions.text.wrap, ["word", "char", "word-char", "none"])) {
+                inputDescriptor.textWrap = inputOptions.text.wrap;
+              } else {
+                throw is.invalidParameterError("text.wrap", "one of: word, char, word-char, none", inputOptions.text.wrap);
+              }
+            }
+            delete inputDescriptor.buffer;
+          } else {
+            throw new Error("Expected a valid string to create an image with text.");
+          }
+        }
+        if (is.defined(inputOptions.join)) {
+          if (is.defined(this.options.join)) {
+            if (is.defined(inputOptions.join.animated)) {
+              if (is.bool(inputOptions.join.animated)) {
+                inputDescriptor.joinAnimated = inputOptions.join.animated;
+              } else {
+                throw is.invalidParameterError("join.animated", "boolean", inputOptions.join.animated);
+              }
+            }
+            if (is.defined(inputOptions.join.across)) {
+              if (is.integer(inputOptions.join.across) && is.inRange(inputOptions.join.across, 1, 1e6)) {
+                inputDescriptor.joinAcross = inputOptions.join.across;
+              } else {
+                throw is.invalidParameterError("join.across", "integer between 1 and 100000", inputOptions.join.across);
+              }
+            }
+            if (is.defined(inputOptions.join.shim)) {
+              if (is.integer(inputOptions.join.shim) && is.inRange(inputOptions.join.shim, 0, 1e6)) {
+                inputDescriptor.joinShim = inputOptions.join.shim;
+              } else {
+                throw is.invalidParameterError("join.shim", "integer between 0 and 100000", inputOptions.join.shim);
+              }
+            }
+            if (is.defined(inputOptions.join.background)) {
+              inputDescriptor.joinBackground = this._getBackgroundColourOption(inputOptions.join.background);
+            }
+            if (is.defined(inputOptions.join.halign)) {
+              if (is.string(inputOptions.join.halign) && is.string(this.constructor.align[inputOptions.join.halign])) {
+                inputDescriptor.joinHalign = this.constructor.align[inputOptions.join.halign];
+              } else {
+                throw is.invalidParameterError("join.halign", "valid alignment", inputOptions.join.halign);
+              }
+            }
+            if (is.defined(inputOptions.join.valign)) {
+              if (is.string(inputOptions.join.valign) && is.string(this.constructor.align[inputOptions.join.valign])) {
+                inputDescriptor.joinValign = this.constructor.align[inputOptions.join.valign];
+              } else {
+                throw is.invalidParameterError("join.valign", "valid alignment", inputOptions.join.valign);
+              }
+            }
+          } else {
+            throw new Error("Expected input to be an array of images to join");
+          }
+        }
+      } else if (is.defined(inputOptions)) {
+        throw new Error(`Invalid input options ${inputOptions}`);
+      }
+      return inputDescriptor;
+    }
+    function _write(chunk, _encoding, callback) {
+      if (Array.isArray(this.options.input.buffer)) {
+        if (is.buffer(chunk)) {
+          if (this.options.input.buffer.length === 0) {
+            this.on("finish", () => {
+              this.streamInFinished = true;
+            });
+          }
+          this.options.input.buffer.push(chunk);
+          callback();
+        } else {
+          callback(new Error("Non-Buffer data on Writable Stream"));
+        }
+      } else {
+        callback(new Error("Unexpected data on Writable Stream"));
+      }
+    }
+    function _flattenBufferIn() {
+      if (this._isStreamInput()) {
+        this.options.input.buffer = Buffer.concat(this.options.input.buffer);
+      }
+    }
+    function _isStreamInput() {
+      return Array.isArray(this.options.input.buffer);
+    }
+    function metadata(callback) {
+      const stack = Error();
+      if (is.fn(callback)) {
+        if (this._isStreamInput()) {
+          this.on("finish", () => {
+            this._flattenBufferIn();
+            sharp3.metadata(this.options, (err, metadata2) => {
+              if (err) {
+                callback(is.nativeError(err, stack));
+              } else {
+                callback(null, metadata2);
+              }
+            });
+          });
+        } else {
+          sharp3.metadata(this.options, (err, metadata2) => {
+            if (err) {
+              callback(is.nativeError(err, stack));
+            } else {
+              callback(null, metadata2);
+            }
+          });
+        }
+        return this;
+      } else {
+        if (this._isStreamInput()) {
+          return new Promise((resolve18, reject) => {
+            const finished = () => {
+              this._flattenBufferIn();
+              sharp3.metadata(this.options, (err, metadata2) => {
+                if (err) {
+                  reject(is.nativeError(err, stack));
+                } else {
+                  resolve18(metadata2);
+                }
+              });
+            };
+            if (this.writableFinished) {
+              finished();
+            } else {
+              this.once("finish", finished);
+            }
+          });
+        } else {
+          return new Promise((resolve18, reject) => {
+            sharp3.metadata(this.options, (err, metadata2) => {
+              if (err) {
+                reject(is.nativeError(err, stack));
+              } else {
+                resolve18(metadata2);
+              }
+            });
+          });
+        }
+      }
+    }
+    function stats(callback) {
+      const stack = Error();
+      if (is.fn(callback)) {
+        if (this._isStreamInput()) {
+          this.on("finish", () => {
+            this._flattenBufferIn();
+            sharp3.stats(this.options, (err, stats2) => {
+              if (err) {
+                callback(is.nativeError(err, stack));
+              } else {
+                callback(null, stats2);
+              }
+            });
+          });
+        } else {
+          sharp3.stats(this.options, (err, stats2) => {
+            if (err) {
+              callback(is.nativeError(err, stack));
+            } else {
+              callback(null, stats2);
+            }
+          });
+        }
+        return this;
+      } else {
+        if (this._isStreamInput()) {
+          return new Promise((resolve18, reject) => {
+            this.on("finish", function() {
+              this._flattenBufferIn();
+              sharp3.stats(this.options, (err, stats2) => {
+                if (err) {
+                  reject(is.nativeError(err, stack));
+                } else {
+                  resolve18(stats2);
+                }
+              });
+            });
+          });
+        } else {
+          return new Promise((resolve18, reject) => {
+            sharp3.stats(this.options, (err, stats2) => {
+              if (err) {
+                reject(is.nativeError(err, stack));
+              } else {
+                resolve18(stats2);
+              }
+            });
+          });
+        }
+      }
+    }
+    module2.exports = (Sharp) => {
+      Object.assign(Sharp.prototype, {
+        // Private
+        _inputOptionsFromObject,
+        _createInputDescriptor,
+        _write,
+        _flattenBufferIn,
+        _isStreamInput,
+        // Public
+        metadata,
+        stats
+      });
+      Sharp.align = align;
+    };
+  }
+});
+
+// ../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/resize.js
+var require_resize = __commonJS({
+  "../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/resize.js"(exports2, module2) {
+    var is = require_is();
+    var gravity = {
+      center: 0,
+      centre: 0,
+      north: 1,
+      east: 2,
+      south: 3,
+      west: 4,
+      northeast: 5,
+      southeast: 6,
+      southwest: 7,
+      northwest: 8
+    };
+    var position2 = {
+      top: 1,
+      right: 2,
+      bottom: 3,
+      left: 4,
+      "right top": 5,
+      "right bottom": 6,
+      "left bottom": 7,
+      "left top": 8
+    };
+    var extendWith = {
+      background: "background",
+      copy: "copy",
+      repeat: "repeat",
+      mirror: "mirror"
+    };
+    var strategy = {
+      entropy: 16,
+      attention: 17
+    };
+    var kernel = {
+      nearest: "nearest",
+      linear: "linear",
+      cubic: "cubic",
+      mitchell: "mitchell",
+      lanczos2: "lanczos2",
+      lanczos3: "lanczos3",
+      mks2013: "mks2013",
+      mks2021: "mks2021"
+    };
+    var fit = {
+      contain: "contain",
+      cover: "cover",
+      fill: "fill",
+      inside: "inside",
+      outside: "outside"
+    };
+    var mapFitToCanvas = {
+      contain: "embed",
+      cover: "crop",
+      fill: "ignore_aspect",
+      inside: "max",
+      outside: "min"
+    };
+    function isRotationExpected(options) {
+      return options.angle % 360 !== 0 || options.rotationAngle !== 0;
+    }
+    function isResizeExpected(options) {
+      return options.width !== -1 || options.height !== -1;
+    }
+    function resize(widthOrOptions, height, options) {
+      if (isResizeExpected(this.options)) {
+        this.options.debuglog("ignoring previous resize options");
+      }
+      if (this.options.widthPost !== -1) {
+        this.options.debuglog("operation order will be: extract, resize, extract");
+      }
+      if (is.defined(widthOrOptions)) {
+        if (is.object(widthOrOptions) && !is.defined(options)) {
+          options = widthOrOptions;
+        } else if (is.integer(widthOrOptions) && widthOrOptions > 0) {
+          this.options.width = widthOrOptions;
+        } else {
+          throw is.invalidParameterError("width", "positive integer", widthOrOptions);
+        }
+      } else {
+        this.options.width = -1;
+      }
+      if (is.defined(height)) {
+        if (is.integer(height) && height > 0) {
+          this.options.height = height;
+        } else {
+          throw is.invalidParameterError("height", "positive integer", height);
+        }
+      } else {
+        this.options.height = -1;
+      }
+      if (is.object(options)) {
+        if (is.defined(options.width)) {
+          if (is.integer(options.width) && options.width > 0) {
+            this.options.width = options.width;
+          } else {
+            throw is.invalidParameterError("width", "positive integer", options.width);
+          }
+        }
+        if (is.defined(options.height)) {
+          if (is.integer(options.height) && options.height > 0) {
+            this.options.height = options.height;
+          } else {
+            throw is.invalidParameterError("height", "positive integer", options.height);
+          }
+        }
+        if (is.defined(options.fit)) {
+          const canvas = mapFitToCanvas[options.fit];
+          if (is.string(canvas)) {
+            this.options.canvas = canvas;
+          } else {
+            throw is.invalidParameterError("fit", "valid fit", options.fit);
+          }
+        }
+        if (is.defined(options.position)) {
+          const pos = is.integer(options.position) ? options.position : strategy[options.position] || position2[options.position] || gravity[options.position];
+          if (is.integer(pos) && (is.inRange(pos, 0, 8) || is.inRange(pos, 16, 17))) {
+            this.options.position = pos;
+          } else {
+            throw is.invalidParameterError("position", "valid position/gravity/strategy", options.position);
+          }
+        }
+        this._setBackgroundColourOption("resizeBackground", options.background);
+        if (is.defined(options.kernel)) {
+          if (is.string(kernel[options.kernel])) {
+            this.options.kernel = kernel[options.kernel];
+          } else {
+            throw is.invalidParameterError("kernel", "valid kernel name", options.kernel);
+          }
+        }
+        if (is.defined(options.withoutEnlargement)) {
+          this._setBooleanOption("withoutEnlargement", options.withoutEnlargement);
+        }
+        if (is.defined(options.withoutReduction)) {
+          this._setBooleanOption("withoutReduction", options.withoutReduction);
+        }
+        if (is.defined(options.fastShrinkOnLoad)) {
+          this._setBooleanOption("fastShrinkOnLoad", options.fastShrinkOnLoad);
+        }
+      }
+      if (isRotationExpected(this.options) && isResizeExpected(this.options)) {
+        this.options.rotateBefore = true;
+      }
+      return this;
+    }
+    function extend2(extend3) {
+      if (is.integer(extend3) && extend3 > 0) {
+        this.options.extendTop = extend3;
+        this.options.extendBottom = extend3;
+        this.options.extendLeft = extend3;
+        this.options.extendRight = extend3;
+      } else if (is.object(extend3)) {
+        if (is.defined(extend3.top)) {
+          if (is.integer(extend3.top) && extend3.top >= 0) {
+            this.options.extendTop = extend3.top;
+          } else {
+            throw is.invalidParameterError("top", "positive integer", extend3.top);
+          }
+        }
+        if (is.defined(extend3.bottom)) {
+          if (is.integer(extend3.bottom) && extend3.bottom >= 0) {
+            this.options.extendBottom = extend3.bottom;
+          } else {
+            throw is.invalidParameterError("bottom", "positive integer", extend3.bottom);
+          }
+        }
+        if (is.defined(extend3.left)) {
+          if (is.integer(extend3.left) && extend3.left >= 0) {
+            this.options.extendLeft = extend3.left;
+          } else {
+            throw is.invalidParameterError("left", "positive integer", extend3.left);
+          }
+        }
+        if (is.defined(extend3.right)) {
+          if (is.integer(extend3.right) && extend3.right >= 0) {
+            this.options.extendRight = extend3.right;
+          } else {
+            throw is.invalidParameterError("right", "positive integer", extend3.right);
+          }
+        }
+        this._setBackgroundColourOption("extendBackground", extend3.background);
+        if (is.defined(extend3.extendWith)) {
+          if (is.string(extendWith[extend3.extendWith])) {
+            this.options.extendWith = extendWith[extend3.extendWith];
+          } else {
+            throw is.invalidParameterError("extendWith", "one of: background, copy, repeat, mirror", extend3.extendWith);
+          }
+        }
+      } else {
+        throw is.invalidParameterError("extend", "integer or object", extend3);
+      }
+      return this;
+    }
+    function extract(options) {
+      const suffix = isResizeExpected(this.options) || this.options.widthPre !== -1 ? "Post" : "Pre";
+      if (this.options[`width${suffix}`] !== -1) {
+        this.options.debuglog("ignoring previous extract options");
+      }
+      ["left", "top", "width", "height"].forEach(function(name) {
+        const value = options[name];
+        if (is.integer(value) && value >= 0) {
+          this.options[name + (name === "left" || name === "top" ? "Offset" : "") + suffix] = value;
+        } else {
+          throw is.invalidParameterError(name, "integer", value);
+        }
+      }, this);
+      if (isRotationExpected(this.options) && !isResizeExpected(this.options)) {
+        if (this.options.widthPre === -1 || this.options.widthPost === -1) {
+          this.options.rotateBefore = true;
+        }
+      }
+      if (this.options.input.autoOrient) {
+        this.options.orientBefore = true;
+      }
+      return this;
+    }
+    function trim(options) {
+      this.options.trimThreshold = 10;
+      if (is.defined(options)) {
+        if (is.object(options)) {
+          if (is.defined(options.background)) {
+            this._setBackgroundColourOption("trimBackground", options.background);
+          }
+          if (is.defined(options.threshold)) {
+            if (is.number(options.threshold) && options.threshold >= 0) {
+              this.options.trimThreshold = options.threshold;
+            } else {
+              throw is.invalidParameterError("threshold", "positive number", options.threshold);
+            }
+          }
+          if (is.defined(options.lineArt)) {
+            this._setBooleanOption("trimLineArt", options.lineArt);
+          }
+        } else {
+          throw is.invalidParameterError("trim", "object", options);
+        }
+      }
+      if (isRotationExpected(this.options)) {
+        this.options.rotateBefore = true;
+      }
+      return this;
+    }
+    module2.exports = (Sharp) => {
+      Object.assign(Sharp.prototype, {
+        resize,
+        extend: extend2,
+        extract,
+        trim
+      });
+      Sharp.gravity = gravity;
+      Sharp.strategy = strategy;
+      Sharp.kernel = kernel;
+      Sharp.fit = fit;
+      Sharp.position = position2;
+    };
+  }
+});
+
+// ../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/composite.js
+var require_composite = __commonJS({
+  "../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/composite.js"(exports2, module2) {
+    var is = require_is();
+    var blend = {
+      clear: "clear",
+      source: "source",
+      over: "over",
+      in: "in",
+      out: "out",
+      atop: "atop",
+      dest: "dest",
+      "dest-over": "dest-over",
+      "dest-in": "dest-in",
+      "dest-out": "dest-out",
+      "dest-atop": "dest-atop",
+      xor: "xor",
+      add: "add",
+      saturate: "saturate",
+      multiply: "multiply",
+      screen: "screen",
+      overlay: "overlay",
+      darken: "darken",
+      lighten: "lighten",
+      "colour-dodge": "colour-dodge",
+      "color-dodge": "colour-dodge",
+      "colour-burn": "colour-burn",
+      "color-burn": "colour-burn",
+      "hard-light": "hard-light",
+      "soft-light": "soft-light",
+      difference: "difference",
+      exclusion: "exclusion"
+    };
+    function composite(images) {
+      if (!Array.isArray(images)) {
+        throw is.invalidParameterError("images to composite", "array", images);
+      }
+      this.options.composite = images.map((image) => {
+        if (!is.object(image)) {
+          throw is.invalidParameterError("image to composite", "object", image);
+        }
+        const inputOptions = this._inputOptionsFromObject(image);
+        const composite2 = {
+          input: this._createInputDescriptor(image.input, inputOptions, { allowStream: false }),
+          blend: "over",
+          tile: false,
+          left: 0,
+          top: 0,
+          hasOffset: false,
+          gravity: 0,
+          premultiplied: false
+        };
+        if (is.defined(image.blend)) {
+          if (is.string(blend[image.blend])) {
+            composite2.blend = blend[image.blend];
+          } else {
+            throw is.invalidParameterError("blend", "valid blend name", image.blend);
+          }
+        }
+        if (is.defined(image.tile)) {
+          if (is.bool(image.tile)) {
+            composite2.tile = image.tile;
+          } else {
+            throw is.invalidParameterError("tile", "boolean", image.tile);
+          }
+        }
+        if (is.defined(image.left)) {
+          if (is.integer(image.left)) {
+            composite2.left = image.left;
+          } else {
+            throw is.invalidParameterError("left", "integer", image.left);
+          }
+        }
+        if (is.defined(image.top)) {
+          if (is.integer(image.top)) {
+            composite2.top = image.top;
+          } else {
+            throw is.invalidParameterError("top", "integer", image.top);
+          }
+        }
+        if (is.defined(image.top) !== is.defined(image.left)) {
+          throw new Error("Expected both left and top to be set");
+        } else {
+          composite2.hasOffset = is.integer(image.top) && is.integer(image.left);
+        }
+        if (is.defined(image.gravity)) {
+          if (is.integer(image.gravity) && is.inRange(image.gravity, 0, 8)) {
+            composite2.gravity = image.gravity;
+          } else if (is.string(image.gravity) && is.integer(this.constructor.gravity[image.gravity])) {
+            composite2.gravity = this.constructor.gravity[image.gravity];
+          } else {
+            throw is.invalidParameterError("gravity", "valid gravity", image.gravity);
+          }
+        }
+        if (is.defined(image.premultiplied)) {
+          if (is.bool(image.premultiplied)) {
+            composite2.premultiplied = image.premultiplied;
+          } else {
+            throw is.invalidParameterError("premultiplied", "boolean", image.premultiplied);
+          }
+        }
+        return composite2;
+      });
+      return this;
+    }
+    module2.exports = (Sharp) => {
+      Sharp.prototype.composite = composite;
+      Sharp.blend = blend;
+    };
+  }
+});
+
+// ../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/operation.js
+var require_operation = __commonJS({
+  "../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/operation.js"(exports2, module2) {
+    var is = require_is();
+    var vipsPrecision = {
+      integer: "integer",
+      float: "float",
+      approximate: "approximate"
+    };
+    function rotate(angle, options) {
+      if (!is.defined(angle)) {
+        return this.autoOrient();
+      }
+      if (this.options.angle || this.options.rotationAngle) {
+        this.options.debuglog("ignoring previous rotate options");
+        this.options.angle = 0;
+        this.options.rotationAngle = 0;
+      }
+      if (is.integer(angle) && !(angle % 90)) {
+        this.options.angle = angle;
+      } else if (is.number(angle)) {
+        this.options.rotationAngle = angle;
+        if (is.object(options) && options.background) {
+          this._setBackgroundColourOption("rotationBackground", options.background);
+        }
+      } else {
+        throw is.invalidParameterError("angle", "numeric", angle);
+      }
+      return this;
+    }
+    function autoOrient() {
+      this.options.input.autoOrient = true;
+      return this;
+    }
+    function flip(flip2) {
+      this.options.flip = is.bool(flip2) ? flip2 : true;
+      return this;
+    }
+    function flop(flop2) {
+      this.options.flop = is.bool(flop2) ? flop2 : true;
+      return this;
+    }
+    function affine(matrix, options) {
+      const flatMatrix = [].concat(...matrix);
+      if (flatMatrix.length === 4 && flatMatrix.every(is.number)) {
+        this.options.affineMatrix = flatMatrix;
+      } else {
+        throw is.invalidParameterError("matrix", "1x4 or 2x2 array", matrix);
+      }
+      if (is.defined(options)) {
+        if (is.object(options)) {
+          this._setBackgroundColourOption("affineBackground", options.background);
+          if (is.defined(options.idx)) {
+            if (is.number(options.idx)) {
+              this.options.affineIdx = options.idx;
+            } else {
+              throw is.invalidParameterError("options.idx", "number", options.idx);
+            }
+          }
+          if (is.defined(options.idy)) {
+            if (is.number(options.idy)) {
+              this.options.affineIdy = options.idy;
+            } else {
+              throw is.invalidParameterError("options.idy", "number", options.idy);
+            }
+          }
+          if (is.defined(options.odx)) {
+            if (is.number(options.odx)) {
+              this.options.affineOdx = options.odx;
+            } else {
+              throw is.invalidParameterError("options.odx", "number", options.odx);
+            }
+          }
+          if (is.defined(options.ody)) {
+            if (is.number(options.ody)) {
+              this.options.affineOdy = options.ody;
+            } else {
+              throw is.invalidParameterError("options.ody", "number", options.ody);
+            }
+          }
+          if (is.defined(options.interpolator)) {
+            if (is.inArray(options.interpolator, Object.values(this.constructor.interpolators))) {
+              this.options.affineInterpolator = options.interpolator;
+            } else {
+              throw is.invalidParameterError("options.interpolator", "valid interpolator name", options.interpolator);
+            }
+          }
+        } else {
+          throw is.invalidParameterError("options", "object", options);
+        }
+      }
+      return this;
+    }
+    function sharpen(options, flat, jagged) {
+      if (!is.defined(options)) {
+        this.options.sharpenSigma = -1;
+      } else if (is.bool(options)) {
+        this.options.sharpenSigma = options ? -1 : 0;
+      } else if (is.number(options) && is.inRange(options, 0.01, 1e4)) {
+        this.options.sharpenSigma = options;
+        if (is.defined(flat)) {
+          if (is.number(flat) && is.inRange(flat, 0, 1e4)) {
+            this.options.sharpenM1 = flat;
+          } else {
+            throw is.invalidParameterError("flat", "number between 0 and 10000", flat);
+          }
+        }
+        if (is.defined(jagged)) {
+          if (is.number(jagged) && is.inRange(jagged, 0, 1e4)) {
+            this.options.sharpenM2 = jagged;
+          } else {
+            throw is.invalidParameterError("jagged", "number between 0 and 10000", jagged);
+          }
+        }
+      } else if (is.plainObject(options)) {
+        if (is.number(options.sigma) && is.inRange(options.sigma, 1e-6, 10)) {
+          this.options.sharpenSigma = options.sigma;
+        } else {
+          throw is.invalidParameterError("options.sigma", "number between 0.000001 and 10", options.sigma);
+        }
+        if (is.defined(options.m1)) {
+          if (is.number(options.m1) && is.inRange(options.m1, 0, 1e6)) {
+            this.options.sharpenM1 = options.m1;
+          } else {
+            throw is.invalidParameterError("options.m1", "number between 0 and 1000000", options.m1);
+          }
+        }
+        if (is.defined(options.m2)) {
+          if (is.number(options.m2) && is.inRange(options.m2, 0, 1e6)) {
+            this.options.sharpenM2 = options.m2;
+          } else {
+            throw is.invalidParameterError("options.m2", "number between 0 and 1000000", options.m2);
+          }
+        }
+        if (is.defined(options.x1)) {
+          if (is.number(options.x1) && is.inRange(options.x1, 0, 1e6)) {
+            this.options.sharpenX1 = options.x1;
+          } else {
+            throw is.invalidParameterError("options.x1", "number between 0 and 1000000", options.x1);
+          }
+        }
+        if (is.defined(options.y2)) {
+          if (is.number(options.y2) && is.inRange(options.y2, 0, 1e6)) {
+            this.options.sharpenY2 = options.y2;
+          } else {
+            throw is.invalidParameterError("options.y2", "number between 0 and 1000000", options.y2);
+          }
+        }
+        if (is.defined(options.y3)) {
+          if (is.number(options.y3) && is.inRange(options.y3, 0, 1e6)) {
+            this.options.sharpenY3 = options.y3;
+          } else {
+            throw is.invalidParameterError("options.y3", "number between 0 and 1000000", options.y3);
+          }
+        }
+      } else {
+        throw is.invalidParameterError("sigma", "number between 0.01 and 10000", options);
+      }
+      return this;
+    }
+    function median(size) {
+      if (!is.defined(size)) {
+        this.options.medianSize = 3;
+      } else if (is.integer(size) && is.inRange(size, 1, 1e3)) {
+        this.options.medianSize = size;
+      } else {
+        throw is.invalidParameterError("size", "integer between 1 and 1000", size);
+      }
+      return this;
+    }
+    function blur(options) {
+      let sigma;
+      if (is.number(options)) {
+        sigma = options;
+      } else if (is.plainObject(options)) {
+        if (!is.number(options.sigma)) {
+          throw is.invalidParameterError("options.sigma", "number between 0.3 and 1000", sigma);
+        }
+        sigma = options.sigma;
+        if ("precision" in options) {
+          if (is.string(vipsPrecision[options.precision])) {
+            this.options.precision = vipsPrecision[options.precision];
+          } else {
+            throw is.invalidParameterError("precision", "one of: integer, float, approximate", options.precision);
+          }
+        }
+        if ("minAmplitude" in options) {
+          if (is.number(options.minAmplitude) && is.inRange(options.minAmplitude, 1e-3, 1)) {
+            this.options.minAmpl = options.minAmplitude;
+          } else {
+            throw is.invalidParameterError("minAmplitude", "number between 0.001 and 1", options.minAmplitude);
+          }
+        }
+      }
+      if (!is.defined(options)) {
+        this.options.blurSigma = -1;
+      } else if (is.bool(options)) {
+        this.options.blurSigma = options ? -1 : 0;
+      } else if (is.number(sigma) && is.inRange(sigma, 0.3, 1e3)) {
+        this.options.blurSigma = sigma;
+      } else {
+        throw is.invalidParameterError("sigma", "number between 0.3 and 1000", sigma);
+      }
+      return this;
+    }
+    function dilate(width) {
+      if (!is.defined(width)) {
+        this.options.dilateWidth = 1;
+      } else if (is.integer(width) && width > 0) {
+        this.options.dilateWidth = width;
+      } else {
+        throw is.invalidParameterError("dilate", "positive integer", dilate);
+      }
+      return this;
+    }
+    function erode(width) {
+      if (!is.defined(width)) {
+        this.options.erodeWidth = 1;
+      } else if (is.integer(width) && width > 0) {
+        this.options.erodeWidth = width;
+      } else {
+        throw is.invalidParameterError("erode", "positive integer", erode);
+      }
+      return this;
+    }
+    function flatten(options) {
+      this.options.flatten = is.bool(options) ? options : true;
+      if (is.object(options)) {
+        this._setBackgroundColourOption("flattenBackground", options.background);
+      }
+      return this;
+    }
+    function unflatten() {
+      this.options.unflatten = true;
+      return this;
+    }
+    function gamma(gamma2, gammaOut) {
+      if (!is.defined(gamma2)) {
+        this.options.gamma = 2.2;
+      } else if (is.number(gamma2) && is.inRange(gamma2, 1, 3)) {
+        this.options.gamma = gamma2;
+      } else {
+        throw is.invalidParameterError("gamma", "number between 1.0 and 3.0", gamma2);
+      }
+      if (!is.defined(gammaOut)) {
+        this.options.gammaOut = this.options.gamma;
+      } else if (is.number(gammaOut) && is.inRange(gammaOut, 1, 3)) {
+        this.options.gammaOut = gammaOut;
+      } else {
+        throw is.invalidParameterError("gammaOut", "number between 1.0 and 3.0", gammaOut);
+      }
+      return this;
+    }
+    function negate2(options) {
+      this.options.negate = is.bool(options) ? options : true;
+      if (is.plainObject(options) && "alpha" in options) {
+        if (!is.bool(options.alpha)) {
+          throw is.invalidParameterError("alpha", "should be boolean value", options.alpha);
+        } else {
+          this.options.negateAlpha = options.alpha;
+        }
+      }
+      return this;
+    }
+    function normalise(options) {
+      if (is.plainObject(options)) {
+        if (is.defined(options.lower)) {
+          if (is.number(options.lower) && is.inRange(options.lower, 0, 99)) {
+            this.options.normaliseLower = options.lower;
+          } else {
+            throw is.invalidParameterError("lower", "number between 0 and 99", options.lower);
+          }
+        }
+        if (is.defined(options.upper)) {
+          if (is.number(options.upper) && is.inRange(options.upper, 1, 100)) {
+            this.options.normaliseUpper = options.upper;
+          } else {
+            throw is.invalidParameterError("upper", "number between 1 and 100", options.upper);
+          }
+        }
+      }
+      if (this.options.normaliseLower >= this.options.normaliseUpper) {
+        throw is.invalidParameterError(
+          "range",
+          "lower to be less than upper",
+          `${this.options.normaliseLower} >= ${this.options.normaliseUpper}`
+        );
+      }
+      this.options.normalise = true;
+      return this;
+    }
+    function normalize2(options) {
+      return this.normalise(options);
+    }
+    function clahe(options) {
+      if (is.plainObject(options)) {
+        if (is.integer(options.width) && options.width > 0) {
+          this.options.claheWidth = options.width;
+        } else {
+          throw is.invalidParameterError("width", "integer greater than zero", options.width);
+        }
+        if (is.integer(options.height) && options.height > 0) {
+          this.options.claheHeight = options.height;
+        } else {
+          throw is.invalidParameterError("height", "integer greater than zero", options.height);
+        }
+        if (is.defined(options.maxSlope)) {
+          if (is.integer(options.maxSlope) && is.inRange(options.maxSlope, 0, 100)) {
+            this.options.claheMaxSlope = options.maxSlope;
+          } else {
+            throw is.invalidParameterError("maxSlope", "integer between 0 and 100", options.maxSlope);
+          }
+        }
+      } else {
+        throw is.invalidParameterError("options", "plain object", options);
+      }
+      return this;
+    }
+    function convolve(kernel) {
+      if (!is.object(kernel) || !Array.isArray(kernel.kernel) || !is.integer(kernel.width) || !is.integer(kernel.height) || !is.inRange(kernel.width, 3, 1001) || !is.inRange(kernel.height, 3, 1001) || kernel.height * kernel.width !== kernel.kernel.length) {
+        throw new Error("Invalid convolution kernel");
+      }
+      if (!is.integer(kernel.scale)) {
+        kernel.scale = kernel.kernel.reduce((a5, b5) => a5 + b5, 0);
+      }
+      if (kernel.scale < 1) {
+        kernel.scale = 1;
+      }
+      if (!is.integer(kernel.offset)) {
+        kernel.offset = 0;
+      }
+      this.options.convKernel = kernel;
+      return this;
+    }
+    function threshold(threshold2, options) {
+      if (!is.defined(threshold2)) {
+        this.options.threshold = 128;
+      } else if (is.bool(threshold2)) {
+        this.options.threshold = threshold2 ? 128 : 0;
+      } else if (is.integer(threshold2) && is.inRange(threshold2, 0, 255)) {
+        this.options.threshold = threshold2;
+      } else {
+        throw is.invalidParameterError("threshold", "integer between 0 and 255", threshold2);
+      }
+      if (!is.object(options) || options.greyscale === true || options.grayscale === true) {
+        this.options.thresholdGrayscale = true;
+      } else {
+        this.options.thresholdGrayscale = false;
+      }
+      return this;
+    }
+    function boolean4(operand, operator, options) {
+      this.options.boolean = this._createInputDescriptor(operand, options);
+      if (is.string(operator) && is.inArray(operator, ["and", "or", "eor"])) {
+        this.options.booleanOp = operator;
+      } else {
+        throw is.invalidParameterError("operator", "one of: and, or, eor", operator);
+      }
+      return this;
+    }
+    function linear(a5, b5) {
+      if (!is.defined(a5) && is.number(b5)) {
+        a5 = 1;
+      } else if (is.number(a5) && !is.defined(b5)) {
+        b5 = 0;
+      }
+      if (!is.defined(a5)) {
+        this.options.linearA = [];
+      } else if (is.number(a5)) {
+        this.options.linearA = [a5];
+      } else if (Array.isArray(a5) && a5.length && a5.every(is.number)) {
+        this.options.linearA = a5;
+      } else {
+        throw is.invalidParameterError("a", "number or array of numbers", a5);
+      }
+      if (!is.defined(b5)) {
+        this.options.linearB = [];
+      } else if (is.number(b5)) {
+        this.options.linearB = [b5];
+      } else if (Array.isArray(b5) && b5.length && b5.every(is.number)) {
+        this.options.linearB = b5;
+      } else {
+        throw is.invalidParameterError("b", "number or array of numbers", b5);
+      }
+      if (this.options.linearA.length !== this.options.linearB.length) {
+        throw new Error("Expected a and b to be arrays of the same length");
+      }
+      return this;
+    }
+    function recomb(inputMatrix) {
+      if (!Array.isArray(inputMatrix)) {
+        throw is.invalidParameterError("inputMatrix", "array", inputMatrix);
+      }
+      if (inputMatrix.length !== 3 && inputMatrix.length !== 4) {
+        throw is.invalidParameterError("inputMatrix", "3x3 or 4x4 array", inputMatrix.length);
+      }
+      const recombMatrix = inputMatrix.flat().map(Number);
+      if (recombMatrix.length !== 9 && recombMatrix.length !== 16) {
+        throw is.invalidParameterError("inputMatrix", "cardinality of 9 or 16", recombMatrix.length);
+      }
+      this.options.recombMatrix = recombMatrix;
+      return this;
+    }
+    function modulate(options) {
+      if (!is.plainObject(options)) {
+        throw is.invalidParameterError("options", "plain object", options);
+      }
+      if ("brightness" in options) {
+        if (is.number(options.brightness) && options.brightness >= 0) {
+          this.options.brightness = options.brightness;
+        } else {
+          throw is.invalidParameterError("brightness", "number above zero", options.brightness);
+        }
+      }
+      if ("saturation" in options) {
+        if (is.number(options.saturation) && options.saturation >= 0) {
+          this.options.saturation = options.saturation;
+        } else {
+          throw is.invalidParameterError("saturation", "number above zero", options.saturation);
+        }
+      }
+      if ("hue" in options) {
+        if (is.integer(options.hue)) {
+          this.options.hue = options.hue % 360;
+        } else {
+          throw is.invalidParameterError("hue", "number", options.hue);
+        }
+      }
+      if ("lightness" in options) {
+        if (is.number(options.lightness)) {
+          this.options.lightness = options.lightness;
+        } else {
+          throw is.invalidParameterError("lightness", "number", options.lightness);
+        }
+      }
+      return this;
+    }
+    module2.exports = (Sharp) => {
+      Object.assign(Sharp.prototype, {
+        autoOrient,
+        rotate,
+        flip,
+        flop,
+        affine,
+        sharpen,
+        erode,
+        dilate,
+        median,
+        blur,
+        flatten,
+        unflatten,
+        gamma,
+        negate: negate2,
+        normalise,
+        normalize: normalize2,
+        clahe,
+        convolve,
+        threshold,
+        boolean: boolean4,
+        linear,
+        recomb,
+        modulate
+      });
+    };
+  }
+});
+
+// ../../node_modules/.pnpm/@img+colour@1.1.0/node_modules/@img/colour/color.cjs
+var require_color = __commonJS({
+  "../../node_modules/.pnpm/@img+colour@1.1.0/node_modules/@img/colour/color.cjs"(exports2, module2) {
+    var __defProp3 = Object.defineProperty;
+    var __getOwnPropDesc2 = Object.getOwnPropertyDescriptor;
+    var __getOwnPropNames2 = Object.getOwnPropertyNames;
+    var __hasOwnProp2 = Object.prototype.hasOwnProperty;
+    var __export2 = (target, all) => {
+      for (var name in all)
+        __defProp3(target, name, { get: all[name], enumerable: true });
+    };
+    var __copyProps2 = (to, from, except, desc) => {
+      if (from && typeof from === "object" || typeof from === "function") {
+        for (let key of __getOwnPropNames2(from))
+          if (!__hasOwnProp2.call(to, key) && key !== except)
+            __defProp3(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc2(from, key)) || desc.enumerable });
+      }
+      return to;
+    };
+    var __toCommonJS2 = (mod) => __copyProps2(__defProp3({}, "__esModule", { value: true }), mod);
+    var index_exports = {};
+    __export2(index_exports, {
+      default: () => index_default
+    });
+    module2.exports = __toCommonJS2(index_exports);
+    var colors = {
+      aliceblue: [240, 248, 255],
+      antiquewhite: [250, 235, 215],
+      aqua: [0, 255, 255],
+      aquamarine: [127, 255, 212],
+      azure: [240, 255, 255],
+      beige: [245, 245, 220],
+      bisque: [255, 228, 196],
+      black: [0, 0, 0],
+      blanchedalmond: [255, 235, 205],
+      blue: [0, 0, 255],
+      blueviolet: [138, 43, 226],
+      brown: [165, 42, 42],
+      burlywood: [222, 184, 135],
+      cadetblue: [95, 158, 160],
+      chartreuse: [127, 255, 0],
+      chocolate: [210, 105, 30],
+      coral: [255, 127, 80],
+      cornflowerblue: [100, 149, 237],
+      cornsilk: [255, 248, 220],
+      crimson: [220, 20, 60],
+      cyan: [0, 255, 255],
+      darkblue: [0, 0, 139],
+      darkcyan: [0, 139, 139],
+      darkgoldenrod: [184, 134, 11],
+      darkgray: [169, 169, 169],
+      darkgreen: [0, 100, 0],
+      darkgrey: [169, 169, 169],
+      darkkhaki: [189, 183, 107],
+      darkmagenta: [139, 0, 139],
+      darkolivegreen: [85, 107, 47],
+      darkorange: [255, 140, 0],
+      darkorchid: [153, 50, 204],
+      darkred: [139, 0, 0],
+      darksalmon: [233, 150, 122],
+      darkseagreen: [143, 188, 143],
+      darkslateblue: [72, 61, 139],
+      darkslategray: [47, 79, 79],
+      darkslategrey: [47, 79, 79],
+      darkturquoise: [0, 206, 209],
+      darkviolet: [148, 0, 211],
+      deeppink: [255, 20, 147],
+      deepskyblue: [0, 191, 255],
+      dimgray: [105, 105, 105],
+      dimgrey: [105, 105, 105],
+      dodgerblue: [30, 144, 255],
+      firebrick: [178, 34, 34],
+      floralwhite: [255, 250, 240],
+      forestgreen: [34, 139, 34],
+      fuchsia: [255, 0, 255],
+      gainsboro: [220, 220, 220],
+      ghostwhite: [248, 248, 255],
+      gold: [255, 215, 0],
+      goldenrod: [218, 165, 32],
+      gray: [128, 128, 128],
+      green: [0, 128, 0],
+      greenyellow: [173, 255, 47],
+      grey: [128, 128, 128],
+      honeydew: [240, 255, 240],
+      hotpink: [255, 105, 180],
+      indianred: [205, 92, 92],
+      indigo: [75, 0, 130],
+      ivory: [255, 255, 240],
+      khaki: [240, 230, 140],
+      lavender: [230, 230, 250],
+      lavenderblush: [255, 240, 245],
+      lawngreen: [124, 252, 0],
+      lemonchiffon: [255, 250, 205],
+      lightblue: [173, 216, 230],
+      lightcoral: [240, 128, 128],
+      lightcyan: [224, 255, 255],
+      lightgoldenrodyellow: [250, 250, 210],
+      lightgray: [211, 211, 211],
+      lightgreen: [144, 238, 144],
+      lightgrey: [211, 211, 211],
+      lightpink: [255, 182, 193],
+      lightsalmon: [255, 160, 122],
+      lightseagreen: [32, 178, 170],
+      lightskyblue: [135, 206, 250],
+      lightslategray: [119, 136, 153],
+      lightslategrey: [119, 136, 153],
+      lightsteelblue: [176, 196, 222],
+      lightyellow: [255, 255, 224],
+      lime: [0, 255, 0],
+      limegreen: [50, 205, 50],
+      linen: [250, 240, 230],
+      magenta: [255, 0, 255],
+      maroon: [128, 0, 0],
+      mediumaquamarine: [102, 205, 170],
+      mediumblue: [0, 0, 205],
+      mediumorchid: [186, 85, 211],
+      mediumpurple: [147, 112, 219],
+      mediumseagreen: [60, 179, 113],
+      mediumslateblue: [123, 104, 238],
+      mediumspringgreen: [0, 250, 154],
+      mediumturquoise: [72, 209, 204],
+      mediumvioletred: [199, 21, 133],
+      midnightblue: [25, 25, 112],
+      mintcream: [245, 255, 250],
+      mistyrose: [255, 228, 225],
+      moccasin: [255, 228, 181],
+      navajowhite: [255, 222, 173],
+      navy: [0, 0, 128],
+      oldlace: [253, 245, 230],
+      olive: [128, 128, 0],
+      olivedrab: [107, 142, 35],
+      orange: [255, 165, 0],
+      orangered: [255, 69, 0],
+      orchid: [218, 112, 214],
+      palegoldenrod: [238, 232, 170],
+      palegreen: [152, 251, 152],
+      paleturquoise: [175, 238, 238],
+      palevioletred: [219, 112, 147],
+      papayawhip: [255, 239, 213],
+      peachpuff: [255, 218, 185],
+      peru: [205, 133, 63],
+      pink: [255, 192, 203],
+      plum: [221, 160, 221],
+      powderblue: [176, 224, 230],
+      purple: [128, 0, 128],
+      rebeccapurple: [102, 51, 153],
+      red: [255, 0, 0],
+      rosybrown: [188, 143, 143],
+      royalblue: [65, 105, 225],
+      saddlebrown: [139, 69, 19],
+      salmon: [250, 128, 114],
+      sandybrown: [244, 164, 96],
+      seagreen: [46, 139, 87],
+      seashell: [255, 245, 238],
+      sienna: [160, 82, 45],
+      silver: [192, 192, 192],
+      skyblue: [135, 206, 235],
+      slateblue: [106, 90, 205],
+      slategray: [112, 128, 144],
+      slategrey: [112, 128, 144],
+      snow: [255, 250, 250],
+      springgreen: [0, 255, 127],
+      steelblue: [70, 130, 180],
+      tan: [210, 180, 140],
+      teal: [0, 128, 128],
+      thistle: [216, 191, 216],
+      tomato: [255, 99, 71],
+      turquoise: [64, 224, 208],
+      violet: [238, 130, 238],
+      wheat: [245, 222, 179],
+      white: [255, 255, 255],
+      whitesmoke: [245, 245, 245],
+      yellow: [255, 255, 0],
+      yellowgreen: [154, 205, 50]
+    };
+    for (const key in colors) Object.freeze(colors[key]);
+    var color_name_default = Object.freeze(colors);
+    var reverseNames = /* @__PURE__ */ Object.create(null);
+    for (const name in color_name_default) {
+      if (Object.hasOwn(color_name_default, name)) {
+        reverseNames[color_name_default[name]] = name;
+      }
+    }
+    var cs = {
+      to: {},
+      get: {}
+    };
+    cs.get = function(string4) {
+      const prefix = string4.slice(0, 3).toLowerCase();
+      let value;
+      let model;
+      switch (prefix) {
+        case "hsl": {
+          value = cs.get.hsl(string4);
+          model = "hsl";
+          break;
+        }
+        case "hwb": {
+          value = cs.get.hwb(string4);
+          model = "hwb";
+          break;
+        }
+        default: {
+          value = cs.get.rgb(string4);
+          model = "rgb";
+          break;
+        }
+      }
+      if (!value) {
+        return null;
+      }
+      return { model, value };
+    };
+    cs.get.rgb = function(string4) {
+      if (!string4) {
+        return null;
+      }
+      const abbr = /^#([a-f\d]{3,4})$/i;
+      const hex3 = /^#([a-f\d]{6})([a-f\d]{2})?$/i;
+      const rgba = /^rgba?\(\s*([+-]?(?:\d*\.)?\d+(?:e\d+)?)(?=[\s,])\s*(?:,\s*)?([+-]?(?:\d*\.)?\d+(?:e\d+)?)(?=[\s,])\s*(?:,\s*)?([+-]?(?:\d*\.)?\d+(?:e\d+)?)\s*(?:[\s,|/]\s*([+-]?(?:\d*\.)?\d+(?:e\d+)?)(%?)\s*)?\)$/i;
+      const per = /^rgba?\(\s*([+-]?[\d.]+)%\s*,?\s*([+-]?[\d.]+)%\s*,?\s*([+-]?[\d.]+)%\s*(?:[\s,|/]\s*([+-]?[\d.]+)(%?)\s*)?\)$/i;
+      const keyword = /^(\w+)$/;
+      let rgb = [0, 0, 0, 1];
+      let match2;
+      let i5;
+      let hexAlpha;
+      if (match2 = string4.match(hex3)) {
+        hexAlpha = match2[2];
+        match2 = match2[1];
+        for (i5 = 0; i5 < 3; i5++) {
+          const i22 = i5 * 2;
+          rgb[i5] = Number.parseInt(match2.slice(i22, i22 + 2), 16);
+        }
+        if (hexAlpha) {
+          rgb[3] = Number.parseInt(hexAlpha, 16) / 255;
+        }
+      } else if (match2 = string4.match(abbr)) {
+        match2 = match2[1];
+        hexAlpha = match2[3];
+        for (i5 = 0; i5 < 3; i5++) {
+          rgb[i5] = Number.parseInt(match2[i5] + match2[i5], 16);
+        }
+        if (hexAlpha) {
+          rgb[3] = Number.parseInt(hexAlpha + hexAlpha, 16) / 255;
+        }
+      } else if (match2 = string4.match(rgba)) {
+        for (i5 = 0; i5 < 3; i5++) {
+          rgb[i5] = Number.parseFloat(match2[i5 + 1]);
+        }
+        if (match2[4]) {
+          rgb[3] = match2[5] ? Number.parseFloat(match2[4]) * 0.01 : Number.parseFloat(match2[4]);
+        }
+      } else if (match2 = string4.match(per)) {
+        for (i5 = 0; i5 < 3; i5++) {
+          rgb[i5] = Math.round(Number.parseFloat(match2[i5 + 1]) * 2.55);
+        }
+        if (match2[4]) {
+          rgb[3] = match2[5] ? Number.parseFloat(match2[4]) * 0.01 : Number.parseFloat(match2[4]);
+        }
+      } else if (match2 = string4.toLowerCase().match(keyword)) {
+        if (match2[1] === "transparent") {
+          return [0, 0, 0, 0];
+        }
+        if (!Object.hasOwn(color_name_default, match2[1])) {
+          return null;
+        }
+        rgb = color_name_default[match2[1]].slice();
+        rgb[3] = 1;
+        return rgb;
+      } else {
+        return null;
+      }
+      for (i5 = 0; i5 < 3; i5++) {
+        rgb[i5] = clamp(rgb[i5], 0, 255);
+      }
+      rgb[3] = clamp(rgb[3], 0, 1);
+      return rgb;
+    };
+    cs.get.hsl = function(string4) {
+      if (!string4) {
+        return null;
+      }
+      const hsl = /^hsla?\(\s*([+-]?(?:\d{0,3}\.)?\d+)(?:deg)?\s*,?\s*([+-]?[\d.]+)%\s*,?\s*([+-]?[\d.]+)%\s*(?:[,|/]\s*([+-]?(?=\.\d|\d)(?:0|[1-9]\d*)?(?:\.\d*)?(?:e[+-]?\d+)?)\s*)?\)$/i;
+      const match2 = string4.match(hsl);
+      if (match2) {
+        const alpha = Number.parseFloat(match2[4]);
+        const h5 = (Number.parseFloat(match2[1]) % 360 + 360) % 360;
+        const s2 = clamp(Number.parseFloat(match2[2]), 0, 100);
+        const l3 = clamp(Number.parseFloat(match2[3]), 0, 100);
+        const a5 = clamp(Number.isNaN(alpha) ? 1 : alpha, 0, 1);
+        return [h5, s2, l3, a5];
+      }
+      return null;
+    };
+    cs.get.hwb = function(string4) {
+      if (!string4) {
+        return null;
+      }
+      const hwb = /^hwb\(\s*([+-]?\d{0,3}(?:\.\d+)?)(?:deg)?\s*[\s,]\s*([+-]?[\d.]+)%\s*[\s,]\s*([+-]?[\d.]+)%\s*(?:[\s,]\s*([+-]?(?=\.\d|\d)(?:0|[1-9]\d*)?(?:\.\d*)?(?:e[+-]?\d+)?)\s*)?\)$/i;
+      const match2 = string4.match(hwb);
+      if (match2) {
+        const alpha = Number.parseFloat(match2[4]);
+        const h5 = (Number.parseFloat(match2[1]) % 360 + 360) % 360;
+        const w = clamp(Number.parseFloat(match2[2]), 0, 100);
+        const b5 = clamp(Number.parseFloat(match2[3]), 0, 100);
+        const a5 = clamp(Number.isNaN(alpha) ? 1 : alpha, 0, 1);
+        return [h5, w, b5, a5];
+      }
+      return null;
+    };
+    cs.to.hex = function(...rgba) {
+      return "#" + hexDouble(rgba[0]) + hexDouble(rgba[1]) + hexDouble(rgba[2]) + (rgba[3] < 1 ? hexDouble(Math.round(rgba[3] * 255)) : "");
+    };
+    cs.to.rgb = function(...rgba) {
+      return rgba.length < 4 || rgba[3] === 1 ? "rgb(" + Math.round(rgba[0]) + ", " + Math.round(rgba[1]) + ", " + Math.round(rgba[2]) + ")" : "rgba(" + Math.round(rgba[0]) + ", " + Math.round(rgba[1]) + ", " + Math.round(rgba[2]) + ", " + rgba[3] + ")";
+    };
+    cs.to.rgb.percent = function(...rgba) {
+      const r5 = Math.round(rgba[0] / 255 * 100);
+      const g5 = Math.round(rgba[1] / 255 * 100);
+      const b5 = Math.round(rgba[2] / 255 * 100);
+      return rgba.length < 4 || rgba[3] === 1 ? "rgb(" + r5 + "%, " + g5 + "%, " + b5 + "%)" : "rgba(" + r5 + "%, " + g5 + "%, " + b5 + "%, " + rgba[3] + ")";
+    };
+    cs.to.hsl = function(...hsla) {
+      return hsla.length < 4 || hsla[3] === 1 ? "hsl(" + hsla[0] + ", " + hsla[1] + "%, " + hsla[2] + "%)" : "hsla(" + hsla[0] + ", " + hsla[1] + "%, " + hsla[2] + "%, " + hsla[3] + ")";
+    };
+    cs.to.hwb = function(...hwba) {
+      let a5 = "";
+      if (hwba.length >= 4 && hwba[3] !== 1) {
+        a5 = ", " + hwba[3];
+      }
+      return "hwb(" + hwba[0] + ", " + hwba[1] + "%, " + hwba[2] + "%" + a5 + ")";
+    };
+    cs.to.keyword = function(...rgb) {
+      return reverseNames[rgb.slice(0, 3)];
+    };
+    function clamp(number_, min, max) {
+      return Math.min(Math.max(min, number_), max);
+    }
+    function hexDouble(number_) {
+      const string_ = Math.round(number_).toString(16).toUpperCase();
+      return string_.length < 2 ? "0" + string_ : string_;
+    }
+    var color_string_default = cs;
+    var reverseKeywords = {};
+    for (const key of Object.keys(color_name_default)) {
+      reverseKeywords[color_name_default[key]] = key;
+    }
+    var convert = {
+      rgb: { channels: 3, labels: "rgb" },
+      hsl: { channels: 3, labels: "hsl" },
+      hsv: { channels: 3, labels: "hsv" },
+      hwb: { channels: 3, labels: "hwb" },
+      cmyk: { channels: 4, labels: "cmyk" },
+      xyz: { channels: 3, labels: "xyz" },
+      lab: { channels: 3, labels: "lab" },
+      oklab: { channels: 3, labels: ["okl", "oka", "okb"] },
+      lch: { channels: 3, labels: "lch" },
+      oklch: { channels: 3, labels: ["okl", "okc", "okh"] },
+      hex: { channels: 1, labels: ["hex"] },
+      keyword: { channels: 1, labels: ["keyword"] },
+      ansi16: { channels: 1, labels: ["ansi16"] },
+      ansi256: { channels: 1, labels: ["ansi256"] },
+      hcg: { channels: 3, labels: ["h", "c", "g"] },
+      apple: { channels: 3, labels: ["r16", "g16", "b16"] },
+      gray: { channels: 1, labels: ["gray"] }
+    };
+    var conversions_default = convert;
+    var LAB_FT = (6 / 29) ** 3;
+    function srgbNonlinearTransform(c5) {
+      const cc = c5 > 31308e-7 ? 1.055 * c5 ** (1 / 2.4) - 0.055 : c5 * 12.92;
+      return Math.min(Math.max(0, cc), 1);
+    }
+    function srgbNonlinearTransformInv(c5) {
+      return c5 > 0.04045 ? ((c5 + 0.055) / 1.055) ** 2.4 : c5 / 12.92;
+    }
+    for (const model of Object.keys(convert)) {
+      if (!("channels" in convert[model])) {
+        throw new Error("missing channels property: " + model);
+      }
+      if (!("labels" in convert[model])) {
+        throw new Error("missing channel labels property: " + model);
+      }
+      if (convert[model].labels.length !== convert[model].channels) {
+        throw new Error("channel and label counts mismatch: " + model);
+      }
+      const { channels, labels } = convert[model];
+      delete convert[model].channels;
+      delete convert[model].labels;
+      Object.defineProperty(convert[model], "channels", { value: channels });
+      Object.defineProperty(convert[model], "labels", { value: labels });
+    }
+    convert.rgb.hsl = function(rgb) {
+      const r5 = rgb[0] / 255;
+      const g5 = rgb[1] / 255;
+      const b5 = rgb[2] / 255;
+      const min = Math.min(r5, g5, b5);
+      const max = Math.max(r5, g5, b5);
+      const delta = max - min;
+      let h5;
+      let s2;
+      switch (max) {
+        case min: {
+          h5 = 0;
+          break;
+        }
+        case r5: {
+          h5 = (g5 - b5) / delta;
+          break;
+        }
+        case g5: {
+          h5 = 2 + (b5 - r5) / delta;
+          break;
+        }
+        case b5: {
+          h5 = 4 + (r5 - g5) / delta;
+          break;
+        }
+      }
+      h5 = Math.min(h5 * 60, 360);
+      if (h5 < 0) {
+        h5 += 360;
+      }
+      const l3 = (min + max) / 2;
+      if (max === min) {
+        s2 = 0;
+      } else if (l3 <= 0.5) {
+        s2 = delta / (max + min);
+      } else {
+        s2 = delta / (2 - max - min);
+      }
+      return [h5, s2 * 100, l3 * 100];
+    };
+    convert.rgb.hsv = function(rgb) {
+      let rdif;
+      let gdif;
+      let bdif;
+      let h5;
+      let s2;
+      const r5 = rgb[0] / 255;
+      const g5 = rgb[1] / 255;
+      const b5 = rgb[2] / 255;
+      const v = Math.max(r5, g5, b5);
+      const diff = v - Math.min(r5, g5, b5);
+      const diffc = function(c5) {
+        return (v - c5) / 6 / diff + 1 / 2;
+      };
+      if (diff === 0) {
+        h5 = 0;
+        s2 = 0;
+      } else {
+        s2 = diff / v;
+        rdif = diffc(r5);
+        gdif = diffc(g5);
+        bdif = diffc(b5);
+        switch (v) {
+          case r5: {
+            h5 = bdif - gdif;
+            break;
+          }
+          case g5: {
+            h5 = 1 / 3 + rdif - bdif;
+            break;
+          }
+          case b5: {
+            h5 = 2 / 3 + gdif - rdif;
+            break;
+          }
+        }
+        if (h5 < 0) {
+          h5 += 1;
+        } else if (h5 > 1) {
+          h5 -= 1;
+        }
+      }
+      return [
+        h5 * 360,
+        s2 * 100,
+        v * 100
+      ];
+    };
+    convert.rgb.hwb = function(rgb) {
+      const r5 = rgb[0];
+      const g5 = rgb[1];
+      let b5 = rgb[2];
+      const h5 = convert.rgb.hsl(rgb)[0];
+      const w = 1 / 255 * Math.min(r5, Math.min(g5, b5));
+      b5 = 1 - 1 / 255 * Math.max(r5, Math.max(g5, b5));
+      return [h5, w * 100, b5 * 100];
+    };
+    convert.rgb.oklab = function(rgb) {
+      const r5 = srgbNonlinearTransformInv(rgb[0] / 255);
+      const g5 = srgbNonlinearTransformInv(rgb[1] / 255);
+      const b5 = srgbNonlinearTransformInv(rgb[2] / 255);
+      const lp = Math.cbrt(0.4122214708 * r5 + 0.5363325363 * g5 + 0.0514459929 * b5);
+      const mp = Math.cbrt(0.2119034982 * r5 + 0.6806995451 * g5 + 0.1073969566 * b5);
+      const sp = Math.cbrt(0.0883024619 * r5 + 0.2817188376 * g5 + 0.6299787005 * b5);
+      const l3 = 0.2104542553 * lp + 0.793617785 * mp - 0.0040720468 * sp;
+      const aa = 1.9779984951 * lp - 2.428592205 * mp + 0.4505937099 * sp;
+      const bb = 0.0259040371 * lp + 0.7827717662 * mp - 0.808675766 * sp;
+      return [l3 * 100, aa * 100, bb * 100];
+    };
+    convert.rgb.cmyk = function(rgb) {
+      const r5 = rgb[0] / 255;
+      const g5 = rgb[1] / 255;
+      const b5 = rgb[2] / 255;
+      const k5 = Math.min(1 - r5, 1 - g5, 1 - b5);
+      const c5 = (1 - r5 - k5) / (1 - k5) || 0;
+      const m3 = (1 - g5 - k5) / (1 - k5) || 0;
+      const y = (1 - b5 - k5) / (1 - k5) || 0;
+      return [c5 * 100, m3 * 100, y * 100, k5 * 100];
+    };
+    function comparativeDistance(x, y) {
+      return (x[0] - y[0]) ** 2 + (x[1] - y[1]) ** 2 + (x[2] - y[2]) ** 2;
+    }
+    convert.rgb.keyword = function(rgb) {
+      const reversed = reverseKeywords[rgb];
+      if (reversed) {
+        return reversed;
+      }
+      let currentClosestDistance = Number.POSITIVE_INFINITY;
+      let currentClosestKeyword;
+      for (const keyword of Object.keys(color_name_default)) {
+        const value = color_name_default[keyword];
+        const distance = comparativeDistance(rgb, value);
+        if (distance < currentClosestDistance) {
+          currentClosestDistance = distance;
+          currentClosestKeyword = keyword;
+        }
+      }
+      return currentClosestKeyword;
+    };
+    convert.keyword.rgb = function(keyword) {
+      return [...color_name_default[keyword]];
+    };
+    convert.rgb.xyz = function(rgb) {
+      const r5 = srgbNonlinearTransformInv(rgb[0] / 255);
+      const g5 = srgbNonlinearTransformInv(rgb[1] / 255);
+      const b5 = srgbNonlinearTransformInv(rgb[2] / 255);
+      const x = r5 * 0.4124564 + g5 * 0.3575761 + b5 * 0.1804375;
+      const y = r5 * 0.2126729 + g5 * 0.7151522 + b5 * 0.072175;
+      const z3 = r5 * 0.0193339 + g5 * 0.119192 + b5 * 0.9503041;
+      return [x * 100, y * 100, z3 * 100];
+    };
+    convert.rgb.lab = function(rgb) {
+      const xyz = convert.rgb.xyz(rgb);
+      let x = xyz[0];
+      let y = xyz[1];
+      let z3 = xyz[2];
+      x /= 95.047;
+      y /= 100;
+      z3 /= 108.883;
+      x = x > LAB_FT ? x ** (1 / 3) : 7.787 * x + 16 / 116;
+      y = y > LAB_FT ? y ** (1 / 3) : 7.787 * y + 16 / 116;
+      z3 = z3 > LAB_FT ? z3 ** (1 / 3) : 7.787 * z3 + 16 / 116;
+      const l3 = 116 * y - 16;
+      const a5 = 500 * (x - y);
+      const b5 = 200 * (y - z3);
+      return [l3, a5, b5];
+    };
+    convert.hsl.rgb = function(hsl) {
+      const h5 = hsl[0] / 360;
+      const s2 = hsl[1] / 100;
+      const l3 = hsl[2] / 100;
+      let t32;
+      let value;
+      if (s2 === 0) {
+        value = l3 * 255;
+        return [value, value, value];
+      }
+      const t22 = l3 < 0.5 ? l3 * (1 + s2) : l3 + s2 - l3 * s2;
+      const t12 = 2 * l3 - t22;
+      const rgb = [0, 0, 0];
+      for (let i5 = 0; i5 < 3; i5++) {
+        t32 = h5 + 1 / 3 * -(i5 - 1);
+        if (t32 < 0) {
+          t32++;
+        }
+        if (t32 > 1) {
+          t32--;
+        }
+        if (6 * t32 < 1) {
+          value = t12 + (t22 - t12) * 6 * t32;
+        } else if (2 * t32 < 1) {
+          value = t22;
+        } else if (3 * t32 < 2) {
+          value = t12 + (t22 - t12) * (2 / 3 - t32) * 6;
+        } else {
+          value = t12;
+        }
+        rgb[i5] = value * 255;
+      }
+      return rgb;
+    };
+    convert.hsl.hsv = function(hsl) {
+      const h5 = hsl[0];
+      let s2 = hsl[1] / 100;
+      let l3 = hsl[2] / 100;
+      let smin = s2;
+      const lmin = Math.max(l3, 0.01);
+      l3 *= 2;
+      s2 *= l3 <= 1 ? l3 : 2 - l3;
+      smin *= lmin <= 1 ? lmin : 2 - lmin;
+      const v = (l3 + s2) / 2;
+      const sv = l3 === 0 ? 2 * smin / (lmin + smin) : 2 * s2 / (l3 + s2);
+      return [h5, sv * 100, v * 100];
+    };
+    convert.hsv.rgb = function(hsv) {
+      const h5 = hsv[0] / 60;
+      const s2 = hsv[1] / 100;
+      let v = hsv[2] / 100;
+      const hi = Math.floor(h5) % 6;
+      const f5 = h5 - Math.floor(h5);
+      const p3 = 255 * v * (1 - s2);
+      const q3 = 255 * v * (1 - s2 * f5);
+      const t = 255 * v * (1 - s2 * (1 - f5));
+      v *= 255;
+      switch (hi) {
+        case 0: {
+          return [v, t, p3];
+        }
+        case 1: {
+          return [q3, v, p3];
+        }
+        case 2: {
+          return [p3, v, t];
+        }
+        case 3: {
+          return [p3, q3, v];
+        }
+        case 4: {
+          return [t, p3, v];
+        }
+        case 5: {
+          return [v, p3, q3];
+        }
+      }
+    };
+    convert.hsv.hsl = function(hsv) {
+      const h5 = hsv[0];
+      const s2 = hsv[1] / 100;
+      const v = hsv[2] / 100;
+      const vmin = Math.max(v, 0.01);
+      let sl;
+      let l3;
+      l3 = (2 - s2) * v;
+      const lmin = (2 - s2) * vmin;
+      sl = s2 * vmin;
+      sl /= lmin <= 1 ? lmin : 2 - lmin;
+      sl = sl || 0;
+      l3 /= 2;
+      return [h5, sl * 100, l3 * 100];
+    };
+    convert.hwb.rgb = function(hwb) {
+      const h5 = hwb[0] / 360;
+      let wh = hwb[1] / 100;
+      let bl = hwb[2] / 100;
+      const ratio = wh + bl;
+      let f5;
+      if (ratio > 1) {
+        wh /= ratio;
+        bl /= ratio;
+      }
+      const i5 = Math.floor(6 * h5);
+      const v = 1 - bl;
+      f5 = 6 * h5 - i5;
+      if ((i5 & 1) !== 0) {
+        f5 = 1 - f5;
+      }
+      const n3 = wh + f5 * (v - wh);
+      let r5;
+      let g5;
+      let b5;
+      switch (i5) {
+        default:
+        case 6:
+        case 0: {
+          r5 = v;
+          g5 = n3;
+          b5 = wh;
+          break;
+        }
+        case 1: {
+          r5 = n3;
+          g5 = v;
+          b5 = wh;
+          break;
+        }
+        case 2: {
+          r5 = wh;
+          g5 = v;
+          b5 = n3;
+          break;
+        }
+        case 3: {
+          r5 = wh;
+          g5 = n3;
+          b5 = v;
+          break;
+        }
+        case 4: {
+          r5 = n3;
+          g5 = wh;
+          b5 = v;
+          break;
+        }
+        case 5: {
+          r5 = v;
+          g5 = wh;
+          b5 = n3;
+          break;
+        }
+      }
+      return [r5 * 255, g5 * 255, b5 * 255];
+    };
+    convert.cmyk.rgb = function(cmyk) {
+      const c5 = cmyk[0] / 100;
+      const m3 = cmyk[1] / 100;
+      const y = cmyk[2] / 100;
+      const k5 = cmyk[3] / 100;
+      const r5 = 1 - Math.min(1, c5 * (1 - k5) + k5);
+      const g5 = 1 - Math.min(1, m3 * (1 - k5) + k5);
+      const b5 = 1 - Math.min(1, y * (1 - k5) + k5);
+      return [r5 * 255, g5 * 255, b5 * 255];
+    };
+    convert.xyz.rgb = function(xyz) {
+      const x = xyz[0] / 100;
+      const y = xyz[1] / 100;
+      const z3 = xyz[2] / 100;
+      let r5;
+      let g5;
+      let b5;
+      r5 = x * 3.2404542 + y * -1.5371385 + z3 * -0.4985314;
+      g5 = x * -0.969266 + y * 1.8760108 + z3 * 0.041556;
+      b5 = x * 0.0556434 + y * -0.2040259 + z3 * 1.0572252;
+      r5 = srgbNonlinearTransform(r5);
+      g5 = srgbNonlinearTransform(g5);
+      b5 = srgbNonlinearTransform(b5);
+      return [r5 * 255, g5 * 255, b5 * 255];
+    };
+    convert.xyz.lab = function(xyz) {
+      let x = xyz[0];
+      let y = xyz[1];
+      let z3 = xyz[2];
+      x /= 95.047;
+      y /= 100;
+      z3 /= 108.883;
+      x = x > LAB_FT ? x ** (1 / 3) : 7.787 * x + 16 / 116;
+      y = y > LAB_FT ? y ** (1 / 3) : 7.787 * y + 16 / 116;
+      z3 = z3 > LAB_FT ? z3 ** (1 / 3) : 7.787 * z3 + 16 / 116;
+      const l3 = 116 * y - 16;
+      const a5 = 500 * (x - y);
+      const b5 = 200 * (y - z3);
+      return [l3, a5, b5];
+    };
+    convert.xyz.oklab = function(xyz) {
+      const x = xyz[0] / 100;
+      const y = xyz[1] / 100;
+      const z3 = xyz[2] / 100;
+      const lp = Math.cbrt(0.8189330101 * x + 0.3618667424 * y - 0.1288597137 * z3);
+      const mp = Math.cbrt(0.0329845436 * x + 0.9293118715 * y + 0.0361456387 * z3);
+      const sp = Math.cbrt(0.0482003018 * x + 0.2643662691 * y + 0.633851707 * z3);
+      const l3 = 0.2104542553 * lp + 0.793617785 * mp - 0.0040720468 * sp;
+      const a5 = 1.9779984951 * lp - 2.428592205 * mp + 0.4505937099 * sp;
+      const b5 = 0.0259040371 * lp + 0.7827717662 * mp - 0.808675766 * sp;
+      return [l3 * 100, a5 * 100, b5 * 100];
+    };
+    convert.oklab.oklch = function(oklab) {
+      return convert.lab.lch(oklab);
+    };
+    convert.oklab.xyz = function(oklab) {
+      const ll = oklab[0] / 100;
+      const a5 = oklab[1] / 100;
+      const b5 = oklab[2] / 100;
+      const l3 = (0.999999998 * ll + 0.396337792 * a5 + 0.215803758 * b5) ** 3;
+      const m3 = (1.000000008 * ll - 0.105561342 * a5 - 0.063854175 * b5) ** 3;
+      const s2 = (1.000000055 * ll - 0.089484182 * a5 - 1.291485538 * b5) ** 3;
+      const x = 1.227013851 * l3 - 0.55779998 * m3 + 0.281256149 * s2;
+      const y = -0.040580178 * l3 + 1.11225687 * m3 - 0.071676679 * s2;
+      const z3 = -0.076381285 * l3 - 0.421481978 * m3 + 1.58616322 * s2;
+      return [x * 100, y * 100, z3 * 100];
+    };
+    convert.oklab.rgb = function(oklab) {
+      const ll = oklab[0] / 100;
+      const aa = oklab[1] / 100;
+      const bb = oklab[2] / 100;
+      const l3 = (ll + 0.3963377774 * aa + 0.2158037573 * bb) ** 3;
+      const m3 = (ll - 0.1055613458 * aa - 0.0638541728 * bb) ** 3;
+      const s2 = (ll - 0.0894841775 * aa - 1.291485548 * bb) ** 3;
+      const r5 = srgbNonlinearTransform(4.0767416621 * l3 - 3.3077115913 * m3 + 0.2309699292 * s2);
+      const g5 = srgbNonlinearTransform(-1.2684380046 * l3 + 2.6097574011 * m3 - 0.3413193965 * s2);
+      const b5 = srgbNonlinearTransform(-0.0041960863 * l3 - 0.7034186147 * m3 + 1.707614701 * s2);
+      return [r5 * 255, g5 * 255, b5 * 255];
+    };
+    convert.oklch.oklab = function(oklch) {
+      return convert.lch.lab(oklch);
+    };
+    convert.lab.xyz = function(lab) {
+      const l3 = lab[0];
+      const a5 = lab[1];
+      const b5 = lab[2];
+      let x;
+      let y;
+      let z3;
+      y = (l3 + 16) / 116;
+      x = a5 / 500 + y;
+      z3 = y - b5 / 200;
+      const y2 = y ** 3;
+      const x2 = x ** 3;
+      const z22 = z3 ** 3;
+      y = y2 > LAB_FT ? y2 : (y - 16 / 116) / 7.787;
+      x = x2 > LAB_FT ? x2 : (x - 16 / 116) / 7.787;
+      z3 = z22 > LAB_FT ? z22 : (z3 - 16 / 116) / 7.787;
+      x *= 95.047;
+      y *= 100;
+      z3 *= 108.883;
+      return [x, y, z3];
+    };
+    convert.lab.lch = function(lab) {
+      const l3 = lab[0];
+      const a5 = lab[1];
+      const b5 = lab[2];
+      let h5;
+      const hr = Math.atan2(b5, a5);
+      h5 = hr * 360 / 2 / Math.PI;
+      if (h5 < 0) {
+        h5 += 360;
+      }
+      const c5 = Math.sqrt(a5 * a5 + b5 * b5);
+      return [l3, c5, h5];
+    };
+    convert.lch.lab = function(lch) {
+      const l3 = lch[0];
+      const c5 = lch[1];
+      const h5 = lch[2];
+      const hr = h5 / 360 * 2 * Math.PI;
+      const a5 = c5 * Math.cos(hr);
+      const b5 = c5 * Math.sin(hr);
+      return [l3, a5, b5];
+    };
+    convert.rgb.ansi16 = function(args, saturation = null) {
+      const [r5, g5, b5] = args;
+      let value = saturation === null ? convert.rgb.hsv(args)[2] : saturation;
+      value = Math.round(value / 50);
+      if (value === 0) {
+        return 30;
+      }
+      let ansi = 30 + (Math.round(b5 / 255) << 2 | Math.round(g5 / 255) << 1 | Math.round(r5 / 255));
+      if (value === 2) {
+        ansi += 60;
+      }
+      return ansi;
+    };
+    convert.hsv.ansi16 = function(args) {
+      return convert.rgb.ansi16(convert.hsv.rgb(args), args[2]);
+    };
+    convert.rgb.ansi256 = function(args) {
+      const r5 = args[0];
+      const g5 = args[1];
+      const b5 = args[2];
+      if (r5 >> 4 === g5 >> 4 && g5 >> 4 === b5 >> 4) {
+        if (r5 < 8) {
+          return 16;
+        }
+        if (r5 > 248) {
+          return 231;
+        }
+        return Math.round((r5 - 8) / 247 * 24) + 232;
+      }
+      const ansi = 16 + 36 * Math.round(r5 / 255 * 5) + 6 * Math.round(g5 / 255 * 5) + Math.round(b5 / 255 * 5);
+      return ansi;
+    };
+    convert.ansi16.rgb = function(args) {
+      args = args[0];
+      let color = args % 10;
+      if (color === 0 || color === 7) {
+        if (args > 50) {
+          color += 3.5;
+        }
+        color = color / 10.5 * 255;
+        return [color, color, color];
+      }
+      const mult = (Math.trunc(args > 50) + 1) * 0.5;
+      const r5 = (color & 1) * mult * 255;
+      const g5 = (color >> 1 & 1) * mult * 255;
+      const b5 = (color >> 2 & 1) * mult * 255;
+      return [r5, g5, b5];
+    };
+    convert.ansi256.rgb = function(args) {
+      args = args[0];
+      if (args >= 232) {
+        const c5 = (args - 232) * 10 + 8;
+        return [c5, c5, c5];
+      }
+      args -= 16;
+      let rem;
+      const r5 = Math.floor(args / 36) / 5 * 255;
+      const g5 = Math.floor((rem = args % 36) / 6) / 5 * 255;
+      const b5 = rem % 6 / 5 * 255;
+      return [r5, g5, b5];
+    };
+    convert.rgb.hex = function(args) {
+      const integer2 = ((Math.round(args[0]) & 255) << 16) + ((Math.round(args[1]) & 255) << 8) + (Math.round(args[2]) & 255);
+      const string4 = integer2.toString(16).toUpperCase();
+      return "000000".slice(string4.length) + string4;
+    };
+    convert.hex.rgb = function(args) {
+      const match2 = args.toString(16).match(/[a-f\d]{6}|[a-f\d]{3}/i);
+      if (!match2) {
+        return [0, 0, 0];
+      }
+      let colorString = match2[0];
+      if (match2[0].length === 3) {
+        colorString = [...colorString].map((char) => char + char).join("");
+      }
+      const integer2 = Number.parseInt(colorString, 16);
+      const r5 = integer2 >> 16 & 255;
+      const g5 = integer2 >> 8 & 255;
+      const b5 = integer2 & 255;
+      return [r5, g5, b5];
+    };
+    convert.rgb.hcg = function(rgb) {
+      const r5 = rgb[0] / 255;
+      const g5 = rgb[1] / 255;
+      const b5 = rgb[2] / 255;
+      const max = Math.max(Math.max(r5, g5), b5);
+      const min = Math.min(Math.min(r5, g5), b5);
+      const chroma = max - min;
+      let hue;
+      const grayscale = chroma < 1 ? min / (1 - chroma) : 0;
+      if (chroma <= 0) {
+        hue = 0;
+      } else if (max === r5) {
+        hue = (g5 - b5) / chroma % 6;
+      } else if (max === g5) {
+        hue = 2 + (b5 - r5) / chroma;
+      } else {
+        hue = 4 + (r5 - g5) / chroma;
+      }
+      hue /= 6;
+      hue %= 1;
+      return [hue * 360, chroma * 100, grayscale * 100];
+    };
+    convert.hsl.hcg = function(hsl) {
+      const s2 = hsl[1] / 100;
+      const l3 = hsl[2] / 100;
+      const c5 = l3 < 0.5 ? 2 * s2 * l3 : 2 * s2 * (1 - l3);
+      let f5 = 0;
+      if (c5 < 1) {
+        f5 = (l3 - 0.5 * c5) / (1 - c5);
+      }
+      return [hsl[0], c5 * 100, f5 * 100];
+    };
+    convert.hsv.hcg = function(hsv) {
+      const s2 = hsv[1] / 100;
+      const v = hsv[2] / 100;
+      const c5 = s2 * v;
+      let f5 = 0;
+      if (c5 < 1) {
+        f5 = (v - c5) / (1 - c5);
+      }
+      return [hsv[0], c5 * 100, f5 * 100];
+    };
+    convert.hcg.rgb = function(hcg) {
+      const h5 = hcg[0] / 360;
+      const c5 = hcg[1] / 100;
+      const g5 = hcg[2] / 100;
+      if (c5 === 0) {
+        return [g5 * 255, g5 * 255, g5 * 255];
+      }
+      const pure = [0, 0, 0];
+      const hi = h5 % 1 * 6;
+      const v = hi % 1;
+      const w = 1 - v;
+      let mg = 0;
+      switch (Math.floor(hi)) {
+        case 0: {
+          pure[0] = 1;
+          pure[1] = v;
+          pure[2] = 0;
+          break;
+        }
+        case 1: {
+          pure[0] = w;
+          pure[1] = 1;
+          pure[2] = 0;
+          break;
+        }
+        case 2: {
+          pure[0] = 0;
+          pure[1] = 1;
+          pure[2] = v;
+          break;
+        }
+        case 3: {
+          pure[0] = 0;
+          pure[1] = w;
+          pure[2] = 1;
+          break;
+        }
+        case 4: {
+          pure[0] = v;
+          pure[1] = 0;
+          pure[2] = 1;
+          break;
+        }
+        default: {
+          pure[0] = 1;
+          pure[1] = 0;
+          pure[2] = w;
+        }
+      }
+      mg = (1 - c5) * g5;
+      return [
+        (c5 * pure[0] + mg) * 255,
+        (c5 * pure[1] + mg) * 255,
+        (c5 * pure[2] + mg) * 255
+      ];
+    };
+    convert.hcg.hsv = function(hcg) {
+      const c5 = hcg[1] / 100;
+      const g5 = hcg[2] / 100;
+      const v = c5 + g5 * (1 - c5);
+      let f5 = 0;
+      if (v > 0) {
+        f5 = c5 / v;
+      }
+      return [hcg[0], f5 * 100, v * 100];
+    };
+    convert.hcg.hsl = function(hcg) {
+      const c5 = hcg[1] / 100;
+      const g5 = hcg[2] / 100;
+      const l3 = g5 * (1 - c5) + 0.5 * c5;
+      let s2 = 0;
+      if (l3 > 0 && l3 < 0.5) {
+        s2 = c5 / (2 * l3);
+      } else if (l3 >= 0.5 && l3 < 1) {
+        s2 = c5 / (2 * (1 - l3));
+      }
+      return [hcg[0], s2 * 100, l3 * 100];
+    };
+    convert.hcg.hwb = function(hcg) {
+      const c5 = hcg[1] / 100;
+      const g5 = hcg[2] / 100;
+      const v = c5 + g5 * (1 - c5);
+      return [hcg[0], (v - c5) * 100, (1 - v) * 100];
+    };
+    convert.hwb.hcg = function(hwb) {
+      const w = hwb[1] / 100;
+      const b5 = hwb[2] / 100;
+      const v = 1 - b5;
+      const c5 = v - w;
+      let g5 = 0;
+      if (c5 < 1) {
+        g5 = (v - c5) / (1 - c5);
+      }
+      return [hwb[0], c5 * 100, g5 * 100];
+    };
+    convert.apple.rgb = function(apple) {
+      return [apple[0] / 65535 * 255, apple[1] / 65535 * 255, apple[2] / 65535 * 255];
+    };
+    convert.rgb.apple = function(rgb) {
+      return [rgb[0] / 255 * 65535, rgb[1] / 255 * 65535, rgb[2] / 255 * 65535];
+    };
+    convert.gray.rgb = function(args) {
+      return [args[0] / 100 * 255, args[0] / 100 * 255, args[0] / 100 * 255];
+    };
+    convert.gray.hsl = function(args) {
+      return [0, 0, args[0]];
+    };
+    convert.gray.hsv = convert.gray.hsl;
+    convert.gray.hwb = function(gray) {
+      return [0, 100, gray[0]];
+    };
+    convert.gray.cmyk = function(gray) {
+      return [0, 0, 0, gray[0]];
+    };
+    convert.gray.lab = function(gray) {
+      return [gray[0], 0, 0];
+    };
+    convert.gray.hex = function(gray) {
+      const value = Math.round(gray[0] / 100 * 255) & 255;
+      const integer2 = (value << 16) + (value << 8) + value;
+      const string4 = integer2.toString(16).toUpperCase();
+      return "000000".slice(string4.length) + string4;
+    };
+    convert.rgb.gray = function(rgb) {
+      const value = (rgb[0] + rgb[1] + rgb[2]) / 3;
+      return [value / 255 * 100];
+    };
+    function buildGraph() {
+      const graph = {};
+      const models2 = Object.keys(conversions_default);
+      for (let { length } = models2, i5 = 0; i5 < length; i5++) {
+        graph[models2[i5]] = {
+          // http://jsperf.com/1-vs-infinity
+          // micro-opt, but this is simple.
+          distance: -1,
+          parent: null
+        };
+      }
+      return graph;
+    }
+    function deriveBFS(fromModel) {
+      const graph = buildGraph();
+      const queue = [fromModel];
+      graph[fromModel].distance = 0;
+      while (queue.length > 0) {
+        const current = queue.pop();
+        const adjacents = Object.keys(conversions_default[current]);
+        for (let { length } = adjacents, i5 = 0; i5 < length; i5++) {
+          const adjacent = adjacents[i5];
+          const node = graph[adjacent];
+          if (node.distance === -1) {
+            node.distance = graph[current].distance + 1;
+            node.parent = current;
+            queue.unshift(adjacent);
+          }
+        }
+      }
+      return graph;
+    }
+    function link4(from, to) {
+      return function(args) {
+        return to(from(args));
+      };
+    }
+    function wrapConversion(toModel, graph) {
+      const path = [graph[toModel].parent, toModel];
+      let fn = conversions_default[graph[toModel].parent][toModel];
+      let cur = graph[toModel].parent;
+      while (graph[cur].parent) {
+        path.unshift(graph[cur].parent);
+        fn = link4(conversions_default[graph[cur].parent][cur], fn);
+        cur = graph[cur].parent;
+      }
+      fn.conversion = path;
+      return fn;
+    }
+    function route(fromModel) {
+      const graph = deriveBFS(fromModel);
+      const conversion = {};
+      const models2 = Object.keys(graph);
+      for (let { length } = models2, i5 = 0; i5 < length; i5++) {
+        const toModel = models2[i5];
+        const node = graph[toModel];
+        if (node.parent === null) {
+          continue;
+        }
+        conversion[toModel] = wrapConversion(toModel, graph);
+      }
+      return conversion;
+    }
+    var route_default = route;
+    var convert2 = {};
+    var models = Object.keys(conversions_default);
+    function wrapRaw(fn) {
+      const wrappedFn = function(...args) {
+        const arg0 = args[0];
+        if (arg0 === void 0 || arg0 === null) {
+          return arg0;
+        }
+        if (arg0.length > 1) {
+          args = arg0;
+        }
+        return fn(args);
+      };
+      if ("conversion" in fn) {
+        wrappedFn.conversion = fn.conversion;
+      }
+      return wrappedFn;
+    }
+    function wrapRounded(fn) {
+      const wrappedFn = function(...args) {
+        const arg0 = args[0];
+        if (arg0 === void 0 || arg0 === null) {
+          return arg0;
+        }
+        if (arg0.length > 1) {
+          args = arg0;
+        }
+        const result = fn(args);
+        if (typeof result === "object") {
+          for (let { length } = result, i5 = 0; i5 < length; i5++) {
+            result[i5] = Math.round(result[i5]);
+          }
+        }
+        return result;
+      };
+      if ("conversion" in fn) {
+        wrappedFn.conversion = fn.conversion;
+      }
+      return wrappedFn;
+    }
+    for (const fromModel of models) {
+      convert2[fromModel] = {};
+      Object.defineProperty(convert2[fromModel], "channels", { value: conversions_default[fromModel].channels });
+      Object.defineProperty(convert2[fromModel], "labels", { value: conversions_default[fromModel].labels });
+      const routes = route_default(fromModel);
+      const routeModels = Object.keys(routes);
+      for (const toModel of routeModels) {
+        const fn = routes[toModel];
+        convert2[fromModel][toModel] = wrapRounded(fn);
+        convert2[fromModel][toModel].raw = wrapRaw(fn);
+      }
+    }
+    var color_convert_default = convert2;
+    var skippedModels = [
+      // To be honest, I don't really feel like keyword belongs in color convert, but eh.
+      "keyword",
+      // Gray conflicts with some method names, and has its own method defined.
+      "gray",
+      // Shouldn't really be in color-convert either...
+      "hex"
+    ];
+    var hashedModelKeys = {};
+    for (const model of Object.keys(color_convert_default)) {
+      hashedModelKeys[[...color_convert_default[model].labels].sort().join("")] = model;
+    }
+    var limiters = {};
+    function Color(object2, model) {
+      if (!(this instanceof Color)) {
+        return new Color(object2, model);
+      }
+      if (model && model in skippedModels) {
+        model = null;
+      }
+      if (model && !(model in color_convert_default)) {
+        throw new Error("Unknown model: " + model);
+      }
+      let i5;
+      let channels;
+      if (object2 == null) {
+        this.model = "rgb";
+        this.color = [0, 0, 0];
+        this.valpha = 1;
+      } else if (object2 instanceof Color) {
+        this.model = object2.model;
+        this.color = [...object2.color];
+        this.valpha = object2.valpha;
+      } else if (typeof object2 === "string") {
+        const result = color_string_default.get(object2);
+        if (result === null) {
+          throw new Error("Unable to parse color from string: " + object2);
+        }
+        this.model = result.model;
+        channels = color_convert_default[this.model].channels;
+        this.color = result.value.slice(0, channels);
+        this.valpha = typeof result.value[channels] === "number" ? result.value[channels] : 1;
+      } else if (object2.length > 0) {
+        this.model = model || "rgb";
+        channels = color_convert_default[this.model].channels;
+        const newArray = Array.prototype.slice.call(object2, 0, channels);
+        this.color = zeroArray(newArray, channels);
+        this.valpha = typeof object2[channels] === "number" ? object2[channels] : 1;
+      } else if (typeof object2 === "number") {
+        this.model = "rgb";
+        this.color = [
+          object2 >> 16 & 255,
+          object2 >> 8 & 255,
+          object2 & 255
+        ];
+        this.valpha = 1;
+      } else {
+        this.valpha = 1;
+        const keys = Object.keys(object2);
+        if ("alpha" in object2) {
+          keys.splice(keys.indexOf("alpha"), 1);
+          this.valpha = typeof object2.alpha === "number" ? object2.alpha : 0;
+        }
+        const hashedKeys = keys.sort().join("");
+        if (!(hashedKeys in hashedModelKeys)) {
+          throw new Error("Unable to parse color from object: " + JSON.stringify(object2));
+        }
+        this.model = hashedModelKeys[hashedKeys];
+        const { labels } = color_convert_default[this.model];
+        const color = [];
+        for (i5 = 0; i5 < labels.length; i5++) {
+          color.push(object2[labels[i5]]);
+        }
+        this.color = zeroArray(color);
+      }
+      if (limiters[this.model]) {
+        channels = color_convert_default[this.model].channels;
+        for (i5 = 0; i5 < channels; i5++) {
+          const limit = limiters[this.model][i5];
+          if (limit) {
+            this.color[i5] = limit(this.color[i5]);
+          }
+        }
+      }
+      this.valpha = Math.max(0, Math.min(1, this.valpha));
+      if (Object.freeze) {
+        Object.freeze(this);
+      }
+    }
+    Color.prototype = {
+      toString() {
+        return this.string();
+      },
+      toJSON() {
+        return this[this.model]();
+      },
+      string(places) {
+        let self2 = this.model in color_string_default.to ? this : this.rgb();
+        self2 = self2.round(typeof places === "number" ? places : 1);
+        const arguments_ = self2.valpha === 1 ? self2.color : [...self2.color, this.valpha];
+        return color_string_default.to[self2.model](...arguments_);
+      },
+      percentString(places) {
+        const self2 = this.rgb().round(typeof places === "number" ? places : 1);
+        const arguments_ = self2.valpha === 1 ? self2.color : [...self2.color, this.valpha];
+        return color_string_default.to.rgb.percent(...arguments_);
+      },
+      array() {
+        return this.valpha === 1 ? [...this.color] : [...this.color, this.valpha];
+      },
+      object() {
+        const result = {};
+        const { channels } = color_convert_default[this.model];
+        const { labels } = color_convert_default[this.model];
+        for (let i5 = 0; i5 < channels; i5++) {
+          result[labels[i5]] = this.color[i5];
+        }
+        if (this.valpha !== 1) {
+          result.alpha = this.valpha;
+        }
+        return result;
+      },
+      unitArray() {
+        const rgb = this.rgb().color;
+        rgb[0] /= 255;
+        rgb[1] /= 255;
+        rgb[2] /= 255;
+        if (this.valpha !== 1) {
+          rgb.push(this.valpha);
+        }
+        return rgb;
+      },
+      unitObject() {
+        const rgb = this.rgb().object();
+        rgb.r /= 255;
+        rgb.g /= 255;
+        rgb.b /= 255;
+        if (this.valpha !== 1) {
+          rgb.alpha = this.valpha;
+        }
+        return rgb;
+      },
+      round(places) {
+        places = Math.max(places || 0, 0);
+        return new Color([...this.color.map(roundToPlace(places)), this.valpha], this.model);
+      },
+      alpha(value) {
+        if (value !== void 0) {
+          return new Color([...this.color, Math.max(0, Math.min(1, value))], this.model);
+        }
+        return this.valpha;
+      },
+      // Rgb
+      red: getset("rgb", 0, maxfn(255)),
+      green: getset("rgb", 1, maxfn(255)),
+      blue: getset("rgb", 2, maxfn(255)),
+      hue: getset(["hsl", "hsv", "hsl", "hwb", "hcg"], 0, (value) => (value % 360 + 360) % 360),
+      saturationl: getset("hsl", 1, maxfn(100)),
+      lightness: getset("hsl", 2, maxfn(100)),
+      saturationv: getset("hsv", 1, maxfn(100)),
+      value: getset("hsv", 2, maxfn(100)),
+      chroma: getset("hcg", 1, maxfn(100)),
+      gray: getset("hcg", 2, maxfn(100)),
+      white: getset("hwb", 1, maxfn(100)),
+      wblack: getset("hwb", 2, maxfn(100)),
+      cyan: getset("cmyk", 0, maxfn(100)),
+      magenta: getset("cmyk", 1, maxfn(100)),
+      yellow: getset("cmyk", 2, maxfn(100)),
+      black: getset("cmyk", 3, maxfn(100)),
+      x: getset("xyz", 0, maxfn(95.047)),
+      y: getset("xyz", 1, maxfn(100)),
+      z: getset("xyz", 2, maxfn(108.833)),
+      l: getset("lab", 0, maxfn(100)),
+      a: getset("lab", 1),
+      b: getset("lab", 2),
+      keyword(value) {
+        if (value !== void 0) {
+          return new Color(value);
+        }
+        return color_convert_default[this.model].keyword(this.color);
+      },
+      hex(value) {
+        if (value !== void 0) {
+          return new Color(value);
+        }
+        return color_string_default.to.hex(...this.rgb().round().color);
+      },
+      hexa(value) {
+        if (value !== void 0) {
+          return new Color(value);
+        }
+        const rgbArray = this.rgb().round().color;
+        let alphaHex = Math.round(this.valpha * 255).toString(16).toUpperCase();
+        if (alphaHex.length === 1) {
+          alphaHex = "0" + alphaHex;
+        }
+        return color_string_default.to.hex(...rgbArray) + alphaHex;
+      },
+      rgbNumber() {
+        const rgb = this.rgb().color;
+        return (rgb[0] & 255) << 16 | (rgb[1] & 255) << 8 | rgb[2] & 255;
+      },
+      luminosity() {
+        const rgb = this.rgb().color;
+        const lum = [];
+        for (const [i5, element] of rgb.entries()) {
+          const chan = element / 255;
+          lum[i5] = chan <= 0.04045 ? chan / 12.92 : ((chan + 0.055) / 1.055) ** 2.4;
+        }
+        return 0.2126 * lum[0] + 0.7152 * lum[1] + 0.0722 * lum[2];
+      },
+      contrast(color2) {
+        const lum1 = this.luminosity();
+        const lum2 = color2.luminosity();
+        if (lum1 > lum2) {
+          return (lum1 + 0.05) / (lum2 + 0.05);
+        }
+        return (lum2 + 0.05) / (lum1 + 0.05);
+      },
+      level(color2) {
+        const contrastRatio = this.contrast(color2);
+        if (contrastRatio >= 7) {
+          return "AAA";
+        }
+        return contrastRatio >= 4.5 ? "AA" : "";
+      },
+      isDark() {
+        const rgb = this.rgb().color;
+        const yiq = (rgb[0] * 2126 + rgb[1] * 7152 + rgb[2] * 722) / 1e4;
+        return yiq < 128;
+      },
+      isLight() {
+        return !this.isDark();
+      },
+      negate() {
+        const rgb = this.rgb();
+        for (let i5 = 0; i5 < 3; i5++) {
+          rgb.color[i5] = 255 - rgb.color[i5];
+        }
+        return rgb;
+      },
+      lighten(ratio) {
+        const hsl = this.hsl();
+        hsl.color[2] += hsl.color[2] * ratio;
+        return hsl;
+      },
+      darken(ratio) {
+        const hsl = this.hsl();
+        hsl.color[2] -= hsl.color[2] * ratio;
+        return hsl;
+      },
+      saturate(ratio) {
+        const hsl = this.hsl();
+        hsl.color[1] += hsl.color[1] * ratio;
+        return hsl;
+      },
+      desaturate(ratio) {
+        const hsl = this.hsl();
+        hsl.color[1] -= hsl.color[1] * ratio;
+        return hsl;
+      },
+      whiten(ratio) {
+        const hwb = this.hwb();
+        hwb.color[1] += hwb.color[1] * ratio;
+        return hwb;
+      },
+      blacken(ratio) {
+        const hwb = this.hwb();
+        hwb.color[2] += hwb.color[2] * ratio;
+        return hwb;
+      },
+      grayscale() {
+        const rgb = this.rgb().color;
+        const value = rgb[0] * 0.3 + rgb[1] * 0.59 + rgb[2] * 0.11;
+        return Color.rgb(value, value, value);
+      },
+      fade(ratio) {
+        return this.alpha(this.valpha - this.valpha * ratio);
+      },
+      opaquer(ratio) {
+        return this.alpha(this.valpha + this.valpha * ratio);
+      },
+      rotate(degrees) {
+        const hsl = this.hsl();
+        let hue = hsl.color[0];
+        hue = (hue + degrees) % 360;
+        hue = hue < 0 ? 360 + hue : hue;
+        hsl.color[0] = hue;
+        return hsl;
+      },
+      mix(mixinColor, weight) {
+        if (!mixinColor || !mixinColor.rgb) {
+          throw new Error('Argument to "mix" was not a Color instance, but rather an instance of ' + typeof mixinColor);
+        }
+        const color1 = mixinColor.rgb();
+        const color2 = this.rgb();
+        const p3 = weight === void 0 ? 0.5 : weight;
+        const w = 2 * p3 - 1;
+        const a5 = color1.alpha() - color2.alpha();
+        const w1 = ((w * a5 === -1 ? w : (w + a5) / (1 + w * a5)) + 1) / 2;
+        const w2 = 1 - w1;
+        return Color.rgb(
+          w1 * color1.red() + w2 * color2.red(),
+          w1 * color1.green() + w2 * color2.green(),
+          w1 * color1.blue() + w2 * color2.blue(),
+          color1.alpha() * p3 + color2.alpha() * (1 - p3)
+        );
+      }
+    };
+    for (const model of Object.keys(color_convert_default)) {
+      if (skippedModels.includes(model)) {
+        continue;
+      }
+      const { channels } = color_convert_default[model];
+      Color.prototype[model] = function(...arguments_) {
+        if (this.model === model) {
+          return new Color(this);
+        }
+        if (arguments_.length > 0) {
+          return new Color(arguments_, model);
+        }
+        return new Color([...assertArray(color_convert_default[this.model][model].raw(this.color)), this.valpha], model);
+      };
+      Color[model] = function(...arguments_) {
+        let color = arguments_[0];
+        if (typeof color === "number") {
+          color = zeroArray(arguments_, channels);
+        }
+        return new Color(color, model);
+      };
+    }
+    function roundTo(number4, places) {
+      return Number(number4.toFixed(places));
+    }
+    function roundToPlace(places) {
+      return function(number4) {
+        return roundTo(number4, places);
+      };
+    }
+    function getset(model, channel, modifier) {
+      model = Array.isArray(model) ? model : [model];
+      for (const m3 of model) {
+        (limiters[m3] ||= [])[channel] = modifier;
+      }
+      model = model[0];
+      return function(value) {
+        let result;
+        if (value !== void 0) {
+          if (modifier) {
+            value = modifier(value);
+          }
+          result = this[model]();
+          result.color[channel] = value;
+          return result;
+        }
+        result = this[model]().color[channel];
+        if (modifier) {
+          result = modifier(result);
+        }
+        return result;
+      };
+    }
+    function maxfn(max) {
+      return function(v) {
+        return Math.max(0, Math.min(max, v));
+      };
+    }
+    function assertArray(value) {
+      return Array.isArray(value) ? value : [value];
+    }
+    function zeroArray(array2, length) {
+      for (let i5 = 0; i5 < length; i5++) {
+        if (typeof array2[i5] !== "number") {
+          array2[i5] = 0;
+        }
+      }
+      return array2;
+    }
+    var index_default = Color;
+  }
+});
+
+// ../../node_modules/.pnpm/@img+colour@1.1.0/node_modules/@img/colour/index.cjs
+var require_colour = __commonJS({
+  "../../node_modules/.pnpm/@img+colour@1.1.0/node_modules/@img/colour/index.cjs"(exports2, module2) {
+    module2.exports = require_color().default;
+  }
+});
+
+// ../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/colour.js
+var require_colour2 = __commonJS({
+  "../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/colour.js"(exports2, module2) {
+    var color = require_colour();
+    var is = require_is();
+    var colourspace = {
+      multiband: "multiband",
+      "b-w": "b-w",
+      bw: "b-w",
+      cmyk: "cmyk",
+      srgb: "srgb"
+    };
+    function tint(tint2) {
+      this._setBackgroundColourOption("tint", tint2);
+      return this;
+    }
+    function greyscale(greyscale2) {
+      this.options.greyscale = is.bool(greyscale2) ? greyscale2 : true;
+      return this;
+    }
+    function grayscale(grayscale2) {
+      return this.greyscale(grayscale2);
+    }
+    function pipelineColourspace(colourspace2) {
+      if (!is.string(colourspace2)) {
+        throw is.invalidParameterError("colourspace", "string", colourspace2);
+      }
+      this.options.colourspacePipeline = colourspace2;
+      return this;
+    }
+    function pipelineColorspace(colorspace) {
+      return this.pipelineColourspace(colorspace);
+    }
+    function toColourspace(colourspace2) {
+      if (!is.string(colourspace2)) {
+        throw is.invalidParameterError("colourspace", "string", colourspace2);
+      }
+      this.options.colourspace = colourspace2;
+      return this;
+    }
+    function toColorspace(colorspace) {
+      return this.toColourspace(colorspace);
+    }
+    function _getBackgroundColourOption(value) {
+      if (is.object(value) || is.string(value) && value.length >= 3 && value.length <= 200) {
+        const colour = color(value);
+        return [
+          colour.red(),
+          colour.green(),
+          colour.blue(),
+          Math.round(colour.alpha() * 255)
+        ];
+      } else {
+        throw is.invalidParameterError("background", "object or string", value);
+      }
+    }
+    function _setBackgroundColourOption(key, value) {
+      if (is.defined(value)) {
+        this.options[key] = _getBackgroundColourOption(value);
+      }
+    }
+    module2.exports = (Sharp) => {
+      Object.assign(Sharp.prototype, {
+        // Public
+        tint,
+        greyscale,
+        grayscale,
+        pipelineColourspace,
+        pipelineColorspace,
+        toColourspace,
+        toColorspace,
+        // Private
+        _getBackgroundColourOption,
+        _setBackgroundColourOption
+      });
+      Sharp.colourspace = colourspace;
+      Sharp.colorspace = colourspace;
+    };
+  }
+});
+
+// ../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/channel.js
+var require_channel = __commonJS({
+  "../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/channel.js"(exports2, module2) {
+    var is = require_is();
+    var bool = {
+      and: "and",
+      or: "or",
+      eor: "eor"
+    };
+    function removeAlpha() {
+      this.options.removeAlpha = true;
+      return this;
+    }
+    function ensureAlpha(alpha) {
+      if (is.defined(alpha)) {
+        if (is.number(alpha) && is.inRange(alpha, 0, 1)) {
+          this.options.ensureAlpha = alpha;
+        } else {
+          throw is.invalidParameterError("alpha", "number between 0 and 1", alpha);
+        }
+      } else {
+        this.options.ensureAlpha = 1;
+      }
+      return this;
+    }
+    function extractChannel(channel) {
+      const channelMap = { red: 0, green: 1, blue: 2, alpha: 3 };
+      if (Object.keys(channelMap).includes(channel)) {
+        channel = channelMap[channel];
+      }
+      if (is.integer(channel) && is.inRange(channel, 0, 4)) {
+        this.options.extractChannel = channel;
+      } else {
+        throw is.invalidParameterError("channel", "integer or one of: red, green, blue, alpha", channel);
+      }
+      return this;
+    }
+    function joinChannel(images, options) {
+      if (Array.isArray(images)) {
+        images.forEach(function(image) {
+          this.options.joinChannelIn.push(this._createInputDescriptor(image, options));
+        }, this);
+      } else {
+        this.options.joinChannelIn.push(this._createInputDescriptor(images, options));
+      }
+      return this;
+    }
+    function bandbool(boolOp) {
+      if (is.string(boolOp) && is.inArray(boolOp, ["and", "or", "eor"])) {
+        this.options.bandBoolOp = boolOp;
+      } else {
+        throw is.invalidParameterError("boolOp", "one of: and, or, eor", boolOp);
+      }
+      return this;
+    }
+    module2.exports = (Sharp) => {
+      Object.assign(Sharp.prototype, {
+        // Public instance functions
+        removeAlpha,
+        ensureAlpha,
+        extractChannel,
+        joinChannel,
+        bandbool
+      });
+      Sharp.bool = bool;
+    };
+  }
+});
+
+// ../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/output.js
+var require_output = __commonJS({
+  "../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/output.js"(exports2, module2) {
+    var path = require("node:path");
+    var is = require_is();
+    var sharp3 = require_sharp();
+    var formats = /* @__PURE__ */ new Map([
+      ["heic", "heif"],
+      ["heif", "heif"],
+      ["avif", "avif"],
+      ["jpeg", "jpeg"],
+      ["jpg", "jpeg"],
+      ["jpe", "jpeg"],
+      ["tile", "tile"],
+      ["dz", "tile"],
+      ["png", "png"],
+      ["raw", "raw"],
+      ["tiff", "tiff"],
+      ["tif", "tiff"],
+      ["webp", "webp"],
+      ["gif", "gif"],
+      ["jp2", "jp2"],
+      ["jpx", "jp2"],
+      ["j2k", "jp2"],
+      ["j2c", "jp2"],
+      ["jxl", "jxl"]
+    ]);
+    var jp2Regex = /\.(jp[2x]|j2[kc])$/i;
+    var errJp2Save = () => new Error("JP2 output requires libvips with support for OpenJPEG");
+    var bitdepthFromColourCount = (colours) => 1 << 31 - Math.clz32(Math.ceil(Math.log2(colours)));
+    function toFile(fileOut, callback) {
+      let err;
+      if (!is.string(fileOut)) {
+        err = new Error("Missing output file path");
+      } else if (is.string(this.options.input.file) && path.resolve(this.options.input.file) === path.resolve(fileOut)) {
+        err = new Error("Cannot use same file for input and output");
+      } else if (jp2Regex.test(path.extname(fileOut)) && !this.constructor.format.jp2k.output.file) {
+        err = errJp2Save();
+      }
+      if (err) {
+        if (is.fn(callback)) {
+          callback(err);
+        } else {
+          return Promise.reject(err);
+        }
+      } else {
+        this.options.fileOut = fileOut;
+        const stack = Error();
+        return this._pipeline(callback, stack);
+      }
+      return this;
+    }
+    function toBuffer3(options, callback) {
+      if (is.object(options)) {
+        this._setBooleanOption("resolveWithObject", options.resolveWithObject);
+      } else if (this.options.resolveWithObject) {
+        this.options.resolveWithObject = false;
+      }
+      this.options.fileOut = "";
+      const stack = Error();
+      return this._pipeline(is.fn(options) ? options : callback, stack);
+    }
+    function keepExif() {
+      this.options.keepMetadata |= 1;
+      return this;
+    }
+    function withExif(exif) {
+      if (is.object(exif)) {
+        for (const [ifd, entries] of Object.entries(exif)) {
+          if (is.object(entries)) {
+            for (const [k5, v] of Object.entries(entries)) {
+              if (is.string(v)) {
+                this.options.withExif[`exif-${ifd.toLowerCase()}-${k5}`] = v;
+              } else {
+                throw is.invalidParameterError(`${ifd}.${k5}`, "string", v);
+              }
+            }
+          } else {
+            throw is.invalidParameterError(ifd, "object", entries);
+          }
+        }
+      } else {
+        throw is.invalidParameterError("exif", "object", exif);
+      }
+      this.options.withExifMerge = false;
+      return this.keepExif();
+    }
+    function withExifMerge(exif) {
+      this.withExif(exif);
+      this.options.withExifMerge = true;
+      return this;
+    }
+    function keepIccProfile() {
+      this.options.keepMetadata |= 8;
+      return this;
+    }
+    function withIccProfile(icc, options) {
+      if (is.string(icc)) {
+        this.options.withIccProfile = icc;
+      } else {
+        throw is.invalidParameterError("icc", "string", icc);
+      }
+      this.keepIccProfile();
+      if (is.object(options)) {
+        if (is.defined(options.attach)) {
+          if (is.bool(options.attach)) {
+            if (!options.attach) {
+              this.options.keepMetadata &= ~8;
+            }
+          } else {
+            throw is.invalidParameterError("attach", "boolean", options.attach);
+          }
+        }
+      }
+      return this;
+    }
+    function keepXmp() {
+      this.options.keepMetadata |= 2;
+      return this;
+    }
+    function withXmp(xmp) {
+      if (is.string(xmp) && xmp.length > 0) {
+        this.options.withXmp = xmp;
+        this.options.keepMetadata |= 2;
+      } else {
+        throw is.invalidParameterError("xmp", "non-empty string", xmp);
+      }
+      return this;
+    }
+    function keepMetadata() {
+      this.options.keepMetadata = 31;
+      return this;
+    }
+    function withMetadata(options) {
+      this.keepMetadata();
+      this.withIccProfile("srgb");
+      if (is.object(options)) {
+        if (is.defined(options.orientation)) {
+          if (is.integer(options.orientation) && is.inRange(options.orientation, 1, 8)) {
+            this.options.withMetadataOrientation = options.orientation;
+          } else {
+            throw is.invalidParameterError("orientation", "integer between 1 and 8", options.orientation);
+          }
+        }
+        if (is.defined(options.density)) {
+          if (is.number(options.density) && options.density > 0) {
+            this.options.withMetadataDensity = options.density;
+          } else {
+            throw is.invalidParameterError("density", "positive number", options.density);
+          }
+        }
+        if (is.defined(options.icc)) {
+          this.withIccProfile(options.icc);
+        }
+        if (is.defined(options.exif)) {
+          this.withExifMerge(options.exif);
+        }
+      }
+      return this;
+    }
+    function toFormat(format2, options) {
+      const actualFormat = formats.get((is.object(format2) && is.string(format2.id) ? format2.id : format2).toLowerCase());
+      if (!actualFormat) {
+        throw is.invalidParameterError("format", `one of: ${[...formats.keys()].join(", ")}`, format2);
+      }
+      return this[actualFormat](options);
+    }
+    function jpeg(options) {
+      if (is.object(options)) {
+        if (is.defined(options.quality)) {
+          if (is.integer(options.quality) && is.inRange(options.quality, 1, 100)) {
+            this.options.jpegQuality = options.quality;
+          } else {
+            throw is.invalidParameterError("quality", "integer between 1 and 100", options.quality);
+          }
+        }
+        if (is.defined(options.progressive)) {
+          this._setBooleanOption("jpegProgressive", options.progressive);
+        }
+        if (is.defined(options.chromaSubsampling)) {
+          if (is.string(options.chromaSubsampling) && is.inArray(options.chromaSubsampling, ["4:2:0", "4:4:4"])) {
+            this.options.jpegChromaSubsampling = options.chromaSubsampling;
+          } else {
+            throw is.invalidParameterError("chromaSubsampling", "one of: 4:2:0, 4:4:4", options.chromaSubsampling);
+          }
+        }
+        const optimiseCoding = is.bool(options.optimizeCoding) ? options.optimizeCoding : options.optimiseCoding;
+        if (is.defined(optimiseCoding)) {
+          this._setBooleanOption("jpegOptimiseCoding", optimiseCoding);
+        }
+        if (is.defined(options.mozjpeg)) {
+          if (is.bool(options.mozjpeg)) {
+            if (options.mozjpeg) {
+              this.options.jpegTrellisQuantisation = true;
+              this.options.jpegOvershootDeringing = true;
+              this.options.jpegOptimiseScans = true;
+              this.options.jpegProgressive = true;
+              this.options.jpegQuantisationTable = 3;
+            }
+          } else {
+            throw is.invalidParameterError("mozjpeg", "boolean", options.mozjpeg);
+          }
+        }
+        const trellisQuantisation = is.bool(options.trellisQuantization) ? options.trellisQuantization : options.trellisQuantisation;
+        if (is.defined(trellisQuantisation)) {
+          this._setBooleanOption("jpegTrellisQuantisation", trellisQuantisation);
+        }
+        if (is.defined(options.overshootDeringing)) {
+          this._setBooleanOption("jpegOvershootDeringing", options.overshootDeringing);
+        }
+        const optimiseScans = is.bool(options.optimizeScans) ? options.optimizeScans : options.optimiseScans;
+        if (is.defined(optimiseScans)) {
+          this._setBooleanOption("jpegOptimiseScans", optimiseScans);
+          if (optimiseScans) {
+            this.options.jpegProgressive = true;
+          }
+        }
+        const quantisationTable = is.number(options.quantizationTable) ? options.quantizationTable : options.quantisationTable;
+        if (is.defined(quantisationTable)) {
+          if (is.integer(quantisationTable) && is.inRange(quantisationTable, 0, 8)) {
+            this.options.jpegQuantisationTable = quantisationTable;
+          } else {
+            throw is.invalidParameterError("quantisationTable", "integer between 0 and 8", quantisationTable);
+          }
+        }
+      }
+      return this._updateFormatOut("jpeg", options);
+    }
+    function png(options) {
+      if (is.object(options)) {
+        if (is.defined(options.progressive)) {
+          this._setBooleanOption("pngProgressive", options.progressive);
+        }
+        if (is.defined(options.compressionLevel)) {
+          if (is.integer(options.compressionLevel) && is.inRange(options.compressionLevel, 0, 9)) {
+            this.options.pngCompressionLevel = options.compressionLevel;
+          } else {
+            throw is.invalidParameterError("compressionLevel", "integer between 0 and 9", options.compressionLevel);
+          }
+        }
+        if (is.defined(options.adaptiveFiltering)) {
+          this._setBooleanOption("pngAdaptiveFiltering", options.adaptiveFiltering);
+        }
+        const colours = options.colours || options.colors;
+        if (is.defined(colours)) {
+          if (is.integer(colours) && is.inRange(colours, 2, 256)) {
+            this.options.pngBitdepth = bitdepthFromColourCount(colours);
+          } else {
+            throw is.invalidParameterError("colours", "integer between 2 and 256", colours);
+          }
+        }
+        if (is.defined(options.palette)) {
+          this._setBooleanOption("pngPalette", options.palette);
+        } else if ([options.quality, options.effort, options.colours, options.colors, options.dither].some(is.defined)) {
+          this._setBooleanOption("pngPalette", true);
+        }
+        if (this.options.pngPalette) {
+          if (is.defined(options.quality)) {
+            if (is.integer(options.quality) && is.inRange(options.quality, 0, 100)) {
+              this.options.pngQuality = options.quality;
+            } else {
+              throw is.invalidParameterError("quality", "integer between 0 and 100", options.quality);
+            }
+          }
+          if (is.defined(options.effort)) {
+            if (is.integer(options.effort) && is.inRange(options.effort, 1, 10)) {
+              this.options.pngEffort = options.effort;
+            } else {
+              throw is.invalidParameterError("effort", "integer between 1 and 10", options.effort);
+            }
+          }
+          if (is.defined(options.dither)) {
+            if (is.number(options.dither) && is.inRange(options.dither, 0, 1)) {
+              this.options.pngDither = options.dither;
+            } else {
+              throw is.invalidParameterError("dither", "number between 0.0 and 1.0", options.dither);
+            }
+          }
+        }
+      }
+      return this._updateFormatOut("png", options);
+    }
+    function webp(options) {
+      if (is.object(options)) {
+        if (is.defined(options.quality)) {
+          if (is.integer(options.quality) && is.inRange(options.quality, 1, 100)) {
+            this.options.webpQuality = options.quality;
+          } else {
+            throw is.invalidParameterError("quality", "integer between 1 and 100", options.quality);
+          }
+        }
+        if (is.defined(options.alphaQuality)) {
+          if (is.integer(options.alphaQuality) && is.inRange(options.alphaQuality, 0, 100)) {
+            this.options.webpAlphaQuality = options.alphaQuality;
+          } else {
+            throw is.invalidParameterError("alphaQuality", "integer between 0 and 100", options.alphaQuality);
+          }
+        }
+        if (is.defined(options.lossless)) {
+          this._setBooleanOption("webpLossless", options.lossless);
+        }
+        if (is.defined(options.nearLossless)) {
+          this._setBooleanOption("webpNearLossless", options.nearLossless);
+        }
+        if (is.defined(options.smartSubsample)) {
+          this._setBooleanOption("webpSmartSubsample", options.smartSubsample);
+        }
+        if (is.defined(options.smartDeblock)) {
+          this._setBooleanOption("webpSmartDeblock", options.smartDeblock);
+        }
+        if (is.defined(options.preset)) {
+          if (is.string(options.preset) && is.inArray(options.preset, ["default", "photo", "picture", "drawing", "icon", "text"])) {
+            this.options.webpPreset = options.preset;
+          } else {
+            throw is.invalidParameterError("preset", "one of: default, photo, picture, drawing, icon, text", options.preset);
+          }
+        }
+        if (is.defined(options.effort)) {
+          if (is.integer(options.effort) && is.inRange(options.effort, 0, 6)) {
+            this.options.webpEffort = options.effort;
+          } else {
+            throw is.invalidParameterError("effort", "integer between 0 and 6", options.effort);
+          }
+        }
+        if (is.defined(options.minSize)) {
+          this._setBooleanOption("webpMinSize", options.minSize);
+        }
+        if (is.defined(options.mixed)) {
+          this._setBooleanOption("webpMixed", options.mixed);
+        }
+      }
+      trySetAnimationOptions(options, this.options);
+      return this._updateFormatOut("webp", options);
+    }
+    function gif(options) {
+      if (is.object(options)) {
+        if (is.defined(options.reuse)) {
+          this._setBooleanOption("gifReuse", options.reuse);
+        }
+        if (is.defined(options.progressive)) {
+          this._setBooleanOption("gifProgressive", options.progressive);
+        }
+        const colours = options.colours || options.colors;
+        if (is.defined(colours)) {
+          if (is.integer(colours) && is.inRange(colours, 2, 256)) {
+            this.options.gifBitdepth = bitdepthFromColourCount(colours);
+          } else {
+            throw is.invalidParameterError("colours", "integer between 2 and 256", colours);
+          }
+        }
+        if (is.defined(options.effort)) {
+          if (is.number(options.effort) && is.inRange(options.effort, 1, 10)) {
+            this.options.gifEffort = options.effort;
+          } else {
+            throw is.invalidParameterError("effort", "integer between 1 and 10", options.effort);
+          }
+        }
+        if (is.defined(options.dither)) {
+          if (is.number(options.dither) && is.inRange(options.dither, 0, 1)) {
+            this.options.gifDither = options.dither;
+          } else {
+            throw is.invalidParameterError("dither", "number between 0.0 and 1.0", options.dither);
+          }
+        }
+        if (is.defined(options.interFrameMaxError)) {
+          if (is.number(options.interFrameMaxError) && is.inRange(options.interFrameMaxError, 0, 32)) {
+            this.options.gifInterFrameMaxError = options.interFrameMaxError;
+          } else {
+            throw is.invalidParameterError("interFrameMaxError", "number between 0.0 and 32.0", options.interFrameMaxError);
+          }
+        }
+        if (is.defined(options.interPaletteMaxError)) {
+          if (is.number(options.interPaletteMaxError) && is.inRange(options.interPaletteMaxError, 0, 256)) {
+            this.options.gifInterPaletteMaxError = options.interPaletteMaxError;
+          } else {
+            throw is.invalidParameterError("interPaletteMaxError", "number between 0.0 and 256.0", options.interPaletteMaxError);
+          }
+        }
+        if (is.defined(options.keepDuplicateFrames)) {
+          if (is.bool(options.keepDuplicateFrames)) {
+            this._setBooleanOption("gifKeepDuplicateFrames", options.keepDuplicateFrames);
+          } else {
+            throw is.invalidParameterError("keepDuplicateFrames", "boolean", options.keepDuplicateFrames);
+          }
+        }
+      }
+      trySetAnimationOptions(options, this.options);
+      return this._updateFormatOut("gif", options);
+    }
+    function jp2(options) {
+      if (!this.constructor.format.jp2k.output.buffer) {
+        throw errJp2Save();
+      }
+      if (is.object(options)) {
+        if (is.defined(options.quality)) {
+          if (is.integer(options.quality) && is.inRange(options.quality, 1, 100)) {
+            this.options.jp2Quality = options.quality;
+          } else {
+            throw is.invalidParameterError("quality", "integer between 1 and 100", options.quality);
+          }
+        }
+        if (is.defined(options.lossless)) {
+          if (is.bool(options.lossless)) {
+            this.options.jp2Lossless = options.lossless;
+          } else {
+            throw is.invalidParameterError("lossless", "boolean", options.lossless);
+          }
+        }
+        if (is.defined(options.tileWidth)) {
+          if (is.integer(options.tileWidth) && is.inRange(options.tileWidth, 1, 32768)) {
+            this.options.jp2TileWidth = options.tileWidth;
+          } else {
+            throw is.invalidParameterError("tileWidth", "integer between 1 and 32768", options.tileWidth);
+          }
+        }
+        if (is.defined(options.tileHeight)) {
+          if (is.integer(options.tileHeight) && is.inRange(options.tileHeight, 1, 32768)) {
+            this.options.jp2TileHeight = options.tileHeight;
+          } else {
+            throw is.invalidParameterError("tileHeight", "integer between 1 and 32768", options.tileHeight);
+          }
+        }
+        if (is.defined(options.chromaSubsampling)) {
+          if (is.string(options.chromaSubsampling) && is.inArray(options.chromaSubsampling, ["4:2:0", "4:4:4"])) {
+            this.options.jp2ChromaSubsampling = options.chromaSubsampling;
+          } else {
+            throw is.invalidParameterError("chromaSubsampling", "one of: 4:2:0, 4:4:4", options.chromaSubsampling);
+          }
+        }
+      }
+      return this._updateFormatOut("jp2", options);
+    }
+    function trySetAnimationOptions(source, target) {
+      if (is.object(source) && is.defined(source.loop)) {
+        if (is.integer(source.loop) && is.inRange(source.loop, 0, 65535)) {
+          target.loop = source.loop;
+        } else {
+          throw is.invalidParameterError("loop", "integer between 0 and 65535", source.loop);
+        }
+      }
+      if (is.object(source) && is.defined(source.delay)) {
+        if (is.integer(source.delay) && is.inRange(source.delay, 0, 65535)) {
+          target.delay = [source.delay];
+        } else if (Array.isArray(source.delay) && source.delay.every(is.integer) && source.delay.every((v) => is.inRange(v, 0, 65535))) {
+          target.delay = source.delay;
+        } else {
+          throw is.invalidParameterError("delay", "integer or an array of integers between 0 and 65535", source.delay);
+        }
+      }
+    }
+    function tiff(options) {
+      if (is.object(options)) {
+        if (is.defined(options.quality)) {
+          if (is.integer(options.quality) && is.inRange(options.quality, 1, 100)) {
+            this.options.tiffQuality = options.quality;
+          } else {
+            throw is.invalidParameterError("quality", "integer between 1 and 100", options.quality);
+          }
+        }
+        if (is.defined(options.bitdepth)) {
+          if (is.integer(options.bitdepth) && is.inArray(options.bitdepth, [1, 2, 4, 8])) {
+            this.options.tiffBitdepth = options.bitdepth;
+          } else {
+            throw is.invalidParameterError("bitdepth", "1, 2, 4 or 8", options.bitdepth);
+          }
+        }
+        if (is.defined(options.tile)) {
+          this._setBooleanOption("tiffTile", options.tile);
+        }
+        if (is.defined(options.tileWidth)) {
+          if (is.integer(options.tileWidth) && options.tileWidth > 0) {
+            this.options.tiffTileWidth = options.tileWidth;
+          } else {
+            throw is.invalidParameterError("tileWidth", "integer greater than zero", options.tileWidth);
+          }
+        }
+        if (is.defined(options.tileHeight)) {
+          if (is.integer(options.tileHeight) && options.tileHeight > 0) {
+            this.options.tiffTileHeight = options.tileHeight;
+          } else {
+            throw is.invalidParameterError("tileHeight", "integer greater than zero", options.tileHeight);
+          }
+        }
+        if (is.defined(options.miniswhite)) {
+          this._setBooleanOption("tiffMiniswhite", options.miniswhite);
+        }
+        if (is.defined(options.pyramid)) {
+          this._setBooleanOption("tiffPyramid", options.pyramid);
+        }
+        if (is.defined(options.xres)) {
+          if (is.number(options.xres) && options.xres > 0) {
+            this.options.tiffXres = options.xres;
+          } else {
+            throw is.invalidParameterError("xres", "number greater than zero", options.xres);
+          }
+        }
+        if (is.defined(options.yres)) {
+          if (is.number(options.yres) && options.yres > 0) {
+            this.options.tiffYres = options.yres;
+          } else {
+            throw is.invalidParameterError("yres", "number greater than zero", options.yres);
+          }
+        }
+        if (is.defined(options.compression)) {
+          if (is.string(options.compression) && is.inArray(options.compression, ["none", "jpeg", "deflate", "packbits", "ccittfax4", "lzw", "webp", "zstd", "jp2k"])) {
+            this.options.tiffCompression = options.compression;
+          } else {
+            throw is.invalidParameterError("compression", "one of: none, jpeg, deflate, packbits, ccittfax4, lzw, webp, zstd, jp2k", options.compression);
+          }
+        }
+        if (is.defined(options.bigtiff)) {
+          this._setBooleanOption("tiffBigtiff", options.bigtiff);
+        }
+        if (is.defined(options.predictor)) {
+          if (is.string(options.predictor) && is.inArray(options.predictor, ["none", "horizontal", "float"])) {
+            this.options.tiffPredictor = options.predictor;
+          } else {
+            throw is.invalidParameterError("predictor", "one of: none, horizontal, float", options.predictor);
+          }
+        }
+        if (is.defined(options.resolutionUnit)) {
+          if (is.string(options.resolutionUnit) && is.inArray(options.resolutionUnit, ["inch", "cm"])) {
+            this.options.tiffResolutionUnit = options.resolutionUnit;
+          } else {
+            throw is.invalidParameterError("resolutionUnit", "one of: inch, cm", options.resolutionUnit);
+          }
+        }
+      }
+      return this._updateFormatOut("tiff", options);
+    }
+    function avif(options) {
+      return this.heif({ ...options, compression: "av1" });
+    }
+    function heif(options) {
+      if (is.object(options)) {
+        if (is.string(options.compression) && is.inArray(options.compression, ["av1", "hevc"])) {
+          this.options.heifCompression = options.compression;
+        } else {
+          throw is.invalidParameterError("compression", "one of: av1, hevc", options.compression);
+        }
+        if (is.defined(options.quality)) {
+          if (is.integer(options.quality) && is.inRange(options.quality, 1, 100)) {
+            this.options.heifQuality = options.quality;
+          } else {
+            throw is.invalidParameterError("quality", "integer between 1 and 100", options.quality);
+          }
+        }
+        if (is.defined(options.lossless)) {
+          if (is.bool(options.lossless)) {
+            this.options.heifLossless = options.lossless;
+          } else {
+            throw is.invalidParameterError("lossless", "boolean", options.lossless);
+          }
+        }
+        if (is.defined(options.effort)) {
+          if (is.integer(options.effort) && is.inRange(options.effort, 0, 9)) {
+            this.options.heifEffort = options.effort;
+          } else {
+            throw is.invalidParameterError("effort", "integer between 0 and 9", options.effort);
+          }
+        }
+        if (is.defined(options.chromaSubsampling)) {
+          if (is.string(options.chromaSubsampling) && is.inArray(options.chromaSubsampling, ["4:2:0", "4:4:4"])) {
+            this.options.heifChromaSubsampling = options.chromaSubsampling;
+          } else {
+            throw is.invalidParameterError("chromaSubsampling", "one of: 4:2:0, 4:4:4", options.chromaSubsampling);
+          }
+        }
+        if (is.defined(options.bitdepth)) {
+          if (is.integer(options.bitdepth) && is.inArray(options.bitdepth, [8, 10, 12])) {
+            if (options.bitdepth !== 8 && this.constructor.versions.heif) {
+              throw is.invalidParameterError("bitdepth when using prebuilt binaries", 8, options.bitdepth);
+            }
+            this.options.heifBitdepth = options.bitdepth;
+          } else {
+            throw is.invalidParameterError("bitdepth", "8, 10 or 12", options.bitdepth);
+          }
+        }
+      } else {
+        throw is.invalidParameterError("options", "Object", options);
+      }
+      return this._updateFormatOut("heif", options);
+    }
+    function jxl(options) {
+      if (is.object(options)) {
+        if (is.defined(options.quality)) {
+          if (is.integer(options.quality) && is.inRange(options.quality, 1, 100)) {
+            this.options.jxlDistance = options.quality >= 30 ? 0.1 + (100 - options.quality) * 0.09 : 53 / 3e3 * options.quality * options.quality - 23 / 20 * options.quality + 25;
+          } else {
+            throw is.invalidParameterError("quality", "integer between 1 and 100", options.quality);
+          }
+        } else if (is.defined(options.distance)) {
+          if (is.number(options.distance) && is.inRange(options.distance, 0, 15)) {
+            this.options.jxlDistance = options.distance;
+          } else {
+            throw is.invalidParameterError("distance", "number between 0.0 and 15.0", options.distance);
+          }
+        }
+        if (is.defined(options.decodingTier)) {
+          if (is.integer(options.decodingTier) && is.inRange(options.decodingTier, 0, 4)) {
+            this.options.jxlDecodingTier = options.decodingTier;
+          } else {
+            throw is.invalidParameterError("decodingTier", "integer between 0 and 4", options.decodingTier);
+          }
+        }
+        if (is.defined(options.lossless)) {
+          if (is.bool(options.lossless)) {
+            this.options.jxlLossless = options.lossless;
+          } else {
+            throw is.invalidParameterError("lossless", "boolean", options.lossless);
+          }
+        }
+        if (is.defined(options.effort)) {
+          if (is.integer(options.effort) && is.inRange(options.effort, 1, 9)) {
+            this.options.jxlEffort = options.effort;
+          } else {
+            throw is.invalidParameterError("effort", "integer between 1 and 9", options.effort);
+          }
+        }
+      }
+      trySetAnimationOptions(options, this.options);
+      return this._updateFormatOut("jxl", options);
+    }
+    function raw2(options) {
+      if (is.object(options)) {
+        if (is.defined(options.depth)) {
+          if (is.string(options.depth) && is.inArray(
+            options.depth,
+            ["char", "uchar", "short", "ushort", "int", "uint", "float", "complex", "double", "dpcomplex"]
+          )) {
+            this.options.rawDepth = options.depth;
+          } else {
+            throw is.invalidParameterError("depth", "one of: char, uchar, short, ushort, int, uint, float, complex, double, dpcomplex", options.depth);
+          }
+        }
+      }
+      return this._updateFormatOut("raw");
+    }
+    function tile(options) {
+      if (is.object(options)) {
+        if (is.defined(options.size)) {
+          if (is.integer(options.size) && is.inRange(options.size, 1, 8192)) {
+            this.options.tileSize = options.size;
+          } else {
+            throw is.invalidParameterError("size", "integer between 1 and 8192", options.size);
+          }
+        }
+        if (is.defined(options.overlap)) {
+          if (is.integer(options.overlap) && is.inRange(options.overlap, 0, 8192)) {
+            if (options.overlap > this.options.tileSize) {
+              throw is.invalidParameterError("overlap", `<= size (${this.options.tileSize})`, options.overlap);
+            }
+            this.options.tileOverlap = options.overlap;
+          } else {
+            throw is.invalidParameterError("overlap", "integer between 0 and 8192", options.overlap);
+          }
+        }
+        if (is.defined(options.container)) {
+          if (is.string(options.container) && is.inArray(options.container, ["fs", "zip"])) {
+            this.options.tileContainer = options.container;
+          } else {
+            throw is.invalidParameterError("container", "one of: fs, zip", options.container);
+          }
+        }
+        if (is.defined(options.layout)) {
+          if (is.string(options.layout) && is.inArray(options.layout, ["dz", "google", "iiif", "iiif3", "zoomify"])) {
+            this.options.tileLayout = options.layout;
+          } else {
+            throw is.invalidParameterError("layout", "one of: dz, google, iiif, iiif3, zoomify", options.layout);
+          }
+        }
+        if (is.defined(options.angle)) {
+          if (is.integer(options.angle) && !(options.angle % 90)) {
+            this.options.tileAngle = options.angle;
+          } else {
+            throw is.invalidParameterError("angle", "positive/negative multiple of 90", options.angle);
+          }
+        }
+        this._setBackgroundColourOption("tileBackground", options.background);
+        if (is.defined(options.depth)) {
+          if (is.string(options.depth) && is.inArray(options.depth, ["onepixel", "onetile", "one"])) {
+            this.options.tileDepth = options.depth;
+          } else {
+            throw is.invalidParameterError("depth", "one of: onepixel, onetile, one", options.depth);
+          }
+        }
+        if (is.defined(options.skipBlanks)) {
+          if (is.integer(options.skipBlanks) && is.inRange(options.skipBlanks, -1, 65535)) {
+            this.options.tileSkipBlanks = options.skipBlanks;
+          } else {
+            throw is.invalidParameterError("skipBlanks", "integer between -1 and 255/65535", options.skipBlanks);
+          }
+        } else if (is.defined(options.layout) && options.layout === "google") {
+          this.options.tileSkipBlanks = 5;
+        }
+        const centre = is.bool(options.center) ? options.center : options.centre;
+        if (is.defined(centre)) {
+          this._setBooleanOption("tileCentre", centre);
+        }
+        if (is.defined(options.id)) {
+          if (is.string(options.id)) {
+            this.options.tileId = options.id;
+          } else {
+            throw is.invalidParameterError("id", "string", options.id);
+          }
+        }
+        if (is.defined(options.basename)) {
+          if (is.string(options.basename)) {
+            this.options.tileBasename = options.basename;
+          } else {
+            throw is.invalidParameterError("basename", "string", options.basename);
+          }
+        }
+      }
+      if (is.inArray(this.options.formatOut, ["jpeg", "png", "webp"])) {
+        this.options.tileFormat = this.options.formatOut;
+      } else if (this.options.formatOut !== "input") {
+        throw is.invalidParameterError("format", "one of: jpeg, png, webp", this.options.formatOut);
+      }
+      return this._updateFormatOut("dz");
+    }
+    function timeout(options) {
+      if (!is.plainObject(options)) {
+        throw is.invalidParameterError("options", "object", options);
+      }
+      if (is.integer(options.seconds) && is.inRange(options.seconds, 0, 3600)) {
+        this.options.timeoutSeconds = options.seconds;
+      } else {
+        throw is.invalidParameterError("seconds", "integer between 0 and 3600", options.seconds);
+      }
+      return this;
+    }
+    function _updateFormatOut(formatOut, options) {
+      if (!(is.object(options) && options.force === false)) {
+        this.options.formatOut = formatOut;
+      }
+      return this;
+    }
+    function _setBooleanOption(key, val) {
+      if (is.bool(val)) {
+        this.options[key] = val;
+      } else {
+        throw is.invalidParameterError(key, "boolean", val);
+      }
+    }
+    function _read() {
+      if (!this.options.streamOut) {
+        this.options.streamOut = true;
+        const stack = Error();
+        this._pipeline(void 0, stack);
+      }
+    }
+    function _pipeline(callback, stack) {
+      if (typeof callback === "function") {
+        if (this._isStreamInput()) {
+          this.on("finish", () => {
+            this._flattenBufferIn();
+            sharp3.pipeline(this.options, (err, data, info) => {
+              if (err) {
+                callback(is.nativeError(err, stack));
+              } else {
+                callback(null, data, info);
+              }
+            });
+          });
+        } else {
+          sharp3.pipeline(this.options, (err, data, info) => {
+            if (err) {
+              callback(is.nativeError(err, stack));
+            } else {
+              callback(null, data, info);
+            }
+          });
+        }
+        return this;
+      } else if (this.options.streamOut) {
+        if (this._isStreamInput()) {
+          this.once("finish", () => {
+            this._flattenBufferIn();
+            sharp3.pipeline(this.options, (err, data, info) => {
+              if (err) {
+                this.emit("error", is.nativeError(err, stack));
+              } else {
+                this.emit("info", info);
+                this.push(data);
+              }
+              this.push(null);
+              this.on("end", () => this.emit("close"));
+            });
+          });
+          if (this.streamInFinished) {
+            this.emit("finish");
+          }
+        } else {
+          sharp3.pipeline(this.options, (err, data, info) => {
+            if (err) {
+              this.emit("error", is.nativeError(err, stack));
+            } else {
+              this.emit("info", info);
+              this.push(data);
+            }
+            this.push(null);
+            this.on("end", () => this.emit("close"));
+          });
+        }
+        return this;
+      } else {
+        if (this._isStreamInput()) {
+          return new Promise((resolve18, reject) => {
+            this.once("finish", () => {
+              this._flattenBufferIn();
+              sharp3.pipeline(this.options, (err, data, info) => {
+                if (err) {
+                  reject(is.nativeError(err, stack));
+                } else {
+                  if (this.options.resolveWithObject) {
+                    resolve18({ data, info });
+                  } else {
+                    resolve18(data);
+                  }
+                }
+              });
+            });
+          });
+        } else {
+          return new Promise((resolve18, reject) => {
+            sharp3.pipeline(this.options, (err, data, info) => {
+              if (err) {
+                reject(is.nativeError(err, stack));
+              } else {
+                if (this.options.resolveWithObject) {
+                  resolve18({ data, info });
+                } else {
+                  resolve18(data);
+                }
+              }
+            });
+          });
+        }
+      }
+    }
+    module2.exports = (Sharp) => {
+      Object.assign(Sharp.prototype, {
+        // Public
+        toFile,
+        toBuffer: toBuffer3,
+        keepExif,
+        withExif,
+        withExifMerge,
+        keepIccProfile,
+        withIccProfile,
+        keepXmp,
+        withXmp,
+        keepMetadata,
+        withMetadata,
+        toFormat,
+        jpeg,
+        jp2,
+        png,
+        webp,
+        tiff,
+        avif,
+        heif,
+        jxl,
+        gif,
+        raw: raw2,
+        tile,
+        timeout,
+        // Private
+        _updateFormatOut,
+        _setBooleanOption,
+        _read,
+        _pipeline
+      });
+    };
+  }
+});
+
+// ../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/utility.js
+var require_utility = __commonJS({
+  "../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/utility.js"(exports2, module2) {
+    var events = require("node:events");
+    var detectLibc = require_detect_libc();
+    var is = require_is();
+    var { runtimePlatformArch } = require_libvips();
+    var sharp3 = require_sharp();
+    var runtimePlatform = runtimePlatformArch();
+    var libvipsVersion = sharp3.libvipsVersion();
+    var format2 = sharp3.format();
+    format2.heif.output.alias = ["avif", "heic"];
+    format2.jpeg.output.alias = ["jpe", "jpg"];
+    format2.tiff.output.alias = ["tif"];
+    format2.jp2k.output.alias = ["j2c", "j2k", "jp2", "jpx"];
+    var interpolators = {
+      /** [Nearest neighbour interpolation](http://en.wikipedia.org/wiki/Nearest-neighbor_interpolation). Suitable for image enlargement only. */
+      nearest: "nearest",
+      /** [Bilinear interpolation](http://en.wikipedia.org/wiki/Bilinear_interpolation). Faster than bicubic but with less smooth results. */
+      bilinear: "bilinear",
+      /** [Bicubic interpolation](http://en.wikipedia.org/wiki/Bicubic_interpolation) (the default). */
+      bicubic: "bicubic",
+      /** [LBB interpolation](https://github.com/libvips/libvips/blob/master/libvips/resample/lbb.cpp#L100). Prevents some "[acutance](http://en.wikipedia.org/wiki/Acutance)" but typically reduces performance by a factor of 2. */
+      locallyBoundedBicubic: "lbb",
+      /** [Nohalo interpolation](http://eprints.soton.ac.uk/268086/). Prevents acutance but typically reduces performance by a factor of 3. */
+      nohalo: "nohalo",
+      /** [VSQBS interpolation](https://github.com/libvips/libvips/blob/master/libvips/resample/vsqbs.cpp#L48). Prevents "staircasing" when enlarging. */
+      vertexSplitQuadraticBasisSpline: "vsqbs"
+    };
+    var versions2 = {
+      vips: libvipsVersion.semver
+    };
+    if (!libvipsVersion.isGlobal) {
+      if (!libvipsVersion.isWasm) {
+        try {
+          versions2 = require(`@img/sharp-${runtimePlatform}/versions`);
+        } catch (_) {
+          try {
+            versions2 = require(`@img/sharp-libvips-${runtimePlatform}/versions`);
+          } catch (_2) {
+          }
+        }
+      } else {
+        try {
+          versions2 = require("@img/sharp-wasm32/versions");
+        } catch (_) {
+        }
+      }
+    }
+    versions2.sharp = require_package().version;
+    if (versions2.heif && format2.heif) {
+      format2.heif.input.fileSuffix = [".avif"];
+      format2.heif.output.alias = ["avif"];
+    }
+    function cache5(options) {
+      if (is.bool(options)) {
+        if (options) {
+          return sharp3.cache(50, 20, 100);
+        } else {
+          return sharp3.cache(0, 0, 0);
+        }
+      } else if (is.object(options)) {
+        return sharp3.cache(options.memory, options.files, options.items);
+      } else {
+        return sharp3.cache();
+      }
+    }
+    cache5(true);
+    function concurrency(concurrency2) {
+      return sharp3.concurrency(is.integer(concurrency2) ? concurrency2 : null);
+    }
+    if (detectLibc.familySync() === detectLibc.GLIBC && !sharp3._isUsingJemalloc()) {
+      sharp3.concurrency(1);
+    } else if (detectLibc.familySync() === detectLibc.MUSL && sharp3.concurrency() === 1024) {
+      sharp3.concurrency(require("node:os").availableParallelism());
+    }
+    var queue = new events.EventEmitter();
+    function counters() {
+      return sharp3.counters();
+    }
+    function simd(simd2) {
+      return sharp3.simd(is.bool(simd2) ? simd2 : null);
+    }
+    function block(options) {
+      if (is.object(options)) {
+        if (Array.isArray(options.operation) && options.operation.every(is.string)) {
+          sharp3.block(options.operation, true);
+        } else {
+          throw is.invalidParameterError("operation", "Array<string>", options.operation);
+        }
+      } else {
+        throw is.invalidParameterError("options", "object", options);
+      }
+    }
+    function unblock(options) {
+      if (is.object(options)) {
+        if (Array.isArray(options.operation) && options.operation.every(is.string)) {
+          sharp3.block(options.operation, false);
+        } else {
+          throw is.invalidParameterError("operation", "Array<string>", options.operation);
+        }
+      } else {
+        throw is.invalidParameterError("options", "object", options);
+      }
+    }
+    module2.exports = (Sharp) => {
+      Sharp.cache = cache5;
+      Sharp.concurrency = concurrency;
+      Sharp.counters = counters;
+      Sharp.simd = simd;
+      Sharp.format = format2;
+      Sharp.interpolators = interpolators;
+      Sharp.versions = versions2;
+      Sharp.queue = queue;
+      Sharp.block = block;
+      Sharp.unblock = unblock;
+    };
+  }
+});
+
+// ../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/index.js
+var require_lib = __commonJS({
+  "../../node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/index.js"(exports2, module2) {
+    var Sharp = require_constructor();
+    require_input()(Sharp);
+    require_resize()(Sharp);
+    require_composite()(Sharp);
+    require_operation()(Sharp);
+    require_colour2()(Sharp);
+    require_channel()(Sharp);
+    require_output()(Sharp);
+    require_utility()(Sharp);
+    module2.exports = Sharp;
+  }
+});
+
+// ../../node_modules/.pnpm/ws@8.21.0/node_modules/ws/lib/constants.js
+var require_constants2 = __commonJS({
   "../../node_modules/.pnpm/ws@8.21.0/node_modules/ws/lib/constants.js"(exports2, module2) {
     "use strict";
     var BINARY_TYPES = ["nodebuffer", "arraybuffer", "fragments"];
@@ -23364,7 +29933,7 @@ var require_constants = __commonJS({
 var require_buffer_util = __commonJS({
   "../../node_modules/.pnpm/ws@8.21.0/node_modules/ws/lib/buffer-util.js"(exports2, module2) {
     "use strict";
-    var { EMPTY_BUFFER } = require_constants();
+    var { EMPTY_BUFFER } = require_constants2();
     var FastBuffer = Buffer[Symbol.species];
     function concat(list2, totalLength) {
       if (list2.length === 0) return EMPTY_BUFFER;
@@ -23492,7 +30061,7 @@ var require_permessage_deflate = __commonJS({
     var zlib2 = require("zlib");
     var bufferUtil = require_buffer_util();
     var Limiter = require_limiter();
-    var { kStatusCode } = require_constants();
+    var { kStatusCode } = require_constants2();
     var FastBuffer = Buffer[Symbol.species];
     var TRAILER = Buffer.from([0, 0, 255, 255]);
     var kPerMessageDeflate = Symbol("permessage-deflate");
@@ -23873,7 +30442,7 @@ var require_validation2 = __commonJS({
   "../../node_modules/.pnpm/ws@8.21.0/node_modules/ws/lib/validation.js"(exports2, module2) {
     "use strict";
     var { isUtf8 } = require("buffer");
-    var { hasBlob } = require_constants();
+    var { hasBlob } = require_constants2();
     var tokenChars = [
       0,
       0,
@@ -24080,7 +30649,7 @@ var require_receiver = __commonJS({
       EMPTY_BUFFER,
       kStatusCode,
       kWebSocket
-    } = require_constants();
+    } = require_constants2();
     var { concat, toArrayBuffer, unmask } = require_buffer_util();
     var { isValidStatusCode, isValidUTF8 } = require_validation2();
     var FastBuffer = Buffer[Symbol.species];
@@ -24711,7 +31280,7 @@ var require_sender = __commonJS({
       types: { isUint8Array }
     } = require("util");
     var PerMessageDeflate2 = require_permessage_deflate();
-    var { EMPTY_BUFFER, kWebSocket, NOOP } = require_constants();
+    var { EMPTY_BUFFER, kWebSocket, NOOP } = require_constants2();
     var { isBlob: isBlob2, isValidStatusCode } = require_validation2();
     var { mask: applyMask, toBuffer: toBuffer3 } = require_buffer_util();
     var kByteLength = Symbol("kByteLength");
@@ -25198,7 +31767,7 @@ var require_sender = __commonJS({
 var require_event_target = __commonJS({
   "../../node_modules/.pnpm/ws@8.21.0/node_modules/ws/lib/event-target.js"(exports2, module2) {
     "use strict";
-    var { kForOnEventAttribute, kListener } = require_constants();
+    var { kForOnEventAttribute, kListener } = require_constants2();
     var kCode = Symbol("kCode");
     var kData = Symbol("kData");
     var kError = Symbol("kError");
@@ -25585,7 +32154,7 @@ var require_websocket = __commonJS({
     var http = require("http");
     var net = require("net");
     var tls = require("tls");
-    var { randomBytes: randomBytes6, createHash: createHash30 } = require("crypto");
+    var { randomBytes: randomBytes6, createHash: createHash32 } = require("crypto");
     var { Duplex, Readable: Readable12 } = require("stream");
     var { URL: URL2 } = require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -25602,7 +32171,7 @@ var require_websocket = __commonJS({
       kStatusCode,
       kWebSocket,
       NOOP
-    } = require_constants();
+    } = require_constants2();
     var {
       EventTarget: { addEventListener: addEventListener2, removeEventListener }
     } = require_event_target();
@@ -26253,7 +32822,7 @@ var require_websocket = __commonJS({
           abortHandshake(websocket, socket, "Invalid Upgrade header");
           return;
         }
-        const digest3 = createHash30("sha1").update(key + GUID).digest("base64");
+        const digest3 = createHash32("sha1").update(key + GUID).digest("base64");
         if (res.headers["sec-websocket-accept"] !== digest3) {
           abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
           return;
@@ -26622,12 +33191,12 @@ var require_websocket_server = __commonJS({
     var EventEmitter = require("events");
     var http = require("http");
     var { Duplex } = require("stream");
-    var { createHash: createHash30 } = require("crypto");
+    var { createHash: createHash32 } = require("crypto");
     var extension2 = require_extension();
     var PerMessageDeflate2 = require_permessage_deflate();
     var subprotocol2 = require_subprotocol();
     var WebSocket2 = require_websocket();
-    var { CLOSE_TIMEOUT, GUID, kWebSocket } = require_constants();
+    var { CLOSE_TIMEOUT, GUID, kWebSocket } = require_constants2();
     var keyRegex = /^[+/0-9A-Za-z]{22}==$/;
     var RUNNING = 0;
     var CLOSING = 1;
@@ -26929,7 +33498,7 @@ var require_websocket_server = __commonJS({
           );
         }
         if (this._state > RUNNING) return abortHandshake(socket, 503);
-        const digest3 = createHash30("sha1").update(key + GUID).digest("base64");
+        const digest3 = createHash32("sha1").update(key + GUID).digest("base64");
         const headers = [
           "HTTP/1.1 101 Switching Protocols",
           "Upgrade: websocket",
@@ -30498,10 +37067,10 @@ var init_hex_encoding = __esm({
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/serde/util-body-length/calculateBodyLength.js
-var import_node_fs9, calculateBodyLength;
+var import_node_fs10, calculateBodyLength;
 var init_calculateBodyLength = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/serde/util-body-length/calculateBodyLength.js"() {
-    import_node_fs9 = require("node:fs");
+    import_node_fs10 = require("node:fs");
     calculateBodyLength = (body) => {
       if (!body) {
         return 0;
@@ -30514,11 +37083,11 @@ var init_calculateBodyLength = __esm({
         return body.size;
       } else if (typeof body.start === "number" && typeof body.end === "number") {
         return body.end + 1 - body.start;
-      } else if (body instanceof import_node_fs9.ReadStream) {
+      } else if (body instanceof import_node_fs10.ReadStream) {
         if (body.path != null) {
-          return (0, import_node_fs9.lstatSync)(body.path).size;
+          return (0, import_node_fs10.lstatSync)(body.path).size;
         } else if (typeof body.fd === "number") {
-          return (0, import_node_fs9.fstatSync)(body.fd).size;
+          return (0, import_node_fs10.fstatSync)(body.fd).size;
         }
       }
       throw new Error(`Body Length computation failed for ${body}`);
@@ -30817,11 +37386,11 @@ var init_types = __esm({
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getHomeDir.js
-var import_node_os8, import_node_path26, homeDirCache, getHomeDirCacheKey, getHomeDir;
+var import_node_os8, import_node_path29, homeDirCache, getHomeDirCacheKey, getHomeDir;
 var init_getHomeDir = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getHomeDir.js"() {
     import_node_os8 = require("node:os");
-    import_node_path26 = require("node:path");
+    import_node_path29 = require("node:path");
     homeDirCache = {};
     getHomeDirCacheKey = () => {
       if (process && process.geteuid) {
@@ -30830,7 +37399,7 @@ var init_getHomeDir = __esm({
       return "DEFAULT";
     };
     getHomeDir = () => {
-      const { HOME, USERPROFILE, HOMEPATH, HOMEDRIVE = `C:${import_node_path26.sep}` } = process.env;
+      const { HOME, USERPROFILE, HOMEPATH, HOMEDRIVE = `C:${import_node_path29.sep}` } = process.env;
       if (HOME)
         return HOME;
       if (USERPROFILE)
@@ -30856,25 +37425,25 @@ var init_getProfileName = __esm({
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getSSOTokenFilepath.js
-var import_node_crypto24, import_node_path27, getSSOTokenFilepath;
+var import_node_crypto26, import_node_path30, getSSOTokenFilepath;
 var init_getSSOTokenFilepath = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getSSOTokenFilepath.js"() {
-    import_node_crypto24 = require("node:crypto");
-    import_node_path27 = require("node:path");
+    import_node_crypto26 = require("node:crypto");
+    import_node_path30 = require("node:path");
     init_getHomeDir();
     getSSOTokenFilepath = (id2) => {
-      const hasher = (0, import_node_crypto24.createHash)("sha1");
+      const hasher = (0, import_node_crypto26.createHash)("sha1");
       const cacheName = hasher.update(id2).digest("hex");
-      return (0, import_node_path27.join)(getHomeDir(), ".aws", "sso", "cache", `${cacheName}.json`);
+      return (0, import_node_path30.join)(getHomeDir(), ".aws", "sso", "cache", `${cacheName}.json`);
     };
   }
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getSSOTokenFromFile.js
-var import_promises24, tokenIntercept, getSSOTokenFromFile;
+var import_promises26, tokenIntercept, getSSOTokenFromFile;
 var init_getSSOTokenFromFile = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getSSOTokenFromFile.js"() {
-    import_promises24 = require("node:fs/promises");
+    import_promises26 = require("node:fs/promises");
     init_getSSOTokenFilepath();
     tokenIntercept = {};
     getSSOTokenFromFile = async (id2) => {
@@ -30882,7 +37451,7 @@ var init_getSSOTokenFromFile = __esm({
         return tokenIntercept[id2];
       }
       const ssoTokenFilepath = getSSOTokenFilepath(id2);
-      const ssoTokenText = await (0, import_promises24.readFile)(ssoTokenFilepath, "utf8");
+      const ssoTokenText = await (0, import_promises26.readFile)(ssoTokenFilepath, "utf8");
       return JSON.parse(ssoTokenText);
     };
   }
@@ -30920,24 +37489,24 @@ var init_getConfigData = __esm({
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getConfigFilepath.js
-var import_node_path28, ENV_CONFIG_PATH, getConfigFilepath;
+var import_node_path31, ENV_CONFIG_PATH, getConfigFilepath;
 var init_getConfigFilepath = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getConfigFilepath.js"() {
-    import_node_path28 = require("node:path");
+    import_node_path31 = require("node:path");
     init_getHomeDir();
     ENV_CONFIG_PATH = "AWS_CONFIG_FILE";
-    getConfigFilepath = () => process.env[ENV_CONFIG_PATH] || (0, import_node_path28.join)(getHomeDir(), ".aws", "config");
+    getConfigFilepath = () => process.env[ENV_CONFIG_PATH] || (0, import_node_path31.join)(getHomeDir(), ".aws", "config");
   }
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getCredentialsFilepath.js
-var import_node_path29, ENV_CREDENTIALS_PATH, getCredentialsFilepath;
+var import_node_path32, ENV_CREDENTIALS_PATH, getCredentialsFilepath;
 var init_getCredentialsFilepath = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getCredentialsFilepath.js"() {
-    import_node_path29 = require("node:path");
+    import_node_path32 = require("node:path");
     init_getHomeDir();
     ENV_CREDENTIALS_PATH = "AWS_SHARED_CREDENTIALS_FILE";
-    getCredentialsFilepath = () => process.env[ENV_CREDENTIALS_PATH] || (0, import_node_path29.join)(getHomeDir(), ".aws", "credentials");
+    getCredentialsFilepath = () => process.env[ENV_CREDENTIALS_PATH] || (0, import_node_path32.join)(getHomeDir(), ".aws", "credentials");
   }
 });
 
@@ -30998,10 +37567,10 @@ var init_parseIni = __esm({
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/readFile.js
-var import_promises25, filePromises, fileIntercept, readFile17;
+var import_promises27, filePromises, fileIntercept, readFile17;
 var init_readFile = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/readFile.js"() {
-    import_promises25 = require("node:fs/promises");
+    import_promises27 = require("node:fs/promises");
     filePromises = {};
     fileIntercept = {};
     readFile17 = (path, options) => {
@@ -31009,7 +37578,7 @@ var init_readFile = __esm({
         return fileIntercept[path];
       }
       if (!filePromises[path] || options?.ignoreCache) {
-        filePromises[path] = (0, import_promises25.readFile)(path, "utf8");
+        filePromises[path] = (0, import_promises27.readFile)(path, "utf8");
       }
       return filePromises[path];
     };
@@ -31017,10 +37586,10 @@ var init_readFile = __esm({
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/loadSharedConfigFiles.js
-var import_node_path30, swallowError, loadSharedConfigFiles;
+var import_node_path33, swallowError, loadSharedConfigFiles;
 var init_loadSharedConfigFiles = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/loadSharedConfigFiles.js"() {
-    import_node_path30 = require("node:path");
+    import_node_path33 = require("node:path");
     init_getConfigData();
     init_getConfigFilepath();
     init_getCredentialsFilepath();
@@ -31035,11 +37604,11 @@ var init_loadSharedConfigFiles = __esm({
       const relativeHomeDirPrefix = "~/";
       let resolvedFilepath = filepath;
       if (filepath.startsWith(relativeHomeDirPrefix)) {
-        resolvedFilepath = (0, import_node_path30.join)(homeDir, filepath.slice(2));
+        resolvedFilepath = (0, import_node_path33.join)(homeDir, filepath.slice(2));
       }
       let resolvedConfigFilepath = configFilepath;
       if (configFilepath.startsWith(relativeHomeDirPrefix)) {
-        resolvedConfigFilepath = (0, import_node_path30.join)(homeDir, configFilepath.slice(2));
+        resolvedConfigFilepath = (0, import_node_path33.join)(homeDir, configFilepath.slice(2));
       }
       const parsedFiles = await Promise.all([
         readFile17(resolvedConfigFilepath, {
@@ -33069,10 +39638,10 @@ function castSourceData(toCast, encoding) {
   }
   return fromArrayBuffer(toCast);
 }
-var import_node_crypto25, Hash;
+var import_node_crypto27, Hash;
 var init_hash_node = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/serde/hash-node/hash-node.js"() {
-    import_node_crypto25 = require("node:crypto");
+    import_node_crypto27 = require("node:crypto");
     init_buffer_from();
     init_toUint8Array();
     Hash = class {
@@ -33091,7 +39660,7 @@ var init_hash_node = __esm({
         return Promise.resolve(this.hash.digest());
       }
       reset() {
-        this.hash = this.secret ? (0, import_node_crypto25.createHmac)(this.algorithmIdentifier, castSourceData(this.secret)) : (0, import_node_crypto25.createHash)(this.algorithmIdentifier);
+        this.hash = this.secret ? (0, import_node_crypto27.createHmac)(this.algorithmIdentifier, castSourceData(this.secret)) : (0, import_node_crypto27.createHash)(this.algorithmIdentifier);
       }
     };
   }
@@ -34000,10 +40569,10 @@ __export(serde_exports, {
   toUtf8: () => toUtf8,
   v4: () => v4
 });
-var import_node_crypto26, Uint8ArrayBlobAdapter, _getRandomValues, v4, generateIdempotencyToken;
+var import_node_crypto28, Uint8ArrayBlobAdapter, _getRandomValues, v4, generateIdempotencyToken;
 var init_serde = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/serde/index.js"() {
-    import_node_crypto26 = require("node:crypto");
+    import_node_crypto28 = require("node:crypto");
     init_fromBase64();
     init_toBase64();
     init_Uint8ArrayBlobAdapter();
@@ -34040,7 +40609,7 @@ var init_serde = __esm({
     init_stream_collector();
     Uint8ArrayBlobAdapter = class extends bindUint8ArrayBlobAdapter(toUtf8, fromUtf8, toBase64, fromBase64) {
     };
-    _getRandomValues = import_node_crypto26.getRandomValues;
+    _getRandomValues = import_node_crypto28.getRandomValues;
     v4 = bindV4(_getRandomValues);
     generateIdempotencyToken = v4;
   }
@@ -34143,17 +40712,17 @@ var init_HashCalculator = __esm({
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/checksum/hash-stream-node/fileStreamHasher.js
-var import_node_fs10, fileStreamHasher, isReadStream;
+var import_node_fs11, fileStreamHasher, isReadStream;
 var init_fileStreamHasher = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/checksum/hash-stream-node/fileStreamHasher.js"() {
-    import_node_fs10 = require("node:fs");
+    import_node_fs11 = require("node:fs");
     init_HashCalculator();
     fileStreamHasher = (hashCtor, fileStream) => new Promise((resolve18, reject) => {
       if (!isReadStream(fileStream)) {
         reject(new Error("Unable to calculate hash for non-file streams."));
         return;
       }
-      const fileStreamTee = (0, import_node_fs10.createReadStream)(fileStream.path, {
+      const fileStreamTee = (0, import_node_fs11.createReadStream)(fileStream.path, {
         start: fileStream.start,
         end: fileStream.end
       });
@@ -34299,7 +40868,7 @@ var init_Md5Js = __esm({
 function buildNativeClass() {
   return class Md5Node {
     digestLength = 16;
-    hash = (0, import_node_crypto27.createHash)("md5");
+    hash = (0, import_node_crypto29.createHash)("md5");
     update(data) {
       this.hash.update(toUint8Array(data));
     }
@@ -34308,19 +40877,19 @@ function buildNativeClass() {
       return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
     }
     reset() {
-      this.hash = (0, import_node_crypto27.createHash)("md5");
+      this.hash = (0, import_node_crypto29.createHash)("md5");
     }
   };
 }
-var import_node_crypto27, hasNativeCrypto, Md5Node;
+var import_node_crypto29, hasNativeCrypto, Md5Node;
 var init_Md5Node = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/checksum/md5/Md5Node.js"() {
-    import_node_crypto27 = require("node:crypto");
+    import_node_crypto29 = require("node:crypto");
     init_serde();
     init_Md5Js();
     hasNativeCrypto = (() => {
       try {
-        (0, import_node_crypto27.createHash)("md5");
+        (0, import_node_crypto29.createHash)("md5");
         return true;
       } catch {
         return false;
@@ -34670,7 +41239,7 @@ function buildNativeClass3() {
       this.finished = false;
     }
     createHash() {
-      return this.secret ? (0, import_node_crypto28.createHmac)("sha256", toBuffer(this.secret)) : (0, import_node_crypto28.createHash)("sha256");
+      return this.secret ? (0, import_node_crypto30.createHmac)("sha256", toBuffer(this.secret)) : (0, import_node_crypto30.createHash)("sha256");
     }
   };
 }
@@ -34683,14 +41252,14 @@ function toBuffer(data) {
   }
   return Buffer.from(data);
 }
-var import_node_crypto28, hasNativeCrypto2, Sha256Node;
+var import_node_crypto30, hasNativeCrypto2, Sha256Node;
 var init_Sha256Node = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/checksum/sha256/Sha256Node.js"() {
-    import_node_crypto28 = require("node:crypto");
+    import_node_crypto30 = require("node:crypto");
     init_Sha256Js();
     hasNativeCrypto2 = (() => {
       try {
-        (0, import_node_crypto28.createHash)("sha256");
+        (0, import_node_crypto30.createHash)("sha256");
         return true;
       } catch {
         return false;
@@ -51888,10 +58457,10 @@ var require_dist_cjs11 = __commonJS({
     var { setCredentialFeature: setCredentialFeature2 } = (init_client3(), __toCommonJS(client_exports2));
     var { CredentialsProviderError: CredentialsProviderError2, parseKnownFiles: parseKnownFiles2, getProfileName: getProfileName2 } = (init_config2(), __toCommonJS(config_exports));
     var { HttpRequest: HttpRequest2 } = (init_protocols(), __toCommonJS(protocols_exports));
-    var { createHash: createHash30, createPrivateKey, createPublicKey, sign: sign3 } = require("node:crypto");
+    var { createHash: createHash32, createPrivateKey, createPublicKey, sign: sign3 } = require("node:crypto");
     var { promises } = require("node:fs");
     var { homedir: homedir7 } = require("node:os");
-    var { dirname: dirname18, join: join47 } = require("node:path");
+    var { dirname: dirname18, join: join48 } = require("node:path");
     var LoginCredentialsFetcher = class _LoginCredentialsFetcher {
       profileData;
       init;
@@ -52055,10 +58624,10 @@ var require_dist_cjs11 = __commonJS({
         await promises.writeFile(tokenFilePath, JSON.stringify(token, null, 2), "utf8");
       }
       getTokenFilePath() {
-        const directory = process.env.AWS_LOGIN_CACHE_DIRECTORY ?? join47(homedir7(), ".aws", "login", "cache");
+        const directory = process.env.AWS_LOGIN_CACHE_DIRECTORY ?? join48(homedir7(), ".aws", "login", "cache");
         const loginSessionBytes = Buffer.from(this.loginSession, "utf8");
-        const loginSessionSha256 = createHash30("sha256").update(loginSessionBytes).digest("hex");
-        return join47(directory, `${loginSessionSha256}.json`);
+        const loginSessionSha256 = createHash32("sha256").update(loginSessionBytes).digest("hex");
+        return join48(directory, `${loginSessionSha256}.json`);
       }
       derToRawSignature(derSignature) {
         let offset = 2;
@@ -52859,7 +59428,7 @@ function buildNativeClass4() {
       this.finished = false;
     }
     createHash() {
-      return this.secret ? (0, import_node_crypto29.createHmac)("sha1", toBuffer2(this.secret)) : (0, import_node_crypto29.createHash)("sha1");
+      return this.secret ? (0, import_node_crypto31.createHmac)("sha1", toBuffer2(this.secret)) : (0, import_node_crypto31.createHash)("sha1");
     }
   };
 }
@@ -52872,14 +59441,14 @@ function toBuffer2(data) {
   }
   return Buffer.from(data);
 }
-var import_node_crypto29, hasNativeCrypto3, Sha1Node;
+var import_node_crypto31, hasNativeCrypto3, Sha1Node;
 var init_Sha1Node = __esm({
   "../../node_modules/.pnpm/@aws-sdk+checksums@3.1000.27/node_modules/@aws-sdk/checksums/dist-es/submodules/sha/sha1/Sha1Node.js"() {
-    import_node_crypto29 = require("node:crypto");
+    import_node_crypto31 = require("node:crypto");
     init_Sha1Js();
     hasNativeCrypto3 = (() => {
       try {
-        (0, import_node_crypto29.createHash)("sha1");
+        (0, import_node_crypto31.createHash)("sha1");
         return true;
       } catch {
         return false;
@@ -62819,17 +69388,177 @@ var require_dist_cjs17 = __commonJS({
 });
 
 // src/local-api-entry.ts
-var import_node_fs20 = require("node:fs");
+var import_node_fs21 = require("node:fs");
 var import_node_url7 = require("node:url");
-var import_node_path51 = require("node:path");
+var import_node_path53 = require("node:path");
+
+// ../../packages/shared-runtime/dist/observability.js
+var import_node_fs = require("node:fs");
+var import_node_path = require("node:path");
+function createBoundedJsonlLogSink(options) {
+  const now = options.now ?? Date.now;
+  const pid = options.pid ?? process.pid;
+  const maxBytes = Math.max(1, options.maxBytes);
+  const maxFiles = Math.max(1, options.maxFiles);
+  const filePrefix = options.filePrefix.replace(/[^a-zA-Z0-9._-]/g, "-") || "clash";
+  let segment = 0;
+  let currentBytes = 0;
+  (0, import_node_fs.mkdirSync)(options.directory, { recursive: true, mode: 448 });
+  const nextPath = () => (0, import_node_path.join)(options.directory, `${filePrefix}-${String(now()).padStart(16, "0")}-${pid}-${segment++}.jsonl`);
+  let currentPath = nextPath();
+  const prune = () => {
+    const files = (0, import_node_fs.readdirSync)(options.directory).filter((file2) => file2.startsWith(`${filePrefix}-`) && file2.endsWith(".jsonl")).map((file2) => ({
+      file: file2,
+      modifiedAt: (0, import_node_fs.statSync)((0, import_node_path.join)(options.directory, file2)).mtimeMs
+    })).sort((left, right) => left.modifiedAt - right.modifiedAt || left.file.localeCompare(right.file));
+    for (const entry of files.slice(0, Math.max(0, files.length - maxFiles))) {
+      (0, import_node_fs.rmSync)((0, import_node_path.join)(options.directory, entry.file), { force: true });
+    }
+  };
+  prune();
+  return {
+    write(record3) {
+      const line = `${JSON.stringify(record3)}
+`;
+      const bytes = Buffer.byteLength(line);
+      if (currentBytes > 0 && currentBytes + bytes > maxBytes) {
+        currentPath = nextPath();
+        currentBytes = 0;
+      }
+      (0, import_node_fs.appendFileSync)(currentPath, line, { encoding: "utf8", mode: 384 });
+      currentBytes += bytes;
+      prune();
+    },
+    close() {
+    }
+  };
+}
+function createDeduplicatedLogEmitter(options) {
+  const now = options.now ?? Date.now;
+  const maxEventsPerWindow = Math.max(1, options.maxEventsPerWindow);
+  const windowMs = Math.max(1, options.windowMs);
+  let windowStartedAt = now();
+  let emittedCount = 0;
+  let suppressedCount = 0;
+  const emittedKeys = /* @__PURE__ */ new Set();
+  const suppressedKeys = /* @__PURE__ */ new Set();
+  const reset = () => {
+    windowStartedAt = now();
+    emittedCount = 0;
+    suppressedCount = 0;
+    emittedKeys.clear();
+    suppressedKeys.clear();
+  };
+  const flush2 = () => {
+    if (suppressedCount > 0) {
+      options.emitSuppressed({
+        suppressedCount,
+        distinctCount: suppressedKeys.size
+      });
+    }
+    reset();
+  };
+  return {
+    emit(value) {
+      if (now() - windowStartedAt >= windowMs)
+        flush2();
+      const key = options.keyOf(value);
+      if (emittedKeys.has(key) || emittedCount >= maxEventsPerWindow) {
+        suppressedCount += 1;
+        suppressedKeys.add(key);
+        return;
+      }
+      emittedKeys.add(key);
+      emittedCount += 1;
+      options.emit(value);
+    },
+    flush: flush2
+  };
+}
+function logMessage(chunk) {
+  const text = typeof chunk === "string" ? chunk : Buffer.isBuffer(chunk) || chunk instanceof Uint8Array ? Buffer.from(chunk).toString("utf8") : String(chunk);
+  return text.replace(/[\r\n]+$/, "");
+}
+function installProcessStdioCapture(options) {
+  const stdout = options.stdout ?? process.stdout;
+  const stderr = options.stderr ?? process.stderr;
+  const now = options.now ?? Date.now;
+  const originalStdoutWrite = stdout.write;
+  const originalStderrWrite = stderr.write;
+  let open8 = true;
+  let sinkOpen = true;
+  const persist = (record3) => {
+    if (!sinkOpen)
+      return;
+    try {
+      options.sink.write(record3);
+    } catch {
+      sinkOpen = false;
+    }
+  };
+  const emitter = createDeduplicatedLogEmitter({
+    emit: ({ level, message }) => persist({
+      timestamp: new Date(now()).toISOString(),
+      component: options.component,
+      level,
+      message
+    }),
+    emitSuppressed: ({ suppressedCount, distinctCount }) => persist({
+      timestamp: new Date(now()).toISOString(),
+      component: options.component,
+      level: "warn",
+      event: "logs.suppressed",
+      context: { suppressedCount, distinctCount }
+    }),
+    keyOf: ({ level, message }) => `${level}:${message}`,
+    maxEventsPerWindow: options.maxEventsPerWindow,
+    windowMs: options.windowMs,
+    now
+  });
+  const wrap = (stream, originalWrite, level) => function capturedWrite(chunk, ...args) {
+    if (open8) {
+      const message = logMessage(chunk);
+      if (message)
+        emitter.emit({ level, message });
+    }
+    return Reflect.apply(originalWrite, stream, [chunk, ...args]);
+  };
+  stdout.write = wrap(stdout, originalStdoutWrite, "info");
+  stderr.write = wrap(stderr, originalStderrWrite, "error");
+  return {
+    event(level, event, context = {}) {
+      if (!open8)
+        return;
+      persist({
+        timestamp: new Date(now()).toISOString(),
+        component: options.component,
+        level,
+        event,
+        context
+      });
+    },
+    close() {
+      if (!open8)
+        return;
+      emitter.flush();
+      open8 = false;
+      stdout.write = originalStdoutWrite;
+      stderr.write = originalStderrWrite;
+      if (!sinkOpen)
+        return;
+      sinkOpen = false;
+      options.sink.close();
+    }
+  };
+}
 
 // ../../apps/local-api/dist/server.js
-var import_node_module13 = require("node:module");
-var import_node_crypto42 = require("node:crypto");
-var import_node_path49 = require("node:path");
+var import_node_module14 = require("node:module");
+var import_node_crypto44 = require("node:crypto");
+var import_node_path51 = require("node:path");
 var import_node_url6 = require("node:url");
-var import_node_fs19 = require("node:fs");
-var import_promises46 = require("node:fs/promises");
+var import_node_fs20 = require("node:fs");
+var import_promises47 = require("node:fs/promises");
 
 // ../../node_modules/.pnpm/@hono+node-server@1.19.14_hono@4.12.27/node_modules/@hono/node-server/dist/index.mjs
 var import_http = require("http");
@@ -63477,7 +70206,7 @@ var import_node_crypto = require("node:crypto");
 var import_promises = require("node:fs/promises");
 var import_node_net = require("node:net");
 var import_node_os2 = require("node:os");
-var import_node_path2 = require("node:path");
+var import_node_path3 = require("node:path");
 
 // ../../node_modules/.pnpm/zod@3.24.4/node_modules/zod/lib/index.mjs
 var util;
@@ -67540,7 +74269,7 @@ var z = /* @__PURE__ */ Object.freeze({
   ZodError
 });
 
-// ../../packages/shared-types/dist/chunk-GWDIKZMB.js
+// ../../packages/shared-types/dist/chunk-EQ2BPN4E.js
 function agentReadToken(options) {
   const namespace = normalizeTokenPart(options.namespace, "namespace");
   const version2 = normalizeTokenPart(options.version ?? "v1", "version");
@@ -67590,6 +74319,9 @@ function sessionReadToken(session) {
         session.acpSessionId ?? session.acp_session_id
       ),
       status: normalizeProjectText(session.status),
+      archivedAt: normalizeProjectTimestamp(
+        session.archivedAt ?? session.archived_at
+      ),
       createdAt: normalizeProjectTimestamp(
         session.createdAt ?? session.created_at
       ),
@@ -67919,6 +74651,8 @@ var ProjectAssetEntrySchema = z.object({
   kind: AssetKindSchema,
   source: ProjectAssetSourceSchema,
   lifecycle: ProjectAssetLifecycleSchema,
+  /** Immutable wall-clock production/admission time in Unix milliseconds. */
+  createdAt: z.number().int().nonnegative().optional(),
   name: z.string().trim().min(1).optional(),
   metadata: ProjectAssetMetadataSchema,
   provenance: ProjectAssetProvenanceSchema.optional()
@@ -67960,6 +74694,8 @@ var ActionAssetBindingSchema = z.object({
 var ResolvedAssetSchema = z.object({
   id: z.string().trim().min(1),
   kind: AssetKindSchema,
+  /** Project Asset production time, or a Host Resource time for legacy entries. */
+  createdAt: z.number().int().nonnegative().optional(),
   name: z.string().trim().min(1).optional(),
   metadata: ProjectAssetMetadataSchema,
   provenance: ProjectAssetProvenanceSchema.optional(),
@@ -67974,6 +74710,8 @@ var ResolvedAssetSchema = z.object({
   ]),
   url: z.string().url().optional(),
   thumbnailUrl: z.string().url().optional(),
+  /** Host-authorized projection of a bounded waveform representation. */
+  waveformUrl: z.string().url().optional(),
   progress: z.number().min(0).max(1).optional(),
   error: z.string().trim().min(1).optional()
 }).strict();
@@ -68037,7 +74775,7 @@ var AssetRefRowSchema = z.object({
   importedAt: z.number()
 });
 
-// ../../packages/shared-types/dist/chunk-UZSXLAEL.js
+// ../../packages/shared-types/dist/chunk-MMCIZQ23.js
 var NONE = { network: false, store: false, assets: false, hostTools: [] };
 var BY_KIND = {
   // Talks to a vendor: needs the socket, the credential, and somewhere to put what comes back.
@@ -68063,6 +74801,42 @@ function pluginCapabilities(contributions) {
     ...derived2,
     hostTools: contributions.hostTools ?? []
   };
+}
+var AspectRatioSchema = z.object({
+  width: z.number().int().positive(),
+  height: z.number().int().positive()
+}).strict();
+var AspectRatioStringSchema = z.string().trim().transform((value, ctx) => {
+  const ratio = parseAspectRatio(value);
+  if (!ratio) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Aspect ratio must be two positive integers separated by a colon."
+    });
+    return z.NEVER;
+  }
+  return aspectRatioLabel(ratio);
+});
+function greatestCommonDivisor(a5, b5) {
+  return b5 === 0 ? a5 : greatestCommonDivisor(b5, a5 % b5);
+}
+function reduceAspectRatio(ratio) {
+  const divisor = greatestCommonDivisor(ratio.width, ratio.height);
+  return { width: ratio.width / divisor, height: ratio.height / divisor };
+}
+function aspectRatioLabel(ratio) {
+  const reduced = reduceAspectRatio(ratio);
+  return `${reduced.width}:${reduced.height}`;
+}
+function parseAspectRatio(text) {
+  const match2 = /^\s*(\d+)\s*[:x×]\s*(\d+)\s*$/i.exec(text);
+  if (!match2) return void 0;
+  const width = Number(match2[1]);
+  const height = Number(match2[2]);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    return void 0;
+  }
+  return { width, height };
 }
 var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
 var pluginIdSchema = z.string().trim().superRefine((value, ctx) => {
@@ -69418,6 +76192,9 @@ var ModelParameterSchema = z.object({
   /** Provider-fixed output characteristic. It remains visible in the common
    * parameter surface, but UI and external payloads cannot override it. */
   readOnly: z.boolean().optional(),
+  /** Select controls may accept values beyond their preset menu. Aspect-ratio
+   * custom values remain positive integer W:H pairs. */
+  allowCustom: z.boolean().optional(),
   required: z.boolean().default(false),
   options: z.array(
     z.object({
@@ -69431,6 +76208,13 @@ var ModelParameterSchema = z.object({
   placeholder: z.string().optional(),
   defaultValue: z.union([z.string(), z.number(), z.boolean()]).optional()
 });
+function acceptsCustomModelParameterValue(parameter, value) {
+  if (parameter.type !== "select" || !parameter.allowCustom) return false;
+  if (parameter.id === "aspect_ratio") {
+    return typeof value === "string" && parseAspectRatio(value) !== void 0;
+  }
+  return typeof value === "string" || typeof value === "number";
+}
 var ReferenceMediaConstraintsSchema = z.object({
   mimeTypes: z.array(z.string().min(1)).optional(),
   fileExtensions: z.array(z.string().min(1)).optional(),
@@ -69711,7 +76495,7 @@ var ModelCardSchema = z.object({
     if (value === void 0) return;
     if (parameter.type === "select") {
       const optionValues = parameter.options?.map((option) => option.value) ?? [];
-      if (!optionValues.some((candidate) => sameCandidate(candidate, value))) {
+      if (!optionValues.some((candidate) => sameCandidate(candidate, value)) && !acceptsCustomModelParameterValue(parameter, value)) {
         ctx.addIssue({
           code: "custom",
           path,
@@ -69761,6 +76545,13 @@ var ModelCardSchema = z.object({
     }
     parameterIds.add(parameter.id);
     parametersById.set(parameter.id, parameter);
+    if (parameter.allowCustom && parameter.type !== "select") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["parameters", index, "allowCustom"],
+        message: "Only select parameters may allow custom values."
+      });
+    }
     if (parameter.type === "select") {
       if (!parameter.options?.length) {
         ctx.addIssue({
@@ -69970,18 +76761,38 @@ var ModelCardSchema = z.object({
     });
   }
 });
+var EMBEDDED_ASPECT_RATIO_PATTERN = /(\d+)\s*[:x×]\s*(\d+)/i;
+function resolveAspectRatioParameter(parameter, value, fallback2) {
+  if (!parameter) return fallback2;
+  const effectiveValue = value ?? parameter.defaultValue;
+  if (effectiveValue === void 0) return fallback2;
+  const option = parameter.options?.find(
+    (candidate) => String(candidate.value) === String(effectiveValue)
+  );
+  for (const candidate of [effectiveValue, option?.label, option?.value]) {
+    if (candidate === void 0) continue;
+    const match2 = String(candidate).match(EMBEDDED_ASPECT_RATIO_PATTERN);
+    if (!match2) continue;
+    const width = Number(match2[1]);
+    const height = Number(match2[2]);
+    if (width > 0 && height > 0) return `${width}:${height}`;
+  }
+  if (effectiveValue === "auto" || effectiveValue === "adaptive") {
+    return effectiveValue;
+  }
+  return fallback2;
+}
 function resolveAspectRatio(modelId, modelParams2) {
   const card = MODEL_CARDS.find((c5) => c5.id === modelId);
   if (!card) return "16:9";
   const paramId = "aspect_ratio";
   const arParam = card.parameters.find((p3) => p3.id === paramId);
   if (!arParam) return card.defaultAspectRatio;
-  const value = modelParams2[paramId];
-  if (!value) return card.defaultAspectRatio;
-  if (typeof value === "string" && /^\d+:\d+$/.test(value)) return value;
-  if (value === "auto") return value;
-  const option = arParam.options?.find((o3) => o3.value === value);
-  return option?.label ?? card.defaultAspectRatio;
+  return resolveAspectRatioParameter(
+    arParam,
+    modelParams2[paramId],
+    card.defaultAspectRatio
+  ) ?? card.defaultAspectRatio;
 }
 var GEMINI_TTS_PARAMETERS = [
   {
@@ -75475,10 +82286,6 @@ var MEDIA_ANALYSIS_DOCUMENT_KIND_BY_CATEGORY = {
   ocr: "media.analysis.ocr",
   "audio-semantics": "media.analysis.audio-semantics"
 };
-var AspectRatioSchema = z.object({
-  width: z.number().int().positive(),
-  height: z.number().int().positive()
-}).strict();
 var PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 var SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 var SHA256_PATTERN = /^sha256:[0-9a-f]{64}$/;
@@ -75557,6 +82364,11 @@ var ExecutablePluginModelBindingExportSchema = z.object({
 var ExecutablePluginGeneratorExportSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
   kind: z.literal("generator"),
+  path: PluginRelativePathSchema
+}).strict();
+var ExecutablePluginViewExportSchema = z.object({
+  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  kind: z.literal("view"),
   path: PluginRelativePathSchema
 }).strict();
 var ExecutableActionPresentationSchema = z.discriminatedUnion("type", [
@@ -75714,6 +82526,99 @@ var ExecutablePluginGeneratorDocumentSchema = z.object({
   apiVersion: z.literal("clash.generator/v1"),
   kind: z.literal("generator"),
   spec: GeneratorDefinitionSpecSchema
+}).strict();
+var StoryboardViewResourceSchema = z.object({
+  id: z.string().trim().min(1),
+  projectAssetId: z.string().trim().min(1),
+  mediaKind: z.enum(["image", "video", "audio", "model"]),
+  modelName: z.string().trim().min(1).optional(),
+  generatedBy: z.object({
+    generatorId: z.string().trim().min(1),
+    generatorRevisionId: z.string().trim().min(1),
+    actionRunId: z.string().trim().min(1),
+    outputCommitId: z.string().trim().min(1),
+    outputSlot: z.string().trim().min(1).optional()
+  }).strict().optional()
+}).strict();
+var StoryboardViewDescriptionPartSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("text"), text: z.string() }).strict(),
+  z.object({
+    type: z.literal("entity-reference"),
+    entityId: z.string().trim().min(1)
+  }).strict()
+]);
+var StoryboardViewMaterialSchema = z.object({
+  id: z.string().trim().min(1),
+  label: z.string().trim().min(1).optional(),
+  mediaKind: z.enum(["image", "video", "audio", "model"]),
+  promptDraft: z.object({
+    id: z.string().trim().min(1),
+    text: z.string()
+  }).strict().optional(),
+  candidates: z.array(StoryboardViewResourceSchema).default([]),
+  selectedCandidateId: z.string().trim().min(1).optional()
+}).strict().superRefine((material, ctx) => {
+  if (material.selectedCandidateId && !material.candidates.some(
+    (candidate) => candidate.id === material.selectedCandidateId
+  )) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["selectedCandidateId"],
+      message: "A selected candidate must belong to the same material slot."
+    });
+  }
+  const candidateIds = /* @__PURE__ */ new Set();
+  material.candidates.forEach((candidate, index) => {
+    if (candidateIds.has(candidate.id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["candidates", index, "id"],
+        message: "Candidate ids must be unique within a material slot."
+      });
+    }
+    candidateIds.add(candidate.id);
+    if (candidate.mediaKind !== material.mediaKind) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["candidates", index, "mediaKind"],
+        message: "A candidate must match its material slot media kind."
+      });
+    }
+  });
+});
+var StoryboardViewItemBaseSchema = z.object({
+  id: z.string().trim().min(1),
+  label: z.string().trim().min(1).optional(),
+  description: z.array(StoryboardViewDescriptionPartSchema).default([]),
+  details: z.string().optional(),
+  materials: z.array(StoryboardViewMaterialSchema).default([])
+});
+var StoryboardViewItemSchema = StoryboardViewItemBaseSchema.strict();
+var StoryboardViewShotSchema = StoryboardViewItemBaseSchema.extend({
+  durationSeconds: z.number().finite().positive().optional()
+}).strict();
+var StoryboardViewStateSchema = z.object({
+  keyElements: z.array(StoryboardViewItemSchema),
+  shots: z.array(StoryboardViewShotSchema),
+  audioLayers: z.array(StoryboardViewItemSchema),
+  uncategorized: z.array(StoryboardViewResourceSchema)
+}).strict();
+var ExecutablePluginViewDocumentSchema = z.object({
+  apiVersion: z.literal("clash.view/v1"),
+  kind: z.literal("view"),
+  spec: z.object({
+    definitionId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    name: z.string().trim().min(1),
+    description: z.string().trim().min(1).optional(),
+    presentation: z.object({ type: z.literal("storyboard") }).strict(),
+    initialState: StoryboardViewStateSchema
+  }).strict()
+}).strict();
+var ExecutablePluginViewReferenceSchema = z.object({
+  pluginId: pluginIdSchema,
+  definitionId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  version: z.string().trim().regex(SEMVER_PATTERN),
+  schemaHash: z.string().regex(SHA256_PATTERN)
 }).strict();
 var ExecutablePluginProviderDefinitionSchema = z.object({
   /**
@@ -75881,6 +82786,12 @@ var ExecutablePluginGeneratorRegistrationSchema = z.object({
   version: z.string().trim().regex(SEMVER_PATTERN),
   schemaHash: z.string().regex(SHA256_PATTERN),
   document: ExecutablePluginGeneratorDocumentSchema
+}).strict();
+var ExecutablePluginViewRegistrationSchema = z.object({
+  pluginId: pluginIdSchema,
+  version: z.string().trim().regex(SEMVER_PATTERN),
+  schemaHash: z.string().regex(SHA256_PATTERN),
+  document: ExecutablePluginViewDocumentSchema
 }).strict();
 function generatorDefinitionFromExecutablePluginRegistration(input) {
   const registration = ExecutablePluginGeneratorRegistrationSchema.parse(input);
@@ -76492,7 +83403,7 @@ var ExecutablePluginBrokerOperationSchema = z.union([
   z.object({
     kind: z.literal("codex.image.generate"),
     prompt: z.string().trim().min(1).max(2e4),
-    aspectRatio: z.enum(["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"]).default("1:1"),
+    aspectRatio: AspectRatioStringSchema.default("1:1"),
     slot: z.string().trim().min(1),
     references: z.array(
       ExecutablePluginAssetHandleObjectSchema.extend({
@@ -76596,6 +83507,7 @@ var ExecutablePluginContributionsSchema = z.object({
   providers: z.array(ExecutablePluginProviderExportSchema).default([]),
   modelBindings: z.array(ExecutablePluginModelBindingExportSchema).default([]),
   generators: z.array(ExecutablePluginGeneratorExportSchema).default([]),
+  views: z.array(ExecutablePluginViewExportSchema).default([]),
   functions: z.array(ExecutablePluginFunctionExportSchema).default([]),
   hostTools: z.array(z.enum(["codex.imagegen", "speech.transcribe", "media.analyze", "director.stage.capture-frame", "video.enhance"])).default([])
 }).strict();
@@ -76617,6 +83529,7 @@ var ExecutablePluginManifestSchema = z.object({
     ["providers", manifest.contributes.providers],
     ["modelBindings", manifest.contributes.modelBindings],
     ["generators", manifest.contributes.generators],
+    ["views", manifest.contributes.views],
     ["functions", manifest.contributes.functions]
   ]) {
     const ids = /* @__PURE__ */ new Set();
@@ -76646,7 +83559,8 @@ var ExecutablePluginManifestSchema = z.object({
   for (const artifact of [
     ...manifest.contributes.providers,
     ...manifest.contributes.modelBindings,
-    ...manifest.contributes.generators
+    ...manifest.contributes.generators,
+    ...manifest.contributes.views
   ]) {
     if (artifactPaths.has(artifact.path)) {
       ctx.addIssue({
@@ -76748,6 +83662,7 @@ function validateExecutablePluginPackage(manifestInput, cardDocuments, contractT
   const providers = {};
   const modelBindings = {};
   const generators = {};
+  const views = {};
   const contractTests = {};
   for (const cardExport of manifest.contributes.cards) {
     if (!Object.prototype.hasOwnProperty.call(cardDocuments, cardExport.path)) {
@@ -76866,6 +83781,19 @@ function validateExecutablePluginPackage(manifestInput, cardDocuments, contractT
     }
     generators[generatorExport.path] = generator;
   }
+  for (const viewExport of manifest.contributes.views) {
+    const input = artifacts.views?.[viewExport.path];
+    if (input === void 0) {
+      throw new Error(`Missing declared View document: ${viewExport.path}`);
+    }
+    const view = ExecutablePluginViewDocumentSchema.parse(input);
+    if (view.spec.definitionId !== viewExport.id) {
+      throw new Error(
+        `View ${viewExport.path} id ${view.spec.definitionId} does not match export id ${viewExport.id}.`
+      );
+    }
+    views[viewExport.path] = view;
+  }
   for (const path of manifest.contractTests) {
     if (!Object.prototype.hasOwnProperty.call(contractTestDocuments, path)) {
       throw new Error(`Missing declared contract test: ${path}`);
@@ -76887,6 +83815,7 @@ function validateExecutablePluginPackage(manifestInput, cardDocuments, contractT
     providers,
     modelBindings,
     generators,
+    views,
     contractTests
   };
 }
@@ -81760,6 +88689,119 @@ var TimelineLibraryItemSchema = z.discriminatedUnion("category", [
   AdjustmentLibraryItemSchema
 ]);
 
+// ../../packages/shared-types/dist/chunk-YKBFTDJ4.js
+var ActionFamilySchema = z.enum(["generate", "edit", "custom"]);
+var ActionOperationSpecSchema = z.object({
+  id: z.string().min(1),
+  outputKind: AssetKindSchema
+});
+var ActionSpecSchema = z.object({
+  id: z.string().min(1),
+  version: z.string().min(1),
+  name: z.string().min(1),
+  family: ActionFamilySchema,
+  inputKinds: z.array(AssetKindSchema).min(1),
+  operations: z.array(ActionOperationSpecSchema).min(1)
+});
+var ActionInvocationModeSchema = z.enum(["explicit", "implicit"]);
+var ActionSurfaceSchema = z.enum(["canvas", "asset-preview"]);
+var ACTION_INVOCATION_MODE = {
+  Explicit: "explicit",
+  Implicit: "implicit"
+};
+function invocationModeForSurface(surface) {
+  return surface === "canvas" ? ACTION_INVOCATION_MODE.Explicit : ACTION_INVOCATION_MODE.Implicit;
+}
+var ASSET_ACTION_ID = {
+  ImageEditor: "image-editor",
+  VideoClipper: "video-clipper"
+};
+var CropRectSchema = z.object({
+  x: z.number().int().nonnegative(),
+  y: z.number().int().nonnegative(),
+  width: z.number().int().positive(),
+  height: z.number().int().positive()
+});
+var ImageEditParamsSchema = z.object({
+  crop: CropRectSchema.optional(),
+  rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional()
+});
+var VideoClipParamsSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("screenshot"),
+    frameTimeSec: z.number().nonnegative()
+  }),
+  z.object({
+    mode: z.literal("crop"),
+    startSec: z.number().nonnegative(),
+    endSec: z.number().positive()
+  })
+]).superRefine((value, context) => {
+  if (value.mode === "crop" && value.endSec <= value.startSec) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "endSec must be greater than startSec",
+      path: ["endSec"]
+    });
+  }
+});
+var BUILT_IN_ASSET_ACTION_SPECS = {
+  [ASSET_ACTION_ID.ImageEditor]: ActionSpecSchema.parse({
+    id: ASSET_ACTION_ID.ImageEditor,
+    version: "1",
+    name: "Image Editor",
+    family: "edit",
+    inputKinds: ["image"],
+    operations: [{ id: "transform", outputKind: "image" }]
+  }),
+  [ASSET_ACTION_ID.VideoClipper]: ActionSpecSchema.parse({
+    id: ASSET_ACTION_ID.VideoClipper,
+    version: "1",
+    name: "Video Clipper",
+    family: "edit",
+    inputKinds: ["video"],
+    operations: [
+      { id: "screenshot", outputKind: "image" },
+      { id: "crop", outputKind: "video" }
+    ]
+  })
+};
+var InvocationBaseSchema = z.object({
+  projectId: z.string().min(1),
+  mode: ActionInvocationModeSchema,
+  surface: ActionSurfaceSchema
+});
+var ImageEditActionInvocationSchema = InvocationBaseSchema.extend({
+  actionId: z.literal(ASSET_ACTION_ID.ImageEditor),
+  source: z.object({ assetId: z.string().min(1), kind: z.literal("image") }),
+  params: ImageEditParamsSchema
+});
+var VideoEditActionInvocationSchema = InvocationBaseSchema.extend({
+  actionId: z.literal(ASSET_ACTION_ID.VideoClipper),
+  source: z.object({ assetId: z.string().min(1), kind: z.literal("video") }),
+  params: VideoClipParamsSchema
+});
+var AssetEditActionInvocationSchema = z.discriminatedUnion("actionId", [
+  ImageEditActionInvocationSchema,
+  VideoEditActionInvocationSchema
+]).refine((value) => value.mode === invocationModeForSurface(value.surface), {
+  message: "Invocation mode must match its surface",
+  path: ["mode"]
+});
+function resolveAssetActionOutputKind(actionId, params) {
+  if (actionId === ASSET_ACTION_ID.ImageEditor) return "image";
+  const operationId = "mode" in params ? params.mode : "crop";
+  const operation2 = BUILT_IN_ASSET_ACTION_SPECS[actionId].operations.find(
+    (candidate) => candidate.id === operationId
+  );
+  if (!operation2)
+    throw new Error(`Unsupported ${actionId} operation: ${operationId}`);
+  return AssetKindSchema.parse(operation2.outputKind);
+}
+function actionSourceModel(invocation) {
+  return invocation.mode === ACTION_INVOCATION_MODE.Implicit ? `implicit:${invocation.actionId}` : invocation.actionId;
+}
+
 // ../../packages/shared-types/dist/chunk-PKBMQBKP.js
 var __defProp2 = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp2(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
@@ -81809,6 +88851,59 @@ function getNodeSize(type) {
 }
 function rectOverlaps(a5, b5) {
   return !(a5.x + a5.width <= b5.x || b5.x + b5.width <= a5.x || a5.y + a5.height <= b5.y || b5.y + b5.height <= a5.y);
+}
+function normalizeDimension(value) {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : void 0;
+  }
+  return void 0;
+}
+function getAbsolutePosition(node, nodes5) {
+  if (!node.parentId) {
+    return { x: node.position.x, y: node.position.y };
+  }
+  const parent = nodes5.find((n3) => n3.id === node.parentId);
+  if (!parent) {
+    return { x: node.position.x, y: node.position.y };
+  }
+  const parentAbsPos = getAbsolutePosition(parent, nodes5);
+  return {
+    x: parentAbsPos.x + node.position.x,
+    y: parentAbsPos.y + node.position.y
+  };
+}
+function getAbsoluteRect(node, nodes5) {
+  const absPos = getAbsolutePosition(node, nodes5);
+  const defaultSize = getNodeSize(node.type || "default");
+  const width = normalizeDimension(node.width) ?? normalizeDimension(node.style?.width) ?? defaultSize.width;
+  const height = normalizeDimension(node.height) ?? normalizeDimension(node.style?.height) ?? defaultSize.height;
+  return {
+    x: absPos.x,
+    y: absPos.y,
+    width,
+    height
+  };
+}
+function rectUnion(rects) {
+  if (rects.length === 0) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const rect of rects) {
+    minX = Math.min(minX, rect.x);
+    minY = Math.min(minY, rect.y);
+    maxX = Math.max(maxX, rect.x + rect.width);
+    maxY = Math.max(maxY, rect.y + rect.height);
+  }
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY
+  };
 }
 var NEEDS_LAYOUT_POSITION = { x: -1, y: -1 };
 var GAP_X = 60;
@@ -82389,6 +89484,7 @@ function parseProjectAsset(id2, raw2, context) {
     kind: field2(raw2, "kind"),
     source: sourceFromFields(raw2, context),
     lifecycle: lifecycleFromFields(raw2),
+    ...field2(raw2, "createdAt") === void 0 ? {} : { createdAt: field2(raw2, "createdAt") },
     ...nonEmptyString2(field2(raw2, "name")) ? { name: field2(raw2, "name") } : {},
     metadata: field2(raw2, "metadata"),
     ...field2(raw2, "provenance") === void 0 ? {} : { provenance: field2(raw2, "provenance") }
@@ -82478,6 +89574,8 @@ function writeEntry(fields, entry) {
   fields.set("source", entry.source);
   fields.set("metadata", entry.metadata);
   fields.set("lifecycleState", entry.lifecycle.state);
+  if (entry.createdAt === void 0) fields.delete("createdAt");
+  else fields.set("createdAt", entry.createdAt);
   if (entry.name === void 0) fields.delete("name");
   else fields.set("name", entry.name);
   if (entry.provenance === void 0) fields.delete("provenance");
@@ -83845,7 +90943,10 @@ function validateParameterCandidates(card, input, options = {}) {
       continue;
     }
     if (parameter.type === "select") {
-      if (!parameter.options?.some((option) => sameValue(option.value, value))) {
+      if (!parameter.options?.some((option) => sameValue(option.value, value)) && !acceptsCustomModelParameterValue(parameter, value)) {
+        if (parameter.allowCustom && parameter.id === "aspect_ratio") {
+          return `${parameter.label} must be a valid custom ratio.`;
+        }
         return `${parameter.label} must be one of the configured candidates.`;
       }
       continue;
@@ -84537,122 +91638,6 @@ function pickDefaultModel(opts) {
   const compatible = findCompatibleModels(opts);
   return compatible.find((card) => card.availableProviders?.includes("official")) ?? compatible[0];
 }
-var ActionFamilySchema = z.enum(["generate", "edit", "custom"]);
-var ActionExecutorSchema = z.enum([
-  "model",
-  "client-render",
-  "server-transform",
-  "runtime"
-]);
-var ActionOperationSpecSchema = z.object({
-  id: z.string().min(1),
-  executor: ActionExecutorSchema,
-  outputKind: AssetKindSchema
-});
-var ActionSpecSchema = z.object({
-  id: z.string().min(1),
-  version: z.string().min(1),
-  name: z.string().min(1),
-  family: ActionFamilySchema,
-  inputKinds: z.array(AssetKindSchema).min(1),
-  operations: z.array(ActionOperationSpecSchema).min(1)
-});
-var ActionInvocationModeSchema = z.enum(["explicit", "implicit"]);
-var ActionSurfaceSchema = z.enum(["canvas", "asset-preview"]);
-var ACTION_INVOCATION_MODE = {
-  Explicit: "explicit",
-  Implicit: "implicit"
-};
-function invocationModeForSurface(surface) {
-  return surface === "canvas" ? ACTION_INVOCATION_MODE.Explicit : ACTION_INVOCATION_MODE.Implicit;
-}
-var ASSET_ACTION_ID = {
-  ImageEditor: "image-editor",
-  VideoClipper: "video-clipper"
-};
-var CropRectSchema = z.object({
-  x: z.number().int().nonnegative(),
-  y: z.number().int().nonnegative(),
-  width: z.number().int().positive(),
-  height: z.number().int().positive()
-});
-var ImageEditParamsSchema = z.object({
-  crop: CropRectSchema.optional(),
-  rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional()
-});
-var VideoClipParamsSchema = z.discriminatedUnion("mode", [
-  z.object({ mode: z.literal("screenshot"), frameTimeSec: z.number().nonnegative() }),
-  z.object({
-    mode: z.literal("crop"),
-    startSec: z.number().nonnegative(),
-    endSec: z.number().positive()
-  })
-]).superRefine((value, context) => {
-  if (value.mode === "crop" && value.endSec <= value.startSec) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "endSec must be greater than startSec",
-      path: ["endSec"]
-    });
-  }
-});
-var BUILT_IN_ASSET_ACTION_SPECS = {
-  [ASSET_ACTION_ID.ImageEditor]: ActionSpecSchema.parse({
-    id: ASSET_ACTION_ID.ImageEditor,
-    version: "1",
-    name: "Image Editor",
-    family: "edit",
-    inputKinds: ["image"],
-    operations: [
-      { id: "transform", executor: "client-render", outputKind: "image" }
-    ]
-  }),
-  [ASSET_ACTION_ID.VideoClipper]: ActionSpecSchema.parse({
-    id: ASSET_ACTION_ID.VideoClipper,
-    version: "1",
-    name: "Video Clipper",
-    family: "edit",
-    inputKinds: ["video"],
-    operations: [
-      { id: "screenshot", executor: "client-render", outputKind: "image" },
-      { id: "crop", executor: "server-transform", outputKind: "video" }
-    ]
-  })
-};
-var InvocationBaseSchema = z.object({
-  projectId: z.string().min(1),
-  mode: ActionInvocationModeSchema,
-  surface: ActionSurfaceSchema
-});
-var ImageEditActionInvocationSchema = InvocationBaseSchema.extend({
-  actionId: z.literal(ASSET_ACTION_ID.ImageEditor),
-  source: z.object({ assetId: z.string().min(1), kind: z.literal("image") }),
-  params: ImageEditParamsSchema
-});
-var VideoEditActionInvocationSchema = InvocationBaseSchema.extend({
-  actionId: z.literal(ASSET_ACTION_ID.VideoClipper),
-  source: z.object({ assetId: z.string().min(1), kind: z.literal("video") }),
-  params: VideoClipParamsSchema
-});
-var AssetEditActionInvocationSchema = z.discriminatedUnion("actionId", [
-  ImageEditActionInvocationSchema,
-  VideoEditActionInvocationSchema
-]).refine((value) => value.mode === invocationModeForSurface(value.surface), {
-  message: "Invocation mode must match its surface",
-  path: ["mode"]
-});
-function resolveAssetActionOutputKind(actionId, params) {
-  if (actionId === ASSET_ACTION_ID.ImageEditor) return "image";
-  const operationId = "mode" in params ? params.mode : "crop";
-  const operation2 = BUILT_IN_ASSET_ACTION_SPECS[actionId].operations.find(
-    (candidate) => candidate.id === operationId
-  );
-  if (!operation2) throw new Error(`Unsupported ${actionId} operation: ${operationId}`);
-  return AssetKindSchema.parse(operation2.outputKind);
-}
-function actionSourceModel(invocation) {
-  return invocation.mode === ACTION_INVOCATION_MODE.Implicit ? `implicit:${invocation.actionId}` : invocation.actionId;
-}
 var PositionSchema2 = z.object({
   x: z.number(),
   y: z.number()
@@ -84877,6 +91862,7 @@ function buildPendingAssetNode(input) {
     modelId,
     modelParams: modelParams2,
     actionType,
+    aspectRatio,
     referenceMode,
     customActionId,
     customActionParams,
@@ -84913,7 +91899,8 @@ function buildPendingAssetNode(input) {
   if (isText) {
     data.content = "";
   } else {
-    if (!isCustom) data.aspectRatio = resolveAspectRatio(modelId, modelParams2);
+    const resolvedAspectRatio = aspectRatio ?? (!isCustom ? resolveAspectRatio(modelId, modelParams2) : void 0);
+    if (resolvedAspectRatio) data.aspectRatio = resolvedAspectRatio;
     data.referenceMode = referenceMode || "none";
   }
   for (const field3 of MEDIA_REFERENCE_FIELDS) {
@@ -85059,6 +92046,12 @@ function buildGenerationPayload(input) {
     label: input.label,
     customActionId: input.config.customDef.id,
     customActionParams: input.config.customActionParams,
+    aspectRatio: resolveAspectRatioParameter(
+      input.config.customDef.parameters.find(
+        (parameter) => parameter.id === "aspect_ratio"
+      ),
+      input.config.customActionParams.aspect_ratio
+    ),
     ...mediaReferencePendingFields(partition2),
     referenceMode: input.referenceMode ?? (totalAssetRefs > 0 ? "image-and-prompt" : void 0),
     outputType: input.config.customDef.outputType,
@@ -85625,6 +92618,7 @@ function storageFreeMediaRecord(input, label) {
     src: _src,
     previewUrl: _previewUrl,
     thumbnailUrl: _thumbnailUrl,
+    waveformUrl: _waveformUrl,
     url: _url2,
     localPath: _localPath,
     storageKey: _storageKey,
@@ -86773,8 +93767,7 @@ function attachTimelineToCanvas(doc, input) {
   if (!canvases.get(input.canvasId)) {
     return { ok: false, error: `Canvas ${input.canvasId} not found` };
   }
-  const nodes5 = doc.getMap("nodes");
-  if (nodes5.get(input.actionNodeId)) {
+  if (doc.getMap("nodes").get(input.actionNodeId)) {
     return { ok: false, error: `Node ${input.actionNodeId} already exists` };
   }
   const next = {
@@ -86785,15 +93778,21 @@ function attachTimelineToCanvas(doc, input) {
       actionNodeId: input.actionNodeId
     }
   };
+  const hostCanvas = new Canvas(doc, () => {
+  }, input.canvasId);
+  const view = hostCanvas.createNode(
+    input.actionNodeId,
+    "video-editor",
+    { timelineId: input.timelineId, label: timeline.name },
+    input.position
+  );
+  if (view.error) return { ok: false, error: view.error };
   const bindingError = rehomeProjectTimelineAssetInputs(doc, timeline, next);
-  if (bindingError) return bindingError;
+  if (bindingError) {
+    hostCanvas.deleteNode(input.actionNodeId);
+    return bindingError;
+  }
   ensureTimelineFields(doc, input.timelineId, timeline).set("owner", next.owner);
-  nodes5.set(input.actionNodeId, {
-    canvasId: input.canvasId,
-    type: "video-editor",
-    data: { timelineId: input.timelineId, label: timeline.name },
-    position: input.position
-  });
   return { ok: true, timeline: next };
 }
 function detachTimelineFromCanvas(doc, timelineId) {
@@ -87051,6 +94050,7 @@ function projectVisibleNodeData(data) {
   delete visible.filePath;
   delete visible.thumbnail;
   delete visible.thumbnailUrl;
+  delete visible.waveformUrl;
   delete visible.poster;
   delete visible.posterUrl;
   delete visible.coverUrl;
@@ -88675,10 +95675,11 @@ function attachDirectorStageToCanvas(doc, input) {
   if (!canvases.get(input.canvasId)) {
     return { ok: false, error: `Canvas ${input.canvasId} not found` };
   }
-  const nodes5 = doc.getMap("nodes");
-  if (nodes5.get(input.actionNodeId)) {
+  if (doc.getMap("nodes").get(input.actionNodeId)) {
     return { ok: false, error: `Node ${input.actionNodeId} already exists` };
   }
+  const fields = doc.getMap("directorStages").get(input.stageId);
+  if (!isLoroMap7(fields)) return { ok: false, error: `Director Stage ${input.stageId} not found` };
   const next = {
     ...stage,
     owner: {
@@ -88687,17 +95688,21 @@ function attachDirectorStageToCanvas(doc, input) {
       actionNodeId: input.actionNodeId
     }
   };
+  const hostCanvas = new Canvas(doc, () => {
+  }, input.canvasId);
+  const view = hostCanvas.createNode(
+    input.actionNodeId,
+    "director-stage",
+    { stageId: input.stageId, label: stage.name },
+    input.position
+  );
+  if (view.error) return { ok: false, error: view.error };
   const bindingError = rehomeProjectDirectorAssetInputs(doc, stage, next);
-  if (bindingError) return bindingError;
-  const fields = doc.getMap("directorStages").get(input.stageId);
-  if (!isLoroMap7(fields)) return { ok: false, error: `Director Stage ${input.stageId} not found` };
+  if (bindingError) {
+    hostCanvas.deleteNode(input.actionNodeId);
+    return bindingError;
+  }
   fields.set("owner", next.owner);
-  nodes5.set(input.actionNodeId, {
-    canvasId: input.canvasId,
-    type: "director-stage",
-    data: { stageId: input.stageId, label: stage.name },
-    position: input.position
-  });
   return { ok: true, stage: next };
 }
 function directorStageActionStageId(raw2) {
@@ -88967,6 +95972,9 @@ var addCommand = z.object({
     "text",
     "group",
     "remotion",
+    "image",
+    "video",
+    "audio",
     "image_gen",
     "video_gen",
     "audio_gen",
@@ -88979,6 +95987,7 @@ var addCommand = z.object({
   parentId: id.optional(),
   modelId: id.optional(),
   actionId: id.optional(),
+  assetId: id.optional(),
   refs: z.array(id).optional(),
   params: z.record(id, primitiveParameter).optional(),
   actorClientType,
@@ -90294,6 +97303,85 @@ function listCompatibleModelCatalogEntries(options) {
   }).map((model) => model.id));
   return entries.filter((entry) => compatibleIds.has(entry.model.id));
 }
+var ProjectCanvasPreviewNodeSchema = z.object({
+  id: z.string().trim().min(1),
+  type: z.string().trim().min(1),
+  x: z.number().finite(),
+  y: z.number().finite(),
+  width: z.number().finite().positive(),
+  height: z.number().finite().positive(),
+  parentId: z.string().trim().min(1).optional(),
+  assetId: z.string().trim().min(1).optional(),
+  label: z.string().trim().min(1).optional()
+}).strict();
+var ProjectCanvasPreviewSchema = z.object({
+  canvasId: z.string().trim().min(1),
+  bounds: z.object({
+    x: z.number().finite(),
+    y: z.number().finite(),
+    width: z.number().finite().nonnegative(),
+    height: z.number().finite().nonnegative()
+  }).strict().nullable(),
+  nodes: z.array(ProjectCanvasPreviewNodeSchema)
+}).strict();
+var ProjectCanvasThumbnailSchema = z.object({
+  url: z.string().url(),
+  revision: z.string().regex(/^[a-f0-9]{64}$/u),
+  width: z.number().int().positive(),
+  height: z.number().int().positive()
+}).strict();
+function previewLabel(data) {
+  for (const candidate of [data.label, data.title, data.name, data.content]) {
+    if (typeof candidate !== "string") continue;
+    const normalized = candidate.trim().split(/\r?\n/u, 1)[0]?.trim();
+    if (normalized) return normalized.slice(0, 120);
+  }
+  return void 0;
+}
+function toLayoutNode2(node) {
+  const style2 = node.style ?? {};
+  return {
+    id: node.id,
+    type: node.type,
+    position: node.position,
+    ...node.parent_id ? { parentId: node.parent_id } : {},
+    ...typeof node.width === "number" ? { width: node.width } : {},
+    ...typeof node.height === "number" ? { height: node.height } : {},
+    data: node.data,
+    style: {
+      ...typeof style2.width === "number" || typeof style2.width === "string" ? { width: style2.width } : {},
+      ...typeof style2.height === "number" || typeof style2.height === "string" ? { height: style2.height } : {},
+      ...typeof style2.zIndex === "number" || typeof style2.zIndex === "string" ? { zIndex: style2.zIndex } : {}
+    }
+  };
+}
+function projectCanvasPreviewFromDoc(doc, canvasId = DEFAULT_CANVAS_ID) {
+  const canvasNodes = new Canvas(doc, () => {
+  }, canvasId).listNodes();
+  const layoutNodes = canvasNodes.map(toLayoutNode2);
+  const nodes5 = canvasNodes.map((node, index) => {
+    const rect = getAbsoluteRect(layoutNodes[index], layoutNodes);
+    const assetId = typeof node.data.assetId === "string" && node.data.assetId.trim() ? node.data.assetId.trim() : void 0;
+    const label = previewLabel(node.data);
+    return ProjectCanvasPreviewNodeSchema.parse({
+      id: node.id,
+      type: node.type,
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+      ...node.parent_id ? { parentId: node.parent_id } : {},
+      ...assetId ? { assetId } : {},
+      ...label ? { label } : {}
+    });
+  });
+  const bounds = rectUnion(nodes5);
+  return ProjectCanvasPreviewSchema.parse({
+    canvasId,
+    bounds,
+    nodes: nodes5
+  });
+}
 function canonicalTimelineRenderDsl(state2) {
   if (!state2 || typeof state2 !== "object" || Array.isArray(state2)) return null;
   const timelineDsl = state2;
@@ -91369,13 +98457,13 @@ var WorkspaceBundleRelativePathSchema = z.string().min(1).max(4096).superRefine(
 });
 function workspacePortablePathLooksSecret(portableRelativePath) {
   const segments = portableRelativePath.toLocaleLowerCase("en-US").split("/");
-  const basename7 = segments.at(-1) ?? "";
-  if (basename7 === ".env.example") return false;
-  if (basename7.startsWith(".env") || basename7 === ".npmrc") return true;
+  const basename8 = segments.at(-1) ?? "";
+  if (basename8 === ".env.example") return false;
+  if (basename8.startsWith(".env") || basename8 === ".npmrc") return true;
   if (segments.some((segment) => segment === ".ssh" || segment === ".aws")) {
     return true;
   }
-  if (/\.(?:key|pem|p12|pfx)$/u.test(basename7) || /^id_(?:rsa|dsa|ecdsa|ed25519)(?:\.|$)/u.test(basename7)) {
+  if (/\.(?:key|pem|p12|pfx)$/u.test(basename8) || /^id_(?:rsa|dsa|ecdsa|ed25519)(?:\.|$)/u.test(basename8)) {
     return true;
   }
   return segments.some(
@@ -91909,12 +98997,12 @@ var WorkspaceImportCommitResponseSchema = z.object({
 // ../../apps/local-api/dist/runtime/host/lib/platform.js
 var import_node_child_process = require("node:child_process");
 var import_node_os = require("node:os");
-var import_node_path = require("node:path");
+var import_node_path2 = require("node:path");
 function paths() {
   const home = (0, import_node_os.homedir)();
   const clashHome = process.env.CLASH_HOME?.trim();
-  const configDir = clashHome ? (0, import_node_path.resolve)(clashHome) : (0, import_node_path.join)(home, ".clash");
-  const projectsDir = (0, import_node_path.join)(configDir, "projects");
+  const configDir = clashHome ? (0, import_node_path2.resolve)(clashHome) : (0, import_node_path2.join)(home, ".clash");
+  const projectsDir = (0, import_node_path2.join)(configDir, "projects");
   return { configDir, projectsDir };
 }
 function osTag() {
@@ -91980,13 +99068,13 @@ function pluginHostSocketPath(env2 = process.env, configDir = paths().configDir)
     const suffix2 = (0, import_node_crypto.createHash)("sha256").update(configDir).digest("hex").slice(0, 16);
     return `\\\\.\\pipe\\clash-plugin-host-${suffix2}`;
   }
-  const preferred = (0, import_node_path2.join)(configDir, "sockets", "plugin-host.sock");
+  const preferred = (0, import_node_path3.join)(configDir, "sockets", "plugin-host.sock");
   if (Buffer.byteLength(preferred) <= UNIX_SOCKET_PATH_BUDGET_BYTES)
     return preferred;
   const suffix = (0, import_node_crypto.createHash)("sha256").update(configDir).digest("hex").slice(0, 16);
-  const basename7 = `clash-plugin-host-${suffix}.sock`;
-  const temporary = (0, import_node_path2.join)((0, import_node_os2.tmpdir)(), basename7);
-  return Buffer.byteLength(temporary) <= UNIX_SOCKET_PATH_BUDGET_BYTES ? temporary : (0, import_node_path2.join)("/tmp", basename7);
+  const basename8 = `clash-plugin-host-${suffix}.sock`;
+  const temporary = (0, import_node_path3.join)((0, import_node_os2.tmpdir)(), basename8);
+  return Buffer.byteLength(temporary) <= UNIX_SOCKET_PATH_BUDGET_BYTES ? temporary : (0, import_node_path3.join)("/tmp", basename8);
 }
 function nonEmptyString5(value, field3) {
   if (typeof value !== "string" || !value.trim())
@@ -92008,7 +99096,7 @@ function parseRequest(value) {
       pluginId: nonEmptyString5(request.pluginId, "pluginId")
     };
   }
-  if (request.operation === "list-providers" || request.operation === "list-model-bindings" || request.operation === "list-generators") {
+  if (request.operation === "list-providers" || request.operation === "list-model-bindings" || request.operation === "list-generators" || request.operation === "list-views") {
     return {
       protocol: "clash.plugin-host/v1",
       requestId,
@@ -92113,6 +99201,14 @@ async function handleRequest(host, input) {
         result: ExecutablePluginGeneratorRegistrationSchema.array().parse(host.listGenerators?.() ?? [])
       };
     }
+    if (request.operation === "list-views") {
+      return {
+        protocol: "clash.plugin-host/v1",
+        requestId,
+        status: "ok",
+        result: ExecutablePluginViewRegistrationSchema.array().parse(host.listViews?.() ?? [])
+      };
+    }
     if (request.operation === "list-cards") {
       return {
         protocol: "clash.plugin-host/v1",
@@ -92182,7 +99278,7 @@ async function startPluginHostIpcServer(options) {
   const socketPath = options.socketPath ?? pluginHostSocketPath();
   return withSocketStartupLock(socketPath, async () => {
     if (process.platform !== "win32") {
-      await (0, import_promises.mkdir)((0, import_node_path2.dirname)(socketPath), { recursive: true, mode: 448 });
+      await (0, import_promises.mkdir)((0, import_node_path3.dirname)(socketPath), { recursive: true, mode: 448 });
       if (await socketIsActive(socketPath)) {
         const error53 = new Error(`Clash plugin host is already listening at ${socketPath}.`);
         error53.code = "EADDRINUSE";
@@ -92288,6 +99384,13 @@ var PluginHostClient = class {
       protocol: "clash.plugin-host/v1",
       requestId: (0, import_node_crypto.randomUUID)(),
       operation: "list-generators"
+    }));
+  }
+  async listViews() {
+    return ExecutablePluginViewRegistrationSchema.array().parse(await this.request({
+      protocol: "clash.plugin-host/v1",
+      requestId: (0, import_node_crypto.randomUUID)(),
+      operation: "list-views"
     }));
   }
   /**
@@ -92409,8 +99512,8 @@ var import_node_child_process2 = require("node:child_process");
 var import_node_crypto3 = require("node:crypto");
 var import_node_assert = require("node:assert");
 var import_promises2 = require("node:fs/promises");
-var import_node_fs2 = require("node:fs");
-var import_node_path4 = require("node:path");
+var import_node_fs3 = require("node:fs");
+var import_node_path5 = require("node:path");
 
 // ../../apps/local-api/dist/runtime/host/lib/plugin-stdio-runner.js
 var import_node_readline = require("node:readline");
@@ -92814,7 +99917,7 @@ function createExecutorContext(merged = {}, requestHost) {
   };
 }
 
-// ../../packages/action-sdk/dist/assemble.js
+// ../../packages/action-sdk/dist/browser.js
 var KIND = Symbol.for("clash.plugin.kind");
 var ACTION_MODE = Symbol.for("clash.plugin.action-mode");
 
@@ -92944,8 +100047,8 @@ function createModulePluginEndpoint(options) {
 
 // ../../apps/local-api/dist/provider-http-instrumentation-python.js
 var import_node_crypto2 = require("node:crypto");
-var import_node_fs = require("node:fs");
-var import_node_path3 = require("node:path");
+var import_node_fs2 = require("node:fs");
+var import_node_path4 = require("node:path");
 var import_node_os3 = require("node:os");
 var PYTHON_SITE_CUSTOMIZE = String.raw`
 import base64
@@ -93483,10 +100586,10 @@ function providerHttpInstrumentationPythonPath() {
   if (preparedPath)
     return preparedPath;
   const digest3 = (0, import_node_crypto2.createHash)("sha256").update(PYTHON_SITE_CUSTOMIZE).digest("hex").slice(0, 16);
-  const directory = (0, import_node_path3.join)((0, import_node_os3.tmpdir)(), "clash-provider-http-python", digest3);
-  (0, import_node_fs.mkdirSync)(directory, { recursive: true });
+  const directory = (0, import_node_path4.join)((0, import_node_os3.tmpdir)(), "clash-provider-http-python", digest3);
+  (0, import_node_fs2.mkdirSync)(directory, { recursive: true });
   try {
-    (0, import_node_fs.writeFileSync)((0, import_node_path3.join)(directory, "sitecustomize.py"), PYTHON_SITE_CUSTOMIZE, {
+    (0, import_node_fs2.writeFileSync)((0, import_node_path4.join)(directory, "sitecustomize.py"), PYTHON_SITE_CUSTOMIZE, {
       encoding: "utf8",
       flag: "wx",
       mode: 384
@@ -93508,10 +100611,10 @@ var SHUTDOWN_GRACE_MS = 5e3;
 var PYTHON_DEPS_STAMP = ".clash-python-deps.json";
 var WATCH_DEBOUNCE_MS = 500;
 function actionsDir() {
-  return (0, import_node_path4.join)(paths().configDir, "actions");
+  return (0, import_node_path5.join)(paths().configDir, "actions");
 }
 async function readHostedPackage(dir) {
-  const raw2 = JSON.parse(await (0, import_promises2.readFile)((0, import_node_path4.join)(dir, "manifest.json"), "utf8"));
+  const raw2 = JSON.parse(await (0, import_promises2.readFile)((0, import_node_path5.join)(dir, "manifest.json"), "utf8"));
   const manifest = ExecutablePluginManifestSchema.parse(raw2);
   if (manifest.runtime.kind !== "local") {
     throw new Error(`runtime=${manifest.runtime.kind} is not local`);
@@ -93522,29 +100625,34 @@ async function readHostedPackage(dir) {
   };
   const cards = {};
   for (const card of localManifest.contributes.cards) {
-    cards[card.path] = JSON.parse(await (0, import_promises2.readFile)((0, import_node_path4.join)(dir, card.path), "utf8"));
+    cards[card.path] = JSON.parse(await (0, import_promises2.readFile)((0, import_node_path5.join)(dir, card.path), "utf8"));
   }
   const providers = {};
   for (const provider of localManifest.contributes.providers) {
-    providers[provider.path] = JSON.parse(await (0, import_promises2.readFile)((0, import_node_path4.join)(dir, provider.path), "utf8"));
+    providers[provider.path] = JSON.parse(await (0, import_promises2.readFile)((0, import_node_path5.join)(dir, provider.path), "utf8"));
   }
   const modelBindings = {};
   for (const binding of localManifest.contributes.modelBindings) {
-    modelBindings[binding.path] = JSON.parse(await (0, import_promises2.readFile)((0, import_node_path4.join)(dir, binding.path), "utf8"));
+    modelBindings[binding.path] = JSON.parse(await (0, import_promises2.readFile)((0, import_node_path5.join)(dir, binding.path), "utf8"));
   }
   const generators = {};
   for (const generator of localManifest.contributes.generators) {
-    generators[generator.path] = JSON.parse(await (0, import_promises2.readFile)((0, import_node_path4.join)(dir, generator.path), "utf8"));
+    generators[generator.path] = JSON.parse(await (0, import_promises2.readFile)((0, import_node_path5.join)(dir, generator.path), "utf8"));
+  }
+  const views = {};
+  for (const view of localManifest.contributes.views) {
+    views[view.path] = JSON.parse(await (0, import_promises2.readFile)((0, import_node_path5.join)(dir, view.path), "utf8"));
   }
   const contractTests = {};
   for (const path of localManifest.contractTests) {
-    contractTests[path] = JSON.parse(await (0, import_promises2.readFile)((0, import_node_path4.join)(dir, path), "utf8"));
+    contractTests[path] = JSON.parse(await (0, import_promises2.readFile)((0, import_node_path5.join)(dir, path), "utf8"));
   }
   return {
     ...validateExecutablePluginPackage(localManifest, cards, contractTests, {
       providers,
       modelBindings,
-      generators
+      generators,
+      views
     }),
     manifest: localManifest
   };
@@ -93557,7 +100665,7 @@ function canonicalJson(value) {
   }
   return JSON.stringify(value);
 }
-function executablePluginSchemaHash(manifest, cards, providers = {}, modelBindings = {}, generators = {}) {
+function executablePluginSchemaHash(manifest, cards, providers = {}, modelBindings = {}, generators = {}, views = {}) {
   return `sha256:${(0, import_node_crypto3.createHash)("sha256").update(canonicalJson({
     apiVersion: manifest.apiVersion,
     id: manifest.id,
@@ -93566,14 +100674,15 @@ function executablePluginSchemaHash(manifest, cards, providers = {}, modelBindin
     cards,
     providers,
     modelBindings,
-    generators
+    generators,
+    views
   })).digest("hex")}`;
 }
 async function executablePluginContentFiles(root5, directory, output) {
   const entries = await (0, import_promises2.readdir)(directory, { withFileTypes: true });
   for (const entry of entries) {
-    const absolutePath = (0, import_node_path4.join)(directory, entry.name);
-    const path = (0, import_node_path4.relative)(root5, absolutePath).split("\\").join("/");
+    const absolutePath = (0, import_node_path5.join)(directory, entry.name);
+    const path = (0, import_node_path5.relative)(root5, absolutePath).split("\\").join("/");
     const metadata = await (0, import_promises2.lstat)(absolutePath);
     if (metadata.isSymbolicLink()) {
       throw new Error(`Executable plugin content cannot contain symbolic links: ${path}`);
@@ -93587,7 +100696,7 @@ async function executablePluginContentFiles(root5, directory, output) {
   }
 }
 async function executablePluginDirectoryContentHash(pluginDirInput) {
-  const pluginDir = (0, import_node_fs2.realpathSync)(pluginDirInput);
+  const pluginDir = (0, import_node_fs3.realpathSync)(pluginDirInput);
   const files = [];
   await executablePluginContentFiles(pluginDir, pluginDir, files);
   files.sort((left, right) => left.path.localeCompare(right.path));
@@ -93603,7 +100712,7 @@ async function executablePluginDirectoryContentHash(pluginDirInput) {
   return `sha256:${digest3.digest("hex")}`;
 }
 function executablePluginActivationReceiptPath(actionsRoot, pluginId) {
-  return (0, import_node_path4.join)(`${actionsRoot}.activations`, `${pluginId}.json`);
+  return (0, import_node_path5.join)(`${actionsRoot}.activations`, `${pluginId}.json`);
 }
 async function createExecutablePluginActivationReceipt(pluginDir) {
   const hostedPackage = await readHostedPackage(pluginDir);
@@ -93611,12 +100720,12 @@ async function createExecutablePluginActivationReceipt(pluginDir) {
     apiVersion: "clash.plugin.activation/v1",
     pluginId: hostedPackage.manifest.id,
     version: hostedPackage.manifest.version,
-    schemaHash: executablePluginSchemaHash(hostedPackage.manifest, hostedPackage.cards, hostedPackage.providers, hostedPackage.modelBindings, hostedPackage.generators),
+    schemaHash: executablePluginSchemaHash(hostedPackage.manifest, hostedPackage.cards, hostedPackage.providers, hostedPackage.modelBindings, hostedPackage.generators, hostedPackage.views),
     contentHash: await executablePluginDirectoryContentHash(pluginDir),
     activatedAt: (/* @__PURE__ */ new Date()).toISOString()
   });
 }
-async function verifyExecutablePluginActivation(actionsRoot, pluginDir, manifest, cards, providers, modelBindings, generators) {
+async function verifyExecutablePluginActivation(actionsRoot, pluginDir, manifest, cards, providers, modelBindings, generators, views) {
   const receiptFile = executablePluginActivationReceiptPath(actionsRoot, manifest.id);
   let receipt;
   try {
@@ -93624,7 +100733,7 @@ async function verifyExecutablePluginActivation(actionsRoot, pluginDir, manifest
   } catch (error53) {
     throw new Error(`Plugin ${manifest.id} has no valid activation receipt; use clash plugin activate. ${error53.message}`);
   }
-  const schemaHash = executablePluginSchemaHash(manifest, cards, providers, modelBindings, generators);
+  const schemaHash = executablePluginSchemaHash(manifest, cards, providers, modelBindings, generators, views);
   const contentHash2 = await executablePluginDirectoryContentHash(pluginDir);
   if (receipt.pluginId !== manifest.id || receipt.version !== manifest.version || receipt.schemaHash !== schemaHash || receipt.contentHash !== contentHash2) {
     throw new Error(`Plugin ${manifest.id}@${manifest.version} differs from its activated content; bump the version and run clash plugin activate.`);
@@ -93659,7 +100768,7 @@ var ActionsHost = class {
     const root5 = this.root;
     await this.loadTrustedBundledModules();
     try {
-      (0, import_node_fs2.mkdirSync)(root5, { recursive: true });
+      (0, import_node_fs3.mkdirSync)(root5, { recursive: true });
     } catch (e5) {
       process.stderr.write(`actions: could not create ${root5}: ${e5.message}
 `);
@@ -93706,12 +100815,12 @@ var ActionsHost = class {
         if (packaged.id !== registration.id) {
           throw new Error(`Trusted bundled registration ${registration.id} loaded ${packaged.id}.`);
         }
-        const hostedPackage = await readHostedPackage((0, import_node_path4.dirname)(packaged.manifestPath));
-        const { manifest, cards, providers, modelBindings, generators } = hostedPackage;
+        const hostedPackage = await readHostedPackage((0, import_node_path5.dirname)(packaged.manifestPath));
+        const { manifest, cards, providers, modelBindings, generators, views } = hostedPackage;
         if (manifest.id !== registration.id) {
           throw new Error(`Trusted bundled registration ${registration.id} contains manifest ${manifest.id}.`);
         }
-        const schemaHash = executablePluginSchemaHash(manifest, cards, providers, modelBindings, generators);
+        const schemaHash = executablePluginSchemaHash(manifest, cards, providers, modelBindings, generators, views);
         const endpoint = createModulePluginEndpoint({
           manifest,
           schemaHash,
@@ -93724,11 +100833,12 @@ var ActionsHost = class {
           realm: "bundled-module",
           loaded: {
             manifest,
-            dir: (0, import_node_path4.dirname)(packaged.manifestPath),
+            dir: (0, import_node_path5.dirname)(packaged.manifestPath),
             cards,
             providers,
             modelBindings,
             generators,
+            views,
             schemaHash
           },
           endpoint,
@@ -93746,7 +100856,7 @@ var ActionsHost = class {
    * their counters. Shared between start() and the fs.watch reconciler.
    */
   async tryLoadAndSpawn(dirName) {
-    const dir = (0, import_node_path4.join)(this.root, dirName);
+    const dir = (0, import_node_path5.join)(this.root, dirName);
     try {
       const s2 = await (0, import_promises2.stat)(dir);
       if (!s2.isDirectory())
@@ -93754,8 +100864,8 @@ var ActionsHost = class {
     } catch {
       return "ignored";
     }
-    const manifestPath = (0, import_node_path4.join)(dir, "manifest.json");
-    if (!(0, import_node_fs2.existsSync)(manifestPath)) {
+    const manifestPath = (0, import_node_path5.join)(dir, "manifest.json");
+    if (!(0, import_node_fs3.existsSync)(manifestPath)) {
       process.stderr.write(`actions: ${dirName}: no manifest.json \u2014 skipping
 `);
       return "skipped";
@@ -93768,14 +100878,14 @@ var ActionsHost = class {
 `);
       return "skipped";
     }
-    const { manifest, cards, providers, modelBindings, generators } = hostedPackage;
+    const { manifest, cards, providers, modelBindings, generators, views } = hostedPackage;
     if (this.trustedBundledPluginIds.has(manifest.id)) {
       process.stderr.write(`actions: ${manifest.id}: installed package cannot shadow a trusted bundled module \u2014 skipping
 `);
       return "skipped";
     }
     try {
-      await verifyExecutablePluginActivation(this.root, dir, manifest, cards, providers, modelBindings, generators);
+      await verifyExecutablePluginActivation(this.root, dir, manifest, cards, providers, modelBindings, generators, views);
     } catch (error53) {
       process.stderr.write(`actions: ${manifest.id}: ${error53.message} \u2014 skipping
 `);
@@ -93787,8 +100897,8 @@ var ActionsHost = class {
 `);
       return "skipped";
     }
-    const entrypointPath = (0, import_node_path4.join)(dir, entrypoint);
-    if (!(0, import_node_fs2.existsSync)(entrypointPath)) {
+    const entrypointPath = (0, import_node_path5.join)(dir, entrypoint);
+    if (!(0, import_node_fs3.existsSync)(entrypointPath)) {
       process.stderr.write(`actions: ${manifest.id}: entrypoint ${entrypoint} missing \u2014 skipping
 `);
       return "skipped";
@@ -93800,7 +100910,8 @@ var ActionsHost = class {
       providers,
       modelBindings,
       generators,
-      schemaHash: executablePluginSchemaHash(manifest, cards, providers, modelBindings, generators)
+      views,
+      schemaHash: executablePluginSchemaHash(manifest, cards, providers, modelBindings, generators, views)
     };
     const supervised = {
       loaded,
@@ -93977,6 +101088,22 @@ var ActionsHost = class {
     }
     return registrations.sort((left, right) => `${left.pluginId}:${left.document.spec.definitionId}`.localeCompare(`${right.pluginId}:${right.document.spec.definitionId}`));
   }
+  /** Activated declarative Views; no executable endpoint or Generator ownership is implied. */
+  listViews() {
+    const registrations = [];
+    for (const supervised of this.actions.values()) {
+      const { manifest, views, schemaHash } = supervised.loaded;
+      for (const document of Object.values(views)) {
+        registrations.push({
+          pluginId: manifest.id,
+          version: manifest.version,
+          schemaHash,
+          document
+        });
+      }
+    }
+    return registrations.sort((left, right) => `${left.pluginId}:${left.document.spec.definitionId}`.localeCompare(`${right.pluginId}:${right.document.spec.definitionId}`));
+  }
   /** Resolve one immutable Generator definition without exposing its Host execution realm. */
   resolveGeneratorDefinition(pluginId, definitionId) {
     const supervised = this.actions.get(pluginId);
@@ -94060,7 +101187,7 @@ var ActionsHost = class {
       return;
     const root5 = this.root;
     try {
-      this.watcher = (0, import_node_fs2.watch)(root5, { recursive: true, persistent: false }, (_eventType, filename) => {
+      this.watcher = (0, import_node_fs3.watch)(root5, { recursive: true, persistent: false }, (_eventType, filename) => {
         if (typeof filename === "string" && /\.swp$|~$|\.swx$/.test(filename))
           return;
         this.scheduleReconcile();
@@ -94089,7 +101216,7 @@ var ActionsHost = class {
         if (this.developmentWatchers.has(watcherKey))
           continue;
         try {
-          const watcher = (0, import_node_fs2.watch)(sourceRoot, { recursive: true, persistent: false }, (_eventType, filename) => {
+          const watcher = (0, import_node_fs3.watch)(sourceRoot, { recursive: true, persistent: false }, (_eventType, filename) => {
             if (typeof filename === "string" && /\.swp$|~$|\.swx$/.test(filename))
               return;
             this.developmentPluginsPendingRestart.add(pluginId);
@@ -94158,7 +101285,7 @@ var ActionsHost = class {
     }
     const liveDirs = /* @__PURE__ */ new Set();
     for (const entry of entries) {
-      const dir = (0, import_node_path4.join)(root5, entry);
+      const dir = (0, import_node_path5.join)(root5, entry);
       try {
         const s2 = await (0, import_promises2.stat)(dir);
         if (!s2.isDirectory())
@@ -94166,8 +101293,8 @@ var ActionsHost = class {
       } catch {
         continue;
       }
-      const manifestPath = (0, import_node_path4.join)(dir, "manifest.json");
-      if (!(0, import_node_fs2.existsSync)(manifestPath))
+      const manifestPath = (0, import_node_path5.join)(dir, "manifest.json");
+      if (!(0, import_node_fs3.existsSync)(manifestPath))
         continue;
       liveDirs.add(entry);
       let hostedPackage;
@@ -94183,7 +101310,7 @@ var ActionsHost = class {
         continue;
       }
       try {
-        await verifyExecutablePluginActivation(this.root, dir, manifest, hostedPackage.cards, hostedPackage.providers, hostedPackage.modelBindings, hostedPackage.generators);
+        await verifyExecutablePluginActivation(this.root, dir, manifest, hostedPackage.cards, hostedPackage.providers, hostedPackage.modelBindings, hostedPackage.generators, hostedPackage.views);
       } catch (error53) {
         const active = this.actions.get(manifest.id);
         if (active)
@@ -94195,7 +101322,7 @@ var ActionsHost = class {
       const entrypoint = manifest.runtime.entrypoint;
       if (!isSafePluginRelativePath(entrypoint))
         continue;
-      if (!(0, import_node_fs2.existsSync)((0, import_node_path4.join)(dir, entrypoint)))
+      if (!(0, import_node_fs3.existsSync)((0, import_node_path5.join)(dir, entrypoint)))
         continue;
       const existing = this.actions.get(manifest.id);
       if (!existing) {
@@ -94308,9 +101435,9 @@ var ActionsHost = class {
     const { manifest, dir } = sup.loaded;
     const executableRuntime = manifest.runtime;
     const entrypoint = executableRuntime.entrypoint;
-    const entrypointPath = (0, import_node_path4.join)(dir, entrypoint);
-    const runtimeDir = (0, import_node_fs2.realpathSync)(dir);
-    const runtimeEntrypointPath = (0, import_node_fs2.realpathSync)(entrypointPath);
+    const entrypointPath = (0, import_node_path5.join)(dir, entrypoint);
+    const runtimeDir = (0, import_node_fs3.realpathSync)(dir);
+    const runtimeEntrypointPath = (0, import_node_fs3.realpathSync)(entrypointPath);
     const sdkPythonDir = resolveSdkPythonDir();
     const childEnv = credentialFreePluginEnv(manifest);
     const ext = entrypoint.toLowerCase().slice(entrypoint.lastIndexOf("."));
@@ -94464,7 +101591,7 @@ function providerHttpInstrumentationPythonEnvironment(instrumentation, inherited
   const inheritedPythonPath = inherited.PYTHONPATH?.trim();
   return {
     ...providerHttpInstrumentationEnvironment(instrumentation),
-    PYTHONPATH: inheritedPythonPath ? `${pythonPath}${import_node_path4.delimiter}${inheritedPythonPath}` : pythonPath
+    PYTHONPATH: inheritedPythonPath ? `${pythonPath}${import_node_path5.delimiter}${inheritedPythonPath}` : pythonPath
   };
 }
 function executablePluginNodeArgs(entrypointPath, runtimeArgs, instrumentation) {
@@ -94488,7 +101615,7 @@ function validateProviderHttpInstrumentationLaunch(instrumentation) {
     ...instrumentation.loaderPath ? [["loaderPath", instrumentation.loaderPath]] : [],
     ...instrumentation.activeStubPath ? [["activeStubPath", instrumentation.activeStubPath]] : []
   ]) {
-    if (!(0, import_node_path4.isAbsolute)(path)) {
+    if (!(0, import_node_path5.isAbsolute)(path)) {
       throw new Error(`Provider HTTP instrumentation ${label} must be absolute.`);
     }
   }
@@ -94508,12 +101635,12 @@ function executablePluginPythonEnv(manifest, sdkPythonDir) {
   return env2;
 }
 function managedLocalModelsPythonBin() {
-  const venvDir = (0, import_node_path4.join)(paths().configDir, "runtimes", "python", "local-models", "venv");
+  const venvDir = (0, import_node_path5.join)(paths().configDir, "runtimes", "python", "local-models", "venv");
   const bin = managedPythonBin(venvDir);
-  return (0, import_node_fs2.existsSync)(bin) ? bin : null;
+  return (0, import_node_fs3.existsSync)(bin) ? bin : null;
 }
 function resolveExecutablePluginPythonBin(opts) {
-  const hasRequirements = (0, import_node_fs2.existsSync)((0, import_node_path4.join)(opts.pluginDir, "requirements.txt"));
+  const hasRequirements = (0, import_node_fs3.existsSync)((0, import_node_path5.join)(opts.pluginDir, "requirements.txt"));
   const explicit = process.env.CLASH_ACTIONS_PYTHON;
   if (explicit) {
     if (!hasRequirements)
@@ -94533,8 +101660,8 @@ function resolveExecutablePluginPythonBin(opts) {
   }
   const venvDir = managedPythonVenvDir();
   const pythonBin = managedPythonBin(venvDir);
-  if (!(0, import_node_fs2.existsSync)(pythonBin)) {
-    (0, import_node_fs2.mkdirSync)(venvDir, { recursive: true });
+  if (!(0, import_node_fs3.existsSync)(pythonBin)) {
+    (0, import_node_fs3.mkdirSync)(venvDir, { recursive: true });
     process.stderr.write(`${opts.logPrefix}actions: python venv create path=${venvDir}
 `);
     if (!runPythonSetup("python3", ["-m", "venv", venvDir], opts.logPrefix, opts.manifestId)) {
@@ -94550,16 +101677,16 @@ function resolveExecutablePluginPythonBin(opts) {
   });
 }
 async function runExecutablePluginContractTests(pluginDirInput) {
-  const pluginDir = (0, import_node_fs2.realpathSync)(pluginDirInput);
+  const pluginDir = (0, import_node_fs3.realpathSync)(pluginDirInput);
   const hostedPackage = await readHostedPackage(pluginDir);
-  const { manifest, cards, providers, modelBindings, generators, contractTests } = hostedPackage;
+  const { manifest, cards, providers, modelBindings, generators, views, contractTests } = hostedPackage;
   if (manifest.runtime.kind !== "local" || manifest.runtime.transport !== "stdio") {
     throw new Error(`Plugin ${manifest.id} is not a local stdio plugin.`);
   }
   if (manifest.contractTests.length === 0) {
     throw new Error(`Plugin ${manifest.id} declares no contract tests.`);
   }
-  const entrypointPath = (0, import_node_fs2.realpathSync)((0, import_node_path4.join)(pluginDir, manifest.runtime.entrypoint));
+  const entrypointPath = (0, import_node_fs3.realpathSync)((0, import_node_path5.join)(pluginDir, manifest.runtime.entrypoint));
   const extension2 = manifest.runtime.entrypoint.toLowerCase().slice(manifest.runtime.entrypoint.lastIndexOf("."));
   if (extension2 !== ".js" && extension2 !== ".mjs" && extension2 !== ".py") {
     throw new Error(`Contract-tested v1 plugins require a .js, .mjs or .py entrypoint; got ${extension2 || "none"}.`);
@@ -94585,7 +101712,7 @@ async function runExecutablePluginContractTests(pluginDirInput) {
     args: executablePluginNodeArgs(entrypointPath, manifest.runtime.args),
     env: credentialFreePluginEnv(manifest)
   };
-  const schemaHash = executablePluginSchemaHash(manifest, cards, providers, modelBindings, generators);
+  const schemaHash = executablePluginSchemaHash(manifest, cards, providers, modelBindings, generators, views);
   const completed = [];
   for (const path of manifest.contractTests) {
     const contractTest = contractTests[path];
@@ -94685,32 +101812,32 @@ function resolveSdkPythonDir() {
     return process.env.CLASH_ACTIONS_SDK_PATH;
   }
   const candidates = [
-    (0, import_node_path4.resolve)(process.cwd(), "packages/clash-sdk/python"),
-    (0, import_node_path4.resolve)(process.cwd(), "../../packages/clash-sdk/python"),
-    (0, import_node_path4.resolve)(process.cwd(), "../clash-sdk/python")
+    (0, import_node_path5.resolve)(process.cwd(), "packages/clash-sdk/python"),
+    (0, import_node_path5.resolve)(process.cwd(), "../../packages/clash-sdk/python"),
+    (0, import_node_path5.resolve)(process.cwd(), "../clash-sdk/python")
   ];
   for (const candidate of candidates) {
-    if ((0, import_node_fs2.existsSync)(candidate))
+    if ((0, import_node_fs3.existsSync)(candidate))
       return candidate;
   }
   return null;
 }
 function managedPythonVenvDir() {
-  return process.env.CLASH_ACTIONS_VENV || (0, import_node_path4.join)(actionsDir(), ".venv");
+  return process.env.CLASH_ACTIONS_VENV || (0, import_node_path5.join)(actionsDir(), ".venv");
 }
 function managedPythonBin(venvDir) {
-  return process.platform === "win32" ? (0, import_node_path4.join)(venvDir, "Scripts", "python.exe") : (0, import_node_path4.join)(venvDir, "bin", "python");
+  return process.platform === "win32" ? (0, import_node_path5.join)(venvDir, "Scripts", "python.exe") : (0, import_node_path5.join)(venvDir, "bin", "python");
 }
 function explicitPythonStampDir(pythonBin) {
   const key = Buffer.from(pythonBin).toString("base64url").slice(0, 80);
-  return (0, import_node_path4.join)(actionsDir(), ".python-deps", key);
+  return (0, import_node_path5.join)(actionsDir(), ".python-deps", key);
 }
 function preparePythonRuntimeDeps(opts) {
   const { pythonBin } = opts;
   const stamp = readPythonDepsStamp(opts.stampDir);
   let changed = false;
-  const requirementsPath = (0, import_node_path4.join)(opts.actionDir, "requirements.txt");
-  if ((0, import_node_fs2.existsSync)(requirementsPath)) {
+  const requirementsPath = (0, import_node_path5.join)(opts.actionDir, "requirements.txt");
+  if ((0, import_node_fs3.existsSync)(requirementsPath)) {
     const requirements = stamp.requirements ?? {};
     const requirementsKey = fileVersionKey(requirementsPath);
     if (requirements[opts.actionDir] !== requirementsKey) {
@@ -94741,23 +101868,26 @@ function runPythonSetup(bin, args, logPrefix, actionId) {
   return false;
 }
 function readPythonDepsStamp(venvDir) {
-  const path = (0, import_node_path4.join)(venvDir, PYTHON_DEPS_STAMP);
-  if (!(0, import_node_fs2.existsSync)(path))
+  const path = (0, import_node_path5.join)(venvDir, PYTHON_DEPS_STAMP);
+  if (!(0, import_node_fs3.existsSync)(path))
     return {};
   try {
-    return JSON.parse((0, import_node_fs2.readFileSync)(path, "utf-8"));
+    return JSON.parse((0, import_node_fs3.readFileSync)(path, "utf-8"));
   } catch {
     return {};
   }
 }
 function writePythonDepsStamp(venvDir, stamp) {
-  (0, import_node_fs2.mkdirSync)(venvDir, { recursive: true });
-  (0, import_node_fs2.writeFileSync)((0, import_node_path4.join)(venvDir, PYTHON_DEPS_STAMP), JSON.stringify(stamp, null, 2) + "\n");
+  (0, import_node_fs3.mkdirSync)(venvDir, { recursive: true });
+  (0, import_node_fs3.writeFileSync)((0, import_node_path5.join)(venvDir, PYTHON_DEPS_STAMP), JSON.stringify(stamp, null, 2) + "\n");
 }
 function fileVersionKey(path) {
-  const s2 = (0, import_node_fs2.statSync)(path);
+  const s2 = (0, import_node_fs3.statSync)(path);
   return `${s2.size}:${Math.round(s2.mtimeMs)}`;
 }
+
+// ../../packages/shared-runtime/dist/asset-edit-plugin.js
+var PLUGIN_SCHEMA_HASH = `sha256:${"a".repeat(64)}`;
 
 // ../../packages/shared-runtime/dist/runtime-config.js
 var desktopChromeMetrics = {
@@ -94791,12 +101921,12 @@ function defaultRuntimeCapabilities(mode) {
 // ../../packages/shared-runtime/dist/metadata-body-blobs.js
 var import_node_crypto5 = require("node:crypto");
 var import_promises5 = require("node:fs/promises");
-var import_node_path6 = require("node:path");
+var import_node_path7 = require("node:path");
 
 // ../../packages/shared-runtime/dist/content-addressed-file.js
 var import_node_crypto4 = require("node:crypto");
 var import_promises3 = require("node:fs/promises");
-var import_node_path5 = require("node:path");
+var import_node_path6 = require("node:path");
 var import_promises4 = require("node:timers/promises");
 function isAlreadyExists(error53) {
   return typeof error53 === "object" && error53 !== null && "code" in error53 && error53.code === "EEXIST";
@@ -94816,9 +101946,9 @@ async function publishContentAddressedFile(path, bytes, options) {
   if (!options.isValidForIdentity(bytes)) {
     throw new Error("Content-addressed candidate does not match its path identity.");
   }
-  const directory = (0, import_node_path5.dirname)(path);
+  const directory = (0, import_node_path6.dirname)(path);
   await (0, import_promises3.mkdir)(directory, { recursive: true });
-  const temporaryPath = (0, import_node_path5.join)(directory, `.${(0, import_node_crypto4.randomUUID)()}.content-addressed.tmp`);
+  const temporaryPath = (0, import_node_path6.join)(directory, `.${(0, import_node_crypto4.randomUUID)()}.content-addressed.tmp`);
   let temporaryExists = false;
   try {
     const handle = await (0, import_promises3.open)(temporaryPath, "wx", 384);
@@ -94898,11 +102028,11 @@ var METADATA_BODY_BLOB_DIRNAME = "metadata-blobs";
 function metadataBodyContentHash(body) {
   return `sha256:${(0, import_node_crypto5.createHash)("sha256").update(body, "utf8").digest("hex")}`;
 }
-function metadataBodyBlobPath(dataDir2, contentHash2) {
+function metadataBodyBlobPath(dataDir3, contentHash2) {
   const digest3 = /^sha256:([a-f0-9]{64})$/u.exec(contentHash2)?.[1];
   if (!digest3)
     throw new Error(`Invalid metadata body content hash: ${contentHash2}`);
-  return (0, import_node_path6.join)(dataDir2, METADATA_BODY_BLOB_DIRNAME, digest3.slice(0, 2), `${digest3}.json`);
+  return (0, import_node_path7.join)(dataDir3, METADATA_BODY_BLOB_DIRNAME, digest3.slice(0, 2), `${digest3}.json`);
 }
 function canonicalMetadataBody(body) {
   const canonical = (value) => {
@@ -95932,11 +103062,6 @@ function deniedGate(reason, requirements = []) {
 function projectTracePolicy() {
   return {
     schemaVersion: 1,
-    roomMessages: {
-      kind: "project-chat",
-      syncDefault: "sync-when-project-sync-enabled",
-      rawAgentTrace: false
-    },
     agentSessionMetadata: {
       kind: "public-session-metadata",
       syncDefault: "sync-when-project-sync-enabled",
@@ -96075,6 +103200,7 @@ function baseResolved(entry) {
   return {
     id: entry.id,
     kind: entry.kind,
+    ...entry.createdAt === void 0 ? {} : { createdAt: entry.createdAt },
     ...entry.name === void 0 ? {} : { name: entry.name },
     metadata: entry.metadata,
     ...entry.provenance === void 0 ? {} : { provenance: entry.provenance },
@@ -96132,6 +103258,7 @@ async function resolveProjectAsset(ports, input) {
       parseResource(registry2.resource, entry);
       return parseResolved({
         ...base,
+        ...entry.createdAt === void 0 && registry2.createdAt !== void 0 ? { createdAt: registry2.createdAt } : {},
         status: "uploading",
         ...registry2.progress === void 0 ? {} : { progress: registry2.progress }
       }, "RESOURCE_CONTRACT_VIOLATION");
@@ -96145,6 +103272,10 @@ async function resolveProjectAsset(ports, input) {
       }, "RESOURCE_CONTRACT_VIOLATION");
     case "ready": {
       const resource = parseResource(registry2.resource, entry);
+      const readyBase = {
+        ...base,
+        ...entry.createdAt === void 0 && registry2.createdAt !== void 0 ? { createdAt: registry2.createdAt } : {}
+      };
       const projection = await ports.projection.resolve({
         projectId,
         entry,
@@ -96156,21 +103287,22 @@ async function resolveProjectAsset(ports, input) {
       switch (projection.status) {
         case "ready":
           return parseResolved({
-            ...base,
+            ...readyBase,
             status: "ready",
             url: projection.url,
-            ...projection.thumbnailUrl === void 0 ? {} : { thumbnailUrl: projection.thumbnailUrl }
+            ...projection.thumbnailUrl === void 0 ? {} : { thumbnailUrl: projection.thumbnailUrl },
+            ...projection.waveformUrl === void 0 ? {} : { waveformUrl: projection.waveformUrl }
           }, "PROJECTION_CONTRACT_VIOLATION");
         case "downloading":
           return parseResolved({
-            ...base,
+            ...readyBase,
             status: "downloading",
             ...projection.progress === void 0 ? {} : { progress: projection.progress }
           }, "PROJECTION_CONTRACT_VIOLATION");
         case "unavailable":
         case "failed":
           return parseResolved({
-            ...base,
+            ...readyBase,
             status: projection.status,
             ...projection.error === void 0 ? {} : { error: projection.error }
           }, "PROJECTION_CONTRACT_VIOLATION");
@@ -96451,7 +103583,8 @@ async function resolveGlobalAsset(ports, libraryId, entry) {
         ...base,
         status: "ready",
         url: projection.url,
-        ...projection.thumbnailUrl === void 0 ? {} : { thumbnailUrl: projection.thumbnailUrl }
+        ...projection.thumbnailUrl === void 0 ? {} : { thumbnailUrl: projection.thumbnailUrl },
+        ...projection.waveformUrl === void 0 ? {} : { waveformUrl: projection.waveformUrl }
       });
     case "downloading":
       return parseResolved2({
@@ -96562,8 +103695,8 @@ function createGlobalAssetClient(ports) {
 }
 
 // ../../packages/shared-runtime/dist/project-host-client.js
-var import_node_path7 = require("node:path");
-var PROJECT_MARKER = (0, import_node_path7.join)(".clash", "project.toml");
+var import_node_path8 = require("node:path");
+var PROJECT_MARKER = (0, import_node_path8.join)(".clash", "project.toml");
 
 // ../../packages/shared-runtime/dist/index.js
 var LOCAL_HOST_RECORD_SCHEMA_VERSION = 1;
@@ -96583,10 +103716,10 @@ function isHostStartedBy(value) {
 }
 
 // ../../apps/local-api/dist/app.js
-var import_promises28 = require("node:fs/promises");
-var import_node_crypto31 = require("node:crypto");
-var import_node_child_process6 = require("node:child_process");
-var import_node_path33 = require("node:path");
+var import_promises29 = require("node:fs/promises");
+var import_node_crypto33 = require("node:crypto");
+var import_node_child_process7 = require("node:child_process");
+var import_node_path35 = require("node:path");
 var import_node_stream14 = require("node:stream");
 var import_node_util10 = require("node:util");
 
@@ -98747,7 +105880,7 @@ var cors = (options) => {
 
 // ../../packages/shared-runtime/dist/local-paths.js
 var import_node_os4 = require("node:os");
-var import_node_path8 = require("node:path");
+var import_node_path9 = require("node:path");
 function resolveClashProfile(env2 = process.env) {
   const profile = env2.CLASH_PROFILE?.trim() || "prod";
   if (profile === "dev" || profile === "prod")
@@ -98757,19 +105890,19 @@ function resolveClashProfile(env2 = process.env) {
 function defaultClashHome(env2 = process.env) {
   const explicit = env2.CLASH_HOME?.trim();
   if (explicit)
-    return (0, import_node_path8.resolve)(explicit);
-  const root5 = (0, import_node_path8.join)((0, import_node_os4.homedir)(), ".clash");
-  return resolveClashProfile(env2) === "dev" ? (0, import_node_path8.join)(root5, "profiles", "dev") : root5;
+    return (0, import_node_path9.resolve)(explicit);
+  const root5 = (0, import_node_path9.join)((0, import_node_os4.homedir)(), ".clash");
+  return resolveClashProfile(env2) === "dev" ? (0, import_node_path9.join)(root5, "profiles", "dev") : root5;
 }
 function defaultLocalApiDataDir(env2 = process.env) {
   const explicit = env2.CLASH_LOCAL_DATA_DIR?.trim();
-  return explicit ? (0, import_node_path8.resolve)(explicit) : (0, import_node_path8.join)(defaultClashHome(env2), "local-api");
+  return explicit ? (0, import_node_path9.resolve)(explicit) : (0, import_node_path9.join)(defaultClashHome(env2), "local-api");
 }
 function clashHomeForLocalDataDir(localDataDir, explicitClashHome) {
   if (explicitClashHome?.trim())
-    return (0, import_node_path8.resolve)(explicitClashHome);
-  const resolved = (0, import_node_path8.resolve)(localDataDir);
-  return (0, import_node_path8.basename)(resolved) === "local-api" ? (0, import_node_path8.dirname)(resolved) : resolved;
+    return (0, import_node_path9.resolve)(explicitClashHome);
+  const resolved = (0, import_node_path9.resolve)(localDataDir);
+  return (0, import_node_path9.basename)(resolved) === "local-api" ? (0, import_node_path9.dirname)(resolved) : resolved;
 }
 
 // ../../apps/local-api/dist/project-command-host.js
@@ -99812,8 +106945,8 @@ function detachLocalDirectorStageGeneratorFromCanvas(doc, definition, stageId) {
 
 // ../../apps/local-api/dist/project-text-projection.js
 var import_node_crypto10 = require("node:crypto");
-var import_node_fs3 = require("node:fs");
-var import_node_path9 = require("node:path");
+var import_node_fs4 = require("node:fs");
+var import_node_path10 = require("node:path");
 function textContentFromNode(node) {
   return typeof node.data?.content === "string" ? node.data.content : "";
 }
@@ -99845,8 +106978,8 @@ function createTextCowNodeData(options) {
   };
 }
 function createTextAppliedRevision(options) {
-  const cwd = (0, import_node_path9.resolve)(options.cwd);
-  const absolutePath = (0, import_node_path9.isAbsolute)(options.filePath) ? (0, import_node_path9.resolve)(options.filePath) : (0, import_node_path9.resolve)(cwd, options.filePath);
+  const cwd = (0, import_node_path10.resolve)(options.cwd);
+  const absolutePath = (0, import_node_path10.isAbsolute)(options.filePath) ? (0, import_node_path10.resolve)(options.filePath) : (0, import_node_path10.resolve)(cwd, options.filePath);
   assertPathInsideCwd(cwd, absolutePath);
   const textId = options.textId ?? `text:${options.projectId}:${options.nodeId}`;
   const contentHash2 = textHash(options.content);
@@ -99870,27 +107003,27 @@ function createTextAppliedRevision(options) {
     createdAt,
     contentHash: contentHash2,
     hashAlgorithm: "sha256-64",
-    sourceFilePath: (0, import_node_path9.relative)(cwd, absolutePath).split(import_node_path9.sep).join("/"),
+    sourceFilePath: (0, import_node_path10.relative)(cwd, absolutePath).split(import_node_path10.sep).join("/"),
     sourceFileHash: contentHash2,
     ...options.actor ? { actor: options.actor } : {}
   };
 }
 function assertPathInsideCwd(cwd, target) {
-  const rel = (0, import_node_path9.relative)(cwd, target);
-  if (rel === ".." || rel.startsWith(`..${import_node_path9.sep}`) || (0, import_node_path9.isAbsolute)(rel)) {
+  const rel = (0, import_node_path10.relative)(cwd, target);
+  if (rel === ".." || rel.startsWith(`..${import_node_path10.sep}`) || (0, import_node_path10.isAbsolute)(rel)) {
     throw new Error("Text revision source path must stay inside the current project cwd");
   }
   let existing = target;
-  while (!(0, import_node_fs3.existsSync)(existing)) {
-    const parent = (0, import_node_path9.dirname)(existing);
+  while (!(0, import_node_fs4.existsSync)(existing)) {
+    const parent = (0, import_node_path10.dirname)(existing);
     if (parent === existing)
       return;
     existing = parent;
   }
-  if (!(0, import_node_fs3.existsSync)(cwd))
+  if (!(0, import_node_fs4.existsSync)(cwd))
     return;
-  const realRel = (0, import_node_path9.relative)(import_node_fs3.realpathSync.native(cwd), import_node_fs3.realpathSync.native(existing));
-  if (realRel === ".." || realRel.startsWith(`..${import_node_path9.sep}`) || (0, import_node_path9.isAbsolute)(realRel)) {
+  const realRel = (0, import_node_path10.relative)(import_node_fs4.realpathSync.native(cwd), import_node_fs4.realpathSync.native(existing));
+  if (realRel === ".." || realRel.startsWith(`..${import_node_path10.sep}`) || (0, import_node_path10.isAbsolute)(realRel)) {
     throw new Error("Text revision source path must not traverse a symlink outside the current project cwd");
   }
 }
@@ -100655,6 +107788,7 @@ function handleCommand(client2, cmd, context) {
         return { error: `Unsupported Canvas node type: ${requestedNodeType}` };
       const outputKind = requestedNodeType.endsWith("_gen") ? generationOutputType(requestedNodeType) : void 0;
       const isGenerationNode = outputKind !== void 0;
+      const isProjectAssetNode = requestedNodeType === "image" || requestedNodeType === "video" || requestedNodeType === "audio";
       const data = { label: cmd.label };
       if (typeof cmd.parentId === "string") {
         const parent = client2.readNode(cmd.parentId);
@@ -100664,6 +107798,39 @@ function handleCommand(client2, cmd, context) {
       }
       if (!isGenerationNode && (cmd.prompt !== void 0 || cmd.modelId !== void 0 || cmd.actionId !== void 0 || cmd.refs !== void 0 || cmd.params !== void 0)) {
         return { error: `Generation fields are not valid for Canvas node type ${requestedNodeType}` };
+      }
+      if (!isProjectAssetNode && cmd.assetId !== void 0) {
+        return { error: `assetId is only valid when projecting an image, video, or audio Project Asset` };
+      }
+      if (isProjectAssetNode) {
+        const assetId = typeof cmd.assetId === "string" ? cmd.assetId.trim() : "";
+        if (!assetId) {
+          return {
+            code: "PROJECT_ASSET_REQUIRED",
+            error: `Canvas node type ${requestedNodeType} requires an existing Project Asset ID`
+          };
+        }
+        const asset = readProjectAsset(client2.doc, assetId);
+        if (!asset) {
+          return {
+            code: "PROJECT_ASSET_NOT_FOUND",
+            error: `Project Asset not found: ${assetId}`
+          };
+        }
+        if (asset.lifecycle.state !== "active") {
+          return {
+            code: "PROJECT_ASSET_NOT_ACTIVE",
+            error: `Project Asset ${assetId} is ${asset.lifecycle.state}, not active`
+          };
+        }
+        if (asset.kind !== requestedNodeType) {
+          return {
+            code: "PROJECT_ASSET_KIND_MISMATCH",
+            error: `Project Asset ${assetId} has kind ${asset.kind}, expected ${requestedNodeType}`
+          };
+        }
+        data.assetId = asset.id;
+        data.status = "completed";
       }
       if (cmd.actionId !== void 0 && cmd.modelId !== void 0) {
         return { error: "Canvas add accepts either actionId or modelId, not both" };
@@ -100784,6 +107951,23 @@ function handleCommand(client2, cmd, context) {
       const node = client2.readNode(cmd.nodeId);
       if (!node)
         return { error: `Node not found: ${cmd.nodeId}` };
+      if (node.type === "plugin-view") {
+        const unsupported = Object.keys(updates).filter((field3) => field3 !== "label" && field3 !== "state");
+        if (unsupported.length > 0) {
+          return {
+            error: `Plugin View updates accept only label and structured state; got ${unsupported.join(", ")}`
+          };
+        }
+        if (Object.prototype.hasOwnProperty.call(updates, "state")) {
+          const state2 = StoryboardViewStateSchema.safeParse(updates.state);
+          if (!state2.success) {
+            return { code: "INVALID_VIEW_STATE", error: state2.error.message };
+          }
+          updates.state = state2.data;
+        }
+      } else if (Object.prototype.hasOwnProperty.call(updates, "state")) {
+        return { error: "Structured View state can only be applied to a plugin-view node" };
+      }
       const currentReadToken = canvasNodeReadToken(node);
       const observedVersion = typeof cmd.observedVersion === "string" ? cmd.observedVersion : void 0;
       const readProof = typeof cmd.ifMatch === "string" ? validateCanvasReadProof({
@@ -101321,6 +108505,18 @@ function handleCommand(client2, cmd, context) {
       });
       if (!hostMutation.ok)
         return { error: hostMutation.error, mutation: hostMutation.mutation };
+      if (!isCanvasNodeImmutable({
+        nodeId: cmd.nodeId,
+        edges: client2.canvas.listEdges()
+      })) {
+        const code = "NODE_NOT_IMMUTABLE";
+        const error53 = "Copy-on-write replacement is only valid for an immutable media node with downstream references; add an independent Project Asset to the Canvas instead";
+        return {
+          code,
+          error: error53,
+          mutation: hostMutationRejected(hostMutation.envelope, error53)
+        };
+      }
       const newNodeId = typeof cmd.newNodeId === "string" && cmd.newNodeId.length > 0 ? cmd.newNodeId : crypto.randomUUID().slice(0, 8);
       const sourceAssetId = typeof node.data?.assetId === "string" ? node.data.assetId : void 0;
       const data = createMediaAssetCowNodeData({
@@ -101437,15 +108633,15 @@ function readTextRevisionActor(value) {
 // ../../apps/local-api/dist/provider-execution-handoff.js
 var import_node_module = require("node:module");
 var import_promises6 = require("node:fs/promises");
-var import_node_path10 = require("node:path");
+var import_node_path11 = require("node:path");
 var nodeRequire = (0, import_node_module.createRequire)(__clash_import_meta_url);
 function nonEmpty3(value, field3) {
   if (!value.trim())
     throw new Error(`Provider execution handoff ${field3} is required.`);
   return value;
 }
-function createProviderExecutionHandoffStore(dataDir2) {
-  const path = (0, import_node_path10.join)(dataDir2, "local.sqlite");
+function createProviderExecutionHandoffStore(dataDir3) {
+  const path = (0, import_node_path11.join)(dataDir3, "local.sqlite");
   async function databaseExists() {
     try {
       await (0, import_promises6.access)(path);
@@ -101455,7 +108651,7 @@ function createProviderExecutionHandoffStore(dataDir2) {
     }
   }
   async function withDatabase(task) {
-    await (0, import_promises6.mkdir)(dataDir2, { recursive: true });
+    await (0, import_promises6.mkdir)(dataDir3, { recursive: true });
     const { DatabaseSync } = nodeRequire("node:sqlite");
     const database = new DatabaseSync(path);
     try {
@@ -101537,9 +108733,9 @@ var import_promises12 = require("node:fs/promises");
 
 // ../../apps/local-api/dist/local-asset-paths.js
 var import_promises7 = require("node:fs/promises");
-var import_node_path11 = require("node:path");
-function assetRoot(dataDir2) {
-  return (0, import_node_path11.join)(dataDir2, "assets");
+var import_node_path12 = require("node:path");
+function assetRoot(dataDir3) {
+  return (0, import_node_path12.join)(dataDir3, "assets");
 }
 function normalizeAssetStorageKey(storageKey) {
   const raw2 = storageKey.trim();
@@ -101551,44 +108747,44 @@ function normalizeAssetStorageKey(storageKey) {
   if (segments.some((segment) => !segment || segment === "." || segment === "..")) {
     throw new Error("Invalid asset storage key");
   }
-  return (0, import_node_path11.normalize)(slashKey).replace(/\\/g, "/");
+  return (0, import_node_path12.normalize)(slashKey).replace(/\\/g, "/");
 }
 function localBlobAssetPath(clashRoot, storageKey) {
-  const root5 = (0, import_node_path11.join)(clashRoot, "assets", "blobs");
+  const root5 = (0, import_node_path12.join)(clashRoot, "assets", "blobs");
   const blobKey = storageKey.slice("local-blobs/".length);
-  const resolved = (0, import_node_path11.normalize)((0, import_node_path11.join)(root5, blobKey));
-  const rel = (0, import_node_path11.relative)(root5, resolved);
+  const resolved = (0, import_node_path12.normalize)((0, import_node_path12.join)(root5, blobKey));
+  const rel = (0, import_node_path12.relative)(root5, resolved);
   if (!blobKey || rel.startsWith("..") || rel === "..") {
     throw new Error("Invalid local blob path");
   }
   return resolved;
 }
-function assetPath(dataDir2, storageKey, clashRoot) {
+function assetPath(dataDir3, storageKey, clashRoot) {
   const normalizedKey = normalizeAssetStorageKey(storageKey);
   if (normalizedKey.startsWith("local-blobs/")) {
-    return localBlobAssetPath(clashHomeForLocalDataDir(dataDir2, clashRoot), normalizedKey);
+    return localBlobAssetPath(clashHomeForLocalDataDir(dataDir3, clashRoot), normalizedKey);
   }
-  const root5 = assetRoot(dataDir2);
-  const resolved = (0, import_node_path11.normalize)((0, import_node_path11.join)(root5, normalizedKey));
-  const rel = (0, import_node_path11.relative)(root5, resolved);
+  const root5 = assetRoot(dataDir3);
+  const resolved = (0, import_node_path12.normalize)((0, import_node_path12.join)(root5, normalizedKey));
+  const rel = (0, import_node_path12.relative)(root5, resolved);
   if (rel.startsWith("..") || rel === "..") {
     throw new Error("Invalid asset path");
   }
   return resolved;
 }
-function localAssetPathCandidate(dataDir2, storageKey, clashRoot) {
+function localAssetPathCandidate(dataDir3, storageKey, clashRoot) {
   const normalizedKey = normalizeAssetStorageKey(storageKey);
   if (normalizedKey.startsWith("local-blobs/")) {
-    const ownerRoot2 = clashHomeForLocalDataDir(dataDir2, clashRoot);
-    const root5 = (0, import_node_path11.join)(ownerRoot2, "assets", "blobs");
+    const ownerRoot2 = clashHomeForLocalDataDir(dataDir3, clashRoot);
+    const root5 = (0, import_node_path12.join)(ownerRoot2, "assets", "blobs");
     return { ownerRoot: ownerRoot2, root: root5, path: localBlobAssetPath(ownerRoot2, normalizedKey) };
   }
-  const ownerRoot = (0, import_node_path11.resolve)(dataDir2);
-  return { ownerRoot, root: assetRoot(dataDir2), path: assetPath(dataDir2, normalizedKey, clashRoot) };
+  const ownerRoot = (0, import_node_path12.resolve)(dataDir3);
+  return { ownerRoot, root: assetRoot(dataDir3), path: assetPath(dataDir3, normalizedKey, clashRoot) };
 }
 function assertRealAssetPathInsideRoot(rootRealPath, targetRealPath) {
-  const rel = (0, import_node_path11.relative)(rootRealPath, targetRealPath);
-  if (rel.startsWith("..") || rel === ".." || (0, import_node_path11.isAbsolute)(rel)) {
+  const rel = (0, import_node_path12.relative)(rootRealPath, targetRealPath);
+  if (rel.startsWith("..") || rel === ".." || (0, import_node_path12.isAbsolute)(rel)) {
     throw new Error("Asset path escapes local asset storage");
   }
 }
@@ -101601,8 +108797,8 @@ async function realpathOrNull(path) {
     throw error53;
   }
 }
-async function assetPathForRead(dataDir2, storageKey, clashRoot) {
-  const candidate = localAssetPathCandidate(dataDir2, storageKey, clashRoot);
+async function assetPathForRead(dataDir3, storageKey, clashRoot) {
+  const candidate = localAssetPathCandidate(dataDir3, storageKey, clashRoot);
   const ownerRootRealPath = await (0, import_promises7.realpath)(candidate.ownerRoot);
   const rootRealPath = await (0, import_promises7.realpath)(candidate.root);
   assertRealAssetPathInsideRoot(ownerRootRealPath, rootRealPath);
@@ -101610,15 +108806,15 @@ async function assetPathForRead(dataDir2, storageKey, clashRoot) {
   assertRealAssetPathInsideRoot(rootRealPath, targetRealPath);
   return candidate.path;
 }
-async function assetPathForWrite(dataDir2, storageKey, clashRoot) {
-  const candidate = localAssetPathCandidate(dataDir2, storageKey, clashRoot);
+async function assetPathForWrite(dataDir3, storageKey, clashRoot) {
+  const candidate = localAssetPathCandidate(dataDir3, storageKey, clashRoot);
   await (0, import_promises7.mkdir)(candidate.ownerRoot, { recursive: true });
   await (0, import_promises7.mkdir)(candidate.root, { recursive: true });
   const ownerRootRealPath = await (0, import_promises7.realpath)(candidate.ownerRoot);
   const rootRealPath = await (0, import_promises7.realpath)(candidate.root);
   assertRealAssetPathInsideRoot(ownerRootRealPath, rootRealPath);
-  await (0, import_promises7.mkdir)((0, import_node_path11.dirname)(candidate.path), { recursive: true });
-  const parentRealPath = await (0, import_promises7.realpath)((0, import_node_path11.dirname)(candidate.path));
+  await (0, import_promises7.mkdir)((0, import_node_path12.dirname)(candidate.path), { recursive: true });
+  const parentRealPath = await (0, import_promises7.realpath)((0, import_node_path12.dirname)(candidate.path));
   assertRealAssetPathInsideRoot(rootRealPath, parentRealPath);
   const existingTargetRealPath = await realpathOrNull(candidate.path);
   if (existingTargetRealPath) {
@@ -101632,8 +108828,8 @@ function normalizeLocalBlobStorageKey(localBlobKey) {
     throw new Error("localBlobKey must start with blobs/");
   }
   const root5 = "blobs";
-  const resolved = (0, import_node_path11.normalize)((0, import_node_path11.join)(root5, normalized.slice("blobs/".length)));
-  const rel = (0, import_node_path11.relative)(root5, resolved);
+  const resolved = (0, import_node_path12.normalize)((0, import_node_path12.join)(root5, normalized.slice("blobs/".length)));
+  const rel = (0, import_node_path12.relative)(root5, resolved);
   if (!rel || rel.startsWith("..") || rel === "..") {
     throw new Error("Invalid local blob path");
   }
@@ -101643,7 +108839,7 @@ function normalizeLocalBlobStorageKey(localBlobKey) {
 // ../../apps/local-api/dist/local-metadata-store.js
 var import_node_module2 = require("node:module");
 var import_promises8 = require("node:fs/promises");
-var import_node_path12 = require("node:path");
+var import_node_path13 = require("node:path");
 var EMPTY_METADATA_DB = {
   projects: [],
   assets: [],
@@ -101658,8 +108854,8 @@ var METADATA_MIGRATION_ID = "metadata-sqlite-v1";
 var LEGACY_PERSONAL_GLOBAL_ASSET_MIGRATION_ID = "legacy-personal-global-assets-v1";
 var require2 = (0, import_node_module2.createRequire)(__clash_import_meta_url);
 var nodeRequire2 = (0, import_node_module2.createRequire)(__clash_import_meta_url);
-function sqlitePath(dataDir2) {
-  return (0, import_node_path12.join)(dataDir2, "local.sqlite");
+function sqlitePath(dataDir3) {
+  return (0, import_node_path13.join)(dataDir3, "local.sqlite");
 }
 function openDatabase(path) {
   const { DatabaseSync } = nodeRequire2("node:sqlite");
@@ -101835,6 +109031,7 @@ function applySchema(db) {
       permission_mode TEXT,
       acp_session_id TEXT,
       status TEXT,
+      archived_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -101858,6 +109055,14 @@ function applySchema(db) {
       events_json TEXT NOT NULL,
       created_at INTEGER NOT NULL,
       PRIMARY KEY (session_id, id)
+    );
+
+    CREATE TABLE IF NOT EXISTS session_event (
+      seq INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      data TEXT NOT NULL,
+      ts INTEGER NOT NULL
     );
 
 	    CREATE TABLE IF NOT EXISTS mutation_audit (
@@ -101906,6 +109111,7 @@ function applySchema(db) {
     CREATE INDEX IF NOT EXISTS runtime_session_project_idx ON runtime_session(project_id, updated_at);
     CREATE INDEX IF NOT EXISTS agent_member_user_idx ON agent_member(user_id, created_at);
 	    CREATE INDEX IF NOT EXISTS chat_message_session_idx ON chat_message(session_id, created_at);
+	    CREATE INDEX IF NOT EXISTS session_event_session_idx ON session_event(session_id, seq);
 	    CREATE INDEX IF NOT EXISTS mutation_audit_created_idx ON mutation_audit(created_at DESC, id DESC);
     CREATE INDEX IF NOT EXISTS mutation_audit_operation_idx ON mutation_audit(operation, created_at DESC);
     CREATE INDEX IF NOT EXISTS mutation_audit_entity_idx ON mutation_audit(entity_kind, entity_id, created_at DESC);
@@ -102001,6 +109207,7 @@ function ensureLocalMetadataColumns(db) {
     "permission_mode TEXT",
     "acp_session_id TEXT",
     "status TEXT",
+    "archived_at TEXT",
     "created_at TEXT NOT NULL DEFAULT ''",
     "updated_at TEXT NOT NULL DEFAULT ''"
   ]) {
@@ -102235,14 +109442,14 @@ function hasRows(db) {
 function hasMigrationMarker(db, id2 = METADATA_MIGRATION_ID) {
   return Boolean(db.prepare("SELECT id FROM local_migration WHERE id = ?").get(id2));
 }
-function markMigration(db, dataDir2, sourceSha256, id2 = METADATA_MIGRATION_ID) {
+function markMigration(db, dataDir3, sourceSha256, id2 = METADATA_MIGRATION_ID) {
   db.prepare(`
     INSERT OR REPLACE INTO local_migration (id, completed_at, source_path, source_sha256)
     VALUES (?, ?, ?, ?)
-  `).run(id2, Math.floor(Date.now() / 1e3), sqlitePath(dataDir2), sourceSha256);
+  `).run(id2, Math.floor(Date.now() / 1e3), sqlitePath(dataDir3), sourceSha256);
 }
-function createLocalMetadataStore(dataDir2) {
-  const path = sqlitePath(dataDir2);
+function createLocalMetadataStore(dataDir3) {
+  const path = sqlitePath(dataDir3);
   async function exists2() {
     try {
       await (0, import_promises8.stat)(path);
@@ -102252,7 +109459,7 @@ function createLocalMetadataStore(dataDir2) {
     }
   }
   async function withDb(task) {
-    await (0, import_promises8.mkdir)(dataDir2, { recursive: true });
+    await (0, import_promises8.mkdir)(dataDir3, { recursive: true });
     const db = openDatabase(path);
     try {
       applySchema(db);
@@ -102269,6 +109476,31 @@ function createLocalMetadataStore(dataDir2) {
         accepted, reason, result_entity_id, error, mutation_json
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(record3.id, record3.createdAt, record3.operation, record3.entity.kind, record3.entity.id, record3.actorClientType ?? null, record3.accepted ? 1 : 0, record3.reason ?? null, record3.resultEntityId ?? null, record3.error ?? null, JSON.stringify(record3.mutation));
+  }
+  async function appendSessionEvent(sessionId, event) {
+    await withDb((db) => {
+      db.prepare(`INSERT INTO session_event (session_id, type, data, ts) VALUES (?, ?, ?, ?)`).run(sessionId, event.type, JSON.stringify(event.data), event.ts);
+    });
+  }
+  async function listSessionEvents(sessionId) {
+    return withDb((db) => db.prepare(`SELECT seq, type, data, ts FROM session_event WHERE session_id = ? ORDER BY seq ASC`).all(sessionId).map((row) => ({
+      seq: rowNumber(row, "seq"),
+      type: rowString(row, "type"),
+      data: parseJson(row.data, null),
+      ts: rowNumber(row, "ts")
+    })));
+  }
+  async function renameSessionEvents(previousSessionId, nextSessionId) {
+    if (previousSessionId === nextSessionId)
+      return;
+    await withDb((db) => {
+      db.prepare(`UPDATE session_event SET session_id = ? WHERE session_id = ?`).run(nextSessionId, previousSessionId);
+    });
+  }
+  async function deleteSessionEvents(sessionId) {
+    await withDb((db) => {
+      db.prepare(`DELETE FROM session_event WHERE session_id = ?`).run(sessionId);
+    });
   }
   async function load() {
     if (!await exists2())
@@ -102366,7 +109598,7 @@ function createLocalMetadataStore(dataDir2) {
       const sessions = db.prepare(`
         SELECT id, project_id, title, type, runtime_id, agent_id,
                agent_template_id, permission_mode, acp_session_id, status,
-               created_at, updated_at
+               archived_at, created_at, updated_at
           FROM runtime_session
          ORDER BY updated_at DESC, created_at DESC
       `).all().map((row) => ({
@@ -102382,6 +109614,7 @@ function createLocalMetadataStore(dataDir2) {
         ...rowOptionalString(row, "status") ? {
           status: rowOptionalString(row, "status")
         } : {},
+        ...rowOptionalString(row, "archived_at") ? { archivedAt: rowOptionalString(row, "archived_at") } : {},
         createdAt: rowString(row, "created_at"),
         updatedAt: rowString(row, "updated_at")
       }));
@@ -102490,11 +109723,11 @@ function createLocalMetadataStore(dataDir2) {
         const insertSession = db.prepare(`
           INSERT INTO runtime_session (
             id, project_id, title, type, runtime_id, agent_id, agent_template_id,
-            permission_mode, acp_session_id, status, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            permission_mode, acp_session_id, status, archived_at, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         for (const session of metadata.sessions) {
-          insertSession.run(session.id, session.projectId, session.title, session.type ?? "cloud", session.runtimeId ?? null, session.agentId ?? null, session.agentTemplateId ?? null, session.permissionMode ?? null, session.acpSessionId ?? null, session.status ?? null, session.createdAt, session.updatedAt);
+          insertSession.run(session.id, session.projectId, session.title, session.type ?? "cloud", session.runtimeId ?? null, session.agentId ?? null, session.agentTemplateId ?? null, session.permissionMode ?? null, session.acpSessionId ?? null, session.status ?? null, session.archivedAt ?? null, session.createdAt, session.updatedAt);
         }
         const insertAgentMember = db.prepare(`
           INSERT INTO agent_member (id, user_id, template_id, runtime_id, agent_id, display_name, created_at)
@@ -102510,7 +109743,7 @@ function createLocalMetadataStore(dataDir2) {
         for (const message of metadata.sessionMessages) {
           insertMessage.run(message.session_id, message.id, message.sender_kind, message.sender_id, message.turn_id, JSON.stringify(message.events), message.created_at);
         }
-        markMigration(db, dataDir2, "");
+        markMigration(db, dataDir3, "");
         db.exec("COMMIT");
       } catch (error53) {
         db.exec("ROLLBACK");
@@ -102577,7 +109810,7 @@ function createLocalMetadataStore(dataDir2) {
             name, metadata_json, provenance_json, created_at, updated_at
           ) VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
         `).run(libraryId, entry.id, entry.kind, entry.resourceId, entry.name ?? null, JSON.stringify(entry.metadata), jsonOrNull(entry.provenance), now, now);
-        markMigration(db, dataDir2, "");
+        markMigration(db, dataDir3, "");
         db.exec("COMMIT");
         return entry;
       } catch (error53) {
@@ -102628,7 +109861,7 @@ function createLocalMetadataStore(dataDir2) {
             continue;
           insert.run(entry.id, entry.kind, entry.resourceId, entry.name ?? null, JSON.stringify(entry.metadata), jsonOrNull(entry.provenance), now, now);
         }
-        markMigration(db, dataDir2, "", LEGACY_PERSONAL_GLOBAL_ASSET_MIGRATION_ID);
+        markMigration(db, dataDir3, "", LEGACY_PERSONAL_GLOBAL_ASSET_MIGRATION_ID);
         db.exec("COMMIT");
       } catch (error53) {
         db.exec("ROLLBACK");
@@ -102675,7 +109908,7 @@ function createLocalMetadataStore(dataDir2) {
                  updated_at = ?
            WHERE library_id = ? AND id = ?
         `).run(deleteOperationId, deletedAt, purgeAfter, Date.now(), libraryId, id2);
-        markMigration(db, dataDir2, "");
+        markMigration(db, dataDir3, "");
         db.exec("COMMIT");
         return { ...current, lifecycle };
       } catch (error53) {
@@ -102716,7 +109949,7 @@ function createLocalMetadataStore(dataDir2) {
            WHERE library_id = ? AND id = ?
              AND lifecycle_state = 'trashed' AND delete_operation_id = ?
         `).run(Date.now(), libraryId, id2, deleteOperationId);
-        markMigration(db, dataDir2, "");
+        markMigration(db, dataDir3, "");
         db.exec("COMMIT");
         return { ...current, lifecycle: { state: "active" } };
       } catch (error53) {
@@ -102759,7 +109992,7 @@ function createLocalMetadataStore(dataDir2) {
                  purged_at = ?, updated_at = ?
            WHERE library_id = ? AND id = ?
         `).run(purgedAt, Date.now(), libraryId, id2);
-        markMigration(db, dataDir2, "");
+        markMigration(db, dataDir3, "");
         db.exec("COMMIT");
         return { ...current, lifecycle };
       } catch (error53) {
@@ -102773,7 +110006,7 @@ function createLocalMetadataStore(dataDir2) {
       db.exec("BEGIN IMMEDIATE");
       try {
         insertMutationAudit(db, record3);
-        markMigration(db, dataDir2, "");
+        markMigration(db, dataDir3, "");
         db.exec("COMMIT");
       } catch (error53) {
         db.exec("ROLLBACK");
@@ -102827,7 +110060,7 @@ function createLocalMetadataStore(dataDir2) {
             invocation_id, request_id, operation, target, status, error
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(record3.id, record3.occurredAt, record3.pluginId, record3.pluginVersion, record3.projectId, record3.invocationId, record3.requestId, record3.operation, record3.target, record3.status, record3.error ?? null);
-        markMigration(db, dataDir2, "");
+        markMigration(db, dataDir3, "");
         db.exec("COMMIT");
       } catch (error53) {
         db.exec("ROLLBACK");
@@ -102892,7 +110125,7 @@ function createLocalMetadataStore(dataDir2) {
         `).run(revision.revisionId, revision.textId, revision.parentRevisionId ?? null, revision.projectId, revision.nodeId, revision.createdAt, revision.contentHash, revision.hashAlgorithm, revision.sourceFilePath, revision.sourceFileHash, jsonOrNull(revision.actor));
         if (auditRecord)
           insertMutationAudit(db, auditRecord);
-        markMigration(db, dataDir2, "");
+        markMigration(db, dataDir3, "");
         db.exec("COMMIT");
       } catch (error53) {
         db.exec("ROLLBACK");
@@ -102999,7 +110232,7 @@ function createLocalMetadataStore(dataDir2) {
         db.prepare(`INSERT INTO workspace_import_receipt (
              bundle_digest, project_id, imported_at
            ) VALUES (?, ?, ?)`).run(digest3, project.id, input.importedAt);
-        markMigration(db, dataDir2, "");
+        markMigration(db, dataDir3, "");
         db.exec("COMMIT");
         return {
           projectId: project.id,
@@ -103128,6 +110361,10 @@ function createLocalMetadataStore(dataDir2) {
     path,
     load,
     save,
+    appendSessionEvent,
+    listSessionEvents,
+    renameSessionEvents,
+    deleteSessionEvents,
     readGlobalAsset,
     listGlobalAssets,
     createGlobalAsset,
@@ -103154,10 +110391,10 @@ function createLocalMetadataStore(dataDir2) {
 
 // ../../apps/local-api/dist/local-resource-store.js
 var import_node_crypto12 = require("node:crypto");
-var import_node_fs4 = require("node:fs");
+var import_node_fs5 = require("node:fs");
 var import_node_module3 = require("node:module");
 var import_promises9 = require("node:fs/promises");
-var import_node_path13 = require("node:path");
+var import_node_path14 = require("node:path");
 var import_node_stream = require("node:stream");
 function resourceIdForSha256(digest3) {
   if (!/^[a-f0-9]{64}$/.test(digest3)) {
@@ -103227,7 +110464,8 @@ function parseRow(row) {
   const contentType = row.content_type;
   const storageKey = row.storage_key;
   const factsVerified = row.facts_verified;
-  if (typeof resourceId !== "string" || !kind.success || typeof digest3 !== "string" || !/^[a-f0-9]{64}$/.test(digest3) || typeof byteLength !== "number" || !Number.isSafeInteger(byteLength) || byteLength < 0 || contentType !== null && typeof contentType !== "string" || typeof storageKey !== "string" || factsVerified !== 0 && factsVerified !== 1) {
+  const createdAt = row.created_at;
+  if (typeof resourceId !== "string" || !kind.success || typeof digest3 !== "string" || !/^[a-f0-9]{64}$/.test(digest3) || typeof byteLength !== "number" || !Number.isSafeInteger(byteLength) || byteLength < 0 || contentType !== null && typeof contentType !== "string" || typeof storageKey !== "string" || factsVerified !== 0 && factsVerified !== 1 || typeof createdAt !== "number" || !Number.isSafeInteger(createdAt) || createdAt < 0) {
     throw new Error("Local Resource registry row is corrupt.");
   }
   if (resourceId !== resourceIdForSha256(digest3)) {
@@ -103240,7 +110478,8 @@ function parseRow(row) {
     byteLength,
     ...typeof contentType === "string" && contentType ? { contentType } : {},
     storageKey,
-    factsVerified: factsVerified === 1
+    factsVerified: factsVerified === 1,
+    createdAt
   };
 }
 function resourceFromRow(row) {
@@ -103273,7 +110512,7 @@ async function writeAll(handle, chunk) {
 }
 function pathlessReadStream(path) {
   return import_node_stream.Readable.from(async function* () {
-    const source = (0, import_node_fs4.createReadStream)(path);
+    const source = (0, import_node_fs5.createReadStream)(path);
     try {
       for await (const chunk of source) {
         if (!(chunk instanceof Uint8Array)) {
@@ -103291,7 +110530,7 @@ function normalizedContentType(value) {
   return normalized || void 0;
 }
 function extensionFor(input) {
-  const named = (0, import_node_path13.extname)(input.originalName ?? "").toLowerCase();
+  const named = (0, import_node_path14.extname)(input.originalName ?? "").toLowerCase();
   if (/^\.[a-z0-9]{1,10}$/.test(named))
     return named;
   const byType = {
@@ -103328,7 +110567,7 @@ function createLocalResourceStore(options) {
     return withDatabase((database) => {
       const row = database.prepare(`
           SELECT resource_id, kind, digest_sha256, byte_length,
-                 content_type, storage_key, facts_verified
+                 content_type, storage_key, facts_verified, created_at
           FROM local_resources
           WHERE resource_id = ?
         `).get(resourceId);
@@ -103368,7 +110607,12 @@ function createLocalResourceStore(options) {
     } catch (error53) {
       throw new Error(`Local Resource ${row.resourceId} is corrupt: bytes do not match its immutable digest.`, { cause: error53 });
     }
-    return { resource: resourceFromRow(row), storageKey: row.storageKey, path };
+    return {
+      resource: resourceFromRow(row),
+      createdAt: row.createdAt,
+      storageKey: row.storageKey,
+      path
+    };
   }
   async function stagingProjection(row) {
     const path = await assetPathForRead(options.dataDir, row.storageKey, options.clashRoot);
@@ -103423,7 +110667,7 @@ function createLocalResourceStore(options) {
   async function verifyBytes(input) {
     const digest3 = (0, import_node_crypto12.createHash)("sha256");
     let byteLength = 0;
-    for await (const chunk of (0, import_node_fs4.createReadStream)(input.path)) {
+    for await (const chunk of (0, import_node_fs5.createReadStream)(input.path)) {
       if (!(chunk instanceof Uint8Array)) {
         throw new Error("Local Resource read stream returned a non-byte chunk.");
       }
@@ -103745,9 +110989,9 @@ var import_node_util2 = require("node:util");
 var import_saxes = __toESM(require_saxes(), 1);
 
 // ../../apps/local-api/dist/local-media-binaries.js
-var import_node_fs5 = require("node:fs");
+var import_node_fs6 = require("node:fs");
 var import_node_module4 = require("node:module");
-var import_node_path14 = require("node:path");
+var import_node_path15 = require("node:path");
 var nodeRequire4 = (0, import_node_module4.createRequire)(__clash_import_meta_url);
 var installerPackage = {
   ffmpeg: "@ffmpeg-installer/ffmpeg",
@@ -103773,9 +111017,9 @@ function isExecutableFile(path, platform3) {
   if (/(?:^|[\\/])app\.asar(?:[\\/]|$)/.test(path))
     return false;
   try {
-    if (!(0, import_node_fs5.statSync)(path).isFile())
+    if (!(0, import_node_fs6.statSync)(path).isFile())
       return false;
-    (0, import_node_fs5.accessSync)(path, platform3 === "win32" ? import_node_fs5.constants.F_OK : import_node_fs5.constants.X_OK);
+    (0, import_node_fs6.accessSync)(path, platform3 === "win32" ? import_node_fs6.constants.F_OK : import_node_fs6.constants.X_OK);
     return true;
   } catch {
     return false;
@@ -103786,8 +111030,8 @@ function preparePackagedExecutable(path, platform3) {
     return path;
   if (platform3 !== "win32" && !isExecutableFile(path, platform3)) {
     try {
-      if ((0, import_node_fs5.statSync)(path).isFile())
-        (0, import_node_fs5.chmodSync)(path, 493);
+      if ((0, import_node_fs6.statSync)(path).isFile())
+        (0, import_node_fs6.chmodSync)(path, 493);
     } catch {
       return path;
     }
@@ -103808,7 +111052,7 @@ function resolveLocalMediaBinary(tool, options = {}) {
   const platform3 = options.platform ?? process.platform;
   const env2 = { ...options.env ?? process.env };
   if (tool === "ffprobe" && !env2.FFPROBE_PATH && env2.FFMPEG_PATH) {
-    env2.FFPROBE_PATH = (0, import_node_path14.join)((0, import_node_path14.dirname)(env2.FFMPEG_PATH), "ffprobe");
+    env2.FFPROBE_PATH = (0, import_node_path15.join)((0, import_node_path15.dirname)(env2.FFMPEG_PATH), "ffprobe");
   }
   return selectLocalMediaBinary({
     tool,
@@ -104274,14 +111518,14 @@ function createLocalFfprobeAssetInspector(options) {
     const streams = Array.isArray(root5.streams) ? root5.streams.map(record).filter((item) => !!item) : [];
     const frames = Array.isArray(root5.frames) ? root5.frames.map(record).filter((item) => !!item) : [];
     const video = streams.find((stream) => stream.codec_type === "video");
-    const firstVideoFrame = frames.find((frame) => frame.media_type === "video" || frame.codec_type === "video");
+    const firstVideoFrame2 = frames.find((frame) => frame.media_type === "video" || frame.codec_type === "video");
     const audio = streams.find((stream) => stream.codec_type === "audio");
     const format2 = record(root5.format);
     const formatName = optionalNonEmptyString(format2?.format_name);
     const majorBrand = optionalNonEmptyString(record(format2?.tags)?.major_brand);
     const width = optionalPositiveInteger(video?.width);
     const height = optionalPositiveInteger(video?.height);
-    const rotationSource = firstVideoFrame && displayMatrixSideData(firstVideoFrame) ? firstVideoFrame : video;
+    const rotationSource = firstVideoFrame2 && displayMatrixSideData(firstVideoFrame2) ? firstVideoFrame2 : video;
     const rotation = rotationSource ? displayRotationDegrees(rotationSource) : void 0;
     const swapsDisplayDimensions = rotation === 90 || rotation === 270;
     const displayWidth = swapsDisplayDimensions ? height : width;
@@ -104378,7 +111622,6 @@ function openDatabase3(path) {
   database.exec(`
     PRAGMA busy_timeout = 5000;
     PRAGMA journal_mode = WAL;
-    DROP TABLE IF EXISTS local_asset_representations;
     CREATE TABLE IF NOT EXISTS local_asset_inspections (
       source_resource_id TEXT NOT NULL,
       recipe TEXT NOT NULL,
@@ -104673,14 +111916,38 @@ function createLocalAssetInspectionService(options) {
 // ../../apps/local-api/dist/loro/file-replica-store.js
 var import_promises11 = require("node:fs/promises");
 var import_node_crypto13 = require("node:crypto");
-var import_node_path15 = require("node:path");
+var import_node_path16 = require("node:path");
 var import_loro_crdt9 = __toESM(require_nodejs(), 1);
+function parseCachedProjectCanvasPreview(value) {
+  if (typeof value !== "object" || value === null)
+    return null;
+  const candidate = value;
+  if (typeof candidate.sourceVersion !== "string" || !candidate.sourceVersion.trim() || typeof candidate.generatedAt !== "string" || !candidate.generatedAt.trim()) {
+    return null;
+  }
+  const preview = ProjectCanvasPreviewSchema.safeParse(candidate.preview);
+  if (!preview.success)
+    return null;
+  return {
+    sourceVersion: candidate.sourceVersion,
+    generatedAt: candidate.generatedAt,
+    preview: preview.data
+  };
+}
 function exactBytes(view) {
   return view.byteOffset === 0 && view.byteLength === view.buffer.byteLength ? view : new Uint8Array(view);
 }
 function isMissingFile(error53) {
   return typeof error53 === "object" && error53 !== null && "code" in error53 && error53.code === "ENOENT";
 }
+function canvasThumbnailRevision(value) {
+  const revision = value.trim();
+  if (!/^[a-f0-9]{64}$/u.test(revision)) {
+    throw new TypeError("Project canvas thumbnail revision is invalid.");
+  }
+  return revision;
+}
+var CANVAS_THUMBNAIL_CACHE_MAGIC = "CLASH_MAIN_CANVAS_THUMBNAIL_V1\n";
 var FileReplicaStore = class {
   rootDir;
   writeQueues = /* @__PURE__ */ new Map();
@@ -104731,7 +111998,7 @@ var FileReplicaStore = class {
       }
       const dir = this.loroDir(projectId);
       await (0, import_promises11.mkdir)(dir, { recursive: true });
-      const temporaryPath = (0, import_node_path15.join)(dir, `import-reservation.${process.pid}.${(0, import_node_crypto13.randomUUID)()}.tmp`);
+      const temporaryPath = (0, import_node_path16.join)(dir, `import-reservation.${process.pid}.${(0, import_node_crypto13.randomUUID)()}.tmp`);
       try {
         const handle = await (0, import_promises11.open)(temporaryPath, "wx", 384);
         try {
@@ -104783,6 +112050,88 @@ var FileReplicaStore = class {
         return null;
       throw error53;
     }
+  }
+  async readCanvasPreview(projectId) {
+    let raw2;
+    try {
+      raw2 = await (0, import_promises11.readFile)(this.canvasPreviewPath(projectId), "utf8");
+    } catch (error53) {
+      if (isMissingFile(error53))
+        return null;
+      throw error53;
+    }
+    return parseCachedProjectCanvasPreview(JSON.parse(raw2));
+  }
+  async writeCanvasPreview(projectId, entry) {
+    const normalized = parseCachedProjectCanvasPreview(entry);
+    if (!normalized) {
+      throw new TypeError("Cached Project canvas preview is invalid.");
+    }
+    await this.enqueueProjectWrite(projectId, async () => {
+      const dir = this.derivedDir(projectId);
+      await (0, import_promises11.mkdir)(dir, { recursive: true });
+      const finalPath = this.canvasPreviewPath(projectId);
+      const temporaryPath = (0, import_node_path16.join)(dir, `main-canvas-preview.${process.pid}.${(0, import_node_crypto13.randomUUID)()}.tmp`);
+      try {
+        const handle = await (0, import_promises11.open)(temporaryPath, "wx", 384);
+        try {
+          await handle.writeFile(`${JSON.stringify(normalized)}
+`, "utf8");
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+        await (0, import_promises11.rename)(temporaryPath, finalPath);
+      } finally {
+        await (0, import_promises11.rm)(temporaryPath, { force: true }).catch(() => void 0);
+      }
+    });
+  }
+  async readCanvasThumbnail(projectId, sourceVersion) {
+    const revision = canvasThumbnailRevision(sourceVersion);
+    try {
+      const persisted = await (0, import_promises11.readFile)(this.canvasThumbnailPath(projectId));
+      const header = Buffer.from(`${CANVAS_THUMBNAIL_CACHE_MAGIC}${revision}
+`, "utf8");
+      if (persisted.byteLength <= header.byteLength || !persisted.subarray(0, header.byteLength).equals(header)) {
+        return null;
+      }
+      return exactBytes(persisted.subarray(header.byteLength));
+    } catch (error53) {
+      if (isMissingFile(error53))
+        return null;
+      throw error53;
+    }
+  }
+  async writeCanvasThumbnail(projectId, sourceVersion, bytes) {
+    const revision = canvasThumbnailRevision(sourceVersion);
+    if (bytes.byteLength === 0) {
+      throw new TypeError("Cached Project canvas thumbnail must not be empty.");
+    }
+    await this.enqueueProjectWrite(projectId, async () => {
+      const dir = this.derivedDir(projectId);
+      await (0, import_promises11.mkdir)(dir, { recursive: true });
+      const finalPath = this.canvasThumbnailPath(projectId);
+      const temporaryPath = (0, import_node_path16.join)(dir, `main-canvas-thumbnail.${process.pid}.${(0, import_node_crypto13.randomUUID)()}.tmp`);
+      try {
+        const handle = await (0, import_promises11.open)(temporaryPath, "wx", 384);
+        try {
+          await handle.writeFile(Buffer.concat([
+            Buffer.from(`${CANVAS_THUMBNAIL_CACHE_MAGIC}${revision}
+`, "utf8"),
+            Buffer.from(bytes)
+          ]));
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+        await (0, import_promises11.rename)(temporaryPath, finalPath);
+        const legacyFiles = (await (0, import_promises11.readdir)(dir)).filter((name) => /^main-canvas-thumbnail\.[a-f0-9]{64}\.webp$/u.test(name));
+        await Promise.all(legacyFiles.map((name) => (0, import_promises11.rm)((0, import_node_path16.join)(dir, name), { force: true })));
+      } finally {
+        await (0, import_promises11.rm)(temporaryPath, { force: true }).catch(() => void 0);
+      }
+    });
   }
   async appendUpdate(projectId, update) {
     await this.enqueueProjectWrite(projectId, async () => {
@@ -104860,7 +112209,7 @@ var FileReplicaStore = class {
       const dir = this.loroDir(projectId);
       await (0, import_promises11.mkdir)(dir, { recursive: true });
       const finalPath = this.snapshotPath(projectId);
-      const temporaryPath = (0, import_node_path15.join)(dir, `snapshot.import.${process.pid}.${(0, import_node_crypto13.randomUUID)()}.tmp`);
+      const temporaryPath = (0, import_node_path16.join)(dir, `snapshot.import.${process.pid}.${(0, import_node_crypto13.randomUUID)()}.tmp`);
       try {
         const handle = await (0, import_promises11.open)(temporaryPath, "wx", 384);
         try {
@@ -104898,7 +112247,7 @@ var FileReplicaStore = class {
     const dir = this.loroDir(projectId);
     await (0, import_promises11.mkdir)(dir, { recursive: true });
     const finalPath = this.snapshotPath(projectId);
-    const tempPath = (0, import_node_path15.join)(dir, `snapshot.bin.${process.pid}.${(0, import_node_crypto13.randomUUID)()}.tmp`);
+    const tempPath = (0, import_node_path16.join)(dir, `snapshot.bin.${process.pid}.${(0, import_node_crypto13.randomUUID)()}.tmp`);
     const snapshotBytes = exactBytes(snapshot);
     try {
       const handle = await (0, import_promises11.open)(tempPath, "wx");
@@ -104947,19 +112296,28 @@ var FileReplicaStore = class {
     return doc;
   }
   loroDir(projectId) {
-    return (0, import_node_path15.join)(this.projectDir(projectId), "loro");
+    return (0, import_node_path16.join)(this.projectDir(projectId), "loro");
+  }
+  derivedDir(projectId) {
+    return (0, import_node_path16.join)(this.projectDir(projectId), "derived");
   }
   projectDir(projectId) {
-    return (0, import_node_path15.join)(this.rootDir, encodeURIComponent(projectId));
+    return (0, import_node_path16.join)(this.rootDir, encodeURIComponent(projectId));
   }
   snapshotPath(projectId) {
-    return (0, import_node_path15.join)(this.loroDir(projectId), "snapshot.bin");
+    return (0, import_node_path16.join)(this.loroDir(projectId), "snapshot.bin");
   }
   updateLogPath(projectId) {
-    return (0, import_node_path15.join)(this.loroDir(projectId), "updates.log");
+    return (0, import_node_path16.join)(this.loroDir(projectId), "updates.log");
   }
   importReservationPath(projectId) {
-    return (0, import_node_path15.join)(this.loroDir(projectId), "import-reservation.json");
+    return (0, import_node_path16.join)(this.loroDir(projectId), "import-reservation.json");
+  }
+  canvasPreviewPath(projectId) {
+    return (0, import_node_path16.join)(this.derivedDir(projectId), "main-canvas-preview.json");
+  }
+  canvasThumbnailPath(projectId) {
+    return (0, import_node_path16.join)(this.derivedDir(projectId), "main-canvas-thumbnail.cache");
   }
   validateImportReservation(reservation) {
     if (reservation.schemaVersion !== 1 || reservation.kind !== "clash.workspace.import-reservation" || !reservation.reservationId.trim() || reservation.reservationId.length > 500 || !/^[a-f0-9]{64}$/u.test(reservation.snapshotSha256)) {
@@ -105050,6 +112408,12 @@ function provenanceFromLegacy(asset) {
 }
 function mediaUrl(origin, projectId, projectAssetId2) {
   return `${origin.replace(/\/+$/, "")}/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(projectAssetId2)}/media`;
+}
+function thumbnailUrl(origin, projectId, projectAssetId2) {
+  return `${origin.replace(/\/+$/, "")}/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(projectAssetId2)}/thumbnail`;
+}
+function waveformUrl(origin, projectId, projectAssetId2) {
+  return `${origin.replace(/\/+$/, "")}/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(projectAssetId2)}/waveform`;
 }
 function mutationFailure(result) {
   throw new Error(`${result.error.code}: ${result.error.message}`);
@@ -105223,6 +112587,7 @@ function createLocalProjectAssetService(options) {
           const contentType = canonicalAssetMediaTypeAssertion(projection?.resource.contentType);
           return projection ? {
             status: "ready",
+            createdAt: projection.createdAt,
             resource: {
               ...projection.resource,
               ...contentType ? { contentType } : {}
@@ -105243,10 +112608,14 @@ function createLocalProjectAssetService(options) {
       async resolve({ projectId, entry }) {
         const origin = typeof options.projectionOrigin === "function" ? options.projectionOrigin() : options.projectionOrigin;
         const url2 = mediaUrl(origin, projectId, entry.id);
+        const representationRole = entry.kind === "audio" ? "waveform" : "thumbnail";
+        const representation = options.assetRepresentations ? await options.assetRepresentations.read(entry.source.resourceId, representationRole) : void 0;
+        options.assetRepresentations?.schedule(entry.source.resourceId);
         return {
           status: "ready",
           url: url2,
-          ...entry.kind === "image" ? { thumbnailUrl: url2 } : {}
+          ...representation?.role === "thumbnail" ? { thumbnailUrl: thumbnailUrl(origin, projectId, entry.id) } : entry.kind === "image" ? { thumbnailUrl: url2 } : {},
+          ...representation?.role === "waveform" ? { waveformUrl: waveformUrl(origin, projectId, entry.id) } : {}
         };
       }
     }
@@ -105302,6 +112671,7 @@ function createLocalProjectAssetService(options) {
       kind: input.kind,
       source: { kind: "owned", resourceId },
       lifecycle: { state: "active" },
+      createdAt: finalized.source.createdAt,
       ...input.name ? { name: input.name } : {},
       metadata: canonicalMetadata({
         source: finalized.source,
@@ -105319,6 +112689,7 @@ function createLocalProjectAssetService(options) {
       kind: input.kind,
       source: { kind: "owned", resourceId: input.resourceId },
       lifecycle: { state: "active" },
+      createdAt: finalized.source.createdAt,
       ...input.name ? { name: input.name } : {},
       metadata: canonicalMetadata({
         source: finalized.source,
@@ -105353,6 +112724,7 @@ function createLocalProjectAssetService(options) {
         }
       },
       lifecycle: { state: "active" },
+      createdAt: finalized.source.createdAt,
       ...input.name ? { name: input.name } : {},
       metadata: canonicalMetadata({
         source: finalized.source,
@@ -105396,6 +112768,7 @@ function createLocalProjectAssetService(options) {
       kind: asset.kind,
       source: { kind: "owned", resourceId: projection.resource.id },
       lifecycle: { state: "active" },
+      createdAt: asset.createdAt,
       ...legacyMetadata.originalName ? { name: legacyMetadata.originalName } : {},
       metadata: legacyMetadata,
       provenance: provenanceFromLegacy(asset)
@@ -105776,6 +113149,12 @@ function nonEmpty5(value, label) {
 function mediaUrl2(origin, libraryId, globalAssetId) {
   return `${origin.replace(/\/+$/, "")}/api/v1/libraries/${encodeURIComponent(libraryId)}/assets/${encodeURIComponent(globalAssetId)}/media`;
 }
+function thumbnailUrl2(origin, libraryId, globalAssetId) {
+  return `${origin.replace(/\/+$/, "")}/api/v1/libraries/${encodeURIComponent(libraryId)}/assets/${encodeURIComponent(globalAssetId)}/thumbnail`;
+}
+function waveformUrl2(origin, libraryId, globalAssetId) {
+  return `${origin.replace(/\/+$/, "")}/api/v1/libraries/${encodeURIComponent(libraryId)}/assets/${encodeURIComponent(globalAssetId)}/waveform`;
+}
 function legacyStorageKey2(asset) {
   const localBlobKey = asset.metadata?.localBlobKey;
   if (typeof localBlobKey === "string" && localBlobKey.trim()) {
@@ -105862,10 +113241,14 @@ function createLocalGlobalAssetService(options) {
       async resolve({ libraryId, entry }) {
         const origin = typeof options.projectionOrigin === "function" ? options.projectionOrigin() : options.projectionOrigin;
         const url2 = mediaUrl2(origin, libraryId, entry.id);
+        const representationRole = entry.kind === "audio" ? "waveform" : "thumbnail";
+        const representation = options.assetRepresentations ? await options.assetRepresentations.read(entry.resourceId, representationRole) : void 0;
+        options.assetRepresentations?.schedule(entry.resourceId);
         return {
           status: "ready",
           url: url2,
-          ...entry.kind === "image" ? { thumbnailUrl: url2 } : {}
+          ...representation?.role === "thumbnail" ? { thumbnailUrl: thumbnailUrl2(origin, libraryId, entry.id) } : entry.kind === "image" ? { thumbnailUrl: url2 } : {},
+          ...representation?.role === "waveform" ? { waveformUrl: waveformUrl2(origin, libraryId, entry.id) } : {}
         };
       }
     }
@@ -106158,11 +113541,971 @@ function createLocalGlobalAssetService(options) {
   };
 }
 
-// ../../apps/local-api/dist/user-config.js
+// ../../apps/local-api/dist/local-asset-representations.js
 var import_node_crypto16 = require("node:crypto");
-var import_node_fs6 = require("node:fs");
+var import_node_child_process4 = require("node:child_process");
+var import_promises15 = require("node:fs/promises");
+var import_node_module7 = require("node:module");
+var import_node_path18 = require("node:path");
+var import_sharp = __toESM(require_lib(), 1);
+
+// ../../apps/local-api/dist/durable-run-journal.js
+var import_node_module6 = require("node:module");
 var import_promises14 = require("node:fs/promises");
-var import_node_path16 = require("node:path");
+var import_node_path17 = require("node:path");
+var import_node_util3 = require("node:util");
+var nodeRequire6 = (0, import_node_module6.createRequire)(__clash_import_meta_url);
+var PHASES = /* @__PURE__ */ new Set([
+  "queued",
+  "submitting",
+  "polling",
+  "finalizing",
+  "succeeded",
+  "failed"
+]);
+function databasePath(dataDir3) {
+  return (0, import_node_path17.join)(dataDir3, "local.sqlite");
+}
+function openDatabase4(path) {
+  const { DatabaseSync } = nodeRequire6("node:sqlite");
+  const database = new DatabaseSync(path);
+  database.exec(`
+    PRAGMA busy_timeout = 5000;
+    PRAGMA journal_mode = WAL;
+  `);
+  return database;
+}
+function applySchema2(database) {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS durable_run_journal (
+      action_run_id TEXT NOT NULL,
+      output_slot TEXT NOT NULL,
+      owner_realm TEXT NOT NULL,
+      owner_id TEXT NOT NULL,
+      revision INTEGER NOT NULL,
+      phase TEXT NOT NULL,
+      recover_at INTEGER,
+      updated_at INTEGER NOT NULL,
+      record_json TEXT NOT NULL,
+      PRIMARY KEY (action_run_id, output_slot)
+    );
+
+    CREATE INDEX IF NOT EXISTS durable_run_journal_recovery
+      ON durable_run_journal (owner_realm, owner_id, recover_at);
+  `);
+}
+function corrupt(identity, detail) {
+  return new Error(`Durable run journal record ${identity} is corrupt: ${detail}.`);
+}
+function parseRecord(text, sourceIdentity) {
+  let value;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw corrupt(sourceIdentity, "record_json is not valid JSON");
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw corrupt(sourceIdentity, "the JSON root must be an object");
+  }
+  const record3 = value;
+  if (record3.schemaVersion !== 1) {
+    throw corrupt(sourceIdentity, "schemaVersion must be 1");
+  }
+  if (typeof record3.actionRunId !== "string" || !record3.actionRunId.trim()) {
+    throw corrupt(sourceIdentity, "actionRunId must be a non-empty string");
+  }
+  if (typeof record3.outputSlot !== "string" || !record3.outputSlot.trim()) {
+    throw corrupt(sourceIdentity, "outputSlot must be a non-empty string");
+  }
+  if (!Number.isSafeInteger(record3.revision) || record3.revision < 0) {
+    throw corrupt(sourceIdentity, "revision must be a non-negative safe integer");
+  }
+  if (typeof record3.phase !== "string" || !PHASES.has(record3.phase)) {
+    throw corrupt(sourceIdentity, "phase is not recognized");
+  }
+  const owner = record3.owner;
+  if (!owner || typeof owner !== "object" || Array.isArray(owner)) {
+    throw corrupt(sourceIdentity, "owner must be an object");
+  }
+  const ownerRecord = owner;
+  if (ownerRecord.realm !== "local" && ownerRecord.realm !== "cloud" && ownerRecord.realm !== "client") {
+    throw corrupt(sourceIdentity, "owner.realm must be local, cloud, or client");
+  }
+  if (typeof ownerRecord.id !== "string" || !ownerRecord.id.trim()) {
+    throw corrupt(sourceIdentity, "owner.id must be a non-empty string");
+  }
+  if (!("executorInput" in record3)) {
+    throw corrupt(sourceIdentity, "executorInput is missing");
+  }
+  for (const field3 of ["createdAt", "updatedAt", "deadlineAt"]) {
+    if (typeof record3[field3] !== "number" || !Number.isFinite(record3[field3])) {
+      throw corrupt(sourceIdentity, `${field3} must be a finite number`);
+    }
+  }
+  if (record3.recoveryFinalizationDeadlineAt !== void 0 && (!Number.isSafeInteger(record3.recoveryFinalizationDeadlineAt) || record3.recoveryFinalizationDeadlineAt <= record3.deadlineAt)) {
+    throw corrupt(sourceIdentity, "recoveryFinalizationDeadlineAt must be a safe integer later than deadlineAt");
+  }
+  return record3;
+}
+function identityText(identity) {
+  return `${identity.actionRunId}/${identity.outputSlot}`;
+}
+function assertIdentity(identity) {
+  if (!identity.actionRunId.trim() || !identity.outputSlot.trim()) {
+    throw new Error("A durable run identity requires actionRunId and outputSlot.");
+  }
+}
+function serializeRecord(run) {
+  let json3;
+  try {
+    json3 = JSON.stringify(run);
+  } catch (error53) {
+    throw new Error(`Durable run journal record ${run.actionRunId}/${run.outputSlot} is not JSON serializable: ${error53 instanceof Error ? error53.message : String(error53)}`);
+  }
+  return {
+    json: json3,
+    normalized: parseRecord(json3, `${run.actionRunId}/${run.outputSlot}`)
+  };
+}
+function parseRow2(row) {
+  const actionRunId = typeof row.action_run_id === "string" ? row.action_run_id : "<unknown>";
+  const outputSlot = typeof row.output_slot === "string" ? row.output_slot : "<unknown>";
+  const sourceIdentity = `${actionRunId}/${outputSlot}`;
+  if (typeof row.record_json !== "string") {
+    throw corrupt(sourceIdentity, "record_json is missing");
+  }
+  const record3 = parseRecord(row.record_json, sourceIdentity);
+  if (record3.actionRunId !== actionRunId || record3.outputSlot !== outputSlot) {
+    throw corrupt(sourceIdentity, "JSON identity does not match its table key");
+  }
+  if (record3.revision !== row.revision) {
+    throw corrupt(sourceIdentity, "JSON revision does not match its indexed revision");
+  }
+  if (record3.phase !== row.phase) {
+    throw corrupt(sourceIdentity, "JSON phase does not match its indexed phase");
+  }
+  if (record3.owner.realm !== row.owner_realm || record3.owner.id !== row.owner_id) {
+    throw corrupt(sourceIdentity, "JSON owner does not match its indexed owner");
+  }
+  return record3;
+}
+function recoveryAt(run) {
+  if (run.phase === "succeeded")
+    return null;
+  if (run.phase === "failed") {
+    if (run.projectedAt !== void 0)
+      return null;
+    if (run.activeAttempt)
+      return run.activeAttempt.expiresAt;
+    if (run.projectionFailure && run.nextAttemptAt === void 0)
+      return null;
+    return run.nextAttemptAt ?? run.updatedAt;
+  }
+  if (run.activeAttempt) {
+    const isDeadlineRecoveryPoll = run.activeAttempt.operation === "poll" && run.deadlineReconciliationPending;
+    if (isDeadlineRecoveryPoll) {
+      return run.activeAttempt.expiresAt;
+    }
+    if (run.recoveryFinalizationDeadlineAt !== void 0) {
+      return Math.min(run.activeAttempt.expiresAt, run.recoveryFinalizationDeadlineAt);
+    }
+    return Math.min(run.activeAttempt.expiresAt, run.deadlineAt);
+  }
+  let dueAt = run.nextAttemptAt ?? run.updatedAt;
+  if (run.phase === "finalizing" && run.recoveryFinalizationDeadlineAt !== void 0) {
+    return Math.min(dueAt, run.recoveryFinalizationDeadlineAt);
+  }
+  if ((run.phase === "submitting" || run.phase === "polling" && !run.deadlineReconciliationPending || run.phase === "finalizing") && run.deadlineAt < dueAt) {
+    dueAt = run.deadlineAt;
+  }
+  return dueAt;
+}
+function runProjectId(run) {
+  const input = run.executorInput;
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw corrupt(identityText(run), "executorInput must contain the owning projectId");
+  }
+  const projectId = input.projectId;
+  if (typeof projectId !== "string" || !projectId.trim()) {
+    throw corrupt(identityText(run), "executorInput.projectId must be a non-empty string");
+  }
+  return projectId;
+}
+function sameFrozenFields(current, next) {
+  return current.schemaVersion === next.schemaVersion && current.actionRunId === next.actionRunId && current.outputSlot === next.outputSlot && current.owner.realm === next.owner.realm && current.owner.id === next.owner.id && current.createdAt === next.createdAt && current.deadlineAt === next.deadlineAt && (current.recoveryFinalizationDeadlineAt === void 0 || current.recoveryFinalizationDeadlineAt === next.recoveryFinalizationDeadlineAt) && (0, import_node_util3.isDeepStrictEqual)(current.executorInput, next.executorInput);
+}
+function changes(result) {
+  return typeof result.changes === "bigint" ? Number(result.changes) : result.changes;
+}
+function createSqliteDurableRunJournal(dataDir3) {
+  const path = databasePath(dataDir3);
+  async function withDatabase(task) {
+    await (0, import_promises14.mkdir)(dataDir3, { recursive: true });
+    const database = openDatabase4(path);
+    try {
+      applySchema2(database);
+      return task(database);
+    } finally {
+      database.close();
+      await (0, import_promises14.chmod)(path, 384).catch(() => void 0);
+    }
+  }
+  return {
+    async create(run) {
+      const serialized = serializeRecord(run);
+      const normalized = serialized.normalized;
+      return withDatabase((database) => {
+        database.exec("BEGIN IMMEDIATE");
+        try {
+          const existingRow = database.prepare(`
+            SELECT action_run_id, output_slot, owner_realm, owner_id,
+                   revision, phase, record_json
+            FROM durable_run_journal
+            WHERE action_run_id = ? AND output_slot = ?
+          `).get(normalized.actionRunId, normalized.outputSlot);
+          if (existingRow) {
+            const existing = parseRow2(existingRow);
+            if (!(0, import_node_util3.isDeepStrictEqual)(existing, normalized)) {
+              throw new Error(`Durable run ${normalized.actionRunId}/${normalized.outputSlot} already exists with different content.`);
+            }
+          } else {
+            database.prepare(`
+              INSERT INTO durable_run_journal (
+                action_run_id, output_slot, owner_realm, owner_id,
+                revision, phase, recover_at, updated_at, record_json
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(normalized.actionRunId, normalized.outputSlot, normalized.owner.realm, normalized.owner.id, normalized.revision, normalized.phase, recoveryAt(normalized), normalized.updatedAt, serialized.json);
+          }
+          database.exec("COMMIT");
+        } catch (error53) {
+          database.exec("ROLLBACK");
+          throw error53;
+        }
+      });
+    },
+    async load(identity) {
+      assertIdentity(identity);
+      return withDatabase((database) => {
+        const row = database.prepare(`
+          SELECT action_run_id, output_slot, owner_realm, owner_id,
+                 revision, phase, record_json
+          FROM durable_run_journal
+          WHERE action_run_id = ? AND output_slot = ?
+        `).get(identity.actionRunId, identity.outputSlot);
+        return row ? parseRow2(row) : void 0;
+      });
+    },
+    async compareAndSet(identity, expectedRevision, next) {
+      assertIdentity(identity);
+      if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+        throw new Error("A durable run CAS requires a non-negative expected revision.");
+      }
+      const serialized = serializeRecord(next);
+      const normalized = serialized.normalized;
+      if (normalized.actionRunId !== identity.actionRunId || normalized.outputSlot !== identity.outputSlot) {
+        throw new Error(`Durable run CAS identity ${identityText(identity)} does not match the next record.`);
+      }
+      if (normalized.revision !== expectedRevision + 1) {
+        throw new Error("A durable run CAS must advance revision by exactly one.");
+      }
+      return withDatabase((database) => {
+        const currentRow = database.prepare(`
+          SELECT action_run_id, output_slot, owner_realm, owner_id,
+                 revision, phase, record_json
+          FROM durable_run_journal
+          WHERE action_run_id = ? AND output_slot = ?
+        `).get(identity.actionRunId, identity.outputSlot);
+        if (!currentRow)
+          return false;
+        const current = parseRow2(currentRow);
+        if (current.revision !== expectedRevision || !sameFrozenFields(current, normalized)) {
+          return false;
+        }
+        const result = database.prepare(`
+          UPDATE durable_run_journal
+          SET owner_realm = ?, owner_id = ?, revision = ?, phase = ?,
+              recover_at = ?, updated_at = ?, record_json = ?
+          WHERE action_run_id = ? AND output_slot = ?
+            AND revision = ? AND owner_realm = ? AND owner_id = ?
+        `).run(normalized.owner.realm, normalized.owner.id, normalized.revision, normalized.phase, recoveryAt(normalized), normalized.updatedAt, serialized.json, identity.actionRunId, identity.outputSlot, expectedRevision, normalized.owner.realm, normalized.owner.id);
+        return changes(result) === 1;
+      });
+    },
+    async listRecoverable(ownerId, now) {
+      if (!ownerId.trim())
+        throw new Error("A recoverable run scan requires an owner id.");
+      if (!Number.isFinite(now))
+        throw new Error("A recoverable run scan requires a finite time.");
+      return withDatabase((database) => database.prepare(`
+          SELECT action_run_id, output_slot, owner_realm, owner_id,
+                 revision, phase, record_json
+          FROM durable_run_journal
+          WHERE owner_realm = 'local' AND owner_id = ?
+            AND recover_at IS NOT NULL AND recover_at <= ?
+          ORDER BY recover_at ASC, action_run_id ASC, output_slot ASC
+        `).all(ownerId, now).map(parseRow2));
+    },
+    async listOwnedProjectIds(ownerId) {
+      if (!ownerId.trim())
+        throw new Error("A durable run project scan requires an owner id.");
+      return withDatabase((database) => {
+        const projectIds = new Set(database.prepare(`
+            SELECT action_run_id, output_slot, owner_realm, owner_id,
+                   revision, phase, record_json
+            FROM durable_run_journal
+            WHERE owner_realm = 'local' AND owner_id = ?
+              AND recover_at IS NOT NULL
+            ORDER BY action_run_id ASC, output_slot ASC
+          `).all(ownerId).map(parseRow2).map(runProjectId));
+        return [...projectIds].sort();
+      });
+    },
+    async nextWakeAt(ownerId, projectId) {
+      if (!ownerId.trim())
+        throw new Error("A durable run wake query requires an owner id.");
+      return withDatabase((database) => {
+        const rows = database.prepare(`
+          SELECT action_run_id, output_slot, owner_realm, owner_id,
+                 revision, phase, recover_at, record_json
+          FROM durable_run_journal
+          WHERE owner_realm = 'local' AND owner_id = ?
+            AND recover_at IS NOT NULL
+          ORDER BY recover_at ASC, action_run_id ASC, output_slot ASC
+        `).all(ownerId);
+        const row = projectId ? rows.find((candidate) => {
+          const run = parseRow2(candidate);
+          return runProjectId(run) === projectId;
+        }) : rows[0];
+        return typeof row?.recover_at === "number" ? row.recover_at : void 0;
+      });
+    }
+  };
+}
+
+// ../../apps/local-api/dist/local-asset-representations.js
+var AUDIO_WAVEFORM_BARS = 128;
+var IMAGE_THUMBNAIL_RECIPE = {
+  id: "image-thumbnail",
+  version: 1,
+  role: "thumbnail",
+  outputSlot: "thumbnail",
+  parameters: {
+    format: "webp",
+    maxWidth: 512,
+    maxHeight: 512,
+    fit: "inside",
+    quality: 78
+  }
+};
+var VIDEO_POSTER_RECIPE = {
+  id: "video-poster",
+  version: 1,
+  role: "thumbnail",
+  outputSlot: "thumbnail",
+  parameters: {
+    frame: "first",
+    format: "webp",
+    maxWidth: 512,
+    maxHeight: 512,
+    fit: "inside",
+    quality: 78
+  }
+};
+var AUDIO_WAVEFORM_RECIPE = {
+  id: "audio-waveform",
+  version: 1,
+  role: "waveform",
+  outputSlot: "waveform",
+  parameters: {
+    bars: 128,
+    analysisHeight: 64,
+    channelMode: "mono-max",
+    normalization: "peak"
+  }
+};
+var DEFAULT_OWNER_ID = "local-api:representations";
+var RUN_LIFETIME_MS = 24 * 60 * 6e4;
+var nodeRequire7 = (0, import_node_module7.createRequire)(__clash_import_meta_url);
+function recipesFor(kind) {
+  if (kind === "image")
+    return [IMAGE_THUMBNAIL_RECIPE];
+  if (kind === "video")
+    return [VIDEO_POSTER_RECIPE];
+  if (kind === "audio")
+    return [AUDIO_WAVEFORM_RECIPE];
+  return [];
+}
+function recipeKey(recipe) {
+  return `${recipe.id}/v${recipe.version}:${(0, import_node_crypto16.createHash)("sha256").update(JSON.stringify(recipe.parameters)).digest("hex")}`;
+}
+function runIdentity(input) {
+  const digest3 = (0, import_node_crypto16.createHash)("sha256").update(JSON.stringify({
+    sourceResourceId: input.sourceResourceId,
+    sourceKind: input.sourceKind,
+    recipe: recipeKey(input.recipe)
+  })).digest("hex");
+  return {
+    actionRunId: `representation:${digest3}`,
+    outputSlot: input.recipe.outputSlot
+  };
+}
+function parseFrozenInput(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Frozen representation input must be an object.");
+  }
+  const input = value;
+  const recipe = input.recipe;
+  if (input.schemaVersion !== 1 || input.targetKind !== "representation" || typeof input.sourceResourceId !== "string" || !input.sourceResourceId || input.sourceKind !== "image" && input.sourceKind !== "video" && input.sourceKind !== "audio" && input.sourceKind !== "model" || !recipe || typeof recipe !== "object" || Array.isArray(recipe)) {
+    throw new Error("Frozen representation input is invalid.");
+  }
+  const parsedRecipe = recipe;
+  if (typeof parsedRecipe.id !== "string" || !parsedRecipe.id || !Number.isSafeInteger(parsedRecipe.version) || parsedRecipe.version <= 0 || parsedRecipe.role !== "thumbnail" && parsedRecipe.role !== "waveform" || typeof parsedRecipe.outputSlot !== "string" || !parsedRecipe.outputSlot || !parsedRecipe.parameters || typeof parsedRecipe.parameters !== "object" || Array.isArray(parsedRecipe.parameters)) {
+    throw new Error("Frozen representation recipe is invalid.");
+  }
+  return input;
+}
+function parseCandidate(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Representation candidate must be an object.");
+  }
+  const candidate = value;
+  if (candidate.kind === "resource" && candidate.role === "thumbnail" && typeof candidate.stagedResourceId === "string" && candidate.stagedResourceId && candidate.resourceKind === "image" && candidate.contentType === "image/webp") {
+    return candidate;
+  }
+  if (candidate.kind === "waveform" && candidate.role === "waveform" && Array.isArray(candidate.peaks) && candidate.peaks.length === AUDIO_WAVEFORM_BARS && candidate.peaks.every((peak) => typeof peak === "number" && peak >= 0 && peak <= 1) && (candidate.durationMs === void 0 || Number.isSafeInteger(candidate.durationMs) && candidate.durationMs >= 0)) {
+    return candidate;
+  }
+  throw new Error("Representation candidate is invalid.");
+}
+function parseRepresentation(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Local Asset representation row is corrupt.");
+  }
+  const result = value;
+  if (result.role === "thumbnail" && typeof result.recipe === "string" && result.recipe && typeof result.resourceId === "string" && result.resourceId) {
+    return result;
+  }
+  if (result.role === "waveform" && typeof result.recipe === "string" && result.recipe && Array.isArray(result.peaks) && result.peaks.length === AUDIO_WAVEFORM_BARS && result.peaks.every((peak) => typeof peak === "number" && peak >= 0 && peak <= 1) && (result.durationMs === void 0 || Number.isSafeInteger(result.durationMs) && result.durationMs >= 0)) {
+    return result;
+  }
+  throw new Error("Local Asset representation row is corrupt.");
+}
+function openDatabase5(path) {
+  const { DatabaseSync } = nodeRequire7("node:sqlite");
+  const database = new DatabaseSync(path);
+  database.exec(`
+    PRAGMA busy_timeout = 5000;
+    PRAGMA journal_mode = WAL;
+  `);
+  const existing = database.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'local_asset_representations'").get();
+  if (existing && typeof existing.sql === "string" && !/\bresult_json\b/i.test(existing.sql)) {
+    const rows = database.prepare("SELECT source_resource_id, recipe, representation_resource_id, created_at FROM local_asset_representations").all();
+    database.exec(`
+      BEGIN IMMEDIATE;
+      ALTER TABLE local_asset_representations RENAME TO local_asset_representations_legacy;
+      CREATE TABLE local_asset_representations (
+        source_resource_id TEXT NOT NULL,
+        recipe TEXT NOT NULL,
+        role TEXT NOT NULL,
+        result_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (source_resource_id, recipe)
+      );
+      COMMIT;
+    `);
+    const insert = database.prepare(`
+      INSERT INTO local_asset_representations (
+        source_resource_id, recipe, role, result_json, created_at
+      ) VALUES (?, ?, 'thumbnail', ?, ?)
+    `);
+    for (const row of rows) {
+      if (typeof row.source_resource_id === "string" && typeof row.recipe === "string" && typeof row.representation_resource_id === "string" && typeof row.created_at === "number") {
+        insert.run(row.source_resource_id, row.recipe, JSON.stringify({
+          role: "thumbnail",
+          recipe: row.recipe,
+          resourceId: row.representation_resource_id
+        }), row.created_at);
+      }
+    }
+    database.exec("DROP TABLE local_asset_representations_legacy");
+  } else {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS local_asset_representations (
+        source_resource_id TEXT NOT NULL,
+        recipe TEXT NOT NULL,
+        role TEXT NOT NULL,
+        result_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (source_resource_id, recipe)
+      );
+    `);
+  }
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS local_asset_representations_role
+      ON local_asset_representations (source_resource_id, role, created_at);
+  `);
+  return database;
+}
+function changes2(result) {
+  return typeof result.changes === "bigint" ? Number(result.changes) : result.changes;
+}
+function retryableFailure(error53, operation2) {
+  return {
+    code: operation2 === "stage" ? "output_persistence_failed" : operation2 === "publish" ? "publication_failed" : "execution_failed",
+    message: error53 instanceof Error ? error53.message : String(error53),
+    retryable: true,
+    requestState: operation2 === "submit" ? "unknown" : "accepted"
+  };
+}
+async function firstVideoFrame(path) {
+  const ffmpeg = localFfmpegPath();
+  if (!ffmpeg) {
+    throw new Error("ffmpeg is required to derive a video poster.");
+  }
+  return new Promise((resolve18, reject) => {
+    const child = (0, import_node_child_process4.spawn)(ffmpeg, [
+      "-v",
+      "error",
+      "-ss",
+      "0",
+      "-i",
+      path,
+      "-frames:v",
+      "1",
+      "-f",
+      "image2pipe",
+      "-vcodec",
+      "png",
+      "pipe:1"
+    ]);
+    const chunks = [];
+    const errors = [];
+    let byteLength = 0;
+    let settled = false;
+    child.stdout.on("data", (chunk) => {
+      byteLength += chunk.byteLength;
+      if (byteLength > 32 * 1024 * 1024) {
+        settled = true;
+        child.kill("SIGKILL");
+        reject(new Error("Video poster frame exceeded 32 MiB."));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    child.stderr.on("data", (chunk) => errors.push(chunk));
+    child.once("error", (error53) => {
+      if (!settled)
+        reject(error53);
+    });
+    child.once("close", (code) => {
+      if (settled)
+        return;
+      if (code === 0 && chunks.length > 0) {
+        resolve18(Buffer.concat(chunks));
+        return;
+      }
+      reject(new Error(`ffmpeg could not decode ${(0, import_node_path18.basename)(path)}: ${Buffer.concat(errors).toString("utf8").trim() || `exit ${code ?? "unknown"}`}`));
+    });
+  });
+}
+async function waveformPeaks(path, bars, analysisHeight) {
+  const ffmpeg = localFfmpegPath();
+  if (!ffmpeg) {
+    throw new Error("ffmpeg is required to derive an audio waveform.");
+  }
+  const image = await new Promise((resolve18, reject) => {
+    const child = (0, import_node_child_process4.spawn)(ffmpeg, [
+      "-v",
+      "error",
+      "-i",
+      path,
+      "-filter_complex",
+      `aformat=channel_layouts=mono,showwavespic=s=${bars}x${analysisHeight}:colors=white`,
+      "-frames:v",
+      "1",
+      "-f",
+      "image2pipe",
+      "-vcodec",
+      "png",
+      "pipe:1"
+    ]);
+    const chunks = [];
+    const errors = [];
+    let byteLength = 0;
+    let settled = false;
+    child.stdout.on("data", (chunk) => {
+      byteLength += chunk.byteLength;
+      if (byteLength > 8 * 1024 * 1024) {
+        settled = true;
+        child.kill("SIGKILL");
+        reject(new Error("Audio waveform analysis image exceeded 8 MiB."));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    child.stderr.on("data", (chunk) => errors.push(chunk));
+    child.once("error", (error53) => {
+      if (!settled)
+        reject(error53);
+    });
+    child.once("close", (code) => {
+      if (settled)
+        return;
+      if (code === 0 && chunks.length > 0) {
+        resolve18(Buffer.concat(chunks));
+        return;
+      }
+      reject(new Error(`ffmpeg could not analyze ${(0, import_node_path18.basename)(path)}: ${Buffer.concat(errors).toString("utf8").trim() || `exit ${code ?? "unknown"}`}`));
+    });
+  });
+  const { data, info } = await (0, import_sharp.default)(image).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  if (info.width !== bars || info.height !== analysisHeight) {
+    throw new Error("Audio waveform analysis returned unexpected dimensions.");
+  }
+  const peaks = new Array(bars).fill(0);
+  let maximum = 0;
+  for (let x = 0; x < bars; x += 1) {
+    let lit = 0;
+    for (let y = 0; y < analysisHeight; y += 1) {
+      const offset = (y * info.width + x) * info.channels;
+      let brightness = 0;
+      for (let channel = 0; channel < info.channels; channel += 1) {
+        brightness = Math.max(brightness, data[offset + channel] ?? 0);
+      }
+      if (brightness > 16)
+        lit += 1;
+    }
+    const peak = lit / analysisHeight;
+    peaks[x] = peak;
+    maximum = Math.max(maximum, peak);
+  }
+  if (maximum <= 0) {
+    throw new Error("Audio waveform analysis returned no samples.");
+  }
+  return peaks.map((peak) => peak / maximum);
+}
+function defaultRecipeRunner(resources) {
+  return async ({ source, recipe }) => {
+    if (source.resource.kind === "audio" && recipe.id === "audio-waveform") {
+      return {
+        kind: "waveform",
+        role: "waveform",
+        peaks: await waveformPeaks(source.path, AUDIO_WAVEFORM_BARS, 64)
+      };
+    }
+    if ((source.resource.kind !== "image" || recipe.id !== "image-thumbnail") && (source.resource.kind !== "video" || recipe.id !== "video-poster")) {
+      throw new Error(`No Local representation recipe ${recipe.id} exists for ${source.resource.kind}.`);
+    }
+    const input = source.resource.kind === "video" ? await firstVideoFrame(source.path) : source.path;
+    const bytes = await (0, import_sharp.default)(input, {
+      failOn: "error",
+      limitInputPixels: 1e8
+    }).rotate().resize({
+      width: 512,
+      height: 512,
+      fit: "inside",
+      withoutEnlargement: true
+    }).webp({ quality: 78, effort: 4 }).toBuffer();
+    const staged = await resources.stage({
+      bytes: new Uint8Array(bytes),
+      originalName: "thumbnail.webp"
+    });
+    return {
+      kind: "resource",
+      role: "thumbnail",
+      stagedResourceId: staged.resourceId,
+      resourceKind: "image",
+      contentType: "image/webp"
+    };
+  };
+}
+function createLocalAssetRepresentationService(options) {
+  const databasePath2 = `${options.dataDir}/local.sqlite`;
+  const ownerId = options.ownerId ?? DEFAULT_OWNER_ID;
+  const now = options.now ?? Date.now;
+  const journal = createSqliteDurableRunJournal(options.dataDir);
+  const resources = createLocalResourceStore({
+    dataDir: options.dataDir,
+    ...options.clashRoot ? { clashRoot: options.clashRoot } : {}
+  });
+  const runRecipe = options.recipeRunner ?? defaultRecipeRunner(resources);
+  const inFlight = /* @__PURE__ */ new Map();
+  let wakeTimer;
+  let closed = false;
+  async function withDatabase(task) {
+    await (0, import_promises15.mkdir)(options.dataDir, { recursive: true });
+    const database = openDatabase5(databasePath2);
+    try {
+      return task(database);
+    } finally {
+      database.close();
+      await (0, import_promises15.chmod)(databasePath2, 384).catch(() => void 0);
+    }
+  }
+  async function readRecipe(sourceResourceId, recipe) {
+    return withDatabase((database) => {
+      const row = database.prepare(`
+          SELECT result_json
+          FROM local_asset_representations
+          WHERE source_resource_id = ? AND recipe = ?
+        `).get(sourceResourceId, recipeKey(recipe));
+      if (!row)
+        return void 0;
+      if (typeof row.result_json !== "string") {
+        throw new Error("Local Asset representation row is corrupt.");
+      }
+      return parseRepresentation(JSON.parse(row.result_json));
+    });
+  }
+  async function publishRepresentation(input) {
+    const recipe = recipeKey(input.recipe);
+    const result = parseRepresentation(input.result);
+    const resultJson = JSON.stringify(result);
+    await withDatabase((database) => {
+      const inserted = database.prepare(`
+          INSERT OR IGNORE INTO local_asset_representations (
+            source_resource_id, recipe, role, result_json, created_at
+          ) VALUES (?, ?, ?, ?, ?)
+        `).run(input.sourceResourceId, recipe, result.role, resultJson, now());
+      const winner = database.prepare(`
+          SELECT role, result_json
+          FROM local_asset_representations
+          WHERE source_resource_id = ? AND recipe = ?
+        `).get(input.sourceResourceId, recipe);
+      if (!winner || winner.role !== result.role || winner.result_json !== resultJson) {
+        throw new Error(`Representation ${input.sourceResourceId}/${recipe} conflicts with its CAS winner.`);
+      }
+      void changes2(inserted);
+    });
+  }
+  const engine = new DurableRunEngine({
+    journal,
+    provider: {
+      async submit({ run }) {
+        const input = parseFrozenInput(run.executorInput);
+        const source = await resources.resolve(input.sourceResourceId);
+        if (!source) {
+          throw new Error(`Source Resource ${input.sourceResourceId} is not installed.`);
+        }
+        if (source.resource.kind !== input.sourceKind) {
+          throw new Error(`Source Resource ${input.sourceResourceId} changed kind.`);
+        }
+        const candidate = await runRecipe({ source, recipe: input.recipe });
+        return {
+          status: "completed",
+          outputs: [
+            {
+              slot: input.recipe.outputSlot,
+              kind: "value",
+              value: candidate
+            }
+          ]
+        };
+      },
+      async poll() {
+        return {
+          status: "failed",
+          error: {
+            code: "contract_violation",
+            message: "Local representation recipes never enter polling.",
+            retryable: false,
+            requestState: "accepted"
+          }
+        };
+      }
+    },
+    outputStore: {
+      async stage({ run, outputs }) {
+        const input = parseFrozenInput(run.executorInput);
+        const output = outputs.find((candidate2) => candidate2.slot === input.recipe.outputSlot && candidate2.kind === "value");
+        if (!output) {
+          throw new Error("Representation run completed without its output.");
+        }
+        const candidate = parseCandidate(output.value);
+        if (candidate.role !== input.recipe.role) {
+          throw new Error("Representation output role does not match its recipe.");
+        }
+        if (candidate.kind === "waveform") {
+          return candidate;
+        }
+        const finalized = await options.assetInspection.finalize({
+          resourceId: candidate.stagedResourceId,
+          kind: candidate.resourceKind,
+          contentType: candidate.contentType
+        });
+        return {
+          kind: "resource",
+          role: "thumbnail",
+          resourceId: finalized.source.resource.id
+        };
+      }
+    },
+    publisher: {
+      async publish({ run, stagedOutput }) {
+        const input = parseFrozenInput(run.executorInput);
+        const recipe = recipeKey(input.recipe);
+        const value = stagedOutput;
+        const result = value.kind === "resource" && value.role === "thumbnail" && typeof value.resourceId === "string" ? {
+          role: "thumbnail",
+          recipe,
+          resourceId: value.resourceId
+        } : value.kind === "waveform" && value.role === "waveform" && Array.isArray(value.peaks) ? {
+          role: "waveform",
+          recipe,
+          peaks: value.peaks,
+          ...typeof value.durationMs === "number" ? { durationMs: value.durationMs } : {}
+        } : void 0;
+        if (!result) {
+          throw new Error("Staged representation output is invalid.");
+        }
+        await publishRepresentation({
+          sourceResourceId: input.sourceResourceId,
+          recipe: input.recipe,
+          result
+        });
+      },
+      async publishFailure() {
+      }
+    },
+    ownerGuard: {
+      async assertOwner(run) {
+        if (run.owner.realm !== "local" || run.owner.id !== ownerId) {
+          throw new Error("Representation run belongs to another Host owner.");
+        }
+      }
+    },
+    retryPolicy: {
+      delayMs({ consecutiveFailures, failure }) {
+        if (!failure.retryable)
+          return null;
+        return Math.min(5 * 6e4, 1e3 * 2 ** Math.min(8, consecutiveFailures - 1));
+      }
+    },
+    clock: { now },
+    classifyThrownError: retryableFailure
+  });
+  async function scheduleNextWake() {
+    if (closed)
+      return;
+    if (wakeTimer)
+      clearTimeout(wakeTimer);
+    wakeTimer = void 0;
+    const wakeAt = await journal.nextWakeAt(ownerId);
+    if (wakeAt === void 0)
+      return;
+    wakeTimer = setTimeout(() => {
+      wakeTimer = void 0;
+      void recover().catch((error53) => {
+        console.error("[local-api] representation recovery failed", error53);
+      });
+    }, Math.max(0, wakeAt - now()));
+    wakeTimer.unref?.();
+  }
+  async function drive(run) {
+    for (let step = 0; step < 12; step += 1) {
+      const result = await engine.advance(run);
+      if (result.kind === "waiting" || result.kind === "terminal" || result.kind === "contended") {
+        return;
+      }
+    }
+  }
+  async function recover() {
+    if (closed)
+      return;
+    const recoverable = await journal.listRecoverable(ownerId, now());
+    for (const run of recoverable)
+      await drive(run);
+    await scheduleNextWake();
+  }
+  async function ensureSource(sourceResourceId) {
+    const source = await resources.resolve(sourceResourceId);
+    if (!source)
+      return [];
+    const results = [];
+    for (const recipe of recipesFor(source.resource.kind)) {
+      const ready = await readRecipe(sourceResourceId, recipe);
+      if (ready) {
+        results.push(ready);
+        continue;
+      }
+      const executorInput = {
+        schemaVersion: 1,
+        targetKind: "representation",
+        sourceResourceId,
+        sourceKind: source.resource.kind,
+        recipe
+      };
+      const identity = runIdentity(executorInput);
+      const existing = await journal.load(identity);
+      if (!existing) {
+        const createdAt = now();
+        await journal.create(createDurableRunRecord({
+          ...identity,
+          owner: { realm: "local", id: ownerId },
+          executorInput,
+          createdAt,
+          deadlineAt: createdAt + RUN_LIFETIME_MS
+        }));
+      }
+      await drive(identity);
+      const derived2 = await readRecipe(sourceResourceId, recipe);
+      if (derived2)
+        results.push(derived2);
+    }
+    await scheduleNextWake();
+    return results;
+  }
+  const service = {
+    schedule(sourceResourceId) {
+      if (closed || !sourceResourceId.trim())
+        return;
+      void service.ensure(sourceResourceId).catch((error53) => {
+        console.warn(`[local-api] failed to derive representations for ${sourceResourceId}`, error53);
+      });
+    },
+    ensure(sourceResourceId) {
+      const normalized = sourceResourceId.trim();
+      if (closed || !normalized)
+        return Promise.resolve([]);
+      const active = inFlight.get(normalized);
+      if (active)
+        return active;
+      const task = ensureSource(normalized).finally(() => {
+        if (inFlight.get(normalized) === task)
+          inFlight.delete(normalized);
+      });
+      inFlight.set(normalized, task);
+      return task;
+    },
+    async read(sourceResourceId, role) {
+      const source = await resources.resolve(sourceResourceId);
+      const recipe = source ? recipesFor(source.resource.kind).find((candidate) => candidate.role === role) : void 0;
+      return recipe ? readRecipe(sourceResourceId, recipe) : void 0;
+    },
+    async openThumbnail(sourceResourceId) {
+      const representation = await service.read(sourceResourceId, "thumbnail");
+      if (!representation || representation.role !== "thumbnail") {
+        return void 0;
+      }
+      return resources.resolve(representation.resourceId);
+    },
+    start: recover,
+    async close() {
+      closed = true;
+      if (wakeTimer)
+        clearTimeout(wakeTimer);
+      wakeTimer = void 0;
+      await Promise.allSettled([...inFlight.values()]);
+    }
+  };
+  return service;
+}
+
+// ../../apps/local-api/dist/user-config.js
+var import_node_crypto17 = require("node:crypto");
+var import_node_fs7 = require("node:fs");
+var import_promises16 = require("node:fs/promises");
+var import_node_path19 = require("node:path");
 var import_yaml2 = __toESM(require_dist(), 1);
 var writes = /* @__PURE__ */ new Map();
 var LOCK_TIMEOUT_MS = 5e3;
@@ -106171,7 +114514,7 @@ function isRecord14(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 function sourceHash(source) {
-  return (0, import_node_crypto16.createHash)("sha256").update(source).digest("hex");
+  return (0, import_node_crypto17.createHash)("sha256").update(source).digest("hex");
 }
 function optionalRecord(root5, key) {
   const value = root5[key];
@@ -106290,7 +114633,7 @@ function validateClashUserConfig(value) {
 }
 async function readText(path) {
   try {
-    return await (0, import_promises14.readFile)(path, "utf8");
+    return await (0, import_promises16.readFile)(path, "utf8");
   } catch (error53) {
     if (error53.code === "ENOENT")
       return null;
@@ -106298,38 +114641,38 @@ async function readText(path) {
   }
 }
 async function atomicWrite(path, contents) {
-  await (0, import_promises14.mkdir)((0, import_node_path16.dirname)(path), { recursive: true, mode: 448 });
-  const temporaryPath = `${path}.${process.pid}.${(0, import_node_crypto16.randomUUID)()}.tmp`;
+  await (0, import_promises16.mkdir)((0, import_node_path19.dirname)(path), { recursive: true, mode: 448 });
+  const temporaryPath = `${path}.${process.pid}.${(0, import_node_crypto17.randomUUID)()}.tmp`;
   try {
-    await (0, import_promises14.writeFile)(temporaryPath, contents, { encoding: "utf8", mode: 384 });
-    await (0, import_promises14.chmod)(temporaryPath, 384);
-    await (0, import_promises14.rename)(temporaryPath, path);
-    await (0, import_promises14.chmod)(path, 384);
+    await (0, import_promises16.writeFile)(temporaryPath, contents, { encoding: "utf8", mode: 384 });
+    await (0, import_promises16.chmod)(temporaryPath, 384);
+    await (0, import_promises16.rename)(temporaryPath, path);
+    await (0, import_promises16.chmod)(path, 384);
   } finally {
-    await (0, import_promises14.rm)(temporaryPath, { force: true }).catch(() => void 0);
+    await (0, import_promises16.rm)(temporaryPath, { force: true }).catch(() => void 0);
   }
 }
 async function wait(milliseconds) {
   await new Promise((resolve18) => setTimeout(resolve18, milliseconds));
 }
 async function withConfigLock(clashHome, task) {
-  await (0, import_promises14.mkdir)(clashHome, { recursive: true, mode: 448 });
-  await (0, import_promises14.chmod)(clashHome, 448);
-  const lockPath = (0, import_node_path16.join)(clashHome, ".config.lock");
+  await (0, import_promises16.mkdir)(clashHome, { recursive: true, mode: 448 });
+  await (0, import_promises16.chmod)(clashHome, 448);
+  const lockPath = (0, import_node_path19.join)(clashHome, ".config.lock");
   const deadline = Date.now() + LOCK_TIMEOUT_MS;
   while (true) {
     try {
-      await (0, import_promises14.mkdir)(lockPath, { mode: 448 });
-      await (0, import_promises14.writeFile)((0, import_node_path16.join)(lockPath, "owner"), `pid=${process.pid}
+      await (0, import_promises16.mkdir)(lockPath, { mode: 448 });
+      await (0, import_promises16.writeFile)((0, import_node_path19.join)(lockPath, "owner"), `pid=${process.pid}
 created_at=${(/* @__PURE__ */ new Date()).toISOString()}
 `, { encoding: "utf8", mode: 384 });
       break;
     } catch (error53) {
       if (error53.code !== "EEXIST")
         throw error53;
-      const info = await (0, import_promises14.stat)(lockPath).catch(() => null);
+      const info = await (0, import_promises16.stat)(lockPath).catch(() => null);
       if (info && Date.now() - info.mtimeMs > STALE_LOCK_MS) {
-        await (0, import_promises14.rm)(lockPath, { recursive: true, force: true });
+        await (0, import_promises16.rm)(lockPath, { recursive: true, force: true });
         continue;
       }
       if (Date.now() >= deadline) {
@@ -106341,7 +114684,7 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
   try {
     return await task();
   } finally {
-    await (0, import_promises14.rm)(lockPath, { recursive: true, force: true });
+    await (0, import_promises16.rm)(lockPath, { recursive: true, force: true });
   }
 }
 function serializeYamlSection(source, name, value) {
@@ -106388,9 +114731,9 @@ async function serializedWrite(path, task) {
 }
 function createClashUserConfigStore(localDataDir) {
   const clashHome = clashHomeForLocalDataDir(localDataDir);
-  const configPath = (0, import_node_path16.join)(clashHome, "config.yaml");
-  const credentialsPath = (0, import_node_path16.join)(clashHome, "credentials.json");
-  const legacyConfigPath = (0, import_node_path16.join)(clashHome, "config.json");
+  const configPath = (0, import_node_path19.join)(clashHome, "config.yaml");
+  const credentialsPath = (0, import_node_path19.join)(clashHome, "credentials.json");
+  const legacyConfigPath = (0, import_node_path19.join)(clashHome, "config.json");
   let rootMigration = null;
   const ensureRootMigrated = () => {
     rootMigration ??= (async () => {
@@ -106425,7 +114768,7 @@ function createClashUserConfigStore(localDataDir) {
             ...typeof current.cliApiKey === "string" ? {} : { cliApiKey: legacy.apiKey }
           })));
         }
-        await (0, import_promises14.unlink)(legacyConfigPath).catch((error53) => {
+        await (0, import_promises16.unlink)(legacyConfigPath).catch((error53) => {
           if (error53.code !== "ENOENT")
             throw error53;
         });
@@ -106485,13 +114828,13 @@ function createClashUserConfigStore(localDataDir) {
 }
 function watchClashUserConfig(localDataDir, options) {
   const store = createClashUserConfigStore(localDataDir);
-  (0, import_node_fs6.mkdirSync)(store.clashHome, { recursive: true, mode: 448 });
+  (0, import_node_fs7.mkdirSync)(store.clashHome, { recursive: true, mode: 448 });
   let timer = null;
   let closed = false;
   let lastAppliedHash;
   let lastAppliedConfig = null;
   try {
-    const initialSource = (0, import_node_fs6.readFileSync)(store.configPath, "utf8");
+    const initialSource = (0, import_node_fs7.readFileSync)(store.configPath, "utf8");
     lastAppliedHash = sourceHash(initialSource);
     const initialDocument = (0, import_yaml2.parseDocument)(initialSource);
     if (initialDocument.errors.length === 0) {
@@ -106522,7 +114865,7 @@ function watchClashUserConfig(localDataDir, options) {
     lastAppliedHash = hash2;
     lastAppliedConfig = value;
   };
-  const watcher = (0, import_node_fs6.watch)(store.clashHome, (eventType, filename) => {
+  const watcher = (0, import_node_fs7.watch)(store.clashHome, (eventType, filename) => {
     if (closed || filename?.toString() !== "config.yaml")
       return;
     if (eventType !== "change" && eventType !== "rename")
@@ -106688,10 +115031,10 @@ function createLocalMediaAnalysisConfigStore(options) {
 }
 
 // ../../apps/local-api/dist/local-token-import.js
-var import_node_crypto17 = require("node:crypto");
-var import_promises15 = require("node:fs/promises");
+var import_node_crypto18 = require("node:crypto");
+var import_promises17 = require("node:fs/promises");
 var import_node_os5 = require("node:os");
-var import_node_path17 = require("node:path");
+var import_node_path20 = require("node:path");
 var ENCRYPTED_V2_PREFIX = "v2enc:";
 var KEY_LENGTH = 32;
 var IV_LENGTH = 16;
@@ -106701,18 +115044,18 @@ function defaultLocalTokenAppDataRoot(options = {}) {
   const homeDirectory = options.homeDirectory ?? (0, import_node_os5.homedir)();
   const env2 = options.env ?? process.env;
   if (platform3 === "darwin")
-    return (0, import_node_path17.join)(homeDirectory, "Library", "Application Support");
+    return (0, import_node_path20.join)(homeDirectory, "Library", "Application Support");
   if (platform3 === "win32")
-    return env2.APPDATA?.trim() || (0, import_node_path17.join)(homeDirectory, "AppData", "Roaming");
-  return env2.XDG_CONFIG_HOME?.trim() || (0, import_node_path17.join)(homeDirectory, ".config");
+    return env2.APPDATA?.trim() || (0, import_node_path20.join)(homeDirectory, "AppData", "Roaming");
+  return env2.XDG_CONFIG_HOME?.trim() || (0, import_node_path20.join)(homeDirectory, ".config");
 }
 function resolveInside(root5, relativePath) {
-  const absoluteRoot = (0, import_node_path17.resolve)(root5);
-  const target = (0, import_node_path17.resolve)(absoluteRoot, relativePath);
-  const fromRoot = (0, import_node_path17.relative)(absoluteRoot, target);
+  const absoluteRoot = (0, import_node_path20.resolve)(root5);
+  const target = (0, import_node_path20.resolve)(absoluteRoot, relativePath);
+  const fromRoot = (0, import_node_path20.relative)(absoluteRoot, target);
   if (!fromRoot || fromRoot === ".")
     return target;
-  if ((0, import_node_path17.isAbsolute)(fromRoot) || fromRoot === ".." || fromRoot.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)) {
+  if ((0, import_node_path20.isAbsolute)(fromRoot) || fromRoot === ".." || fromRoot.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)) {
     throw new Error("Local token source escapes the application data root.");
   }
   return target;
@@ -106744,7 +115087,7 @@ function decodeV2Token(stored, key) {
     throw new Error("Local token ciphertext is malformed.");
   }
   try {
-    const decipher = (0, import_node_crypto17.createDecipheriv)("aes-256-gcm", key, iv);
+    const decipher = (0, import_node_crypto18.createDecipheriv)("aes-256-gcm", key, iv);
     decipher.setAuthTag(authTag);
     const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8").trim();
     if (!plaintext)
@@ -106761,7 +115104,7 @@ async function importLocalProviderToken(options) {
   const appDataDirectory = resolveInside(root5, options.auth.source.appDataSubdirectory);
   const configPath = resolveInside(appDataDirectory, options.auth.source.configFile);
   const keyPath = resolveInside(appDataDirectory, options.auth.source.keyFile);
-  const [configBytes, key] = await Promise.all([(0, import_promises15.readFile)(configPath), (0, import_promises15.readFile)(keyPath)]);
+  const [configBytes, key] = await Promise.all([(0, import_promises17.readFile)(configPath), (0, import_promises17.readFile)(keyPath)]);
   if (key.length !== KEY_LENGTH) {
     throw new Error(`Local token key must be ${KEY_LENGTH} bytes.`);
   }
@@ -106777,21 +115120,21 @@ async function importLocalProviderToken(options) {
   }
   return {
     accessToken: decodeV2Token(stored.trim(), key),
-    importedFrom: (0, import_node_path17.basename)(appDataDirectory)
+    importedFrom: (0, import_node_path20.basename)(appDataDirectory)
   };
 }
 
 // ../../apps/local-api/dist/plugin-store.js
-var import_node_module7 = require("node:module");
-var import_node_crypto19 = require("node:crypto");
-var import_promises17 = require("node:fs/promises");
-var import_node_path19 = require("node:path");
+var import_node_module9 = require("node:module");
+var import_node_crypto20 = require("node:crypto");
+var import_promises19 = require("node:fs/promises");
+var import_node_path22 = require("node:path");
 
 // ../../apps/local-api/dist/local-provider-store.js
-var import_node_crypto18 = require("node:crypto");
-var import_node_module6 = require("node:module");
-var import_promises16 = require("node:fs/promises");
-var import_node_path18 = require("node:path");
+var import_node_crypto19 = require("node:crypto");
+var import_node_module8 = require("node:module");
+var import_promises18 = require("node:fs/promises");
+var import_node_path21 = require("node:path");
 
 // ../../apps/local-api/dist/provider-accounts.js
 function stringField(value) {
@@ -106984,7 +115327,7 @@ function providerAccountsForRuntime(stored, userId, oauthRecords = []) {
 }
 
 // ../../apps/local-api/dist/local-provider-store.js
-var require3 = (0, import_node_module6.createRequire)(__clash_import_meta_url);
+var require3 = (0, import_node_module8.createRequire)(__clash_import_meta_url);
 var PROVIDER_ACCOUNTS_MIGRATION_ID = "provider-accounts-sqlite-v1";
 var PROVIDER_OAUTH_MIGRATION_ID = "provider-oauth-sqlite-v1";
 var VOLCENGINE_MODELARK_MIGRATION_ID = "provider-accounts-volcengine-modelark-v1";
@@ -106992,16 +115335,16 @@ var LEGACY_VOLCENGINE_ID = "volcengine";
 var CANONICAL_VOLCENGINE_MODELARK_ID = "volcengine-modelark";
 var SECRET_PREFIX = "enc:v1:";
 var secretKeyCache = /* @__PURE__ */ new Map();
-var nodeRequire6 = (0, import_node_module6.createRequire)(__clash_import_meta_url);
-function sqlitePath2(dataDir2) {
-  return (0, import_node_path18.join)(dataDir2, "local.sqlite");
+var nodeRequire8 = (0, import_node_module8.createRequire)(__clash_import_meta_url);
+function sqlitePath2(dataDir3) {
+  return (0, import_node_path21.join)(dataDir3, "local.sqlite");
 }
-function providerSecretKeyPath(dataDir2) {
-  const home = process.env.HOME || process.env.USERPROFILE || dataDir2;
-  return (0, import_node_path18.join)(home, ".clash", "keys", "provider-secret.key");
+function providerSecretKeyPath(dataDir3) {
+  const home = process.env.HOME || process.env.USERPROFILE || dataDir3;
+  return (0, import_node_path21.join)(home, ".clash", "keys", "provider-secret.key");
 }
-function openDatabase4(path) {
-  const { DatabaseSync } = nodeRequire6("node:sqlite");
+function openDatabase6(path) {
+  const { DatabaseSync } = nodeRequire8("node:sqlite");
   const db = new DatabaseSync(path);
   configureDatabase2(db);
   return db;
@@ -107013,7 +115356,7 @@ function configureDatabase2(db) {
     PRAGMA foreign_keys = ON;
   `);
 }
-function applySchema2(db) {
+function applySchema3(db) {
   db.exec(`
     BEGIN IMMEDIATE;
     CREATE TABLE IF NOT EXISTS local_migration (
@@ -107381,39 +115724,39 @@ function keyFromString(value) {
     if (decoded.byteLength === 32)
       return decoded;
   }
-  return (0, import_node_crypto18.createHash)("sha256").update(trimmed).digest();
+  return (0, import_node_crypto19.createHash)("sha256").update(trimmed).digest();
 }
-async function resolveKeyFromFile(dataDir2) {
-  const path = providerSecretKeyPath(dataDir2);
+async function resolveKeyFromFile(dataDir3) {
+  const path = providerSecretKeyPath(dataDir3);
   try {
-    const existing = (await (0, import_promises16.readFile)(path, "utf8")).trim();
+    const existing = (await (0, import_promises18.readFile)(path, "utf8")).trim();
     if (existing)
       return keyFromString(`base64:${existing}`);
   } catch {
   }
-  await (0, import_promises16.mkdir)((0, import_node_path18.dirname)(path), { recursive: true, mode: 448 });
-  const generated = (0, import_node_crypto18.randomBytes)(32).toString("base64");
-  await (0, import_promises16.writeFile)(path, `${generated}
+  await (0, import_promises18.mkdir)((0, import_node_path21.dirname)(path), { recursive: true, mode: 448 });
+  const generated = (0, import_node_crypto19.randomBytes)(32).toString("base64");
+  await (0, import_promises18.writeFile)(path, `${generated}
 `, { mode: 384 });
-  await (0, import_promises16.chmod)(path, 384).catch(() => void 0);
+  await (0, import_promises18.chmod)(path, 384).catch(() => void 0);
   return keyFromString(`base64:${generated}`);
 }
-async function resolveProviderSecretKey(dataDir2) {
-  const cached2 = secretKeyCache.get(dataDir2);
+async function resolveProviderSecretKey(dataDir3) {
+  const cached2 = secretKeyCache.get(dataDir3);
   if (cached2)
     return cached2;
   const task = (async () => {
     const envKey = process.env.CLASH_LOCAL_PROVIDER_SECRET_KEY || process.env.CLASH_LOCAL_SECRET_KEY;
     if (envKey)
       return keyFromString(envKey);
-    return resolveKeyFromFile(dataDir2);
+    return resolveKeyFromFile(dataDir3);
   })();
-  secretKeyCache.set(dataDir2, task);
+  secretKeyCache.set(dataDir3, task);
   return task;
 }
 function encryptSecret(value, key, aad) {
-  const iv = (0, import_node_crypto18.randomBytes)(12);
-  const cipher = (0, import_node_crypto18.createCipheriv)("aes-256-gcm", key, iv);
+  const iv = (0, import_node_crypto19.randomBytes)(12);
+  const cipher = (0, import_node_crypto19.createCipheriv)("aes-256-gcm", key, iv);
   cipher.setAAD(Buffer.from(aad, "utf8"));
   const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
@@ -107434,7 +115777,7 @@ function decryptSecret(value, key, aad) {
   if (version2 !== "v1")
     throw new Error(`Unsupported encrypted local provider secret version: ${version2}`);
   try {
-    const decipher = (0, import_node_crypto18.createDecipheriv)("aes-256-gcm", key, Buffer.from(ivText, "base64"));
+    const decipher = (0, import_node_crypto19.createDecipheriv)("aes-256-gcm", key, Buffer.from(ivText, "base64"));
     decipher.setAAD(Buffer.from(aad, "utf8"));
     decipher.setAuthTag(Buffer.from(tagText, "base64"));
     return Buffer.concat([
@@ -107459,11 +115802,11 @@ function rowCount(db, sql) {
 function hasMigrationMarker2(db, id2) {
   return Boolean(db.prepare("SELECT id FROM local_migration WHERE id = ?").get(id2));
 }
-function markMigration2(db, id2, dataDir2, sourceSha256) {
+function markMigration2(db, id2, dataDir3, sourceSha256) {
   db.prepare(`
     INSERT OR REPLACE INTO local_migration (id, completed_at, source_path, source_sha256)
     VALUES (?, ?, ?, ?)
-  `).run(id2, Math.floor(Date.now() / 1e3), sqlitePath2(dataDir2), sourceSha256);
+  `).run(id2, Math.floor(Date.now() / 1e3), sqlitePath2(dataDir3), sourceSha256);
 }
 function hasProviderAccountRows(db) {
   return rowCount(db, "SELECT COUNT(*) AS count FROM provider_accounts") > 0;
@@ -107756,25 +116099,25 @@ function readProviderOAuthUnsafe(db, secretKey) {
     };
   });
 }
-function createLocalProviderStore(dataDir2) {
-  const path = sqlitePath2(dataDir2);
+function createLocalProviderStore(dataDir3) {
+  const path = sqlitePath2(dataDir3);
   async function exists2() {
     try {
-      await (0, import_promises16.stat)(path);
+      await (0, import_promises18.stat)(path);
       return true;
     } catch {
       return false;
     }
   }
   async function withDb(task) {
-    await (0, import_promises16.mkdir)(dataDir2, { recursive: true });
-    const db = openDatabase4(path);
+    await (0, import_promises18.mkdir)(dataDir3, { recursive: true });
+    const db = openDatabase6(path);
     try {
-      applySchema2(db);
+      applySchema3(db);
       return task(db);
     } finally {
       db.close();
-      await (0, import_promises16.chmod)(path, 384).catch(() => void 0);
+      await (0, import_promises18.chmod)(path, 384).catch(() => void 0);
     }
   }
   async function ensureProviderAccountsMigrated() {
@@ -107787,7 +116130,7 @@ function createLocalProviderStore(dataDir2) {
     });
     if (!needsMigration)
       return;
-    const secretKey = await resolveProviderSecretKey(dataDir2);
+    const secretKey = await resolveProviderSecretKey(dataDir3);
     await withDb((db) => {
       if (hasMigrationMarker2(db, PROVIDER_ACCOUNTS_MIGRATION_ID) && !hasPlaintextProviderAccountSecrets(db))
         return;
@@ -107797,7 +116140,7 @@ function createLocalProviderStore(dataDir2) {
       db.exec("BEGIN IMMEDIATE");
       try {
         replaceProviderAccountsUnsafe(db, accounts, secretKey);
-        markMigration2(db, PROVIDER_ACCOUNTS_MIGRATION_ID, dataDir2, "");
+        markMigration2(db, PROVIDER_ACCOUNTS_MIGRATION_ID, dataDir3, "");
         db.exec("COMMIT");
       } catch (error53) {
         db.exec("ROLLBACK");
@@ -107815,7 +116158,7 @@ function createLocalProviderStore(dataDir2) {
     });
     if (!needsMigration)
       return;
-    const secretKey = await resolveProviderSecretKey(dataDir2);
+    const secretKey = await resolveProviderSecretKey(dataDir3);
     await withDb((db) => {
       if (hasMigrationMarker2(db, PROVIDER_OAUTH_MIGRATION_ID) && !hasPlaintextProviderOAuthSecrets(db))
         return;
@@ -107825,7 +116168,7 @@ function createLocalProviderStore(dataDir2) {
       db.exec("BEGIN IMMEDIATE");
       try {
         replaceProviderOAuthUnsafe(db, records, secretKey);
-        markMigration2(db, PROVIDER_OAUTH_MIGRATION_ID, dataDir2, "");
+        markMigration2(db, PROVIDER_OAUTH_MIGRATION_ID, dataDir3, "");
         db.exec("COMMIT");
       } catch (error53) {
         db.exec("ROLLBACK");
@@ -107843,7 +116186,7 @@ function createLocalProviderStore(dataDir2) {
     });
     if (!needsMigration)
       return;
-    const secretKey = await resolveProviderSecretKey(dataDir2);
+    const secretKey = await resolveProviderSecretKey(dataDir3);
     await withDb((db) => {
       if (hasMigrationMarker2(db, VOLCENGINE_MODELARK_MIGRATION_ID))
         return;
@@ -107853,7 +116196,7 @@ function createLocalProviderStore(dataDir2) {
       db.exec("BEGIN IMMEDIATE");
       try {
         replaceProviderAccountsUnsafe(db, accounts, secretKey);
-        markMigration2(db, VOLCENGINE_MODELARK_MIGRATION_ID, dataDir2, "");
+        markMigration2(db, VOLCENGINE_MODELARK_MIGRATION_ID, dataDir3, "");
         db.exec("COMMIT");
       } catch (error53) {
         db.exec("ROLLBACK");
@@ -107868,7 +116211,7 @@ function createLocalProviderStore(dataDir2) {
     await ensureVolcengineModelarkMigrated();
     if (!await withDb((db) => hasProviderAccountRows(db)))
       return [];
-    const secretKey = await resolveProviderSecretKey(dataDir2);
+    const secretKey = await resolveProviderSecretKey(dataDir3);
     return withDb((db) => readProviderAccountsUnsafe(db, secretKey));
   }
   async function saveProviderAccounts(accounts) {
@@ -107887,13 +116230,13 @@ function createLocalProviderStore(dataDir2) {
       });
       return;
     }
-    const secretKey = await resolveProviderSecretKey(dataDir2);
+    const secretKey = await resolveProviderSecretKey(dataDir3);
     await withDb((db) => {
       db.exec("BEGIN IMMEDIATE");
       try {
         replaceProviderAccountsUnsafe(db, accounts, secretKey);
         if (accounts.length > 0 || hasMigrationMarker2(db, PROVIDER_ACCOUNTS_MIGRATION_ID)) {
-          markMigration2(db, PROVIDER_ACCOUNTS_MIGRATION_ID, dataDir2, "");
+          markMigration2(db, PROVIDER_ACCOUNTS_MIGRATION_ID, dataDir3, "");
         }
         db.exec("COMMIT");
       } catch (error53) {
@@ -107908,7 +116251,7 @@ function createLocalProviderStore(dataDir2) {
     await ensureProviderOAuthMigrated();
     if (!await withDb((db) => hasProviderOAuthRows(db)))
       return [];
-    const secretKey = await resolveProviderSecretKey(dataDir2);
+    const secretKey = await resolveProviderSecretKey(dataDir3);
     return withDb((db) => readProviderOAuthUnsafe(db, secretKey));
   }
   async function saveProviderOAuth(records) {
@@ -107927,13 +116270,13 @@ function createLocalProviderStore(dataDir2) {
       });
       return;
     }
-    const secretKey = await resolveProviderSecretKey(dataDir2);
+    const secretKey = await resolveProviderSecretKey(dataDir3);
     await withDb((db) => {
       db.exec("BEGIN IMMEDIATE");
       try {
         replaceProviderOAuthUnsafe(db, records, secretKey);
         if (records.length > 0 || hasMigrationMarker2(db, PROVIDER_OAUTH_MIGRATION_ID)) {
-          markMigration2(db, PROVIDER_OAUTH_MIGRATION_ID, dataDir2, "");
+          markMigration2(db, PROVIDER_OAUTH_MIGRATION_ID, dataDir3, "");
         }
         db.exec("COMMIT");
       } catch (error53) {
@@ -108026,10 +116369,10 @@ function createLocalProviderStore(dataDir2) {
 
 // ../../apps/local-api/dist/plugin-store.js
 var SECRET_PREFIX2 = "enc:v1:";
-var nodeRequire7 = (0, import_node_module7.createRequire)(__clash_import_meta_url);
+var nodeRequire9 = (0, import_node_module9.createRequire)(__clash_import_meta_url);
 function encrypt(value, key) {
-  const iv = (0, import_node_crypto19.randomBytes)(12);
-  const cipher = (0, import_node_crypto19.createCipheriv)("aes-256-gcm", key, iv);
+  const iv = (0, import_node_crypto20.randomBytes)(12);
+  const cipher = (0, import_node_crypto20.createCipheriv)("aes-256-gcm", key, iv);
   const body = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
   return [
     SECRET_PREFIX2 + iv.toString("base64"),
@@ -108042,7 +116385,7 @@ function decrypt(stored, key) {
   if (!head || !tagText || !bodyText) {
     throw new Error("A stored secret is not in the expected format.");
   }
-  const decipher = (0, import_node_crypto19.createDecipheriv)("aes-256-gcm", key, Buffer.from(head, "base64"));
+  const decipher = (0, import_node_crypto20.createDecipheriv)("aes-256-gcm", key, Buffer.from(head, "base64"));
   decipher.setAuthTag(Buffer.from(tagText, "base64"));
   return Buffer.concat([
     decipher.update(Buffer.from(bodyText, "base64")),
@@ -108050,9 +116393,9 @@ function decrypt(stored, key) {
   ]).toString("utf8");
 }
 async function openPluginStore(options) {
-  await (0, import_promises17.mkdir)(options.dataDir, { recursive: true });
-  const { DatabaseSync } = nodeRequire7("node:sqlite");
-  const db = new DatabaseSync((0, import_node_path19.join)(options.dataDir, "local.sqlite"));
+  await (0, import_promises19.mkdir)(options.dataDir, { recursive: true });
+  const { DatabaseSync } = nodeRequire9("node:sqlite");
+  const db = new DatabaseSync((0, import_node_path22.join)(options.dataDir, "local.sqlite"));
   db.exec(`
     CREATE TABLE IF NOT EXISTS plugin_store (
       plugin_id TEXT NOT NULL,
@@ -108116,17 +116459,17 @@ async function openPluginStore(options) {
 }
 
 // ../../apps/local-api/dist/text-revision-content.js
-var import_node_crypto20 = require("node:crypto");
-var import_promises18 = require("node:fs/promises");
-var import_node_path20 = require("node:path");
+var import_node_crypto21 = require("node:crypto");
+var import_promises20 = require("node:fs/promises");
+var import_node_path23 = require("node:path");
 function textRevisionContentHash(content) {
-  return (0, import_node_crypto20.createHash)("sha256").update(content).digest("hex").slice(0, 16);
+  return (0, import_node_crypto21.createHash)("sha256").update(content).digest("hex").slice(0, 16);
 }
-function textRevisionContentBlobPath(dataDir2, contentHash2) {
+function textRevisionContentBlobPath(dataDir3, contentHash2) {
   if (!/^[a-f0-9]{16}$/.test(contentHash2)) {
     throw new Error("Invalid text revision content hash");
   }
-  return (0, import_node_path20.join)(dataDir2, "text-revision-blobs", contentHash2.slice(0, 2), `${contentHash2}.md`);
+  return (0, import_node_path23.join)(dataDir3, "text-revision-blobs", contentHash2.slice(0, 2), `${contentHash2}.md`);
 }
 function textRevisionContentUrl(revision) {
   return `/api/v1/projects/${encodeURIComponent(revision.projectId)}/text-revisions/${encodeURIComponent(revision.revisionId)}/content`;
@@ -108147,11 +116490,11 @@ function textRevisionContentDescriptor(revision, options = {}) {
     }
   };
 }
-async function storeTextRevisionContentBlob(dataDir2, revision, content) {
+async function storeTextRevisionContentBlob(dataDir3, revision, content) {
   if (textRevisionContentHash(content) !== revision.contentHash) {
     throw new Error("text revision contentHash does not match content");
   }
-  const path = textRevisionContentBlobPath(dataDir2, revision.contentHash);
+  const path = textRevisionContentBlobPath(dataDir3, revision.contentHash);
   await publishContentAddressedFile(path, new TextEncoder().encode(content), {
     isValidForIdentity: (candidate) => textRevisionContentHash(Buffer.from(candidate).toString("utf8")) === revision.contentHash
   });
@@ -108159,9 +116502,9 @@ async function storeTextRevisionContentBlob(dataDir2, revision, content) {
     ...textRevisionContentDescriptor(revision, { stored: true })
   };
 }
-async function withTextRevisionContentDescriptor(dataDir2, revision) {
-  const path = textRevisionContentBlobPath(dataDir2, revision.contentHash);
-  const fileStat = await (0, import_promises18.stat)(path).catch(() => null);
+async function withTextRevisionContentDescriptor(dataDir3, revision) {
+  const path = textRevisionContentBlobPath(dataDir3, revision.contentHash);
+  const fileStat = await (0, import_promises20.stat)(path).catch(() => null);
   if (!fileStat?.isFile())
     return revision;
   return {
@@ -108171,14 +116514,14 @@ async function withTextRevisionContentDescriptor(dataDir2, revision) {
 }
 
 // ../../apps/local-api/dist/fal-mock.js
-var import_node_child_process4 = require("node:child_process");
-var import_node_crypto21 = require("node:crypto");
-var import_node_fs7 = require("node:fs");
-var import_promises19 = require("node:fs/promises");
+var import_node_child_process5 = require("node:child_process");
+var import_node_crypto22 = require("node:crypto");
+var import_node_fs8 = require("node:fs");
+var import_promises21 = require("node:fs/promises");
 var import_node_os6 = require("node:os");
-var import_node_path21 = require("node:path");
-var import_node_util3 = require("node:util");
-var execFileAsync2 = (0, import_node_util3.promisify)(import_node_child_process4.execFile);
+var import_node_path24 = require("node:path");
+var import_node_util4 = require("node:util");
+var execFileAsync2 = (0, import_node_util4.promisify)(import_node_child_process5.execFile);
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -108314,11 +116657,11 @@ function resolveFfmpegPath() {
     "/usr/local/bin/ffmpeg",
     "/usr/bin/ffmpeg"
   ].filter((value) => !!value);
-  return candidates.find((candidate) => (0, import_node_fs7.existsSync)(candidate)) ?? null;
+  return candidates.find((candidate) => (0, import_node_fs8.existsSync)(candidate)) ?? null;
 }
 function resolveQlmanagePath() {
   const candidates = ["/usr/bin/qlmanage"].filter((value) => !!value);
-  return candidates.find((candidate) => (0, import_node_fs7.existsSync)(candidate)) ?? null;
+  return candidates.find((candidate) => (0, import_node_fs8.existsSync)(candidate)) ?? null;
 }
 var FONT_5X7 = {
   " ": ["00000", "00000", "00000", "00000", "00000", "00000", "00000"],
@@ -108451,11 +116794,11 @@ async function makeRenderedVideoFrame(record3, dir) {
   if (!qlmanage)
     return null;
   const layout = makeVideoFrameLayout(record3);
-  const svgPath = (0, import_node_path21.join)(dir, "frame.svg");
-  await (0, import_promises19.writeFile)(svgPath, makeVideoFrameSvg(record3, layout), "utf8");
+  const svgPath = (0, import_node_path24.join)(dir, "frame.svg");
+  await (0, import_promises21.writeFile)(svgPath, makeVideoFrameSvg(record3, layout), "utf8");
   await execFileAsync2(qlmanage, ["-t", "-s", String(layout.canvasWidth), "-o", dir, svgPath], { timeout: 1e4, maxBuffer: 1024 * 1024 * 10 });
   const pngPath = `${svgPath}.png`;
-  return (0, import_node_fs7.existsSync)(pngPath) ? { path: pngPath, layout } : null;
+  return (0, import_node_fs8.existsSync)(pngPath) ? { path: pngPath, layout } : null;
 }
 function makePpmFrame(record3) {
   const { width, height } = record3;
@@ -108547,14 +116890,14 @@ async function makeMp4(record3) {
       extension: ".mp4"
     };
   }
-  const dir = await (0, import_promises19.mkdtemp)((0, import_node_path21.join)((0, import_node_os6.tmpdir)(), "clash-fal-video-"));
-  const framePath = (0, import_node_path21.join)(dir, "frame.ppm");
-  const outputPath = (0, import_node_path21.join)(dir, "mock.mp4");
+  const dir = await (0, import_promises21.mkdtemp)((0, import_node_path24.join)((0, import_node_os6.tmpdir)(), "clash-fal-video-"));
+  const framePath = (0, import_node_path24.join)(dir, "frame.ppm");
+  const outputPath = (0, import_node_path24.join)(dir, "mock.mp4");
   try {
     const renderedFrame = await makeRenderedVideoFrame(record3, dir).catch(() => null);
     const inputFramePath = renderedFrame?.path ?? framePath;
     if (!renderedFrame) {
-      await (0, import_promises19.writeFile)(framePath, makePpmFrame(record3));
+      await (0, import_promises21.writeFile)(framePath, makePpmFrame(record3));
     }
     const videoFilter = renderedFrame ? `crop=${makeEven(renderedFrame.layout.contentWidth)}:${makeEven(renderedFrame.layout.contentHeight)}:${makeEven(renderedFrame.layout.contentX)}:${makeEven(renderedFrame.layout.contentY)},scale=${record3.width}:${record3.height},setsar=1` : void 0;
     await execFileAsync2(ffmpeg, [
@@ -108583,12 +116926,12 @@ async function makeMp4(record3) {
       outputPath
     ], { timeout: 3e4, maxBuffer: 1024 * 1024 * 10 });
     return {
-      bytes: await (0, import_promises19.readFile)(outputPath),
+      bytes: await (0, import_promises21.readFile)(outputPath),
       contentType: "video/mp4",
       extension: ".mp4"
     };
   } finally {
-    await (0, import_promises19.rm)(dir, { recursive: true, force: true });
+    await (0, import_promises21.rm)(dir, { recursive: true, force: true });
   }
 }
 function waveformForPrompt(prompt, bars = 128) {
@@ -108721,7 +117064,7 @@ function createMockFalQueueService() {
   return {
     async submit(modelId, rawInput, options) {
       const input = normalizeFalInput(rawInput);
-      const requestId = `fal-mock-${(0, import_node_crypto21.randomUUID)()}`;
+      const requestId = `fal-mock-${(0, import_node_crypto22.randomUUID)()}`;
       const prompt = stringValue(input.prompt) ?? stringValue(input.text) ?? "Mock fal output";
       const kind = inferOutputKind(modelId, input);
       const { width, height } = dimensionsForInput(input);
@@ -109378,12 +117721,12 @@ ${input.prompt || "Mock text"}`),
 }
 
 // ../../apps/local-api/dist/local-plugin-asset-staging.js
-var import_node_crypto22 = require("node:crypto");
-var import_node_module8 = require("node:module");
-var import_promises20 = require("node:fs/promises");
-var nodeRequire8 = (0, import_node_module8.createRequire)(__clash_import_meta_url);
-function openDatabase5(path) {
-  const { DatabaseSync } = nodeRequire8("node:sqlite");
+var import_node_crypto23 = require("node:crypto");
+var import_node_module10 = require("node:module");
+var import_promises22 = require("node:fs/promises");
+var nodeRequire10 = (0, import_node_module10.createRequire)(__clash_import_meta_url);
+function openDatabase7(path) {
+  const { DatabaseSync } = nodeRequire10("node:sqlite");
   const database = new DatabaseSync(path);
   database.exec(`
     PRAGMA busy_timeout = 5000;
@@ -109424,7 +117767,7 @@ function required(value, label) {
     throw new Error(`${label} must not be empty.`);
   return normalized;
 }
-function parseRow2(row) {
+function parseRow3(row) {
   const projectId = row.project_id;
   const projectAssetId2 = row.project_asset_id;
   const resourceId = row.resource_id;
@@ -109458,7 +117801,7 @@ function parseRow2(row) {
   };
 }
 function pluginOutputProjectAssetId(input) {
-  const digest3 = (0, import_node_crypto22.createHash)("sha256").update(required(input.projectId, "projectId")).update("\0").update(required(input.taskId, "taskId")).update("\0").update(required(input.slot, "slot")).digest("hex");
+  const digest3 = (0, import_node_crypto23.createHash)("sha256").update(required(input.projectId, "projectId")).update("\0").update(required(input.taskId, "taskId")).update("\0").update(required(input.slot, "slot")).digest("hex");
   return `plugin-output:${digest3}`;
 }
 function createLocalPluginAssetStagingStore(options) {
@@ -109468,13 +117811,13 @@ function createLocalPluginAssetStagingStore(options) {
     ...options.clashRoot ? { clashRoot: options.clashRoot } : {}
   });
   async function withDatabase(task) {
-    await (0, import_promises20.mkdir)(options.dataDir, { recursive: true });
-    const database = openDatabase5(databasePath2);
+    await (0, import_promises22.mkdir)(options.dataDir, { recursive: true });
+    const database = openDatabase7(databasePath2);
     try {
       return task(database);
     } finally {
       database.close();
-      await (0, import_promises20.chmod)(databasePath2, 384).catch(() => void 0);
+      await (0, import_promises22.chmod)(databasePath2, 384).catch(() => void 0);
     }
   }
   async function load(input) {
@@ -109486,7 +117829,7 @@ function createLocalPluginAssetStagingStore(options) {
         FROM local_plugin_asset_staging
         WHERE project_id = ? AND project_asset_id = ?
       `).get(input.projectId, input.projectAssetId);
-      return row ? parseRow2(row) : void 0;
+      return row ? parseRow3(row) : void 0;
     });
   }
   async function resolved(row) {
@@ -109510,7 +117853,7 @@ function createLocalPluginAssetStagingStore(options) {
       throw new Error(`Staged plugin Asset ${row.projectAssetId} has no complete pre-cutover receipt matching sealed Resource ${row.resourceId}.`);
     }
     const recovered = await resources.stage({
-      bytes: new Uint8Array(await (0, import_promises20.readFile)(sealed.path))
+      bytes: new Uint8Array(await (0, import_promises22.readFile)(sealed.path))
     });
     if (recovered.resourceId !== row.resourceId || recovered.byteLength !== receiptByteLength) {
       throw new Error(`Staged plugin Asset ${row.projectAssetId} recovery does not match its verified sealed Resource.`);
@@ -109581,10 +117924,10 @@ function createLocalPluginAssetStagingStore(options) {
 }
 
 // ../../apps/local-api/dist/audio-config.js
-var import_node_fs8 = require("node:fs");
-var import_promises23 = require("node:fs/promises");
+var import_node_fs9 = require("node:fs");
+var import_promises25 = require("node:fs/promises");
 var import_node_os7 = require("node:os");
-var import_node_path24 = require("node:path");
+var import_node_path27 = require("node:path");
 var import_node_url = require("node:url");
 
 // ../../packages/clash-sdk/js/dist/chunk-KWHOV5HP.js
@@ -110002,16 +118345,16 @@ function optionalConfidence(value, label) {
 }
 
 // ../../apps/local-api/dist/local-config-store.js
-var import_node_module9 = require("node:module");
-var import_promises21 = require("node:fs/promises");
-var import_node_path22 = require("node:path");
-var require4 = (0, import_node_module9.createRequire)(__clash_import_meta_url);
-var nodeRequire9 = (0, import_node_module9.createRequire)(__clash_import_meta_url);
-function sqlitePath3(dataDir2) {
-  return (0, import_node_path22.join)(dataDir2, "local.sqlite");
+var import_node_module11 = require("node:module");
+var import_promises23 = require("node:fs/promises");
+var import_node_path25 = require("node:path");
+var require4 = (0, import_node_module11.createRequire)(__clash_import_meta_url);
+var nodeRequire11 = (0, import_node_module11.createRequire)(__clash_import_meta_url);
+function sqlitePath3(dataDir3) {
+  return (0, import_node_path25.join)(dataDir3, "local.sqlite");
 }
-function openDatabase6(path) {
-  const { DatabaseSync } = nodeRequire9("node:sqlite");
+function openDatabase8(path) {
+  const { DatabaseSync } = nodeRequire11("node:sqlite");
   const db = new DatabaseSync(path);
   db.exec(`
     PRAGMA journal_mode = WAL;
@@ -110020,7 +118363,7 @@ function openDatabase6(path) {
   `);
   return db;
 }
-function applySchema3(db) {
+function applySchema4(db) {
   db.exec(`
     BEGIN IMMEDIATE;
     CREATE TABLE IF NOT EXISTS local_config (
@@ -110033,23 +118376,23 @@ function applySchema3(db) {
 }
 async function exists(path) {
   try {
-    await (0, import_promises21.stat)(path);
+    await (0, import_promises23.stat)(path);
     return true;
   } catch {
     return false;
   }
 }
-function createSqliteLocalConfigStore(dataDir2) {
-  const path = sqlitePath3(dataDir2);
+function createSqliteLocalConfigStore(dataDir3) {
+  const path = sqlitePath3(dataDir3);
   async function withDb(task) {
-    await (0, import_promises21.mkdir)(dataDir2, { recursive: true });
-    const db = openDatabase6(path);
+    await (0, import_promises23.mkdir)(dataDir3, { recursive: true });
+    const db = openDatabase8(path);
     try {
-      applySchema3(db);
+      applySchema4(db);
       return task(db);
     } finally {
       db.close();
-      await (0, import_promises21.chmod)(path, 384).catch(() => void 0);
+      await (0, import_promises23.chmod)(path, 384).catch(() => void 0);
     }
   }
   return {
@@ -110089,17 +118432,17 @@ function createSqliteLocalConfigStore(dataDir2) {
 }
 
 // ../../apps/local-api/dist/managed-local-model-python.js
-var import_node_child_process5 = require("node:child_process");
-var import_promises22 = require("node:fs/promises");
-var import_node_path23 = require("node:path");
-var import_node_util4 = require("node:util");
-var execFileAsync3 = (0, import_node_util4.promisify)(import_node_child_process5.execFile);
+var import_node_child_process6 = require("node:child_process");
+var import_promises24 = require("node:fs/promises");
+var import_node_path26 = require("node:path");
+var import_node_util5 = require("node:util");
+var execFileAsync3 = (0, import_node_util5.promisify)(import_node_child_process6.execFile);
 var MANAGED_RUNTIME_SCHEMA_VERSION = 1;
-var MANAGED_RUNTIME_RELATIVE_ROOT = (0, import_node_path23.join)("runtimes", "python", "local-models");
+var MANAGED_RUNTIME_RELATIVE_ROOT = (0, import_node_path26.join)("runtimes", "python", "local-models");
 var MANAGED_RUNTIME_STAMP = "runtime.json";
 var preparations = /* @__PURE__ */ new Map();
 function pythonBinaryForVenv(venvDir) {
-  return process.platform === "win32" ? (0, import_node_path23.join)(venvDir, "Scripts", "python.exe") : (0, import_node_path23.join)(venvDir, "bin", "python");
+  return process.platform === "win32" ? (0, import_node_path26.join)(venvDir, "Scripts", "python.exe") : (0, import_node_path26.join)(venvDir, "bin", "python");
 }
 async function defaultRunCommand(command6, args, options) {
   const result = await execFileAsync3(command6, args, options);
@@ -110111,14 +118454,14 @@ async function defaultRunCommand(command6, args, options) {
 function pythonEnvironment(env2, sdkPythonPath) {
   return {
     ...env2,
-    PYTHONPATH: [sdkPythonPath, env2.PYTHONPATH].filter(Boolean).join(import_node_path23.delimiter),
+    PYTHONPATH: [sdkPythonPath, env2.PYTHONPATH].filter(Boolean).join(import_node_path26.delimiter),
     PIP_DISABLE_PIP_VERSION_CHECK: "1",
     PIP_NO_INPUT: "1"
   };
 }
 async function readStamp(path) {
   try {
-    const parsed = JSON.parse(await (0, import_promises22.readFile)(path, "utf8"));
+    const parsed = JSON.parse(await (0, import_promises24.readFile)(path, "utf8"));
     if (parsed.version !== MANAGED_RUNTIME_SCHEMA_VERSION)
       return null;
     if (typeof parsed.sdkPythonPath !== "string" || !parsed.sdkPythonPath)
@@ -110132,17 +118475,17 @@ async function readStamp(path) {
 }
 async function pathExists(path) {
   try {
-    await (0, import_promises22.access)(path);
+    await (0, import_promises24.access)(path);
     return true;
   } catch {
     return false;
   }
 }
 function createManagedLocalModelPythonEnvironment(options) {
-  const runtimeRoot = (0, import_node_path23.join)(options.clashHome, MANAGED_RUNTIME_RELATIVE_ROOT);
-  const venvDir = (0, import_node_path23.join)(runtimeRoot, "venv");
+  const runtimeRoot = (0, import_node_path26.join)(options.clashHome, MANAGED_RUNTIME_RELATIVE_ROOT);
+  const venvDir = (0, import_node_path26.join)(runtimeRoot, "venv");
   const pythonBinary = pythonBinaryForVenv(venvDir);
-  const stampPath = (0, import_node_path23.join)(runtimeRoot, MANAGED_RUNTIME_STAMP);
+  const stampPath = (0, import_node_path26.join)(runtimeRoot, MANAGED_RUNTIME_STAMP);
   const bootstrapPython = options.bootstrapPython ?? options.env?.CLASH_LOCAL_MODELS_BOOTSTRAP_PYTHON ?? process.env.CLASH_LOCAL_MODELS_BOOTSTRAP_PYTHON ?? "python3";
   const runCommand = options.runCommand ?? defaultRunCommand;
   const env2 = pythonEnvironment(options.env ?? process.env, options.sdkPythonPath);
@@ -110157,17 +118500,17 @@ function createManagedLocalModelPythonEnvironment(options) {
     return stamp?.sdkPythonPath === options.sdkPythonPath;
   }
   async function prepare() {
-    await (0, import_promises22.mkdir)(runtimeRoot, { recursive: true });
+    await (0, import_promises24.mkdir)(runtimeRoot, { recursive: true });
     if (await pathExists(pythonBinary)) {
       try {
         await verify(pythonBinary);
         verified = true;
       } catch {
-        await (0, import_promises22.rm)(venvDir, { recursive: true, force: true });
+        await (0, import_promises24.rm)(venvDir, { recursive: true, force: true });
       }
     }
     if (!await pathExists(pythonBinary)) {
-      const stagingDir = (0, import_node_path23.join)(runtimeRoot, `.venv-${process.pid}-${Date.now()}`);
+      const stagingDir = (0, import_node_path26.join)(runtimeRoot, `.venv-${process.pid}-${Date.now()}`);
       try {
         await runCommand(bootstrapPython, ["-m", "venv", stagingDir], {
           env: env2,
@@ -110177,14 +118520,14 @@ function createManagedLocalModelPythonEnvironment(options) {
         const stagingPython = pythonBinaryForVenv(stagingDir);
         await verify(stagingPython);
         try {
-          await (0, import_promises22.rename)(stagingDir, venvDir);
+          await (0, import_promises24.rename)(stagingDir, venvDir);
         } catch (error53) {
           if (!await pathExists(pythonBinary))
             throw error53;
           await verify(pythonBinary);
         }
       } finally {
-        await (0, import_promises22.rm)(stagingDir, { recursive: true, force: true });
+        await (0, import_promises24.rm)(stagingDir, { recursive: true, force: true });
       }
       verified = true;
     }
@@ -110193,10 +118536,10 @@ function createManagedLocalModelPythonEnvironment(options) {
       sdkPythonPath: options.sdkPythonPath,
       createdAt: (/* @__PURE__ */ new Date()).toISOString()
     };
-    const temporaryStamp = (0, import_node_path23.join)((0, import_node_path23.dirname)(stampPath), `.${MANAGED_RUNTIME_STAMP}-${process.pid}`);
-    await (0, import_promises22.writeFile)(temporaryStamp, `${JSON.stringify(stamp, null, 2)}
+    const temporaryStamp = (0, import_node_path26.join)((0, import_node_path26.dirname)(stampPath), `.${MANAGED_RUNTIME_STAMP}-${process.pid}`);
+    await (0, import_promises24.writeFile)(temporaryStamp, `${JSON.stringify(stamp, null, 2)}
 `, { mode: 384 });
-    await (0, import_promises22.rename)(temporaryStamp, stampPath);
+    await (0, import_promises24.rename)(temporaryStamp, stampPath);
     return pythonBinary;
   }
   return {
@@ -110444,11 +118787,11 @@ async function writeConfig(store, config2) {
 function defaultClashSdkPythonPath() {
   const explicit = process.env.CLASH_PYTHON_SDK_PATH?.trim();
   if (explicit)
-    return (0, import_node_path24.resolve)(explicit);
-  const inherited = process.env.PYTHONPATH?.split(import_node_path24.delimiter).find((entry) => entry && (0, import_node_fs8.existsSync)((0, import_node_path24.join)(entry, "clash_sdk", "local_models", "rpc.py")));
+    return (0, import_node_path27.resolve)(explicit);
+  const inherited = process.env.PYTHONPATH?.split(import_node_path27.delimiter).find((entry) => entry && (0, import_node_fs9.existsSync)((0, import_node_path27.join)(entry, "clash_sdk", "local_models", "rpc.py")));
   if (inherited)
-    return (0, import_node_path24.resolve)(inherited);
-  return (0, import_node_path24.resolve)((0, import_node_path24.dirname)((0, import_node_url.fileURLToPath)(__clash_import_meta_url)), "../../..", "packages", "clash-sdk", "python");
+    return (0, import_node_path27.resolve)(inherited);
+  return (0, import_node_path27.resolve)((0, import_node_path27.dirname)((0, import_node_url.fileURLToPath)(__clash_import_meta_url)), "../../..", "packages", "clash-sdk", "python");
 }
 function displayErrorMessage(error53) {
   return error53 instanceof Error ? error53.message : String(error53);
@@ -110523,7 +118866,7 @@ function createHookBackedRuntime(options, pythonBinary, cacheDir, pythonPath) {
     async transcribe(input) {
       if (!options.builtinTranscribe)
         return fallback2.transcribe(input);
-      const file2 = new File([await (0, import_promises23.readFile)(input.audioPath)], (0, import_node_path24.basename)(input.audioPath), { type: "audio/webm" });
+      const file2 = new File([await (0, import_promises25.readFile)(input.audioPath)], (0, import_node_path27.basename)(input.audioPath), { type: "audio/webm" });
       return options.builtinTranscribe({
         file: file2,
         model: input.model,
@@ -110547,11 +118890,11 @@ function createDefaultTtsRuntime(options, pythonBinary, cacheDir, pythonPath) {
   });
 }
 async function transcribeWithRuntime(runtime, input, model) {
-  const dir = await (0, import_promises23.mkdtemp)((0, import_node_path24.join)((0, import_node_os7.tmpdir)(), "clash-asr-"));
-  const extension2 = (0, import_node_path24.extname)(input.file.name || "") || ".webm";
-  const audioPath = (0, import_node_path24.join)(dir, (0, import_node_path24.basename)(input.file.name || `input${extension2}`));
+  const dir = await (0, import_promises25.mkdtemp)((0, import_node_path27.join)((0, import_node_os7.tmpdir)(), "clash-asr-"));
+  const extension2 = (0, import_node_path27.extname)(input.file.name || "") || ".webm";
+  const audioPath = (0, import_node_path27.join)(dir, (0, import_node_path27.basename)(input.file.name || `input${extension2}`));
   try {
-    await (0, import_promises23.writeFile)(audioPath, Buffer.from(await input.file.arrayBuffer()));
+    await (0, import_promises25.writeFile)(audioPath, Buffer.from(await input.file.arrayBuffer()));
     return await runtime.transcribe({
       model,
       audioPath,
@@ -110562,7 +118905,7 @@ async function transcribeWithRuntime(runtime, input, model) {
       throw error53;
     throw new LocalAudioConfigError(`Local ASR transcription failed: ${displayErrorMessage(error53)}`, 502);
   } finally {
-    await (0, import_promises23.rm)(dir, { recursive: true, force: true });
+    await (0, import_promises25.rm)(dir, { recursive: true, force: true });
   }
 }
 function createLocalAudioConfigStore(options) {
@@ -110576,10 +118919,10 @@ function createLocalAudioConfigStore(options) {
     sdkPythonPath: pythonSdkPath
   }) : null;
   const pythonBinary = explicitPythonBinary ?? managedPythonEnvironment?.pythonBinary ?? DEFAULT_PYTHON_BINARY;
-  const asrCacheDir = (0, import_node_path24.join)(options.dataDir, "models", "speech", "asr");
+  const asrCacheDir = (0, import_node_path27.join)(options.dataDir, "models", "speech", "asr");
   const defaultAsrRuntime = createDefaultAsrRuntime(options, pythonBinary, asrCacheDir, pythonSdkPath);
   const asrRuntime = managedPythonEnvironment && !options.asrRuntime && !options.builtinStatus && !options.builtinInstall && !options.builtinTranscribe ? withManagedPythonAsrRuntime(defaultAsrRuntime, managedPythonEnvironment) : defaultAsrRuntime;
-  const ttsCacheDir = (0, import_node_path24.join)(options.dataDir, "models", "speech", "tts");
+  const ttsCacheDir = (0, import_node_path27.join)(options.dataDir, "models", "speech", "tts");
   const defaultTtsRuntime = createDefaultTtsRuntime(options, pythonBinary, ttsCacheDir, pythonSdkPath);
   const ttsRuntime = managedPythonEnvironment && !options.ttsRuntime ? withManagedPythonTtsRuntime(defaultTtsRuntime, managedPythonEnvironment) : defaultTtsRuntime;
   const asrStatusCache = createRuntimeStatusCache();
@@ -110789,8 +119132,8 @@ function createLocalAudioConfigStore(options) {
       if (!status.available) {
         throw new LocalAudioConfigError(`Selected TTS model is not downloaded. Open Settings > Models and download it.${status.message ? ` ${status.message}.` : ""}`, 409);
       }
-      const dir = await (0, import_promises23.mkdtemp)((0, import_node_path24.join)((0, import_node_os7.tmpdir)(), "clash-tts-"));
-      const outputPath = (0, import_node_path24.join)(dir, "speech.wav");
+      const dir = await (0, import_promises25.mkdtemp)((0, import_node_path27.join)((0, import_node_os7.tmpdir)(), "clash-tts-"));
+      const outputPath = (0, import_node_path27.join)(dir, "speech.wav");
       try {
         const synthesis = await ttsRuntime.synthesize({
           model,
@@ -110802,7 +119145,7 @@ function createLocalAudioConfigStore(options) {
         });
         const { outputPath: _outputPath, ...metadata } = synthesis;
         return {
-          audio: new Uint8Array(await (0, import_promises23.readFile)(outputPath)),
+          audio: new Uint8Array(await (0, import_promises25.readFile)(outputPath)),
           metadata
         };
       } catch (error53) {
@@ -110810,16 +119153,16 @@ function createLocalAudioConfigStore(options) {
           throw error53;
         throw new LocalAudioConfigError(`Local TTS synthesis failed: ${displayErrorMessage(error53)}`, 502);
       } finally {
-        await (0, import_promises23.rm)(dir, { recursive: true, force: true });
+        await (0, import_promises25.rm)(dir, { recursive: true, force: true });
       }
     }
   };
 }
 
 // ../../apps/local-api/dist/sync.js
-var import_node_crypto23 = require("node:crypto");
-var import_node_path25 = require("node:path");
-var import_node_util5 = require("node:util");
+var import_node_crypto25 = require("node:crypto");
+var import_node_path28 = require("node:path");
+var import_node_util6 = require("node:util");
 var import_loro_crdt10 = __toESM(require_nodejs(), 1);
 
 // ../../node_modules/.pnpm/ws@8.21.0/node_modules/ws/wrapper.mjs
@@ -110832,9 +119175,28 @@ var import_subprotocol = __toESM(require_subprotocol(), 1);
 var import_websocket = __toESM(require_websocket(), 1);
 var import_websocket_server = __toESM(require_websocket_server(), 1);
 
+// ../../apps/local-api/dist/project-canvas-preview-cache.js
+var import_node_crypto24 = require("node:crypto");
+function projectCanvasPreviewCacheEntryFromDoc(doc, generatedAt = (/* @__PURE__ */ new Date()).toISOString()) {
+  return {
+    sourceVersion: (0, import_node_crypto24.createHash)("sha256").update(doc.version().encode()).digest("hex"),
+    generatedAt,
+    preview: projectCanvasPreviewFromDoc(doc)
+  };
+}
+async function readThroughProjectCanvasPreviewEntry(options) {
+  const cached2 = await options.store.readCanvasPreview(options.projectId);
+  if (cached2)
+    return cached2;
+  const entry = await options.inspect((doc) => projectCanvasPreviewCacheEntryFromDoc(doc));
+  await options.store.writeCanvasPreview(options.projectId, entry);
+  return entry;
+}
+
 // ../../apps/local-api/dist/sync.js
 var LOCAL_LORO_COMPACT_UPDATE_THRESHOLD = 16;
 var LOCAL_LORO_COMPACT_BYTES_THRESHOLD = 1024 * 1024;
+var PROJECT_CANVAS_PREVIEW_DEBOUNCE_MS = 350;
 var HOST_OWNED_GENERATOR_AUTHORITY_CONTAINERS = [
   GENERATOR_SCHEMA_CONTAINER,
   PROJECT_GENERATORS_CONTAINER,
@@ -110853,7 +119215,7 @@ function exactBytes2(view) {
 }
 function assertLocalPeerHostOwnedAuthorityMutation(current, candidate, authorityName, containers) {
   for (const container of containers) {
-    if (!(0, import_node_util5.isDeepStrictEqual)(candidate.getMap(container).toJSON(), current.getMap(container).toJSON())) {
+    if (!(0, import_node_util6.isDeepStrictEqual)(candidate.getMap(container).toJSON(), current.getMap(container).toJSON())) {
       throw new Error(`Local peers cannot mutate Host-owned ${authorityName} authority.`);
     }
   }
@@ -110890,7 +119252,7 @@ function isMatchingPeerTimelineRunInput(candidate, binding) {
       continue;
     }
     const canonicalDsl = canonicalTimelineRenderDsl(timeline.state);
-    if (canonicalDsl === null || !(0, import_node_util5.isDeepStrictEqual)(fields.timelineDsl, canonicalDsl)) {
+    if (canonicalDsl === null || !(0, import_node_util6.isDeepStrictEqual)(fields.timelineDsl, canonicalDsl)) {
       continue;
     }
     const expected = projectTimelineAssetInputs(timeline.state).sort((left, right) => left.slot.localeCompare(right.slot));
@@ -110920,7 +119282,7 @@ function actionAssetBindingFromPeerRaw(id2, raw2) {
   return parsed.data;
 }
 function assertLocalPeerActionAssetBindingMutation(current, candidate) {
-  if (!(0, import_node_util5.isDeepStrictEqual)(candidate.getMap(ACTION_ASSET_BINDING_SCHEMA_CONTAINER).toJSON(), current.getMap(ACTION_ASSET_BINDING_SCHEMA_CONTAINER).toJSON())) {
+  if (!(0, import_node_util6.isDeepStrictEqual)(candidate.getMap(ACTION_ASSET_BINDING_SCHEMA_CONTAINER).toJSON(), current.getMap(ACTION_ASSET_BINDING_SCHEMA_CONTAINER).toJSON())) {
     throw new Error("Local peers cannot mutate Host-owned Action Asset binding authority markers.");
   }
   const currentRaw = current.getMap(ACTION_ASSET_BINDINGS_CONTAINER).toJSON();
@@ -110929,7 +119291,7 @@ function assertLocalPeerActionAssetBindingMutation(current, candidate) {
     ...Object.keys(currentRaw),
     ...Object.keys(candidateRaw)
   ])) {
-    if ((0, import_node_util5.isDeepStrictEqual)(currentRaw[id2], candidateRaw[id2]))
+    if ((0, import_node_util6.isDeepStrictEqual)(currentRaw[id2], candidateRaw[id2]))
       continue;
     const before = actionAssetBindingFromPeerRaw(id2, currentRaw[id2]);
     const after = actionAssetBindingFromPeerRaw(id2, candidateRaw[id2]);
@@ -111002,7 +119364,7 @@ function createHttpRemoteLoroPersistence(options) {
   };
 }
 async function loadDoc(options) {
-  const store = new FileReplicaStore((0, import_node_path25.join)(options.dataDir, "projects"));
+  const store = new FileReplicaStore((0, import_node_path28.join)(options.dataDir, "projects"));
   let doc;
   try {
     doc = await store.recover(options.projectId);
@@ -111037,6 +119399,7 @@ var LocalLoroRoom = class _LocalLoroRoom {
   store;
   remotePersistence;
   workflowProcessor;
+  canvasPreviewCacheEnabled;
   peers = /* @__PURE__ */ new Map();
   projectOperations = Promise.resolve();
   checkpointedDoc;
@@ -111046,19 +119409,22 @@ var LocalLoroRoom = class _LocalLoroRoom {
   pendingWorkQueue = Promise.resolve();
   pollTimer;
   pollScheduleVersion = 0;
+  canvasPreviewTimer;
+  canvasPreviewWrites = Promise.resolve();
   closed = false;
   closePromise;
-  constructor(projectId, doc, store, remotePersistence, workflowProcessor) {
+  constructor(projectId, doc, store, remotePersistence, workflowProcessor, canvasPreviewCacheEnabled = false) {
     this.projectId = projectId;
     this.doc = doc;
     this.store = store;
     this.remotePersistence = remotePersistence;
     this.workflowProcessor = workflowProcessor;
+    this.canvasPreviewCacheEnabled = canvasPreviewCacheEnabled;
     this.checkpointedDoc = import_loro_crdt10.LoroDoc.fromSnapshot(this.doc.export({ mode: "snapshot" }));
   }
   static async open(options, onCheckpointReadable) {
     const loaded = await loadDoc(options);
-    const room = new _LocalLoroRoom(options.projectId, loaded.doc, loaded.store, options.remotePersistence, options.workflowProcessor ?? void 0);
+    const room = new _LocalLoroRoom(options.projectId, loaded.doc, loaded.store, options.remotePersistence, options.workflowProcessor ?? void 0, options.canvasPreviewCacheEnabled ?? false);
     if (loaded.importedRemoteSnapshot || loaded.workspaceRepaired)
       await room.saveSnapshot();
     await onCheckpointReadable?.(room);
@@ -111158,6 +119524,7 @@ var LocalLoroRoom = class _LocalLoroRoom {
     if (update.byteLength > 0) {
       for (const peer of this.peers.values())
         peer.sendUpdate(update);
+      this.scheduleCanvasPreviewRefresh();
     }
     if (repairUpdate?.byteLength) {
       await this.persistUpdate(repairUpdate);
@@ -111195,7 +119562,7 @@ var LocalLoroRoom = class _LocalLoroRoom {
     candidate.import(updateBytes);
     assertLocalPeerHostOwnedAuthorityMutation(this.doc, candidate, "Generator", HOST_OWNED_GENERATOR_AUTHORITY_CONTAINERS);
     assertLocalPeerHostOwnedAuthorityMutation(this.doc, candidate, "Document Asset", HOST_OWNED_DOCUMENT_ASSET_AUTHORITY_CONTAINERS);
-    if (!(0, import_node_util5.isDeepStrictEqual)(candidate.getMap(PROJECT_ASSETS_CONTAINER).toJSON(), this.doc.getMap(PROJECT_ASSETS_CONTAINER).toJSON()) || !(0, import_node_util5.isDeepStrictEqual)(candidate.getMap(PROJECT_ASSET_SCHEMA_CONTAINER).toJSON(), this.doc.getMap(PROJECT_ASSET_SCHEMA_CONTAINER).toJSON())) {
+    if (!(0, import_node_util6.isDeepStrictEqual)(candidate.getMap(PROJECT_ASSETS_CONTAINER).toJSON(), this.doc.getMap(PROJECT_ASSETS_CONTAINER).toJSON()) || !(0, import_node_util6.isDeepStrictEqual)(candidate.getMap(PROJECT_ASSET_SCHEMA_CONTAINER).toJSON(), this.doc.getMap(PROJECT_ASSET_SCHEMA_CONTAINER).toJSON())) {
       throw new Error("Local peer updates cannot mutate Host-owned Project Asset authority; use the Asset SDK/Host publication boundary.");
     }
     assertLocalPeerActionAssetBindingMutation(this.doc, candidate);
@@ -111303,6 +119670,30 @@ var LocalLoroRoom = class _LocalLoroRoom {
         console.error("[local-sync] failed to compact committed Project checkpoint", error53);
       }
     }
+    this.scheduleCanvasPreviewRefresh();
+  }
+  scheduleCanvasPreviewRefresh(delayMs = PROJECT_CANVAS_PREVIEW_DEBOUNCE_MS) {
+    if (this.closed || !this.canvasPreviewCacheEnabled)
+      return;
+    if (this.canvasPreviewTimer)
+      clearTimeout(this.canvasPreviewTimer);
+    this.canvasPreviewTimer = setTimeout(() => {
+      this.canvasPreviewTimer = void 0;
+      this.enqueueCanvasPreviewRefresh();
+    }, delayMs);
+    this.canvasPreviewTimer.unref?.();
+  }
+  enqueueCanvasPreviewRefresh() {
+    const run = this.canvasPreviewWrites.catch(() => void 0).then(async () => {
+      const entry = await this.enqueueProjectOperation(() => projectCanvasPreviewCacheEntryFromDoc(this.doc));
+      const cached2 = await this.store.readCanvasPreview(this.projectId);
+      if (cached2?.sourceVersion === entry.sourceVersion)
+        return;
+      await this.store.writeCanvasPreview(this.projectId, entry);
+    }).catch((error53) => {
+      console.error("[local-sync] failed to refresh Main canvas preview", error53);
+    });
+    this.canvasPreviewWrites = run;
   }
   restoreLiveProjectFromCheckpoint() {
     this.doc = import_loro_crdt10.LoroDoc.fromSnapshot(this.checkpointedDoc.export({ mode: "snapshot" }));
@@ -111354,8 +119745,14 @@ var LocalLoroRoom = class _LocalLoroRoom {
       clearTimeout(this.pollTimer);
       this.pollTimer = void 0;
     }
+    if (this.canvasPreviewTimer) {
+      clearTimeout(this.canvasPreviewTimer);
+      this.canvasPreviewTimer = void 0;
+      this.enqueueCanvasPreviewRefresh();
+    }
     await this.pendingWorkQueue.catch(() => void 0);
     await this.projectOperations.catch(() => void 0);
+    await this.canvasPreviewWrites.catch(() => void 0);
     this.peers.clear();
   }
   async processPendingWorkOnce() {
@@ -111431,11 +119828,11 @@ var LocalLoroRoomHub = class {
   replicaStore;
   closed = false;
   closePromise;
-  constructor(dataDir2, remotePersistence, workflowProcessor) {
-    this.dataDir = dataDir2;
+  constructor(dataDir3, remotePersistence, workflowProcessor) {
+    this.dataDir = dataDir3;
     this.remotePersistence = remotePersistence;
     this.workflowProcessor = workflowProcessor;
-    this.replicaStore = new FileReplicaStore((0, import_node_path25.join)(dataDir2, "projects"));
+    this.replicaStore = new FileReplicaStore((0, import_node_path28.join)(dataDir3, "projects"));
   }
   room(projectId) {
     if (this.closed) {
@@ -111460,7 +119857,8 @@ var LocalLoroRoomHub = class {
           dataDir: this.dataDir,
           projectId,
           remotePersistence: this.remotePersistence,
-          workflowProcessor: this.workflowProcessor
+          workflowProcessor: this.workflowProcessor,
+          canvasPreviewCacheEnabled: true
         }, (opened) => {
           this.checkpointReadableRooms.set(projectId, opened);
         });
@@ -111497,7 +119895,7 @@ var LocalLoroRoomHub = class {
       schemaVersion: 1,
       kind: "clash.workspace.import-reservation",
       reservationId,
-      snapshotSha256: (0, import_node_crypto23.createHash)("sha256").update(snapshot).digest("hex")
+      snapshotSha256: (0, import_node_crypto25.createHash)("sha256").update(snapshot).digest("hex")
     };
     this.importReservations.add(projectId);
     const operation2 = (async () => {
@@ -111526,7 +119924,7 @@ var LocalLoroRoomHub = class {
       throw new LocalProjectRoomBusyError(projectId);
     }
     const snapshot = await this.replicaStore.loadSnapshot(projectId);
-    if (!snapshot || (0, import_node_crypto23.createHash)("sha256").update(snapshot).digest("hex") !== snapshotSha256) {
+    if (!snapshot || (0, import_node_crypto25.createHash)("sha256").update(snapshot).digest("hex") !== snapshotSha256) {
       throw new Error(`Project ${projectId} installed snapshot does not match its committed Workspace import.`);
     }
     const expected = {
@@ -111606,7 +120004,7 @@ function presenceFromHeaders(headers) {
   const userName = headerString(headers["x-user-name"]);
   const name = clientType === "agent" ? headerString(headers["x-agent-name"]) ?? userName ?? "Local Agent" : clientType === "cli" ? userName ?? "Local CLI" : userName ?? "Local User";
   return {
-    id: (0, import_node_crypto23.randomUUID)(),
+    id: (0, import_node_crypto25.randomUUID)(),
     clientType,
     userId,
     name
@@ -112140,7 +120538,7 @@ function createPublicAssetStorageService(options) {
 }
 
 // ../../apps/local-api/dist/durable-run-coordinator.js
-var import_node_util6 = require("node:util");
+var import_node_util7 = require("node:util");
 var DEFAULT_LOCAL_PROVIDER_RUN_DEADLINE_MS = 30 * 6e4;
 var FrozenExecutorInputError = class extends Error {
   name = "FrozenExecutorInputError";
@@ -112598,7 +120996,7 @@ function classifyThrownError(error53, operation2, run) {
   };
 }
 function sameCreation(existing, intended) {
-  return existing.actionRunId === intended.actionRunId && existing.outputSlot === intended.outputSlot && existing.owner.realm === intended.owner.realm && existing.owner.id === intended.owner.id && existing.deadlineAt === intended.deadlineAt && (0, import_node_util6.isDeepStrictEqual)(existing.executorInput, intended.executorInput);
+  return existing.actionRunId === intended.actionRunId && existing.outputSlot === intended.outputSlot && existing.owner.realm === intended.owner.realm && existing.owner.id === intended.owner.id && existing.deadlineAt === intended.deadlineAt && (0, import_node_util7.isDeepStrictEqual)(existing.executorInput, intended.executorInput);
 }
 async function createLocalDurableRun(options) {
   if (!options.ownerId.trim()) {
@@ -112735,337 +121133,120 @@ function createLocalDurableRunCoordinator(options) {
   };
 }
 
-// ../../apps/local-api/dist/durable-run-journal.js
-var import_node_module10 = require("node:module");
-var import_promises26 = require("node:fs/promises");
-var import_node_path31 = require("node:path");
-var import_node_util7 = require("node:util");
-var nodeRequire10 = (0, import_node_module10.createRequire)(__clash_import_meta_url);
-var PHASES = /* @__PURE__ */ new Set([
-  "queued",
-  "submitting",
-  "polling",
-  "finalizing",
-  "succeeded",
-  "failed"
-]);
-function databasePath(dataDir2) {
-  return (0, import_node_path31.join)(dataDir2, "local.sqlite");
+// ../../apps/local-api/dist/project-canvas-thumbnail.js
+var import_sharp2 = __toESM(require_lib(), 1);
+var PROJECT_CANVAS_THUMBNAIL_WIDTH = 640;
+var PROJECT_CANVAS_THUMBNAIL_HEIGHT = 360;
+var ProjectCanvasThumbnailCache = class {
+  inFlight = /* @__PURE__ */ new Map();
+  store;
+  render;
+  constructor(options) {
+    this.store = options.store;
+    this.render = options.render ?? renderProjectCanvasThumbnail;
+  }
+  get(input) {
+    const key = `${encodeURIComponent(input.projectId)}:${input.entry.sourceVersion}`;
+    const active = this.inFlight.get(key);
+    if (active)
+      return active;
+    const run = this.readOrRender(input).finally(() => {
+      if (this.inFlight.get(key) === run)
+        this.inFlight.delete(key);
+    });
+    this.inFlight.set(key, run);
+    return run;
+  }
+  schedule(input) {
+    void this.get(input).catch((error53) => {
+      console.error(`[local-api] failed to derive Main canvas thumbnail for ${input.projectId}`, error53);
+    });
+  }
+  async readOrRender(input) {
+    const cached2 = await this.store.readCanvasThumbnail(input.projectId, input.entry.sourceVersion);
+    if (cached2)
+      return cached2;
+    const rendered = await this.render(input);
+    await this.store.writeCanvasThumbnail(input.projectId, input.entry.sourceVersion, rendered);
+    return rendered;
+  }
+};
+function createProjectCanvasThumbnailCache(store) {
+  return new ProjectCanvasThumbnailCache({ store });
 }
-function openDatabase7(path) {
-  const { DatabaseSync } = nodeRequire10("node:sqlite");
-  const database = new DatabaseSync(path);
-  database.exec(`
-    PRAGMA busy_timeout = 5000;
-    PRAGMA journal_mode = WAL;
-  `);
-  return database;
+function escapeXml2(value) {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
 }
-function applySchema4(database) {
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS durable_run_journal (
-      action_run_id TEXT NOT NULL,
-      output_slot TEXT NOT NULL,
-      owner_realm TEXT NOT NULL,
-      owner_id TEXT NOT NULL,
-      revision INTEGER NOT NULL,
-      phase TEXT NOT NULL,
-      recover_at INTEGER,
-      updated_at INTEGER NOT NULL,
-      record_json TEXT NOT NULL,
-      PRIMARY KEY (action_run_id, output_slot)
-    );
-
-    CREATE INDEX IF NOT EXISTS durable_run_journal_recovery
-      ON durable_run_journal (owner_realm, owner_id, recover_at);
-  `);
+function nodeFill(node) {
+  if (node.type === "group")
+    return "#deddda";
+  if (node.type === "image" || node.type === "video")
+    return "#cacac6";
+  if (node.type.includes("action"))
+    return "#ddd5ce";
+  if (node.type.includes("video-editor") || node.type.includes("timeline")) {
+    return "#c7c7c3";
+  }
+  return "#f7f6f3";
 }
-function corrupt(identity, detail) {
-  return new Error(`Durable run journal record ${identity} is corrupt: ${detail}.`);
+function backgroundSvg(entry, transform2) {
+  const nodes5 = [...entry.preview.nodes].sort((left, right) => Number(right.type === "group") - Number(left.type === "group"));
+  const shapes = nodes5.map((node) => {
+    const rect = transform2(node);
+    const radius = Math.max(2, Math.min(8, rect.height * 0.08));
+    const strokeDash = node.type === "group" ? ' stroke-dasharray="5 4"' : "";
+    const label = node.label ? `<text x="${rect.x + Math.max(4, rect.width * 0.05)}" y="${rect.y + Math.max(10, rect.height * 0.17)}" font-family="Inter, Arial, sans-serif" font-size="${Math.max(7, Math.min(12, rect.height * 0.12))}" font-weight="600" fill="#57534e">${escapeXml2(node.label.slice(0, 42))}</text>` : "";
+    return `<g><rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${radius}" fill="${nodeFill(node)}" stroke="#a8a29e" stroke-width="1"${strokeDash}/>${label}</g>`;
+  }).join("");
+  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${PROJECT_CANVAS_THUMBNAIL_WIDTH}" height="${PROJECT_CANVAS_THUMBNAIL_HEIGHT}" viewBox="0 0 ${PROJECT_CANVAS_THUMBNAIL_WIDTH} ${PROJECT_CANVAS_THUMBNAIL_HEIGHT}"><rect width="100%" height="100%" fill="#e7e7e4"/>${shapes}</svg>`);
 }
-function parseRecord(text, sourceIdentity) {
-  let value;
-  try {
-    value = JSON.parse(text);
-  } catch {
-    throw corrupt(sourceIdentity, "record_json is not valid JSON");
+async function mediaTile(media, width, height) {
+  const radius = Math.max(2, Math.min(8, height * 0.08));
+  const mask = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="${width}" height="${height}" rx="${radius}" fill="white"/></svg>`);
+  return (0, import_sharp2.default)(media.path, { failOn: "error", limitInputPixels: 1e8 }).rotate().resize(width, height, { fit: "cover" }).composite([{ input: mask, blend: "dest-in" }]).png().toBuffer();
+}
+async function renderProjectCanvasThumbnail(input) {
+  const { bounds } = input.entry.preview;
+  if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
+    throw new TypeError("Main canvas thumbnail requires non-empty bounds.");
   }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw corrupt(sourceIdentity, "the JSON root must be an object");
-  }
-  const record3 = value;
-  if (record3.schemaVersion !== 1) {
-    throw corrupt(sourceIdentity, "schemaVersion must be 1");
-  }
-  if (typeof record3.actionRunId !== "string" || !record3.actionRunId.trim()) {
-    throw corrupt(sourceIdentity, "actionRunId must be a non-empty string");
-  }
-  if (typeof record3.outputSlot !== "string" || !record3.outputSlot.trim()) {
-    throw corrupt(sourceIdentity, "outputSlot must be a non-empty string");
-  }
-  if (!Number.isSafeInteger(record3.revision) || record3.revision < 0) {
-    throw corrupt(sourceIdentity, "revision must be a non-negative safe integer");
-  }
-  if (typeof record3.phase !== "string" || !PHASES.has(record3.phase)) {
-    throw corrupt(sourceIdentity, "phase is not recognized");
-  }
-  const owner = record3.owner;
-  if (!owner || typeof owner !== "object" || Array.isArray(owner)) {
-    throw corrupt(sourceIdentity, "owner must be an object");
-  }
-  const ownerRecord = owner;
-  if (ownerRecord.realm !== "local" && ownerRecord.realm !== "cloud") {
-    throw corrupt(sourceIdentity, "owner.realm must be local or cloud");
-  }
-  if (typeof ownerRecord.id !== "string" || !ownerRecord.id.trim()) {
-    throw corrupt(sourceIdentity, "owner.id must be a non-empty string");
-  }
-  if (!("executorInput" in record3)) {
-    throw corrupt(sourceIdentity, "executorInput is missing");
-  }
-  for (const field3 of ["createdAt", "updatedAt", "deadlineAt"]) {
-    if (typeof record3[field3] !== "number" || !Number.isFinite(record3[field3])) {
-      throw corrupt(sourceIdentity, `${field3} must be a finite number`);
+  const padding = 24;
+  const scale = Math.min((PROJECT_CANVAS_THUMBNAIL_WIDTH - padding * 2) / bounds.width, (PROJECT_CANVAS_THUMBNAIL_HEIGHT - padding * 2) / bounds.height);
+  const contentWidth = bounds.width * scale;
+  const contentHeight = bounds.height * scale;
+  const offsetX = (PROJECT_CANVAS_THUMBNAIL_WIDTH - contentWidth) / 2;
+  const offsetY = (PROJECT_CANVAS_THUMBNAIL_HEIGHT - contentHeight) / 2;
+  const transform2 = (node) => ({
+    x: offsetX + (node.x - bounds.x) * scale,
+    y: offsetY + (node.y - bounds.y) * scale,
+    width: Math.max(1, node.width * scale),
+    height: Math.max(1, node.height * scale)
+  });
+  const overlays = [];
+  for (const node of input.entry.preview.nodes) {
+    if (!node.assetId || node.type !== "image" && node.type !== "video") {
+      continue;
     }
-  }
-  if (record3.recoveryFinalizationDeadlineAt !== void 0 && (!Number.isSafeInteger(record3.recoveryFinalizationDeadlineAt) || record3.recoveryFinalizationDeadlineAt <= record3.deadlineAt)) {
-    throw corrupt(sourceIdentity, "recoveryFinalizationDeadlineAt must be a safe integer later than deadlineAt");
-  }
-  return record3;
-}
-function identityText(identity) {
-  return `${identity.actionRunId}/${identity.outputSlot}`;
-}
-function assertIdentity(identity) {
-  if (!identity.actionRunId.trim() || !identity.outputSlot.trim()) {
-    throw new Error("A durable run identity requires actionRunId and outputSlot.");
-  }
-}
-function serializeRecord(run) {
-  let json3;
-  try {
-    json3 = JSON.stringify(run);
-  } catch (error53) {
-    throw new Error(`Durable run journal record ${run.actionRunId}/${run.outputSlot} is not JSON serializable: ${error53 instanceof Error ? error53.message : String(error53)}`);
-  }
-  return {
-    json: json3,
-    normalized: parseRecord(json3, `${run.actionRunId}/${run.outputSlot}`)
-  };
-}
-function parseRow3(row) {
-  const actionRunId = typeof row.action_run_id === "string" ? row.action_run_id : "<unknown>";
-  const outputSlot = typeof row.output_slot === "string" ? row.output_slot : "<unknown>";
-  const sourceIdentity = `${actionRunId}/${outputSlot}`;
-  if (typeof row.record_json !== "string") {
-    throw corrupt(sourceIdentity, "record_json is missing");
-  }
-  const record3 = parseRecord(row.record_json, sourceIdentity);
-  if (record3.actionRunId !== actionRunId || record3.outputSlot !== outputSlot) {
-    throw corrupt(sourceIdentity, "JSON identity does not match its table key");
-  }
-  if (record3.revision !== row.revision) {
-    throw corrupt(sourceIdentity, "JSON revision does not match its indexed revision");
-  }
-  if (record3.phase !== row.phase) {
-    throw corrupt(sourceIdentity, "JSON phase does not match its indexed phase");
-  }
-  if (record3.owner.realm !== row.owner_realm || record3.owner.id !== row.owner_id) {
-    throw corrupt(sourceIdentity, "JSON owner does not match its indexed owner");
-  }
-  return record3;
-}
-function recoveryAt(run) {
-  if (run.phase === "succeeded")
-    return null;
-  if (run.phase === "failed") {
-    if (run.projectedAt !== void 0)
-      return null;
-    if (run.activeAttempt)
-      return run.activeAttempt.expiresAt;
-    if (run.projectionFailure && run.nextAttemptAt === void 0)
-      return null;
-    return run.nextAttemptAt ?? run.updatedAt;
-  }
-  if (run.activeAttempt) {
-    const isDeadlineRecoveryPoll = run.activeAttempt.operation === "poll" && run.deadlineReconciliationPending;
-    if (isDeadlineRecoveryPoll) {
-      return run.activeAttempt.expiresAt;
-    }
-    if (run.recoveryFinalizationDeadlineAt !== void 0) {
-      return Math.min(run.activeAttempt.expiresAt, run.recoveryFinalizationDeadlineAt);
-    }
-    return Math.min(run.activeAttempt.expiresAt, run.deadlineAt);
-  }
-  let dueAt = run.nextAttemptAt ?? run.updatedAt;
-  if (run.phase === "finalizing" && run.recoveryFinalizationDeadlineAt !== void 0) {
-    return Math.min(dueAt, run.recoveryFinalizationDeadlineAt);
-  }
-  if ((run.phase === "submitting" || run.phase === "polling" && !run.deadlineReconciliationPending || run.phase === "finalizing") && run.deadlineAt < dueAt) {
-    dueAt = run.deadlineAt;
-  }
-  return dueAt;
-}
-function runProjectId(run) {
-  const input = run.executorInput;
-  if (!input || typeof input !== "object" || Array.isArray(input)) {
-    throw corrupt(identityText(run), "executorInput must contain the owning projectId");
-  }
-  const projectId = input.projectId;
-  if (typeof projectId !== "string" || !projectId.trim()) {
-    throw corrupt(identityText(run), "executorInput.projectId must be a non-empty string");
-  }
-  return projectId;
-}
-function sameFrozenFields(current, next) {
-  return current.schemaVersion === next.schemaVersion && current.actionRunId === next.actionRunId && current.outputSlot === next.outputSlot && current.owner.realm === next.owner.realm && current.owner.id === next.owner.id && current.createdAt === next.createdAt && current.deadlineAt === next.deadlineAt && (current.recoveryFinalizationDeadlineAt === void 0 || current.recoveryFinalizationDeadlineAt === next.recoveryFinalizationDeadlineAt) && (0, import_node_util7.isDeepStrictEqual)(current.executorInput, next.executorInput);
-}
-function changes(result) {
-  return typeof result.changes === "bigint" ? Number(result.changes) : result.changes;
-}
-function createSqliteDurableRunJournal(dataDir2) {
-  const path = databasePath(dataDir2);
-  async function withDatabase(task) {
-    await (0, import_promises26.mkdir)(dataDir2, { recursive: true });
-    const database = openDatabase7(path);
     try {
-      applySchema4(database);
-      return task(database);
-    } finally {
-      database.close();
-      await (0, import_promises26.chmod)(path, 384).catch(() => void 0);
+      const media = await input.resolveMedia(node.assetId);
+      if (!media)
+        continue;
+      const rect = transform2(node);
+      const width = Math.max(1, Math.round(rect.width));
+      const height = Math.max(1, Math.round(rect.height));
+      const tile = await mediaTile(media, width, height);
+      if (!tile)
+        continue;
+      overlays.push({
+        input: tile,
+        left: Math.round(rect.x),
+        top: Math.round(rect.y)
+      });
+    } catch (error53) {
+      console.warn(`[local-api] skipped canvas thumbnail media ${node.assetId}`, error53);
     }
   }
-  return {
-    async create(run) {
-      const serialized = serializeRecord(run);
-      const normalized = serialized.normalized;
-      return withDatabase((database) => {
-        database.exec("BEGIN IMMEDIATE");
-        try {
-          const existingRow = database.prepare(`
-            SELECT action_run_id, output_slot, owner_realm, owner_id,
-                   revision, phase, record_json
-            FROM durable_run_journal
-            WHERE action_run_id = ? AND output_slot = ?
-          `).get(normalized.actionRunId, normalized.outputSlot);
-          if (existingRow) {
-            const existing = parseRow3(existingRow);
-            if (!(0, import_node_util7.isDeepStrictEqual)(existing, normalized)) {
-              throw new Error(`Durable run ${normalized.actionRunId}/${normalized.outputSlot} already exists with different content.`);
-            }
-          } else {
-            database.prepare(`
-              INSERT INTO durable_run_journal (
-                action_run_id, output_slot, owner_realm, owner_id,
-                revision, phase, recover_at, updated_at, record_json
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `).run(normalized.actionRunId, normalized.outputSlot, normalized.owner.realm, normalized.owner.id, normalized.revision, normalized.phase, recoveryAt(normalized), normalized.updatedAt, serialized.json);
-          }
-          database.exec("COMMIT");
-        } catch (error53) {
-          database.exec("ROLLBACK");
-          throw error53;
-        }
-      });
-    },
-    async load(identity) {
-      assertIdentity(identity);
-      return withDatabase((database) => {
-        const row = database.prepare(`
-          SELECT action_run_id, output_slot, owner_realm, owner_id,
-                 revision, phase, record_json
-          FROM durable_run_journal
-          WHERE action_run_id = ? AND output_slot = ?
-        `).get(identity.actionRunId, identity.outputSlot);
-        return row ? parseRow3(row) : void 0;
-      });
-    },
-    async compareAndSet(identity, expectedRevision, next) {
-      assertIdentity(identity);
-      if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
-        throw new Error("A durable run CAS requires a non-negative expected revision.");
-      }
-      const serialized = serializeRecord(next);
-      const normalized = serialized.normalized;
-      if (normalized.actionRunId !== identity.actionRunId || normalized.outputSlot !== identity.outputSlot) {
-        throw new Error(`Durable run CAS identity ${identityText(identity)} does not match the next record.`);
-      }
-      if (normalized.revision !== expectedRevision + 1) {
-        throw new Error("A durable run CAS must advance revision by exactly one.");
-      }
-      return withDatabase((database) => {
-        const currentRow = database.prepare(`
-          SELECT action_run_id, output_slot, owner_realm, owner_id,
-                 revision, phase, record_json
-          FROM durable_run_journal
-          WHERE action_run_id = ? AND output_slot = ?
-        `).get(identity.actionRunId, identity.outputSlot);
-        if (!currentRow)
-          return false;
-        const current = parseRow3(currentRow);
-        if (current.revision !== expectedRevision || !sameFrozenFields(current, normalized)) {
-          return false;
-        }
-        const result = database.prepare(`
-          UPDATE durable_run_journal
-          SET owner_realm = ?, owner_id = ?, revision = ?, phase = ?,
-              recover_at = ?, updated_at = ?, record_json = ?
-          WHERE action_run_id = ? AND output_slot = ?
-            AND revision = ? AND owner_realm = ? AND owner_id = ?
-        `).run(normalized.owner.realm, normalized.owner.id, normalized.revision, normalized.phase, recoveryAt(normalized), normalized.updatedAt, serialized.json, identity.actionRunId, identity.outputSlot, expectedRevision, normalized.owner.realm, normalized.owner.id);
-        return changes(result) === 1;
-      });
-    },
-    async listRecoverable(ownerId, now) {
-      if (!ownerId.trim())
-        throw new Error("A recoverable run scan requires an owner id.");
-      if (!Number.isFinite(now))
-        throw new Error("A recoverable run scan requires a finite time.");
-      return withDatabase((database) => database.prepare(`
-          SELECT action_run_id, output_slot, owner_realm, owner_id,
-                 revision, phase, record_json
-          FROM durable_run_journal
-          WHERE owner_realm = 'local' AND owner_id = ?
-            AND recover_at IS NOT NULL AND recover_at <= ?
-          ORDER BY recover_at ASC, action_run_id ASC, output_slot ASC
-        `).all(ownerId, now).map(parseRow3));
-    },
-    async listOwnedProjectIds(ownerId) {
-      if (!ownerId.trim())
-        throw new Error("A durable run project scan requires an owner id.");
-      return withDatabase((database) => {
-        const projectIds = new Set(database.prepare(`
-            SELECT action_run_id, output_slot, owner_realm, owner_id,
-                   revision, phase, record_json
-            FROM durable_run_journal
-            WHERE owner_realm = 'local' AND owner_id = ?
-              AND recover_at IS NOT NULL
-            ORDER BY action_run_id ASC, output_slot ASC
-          `).all(ownerId).map(parseRow3).map(runProjectId));
-        return [...projectIds].sort();
-      });
-    },
-    async nextWakeAt(ownerId, projectId) {
-      if (!ownerId.trim())
-        throw new Error("A durable run wake query requires an owner id.");
-      return withDatabase((database) => {
-        const rows = database.prepare(`
-          SELECT action_run_id, output_slot, owner_realm, owner_id,
-                 revision, phase, recover_at, record_json
-          FROM durable_run_journal
-          WHERE owner_realm = 'local' AND owner_id = ?
-            AND recover_at IS NOT NULL
-          ORDER BY recover_at ASC, action_run_id ASC, output_slot ASC
-        `).all(ownerId);
-        const row = projectId ? rows.find((candidate) => {
-          const run = parseRow3(candidate);
-          return runProjectId(run) === projectId;
-        }) : rows[0];
-        return typeof row?.recover_at === "number" ? row.recover_at : void 0;
-      });
-    }
-  };
+  return new Uint8Array(await (0, import_sharp2.default)(backgroundSvg(input.entry, transform2)).composite(overlays).webp({ quality: 76, effort: 4 }).toBuffer());
 }
 
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
@@ -128088,6 +136269,7 @@ function buildLocalGeneratorDurableRunCommand(input) {
         values: {
           ...input.built.revision.state,
           ...input.built.request.parameters,
+          __generatorActionId: input.built.action.id,
           ...modelInvocationValues,
           ...input.built.action.selectOutputsByParameter ? { [input.built.action.selectOutputsByParameter]: [output.slot] } : {}
         },
@@ -128612,10 +136794,10 @@ function createLocalDocumentProductService(options) {
 }
 
 // ../../apps/local-api/dist/local-workspace-transfer.js
-var import_node_crypto30 = require("node:crypto");
-var import_node_fs11 = require("node:fs");
-var import_promises27 = require("node:fs/promises");
-var import_node_path32 = require("node:path");
+var import_node_crypto32 = require("node:crypto");
+var import_node_fs12 = require("node:fs");
+var import_promises28 = require("node:fs/promises");
+var import_node_path34 = require("node:path");
 var import_node_stream13 = require("node:stream");
 var import_node_util9 = require("node:util");
 var import_loro_crdt11 = __toESM(require_nodejs(), 1);
@@ -128648,7 +136830,7 @@ var LocalWorkspaceTransferError = class extends Error {
   }
 };
 function sha2563(bytes) {
-  return (0, import_node_crypto30.createHash)("sha256").update(bytes).digest("hex");
+  return (0, import_node_crypto32.createHash)("sha256").update(bytes).digest("hex");
 }
 function exactBytes3(bytes) {
   return bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength ? bytes.slice() : new Uint8Array(bytes);
@@ -129466,7 +137648,7 @@ function sameStrings(left, right) {
 function makePayload(input) {
   const frozen = exactBytes3(input.bytes);
   return {
-    fileId: (0, import_node_crypto30.randomUUID)(),
+    fileId: (0, import_node_crypto32.randomUUID)(),
     path: input.path,
     role: input.role,
     bytes: frozen.byteLength,
@@ -129478,7 +137660,7 @@ function makePayload(input) {
 }
 function makeDeclaredPayload(input) {
   return {
-    fileId: (0, import_node_crypto30.randomUUID)(),
+    fileId: (0, import_node_crypto32.randomUUID)(),
     path: input.path,
     role: input.role,
     bytes: input.bytes,
@@ -129489,7 +137671,7 @@ function makeDeclaredPayload(input) {
   };
 }
 async function assertReadableDigest(input) {
-  const digest3 = (0, import_node_crypto30.createHash)("sha256");
+  const digest3 = (0, import_node_crypto32.createHash)("sha256");
   let bytes = 0;
   for await (const chunkInput of input.source) {
     const chunk = exactBytes3(chunkInput);
@@ -129565,7 +137747,7 @@ function createLocalWorkspaceTransferService(options) {
     }
     return payload;
   };
-  const importStagingRoot = (0, import_node_path32.join)(options.dataDir, "workspace-import-staging");
+  const importStagingRoot = (0, import_node_path34.join)(options.dataDir, "workspace-import-staging");
   const serializeImportCreate = async (work) => {
     let release2;
     const turn = new Promise((resolve18) => {
@@ -129588,7 +137770,7 @@ function createLocalWorkspaceTransferService(options) {
     if (importsByDigest.get(session.public.bundleDigest) === importId) {
       importsByDigest.delete(session.public.bundleDigest);
     }
-    await (0, import_promises27.rm)((0, import_node_path32.join)(importStagingRoot, importId), {
+    await (0, import_promises28.rm)((0, import_node_path34.join)(importStagingRoot, importId), {
       recursive: true,
       force: true
     });
@@ -129630,12 +137812,12 @@ function createLocalWorkspaceTransferService(options) {
       throw new LocalWorkspaceTransferError("WORKSPACE_IMPORT_FILE_NOT_FOUND", "A committed Workspace import accepts no more payloads.");
     }
     const slot = requireImportSlot(session, fileId);
-    const directory = (0, import_node_path32.join)(importStagingRoot, importId);
-    await (0, import_promises27.mkdir)(directory, { recursive: true, mode: 448 });
-    const finalPath = (0, import_node_path32.join)(directory, `${fileId}.payload`);
-    const temporaryPath = (0, import_node_path32.join)(directory, `.${fileId}.${(0, import_node_crypto30.randomUUID)()}.tmp`);
-    const handle = await (0, import_promises27.open)(temporaryPath, "wx", 384);
-    const digest3 = (0, import_node_crypto30.createHash)("sha256");
+    const directory = (0, import_node_path34.join)(importStagingRoot, importId);
+    await (0, import_promises28.mkdir)(directory, { recursive: true, mode: 448 });
+    const finalPath = (0, import_node_path34.join)(directory, `${fileId}.payload`);
+    const temporaryPath = (0, import_node_path34.join)(directory, `.${fileId}.${(0, import_node_crypto32.randomUUID)()}.tmp`);
+    const handle = await (0, import_promises28.open)(temporaryPath, "wx", 384);
+    const digest3 = (0, import_node_crypto32.createHash)("sha256");
     let bytes = 0;
     try {
       for await (const chunkInput of source) {
@@ -129660,14 +137842,14 @@ function createLocalWorkspaceTransferService(options) {
       await handle.sync();
     } catch (error53) {
       await handle.close().catch(() => void 0);
-      await (0, import_promises27.rm)(temporaryPath, { force: true }).catch(() => void 0);
+      await (0, import_promises28.rm)(temporaryPath, { force: true }).catch(() => void 0);
       throw error53;
     }
     await handle.close();
     if (slot.stagedPath) {
-      await (0, import_promises27.rm)(temporaryPath, { force: true });
+      await (0, import_promises28.rm)(temporaryPath, { force: true });
     } else {
-      await (0, import_promises27.rename)(temporaryPath, finalPath);
+      await (0, import_promises28.rename)(temporaryPath, finalPath);
       slot.stagedPath = finalPath;
     }
     const publicFile2 = session.public.files.find((candidate) => candidate.fileId === fileId);
@@ -129686,7 +137868,7 @@ function createLocalWorkspaceTransferService(options) {
     if (!slot.stagedPath) {
       throw new LocalWorkspaceTransferError("WORKSPACE_IMPORT_FILE_MISSING", `Workspace import payload ${slot.descriptor.path} is missing.`);
     }
-    const bytes = new Uint8Array(await (0, import_promises27.readFile)(slot.stagedPath));
+    const bytes = new Uint8Array(await (0, import_promises28.readFile)(slot.stagedPath));
     if (bytes.byteLength !== slot.descriptor.bytes || sha2563(bytes) !== slot.descriptor.sha256) {
       throw new LocalWorkspaceTransferError("WORKSPACE_CONTENT_MISMATCH", `Workspace import payload ${slot.descriptor.path} changed after upload.`);
     }
@@ -129764,7 +137946,7 @@ function createLocalWorkspaceTransferService(options) {
         });
         assertInspectedResourceMatches(requirement, resource, inspection.facts);
         await assertReadableDigest({
-          source: (0, import_node_fs11.createReadStream)(projection.path),
+          source: (0, import_node_fs12.createReadStream)(projection.path),
           bytes: resource.byteLength,
           sha256: resource.digest.value,
           label: `Resource ${requirement.resourceId}`
@@ -129775,8 +137957,8 @@ function createLocalWorkspaceTransferService(options) {
           path,
           declaredBytes: resource.byteLength,
           declaredSha256: resource.digest.value,
-          load: async () => new Uint8Array(await (0, import_promises27.readFile)(projection.path)),
-          open: async () => (0, import_node_fs11.createReadStream)(projection.path)
+          load: async () => new Uint8Array(await (0, import_promises28.readFile)(projection.path)),
+          open: async () => (0, import_node_fs12.createReadStream)(projection.path)
         });
       }
       const documentDescriptors = /* @__PURE__ */ new Map();
@@ -129828,7 +138010,7 @@ function createLocalWorkspaceTransferService(options) {
         const blobPath = textRevisionContentBlobPath(options.dataDir, revision.contentHash);
         let bytes;
         try {
-          bytes = new Uint8Array(await (0, import_promises27.readFile)(blobPath));
+          bytes = new Uint8Array(await (0, import_promises28.readFile)(blobPath));
         } catch (error53) {
           throw new LocalWorkspaceTransferError("WORKSPACE_CONTENT_MISSING", `Text revision ${revision.revisionId} body is missing.`, void 0, { cause: error53 });
         }
@@ -129841,14 +138023,14 @@ function createLocalWorkspaceTransferService(options) {
         addObjectPayload({
           path,
           bytes,
-          load: async () => new Uint8Array(await (0, import_promises27.readFile)(blobPath))
+          load: async () => new Uint8Array(await (0, import_promises28.readFile)(blobPath))
         });
       }
       payloads.push(...objectPayloads.values());
       resourceDescriptors.sort((left, right) => left.resource.id.localeCompare(right.resource.id));
       textDescriptors.sort((left, right) => left.revision.revisionId.localeCompare(right.revision.revisionId));
       payloads.sort((left, right) => left.path.localeCompare(right.path));
-      const exportId = (0, import_node_crypto30.randomUUID)();
+      const exportId = (0, import_node_crypto32.randomUUID)();
       const createdAt = now();
       const expiresAt = createdAt + exportTtlMs;
       const plan = WorkspaceExportPlanSchema.parse({
@@ -129907,7 +138089,7 @@ function createLocalWorkspaceTransferService(options) {
       const payload = requireExportPayload(exportId, fileId);
       const source = payload.open ? await payload.open() : import_node_stream13.Readable.from([await payload.load()]);
       const stream = import_node_stream13.Readable.from(async function* () {
-        const digest3 = (0, import_node_crypto30.createHash)("sha256");
+        const digest3 = (0, import_node_crypto32.createHash)("sha256");
         let bytes = 0;
         for await (const chunkInput of source) {
           const chunk = exactBytes3(chunkInput);
@@ -129945,7 +138127,7 @@ function createLocalWorkspaceTransferService(options) {
         const authorityFiles = manifest.files.filter((file2) => file2.role !== "workspace");
         const expiresAt = new Date(createdAt + importTtlMs).toISOString();
         const makePublicFiles = (state2, slots2) => authorityFiles.map((descriptor) => {
-          const fileId = (0, import_node_crypto30.randomUUID)();
+          const fileId = (0, import_node_crypto32.randomUUID)();
           slots2?.set(fileId, { descriptor, fileId });
           return {
             ...descriptor,
@@ -129991,7 +138173,7 @@ function createLocalWorkspaceTransferService(options) {
         if (!manifest.source.display) {
           throw new LocalWorkspaceTransferError("WORKSPACE_AUTHORITY_INVALID", "Workspace import requires safe Project display metadata.");
         }
-        const importId = (0, import_node_crypto30.randomUUID)();
+        const importId = (0, import_node_crypto32.randomUUID)();
         const slots = /* @__PURE__ */ new Map();
         const files = makePublicFiles("missing", slots);
         const session = {
@@ -130092,7 +138274,7 @@ function createLocalWorkspaceTransferService(options) {
           throw new LocalWorkspaceTransferError("WORKSPACE_IMPORT_FILE_MISSING", `Workspace Resource ${descriptor.resource.id} is missing.`);
         }
         const staged = await resources.stageStream({
-          source: (0, import_node_fs11.createReadStream)(slot.stagedPath),
+          source: (0, import_node_fs12.createReadStream)(slot.stagedPath),
           declaredByteLength: descriptor.resource.byteLength,
           maxByteLength: descriptor.resource.byteLength,
           expectedDigest: descriptor.resource.digest.value
@@ -130173,7 +138355,7 @@ function createLocalWorkspaceTransferService(options) {
       }));
       session.public.status = "committed";
       session.public.committedAt = committedAt;
-      await (0, import_promises27.rm)((0, import_node_path32.join)(importStagingRoot, importId), {
+      await (0, import_promises28.rm)((0, import_node_path34.join)(importStagingRoot, importId), {
         recursive: true,
         force: true
       });
@@ -130183,7 +138365,7 @@ function createLocalWorkspaceTransferService(options) {
 }
 
 // ../../apps/local-api/dist/app.js
-var execFileAsync4 = (0, import_node_util10.promisify)(import_node_child_process6.execFile);
+var execFileAsync4 = (0, import_node_util10.promisify)(import_node_child_process7.execFile);
 function parseAssetEditInvocation(input) {
   if (typeof input.raw === "string" && input.raw.trim()) {
     return AssetEditActionInvocationSchema.parse(JSON.parse(input.raw));
@@ -130241,12 +138423,12 @@ function formatLocalAcpSessionError(error53) {
 function errorMessage(error53) {
   return error53 instanceof Error ? error53.message : String(error53);
 }
-async function preflightTextRevisionContentBlob(dataDir2, revision, content) {
+async function preflightTextRevisionContentBlob(dataDir3, revision, content) {
   if (textRevisionContentHash(content) !== revision.contentHash) {
     throw new Error("text revision contentHash does not match content");
   }
-  const path = textRevisionContentBlobPath(dataDir2, revision.contentHash);
-  const existing = await (0, import_promises28.readFile)(path, "utf8").catch((error53) => {
+  const path = textRevisionContentBlobPath(dataDir3, revision.contentHash);
+  const existing = await (0, import_promises29.readFile)(path, "utf8").catch((error53) => {
     if (error53 && typeof error53 === "object" && error53.code === "ENOENT")
       return null;
     throw error53;
@@ -130261,17 +138443,17 @@ function localMutationEnvelope(operation2, kind, id2) {
     entity: { kind, id: id2 }
   };
 }
-var LOCAL_API_READ_RECEIPT_SECRET2 = (0, import_node_crypto31.randomBytes)(32).toString("hex");
+var LOCAL_API_READ_RECEIPT_SECRET2 = (0, import_node_crypto33.randomBytes)(32).toString("hex");
 var PROJECT_ASSET_READ_RECEIPT_HEADER3 = "x-clash-read-receipt";
 var PROJECT_PURGE_DELAY_MS = 7 * 24 * 60 * 60 * 1e3;
 var ASSET_PURGE_DELAY_MS = PROJECT_PURGE_DELAY_MS;
 var PERSONAL_GLOBAL_ASSET_LIBRARY_ID = "personal";
 function scopedAssetRelationId(targetNamespace, sourceIdentity) {
-  const digest3 = (0, import_node_crypto31.createHash)("sha256").update("clash.asset-scope-relation.v1\0").update(targetNamespace).update("\0").update(JSON.stringify(sourceIdentity)).digest("hex");
+  const digest3 = (0, import_node_crypto33.createHash)("sha256").update("clash.asset-scope-relation.v1\0").update(targetNamespace).update("\0").update(JSON.stringify(sourceIdentity)).digest("hex");
   return `${targetNamespace}:${digest3}`;
 }
 function localApiProjectAssetReadReceipt(readToken) {
-  return (0, import_node_crypto31.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`project-asset:${readToken}`).digest("base64url");
+  return (0, import_node_crypto33.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`project-asset:${readToken}`).digest("base64url");
 }
 function projectAssetReceiptReadToken(readToken) {
   return agentReadReceiptToken({
@@ -130288,14 +138470,14 @@ var DEFAULT_RUNTIME_SESSION_TITLE = "New session";
 var BUILTIN_AGENT_TEMPLATES = [
   { id: "clash", label: "Clash" }
 ];
-function truncateProjectName(prompt) {
-  return prompt.length > 20 ? `${prompt.slice(0, 20)}...` : prompt;
-}
 function agentTemplateTitle(agentTemplateId) {
   return BUILTIN_AGENT_TEMPLATES.find((template) => template.id === agentTemplateId)?.label ?? agentTemplateId;
 }
 function initialRuntimeSessionTitle(agentTemplateId) {
   return agentTemplateId ? agentTemplateTitle(agentTemplateId) : DEFAULT_RUNTIME_SESSION_TITLE;
+}
+function truncateRuntimeSessionTitle(prompt) {
+  return prompt.length > 40 ? `${prompt.slice(0, 39)}\u2026` : prompt;
 }
 function publicLocalSession(session) {
   return {
@@ -130310,6 +138492,7 @@ function publicLocalSession(session) {
     ...session.permissionMode ? { permissionMode: session.permissionMode } : {},
     ...session.acpSessionId ? { acpSessionId: session.acpSessionId } : {},
     ...session.status ? { status: session.status } : {},
+    ...session.archivedAt ? { archivedAt: session.archivedAt } : {},
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     readToken: sessionReceiptReadToken(session)
@@ -130397,9 +138580,10 @@ async function finalizeRuntimeSessionId(db, temporarySessionId, finalSessionId, 
     Object.assign(session, patch ?? {}, { updatedAt: nowIso() });
     state2.sessionMessages = state2.sessionMessages.map((message) => message.session_id === temporarySessionId ? { ...message, session_id: finalSessionId } : message);
   });
+  await db.renameSessionEvents(temporarySessionId, finalSessionId);
 }
 function contentTypeForPath(path) {
-  const ext = (0, import_node_path33.extname)(path).toLowerCase();
+  const ext = (0, import_node_path35.extname)(path).toLowerCase();
   if (ext === ".png")
     return "image/png";
   if (ext === ".jpg" || ext === ".jpeg")
@@ -130470,7 +138654,7 @@ function parseAssetByteRange(rangeHeader, size) {
   };
 }
 async function serveImmutableFileProjection(options) {
-  const fileInfo = await (0, import_promises28.stat)(options.path);
+  const fileInfo = await (0, import_promises29.stat)(options.path);
   if (!fileInfo.isFile() || options.expectedByteLength !== void 0 && fileInfo.size !== options.expectedByteLength) {
     throw new Error("Immutable Asset projection no longer matches its Resource facts.");
   }
@@ -130486,7 +138670,7 @@ async function serveImmutableFileProjection(options) {
   }
   if (range2) {
     const length = range2.end - range2.start + 1;
-    const handle = await (0, import_promises28.open)(options.path, "r");
+    const handle = await (0, import_promises29.open)(options.path, "r");
     try {
       const bytes2 = new Uint8Array(length);
       const { bytesRead } = await handle.read(bytes2, 0, length, range2.start);
@@ -130505,7 +138689,7 @@ async function serveImmutableFileProjection(options) {
       await handle.close();
     }
   }
-  const bytes = await (0, import_promises28.readFile)(options.path);
+  const bytes = await (0, import_promises29.readFile)(options.path);
   return new Response(bytes, {
     headers: {
       "accept-ranges": "bytes",
@@ -130529,9 +138713,9 @@ function isoToEpochSeconds(value) {
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? Math.floor(parsed / 1e3) : 0;
 }
-function createDb(dataDir2) {
-  const metadataStore = createLocalMetadataStore(dataDir2);
-  const providerStore = createLocalProviderStore(dataDir2);
+function createDb(dataDir3) {
+  const metadataStore = createLocalMetadataStore(dataDir3);
+  const providerStore = createLocalProviderStore(dataDir3);
   let writeQueue = Promise.resolve();
   async function load() {
     await writeQueue.catch(() => void 0);
@@ -130616,6 +138800,25 @@ function createDb(dataDir2) {
     await writeQueue.catch(() => void 0);
     return providerStore.listProviderUsageEvents(userId, limit);
   }
+  async function appendSessionEvent(sessionId, event) {
+    const task = writeQueue.catch(() => void 0).then(() => metadataStore.appendSessionEvent(sessionId, event));
+    writeQueue = task.then(() => void 0, () => void 0);
+    return task;
+  }
+  async function listSessionEvents(sessionId) {
+    await writeQueue.catch(() => void 0);
+    return metadataStore.listSessionEvents(sessionId);
+  }
+  async function renameSessionEvents(previousSessionId, nextSessionId) {
+    const task = writeQueue.catch(() => void 0).then(() => metadataStore.renameSessionEvents(previousSessionId, nextSessionId));
+    writeQueue = task.then(() => void 0, () => void 0);
+    return task;
+  }
+  async function deleteSessionEvents(sessionId) {
+    const task = writeQueue.catch(() => void 0).then(() => metadataStore.deleteSessionEvents(sessionId));
+    writeQueue = task.then(() => void 0, () => void 0);
+    return task;
+  }
   return {
     load,
     update,
@@ -130626,7 +138829,48 @@ function createDb(dataDir2) {
     getTextRevision,
     upsertMetadataAttachmentIndex,
     listMetadataAttachmentIndex,
-    listProviderUsageEvents
+    listProviderUsageEvents,
+    appendSessionEvent,
+    listSessionEvents,
+    renameSessionEvents,
+    deleteSessionEvents
+  };
+}
+function createLocalSessionEventStore(db) {
+  return {
+    async appendEvent(sessionId, event) {
+      await db.appendSessionEvent(sessionId, event);
+      await db.update((state2) => {
+        const session = state2.sessions.find((candidate) => candidate.id === sessionId);
+        if (!session)
+          return;
+        const data = event.data && typeof event.data === "object" && !Array.isArray(event.data) ? event.data : {};
+        if (event.type === "user_prompt" && typeof data.text === "string") {
+          const text = visibleUserPromptText(data.text);
+          if (text && (!session.title || session.title === DEFAULT_RUNTIME_SESSION_TITLE || !!session.agentTemplateId && session.title === agentTemplateTitle(session.agentTemplateId))) {
+            session.title = truncateRuntimeSessionTitle(text);
+          }
+        }
+        if (event.type === "turn_failed")
+          session.status = "error";
+        session.updatedAt = nowIso();
+      });
+    },
+    async listSessionEvents(sessionId) {
+      const [events, state2] = await Promise.all([
+        db.listSessionEvents(sessionId),
+        db.load()
+      ]);
+      if (events.length === 0 && !state2.sessions.some((session) => session.id === sessionId)) {
+        return null;
+      }
+      return {
+        events: events.map((event) => ({
+          ...event,
+          data: structuredClone(event.data)
+        }))
+      };
+    }
   };
 }
 function sanitizeMutationForAudit(mutation) {
@@ -130635,7 +138879,7 @@ function sanitizeMutationForAudit(mutation) {
 }
 function mutationAuditRecord(options) {
   return {
-    id: (0, import_node_crypto31.randomUUID)(),
+    id: (0, import_node_crypto33.randomUUID)(),
     createdAt: Date.now(),
     operation: options.mutation.operation,
     entity: options.mutation.entity,
@@ -130645,132 +138889,6 @@ function mutationAuditRecord(options) {
     resultEntityId: options.mutation.resultEntityId ?? null,
     error: options.mutation.error ?? null,
     mutation: sanitizeMutationForAudit(options.mutation)
-  };
-}
-function eventKey(event) {
-  try {
-    return JSON.stringify(event);
-  } catch {
-    return String(event);
-  }
-}
-function appendPersistedSessionMessage(state2, sessionId, incoming) {
-  const existing = state2.sessionMessages.find((message) => message.session_id === sessionId && message.id === incoming.id);
-  if (!existing) {
-    state2.sessionMessages.push({
-      session_id: sessionId,
-      ...structuredClone(incoming)
-    });
-    return;
-  }
-  const persistedCounts = /* @__PURE__ */ new Map();
-  for (const event of existing.events) {
-    const key = eventKey(event);
-    persistedCounts.set(key, (persistedCounts.get(key) ?? 0) + 1);
-  }
-  const incomingCounts = /* @__PURE__ */ new Map();
-  for (const event of incoming.events) {
-    const key = eventKey(event);
-    const occurrence = (incomingCounts.get(key) ?? 0) + 1;
-    incomingCounts.set(key, occurrence);
-    if (occurrence <= (persistedCounts.get(key) ?? 0))
-      continue;
-    existing.events.push(structuredClone(event));
-    persistedCounts.set(key, occurrence);
-  }
-}
-function extractUserPromptTitle(message) {
-  if (message.sender_kind !== "user")
-    return null;
-  for (const event of message.events) {
-    if (event && typeof event === "object" && event.type === "text" && typeof event.text === "string") {
-      const text = visibleUserPromptText(event.text);
-      return text ? truncateProjectName(text) : null;
-    }
-  }
-  return null;
-}
-function extractSessionInfoTitle(message) {
-  for (const event of message.events) {
-    if (!event || typeof event !== "object")
-      continue;
-    const typed = event;
-    if (typed.type !== "session_info_update" && typed.sessionUpdate !== "session_info_update")
-      continue;
-    const title = typeof typed.title === "string" ? typed.title : typeof typed.sessionInfo?.title === "string" ? typed.sessionInfo.title : "";
-    const trimmed = title.trim();
-    if (trimmed)
-      return truncateProjectName(trimmed);
-  }
-  return null;
-}
-function patchSessionAfterMessage(state2, sessionId, message) {
-  const session = state2.sessions.find((candidate) => candidate.id === sessionId);
-  if (!session)
-    return;
-  const sessionInfoTitle = extractSessionInfoTitle(message);
-  const promptTitle = extractUserPromptTitle(message);
-  if (sessionInfoTitle) {
-    session.title = sessionInfoTitle;
-  } else if (promptTitle && (!session.title || session.title === DEFAULT_RUNTIME_SESSION_TITLE || !!session.agentTemplateId && session.title === agentTemplateTitle(session.agentTemplateId))) {
-    session.title = promptTitle;
-  }
-  session.updatedAt = nowIso();
-}
-async function listPersistedLocalSessionMessages(db, sessionId) {
-  const state2 = await db.load();
-  const rows = state2.sessionMessages.filter((message) => message.session_id === sessionId).sort((a5, b5) => a5.created_at - b5.created_at);
-  if (rows.length === 0 && !state2.sessions.some((session) => session.id === sessionId))
-    return null;
-  return {
-    messages: rows.map(({ session_id: _sessionId, ...message }) => ({
-      ...message,
-      events: structuredClone(message.events)
-    }))
-  };
-}
-function createLocalSessionMessageStore(db) {
-  async function append(sessionId, message) {
-    await db.update((state2) => {
-      appendPersistedSessionMessage(state2, sessionId, message);
-      patchSessionAfterMessage(state2, sessionId, message);
-    });
-  }
-  async function touch(sessionId, patch) {
-    await db.update((state2) => {
-      const session = state2.sessions.find((candidate) => candidate.id === sessionId);
-      if (session)
-        Object.assign(session, patch ?? {}, { updatedAt: nowIso() });
-    });
-  }
-  return {
-    appendUserPrompt: append,
-    appendAgentEvent: append,
-    async markTurnComplete(sessionId) {
-      await touch(sessionId);
-    },
-    async appendTurnError(sessionId, turnId, message) {
-      await db.update((state2) => {
-        const at = Math.floor(Date.now() / 1e3);
-        appendPersistedSessionMessage(state2, sessionId, {
-          id: `${turnId ?? `error-${at}`}-agent`,
-          sender_kind: "agent",
-          sender_id: "local-agent",
-          turn_id: turnId,
-          events: [{ type: "promptError", error: message }],
-          created_at: at
-        });
-        const session = state2.sessions.find((candidate) => candidate.id === sessionId);
-        if (session)
-          Object.assign(session, {
-            status: "error",
-            updatedAt: nowIso()
-          });
-      });
-    },
-    listSessionMessages(sessionId) {
-      return listPersistedLocalSessionMessages(db, sessionId);
-    }
   };
 }
 function optionalBodyString(value) {
@@ -130870,7 +138988,7 @@ function inferProjectAssetFileKind(file2) {
   if (contentType === "model/gltf-binary" || contentType === "model/gltf+json") {
     return "model";
   }
-  const extension2 = (0, import_node_path33.extname)(file2.name).toLowerCase();
+  const extension2 = (0, import_node_path35.extname)(file2.name).toLowerCase();
   if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".avif"].includes(extension2)) {
     return "image";
   }
@@ -130905,7 +139023,7 @@ function requestOrigin(c5) {
   return new URL(c5.req.url).origin;
 }
 function directorCaptureProjectAssetId(input) {
-  return `director-capture:${(0, import_node_crypto31.createHash)("sha256").update(JSON.stringify([
+  return `director-capture:${(0, import_node_crypto33.createHash)("sha256").update(JSON.stringify([
     input.stageId,
     input.sourceStageRevisionId,
     input.artifactId,
@@ -130982,15 +139100,17 @@ function purgeProjectFromState(state2, projectId) {
   state2.sessionMessages = state2.sessionMessages.filter((message) => !sessionIds.has(message.session_id));
   return { project, counts };
 }
-function toV1Project(project, assets, assetMode = "preview", coverAssetId = null) {
-  const projectedAssets = assetMode === "all" ? assets : coverAssetId ? assets.filter((asset) => asset.id === coverAssetId) : [];
+function toV1Project(project, assets, assetMode = "preview", coverAssetId = null, canvasPreview = null, canvasThumbnail = null) {
+  const projectedAssets = assetMode === "all" ? assets : assets.filter((asset) => asset.lifecycle.state === "active" && (asset.kind === "image" || asset.kind === "video") && Boolean(asset.thumbnailUrl ?? asset.url)).sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0)).slice(0, 4);
   return {
     id: project.id,
     ownerId: project.ownerId,
     name: project.name,
     description: project.description,
     coverAssetId,
-    assets: projectedAssets,
+    canvasPreview,
+    canvasThumbnail,
+    assets: assetMode === "preview" && canvasThumbnail ? [] : projectedAssets,
     assetCount: assets.length,
     created_at: isoToEpochSeconds(project.createdAt),
     updated_at: isoToEpochSeconds(project.updatedAt),
@@ -130999,7 +139119,7 @@ function toV1Project(project, assets, assetMode = "preview", coverAssetId = null
   };
 }
 function localApiProjectReadReceipt(readToken) {
-  return (0, import_node_crypto31.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`project:${readToken}`).digest("base64url");
+  return (0, import_node_crypto33.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`project:${readToken}`).digest("base64url");
 }
 function projectReceiptReadToken(project) {
   const readToken = projectReadToken(project);
@@ -131012,7 +139132,7 @@ function verifyLocalApiProjectReadReceipt(proof) {
   return proof.namespace === "project" && proof.receipt === localApiProjectReadReceipt(proof.baseReadToken);
 }
 function localApiSessionReadReceipt(readToken) {
-  return (0, import_node_crypto31.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`session:${readToken}`).digest("base64url");
+  return (0, import_node_crypto33.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`session:${readToken}`).digest("base64url");
 }
 function sessionReceiptReadToken(session) {
   const readToken = sessionReadToken(session);
@@ -131025,7 +139145,7 @@ function verifyLocalApiSessionReadReceipt(proof) {
   return proof.namespace === "session" && proof.receipt === localApiSessionReadReceipt(proof.baseReadToken);
 }
 function localApiLocalConfigReadReceipt(readToken) {
-  return (0, import_node_crypto31.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`local-config:${readToken}`).digest("base64url");
+  return (0, import_node_crypto33.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`local-config:${readToken}`).digest("base64url");
 }
 function localConfigReceiptReadToken(config2) {
   const readToken = localConfigReadToken({
@@ -131078,7 +139198,7 @@ function localAgentServersReceiptReadToken(result) {
   });
 }
 function localApiProviderAccountReadReceipt(readToken) {
-  return (0, import_node_crypto31.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`provider-account:${readToken}`).digest("base64url");
+  return (0, import_node_crypto33.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`provider-account:${readToken}`).digest("base64url");
 }
 function providerAccountReceiptReadToken(account) {
   const readToken = providerAccountReadToken(account);
@@ -131091,7 +139211,7 @@ function verifyLocalApiProviderAccountReadReceipt(proof) {
   return proof.namespace === "provider-account" && proof.receipt === localApiProviderAccountReadReceipt(proof.baseReadToken);
 }
 function localApiProviderAccountsReadReceipt(readToken) {
-  return (0, import_node_crypto31.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`provider-accounts:${readToken}`).digest("base64url");
+  return (0, import_node_crypto33.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`provider-accounts:${readToken}`).digest("base64url");
 }
 function providerAccountsReceiptReadToken(accounts) {
   const readToken = providerAccountsReadToken(accounts);
@@ -131110,7 +139230,7 @@ function providerOAuthBaseReadToken(record3) {
   });
 }
 function localApiProviderOAuthReadReceipt(readToken) {
-  return (0, import_node_crypto31.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`provider-oauth:${readToken}`).digest("base64url");
+  return (0, import_node_crypto33.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`provider-oauth:${readToken}`).digest("base64url");
 }
 function providerOAuthReceiptReadToken(record3) {
   const readToken = providerOAuthBaseReadToken(record3);
@@ -131141,16 +139261,16 @@ function publicModelProvidersResponse(accounts) {
   };
 }
 function localApiCanvasReadReceipt(readToken) {
-  return (0, import_node_crypto31.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`canvas-node:${readToken}`).digest("base64url");
+  return (0, import_node_crypto33.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`canvas-node:${readToken}`).digest("base64url");
 }
 function localApiCanvasEdgeReadReceipt(readToken) {
-  return (0, import_node_crypto31.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`canvas-edge:${readToken}`).digest("base64url");
+  return (0, import_node_crypto33.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`canvas-edge:${readToken}`).digest("base64url");
 }
 function localApiCanvasEdgesReadReceipt(readToken) {
-  return (0, import_node_crypto31.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`canvas-edges:${readToken}`).digest("base64url");
+  return (0, import_node_crypto33.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`canvas-edges:${readToken}`).digest("base64url");
 }
 function localApiCanvasBatchDeleteReadReceipt(readToken) {
-  return (0, import_node_crypto31.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`canvas-batch-delete:${readToken}`).digest("base64url");
+  return (0, import_node_crypto33.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`canvas-batch-delete:${readToken}`).digest("base64url");
 }
 function canvasNodeReceiptReadToken2(node) {
   const readToken = canvasNodeReadToken(node);
@@ -132077,14 +140197,36 @@ function createLocalApiApp(options) {
     resolveOptions: async () => []
   });
   const db = createDb(options.dataDir);
+  const sessionEventStore = createLocalSessionEventStore(db);
+  options.localAcp?.setSessionEventStore?.(sessionEventStore);
   let importedPluginStore;
   const pluginStoreForImport = () => importedPluginStore ??= openPluginStore({ dataDir: options.dataDir });
-  const localApiDataDir = (0, import_node_path33.resolve)(options.dataDir);
+  const localApiDataDir = (0, import_node_path35.resolve)(options.dataDir);
   const clashRoot = clashHomeForLocalDataDir(options.dataDir, options.clashRoot);
-  const replicaStore = new FileReplicaStore((0, import_node_path33.join)(options.dataDir, "projects"));
+  const replicaStore = new FileReplicaStore((0, import_node_path35.join)(options.dataDir, "projects"));
+  const projectCanvasThumbnailCache = createProjectCanvasThumbnailCache(replicaStore);
   const projectCommandReplica = options.projectAssetReplica ?? {
     inspect: async (projectId, read) => read(await replicaStore.recover(projectId)),
     mutate: (projectId, mutation) => replicaStore.updateSnapshotAtomic(projectId, mutation)
+  };
+  const projectCanvasPreviewEntryFor = (projectId) => readThroughProjectCanvasPreviewEntry({
+    projectId,
+    store: replicaStore,
+    inspect: (read) => projectCommandReplica.inspect(projectId, read)
+  });
+  const recentProjectCanvasThumbnailInputs = /* @__PURE__ */ new Map();
+  const rememberProjectCanvasThumbnailInput = (input) => {
+    const remembered = recentProjectCanvasThumbnailInputs.get(input.projectId) ?? /* @__PURE__ */ new Map();
+    remembered.delete(input.entry.sourceVersion);
+    remembered.set(input.entry.sourceVersion, input);
+    while (remembered.size > 2) {
+      const oldest = remembered.keys().next().value;
+      if (!oldest)
+        break;
+      remembered.delete(oldest);
+    }
+    recentProjectCanvasThumbnailInputs.set(input.projectId, remembered);
+    return input;
   };
   const providerExecutionHandoffs = createProviderExecutionHandoffStore(options.dataDir);
   const durableRunJournal = createSqliteDurableRunJournal(options.dataDir);
@@ -132105,12 +140247,68 @@ function createLocalApiApp(options) {
       projectionOrigin: configuredProjectionOrigin?.trim() || requestProjectionOrigin,
       replica: projectCommandReplica,
       readReceiptVerifier: verifyLocalApiProjectAssetReadReceipt,
-      assetInspection
+      assetInspection,
+      assetRepresentations
     });
     return projectAssetService;
   };
+  const projectCanvasThumbnailInput = (projectId, entry, service) => ({
+    projectId,
+    entry,
+    resolveMedia: async (assetId) => {
+      const projection = await service.openProjection(projectId, assetId);
+      if (projection.resource.kind !== "image" && projection.resource.kind !== "video") {
+        return null;
+      }
+      await assetRepresentations.ensure(projection.resource.id);
+      const thumbnail = await assetRepresentations.openThumbnail(projection.resource.id);
+      if (thumbnail) {
+        return { kind: "image", path: thumbnail.path };
+      }
+      return null;
+    }
+  });
+  const projectCanvasThumbnailState = async (projectId, entry, service) => {
+    const revision = (0, import_node_crypto33.createHash)("sha256").update("clash.main-canvas-thumbnail.v1\0").update(entry.sourceVersion);
+    const assetIds = [
+      ...new Set(entry.preview.nodes.flatMap((node) => node.assetId && (node.type === "image" || node.type === "video") ? [node.assetId] : []))
+    ].sort();
+    for (const assetId of assetIds) {
+      revision.update("\0asset\0").update(assetId);
+      try {
+        const projection = await service.openProjection(projectId, assetId);
+        revision.update("\0source\0").update(projection.resource.id);
+        const representation = await assetRepresentations.read(projection.resource.id, "thumbnail");
+        if (representation?.role === "thumbnail") {
+          revision.update("\0ready\0").update(representation.recipe).update("\0").update(representation.resourceId);
+        } else {
+          revision.update("\0pending");
+        }
+      } catch {
+        revision.update("\0unavailable");
+      }
+    }
+    const sourceVersion = revision.digest("hex");
+    const input = rememberProjectCanvasThumbnailInput(projectCanvasThumbnailInput(projectId, { ...entry, sourceVersion }, service));
+    return {
+      sourceVersion,
+      input
+    };
+  };
+  const projectCanvasThumbnailProjection = (origin, projectId, entry, revision) => {
+    if (!entry.preview.bounds || entry.preview.nodes.length === 0)
+      return null;
+    const url2 = new URL(`/api/v1/projects/${encodeURIComponent(projectId)}/canvas/thumbnail`, origin);
+    url2.searchParams.set("revision", revision);
+    return {
+      url: url2.toString(),
+      revision,
+      width: PROJECT_CANVAS_THUMBNAIL_WIDTH,
+      height: PROJECT_CANVAS_THUMBNAIL_HEIGHT
+    };
+  };
   const editActionAssetBindings = (input) => {
-    const revisionDigest = (0, import_node_crypto31.createHash)("sha256").update(JSON.stringify(input.invocation)).digest("hex");
+    const revisionDigest = (0, import_node_crypto33.createHash)("sha256").update(JSON.stringify(input.invocation)).digest("hex");
     const owner = {
       kind: "run",
       actionId: input.invocation.actionId,
@@ -132136,7 +140334,7 @@ function createLocalApiApp(options) {
       }
     ];
   };
-  const editOutputAssetId = (actionRunId) => `asset:edit:${(0, import_node_crypto31.createHash)("sha256").update("clash.asset-edit-output.v1\0").update(durableRunIdempotencyKey({ actionRunId, outputSlot: "output" })).digest("hex")}`;
+  const editOutputAssetId = (actionRunId) => `asset:edit:${(0, import_node_crypto33.createHash)("sha256").update("clash.asset-edit-output.v1\0").update(durableRunIdempotencyKey({ actionRunId, outputSlot: "output" })).digest("hex")}`;
   let globalAssetService;
   const globalAssetServiceAt = (requestProjectionOrigin) => {
     const configuredProjectionOrigin = typeof options.projectAssetProjectionOrigin === "function" ? options.projectAssetProjectionOrigin() : options.projectAssetProjectionOrigin;
@@ -132145,7 +140343,8 @@ function createLocalApiApp(options) {
       clashRoot,
       legacyUserId: userId,
       projectionOrigin: configuredProjectionOrigin?.trim() || requestProjectionOrigin,
-      assetInspection
+      assetInspection,
+      assetRepresentations
     });
     return globalAssetService;
   };
@@ -132158,6 +140357,14 @@ function createLocalApiApp(options) {
     clashRoot,
     inspectResource: inspectAssetResource
   });
+  const assetRepresentations = options.assetRepresentations ?? createLocalAssetRepresentationService({
+    dataDir: options.dataDir,
+    clashRoot,
+    assetInspection
+  });
+  void assetRepresentations.start().catch((error53) => {
+    console.error("[local-api] representation startup recovery degraded:", error53 instanceof Error ? error53.message : String(error53));
+  });
   const workspaceProjectLease = new LocalWorkspaceProjectOperationLease();
   const workspaceTransfer = options.workspaceProjectAuthority ? createLocalWorkspaceTransferService({
     dataDir: options.dataDir,
@@ -132169,8 +140376,6 @@ function createLocalApiApp(options) {
     assetInspection,
     projectLease: workspaceProjectLease
   }) : void 0;
-  const sessionMessageStore = createLocalSessionMessageStore(db);
-  options.localAcp?.setSessionMessageStore?.(sessionMessageStore);
   const falMock2 = options.falMock ?? createMockFalQueueService();
   const audioConfig = options.audioConfig ?? createLocalAudioConfigStore({
     dataDir: options.dataDir
@@ -132855,6 +141060,41 @@ function createLocalApiApp(options) {
       return localProjectAssetErrorResponse(error53);
     }
   });
+  app.get("/api/v1/projects/:projectId/assets/:projectAssetId/thumbnail", async (c5) => {
+    try {
+      const source = await projectAssetServiceAt(requestOrigin(c5)).openProjection(c5.req.param("projectId"), c5.req.param("projectAssetId"));
+      await assetRepresentations.ensure(source.resource.id);
+      const projection = await assetRepresentations.openThumbnail(source.resource.id);
+      if (!projection) {
+        return c5.json({ error: "Asset thumbnail is not available" }, 404);
+      }
+      return await serveImmutableFileProjection({
+        path: projection.path,
+        contentType: projection.resource.contentType ?? "image/webp",
+        expectedByteLength: projection.resource.byteLength
+      });
+    } catch (error53) {
+      return localProjectAssetErrorResponse(error53);
+    }
+  });
+  app.get("/api/v1/projects/:projectId/assets/:projectAssetId/waveform", async (c5) => {
+    try {
+      const source = await projectAssetServiceAt(requestOrigin(c5)).openProjection(c5.req.param("projectId"), c5.req.param("projectAssetId"));
+      await assetRepresentations.ensure(source.resource.id);
+      const representation = await assetRepresentations.read(source.resource.id, "waveform");
+      if (!representation || representation.role !== "waveform") {
+        return c5.json({ error: "Asset waveform is not available" }, 404);
+      }
+      c5.header("cache-control", "private, max-age=31536000, immutable");
+      return c5.json({
+        recipe: representation.recipe,
+        peaks: representation.peaks,
+        ...representation.durationMs !== void 0 ? { durationMs: representation.durationMs } : {}
+      });
+    } catch (error53) {
+      return localProjectAssetErrorResponse(error53);
+    }
+  });
   app.get("/api/v1/projects/:projectId/assets/:projectAssetId", async (c5) => {
     try {
       const observed2 = await projectAssetServiceAt(requestOrigin(c5)).readObserved(c5.req.param("projectId"), c5.req.param("projectAssetId"));
@@ -133020,6 +141260,41 @@ function createLocalApiApp(options) {
         contentType: projection.resource.contentType ?? contentTypeForPath(projection.storageKey),
         expectedByteLength: projection.resource.byteLength,
         ...c5.req.header("range") ? { rangeHeader: c5.req.header("range") } : {}
+      });
+    } catch (error53) {
+      return localGlobalAssetErrorResponse(error53);
+    }
+  });
+  app.get("/api/v1/libraries/personal/assets/:globalAssetId/thumbnail", async (c5) => {
+    try {
+      const source = await globalAssetServiceAt(requestOrigin(c5)).openProjection(PERSONAL_GLOBAL_ASSET_LIBRARY_ID, c5.req.param("globalAssetId"));
+      await assetRepresentations.ensure(source.resource.id);
+      const projection = await assetRepresentations.openThumbnail(source.resource.id);
+      if (!projection) {
+        return c5.json({ error: "Asset thumbnail is not available" }, 404);
+      }
+      return await serveImmutableFileProjection({
+        path: projection.path,
+        contentType: projection.resource.contentType ?? "image/webp",
+        expectedByteLength: projection.resource.byteLength
+      });
+    } catch (error53) {
+      return localGlobalAssetErrorResponse(error53);
+    }
+  });
+  app.get("/api/v1/libraries/personal/assets/:globalAssetId/waveform", async (c5) => {
+    try {
+      const source = await globalAssetServiceAt(requestOrigin(c5)).openProjection(PERSONAL_GLOBAL_ASSET_LIBRARY_ID, c5.req.param("globalAssetId"));
+      await assetRepresentations.ensure(source.resource.id);
+      const representation = await assetRepresentations.read(source.resource.id, "waveform");
+      if (!representation || representation.role !== "waveform") {
+        return c5.json({ error: "Asset waveform is not available" }, 404);
+      }
+      c5.header("cache-control", "private, max-age=31536000, immutable");
+      return c5.json({
+        recipe: representation.recipe,
+        peaks: representation.peaks,
+        ...representation.durationMs !== void 0 ? { durationMs: representation.durationMs } : {}
       });
     } catch (error53) {
       return localGlobalAssetErrorResponse(error53);
@@ -133443,7 +141718,7 @@ function createLocalApiApp(options) {
           if (requestedActionRunId.length > 256) {
             return c5.json({ error: "actionRunId must be at most 256 characters" }, 400);
           }
-          const actionRunId = requestedActionRunId || `provider-test:${(0, import_node_crypto31.randomUUID)()}`;
+          const actionRunId = requestedActionRunId || `provider-test:${(0, import_node_crypto33.randomUUID)()}`;
           const commonInput = {
             taskId: actionRunId,
             projectId: "provider-test",
@@ -133765,7 +142040,7 @@ function createLocalApiApp(options) {
     const started = driver ? await driver.start() : {
       verificationUri: browserAuth.authorizationUrl,
       userCode: "",
-      deviceCode: (0, import_node_crypto31.randomUUID)(),
+      deviceCode: (0, import_node_crypto33.randomUUID)(),
       oauthState: JSON.stringify({
         protocol: "clash.provider-oauth.browser/v1",
         auth: browserAuth
@@ -134128,6 +142403,17 @@ function createLocalApiApp(options) {
       actions: executablePluginActionDefinitions(registrations)
     });
   });
+  app.get("/api/v1/plugin-views", async (c5) => {
+    const registrations = options.listPluginViews ? await options.listPluginViews() : [];
+    return c5.json({
+      views: registrations.map((registration) => ({
+        pluginId: registration.pluginId,
+        version: registration.version,
+        schemaHash: registration.schemaHash,
+        ...registration.document.spec
+      }))
+    });
+  });
   app.get("/api/v1/plugin-providers", async (c5) => {
     const registrations = options.listPluginProviders ? await options.listPluginProviders() : [];
     return c5.json({
@@ -134224,7 +142510,12 @@ function createLocalApiApp(options) {
   app.get("/api/marketplace/registry", (c5) => c5.json({
     version: 1,
     actions: options.marketplaceActions ?? [],
-    skills: options.marketplaceSkills ?? []
+    skills: options.marketplaceSkills ?? [],
+    plugins: options.marketplacePlugins ?? []
+  }));
+  app.get("/api/marketplace/feed", (c5) => c5.json({
+    version: 1,
+    featuredPlugins: options.marketplaceFeed ?? []
   }));
   if (options.installMarketplaceAction) {
     app.post("/api/marketplace/actions/:packageId/install", async (c5) => {
@@ -134264,6 +142555,26 @@ function createLocalApiApp(options) {
       if (!item)
         return c5.json({ error: "Unknown local marketplace skill" }, 404);
       await options.uninstallMarketplaceSkill(skillId);
+      return new Response(null, { status: 204 });
+    });
+  }
+  if (options.installMarketplacePlugin) {
+    app.post("/api/marketplace/plugins/:packageId/install", async (c5) => {
+      const packageId = c5.req.param("packageId");
+      const item = options.marketplacePlugins?.find((candidate) => candidate.packageId === packageId);
+      if (!item) {
+        return c5.json({ error: "Unknown local marketplace plugin" }, 404);
+      }
+      return c5.json(await options.installMarketplacePlugin(packageId));
+    });
+  }
+  if (options.uninstallMarketplacePlugin) {
+    app.delete("/api/marketplace/plugins/:packageId/install", async (c5) => {
+      const item = options.marketplacePlugins?.find((candidate) => candidate.packageId === c5.req.param("packageId"));
+      if (!item) {
+        return c5.json({ error: "Unknown local marketplace plugin" }, 404);
+      }
+      await options.uninstallMarketplacePlugin(item.id);
       return new Response(null, { status: 204 });
     });
   }
@@ -134734,7 +143045,7 @@ function createLocalApiApp(options) {
         if (!entry.selectedRoute || entry.missingCredentials.length > 0 || entry.tier !== "available") {
           throw new LocalAudioConfigError("The selected voice input model is not configured. Open Settings > Models and configure a provider.", 409);
         }
-        const taskId = (0, import_node_crypto31.randomUUID)();
+        const taskId = (0, import_node_crypto33.randomUUID)();
         const projectId = "local";
         const mediaType = normalizeProviderReferenceMediaType(file2.type || "application/octet-stream");
         const stagedReference = await providerReferenceAssets.stage({
@@ -135446,7 +143757,11 @@ function createLocalApiApp(options) {
     } catch (error53) {
       const message = formatLocalAcpSessionError(error53);
       if (localSessionId) {
-        await sessionMessageStore.appendTurnError?.(localSessionId, null, message);
+        await sessionEventStore.appendEvent(localSessionId, {
+          type: "turn_failed",
+          data: { message },
+          ts: Date.now()
+        });
       }
       console.error("[local-api] local ACP session create failed:", message);
       const envelope = {
@@ -135479,14 +143794,15 @@ function createLocalApiApp(options) {
       return c5.json({ sessions: [] });
     return c5.json(await options.localAcp.listResumeSessions(c5.req.param("runtimeId")));
   });
-  app.get("/api/v1/local-sessions/:sessionId/messages", async (c5) => {
+  app.get("/api/v1/local-sessions/:sessionId/events", async (c5) => {
     const sessionId = c5.req.param("sessionId");
-    const persisted = await sessionMessageStore.listSessionMessages(sessionId);
+    const persisted = await sessionEventStore.listSessionEvents(sessionId);
     if (persisted)
       return c5.json(persisted);
-    if (!options.localAcp?.listSessionMessages)
+    if (!options.localAcp?.listSessionEvents) {
       return c5.json({ error: "not found" }, 404);
-    const history = await options.localAcp.listSessionMessages(sessionId);
+    }
+    const history = await options.localAcp.listSessionEvents(sessionId);
     return history ? c5.json(history) : c5.json({ error: "not found" }, 404);
   });
   app.get("/api/v1/local-sessions/:sessionId/runtime-status", async (c5) => {
@@ -135631,15 +143947,68 @@ function createLocalApiApp(options) {
       }, 503);
     }
   });
+  app.get("/api/v1/projects/:projectId/canvas/thumbnail", async (c5) => {
+    const projectId = c5.req.param("projectId");
+    const revision = c5.req.query("revision")?.trim() ?? "";
+    if (!/^[a-f0-9]{64}$/u.test(revision)) {
+      return c5.json({ error: "A valid canvas revision is required" }, 400);
+    }
+    const state2 = await db.load();
+    if (!findActiveProject(state2, projectId)) {
+      return c5.json({ error: "Project not found" }, 404);
+    }
+    try {
+      const entry = await projectCanvasPreviewEntryFor(projectId);
+      let bytes = await replicaStore.readCanvasThumbnail(projectId, revision);
+      if (!bytes) {
+        if (!entry.preview.bounds || entry.preview.nodes.length === 0) {
+          return c5.json({ error: "Main canvas is empty" }, 404);
+        }
+        let input = recentProjectCanvasThumbnailInputs.get(projectId)?.get(revision);
+        if (!input) {
+          const service = projectAssetServiceAt(requestOrigin(c5));
+          const thumbnailState = await projectCanvasThumbnailState(projectId, entry, service);
+          if (thumbnailState.sourceVersion !== revision) {
+            return c5.json({ error: "Canvas thumbnail revision not found" }, 404);
+          }
+          input = thumbnailState.input;
+        }
+        bytes = await projectCanvasThumbnailCache.get(input);
+      }
+      return new Response(Uint8Array.from(bytes).buffer, {
+        headers: {
+          "content-type": "image/webp",
+          "content-length": String(bytes.byteLength),
+          "cache-control": "public, max-age=31536000, immutable",
+          etag: `"${revision}"`
+        }
+      });
+    } catch (error53) {
+      return localProjectAssetErrorResponse(error53);
+    }
+  });
   app.get("/api/v1/projects", async (c5) => {
     const state2 = await db.load();
+    const archived = c5.req.query("archived") ?? "active";
+    if (!(/* @__PURE__ */ new Set(["active", "only", "include"])).has(archived)) {
+      return c5.json({ error: "archived must be active, only, or include" }, 400);
+    }
     try {
       const service = projectAssetServiceAt(requestOrigin(c5));
+      const visibleProjects = archived === "only" ? state2.projects.filter(isDeletedProject) : archived === "include" ? state2.projects : activeProjects(state2);
       return c5.json({
-        projects: await Promise.all(activeProjects(state2).map(async (project) => {
-          const assets = await service.list(project.id);
-          const coverAssetId = await service.readProjectCover(project.id);
-          return toV1Project(project, assets, "preview", coverAssetId);
+        projects: await Promise.all(visibleProjects.map(async (project) => {
+          const [assets, coverAssetId, canvasPreviewEntry] = await Promise.all([
+            service.list(project.id),
+            service.readProjectCover(project.id),
+            projectCanvasPreviewEntryFor(project.id)
+          ]);
+          const thumbnailState = await projectCanvasThumbnailState(project.id, canvasPreviewEntry, service);
+          const canvasThumbnail = projectCanvasThumbnailProjection(requestOrigin(c5), project.id, canvasPreviewEntry, thumbnailState.sourceVersion);
+          if (canvasThumbnail) {
+            projectCanvasThumbnailCache.schedule(thumbnailState.input);
+          }
+          return toV1Project(project, assets, "preview", coverAssetId, canvasPreviewEntry.preview, canvasThumbnail);
         }))
       });
     } catch (error53) {
@@ -135772,7 +144141,7 @@ function createLocalApiApp(options) {
       return c5.json({ error: "text revision not found" }, 404);
     let content;
     try {
-      content = await (0, import_promises28.readFile)(textRevisionContentBlobPath(options.dataDir, revision.contentHash), "utf8");
+      content = await (0, import_promises29.readFile)(textRevisionContentBlobPath(options.dataDir, revision.contentHash), "utf8");
     } catch {
       return c5.json({ error: "text revision content not found" }, 404);
     }
@@ -135798,9 +144167,17 @@ function createLocalApiApp(options) {
     }
     try {
       const service = projectAssetServiceAt(requestOrigin(c5));
-      const assets = await service.list(project.id);
-      const coverAssetId = await service.readProjectCover(project.id);
-      return c5.json(toV1Project(project, assets, "all", coverAssetId));
+      const [assets, coverAssetId, canvasPreviewEntry] = await Promise.all([
+        service.list(project.id),
+        service.readProjectCover(project.id),
+        projectCanvasPreviewEntryFor(project.id)
+      ]);
+      const thumbnailState = await projectCanvasThumbnailState(project.id, canvasPreviewEntry, service);
+      const canvasThumbnail = projectCanvasThumbnailProjection(requestOrigin(c5), project.id, canvasPreviewEntry, thumbnailState.sourceVersion);
+      if (canvasThumbnail) {
+        projectCanvasThumbnailCache.schedule(thumbnailState.input);
+      }
+      return c5.json(toV1Project(project, assets, "all", coverAssetId, canvasPreviewEntry.preview, canvasThumbnail));
     } catch (error53) {
       return localProjectAssetErrorResponse(error53);
     }
@@ -135954,7 +144331,7 @@ function createLocalApiApp(options) {
       }, 409);
     }
     const bytes = new Uint8Array(await file2.arrayBuffer());
-    const sha2565 = (0, import_node_crypto31.createHash)("sha256").update(bytes).digest("hex");
+    const sha2565 = (0, import_node_crypto33.createHash)("sha256").update(bytes).digest("hex");
     const projectAssetId2 = directorCaptureProjectAssetId({
       stageId,
       sourceStageRevisionId: expectedRevisionId,
@@ -136106,7 +144483,7 @@ function createLocalApiApp(options) {
       hostContext.trustedCustomActions = executablePluginActionDefinitions(pluginCards);
     }
     const selectedAccountId = action === "execute" && typeof body.providerAccountId === "string" ? body.providerAccountId : void 0;
-    const handoffNodeId = selectedAccountId ? (0, import_node_crypto31.randomUUID)().replaceAll("-", "").slice(0, 8) : void 0;
+    const handoffNodeId = selectedAccountId ? (0, import_node_crypto33.randomUUID)().replaceAll("-", "").slice(0, 8) : void 0;
     if (selectedAccountId && handoffNodeId) {
       await providerExecutionHandoffs.put({
         projectId,
@@ -137149,9 +145526,33 @@ function createLocalApiApp(options) {
   app.get("/api/v1/sessions", async (c5) => {
     const state2 = await db.load();
     const projectId = c5.req.query("projectId");
+    const archiveFilter = c5.req.query("archived") ?? "active";
+    if (!["active", "only", "include"].includes(archiveFilter)) {
+      return c5.json({ error: "Invalid archived filter" }, 400);
+    }
     const activeProjectIds = new Set(activeProjects(state2).map((project) => project.id));
+    const filterArchive = (session) => archiveFilter === "include" || (archiveFilter === "only" ? session.archivedAt !== void 0 : session.archivedAt === void 0);
+    const matchingSessions = projectId ? isDeletedKnownProject(state2, projectId) ? [] : state2.sessions.filter((session) => session.projectId === projectId && filterArchive(session)) : state2.sessions.filter((session) => filterArchive(session) && (!isDeletedKnownProject(state2, session.projectId) || activeProjectIds.has(session.projectId)));
+    const rawLimit = c5.req.query("limit");
+    const rawOffset = c5.req.query("offset");
+    const paginated = rawLimit !== void 0 || rawOffset !== void 0;
+    if (!paginated) {
+      return c5.json({ sessions: matchingSessions.map(publicLocalSession) });
+    }
+    const limit = rawLimit === void 0 ? 20 : Number(rawLimit);
+    const offset = rawOffset === void 0 ? 0 : Number(rawOffset);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      return c5.json({ error: "limit must be an integer from 1 to 100" }, 400);
+    }
+    if (!Number.isInteger(offset) || offset < 0) {
+      return c5.json({ error: "offset must be a non-negative integer" }, 400);
+    }
+    const page = matchingSessions.slice(offset, offset + limit);
+    const hasMore = offset + page.length < matchingSessions.length;
     return c5.json({
-      sessions: projectId ? (isDeletedKnownProject(state2, projectId) ? [] : state2.sessions.filter((s2) => s2.projectId === projectId)).map(publicLocalSession) : state2.sessions.filter((session) => !isDeletedKnownProject(state2, session.projectId) || activeProjectIds.has(session.projectId)).map(publicLocalSession)
+      sessions: page.map(publicLocalSession),
+      hasMore,
+      nextOffset: hasMore ? offset + page.length : null
     });
   });
   app.post("/api/v1/sessions", async (c5) => {
@@ -137210,6 +145611,85 @@ function createLocalApiApp(options) {
       title: created.session.title,
       mutation
     });
+  });
+  app.patch("/api/v1/sessions/:sessionId", async (c5) => {
+    const sessionId = c5.req.param("sessionId");
+    const body = await c5.req.json().catch(() => ({}));
+    const isRename = body.title !== void 0;
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    if (isRename && !title) {
+      return c5.json({ error: "Session title cannot be empty" }, 400);
+    }
+    if (isRename && body.archived !== void 0) {
+      return c5.json({ error: "Rename and archive must be separate mutations" }, 400);
+    }
+    if (!isRename && typeof body.archived !== "boolean") {
+      return c5.json({ error: "Missing archived boolean or title" }, 400);
+    }
+    const preconditions = requestProjectWritePreconditions(c5, body);
+    const operation2 = isRename ? "rename" : body.archived ? "archive" : "restore";
+    const result = await db.update((state2) => {
+      const session = state2.sessions.find((candidate) => candidate.id === sessionId);
+      if (!session) {
+        return {
+          status: 404,
+          body: {
+            error: "Not found",
+            mutation: hostMutationRejected({
+              operation: `session_${operation2}`,
+              entity: { kind: "session", id: sessionId }
+            }, "Not found")
+          }
+        };
+      }
+      const requiresReadProofEnvelope = preconditions.actorClientType === "agent" || Boolean(preconditions.expectedReadToken);
+      const hostMutation = requiresReadProofEnvelope ? validateSessionReadMutation({
+        session,
+        operation: operation2,
+        preconditions
+      }) : null;
+      if (hostMutation && !hostMutation.ok) {
+        return {
+          status: 409,
+          body: {
+            error: hostMutation.error,
+            mutation: hostMutation.mutation
+          }
+        };
+      }
+      const at = nowIso();
+      if (isRename)
+        session.title = title;
+      else if (body.archived)
+        session.archivedAt = at;
+      else
+        delete session.archivedAt;
+      session.updatedAt = at;
+      const mutation = hostMutationSucceeded(hostMutation?.envelope ?? {
+        operation: `session_${operation2}`,
+        entity: { kind: "session", id: sessionId }
+      }, {
+        afterReadToken: sessionReadToken(session),
+        resultEntityId: sessionId
+      });
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          session: publicLocalSession(session),
+          mutation
+        }
+      };
+    });
+    if (result.status === 200) {
+      const mutation = result.body.mutation;
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: `session ${operation2}`
+      }));
+    }
+    return c5.json(result.body, result.status);
   });
   app.delete("/api/v1/sessions", async (c5) => {
     const threadId = c5.req.query("threadId");
@@ -137282,6 +145762,7 @@ function createLocalApiApp(options) {
     if (result.status === 200) {
       const mutation = result.body.mutation;
       if (mutation?.accepted === true) {
+        await db.deleteSessionEvents(threadId);
         await db.appendMutationAudit(mutationAuditRecord({
           mutation,
           actorClientType: preconditions.actorClientType,
@@ -137549,9 +146030,9 @@ function createLocalApiApp(options) {
     } catch (error53) {
       return localProjectAssetErrorResponse(error53);
     }
-    await (0, import_promises28.mkdir)(options.dataDir, { recursive: true });
-    const tempDir = await (0, import_promises28.mkdtemp)((0, import_node_path33.join)(options.dataDir, "video-crop-"));
-    const outputPath = (0, import_node_path33.join)(tempDir, "output.mp4");
+    await (0, import_promises29.mkdir)(options.dataDir, { recursive: true });
+    const tempDir = await (0, import_promises29.mkdtemp)((0, import_node_path35.join)(options.dataDir, "video-crop-"));
+    const outputPath = (0, import_node_path35.join)(tempDir, "output.mp4");
     try {
       await execFileAsync4(ffmpeg, [
         "-y",
@@ -137570,11 +146051,11 @@ function createLocalApiApp(options) {
         outputPath
       ]);
     } catch (error53) {
-      await (0, import_promises28.rm)(tempDir, { recursive: true, force: true });
+      await (0, import_promises29.rm)(tempDir, { recursive: true, force: true });
       return c5.json({ error: `Video trim failed: ${errorMessage(error53)}` }, 500);
     }
-    const bytes = new Uint8Array(await (0, import_promises28.readFile)(outputPath));
-    await (0, import_promises28.rm)(tempDir, { recursive: true, force: true });
+    const bytes = new Uint8Array(await (0, import_promises29.readFile)(outputPath));
+    await (0, import_promises29.rm)(tempDir, { recursive: true, force: true });
     const outputAssetId = editOutputAssetId(actionRunId);
     try {
       const staged = await assetService.stageOwned({
@@ -137613,14 +146094,14 @@ function createLocalApiApp(options) {
 }
 
 // ../../apps/local-api/dist/host-discovery.js
-var import_node_crypto32 = require("node:crypto");
-var import_promises29 = require("node:fs/promises");
-var import_node_path34 = require("node:path");
+var import_node_crypto34 = require("node:crypto");
+var import_promises30 = require("node:fs/promises");
+var import_node_path36 = require("node:path");
 function getDefaultHostDiscoveryRunDir(env2 = process.env) {
-  return (0, import_node_path34.join)(clashHomeForLocalDataDir(defaultLocalApiDataDir(env2)), "run");
+  return (0, import_node_path36.join)(clashHomeForLocalDataDir(defaultLocalApiDataDir(env2)), "run");
 }
 function getHostDiscoveryPath(runDir = getDefaultHostDiscoveryRunDir()) {
-  return (0, import_node_path34.join)(runDir, "host.json");
+  return (0, import_node_path36.join)(runDir, "host.json");
 }
 function createHostDiscoveryRecord(options) {
   const now = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
@@ -137628,7 +146109,7 @@ function createHostDiscoveryRecord(options) {
     schemaVersion: LOCAL_HOST_RECORD_SCHEMA_VERSION,
     protocolVersion: LOCAL_HOST_PROTOCOL_VERSION,
     dataSchemaVersion: LOCAL_HOST_DATA_SCHEMA_VERSION,
-    hostId: options.hostId ?? (0, import_node_crypto32.randomUUID)(),
+    hostId: options.hostId ?? (0, import_node_crypto34.randomUUID)(),
     endpoint: options.endpoint,
     pid: options.pid ?? process.pid,
     launchMode: options.launchMode,
@@ -137646,12 +146127,12 @@ async function writeHostDiscovery(record3, options = {}) {
     throw new Error("Invalid local host discovery record");
   }
   const runDir = options.runDir ?? getDefaultHostDiscoveryRunDir();
-  await (0, import_promises29.mkdir)(runDir, { recursive: true });
+  await (0, import_promises30.mkdir)(runDir, { recursive: true });
   const finalPath = getHostDiscoveryPath(runDir);
   const pidExists = options.pidExists ?? defaultPidExists;
   let incumbent;
   try {
-    incumbent = JSON.parse(await (0, import_promises29.readFile)(finalPath, "utf8"));
+    incumbent = JSON.parse(await (0, import_promises30.readFile)(finalPath, "utf8"));
   } catch (error53) {
     if (!isNotFound(error53))
       throw error53;
@@ -137659,21 +146140,21 @@ async function writeHostDiscovery(record3, options = {}) {
   if (isLocalHostDiscoveryRecord(incumbent) && incumbent.pid !== record3.pid && pidExists(incumbent.pid)) {
     throw new Error(`A local host is already active on ${incumbent.endpoint} (pid ${incumbent.pid}); stop it before starting another.`);
   }
-  const tmpPath = (0, import_node_path34.join)(runDir, `host.${record3.hostId}.${process.pid}.${Date.now()}.tmp`);
-  await (0, import_promises29.writeFile)(tmpPath, `${JSON.stringify(record3, null, 2)}
+  const tmpPath = (0, import_node_path36.join)(runDir, `host.${record3.hostId}.${process.pid}.${Date.now()}.tmp`);
+  await (0, import_promises30.writeFile)(tmpPath, `${JSON.stringify(record3, null, 2)}
 `, {
     encoding: "utf8",
     mode: 384
   });
-  await (0, import_promises29.rename)(tmpPath, finalPath);
-  await (0, import_promises29.chmod)(finalPath, 384).catch(() => void 0);
+  await (0, import_promises30.rename)(tmpPath, finalPath);
+  await (0, import_promises30.chmod)(finalPath, 384).catch(() => void 0);
 }
 async function removeHostDiscovery(hostId, options = {}) {
   const runDir = options.runDir ?? getDefaultHostDiscoveryRunDir();
   const filePath = getHostDiscoveryPath(runDir);
   let parsed;
   try {
-    parsed = JSON.parse(await (0, import_promises29.readFile)(filePath, "utf8"));
+    parsed = JSON.parse(await (0, import_promises30.readFile)(filePath, "utf8"));
   } catch (error53) {
     if (isNotFound(error53))
       return;
@@ -137681,7 +146162,7 @@ async function removeHostDiscovery(hostId, options = {}) {
   }
   if (!isLocalHostDiscoveryRecord(parsed) || parsed.hostId !== hostId)
     return;
-  await (0, import_promises29.rm)(filePath, { force: true });
+  await (0, import_promises30.rm)(filePath, { force: true });
 }
 function defaultPidExists(pid) {
   try {
@@ -137877,7 +146358,7 @@ function createLocalVideoEnhanceService(options) {
 }
 
 // ../../apps/local-api/dist/provider-plugin-projector.js
-var import_node_crypto33 = require("node:crypto");
+var import_node_crypto35 = require("node:crypto");
 function projectionFromResult(resultInput) {
   const result = ExecutablePluginResultSchema.parse(resultInput);
   if (result.status === "failed") {
@@ -137918,7 +146399,7 @@ function createProviderPluginProjector(options) {
     }
     const invocation = ExecutablePluginInvocationSchema.parse({
       protocol: "clash.plugin.invoke/v1",
-      invocationId: (0, import_node_crypto33.randomUUID)(),
+      invocationId: (0, import_node_crypto35.randomUUID)(),
       taskId: request.taskId,
       projectId: request.projectId,
       ...request.nodeId ? { nodeId: request.nodeId } : {},
@@ -137951,7 +146432,7 @@ function pluginHostUnavailable(error53) {
 }
 
 // ../../apps/local-api/dist/provider-plugin-executor.js
-var import_node_crypto34 = require("node:crypto");
+var import_node_crypto36 = require("node:crypto");
 function mediaListFromResult(input) {
   const result = ExecutablePluginResultSchema.parse(input);
   if (result.status === "failed") {
@@ -138019,7 +146500,7 @@ function createProviderPluginExecutor(options) {
     const { accountId: _untrustedAccountId, credentials: _untrustedCredentials, ...pluginValues } = request.input.values;
     const invocation = ExecutablePluginInvocationSchema.parse({
       protocol: "clash.plugin.invoke/v1",
-      invocationId: (0, import_node_crypto34.randomUUID)(),
+      invocationId: (0, import_node_crypto36.randomUUID)(),
       taskId: request.taskId,
       projectId: request.projectId,
       ...request.nodeId ? { nodeId: request.nodeId } : {},
@@ -138133,13 +146614,13 @@ function pluginHostUnavailable2(error53) {
 }
 
 // ../../apps/local-api/dist/plugin-action-runtime.js
-var import_node_crypto35 = require("node:crypto");
+var import_node_crypto37 = require("node:crypto");
 function createExecutablePluginActionInvoker(options) {
   return async (request) => {
     const binding = ExecutablePluginBindingSchema.parse(request.binding);
     const invocation = ExecutablePluginInvocationSchema.parse({
       protocol: "clash.plugin.invoke/v1",
-      invocationId: (0, import_node_crypto35.randomUUID)(),
+      invocationId: (0, import_node_crypto37.randomUUID)(),
       taskId: request.taskId,
       projectId: request.projectId,
       ...request.nodeId ? { nodeId: request.nodeId } : {},
@@ -138156,16 +146637,16 @@ function createExecutablePluginActionInvoker(options) {
 }
 
 // ../../apps/local-api/dist/bundled-plugins.js
-var import_node_fs13 = require("node:fs");
-var import_promises31 = require("node:fs/promises");
-var import_node_module11 = require("node:module");
-var import_node_path36 = require("node:path");
+var import_node_fs14 = require("node:fs");
+var import_promises32 = require("node:fs/promises");
+var import_node_module12 = require("node:module");
+var import_node_path38 = require("node:path");
 var import_node_url2 = require("node:url");
 
 // ../../apps/local-api/dist/runtime/plugin-package.js
-var import_node_fs12 = require("node:fs");
-var import_promises30 = require("node:fs/promises");
-var import_node_path35 = require("node:path");
+var import_node_fs13 = require("node:fs");
+var import_promises31 = require("node:fs/promises");
+var import_node_path37 = require("node:path");
 function decodeJsonDocuments(paths2, files, kind) {
   const documents = {};
   for (const declaration2 of paths2) {
@@ -138201,11 +146682,13 @@ function validateHostExecutablePluginArtifacts(input) {
   const providers = decodeJsonDocuments(manifest.contributes.providers, input.files, "Provider document");
   const modelBindings = decodeJsonDocuments(manifest.contributes.modelBindings, input.files, "model Provider binding");
   const generators = decodeJsonDocuments(manifest.contributes.generators, input.files, "Generator document");
+  const views = decodeJsonDocuments(manifest.contributes.views, input.files, "View document");
   const contractTests = decodeJsonDocuments(manifest.contractTests.map((path) => ({ path })), input.files, "contract test");
   return validateExecutablePluginPackage(manifest, cards, contractTests, {
     providers,
     modelBindings,
-    generators
+    generators,
+    views
   });
 }
 function validateHostExecutablePluginPackage(input) {
@@ -138214,11 +146697,11 @@ function validateHostExecutablePluginPackage(input) {
 async function writeHostPackageDirectory(directory, input) {
   const manifest = validateHostExecutablePluginPackage(input);
   for (const [relativePath, encoded] of Object.entries(input.files)) {
-    const destination = (0, import_node_path35.join)(directory, relativePath);
-    await (0, import_promises30.mkdir)((0, import_node_path35.dirname)(destination), { recursive: true });
-    await (0, import_promises30.writeFile)(destination, Buffer.from(encoded, "base64"));
+    const destination = (0, import_node_path37.join)(directory, relativePath);
+    await (0, import_promises31.mkdir)((0, import_node_path37.dirname)(destination), { recursive: true });
+    await (0, import_promises31.writeFile)(destination, Buffer.from(encoded, "base64"));
   }
-  await (0, import_promises30.writeFile)((0, import_node_path35.join)(directory, "manifest.json"), `${JSON.stringify(manifest, null, 2)}
+  await (0, import_promises31.writeFile)((0, import_node_path37.join)(directory, "manifest.json"), `${JSON.stringify(manifest, null, 2)}
 `);
 }
 async function contractTestHostPackage(directory, input) {
@@ -138230,15 +146713,41 @@ async function contractTestHostPackage(directory, input) {
 async function writeActivationReceipt(actionsRoot, pluginDir) {
   const receipt = await createExecutablePluginActivationReceipt(pluginDir);
   const target = executablePluginActivationReceiptPath(actionsRoot, receipt.pluginId);
-  await (0, import_promises30.mkdir)((0, import_node_path35.dirname)(target), { recursive: true });
-  const staging = await (0, import_promises30.mkdtemp)((0, import_node_path35.join)((0, import_node_path35.dirname)(target), `.${receipt.pluginId}-`));
-  const stagedReceipt = (0, import_node_path35.join)(staging, "receipt.json");
+  await (0, import_promises31.mkdir)((0, import_node_path37.dirname)(target), { recursive: true });
+  const staging = await (0, import_promises31.mkdtemp)((0, import_node_path37.join)((0, import_node_path37.dirname)(target), `.${receipt.pluginId}-`));
+  const stagedReceipt = (0, import_node_path37.join)(staging, "receipt.json");
   try {
-    await (0, import_promises30.writeFile)(stagedReceipt, `${JSON.stringify(receipt, null, 2)}
+    await (0, import_promises31.writeFile)(stagedReceipt, `${JSON.stringify(receipt, null, 2)}
 `);
-    await (0, import_promises30.rename)(stagedReceipt, target);
+    await (0, import_promises31.rename)(stagedReceipt, target);
   } finally {
-    await (0, import_promises30.rm)(staging, { recursive: true, force: true });
+    await (0, import_promises31.rm)(staging, { recursive: true, force: true });
+  }
+}
+async function activateHostExecutablePluginPackage(input, actionsRoot) {
+  const manifest = validateHostExecutablePluginPackage(input);
+  const targetDir = (0, import_node_path37.join)(actionsRoot, manifest.id);
+  if ((0, import_node_fs13.existsSync)(targetDir)) {
+    const existing = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises31.readFile)((0, import_node_path37.join)(targetDir, "manifest.json"), "utf8")));
+    throw new Error(`Executable plugin ${manifest.id} version ${existing.version} is already active.`);
+  }
+  await (0, import_promises31.mkdir)(actionsRoot, { recursive: true });
+  const stagingDir = await (0, import_promises31.mkdtemp)(`${actionsRoot}.staging-${manifest.id}-`);
+  let contractTests;
+  try {
+    await writeHostPackageDirectory(stagingDir, input);
+    contractTests = await contractTestHostPackage(stagingDir, input);
+    await (0, import_promises31.rename)(stagingDir, targetDir);
+    await writeActivationReceipt(actionsRoot, targetDir);
+    return {
+      targetDir,
+      ...contractTests ? { contractTests } : {}
+    };
+  } catch (error53) {
+    await (0, import_promises31.rm)(stagingDir, { recursive: true, force: true });
+    if ((0, import_node_fs13.existsSync)(targetDir))
+      await (0, import_promises31.rm)(targetDir, { recursive: true, force: true });
+    throw error53;
   }
 }
 function generatorArtifactsFor(validatedPackage, schemaHash) {
@@ -138254,11 +146763,22 @@ function generatorArtifactsFor(validatedPackage, schemaHash) {
     generatorDefinitions: generatorRegistrations.map((registration) => generatorDefinitionFromExecutablePluginRegistration(registration))
   };
 }
+function viewArtifactsFor(validatedPackage, schemaHash) {
+  const { manifest } = validatedPackage;
+  return {
+    viewRegistrations: Object.values(validatedPackage.views).map((document) => ExecutablePluginViewRegistrationSchema.parse({
+      pluginId: manifest.id,
+      version: manifest.version,
+      schemaHash,
+      document
+    })).sort((left, right) => left.document.spec.definitionId.localeCompare(right.document.spec.definitionId))
+  };
+}
 async function validateHostExecutablePluginPackageContracts(input, actionsRoot) {
   const validatedPackage = validateHostExecutablePluginArtifacts(input);
   const { manifest } = validatedPackage;
-  await (0, import_promises30.mkdir)((0, import_node_path35.dirname)(actionsRoot), { recursive: true });
-  const stagingDir = await (0, import_promises30.mkdtemp)(`${actionsRoot}.validate-${manifest.id}-`);
+  await (0, import_promises31.mkdir)((0, import_node_path37.dirname)(actionsRoot), { recursive: true });
+  const stagingDir = await (0, import_promises31.mkdtemp)(`${actionsRoot}.validate-${manifest.id}-`);
   try {
     await writeHostPackageDirectory(stagingDir, input);
     const contractTests = await contractTestHostPackage(stagingDir, input);
@@ -138267,46 +146787,47 @@ async function validateHostExecutablePluginPackageContracts(input, actionsRoot) 
       id: manifest.id,
       version: manifest.version,
       ...generatorArtifactsFor(validatedPackage, schemaHash),
+      ...viewArtifactsFor(validatedPackage, schemaHash),
       ...contractTests ? { contractTests } : {}
     };
   } finally {
-    await (0, import_promises30.rm)(stagingDir, { recursive: true, force: true });
+    await (0, import_promises31.rm)(stagingDir, { recursive: true, force: true });
   }
 }
 async function activateOrUpdateHostExecutablePluginPackage(input, actionsRoot) {
   const manifest = validateHostExecutablePluginPackage(input);
-  const targetDir = (0, import_node_path35.join)(actionsRoot, manifest.id);
-  if ((0, import_node_fs12.existsSync)((0, import_node_path35.join)(targetDir, "manifest.json"))) {
-    const existing = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises30.readFile)((0, import_node_path35.join)(targetDir, "manifest.json"), "utf8")));
+  const targetDir = (0, import_node_path37.join)(actionsRoot, manifest.id);
+  if ((0, import_node_fs13.existsSync)((0, import_node_path37.join)(targetDir, "manifest.json"))) {
+    const existing = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises31.readFile)((0, import_node_path37.join)(targetDir, "manifest.json"), "utf8")));
     if (existing.version === manifest.version) {
       throw new Error(`Executable plugin ${manifest.id} version ${manifest.version} is already active; bump the version before changing or reactivating executable code.`);
     }
   }
-  await (0, import_promises30.mkdir)(actionsRoot, { recursive: true });
-  const stagingDir = await (0, import_promises30.mkdtemp)(`${actionsRoot}.staging-${manifest.id}-`);
+  await (0, import_promises31.mkdir)(actionsRoot, { recursive: true });
+  const stagingDir = await (0, import_promises31.mkdtemp)(`${actionsRoot}.staging-${manifest.id}-`);
   let rollbackDir;
   try {
     await writeHostPackageDirectory(stagingDir, input);
     const contractTests = await contractTestHostPackage(stagingDir, input);
-    if ((0, import_node_fs12.existsSync)(targetDir)) {
-      const rollbackRoot = (0, import_node_path35.join)(actionsRoot, ".rollback", manifest.id);
-      await (0, import_promises30.mkdir)(rollbackRoot, { recursive: true });
-      const existing = JSON.parse(await (0, import_promises30.readFile)((0, import_node_path35.join)(targetDir, "manifest.json"), "utf8"));
-      rollbackDir = (0, import_node_path35.join)(rollbackRoot, `${String(Date.now()).padStart(16, "0")}-${existing.version ?? "unknown"}`);
-      await (0, import_promises30.rename)(targetDir, rollbackDir);
+    if ((0, import_node_fs13.existsSync)(targetDir)) {
+      const rollbackRoot = (0, import_node_path37.join)(actionsRoot, ".rollback", manifest.id);
+      await (0, import_promises31.mkdir)(rollbackRoot, { recursive: true });
+      const existing = JSON.parse(await (0, import_promises31.readFile)((0, import_node_path37.join)(targetDir, "manifest.json"), "utf8"));
+      rollbackDir = (0, import_node_path37.join)(rollbackRoot, `${String(Date.now()).padStart(16, "0")}-${existing.version ?? "unknown"}`);
+      await (0, import_promises31.rename)(targetDir, rollbackDir);
     }
     try {
-      await (0, import_promises30.rename)(stagingDir, targetDir);
+      await (0, import_promises31.rename)(stagingDir, targetDir);
       await writeActivationReceipt(actionsRoot, targetDir);
     } catch (error53) {
-      if ((0, import_node_fs12.existsSync)(targetDir) && !(0, import_node_fs12.existsSync)(stagingDir)) {
+      if ((0, import_node_fs13.existsSync)(targetDir) && !(0, import_node_fs13.existsSync)(stagingDir)) {
         try {
-          await (0, import_promises30.rename)(targetDir, stagingDir);
+          await (0, import_promises31.rename)(targetDir, stagingDir);
         } catch {
         }
       }
-      if (rollbackDir && !(0, import_node_fs12.existsSync)(targetDir))
-        await (0, import_promises30.rename)(rollbackDir, targetDir);
+      if (rollbackDir && !(0, import_node_fs13.existsSync)(targetDir))
+        await (0, import_promises31.rename)(rollbackDir, targetDir);
       throw error53;
     }
     return {
@@ -138317,68 +146838,68 @@ async function activateOrUpdateHostExecutablePluginPackage(input, actionsRoot) {
       ...contractTests ? { contractTests } : {}
     };
   } catch (error53) {
-    if ((0, import_node_fs12.existsSync)(stagingDir))
-      await (0, import_promises30.rm)(stagingDir, { recursive: true, force: true });
+    if ((0, import_node_fs13.existsSync)(stagingDir))
+      await (0, import_promises31.rm)(stagingDir, { recursive: true, force: true });
     throw error53;
   }
 }
 async function rollbackHostExecutablePluginPackage(actionsRoot, inputId) {
   const id2 = pluginIdSchema.parse(inputId);
-  const rollbackRoot = (0, import_node_path35.join)(actionsRoot, ".rollback", id2);
-  const entries = (await (0, import_promises30.readdir)(rollbackRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory() && /^\d{16}-/.test(entry.name)).map((entry) => entry.name).sort().reverse();
+  const rollbackRoot = (0, import_node_path37.join)(actionsRoot, ".rollback", id2);
+  const entries = (await (0, import_promises31.readdir)(rollbackRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory() && /^\d{16}-/.test(entry.name)).map((entry) => entry.name).sort().reverse();
   const selected = entries[0];
   if (!selected)
     throw new Error(`No rollback version is available for ${id2}.`);
-  const targetDir = (0, import_node_path35.join)(actionsRoot, id2);
-  const selectedDir = (0, import_node_path35.join)(rollbackRoot, selected);
-  const displacedDir = (0, import_node_path35.join)(actionsRoot, ".rollback-displaced", id2, String(Date.now()));
-  if ((0, import_node_fs12.existsSync)(targetDir)) {
-    await (0, import_promises30.mkdir)((0, import_node_path35.dirname)(displacedDir), { recursive: true });
-    await (0, import_promises30.rename)(targetDir, displacedDir);
+  const targetDir = (0, import_node_path37.join)(actionsRoot, id2);
+  const selectedDir = (0, import_node_path37.join)(rollbackRoot, selected);
+  const displacedDir = (0, import_node_path37.join)(actionsRoot, ".rollback-displaced", id2, String(Date.now()));
+  if ((0, import_node_fs13.existsSync)(targetDir)) {
+    await (0, import_promises31.mkdir)((0, import_node_path37.dirname)(displacedDir), { recursive: true });
+    await (0, import_promises31.rename)(targetDir, displacedDir);
   }
   try {
-    await (0, import_promises30.rename)(selectedDir, targetDir);
+    await (0, import_promises31.rename)(selectedDir, targetDir);
     await writeActivationReceipt(actionsRoot, targetDir);
   } catch (error53) {
-    if ((0, import_node_fs12.existsSync)(targetDir) && !(0, import_node_fs12.existsSync)(selectedDir)) {
+    if ((0, import_node_fs13.existsSync)(targetDir) && !(0, import_node_fs13.existsSync)(selectedDir)) {
       try {
-        await (0, import_promises30.rename)(targetDir, selectedDir);
+        await (0, import_promises31.rename)(targetDir, selectedDir);
       } catch {
       }
     }
-    if ((0, import_node_fs12.existsSync)(displacedDir) && !(0, import_node_fs12.existsSync)(targetDir)) {
-      await (0, import_promises30.rename)(displacedDir, targetDir);
+    if ((0, import_node_fs13.existsSync)(displacedDir) && !(0, import_node_fs13.existsSync)(targetDir)) {
+      await (0, import_promises31.rename)(displacedDir, targetDir);
     }
     throw error53;
   }
-  const restored = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises30.readFile)((0, import_node_path35.join)(targetDir, "manifest.json"), "utf8")));
+  const restored = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises31.readFile)((0, import_node_path37.join)(targetDir, "manifest.json"), "utf8")));
   return { id: id2, targetDir, version: restored.version };
 }
 async function collectHostPackageFiles(root5, directory, output) {
-  for (const entry of await (0, import_promises30.readdir)(directory, { withFileTypes: true })) {
+  for (const entry of await (0, import_promises31.readdir)(directory, { withFileTypes: true })) {
     if (entry.name === "node_modules" || entry.name === "manifest.json")
       continue;
-    const absolutePath = (0, import_node_path35.join)(directory, entry.name);
+    const absolutePath = (0, import_node_path37.join)(directory, entry.name);
     const relativePath = absolutePath.slice(root5.length + 1).split("\\").join("/");
     if (!isSafePluginRelativePath(relativePath)) {
       throw new Error(`Refusing suspicious active plugin path: ${relativePath}`);
     }
-    const metadata = await (0, import_promises30.lstat)(absolutePath);
+    const metadata = await (0, import_promises31.lstat)(absolutePath);
     if (metadata.isSymbolicLink()) {
       throw new Error(`Active plugins cannot contain symbolic links: ${relativePath}`);
     }
     if (metadata.isDirectory()) {
       await collectHostPackageFiles(root5, absolutePath, output);
     } else if (metadata.isFile()) {
-      output[relativePath] = (await (0, import_promises30.readFile)(absolutePath)).toString("base64");
+      output[relativePath] = (await (0, import_promises31.readFile)(absolutePath)).toString("base64");
     }
   }
 }
 async function readHostExecutablePluginPackage(actionsRoot, inputId) {
   const id2 = pluginIdSchema.parse(inputId);
-  const pluginDir = (0, import_node_path35.join)(actionsRoot, id2);
-  const manifest = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises30.readFile)((0, import_node_path35.join)(pluginDir, "manifest.json"), "utf8")));
-  const storedReceipt = ExecutablePluginActivationReceiptSchema.parse(JSON.parse(await (0, import_promises30.readFile)(executablePluginActivationReceiptPath(actionsRoot, id2), "utf8")));
+  const pluginDir = (0, import_node_path37.join)(actionsRoot, id2);
+  const manifest = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises31.readFile)((0, import_node_path37.join)(pluginDir, "manifest.json"), "utf8")));
+  const storedReceipt = ExecutablePluginActivationReceiptSchema.parse(JSON.parse(await (0, import_promises31.readFile)(executablePluginActivationReceiptPath(actionsRoot, id2), "utf8")));
   const currentReceipt = await createExecutablePluginActivationReceipt(pluginDir);
   if (storedReceipt.pluginId !== currentReceipt.pluginId || storedReceipt.version !== currentReceipt.version || storedReceipt.schemaHash !== currentReceipt.schemaHash || storedReceipt.contentHash !== currentReceipt.contentHash) {
     throw new Error(`Active plugin ${id2} differs from its activation receipt; restore or reactivate it before checkout.`);
@@ -138395,35 +146916,36 @@ async function readHostExecutablePluginPackage(actionsRoot, inputId) {
     version: manifest.version,
     manifest,
     files,
-    ...generatorArtifactsFor(validatedPackage, currentReceipt.schemaHash)
+    ...generatorArtifactsFor(validatedPackage, currentReceipt.schemaHash),
+    ...viewArtifactsFor(validatedPackage, currentReceipt.schemaHash)
   };
 }
 async function removeHostExecutablePluginPackage(actionsRoot, inputId) {
   const id2 = pluginIdSchema.parse(inputId);
-  const targetDir = (0, import_node_path35.join)(actionsRoot, id2);
-  if (!(0, import_node_fs12.existsSync)(targetDir))
+  const targetDir = (0, import_node_path37.join)(actionsRoot, id2);
+  if (!(0, import_node_fs13.existsSync)(targetDir))
     return { id: id2, removed: false };
-  const trashDir = (0, import_node_path35.join)(actionsRoot, ".trash", `${id2}-${Date.now()}`);
-  await (0, import_promises30.mkdir)((0, import_node_path35.dirname)(trashDir), { recursive: true });
-  await (0, import_promises30.rename)(targetDir, trashDir);
+  const trashDir = (0, import_node_path37.join)(actionsRoot, ".trash", `${id2}-${Date.now()}`);
+  await (0, import_promises31.mkdir)((0, import_node_path37.dirname)(trashDir), { recursive: true });
+  await (0, import_promises31.rename)(targetDir, trashDir);
   const receiptPath = executablePluginActivationReceiptPath(actionsRoot, id2);
-  if ((0, import_node_fs12.existsSync)(receiptPath)) {
-    const receiptTrash = (0, import_node_path35.join)(trashDir, ".activation-receipt.json");
-    await (0, import_promises30.rename)(receiptPath, receiptTrash);
+  if ((0, import_node_fs13.existsSync)(receiptPath)) {
+    const receiptTrash = (0, import_node_path37.join)(trashDir, ".activation-receipt.json");
+    await (0, import_promises31.rename)(receiptPath, receiptTrash);
   }
   return { id: id2, removed: true, trashDir };
 }
 async function listHostExecutablePluginPackages(actionsRoot) {
-  if (!(0, import_node_fs12.existsSync)(actionsRoot))
+  if (!(0, import_node_fs13.existsSync)(actionsRoot))
     return [];
   const results = [];
-  for (const entry of await (0, import_promises30.readdir)(actionsRoot, { withFileTypes: true })) {
+  for (const entry of await (0, import_promises31.readdir)(actionsRoot, { withFileTypes: true })) {
     if (!entry.isDirectory() || entry.name.startsWith("."))
       continue;
-    const targetDir = (0, import_node_path35.join)(actionsRoot, entry.name);
+    const targetDir = (0, import_node_path37.join)(actionsRoot, entry.name);
     let manifest;
     try {
-      manifest = JSON.parse(await (0, import_promises30.readFile)((0, import_node_path35.join)(targetDir, "manifest.json"), "utf8"));
+      manifest = JSON.parse(await (0, import_promises31.readFile)((0, import_node_path37.join)(targetDir, "manifest.json"), "utf8"));
     } catch {
       continue;
     }
@@ -138448,10 +146970,10 @@ async function listHostExecutablePluginPackages(actionsRoot) {
 // ../../apps/local-api/dist/bundled-plugins.js
 var CODEX_IMAGEGEN_PLUGIN_ID = "clash.codex-imagegen";
 var CODEX_IMAGEGEN_ACTION_ID = "codex-imagegen";
-var CODEX_IMAGEGEN_MARKETPLACE_ACTION = {
-  id: CODEX_IMAGEGEN_ACTION_ID,
+var CODEX_IMAGEGEN_MARKETPLACE_PLUGIN = {
+  id: CODEX_IMAGEGEN_PLUGIN_ID,
   name: "Codex ImageGen",
-  type: "action",
+  type: "plugin",
   description: "Generate or edit images with Codex's built-in image generation tool and your ChatGPT subscription.",
   runtime: "local",
   outputType: "image",
@@ -138462,9 +146984,36 @@ var CODEX_IMAGEGEN_MARKETPLACE_ACTION = {
   color: "#57534e",
   tags: ["image", "codex", "local", "chatgpt"],
   promptModalities: ["text", "image"],
+  outputs: [
+    { kind: "generator", name: "Image Generator" },
+    { kind: "action", name: "Generate Image" }
+  ],
   builtIn: true,
   immutable: true
 };
+var STORYBOARD_MARKETPLACE_PLUGIN = {
+  id: "clash.storyboard",
+  name: "Storyboard",
+  type: "plugin",
+  description: "Draft key elements, shots, audio layers, and loose Project Assets before assembling a Timeline.",
+  artwork: {
+    src: "/brand/avatar-storyboard.png",
+    alt: "Clash Storyboard plugin"
+  },
+  packageId: "clash.storyboard",
+  version: "1.0.0",
+  author: "Clash",
+  runtime: "local",
+  tags: ["storyboard", "view", "canvas", "video"],
+  outputs: [{ kind: "view", name: "Storyboard" }]
+};
+var OFFICIAL_MARKETPLACE_PLUGIN_PACKAGES = [
+  {
+    id: STORYBOARD_MARKETPLACE_PLUGIN.id,
+    workspaceDir: "official/storyboard",
+    packagedDir: "storyboard"
+  }
+];
 var BuiltinPluginImmutableError = class extends Error {
   pluginId;
   status = 409;
@@ -138476,6 +147025,11 @@ var BuiltinPluginImmutableError = class extends Error {
   }
 };
 var BUNDLED_PLUGINS = [
+  {
+    id: "clash.asset-edit",
+    packageName: "@clash-plugin/asset-edit",
+    workspaceDir: "asset-edit"
+  },
   {
     id: "clash.director",
     packageName: "@clash-plugin/director",
@@ -138560,14 +147114,15 @@ function bundledPluginPayloadPaths(manifestInput) {
     ...manifest.contributes.providers.map(({ path }) => path),
     ...manifest.contributes.modelBindings.map(({ path }) => path),
     ...manifest.contributes.generators.map(({ path }) => path),
+    ...manifest.contributes.views.map(({ path }) => path),
     ...manifest.contractTests
   ];
 }
 async function bundledPluginPayloadFiles(manifestInput, pluginRoot) {
   const files = [];
   const visit = async (relativePath) => {
-    const path = (0, import_node_path36.join)(pluginRoot, relativePath);
-    const info = await (0, import_promises31.lstat)(path);
+    const path = (0, import_node_path38.join)(pluginRoot, relativePath);
+    const info = await (0, import_promises32.lstat)(path);
     if (info.isSymbolicLink()) {
       throw new Error(`Bundled plugin payload ${relativePath} must not be a symbolic link.`);
     }
@@ -138578,7 +147133,7 @@ async function bundledPluginPayloadFiles(manifestInput, pluginRoot) {
     if (!info.isDirectory()) {
       throw new Error(`Bundled plugin payload ${relativePath} is not a regular file or directory.`);
     }
-    const entries = (await (0, import_promises31.readdir)(path, { withFileTypes: true })).sort((left, right) => left.name.localeCompare(right.name));
+    const entries = (await (0, import_promises32.readdir)(path, { withFileTypes: true })).sort((left, right) => left.name.localeCompare(right.name));
     for (const entry of entries) {
       await visit(`${relativePath}/${entry.name}`);
     }
@@ -138592,59 +147147,75 @@ function bundledPluginPaths(id2, moduleUrl = __clash_import_meta_url) {
   const plugin = BUNDLED_PLUGINS.find((candidate) => candidate.id === id2);
   if (!plugin)
     throw new Error(`${id2} is not a bundled plugin.`);
-  const packagedPlugin = (0, import_node_path36.resolve)((0, import_node_path36.dirname)((0, import_node_url2.fileURLToPath)(moduleUrl)), "bundled-plugins", plugin.workspaceDir);
-  const packagedManifest = (0, import_node_path36.join)(packagedPlugin, "manifest.json");
-  const packagedEntrypoint = (0, import_node_path36.join)(packagedPlugin, "dist", "stdio.mjs");
-  if ((0, import_node_fs13.existsSync)(packagedManifest) && (0, import_node_fs13.existsSync)(packagedEntrypoint)) {
+  const packagedPlugin = (0, import_node_path38.resolve)((0, import_node_path38.dirname)((0, import_node_url2.fileURLToPath)(moduleUrl)), "bundled-plugins", plugin.workspaceDir);
+  const packagedManifest = (0, import_node_path38.join)(packagedPlugin, "manifest.json");
+  const packagedEntrypoint = (0, import_node_path38.join)(packagedPlugin, "dist", "stdio.mjs");
+  if ((0, import_node_fs14.existsSync)(packagedManifest) && (0, import_node_fs14.existsSync)(packagedEntrypoint)) {
     return {
       manifestPath: packagedManifest,
       entrypointPath: packagedEntrypoint
     };
   }
-  const require5 = (0, import_node_module11.createRequire)(__clash_import_meta_url);
+  const require5 = (0, import_node_module12.createRequire)(__clash_import_meta_url);
   try {
     return {
       manifestPath: require5.resolve(`${plugin.packageName}/manifest.json`),
       entrypointPath: require5.resolve(`${plugin.packageName}/stdio`)
     };
   } catch (error53) {
-    const workspacePlugin = (0, import_node_path36.resolve)((0, import_node_path36.dirname)((0, import_node_url2.fileURLToPath)(__clash_import_meta_url)), `../../../plugins/${plugin.workspaceDir}`);
-    const manifestPath = (0, import_node_path36.join)(workspacePlugin, "manifest.json");
-    const entrypointPath = (0, import_node_path36.join)(workspacePlugin, "dist", "stdio.mjs");
-    if ((0, import_node_fs13.existsSync)(manifestPath) && (0, import_node_fs13.existsSync)(entrypointPath)) {
+    const workspacePlugin = (0, import_node_path38.resolve)((0, import_node_path38.dirname)((0, import_node_url2.fileURLToPath)(__clash_import_meta_url)), `../../../plugins/${plugin.workspaceDir}`);
+    const manifestPath = (0, import_node_path38.join)(workspacePlugin, "manifest.json");
+    const entrypointPath = (0, import_node_path38.join)(workspacePlugin, "dist", "stdio.mjs");
+    if ((0, import_node_fs14.existsSync)(manifestPath) && (0, import_node_fs14.existsSync)(entrypointPath)) {
       return { manifestPath, entrypointPath };
     }
     throw error53;
   }
 }
 function bundledCodexImagegenPaths() {
-  const require5 = (0, import_node_module11.createRequire)(__clash_import_meta_url);
+  const require5 = (0, import_node_module12.createRequire)(__clash_import_meta_url);
   try {
     return {
       manifestPath: require5.resolve("@clash-plugin/codex-imagegen/manifest.json"),
       entrypointPath: require5.resolve("@clash-plugin/codex-imagegen/stdio")
     };
   } catch (error53) {
-    const workspacePlugin = (0, import_node_path36.resolve)((0, import_node_path36.dirname)((0, import_node_url2.fileURLToPath)(__clash_import_meta_url)), "../../../plugins/codex-imagegen");
-    const manifestPath = (0, import_node_path36.join)(workspacePlugin, "manifest.json");
-    const entrypointPath = (0, import_node_path36.join)(workspacePlugin, "dist", "stdio.mjs");
-    if ((0, import_node_fs13.existsSync)(manifestPath) && (0, import_node_fs13.existsSync)(entrypointPath)) {
+    const workspacePlugin = (0, import_node_path38.resolve)((0, import_node_path38.dirname)((0, import_node_url2.fileURLToPath)(__clash_import_meta_url)), "../../../plugins/codex-imagegen");
+    const manifestPath = (0, import_node_path38.join)(workspacePlugin, "manifest.json");
+    const entrypointPath = (0, import_node_path38.join)(workspacePlugin, "dist", "stdio.mjs");
+    if ((0, import_node_fs14.existsSync)(manifestPath) && (0, import_node_fs14.existsSync)(entrypointPath)) {
       return { manifestPath, entrypointPath };
     }
     throw error53;
   }
 }
+function officialStoryboardPluginPaths(moduleUrl = __clash_import_meta_url) {
+  const packagedPlugin = (0, import_node_path38.resolve)((0, import_node_path38.dirname)((0, import_node_url2.fileURLToPath)(moduleUrl)), "official-plugins", "storyboard");
+  const packagedManifest = (0, import_node_path38.join)(packagedPlugin, "manifest.json");
+  const packagedEntrypoint = (0, import_node_path38.join)(packagedPlugin, "dist", "stdio.mjs");
+  if ((0, import_node_fs14.existsSync)(packagedManifest) && (0, import_node_fs14.existsSync)(packagedEntrypoint)) {
+    return {
+      manifestPath: packagedManifest,
+      entrypointPath: packagedEntrypoint
+    };
+  }
+  const workspacePlugin = (0, import_node_path38.resolve)((0, import_node_path38.dirname)((0, import_node_url2.fileURLToPath)(__clash_import_meta_url)), "../../../plugins/official/storyboard");
+  return {
+    manifestPath: (0, import_node_path38.join)(workspacePlugin, "manifest.json"),
+    entrypointPath: (0, import_node_path38.join)(workspacePlugin, "dist", "stdio.mjs")
+  };
+}
 function createCodexImagegenMarketplace(options) {
   const readBundledManifest = async () => {
     const manifestPath = options.manifestPath ?? bundledCodexImagegenPaths().manifestPath;
-    const manifest = JSON.parse(await (0, import_promises31.readFile)(manifestPath, "utf8"));
+    const manifest = JSON.parse(await (0, import_promises32.readFile)(manifestPath, "utf8"));
     if (manifest.id !== CODEX_IMAGEGEN_PLUGIN_ID || typeof manifest.version !== "string") {
       throw new Error("Bundled Codex ImageGen package is invalid.");
     }
     return manifest;
   };
   return {
-    actions: [CODEX_IMAGEGEN_MARKETPLACE_ACTION],
+    plugins: [CODEX_IMAGEGEN_MARKETPLACE_PLUGIN],
     async listInstalled() {
       const manifest = await readBundledManifest();
       return [
@@ -138656,7 +147227,7 @@ function createCodexImagegenMarketplace(options) {
           builtIn: true,
           immutable: true,
           manifest: JSON.stringify({
-            ...CODEX_IMAGEGEN_MARKETPLACE_ACTION,
+            ...CODEX_IMAGEGEN_MARKETPLACE_PLUGIN,
             id: CODEX_IMAGEGEN_ACTION_ID
           })
         }
@@ -138675,17 +147246,105 @@ function createCodexImagegenMarketplace(options) {
         bundled: true
       };
     },
-    async uninstall(actionId) {
-      if (actionId !== CODEX_IMAGEGEN_ACTION_ID) {
-        throw new Error(`Unknown local action: ${actionId}`);
+    async uninstall(pluginId) {
+      if (pluginId !== CODEX_IMAGEGEN_PLUGIN_ID) {
+        throw new Error(`Unknown local plugin: ${pluginId}`);
       }
       throw new BuiltinPluginImmutableError(CODEX_IMAGEGEN_PLUGIN_ID);
     }
   };
 }
+async function ensureBundledPlugin(options) {
+  const targetDir = (0, import_node_path38.join)(options.actionsRoot, options.id);
+  if ((0, import_node_fs14.existsSync)((0, import_node_path38.join)(targetDir, "manifest.json"))) {
+    return { installed: false, targetDir };
+  }
+  const defaults = options.manifestPath && options.entrypointPath ? null : bundledPluginPaths(options.id);
+  const manifestPath = options.manifestPath ?? defaults.manifestPath;
+  const entrypointPath = options.entrypointPath ?? defaults.entrypointPath;
+  const manifest = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises32.readFile)(manifestPath, "utf8")));
+  if (manifest.id !== options.id) {
+    throw new Error(`Expected the bundled manifest for ${options.id}, but it declares ${manifest.id}.`);
+  }
+  if (manifest.runtime.kind !== "local") {
+    throw new Error(`Bundled plugin ${options.id} must have a local entrypoint.`);
+  }
+  const runtimeEntrypoint = manifest.runtime.entrypoint;
+  const entrypoint = await (0, import_promises32.readFile)(entrypointPath);
+  const files = {
+    [runtimeEntrypoint]: entrypoint.toString("base64")
+  };
+  const manifestDir = (0, import_node_path38.dirname)(manifestPath);
+  const declaredDocuments = (await bundledPluginPayloadFiles(manifest, manifestDir)).filter((path) => path !== "manifest.json" && path !== runtimeEntrypoint);
+  for (const relativePath of declaredDocuments) {
+    if (!relativePath)
+      continue;
+    files[relativePath] = (await (0, import_promises32.readFile)((0, import_node_path38.join)(manifestDir, relativePath))).toString("base64");
+  }
+  const activated = await activateHostExecutablePluginPackage({
+    id: options.id,
+    manifest,
+    files
+  }, options.actionsRoot);
+  return { installed: true, targetDir: activated.targetDir };
+}
+function createOfficialPluginsMarketplace(options) {
+  const packagePaths = () => {
+    const defaults = options.manifestPath && options.entrypointPath ? void 0 : officialStoryboardPluginPaths();
+    return {
+      manifestPath: options.manifestPath ?? defaults.manifestPath,
+      entrypointPath: options.entrypointPath ?? defaults.entrypointPath
+    };
+  };
+  return {
+    plugins: [STORYBOARD_MARKETPLACE_PLUGIN],
+    async listInstalled() {
+      const installed = await listHostExecutablePluginPackages(options.actionsRoot);
+      return installed.filter((plugin) => plugin.id === STORYBOARD_MARKETPLACE_PLUGIN.id);
+    },
+    async install(packageId) {
+      if (packageId !== STORYBOARD_MARKETPLACE_PLUGIN.packageId) {
+        throw new Error(`Unknown official plugin package: ${packageId}`);
+      }
+      const paths2 = packagePaths();
+      const manifest = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises32.readFile)(paths2.manifestPath, "utf8")));
+      const result = await ensureBundledPlugin({
+        id: STORYBOARD_MARKETPLACE_PLUGIN.id,
+        actionsRoot: options.actionsRoot,
+        ...paths2
+      });
+      return {
+        id: manifest.id,
+        packageId,
+        version: manifest.version,
+        installed: result.installed
+      };
+    },
+    async uninstall(pluginId) {
+      if (pluginId !== STORYBOARD_MARKETPLACE_PLUGIN.id) {
+        throw new Error(`Unknown official plugin: ${pluginId}`);
+      }
+      await removeHostExecutablePluginPackage(options.actionsRoot, pluginId);
+    }
+  };
+}
+
+// ../../apps/local-api/dist/marketplace-feed.js
+var FEATURED_MARKETPLACE_PLUGIN_IDS = [
+  "clash.storyboard",
+  "clash.codex-imagegen",
+  "clash.video.sd25-pe"
+];
+function selectMarketplaceFeed({ plugins, skills = [], featuredPluginIds = FEATURED_MARKETPLACE_PLUGIN_IDS }) {
+  const catalog = new Map([...plugins, ...skills].map((plugin) => [plugin.id, plugin]));
+  return featuredPluginIds.flatMap((pluginId) => {
+    const plugin = catalog.get(pluginId);
+    return plugin ? [plugin] : [];
+  });
+}
 
 // ../../apps/local-api/dist/bundled-plugin-modules.js
-var import_promises32 = require("node:fs/promises");
+var import_promises33 = require("node:fs/promises");
 var import_node_url3 = require("node:url");
 var TRUSTED_BUNDLED_PLUGIN_MODULES = Object.freeze(BUNDLED_PLUGINS.map(({ id: id2 }) => Object.freeze({ id: id2 })));
 function isPluginModule(value) {
@@ -138700,7 +147359,7 @@ async function loadTrustedBundledPluginModule(pluginId) {
     throw new Error(`${pluginId} is not a trusted bundled plugin.`);
   }
   const { manifestPath, entrypointPath } = bundledPluginPaths(pluginId);
-  const rawManifest = JSON.parse(await (0, import_promises32.readFile)(manifestPath, "utf8"));
+  const rawManifest = JSON.parse(await (0, import_promises33.readFile)(manifestPath, "utf8"));
   const manifest = ExecutablePluginManifestSchema.parse(rawManifest);
   if (manifest.id !== registration.id) {
     throw new Error(`Trusted bundled registration ${registration.id} resolves manifest ${manifest.id}.`);
@@ -138728,19 +147387,45 @@ async function loadTrustedBundledPluginModule(pluginId) {
 }
 
 // ../../apps/local-api/dist/codex-imagegen.js
-var import_node_child_process7 = require("node:child_process");
-var import_node_fs14 = require("node:fs");
-var import_promises33 = require("node:fs/promises");
+var import_node_child_process8 = require("node:child_process");
+var import_node_fs15 = require("node:fs");
+var import_promises34 = require("node:fs/promises");
 var import_node_os10 = require("node:os");
-var import_node_path37 = require("node:path");
-var PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+var import_node_path39 = require("node:path");
+var PNG_SIGNATURE = Buffer.from([
+  137,
+  80,
+  78,
+  71,
+  13,
+  10,
+  26,
+  10
+]);
+var PNG_IEND = Buffer.from([
+  0,
+  0,
+  0,
+  0,
+  73,
+  69,
+  78,
+  68,
+  174,
+  66,
+  96,
+  130
+]);
+function isCompletePng(bytes) {
+  return bytes.byteLength >= PNG_SIGNATURE.byteLength + PNG_IEND.byteLength && bytes.subarray(0, PNG_SIGNATURE.byteLength).equals(PNG_SIGNATURE) && bytes.subarray(-PNG_IEND.byteLength).equals(PNG_IEND);
+}
 function executableNames() {
   return process.platform === "win32" ? ["codex.exe", "codex.cmd", "codex"] : ["codex"];
 }
 function resolveCodexCli(env2 = process.env) {
   if (env2.CODEX_BIN) {
-    const configured = (0, import_node_path37.resolve)(env2.CODEX_BIN);
-    if ((0, import_node_fs14.existsSync)(configured))
+    const configured = (0, import_node_path39.resolve)(env2.CODEX_BIN);
+    if ((0, import_node_fs15.existsSync)(configured))
       return configured;
   }
   const candidates = process.platform === "darwin" ? [
@@ -138749,13 +147434,13 @@ function resolveCodexCli(env2 = process.env) {
     "/Applications/ChatGPT.app/Contents/Resources/codex",
     "/Applications/Codex.app/Contents/Resources/codex"
   ] : [];
-  const installed = candidates.find((candidate) => (0, import_node_fs14.existsSync)(candidate));
+  const installed = candidates.find((candidate) => (0, import_node_fs15.existsSync)(candidate));
   if (installed)
     return installed;
-  for (const directory of (env2.PATH ?? "").split(import_node_path37.delimiter).filter(Boolean)) {
+  for (const directory of (env2.PATH ?? "").split(import_node_path39.delimiter).filter(Boolean)) {
     for (const name of executableNames()) {
-      const candidate = (0, import_node_path37.resolve)(directory, name);
-      if ((0, import_node_fs14.existsSync)(candidate))
+      const candidate = (0, import_node_path39.resolve)(directory, name);
+      if ((0, import_node_fs15.existsSync)(candidate))
         return candidate;
     }
   }
@@ -138768,7 +147453,7 @@ function referenceExtension(mediaType, asset) {
     return ".webp";
   if (mediaType === "image/heic")
     return ".heic";
-  const uriExtension = (0, import_node_path37.extname)(asset.uri).toLowerCase();
+  const uriExtension = (0, import_node_path39.extname)(asset.uri).toLowerCase();
   return [".png", ".jpg", ".jpeg", ".webp", ".heic"].includes(uriExtension) ? uriExtension : ".png";
 }
 function codexPrompt(input, outputPath) {
@@ -138787,10 +147472,19 @@ function createCodexImageGenerator(options = {}) {
   const environment = options.env ?? process.env;
   const codexPath = options.codexPath ?? resolveCodexCli(environment);
   const run = options.exec ?? ((file2, args, execOptions) => new Promise((resolveRun, rejectRun) => {
-    const child = (0, import_node_child_process7.execFile)(file2, args, {
-      ...execOptions,
+    const { completionPath, ...processOptions } = execOptions;
+    let settled = false;
+    let pollInFlight = false;
+    let previousSize = -1;
+    let stableChecks = 0;
+    const child = (0, import_node_child_process8.execFile)(file2, args, {
+      ...processOptions,
       encoding: "utf8"
     }, (error53, stdout, stderr) => {
+      if (settled)
+        return;
+      settled = true;
+      clearInterval(outputPoll);
       if (error53) {
         rejectRun(Object.assign(error53, { stdout, stderr }));
         return;
@@ -138798,18 +147492,53 @@ function createCodexImageGenerator(options = {}) {
       resolveRun({ stdout, stderr });
     });
     child.stdin?.end();
+    const outputPoll = setInterval(() => {
+      if (settled || pollInFlight)
+        return;
+      pollInFlight = true;
+      void (0, import_promises34.readFile)(completionPath).then((bytes) => {
+        if (!isCompletePng(bytes)) {
+          previousSize = -1;
+          stableChecks = 0;
+          return;
+        }
+        if (bytes.byteLength === previousSize) {
+          stableChecks += 1;
+        } else {
+          previousSize = bytes.byteLength;
+          stableChecks = 1;
+        }
+        if (stableChecks < 2 || settled)
+          return;
+        settled = true;
+        clearInterval(outputPoll);
+        child.kill("SIGTERM");
+        const forceKill = setTimeout(() => {
+          if (child.exitCode === null)
+            child.kill("SIGKILL");
+        }, 250);
+        forceKill.unref();
+        resolveRun({ stdout: "", stderr: "" });
+      }).catch(() => {
+        previousSize = -1;
+        stableChecks = 0;
+      }).finally(() => {
+        pollInFlight = false;
+      });
+    }, 50);
+    outputPoll.unref();
   }));
   return async (input) => {
     if (!codexPath) {
       throw new Error("Codex CLI was not found. Install Codex or set CODEX_BIN, then sign in with `codex login`.");
     }
-    const workDir = await (0, import_promises33.mkdtemp)((0, import_node_path37.join)((0, import_node_os10.tmpdir)(), "clash.codex-imagegen-"));
-    const outputPath = (0, import_node_path37.join)(workDir, "result.png");
+    const workDir = await (0, import_promises34.mkdtemp)((0, import_node_path39.join)((0, import_node_os10.tmpdir)(), "clash.codex-imagegen-"));
+    const outputPath = (0, import_node_path39.join)(workDir, "result.png");
     try {
       const referencePaths = [];
       for (const [index, reference] of input.references.entries()) {
-        const path = (0, import_node_path37.join)(workDir, `reference-${index + 1}${referenceExtension(reference.mediaType, reference.asset)}`);
-        await (0, import_promises33.writeFile)(path, reference.bytes);
+        const path = (0, import_node_path39.join)(workDir, `reference-${index + 1}${referenceExtension(reference.mediaType, reference.asset)}`);
+        await (0, import_promises34.writeFile)(path, reference.bytes);
         referencePaths.push(path);
       }
       const args = [
@@ -138831,32 +147560,33 @@ function createCodexImageGenerator(options = {}) {
           cwd: workDir,
           env: environment,
           timeout: options.timeoutMs ?? 10 * 6e4,
-          maxBuffer: 8 * 1024 * 1024
+          maxBuffer: 8 * 1024 * 1024,
+          completionPath: outputPath
         });
       } catch (error53) {
         const processError = error53 && typeof error53 === "object" ? error53 : null;
         const detail = [processError?.stderr, processError?.stdout, processError?.message].map((value) => typeof value === "string" ? value.trim() : "").find(Boolean)?.slice(-2e3) ?? String(error53);
         throw new Error(`Codex ImageGen failed: ${detail}`);
       }
-      const bytes = await (0, import_promises33.readFile)(outputPath).catch(() => null);
+      const bytes = await (0, import_promises34.readFile)(outputPath).catch(() => null);
       if (!bytes) {
         throw new Error("Codex ImageGen completed without writing result.png.");
       }
-      if (bytes.byteLength < PNG_SIGNATURE.byteLength || !bytes.subarray(0, PNG_SIGNATURE.byteLength).equals(PNG_SIGNATURE)) {
-        throw new Error("Codex ImageGen output is not a valid PNG.");
+      if (!isCompletePng(bytes)) {
+        throw new Error("Codex ImageGen output is not a complete PNG.");
       }
       return { mediaType: "image/png", bytes: new Uint8Array(bytes) };
     } finally {
-      await (0, import_promises33.rm)(workDir, { recursive: true, force: true });
+      await (0, import_promises34.rm)(workDir, { recursive: true, force: true });
     }
   };
 }
 
 // ../../apps/local-api/dist/local-acp.js
-var import_node_child_process10 = require("node:child_process");
-var import_node_crypto37 = require("node:crypto");
-var import_promises39 = require("node:fs/promises");
-var import_node_path43 = require("node:path");
+var import_node_child_process11 = require("node:child_process");
+var import_node_crypto39 = require("node:crypto");
+var import_promises40 = require("node:fs/promises");
+var import_node_path45 = require("node:path");
 
 // ../../node_modules/.pnpm/@agentclientprotocol+sdk@0.25.1_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/schema/index.js
 var AGENT_METHODS = {
@@ -141848,7 +150578,7 @@ var AcpRuntimeImpl = class {
 };
 
 // ../../node_modules/.pnpm/@openma+common@https+++codeload.github.com+openma-ai+openma-common+tar.gz+28d93020c85c2_aa2833f13f41352416c9035aec9d9c5b/node_modules/@openma/common/dist/acp-runtime/spawners/node.js
-var import_node_child_process8 = require("node:child_process");
+var import_node_child_process9 = require("node:child_process");
 var activeChildren = /* @__PURE__ */ new Set();
 var cleanupHandlersInstalled = false;
 function killProcessTree(child, signal, detached) {
@@ -141894,7 +150624,7 @@ var NodeSpawner = class {
         env2[key] = value;
     }
     const detached = process.platform !== "win32";
-    const child = (0, import_node_child_process8.spawn)(spec.command, spec.args ?? [], {
+    const child = (0, import_node_child_process9.spawn)(spec.command, spec.args ?? [], {
       env: env2,
       cwd: spec.cwd,
       stdio: ["pipe", "pipe", "pipe"],
@@ -142053,10 +150783,10 @@ function nodeWritableToWeb(stream) {
 }
 
 // ../../apps/local-api/dist/runtime/host/_acp-runtime/probe.js
-var import_node_fs15 = require("node:fs");
-var import_promises34 = require("node:fs/promises");
+var import_node_fs16 = require("node:fs");
+var import_promises35 = require("node:fs/promises");
 var import_node_os11 = require("node:os");
-var import_node_path38 = require("node:path");
+var import_node_path40 = require("node:path");
 
 // ../../node_modules/.pnpm/@agentclientprotocol+sdk@0.28.1_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/schema/index.js
 var AGENT_METHODS2 = {
@@ -145821,7 +154551,7 @@ function terminalAuthMeta(method) {
 }
 function parseGeneratedShellShimCommand(command6) {
   try {
-    const text = (0, import_node_fs15.readFileSync)(command6, "utf8");
+    const text = (0, import_node_fs16.readFileSync)(command6, "utf8");
     const execLine = text.split("\n").find((line) => line.startsWith("exec ") && line.includes('"$@"'));
     if (!execLine)
       return null;
@@ -146188,8 +154918,8 @@ async function allowDiagnosticsToFlush() {
   await new Promise((resolve18) => setTimeout(resolve18, 25));
 }
 async function probeAgentSessionConfig(options) {
-  const cwd = options.cwd ?? (0, import_node_path38.join)((0, import_node_os11.tmpdir)(), "clash-acp-probe");
-  await (0, import_promises34.mkdir)(cwd, { recursive: true });
+  const cwd = options.cwd ?? (0, import_node_path40.join)((0, import_node_os11.tmpdir)(), "clash-acp-probe");
+  await (0, import_promises35.mkdir)(cwd, { recursive: true });
   let updatedConfigOptions = [];
   let updatedAvailableCommands = [];
   let updatedModeId = null;
@@ -146292,8 +155022,8 @@ async function probeAgentSessionConfig(options) {
   }
 }
 async function authenticateAgent(options) {
-  const cwd = options.cwd ?? (0, import_node_path38.join)((0, import_node_os11.tmpdir)(), "clash-acp-auth");
-  await (0, import_promises34.mkdir)(cwd, { recursive: true });
+  const cwd = options.cwd ?? (0, import_node_path40.join)((0, import_node_os11.tmpdir)(), "clash-acp-auth");
+  await (0, import_promises35.mkdir)(cwd, { recursive: true });
   const env2 = mergedStringEnv(options.agent.env, options.env);
   let authTerminalId = 0;
   let activeAuthMethodName = "Agent";
@@ -146438,8 +155168,8 @@ async function authenticateAgent(options) {
   }
 }
 async function probeAgentAuthStatus(options) {
-  const cwd = options.cwd ?? (0, import_node_path38.join)((0, import_node_os11.tmpdir)(), "clash-acp-auth-probe");
-  await (0, import_promises34.mkdir)(cwd, { recursive: true });
+  const cwd = options.cwd ?? (0, import_node_path40.join)((0, import_node_os11.tmpdir)(), "clash-acp-auth-probe");
+  await (0, import_promises35.mkdir)(cwd, { recursive: true });
   const connection = await spawnAcpProbeAgent({
     agent: options.agent,
     cwd,
@@ -146555,9 +155285,9 @@ async function listLocalAgentSessions(agent2) {
 }
 
 // ../../apps/local-api/dist/runtime/host/_acp-runtime/registry.js
-var import_node_fs16 = require("node:fs");
-var import_promises35 = require("node:fs/promises");
-var import_node_path39 = require("node:path");
+var import_node_fs17 = require("node:fs");
+var import_promises36 = require("node:fs/promises");
+var import_node_path41 = require("node:path");
 function registryShimName(id2) {
   return `clash-acp-${id2}`;
 }
@@ -146672,14 +155402,14 @@ var KNOWN_ACP_AGENTS = [
 ];
 async function isExecutable(path, platform3 = process.platform) {
   try {
-    await (0, import_promises35.access)(path, platform3 === "win32" ? import_node_fs16.constants.F_OK : import_node_fs16.constants.X_OK);
+    await (0, import_promises36.access)(path, platform3 === "win32" ? import_node_fs17.constants.F_OK : import_node_fs17.constants.X_OK);
     return true;
   } catch {
     return false;
   }
 }
 function splitBinPath(value) {
-  return value?.split(import_node_path39.delimiter).filter(Boolean) ?? [];
+  return value?.split(import_node_path41.delimiter).filter(Boolean) ?? [];
 }
 function candidateBinDirs(options) {
   const env2 = options.env ?? process.env;
@@ -146702,19 +155432,19 @@ function candidateSystemDirs(options) {
   if (env2.PNPM_HOME)
     dirs.push(env2.PNPM_HOME);
   if (env2.VOLTA_HOME)
-    dirs.push((0, import_node_path39.join)(env2.VOLTA_HOME, "bin"));
+    dirs.push((0, import_node_path41.join)(env2.VOLTA_HOME, "bin"));
   if (home) {
-    dirs.push((0, import_node_path39.join)(home, ".volta", "bin"), (0, import_node_path39.join)(home, ".asdf", "shims"), (0, import_node_path39.join)(home, ".local", "share", "mise", "shims"), (0, import_node_path39.join)(home, ".mise", "shims"), (0, import_node_path39.join)(home, ".local", "bin"), (0, import_node_path39.join)(home, "Library", "pnpm"), (0, import_node_path39.join)(home, ".bun", "bin"));
+    dirs.push((0, import_node_path41.join)(home, ".volta", "bin"), (0, import_node_path41.join)(home, ".asdf", "shims"), (0, import_node_path41.join)(home, ".local", "share", "mise", "shims"), (0, import_node_path41.join)(home, ".mise", "shims"), (0, import_node_path41.join)(home, ".local", "bin"), (0, import_node_path41.join)(home, "Library", "pnpm"), (0, import_node_path41.join)(home, ".bun", "bin"));
   }
   return [...new Set(dirs)];
 }
 async function candidateNodeVersionDirs(root5, suffix) {
   const dirs = [];
   try {
-    for (const entry of await (0, import_promises35.readdir)(root5, { withFileTypes: true })) {
+    for (const entry of await (0, import_promises36.readdir)(root5, { withFileTypes: true })) {
       if (!entry.isDirectory())
         continue;
-      dirs.push((0, import_node_path39.join)(root5, entry.name, ...suffix));
+      dirs.push((0, import_node_path41.join)(root5, entry.name, ...suffix));
     }
   } catch {
   }
@@ -146724,15 +155454,15 @@ async function candidateSystemBinDirs(options) {
   const env2 = options.env ?? process.env;
   const dirs = candidateSystemDirs(options);
   const home = env2.HOME ?? env2.USERPROFILE;
-  const nvmDir = env2.NVM_DIR ?? (home ? (0, import_node_path39.join)(home, ".nvm") : void 0);
+  const nvmDir = env2.NVM_DIR ?? (home ? (0, import_node_path41.join)(home, ".nvm") : void 0);
   if (nvmDir) {
-    dirs.push(...await candidateNodeVersionDirs((0, import_node_path39.join)(nvmDir, "versions", "node"), [
+    dirs.push(...await candidateNodeVersionDirs((0, import_node_path41.join)(nvmDir, "versions", "node"), [
       "bin"
     ]));
   }
-  const fnmDir = env2.FNM_DIR ?? (home ? (0, import_node_path39.join)(home, ".fnm") : void 0);
+  const fnmDir = env2.FNM_DIR ?? (home ? (0, import_node_path41.join)(home, ".fnm") : void 0);
   if (fnmDir) {
-    dirs.push(...await candidateNodeVersionDirs((0, import_node_path39.join)(fnmDir, "node-versions"), [
+    dirs.push(...await candidateNodeVersionDirs((0, import_node_path41.join)(fnmDir, "node-versions"), [
       "installation",
       "bin"
     ]));
@@ -146749,7 +155479,7 @@ function candidateApplicationDirs(options) {
   return [
     "/Applications",
     "/System/Applications",
-    ...home ? [(0, import_node_path39.join)(home, "Applications")] : []
+    ...home ? [(0, import_node_path41.join)(home, "Applications")] : []
   ];
 }
 function candidateMacAppExecutables(entry, options) {
@@ -146763,7 +155493,7 @@ function candidateMacAppExecutables(entry, options) {
   for (const appDir of candidateApplicationDirs(options)) {
     for (const bundleName of bundleNames) {
       for (const executableName of executableNames2) {
-        candidates.push((0, import_node_path39.join)(appDir, bundleName, "Contents", "MacOS", executableName));
+        candidates.push((0, import_node_path41.join)(appDir, bundleName, "Contents", "MacOS", executableName));
       }
     }
   }
@@ -146771,7 +155501,7 @@ function candidateMacAppExecutables(entry, options) {
 }
 function candidateCommandNames(command6, options) {
   const platform3 = options.platform ?? process.platform;
-  if (platform3 !== "win32" || (0, import_node_path39.extname)(command6))
+  if (platform3 !== "win32" || (0, import_node_path41.extname)(command6))
     return [command6];
   const env2 = options.env ?? process.env;
   const extensions = (env2.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").map((extension2) => extension2.trim().toLowerCase()).filter(Boolean);
@@ -146779,11 +155509,11 @@ function candidateCommandNames(command6, options) {
 }
 async function resolveCommandInDirs(command6, dirs, options) {
   const platform3 = options.platform ?? process.platform;
-  if ((0, import_node_path39.isAbsolute)(command6))
+  if ((0, import_node_path41.isAbsolute)(command6))
     return await isExecutable(command6, platform3) ? command6 : null;
   for (const dir of dirs) {
     for (const name of candidateCommandNames(command6, options)) {
-      const candidate = (0, import_node_path39.join)(dir, name);
+      const candidate = (0, import_node_path41.join)(dir, name);
       if (await isExecutable(candidate, platform3))
         return candidate;
     }
@@ -146843,14 +155573,14 @@ async function detectAll(options = {}) {
 }
 
 // ../../apps/local-api/dist/runtime/host/lib/cc-sessions.js
-var import_promises36 = require("node:fs/promises");
+var import_promises37 = require("node:fs/promises");
 var import_node_os12 = require("node:os");
-var import_node_path40 = require("node:path");
-var ROOT = (0, import_node_path40.join)((0, import_node_os12.homedir)(), ".claude", "projects");
+var import_node_path42 = require("node:path");
+var ROOT = (0, import_node_path42.join)((0, import_node_os12.homedir)(), ".claude", "projects");
 async function listLocalCcSessions(limit = 20) {
   let projectDirs;
   try {
-    projectDirs = await (0, import_promises36.readdir)(ROOT);
+    projectDirs = await (0, import_promises37.readdir)(ROOT);
   } catch (e5) {
     if (e5.code === "ENOENT")
       return [];
@@ -146862,19 +155592,19 @@ async function listLocalCcSessions(limit = 20) {
     const decoded = decodeCcProjectDir(projDir);
     if (!decoded.startsWith(sessionsRoot + "/") && decoded !== sessionsRoot)
       continue;
-    const projPath = (0, import_node_path40.join)(ROOT, projDir);
+    const projPath = (0, import_node_path42.join)(ROOT, projDir);
     let entries = [];
     try {
-      entries = await (0, import_promises36.readdir)(projPath);
+      entries = await (0, import_promises37.readdir)(projPath);
     } catch {
       continue;
     }
     for (const entry of entries) {
       if (!entry.endsWith(".jsonl"))
         continue;
-      const file2 = (0, import_node_path40.join)(projPath, entry);
+      const file2 = (0, import_node_path42.join)(projPath, entry);
       try {
-        const st = await (0, import_promises36.stat)(file2);
+        const st = await (0, import_promises37.stat)(file2);
         if (!st.isFile())
           continue;
         const id2 = entry.slice(0, -".jsonl".length);
@@ -146897,7 +155627,7 @@ async function listLocalCcSessions(limit = 20) {
 async function readFirstSummary(file2) {
   let text;
   try {
-    const buf = await (0, import_promises36.readFile)(file2, { encoding: "utf-8" });
+    const buf = await (0, import_promises37.readFile)(file2, { encoding: "utf-8" });
     text = buf;
   } catch {
     return "";
@@ -146987,9 +155717,9 @@ function reduceSessionLifecycle(state2, event) {
 }
 
 // ../../apps/local-api/dist/runtime/host/lib/session-cwd.js
-var import_promises37 = require("node:fs/promises");
-var import_node_fs17 = require("node:fs");
-var import_node_path41 = require("node:path");
+var import_promises38 = require("node:fs/promises");
+var import_node_fs18 = require("node:fs");
+var import_node_path43 = require("node:path");
 var import_node_url4 = require("node:url");
 
 // ../../apps/local-api/dist/runtime/host/lib/agent-skills.js
@@ -147017,7 +155747,7 @@ var DEFAULT_PROJECT = "_default";
 function resolveBundledAgentsDir(env2 = process.env) {
   const externalRoot = env2.CLASH_AGENT_BUNDLE_ROOT?.trim();
   if (externalRoot)
-    return (0, import_node_path41.resolve)(externalRoot);
+    return (0, import_node_path43.resolve)(externalRoot);
   const candidates = [
     new URL("./agents/", __clash_import_meta_url),
     new URL("../../../../dist/agents/", __clash_import_meta_url),
@@ -147026,7 +155756,7 @@ function resolveBundledAgentsDir(env2 = process.env) {
   ];
   for (const candidate of candidates) {
     const path = (0, import_node_url4.fileURLToPath)(candidate);
-    if ((0, import_node_fs17.existsSync)(path))
+    if ((0, import_node_fs18.existsSync)(path))
       return path;
   }
   return (0, import_node_url4.fileURLToPath)(candidates[0]);
@@ -147036,7 +155766,7 @@ function bundledAgentsDir() {
 }
 async function readAgentRuntime(agentTemplateId) {
   try {
-    const text = await (0, import_promises37.readFile)((0, import_node_path41.join)(bundledAgentsDir(), agentTemplateId, "runtime.json"), "utf-8");
+    const text = await (0, import_promises38.readFile)((0, import_node_path43.join)(bundledAgentsDir(), agentTemplateId, "runtime.json"), "utf-8");
     return JSON.parse(text);
   } catch {
     return null;
@@ -147046,8 +155776,8 @@ function isRecord18(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 function assertInside(root5, candidate, label) {
-  const fromRoot = (0, import_node_path41.relative)(root5, candidate);
-  if (fromRoot === ".." || fromRoot.startsWith(`..${import_node_path41.sep}`) || (0, import_node_path41.isAbsolute)(fromRoot)) {
+  const fromRoot = (0, import_node_path43.relative)(root5, candidate);
+  if (fromRoot === ".." || fromRoot.startsWith(`..${import_node_path43.sep}`) || (0, import_node_path43.isAbsolute)(fromRoot)) {
     throw new Error(`${label} must stay inside the bundled plugin`);
   }
   return candidate;
@@ -147055,7 +155785,7 @@ function assertInside(root5, candidate, label) {
 function resolvePluginPath(pluginRoot, base, value) {
   if (!value.startsWith("./") && !value.startsWith("../"))
     return value;
-  return assertInside(pluginRoot, (0, import_node_path41.resolve)(base, value), `plugin path '${value}'`);
+  return assertInside(pluginRoot, (0, import_node_path43.resolve)(base, value), `plugin path '${value}'`);
 }
 function configuredEnv(value) {
   if (value === void 0)
@@ -147081,14 +155811,14 @@ function pluginMcpEnv(runtimeEnv, pluginEnv, usesElectronNode) {
   return [...merged].map(([name, value]) => ({ name, value }));
 }
 async function resolvePluginMcpServers(pluginRoot, runtimeEnv) {
-  const manifest = JSON.parse(await (0, import_promises37.readFile)((0, import_node_path41.join)(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"));
+  const manifest = JSON.parse(await (0, import_promises38.readFile)((0, import_node_path43.join)(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"));
   const pluginName = typeof manifest.name === "string" ? manifest.name : "plugin";
   const mcpManifestPath = manifest.mcpServers;
   if (typeof mcpManifestPath !== "string" || !mcpManifestPath.startsWith("./")) {
     throw new Error(`built-in plugin '${pluginName}' has no valid mcpServers manifest`);
   }
   const mcpPath = resolvePluginPath(pluginRoot, pluginRoot, mcpManifestPath);
-  const mcpConfig = JSON.parse(await (0, import_promises37.readFile)(mcpPath, "utf8"));
+  const mcpConfig = JSON.parse(await (0, import_promises38.readFile)(mcpPath, "utf8"));
   const wrapped = isRecord18(mcpConfig.mcpServers) ? mcpConfig.mcpServers : isRecord18(mcpConfig.mcp_servers) ? mcpConfig.mcp_servers : mcpConfig;
   const servers = [];
   for (const [serverName, rawServer] of Object.entries(wrapped)) {
@@ -147125,7 +155855,7 @@ async function resolveAgentMcpServers(agentTemplateId, runtimeEnv) {
   const runtime = await readAgentRuntime(agentTemplateId);
   if (!runtime)
     return [];
-  const agentRoot = (0, import_node_path41.join)(bundledAgentsDir(), sanitize(agentTemplateId));
+  const agentRoot = (0, import_node_path43.join)(bundledAgentsDir(), sanitize(agentTemplateId));
   const pluginResolutionEnv = { ...process.env, ...runtimeEnv };
   const pluginIds = [
     "clash",
@@ -147137,8 +155867,8 @@ async function resolveAgentMcpServers(agentTemplateId, runtimeEnv) {
 async function ensureAgentCwd(agentTemplateId, projectId, capabilities = {}, runtimeEnv = process.env) {
   const canonicalProjectId = projectId && projectId.length > 0 ? projectId : DEFAULT_PROJECT;
   const projectPathSegment = projectIdPathSegment(canonicalProjectId);
-  const cwd = (0, import_node_path41.join)(paths().projectsDir, projectPathSegment);
-  await (0, import_promises37.mkdir)(cwd, { recursive: true });
+  const cwd = (0, import_node_path43.join)(paths().projectsDir, projectPathSegment);
+  await (0, import_promises38.mkdir)(cwd, { recursive: true });
   await ensureProjectWorkspaceLayout(cwd);
   await assertAgentTemplate(agentTemplateId);
   await installNativeAgentSkills(agentTemplateId, resolveHarnessProjectSkillDirectory(capabilities.harnessId ?? ""), cwd, { ...process.env, ...runtimeEnv });
@@ -147147,27 +155877,27 @@ async function ensureAgentCwd(agentTemplateId, projectId, capabilities = {}, run
 }
 async function ensureProjectWorkspaceLayout(cwd) {
   await Promise.all([
-    (0, import_promises37.mkdir)((0, import_node_path41.join)(cwd, "drafts"), { recursive: true }),
-    (0, import_promises37.mkdir)((0, import_node_path41.join)(cwd, "projections", "text"), { recursive: true }),
-    (0, import_promises37.mkdir)((0, import_node_path41.join)(cwd, "projections", "timelines"), { recursive: true }),
-    (0, import_promises37.mkdir)((0, import_node_path41.join)(cwd, "projections", "storyboards"), { recursive: true }),
-    (0, import_promises37.mkdir)((0, import_node_path41.join)(cwd, "projections", "prompts"), { recursive: true }),
-    (0, import_promises37.mkdir)((0, import_node_path41.join)(cwd, "projections", "metadata"), { recursive: true }),
-    (0, import_promises37.mkdir)((0, import_node_path41.join)(cwd, "timelines"), { recursive: true }),
-    (0, import_promises37.mkdir)((0, import_node_path41.join)(cwd, "sessions"), { recursive: true }),
-    (0, import_promises37.mkdir)((0, import_node_path41.join)(cwd, "assets", "links"), { recursive: true }),
-    (0, import_promises37.mkdir)((0, import_node_path41.join)(cwd, "runtime"), { recursive: true })
+    (0, import_promises38.mkdir)((0, import_node_path43.join)(cwd, "drafts"), { recursive: true }),
+    (0, import_promises38.mkdir)((0, import_node_path43.join)(cwd, "projections", "text"), { recursive: true }),
+    (0, import_promises38.mkdir)((0, import_node_path43.join)(cwd, "projections", "timelines"), { recursive: true }),
+    (0, import_promises38.mkdir)((0, import_node_path43.join)(cwd, "projections", "storyboards"), { recursive: true }),
+    (0, import_promises38.mkdir)((0, import_node_path43.join)(cwd, "projections", "prompts"), { recursive: true }),
+    (0, import_promises38.mkdir)((0, import_node_path43.join)(cwd, "projections", "metadata"), { recursive: true }),
+    (0, import_promises38.mkdir)((0, import_node_path43.join)(cwd, "timelines"), { recursive: true }),
+    (0, import_promises38.mkdir)((0, import_node_path43.join)(cwd, "sessions"), { recursive: true }),
+    (0, import_promises38.mkdir)((0, import_node_path43.join)(cwd, "assets", "links"), { recursive: true }),
+    (0, import_promises38.mkdir)((0, import_node_path43.join)(cwd, "runtime"), { recursive: true })
   ]);
 }
 function sanitize(id2) {
   return id2.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/^\.+/, "");
 }
 function resolveAgentPluginRoot(agentRoot, pluginId, runtimeEnv) {
-  const packaged = (0, import_node_path41.join)(agentRoot, "plugins", sanitize(pluginId));
+  const packaged = (0, import_node_path43.join)(agentRoot, "plugins", sanitize(pluginId));
   if (pluginId !== "clash")
     return packaged;
   if (runtimeEnv.CLASH_BUILTIN_PLUGIN_ROOT) {
-    return (0, import_node_path41.resolve)(runtimeEnv.CLASH_BUILTIN_PLUGIN_ROOT);
+    return (0, import_node_path43.resolve)(runtimeEnv.CLASH_BUILTIN_PLUGIN_ROOT);
   }
   const workspaceSource = (0, import_node_url4.fileURLToPath)(new URL("../../../../../../plugins/clash/", __clash_import_meta_url));
   for (const candidate of [
@@ -147175,7 +155905,7 @@ function resolveAgentPluginRoot(agentRoot, pluginId, runtimeEnv) {
     (0, import_node_url4.fileURLToPath)(new URL("./", __clash_import_meta_url)),
     (0, import_node_url4.fileURLToPath)(new URL("../", __clash_import_meta_url))
   ]) {
-    if ((0, import_node_fs17.existsSync)((0, import_node_path41.join)(candidate, ".codex-plugin", "plugin.json"))) {
+    if ((0, import_node_fs18.existsSync)((0, import_node_path43.join)(candidate, ".codex-plugin", "plugin.json"))) {
       return candidate;
     }
   }
@@ -147183,9 +155913,9 @@ function resolveAgentPluginRoot(agentRoot, pluginId, runtimeEnv) {
 }
 async function assertAgentTemplate(agentTemplateId) {
   const templateId = sanitize(agentTemplateId);
-  const runtimePath = (0, import_node_path41.join)(bundledAgentsDir(), templateId, "runtime.json");
+  const runtimePath = (0, import_node_path43.join)(bundledAgentsDir(), templateId, "runtime.json");
   try {
-    const runtime = await (0, import_promises37.lstat)(runtimePath);
+    const runtime = await (0, import_promises38.lstat)(runtimePath);
     if (!runtime.isFile())
       throw new Error(`unknown agent template: ${templateId}`);
   } catch (e5) {
@@ -147198,18 +155928,18 @@ async function assertAgentTemplate(agentTemplateId) {
 function resolveWorkspaceSkillRoot(cwd, workspaceSkillDirectory) {
   if (!workspaceSkillDirectory)
     return null;
-  if ((0, import_node_path41.isAbsolute)(workspaceSkillDirectory)) {
+  if ((0, import_node_path43.isAbsolute)(workspaceSkillDirectory)) {
     throw new Error("workspace Skill directory must be relative to the session cwd");
   }
-  const root5 = (0, import_node_path41.resolve)(cwd, workspaceSkillDirectory);
-  const fromCwd = (0, import_node_path41.relative)(cwd, root5);
-  if (fromCwd === ".." || fromCwd.startsWith(`..${import_node_path41.sep}`) || (0, import_node_path41.isAbsolute)(fromCwd)) {
+  const root5 = (0, import_node_path43.resolve)(cwd, workspaceSkillDirectory);
+  const fromCwd = (0, import_node_path43.relative)(cwd, root5);
+  if (fromCwd === ".." || fromCwd.startsWith(`..${import_node_path43.sep}`) || (0, import_node_path43.isAbsolute)(fromCwd)) {
     throw new Error("workspace Skill directory must stay inside the session cwd");
   }
   return root5;
 }
 async function replaceManagedSkillLink(target, source) {
-  const current = await (0, import_promises37.lstat)(target).catch((error53) => {
+  const current = await (0, import_promises38.lstat)(target).catch((error53) => {
     if (error53.code === "ENOENT")
       return null;
     throw error53;
@@ -147218,11 +155948,11 @@ async function replaceManagedSkillLink(target, source) {
     if (!current.isSymbolicLink()) {
       throw new Error(`Cannot install bundled Clash skill over an existing workspace entry: ${target}`);
     }
-    if (await (0, import_promises37.readlink)(target) === source)
+    if (await (0, import_promises38.readlink)(target) === source)
       return;
-    await (0, import_promises37.unlink)(target);
+    await (0, import_promises38.unlink)(target);
   }
-  await (0, import_promises37.symlink)(source, target, "dir");
+  await (0, import_promises38.symlink)(source, target, "dir");
 }
 async function installNativeAgentSkills(agentTemplateId, workspaceSkillDirectory, cwd, runtimeEnv) {
   const root5 = resolveWorkspaceSkillRoot(cwd, workspaceSkillDirectory);
@@ -147231,27 +155961,27 @@ async function installNativeAgentSkills(agentTemplateId, workspaceSkillDirectory
   const runtime = await readAgentRuntime(agentTemplateId);
   if (!runtime?.plugins?.length)
     return;
-  await (0, import_promises37.mkdir)(root5, { recursive: true });
+  await (0, import_promises38.mkdir)(root5, { recursive: true });
   for (const pluginId of runtime.plugins) {
-    const agentRoot = (0, import_node_path41.join)(bundledAgentsDir(), sanitize(agentTemplateId));
+    const agentRoot = (0, import_node_path43.join)(bundledAgentsDir(), sanitize(agentTemplateId));
     const pluginRoot = resolveAgentPluginRoot(agentRoot, pluginId, runtimeEnv);
-    const manifest = JSON.parse(await (0, import_promises37.readFile)((0, import_node_path41.join)(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"));
+    const manifest = JSON.parse(await (0, import_promises38.readFile)((0, import_node_path43.join)(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"));
     const configuredRoots = typeof manifest.skills === "string" ? [manifest.skills] : Array.isArray(manifest.skills) ? manifest.skills.filter((entry) => typeof entry === "string") : [];
     for (const configuredRoot of configuredRoots) {
       const skillRoot = resolvePluginPath(pluginRoot, pluginRoot, configuredRoot);
-      const entries = await (0, import_promises37.readdir)(skillRoot, { withFileTypes: true });
+      const entries = await (0, import_promises38.readdir)(skillRoot, { withFileTypes: true });
       for (const entry of entries) {
         if (!entry.isDirectory())
           continue;
-        await replaceManagedSkillLink((0, import_node_path41.join)(root5, sanitize(entry.name)), (0, import_node_path41.join)(skillRoot, entry.name));
+        await replaceManagedSkillLink((0, import_node_path43.join)(root5, sanitize(entry.name)), (0, import_node_path43.join)(skillRoot, entry.name));
       }
     }
   }
 }
 async function writeProjectMarker(cwd, projectId) {
-  const markerDir = (0, import_node_path41.join)(cwd, ".clash");
-  await (0, import_promises37.mkdir)(markerDir, { recursive: true });
-  await (0, import_promises37.writeFile)((0, import_node_path41.join)(markerDir, "project.toml"), [
+  const markerDir = (0, import_node_path43.join)(cwd, ".clash");
+  await (0, import_promises38.mkdir)(markerDir, { recursive: true });
+  await (0, import_promises38.writeFile)((0, import_node_path43.join)(markerDir, "project.toml"), [
     "schema_version = 1",
     `project_id = ${JSON.stringify(projectId)}`,
     `workspace_id = ${JSON.stringify(projectWorkspaceId("managed", projectId, cwd))}`,
@@ -147430,6 +156160,7 @@ var SessionManager = class {
       type: "session.ready",
       session_id: sessionId,
       acp_session_id: session.acp.acpSessionId,
+      supports_session_fork: session.acp.supportsSessionFork,
       config_options: [...session.acp.configOptions],
       ...modes ? { modes } : {},
       ...(session.acp.loadedReplayEvents?.length ?? 0) > 0 ? {
@@ -147498,7 +156229,9 @@ var SessionManager = class {
       id: resolvedAgentId,
       label: resolvedAgentId,
       spec: p3.agent_spec
-    } : await detect(resolvedAgentId, { env: { ...process.env, ...this.#env } });
+    } : await detect(resolvedAgentId, {
+      env: { ...process.env, ...this.#env }
+    });
     if (!agent2) {
       this.#send({
         type: "session.error",
@@ -147624,13 +156357,18 @@ var SessionManager = class {
   }
   async #runPrompt(sess, p3) {
     const ctrl = new AbortController();
-    this.#transition(p3.session_id, { type: "prompt.requested", turnId: p3.turn_id });
+    this.#transition(p3.session_id, {
+      type: "prompt.requested",
+      turnId: p3.turn_id
+    });
     sess.turns.set(p3.turn_id, ctrl);
     this.#activeTurnBySession.set(p3.session_id, p3.turn_id);
     this.#lastDiagnosticBySession.delete(p3.session_id);
     try {
       const promptContent = composeClashPromptContent(p3.text);
-      for await (const ev of sess.acp.prompt(promptContent, { abortSignal: ctrl.signal })) {
+      for await (const ev of sess.acp.prompt(promptContent, {
+        abortSignal: ctrl.signal
+      })) {
         if (ctrl.signal.aborted || sess.disposed)
           break;
         const t = ev?.type;
@@ -147638,8 +156376,13 @@ var SessionManager = class {
           continue;
         if (process.env.CLASH_ACP_TAP) {
           try {
-            const { appendFileSync } = await import("node:fs");
-            appendFileSync(process.env.CLASH_ACP_TAP, JSON.stringify({ ts: Date.now(), session_id: p3.session_id, turn_id: p3.turn_id, event: ev }) + "\n", "utf-8");
+            const { appendFileSync: appendFileSync2 } = await import("node:fs");
+            appendFileSync2(process.env.CLASH_ACP_TAP, JSON.stringify({
+              ts: Date.now(),
+              session_id: p3.session_id,
+              turn_id: p3.turn_id,
+              event: ev
+            }) + "\n", "utf-8");
           } catch {
           }
         }
@@ -147652,13 +156395,48 @@ var SessionManager = class {
       }
       if (sess.disposed)
         return;
-      this.#transition(p3.session_id, { type: "session.complete", turnId: p3.turn_id });
-      this.#send({ type: "session.complete", session_id: p3.session_id, turn_id: p3.turn_id });
+      if (ctrl.signal.aborted) {
+        this.#transition(p3.session_id, {
+          type: "prompt.cancelled",
+          turnId: p3.turn_id
+        });
+        this.#send({
+          type: "session.cancelled",
+          session_id: p3.session_id,
+          turn_id: p3.turn_id
+        });
+      } else {
+        this.#transition(p3.session_id, {
+          type: "session.complete",
+          turnId: p3.turn_id
+        });
+        this.#send({
+          type: "session.complete",
+          session_id: p3.session_id,
+          turn_id: p3.turn_id
+        });
+      }
     } catch (e5) {
       if (sess.disposed)
         return;
+      if (ctrl.signal.aborted) {
+        this.#transition(p3.session_id, {
+          type: "prompt.cancelled",
+          turnId: p3.turn_id
+        });
+        this.#send({
+          type: "session.cancelled",
+          session_id: p3.session_id,
+          turn_id: p3.turn_id
+        });
+        return;
+      }
       const message = e5 instanceof Error ? e5.message : String(e5);
-      this.#transition(p3.session_id, { type: "session.error", turnId: p3.turn_id, message });
+      this.#transition(p3.session_id, {
+        type: "session.error",
+        turnId: p3.turn_id,
+        message
+      });
       this.#send({
         type: "session.error",
         session_id: p3.session_id,
@@ -147801,12 +156579,12 @@ var SessionManager = class {
 };
 
 // ../../apps/local-api/dist/acp-registry-installer.js
-var import_node_child_process9 = require("node:child_process");
-var import_node_crypto36 = require("node:crypto");
-var import_promises38 = require("node:fs/promises");
-var import_node_path42 = require("node:path");
+var import_node_child_process10 = require("node:child_process");
+var import_node_crypto38 = require("node:crypto");
+var import_promises39 = require("node:fs/promises");
+var import_node_path44 = require("node:path");
 var import_node_util11 = require("node:util");
-var execFileAsync5 = (0, import_node_util11.promisify)(import_node_child_process9.execFile);
+var execFileAsync5 = (0, import_node_util11.promisify)(import_node_child_process10.execFile);
 var ACP_REGISTRY_URL = "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
 function currentPlatformKey() {
   const os = process.platform === "darwin" ? "darwin" : process.platform === "linux" ? "linux" : process.platform === "win32" ? "windows" : process.platform;
@@ -147863,9 +156641,9 @@ function renderShellShim(commandPath, args = [], env2 = {}) {
   ].join("\n");
 }
 async function writeExecutableShim(shimPath, commandPath, args = [], env2 = {}) {
-  await (0, import_promises38.mkdir)((0, import_node_path42.dirname)(shimPath), { recursive: true });
-  await (0, import_promises38.writeFile)(shimPath, renderShellShim(commandPath, args, env2), "utf8");
-  await (0, import_promises38.chmod)(shimPath, 493);
+  await (0, import_promises39.mkdir)((0, import_node_path44.dirname)(shimPath), { recursive: true });
+  await (0, import_promises39.writeFile)(shimPath, renderShellShim(commandPath, args, env2), "utf8");
+  await (0, import_promises39.chmod)(shimPath, 493);
 }
 async function fetchBytes(url2, fetchImpl) {
   const response = await fetchImpl(url2);
@@ -147897,7 +156675,7 @@ async function listAcpRegistryCatalog(options = {}) {
   });
 }
 function assertSafeRelativeCommand(cmd) {
-  if ((0, import_node_path42.isAbsolute)(cmd))
+  if ((0, import_node_path44.isAbsolute)(cmd))
     throw new Error(`Registry command must be relative: ${cmd}`);
   const normalized = cmd.replace(/\\/g, "/");
   if (normalized.split("/").includes(".."))
@@ -147936,24 +156714,24 @@ function rawBinaryFileName(url2) {
 }
 function versionedInstallDir(root5, registryId, version2, archiveUrl) {
   const versionLabel = sanitizePathComponent(version2 ?? "unknown");
-  const hash2 = (0, import_node_crypto36.createHash)("sha256").update(`${version2 ?? ""}\0${archiveUrl}`).digest("hex").slice(0, 16);
-  return (0, import_node_path42.join)(root5, "registry", sanitizePathComponent(registryId), `v_${versionLabel}_${hash2}`);
+  const hash2 = (0, import_node_crypto38.createHash)("sha256").update(`${version2 ?? ""}\0${archiveUrl}`).digest("hex").slice(0, 16);
+  return (0, import_node_path44.join)(root5, "registry", sanitizePathComponent(registryId), `v_${versionLabel}_${hash2}`);
 }
 function registryInstallMetadataPath(root5, registryId) {
-  return (0, import_node_path42.join)(root5, "registry", sanitizePathComponent(registryId), "install.json");
+  return (0, import_node_path44.join)(root5, "registry", sanitizePathComponent(registryId), "install.json");
 }
 async function writeRegistryInstallMetadata(options, metadata) {
   const installRoot = options.installRoot ?? options.binDir;
   if (!installRoot)
     throw new Error("Install metadata requires an install root");
   const metadataPath = registryInstallMetadataPath(installRoot, options.registryId);
-  await (0, import_promises38.mkdir)((0, import_node_path42.dirname)(metadataPath), { recursive: true });
-  await (0, import_promises38.writeFile)(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
+  await (0, import_promises39.mkdir)((0, import_node_path44.dirname)(metadataPath), { recursive: true });
+  await (0, import_promises39.writeFile)(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
 }
 async function readAcpRegistryInstallMetadata(options) {
   const installRoot = options.installRoot ?? options.binDir;
   try {
-    const parsed = JSON.parse(await (0, import_promises38.readFile)(registryInstallMetadataPath(installRoot, options.registryId), "utf8"));
+    const parsed = JSON.parse(await (0, import_promises39.readFile)(registryInstallMetadataPath(installRoot, options.registryId), "utf8"));
     if (parsed.source !== "registry" || parsed.registryId !== options.registryId || typeof parsed.shimName !== "string") {
       return null;
     }
@@ -147972,7 +156750,7 @@ function verifySha256(bytes, expected) {
   if (!expected)
     return;
   const normalized = expected.startsWith("sha256:") ? expected.slice("sha256:".length) : expected;
-  const actual = (0, import_node_crypto36.createHash)("sha256").update(bytes).digest("hex");
+  const actual = (0, import_node_crypto38.createHash)("sha256").update(bytes).digest("hex");
   if (actual.toLowerCase() !== normalized.toLowerCase()) {
     throw new Error(`ACP registry archive checksum mismatch: expected ${normalized}, got ${actual}`);
   }
@@ -147982,25 +156760,25 @@ async function installBinaryDistribution(agent2, target, options) {
   const installRoot = options.installRoot ?? options.binDir;
   const finalDir = versionedInstallDir(installRoot, options.registryId, agent2.version, target.archive);
   const commandRelativePath = assertSafeRelativeCommand(target.cmd);
-  const commandPath = (0, import_node_path42.resolve)(finalDir, commandRelativePath);
-  const relativeCommandPath = (0, import_node_path42.relative)((0, import_node_path42.resolve)(finalDir), commandPath);
-  if (relativeCommandPath.startsWith("..") || (0, import_node_path42.isAbsolute)(relativeCommandPath)) {
+  const commandPath = (0, import_node_path44.resolve)(finalDir, commandRelativePath);
+  const relativeCommandPath = (0, import_node_path44.relative)((0, import_node_path44.resolve)(finalDir), commandPath);
+  if (relativeCommandPath.startsWith("..") || (0, import_node_path44.isAbsolute)(relativeCommandPath)) {
     throw new Error(`Registry command escapes install directory: ${target.cmd}`);
   }
   try {
-    await (0, import_promises38.chmod)(commandPath, 493);
+    await (0, import_promises39.chmod)(commandPath, 493);
   } catch {
     const tmpDir = `${finalDir}.tmp-${process.pid}-${Date.now()}`;
-    await (0, import_promises38.rm)(tmpDir, { recursive: true, force: true });
-    await (0, import_promises38.mkdir)(tmpDir, { recursive: true });
+    await (0, import_promises39.rm)(tmpDir, { recursive: true, force: true });
+    await (0, import_promises39.mkdir)(tmpDir, { recursive: true });
     const bytes = await fetchBytes(target.archive, fetchImpl);
     verifySha256(bytes, target.sha256);
     const kind = archiveKind(target.archive);
-    const archivePath = (0, import_node_path42.join)(tmpDir, `download${kind === "zip" ? ".zip" : kind === "tar-gz" ? ".tar.gz" : kind === "tar-bz2" ? ".tar.bz2" : (0, import_node_path42.extname)(rawBinaryFileName(target.archive))}`);
+    const archivePath = (0, import_node_path44.join)(tmpDir, `download${kind === "zip" ? ".zip" : kind === "tar-gz" ? ".tar.gz" : kind === "tar-bz2" ? ".tar.bz2" : (0, import_node_path44.extname)(rawBinaryFileName(target.archive))}`);
     if (kind === "raw") {
-      await (0, import_promises38.writeFile)((0, import_node_path42.join)(tmpDir, rawBinaryFileName(target.archive)), bytes);
+      await (0, import_promises39.writeFile)((0, import_node_path44.join)(tmpDir, rawBinaryFileName(target.archive)), bytes);
     } else {
-      await (0, import_promises38.writeFile)(archivePath, bytes);
+      await (0, import_promises39.writeFile)(archivePath, bytes);
       if (kind === "zip") {
         await execFileAsync5("unzip", ["-q", archivePath, "-d", tmpDir]);
       } else if (kind === "tar-gz") {
@@ -148008,14 +156786,14 @@ async function installBinaryDistribution(agent2, target, options) {
       } else {
         await execFileAsync5("tar", ["-xjf", archivePath, "-C", tmpDir]);
       }
-      await (0, import_promises38.rm)(archivePath, { force: true });
+      await (0, import_promises39.rm)(archivePath, { force: true });
     }
-    await (0, import_promises38.rm)(finalDir, { recursive: true, force: true });
-    await (0, import_promises38.mkdir)((0, import_node_path42.dirname)(finalDir), { recursive: true });
-    await (0, import_promises38.rename)(tmpDir, finalDir);
-    await (0, import_promises38.chmod)(commandPath, 493);
+    await (0, import_promises39.rm)(finalDir, { recursive: true, force: true });
+    await (0, import_promises39.mkdir)((0, import_node_path44.dirname)(finalDir), { recursive: true });
+    await (0, import_promises39.rename)(tmpDir, finalDir);
+    await (0, import_promises39.chmod)(commandPath, 493);
   }
-  const shimPath = (0, import_node_path42.join)(options.binDir, options.shimName);
+  const shimPath = (0, import_node_path44.join)(options.binDir, options.shimName);
   await writeExecutableShim(shimPath, commandPath, options.shimArgs ?? target.args ?? [], {
     ...target.env ?? {},
     ...options.shimEnv ?? {}
@@ -148035,19 +156813,19 @@ function packagePathParts(packageName) {
 }
 async function resolvePackageBin(prefixDir, packageSpec) {
   const packageName = packageNameFromSpec(packageSpec);
-  const packageJsonPath = (0, import_node_path42.join)(prefixDir, "node_modules", ...packagePathParts(packageName), "package.json");
-  const pkg = JSON.parse(await (0, import_promises38.readFile)(packageJsonPath, "utf8"));
-  const unscopedName = (0, import_node_path42.basename)(packageName);
+  const packageJsonPath = (0, import_node_path44.join)(prefixDir, "node_modules", ...packagePathParts(packageName), "package.json");
+  const pkg = JSON.parse(await (0, import_promises39.readFile)(packageJsonPath, "utf8"));
+  const unscopedName = (0, import_node_path44.basename)(packageName);
   const binName = typeof pkg.bin === "string" ? unscopedName : pkg.bin?.[unscopedName] ? unscopedName : Object.keys(pkg.bin ?? {})[0];
   if (!binName)
     throw new Error(`${packageSpec} does not expose an executable bin`);
-  const candidate = (0, import_node_path42.join)(prefixDir, "node_modules", ".bin", process.platform === "win32" ? `${binName}.cmd` : binName);
+  const candidate = (0, import_node_path44.join)(prefixDir, "node_modules", ".bin", process.platform === "win32" ? `${binName}.cmd` : binName);
   return candidate;
 }
 async function installNpxDistribution(npx, options) {
   const installRoot = options.installRoot ?? options.binDir;
-  const prefixDir = (0, import_node_path42.join)(installRoot, "registry", sanitizePathComponent(options.registryId), "npx");
-  await (0, import_promises38.mkdir)(prefixDir, { recursive: true });
+  const prefixDir = (0, import_node_path44.join)(installRoot, "registry", sanitizePathComponent(options.registryId), "npx");
+  await (0, import_promises39.mkdir)(prefixDir, { recursive: true });
   await execFileAsync5(options.npmCommand ?? "npm", ["install", "--prefix", prefixDir, "--omit=dev", "--no-audit", "--no-fund", npx.package], {
     env: {
       ...process.env,
@@ -148057,7 +156835,7 @@ async function installNpxDistribution(npx, options) {
     maxBuffer: 1024 * 1024
   });
   const packageBin = await resolvePackageBin(prefixDir, npx.package);
-  const shimPath = (0, import_node_path42.join)(options.binDir, options.shimName);
+  const shimPath = (0, import_node_path44.join)(options.binDir, options.shimName);
   await writeExecutableShim(shimPath, packageBin, options.shimArgs ?? npx.args ?? [], {
     ...npx.env ?? {},
     ...options.shimEnv ?? {}
@@ -148068,18 +156846,18 @@ function pythonPackageNameFromSpec(packageSpec) {
   return packageSpec.split(/[<>=!~\[]/, 1)[0].trim().replace(/_/g, "-");
 }
 async function firstExecutableInDir(binDir, preferredName) {
-  const entries = await (0, import_promises38.readdir)(binDir).catch(() => []);
+  const entries = await (0, import_promises39.readdir)(binDir).catch(() => []);
   const preferred = [
     preferredName,
     preferredName.replace(/-/g, "_"),
-    (0, import_node_path42.basename)(preferredName)
+    (0, import_node_path44.basename)(preferredName)
   ];
   for (const name of [...preferred, ...entries]) {
     if (!entries.includes(name))
       continue;
-    const candidate = (0, import_node_path42.join)(binDir, name);
+    const candidate = (0, import_node_path44.join)(binDir, name);
     try {
-      await (0, import_promises38.access)(candidate);
+      await (0, import_promises39.access)(candidate);
       return candidate;
     } catch {
     }
@@ -148088,10 +156866,10 @@ async function firstExecutableInDir(binDir, preferredName) {
 }
 async function installUvxDistribution(uvx, options) {
   const installRoot = options.installRoot ?? options.binDir;
-  const prefixDir = (0, import_node_path42.join)(installRoot, "registry", sanitizePathComponent(options.registryId), "uvx");
-  const toolDir = (0, import_node_path42.join)(prefixDir, "tools");
-  const toolBinDir = (0, import_node_path42.join)(prefixDir, "bin");
-  await (0, import_promises38.mkdir)(toolBinDir, { recursive: true });
+  const prefixDir = (0, import_node_path44.join)(installRoot, "registry", sanitizePathComponent(options.registryId), "uvx");
+  const toolDir = (0, import_node_path44.join)(prefixDir, "tools");
+  const toolBinDir = (0, import_node_path44.join)(prefixDir, "bin");
+  await (0, import_promises39.mkdir)(toolBinDir, { recursive: true });
   await execFileAsync5("uv", ["tool", "install", "--force", uvx.package], {
     env: {
       ...process.env,
@@ -148103,7 +156881,7 @@ async function installUvxDistribution(uvx, options) {
     maxBuffer: 1024 * 1024
   });
   const packageBin = await firstExecutableInDir(toolBinDir, pythonPackageNameFromSpec(uvx.package));
-  const shimPath = (0, import_node_path42.join)(options.binDir, options.shimName);
+  const shimPath = (0, import_node_path44.join)(options.binDir, options.shimName);
   await writeExecutableShim(shimPath, packageBin, options.shimArgs ?? uvx.args ?? [], {
     ...uvx.env ?? {},
     ...options.shimEnv ?? {}
@@ -148165,27 +156943,26 @@ async function installAcpRegistryAgent(options) {
 async function installManagedAdapter(options) {
   const fetchImpl = options.fetchImpl ?? fetch;
   const bytes = await fetchBytes(options.downloadUrl, fetchImpl);
-  await (0, import_promises38.mkdir)(options.binDir, { recursive: true });
-  const commandPath = (0, import_node_path42.join)(options.binDir, (0, import_node_path42.basename)(options.command));
-  await (0, import_promises38.writeFile)(commandPath, bytes);
-  await (0, import_promises38.chmod)(commandPath, 493);
+  await (0, import_promises39.mkdir)(options.binDir, { recursive: true });
+  const commandPath = (0, import_node_path44.join)(options.binDir, (0, import_node_path44.basename)(options.command));
+  await (0, import_promises39.writeFile)(commandPath, bytes);
+  await (0, import_promises39.chmod)(commandPath, 493);
   return { commandPath };
 }
 async function uninstallAcpRegistryAgent(options) {
   const installRoot = options.installRoot ?? options.binDir;
-  await (0, import_promises38.rm)((0, import_node_path42.join)(options.binDir, options.shimName), { force: true });
-  await (0, import_promises38.rm)((0, import_node_path42.join)(installRoot, "registry", sanitizePathComponent(options.registryId)), {
+  await (0, import_promises39.rm)((0, import_node_path44.join)(options.binDir, options.shimName), { force: true });
+  await (0, import_promises39.rm)((0, import_node_path44.join)(installRoot, "registry", sanitizePathComponent(options.registryId)), {
     recursive: true,
     force: true
   });
 }
 async function uninstallManagedAdapter(options) {
-  await (0, import_promises38.rm)((0, import_node_path42.join)(options.binDir, (0, import_node_path42.basename)(options.command)), { force: true });
+  await (0, import_promises39.rm)((0, import_node_path44.join)(options.binDir, (0, import_node_path44.basename)(options.command)), { force: true });
 }
 
 // ../../apps/local-api/dist/local-acp.js
 var DESKTOP_LOCAL_RUNTIME_ID = "desktop-local";
-var MAX_BACKLOG_MESSAGES = 200;
 function extractAcpContentText(value) {
   if (typeof value === "string")
     return value;
@@ -148217,9 +156994,6 @@ function isTransportDiagnosticManagerMessage(msg) {
   const text = extractAcpContentText(inner.content);
   return typeof text === "string" && isTransportDiagnosticText(text);
 }
-function sessionIndexKey(projectId, agentMemberId) {
-  return `${projectId}\0${agentMemberId}`;
-}
 async function defaultDetectAgents(env2 = process.env) {
   const detected = await detectAll({ env: env2 });
   return detected.map((agent2) => {
@@ -148243,7 +157017,9 @@ function authBlocksAgent(auth) {
 function authEnvVarNamesFromText(text) {
   if (!text || !/\benvironment variable\b|\benv(?:ironment)? var\b/i.test(text))
     return [];
-  return [...new Set([...text.matchAll(/\b([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)\b/g)].map((match2) => match2[1]))];
+  return [
+    ...new Set([...text.matchAll(/\b([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)\b/g)].map((match2) => match2[1]))
+  ];
 }
 function isCredentialPromptAuthMethod2(method) {
   if (!method)
@@ -148285,12 +157061,14 @@ function normalizeAuthEnvVars(value) {
     const typed = item;
     if (typeof typed.name !== "string" || typed.name.length === 0)
       return [];
-    return [{
-      name: typed.name,
-      ...typeof typed.label === "string" && typed.label.length > 0 ? { label: typed.label } : {},
-      ...typeof typed.secret === "boolean" ? { secret: typed.secret } : {},
-      ...typeof typed.optional === "boolean" ? { optional: typed.optional } : {}
-    }];
+    return [
+      {
+        name: typed.name,
+        ...typeof typed.label === "string" && typed.label.length > 0 ? { label: typed.label } : {},
+        ...typeof typed.secret === "boolean" ? { secret: typed.secret } : {},
+        ...typeof typed.optional === "boolean" ? { optional: typed.optional } : {}
+      }
+    ];
   });
   return vars.length > 0 ? vars : void 0;
 }
@@ -148305,16 +157083,18 @@ function normalizeAuthMethods(methods2) {
       return [];
     const terminalLaunch = normalizeTerminalLaunch(typed.terminalLaunch);
     const vars = normalizeAuthEnvVars(typed.vars);
-    return [{
-      id: typed.id,
-      ...typeof typed.name === "string" && typed.name.length > 0 ? { name: typed.name } : {},
-      ...typeof typed.description === "string" && typed.description.length > 0 ? { description: typed.description } : {},
-      ...typeof typed.type === "string" && typed.type.length > 0 ? { type: typed.type } : {},
-      ...typed.form === "fields" ? { form: "fields" } : {},
-      ...vars ? { vars } : {},
-      ...typeof typed.link === "string" && typed.link.length > 0 ? { link: typed.link } : {},
-      ...terminalLaunch ? { terminalLaunch } : {}
-    }];
+    return [
+      {
+        id: typed.id,
+        ...typeof typed.name === "string" && typed.name.length > 0 ? { name: typed.name } : {},
+        ...typeof typed.description === "string" && typed.description.length > 0 ? { description: typed.description } : {},
+        ...typeof typed.type === "string" && typed.type.length > 0 ? { type: typed.type } : {},
+        ...typed.form === "fields" ? { form: "fields" } : {},
+        ...vars ? { vars } : {},
+        ...typeof typed.link === "string" && typed.link.length > 0 ? { link: typed.link } : {},
+        ...terminalLaunch ? { terminalLaunch } : {}
+      }
+    ];
   });
   return normalized.length > 0 ? normalized : void 0;
 }
@@ -148482,7 +157262,9 @@ function harnessConfigFromLegacy(value) {
   if (!enabled && !agents)
     return null;
   return {
-    ...enabled ? { enabled: enabled.filter((id2) => typeof id2 === "string") } : {},
+    ...enabled ? {
+      enabled: enabled.filter((id2) => typeof id2 === "string")
+    } : {},
     ...agents ? { agents: normalizeAgentServersConfig(agents) } : {}
   };
 }
@@ -148504,10 +157286,10 @@ function normalizeRunPreferences(value) {
     mode_by_agent: modeByAgent
   };
 }
-function createLocalHarnessConfigStore(dataDir2) {
-  const userConfig = createClashUserConfigStore(dataDir2);
-  const legacyStore = createSqliteLocalConfigStore(dataDir2);
-  const legacySidecarPath = (0, import_node_path43.join)(dataDir2, "harnesses.json");
+function createLocalHarnessConfigStore(dataDir3) {
+  const userConfig = createClashUserConfigStore(dataDir3);
+  const legacyStore = createSqliteLocalConfigStore(dataDir3);
+  const legacySidecarPath = (0, import_node_path45.join)(dataDir3, "harnesses.json");
   let migration = null;
   const ensureMigrated = () => {
     migration ??= (async () => {
@@ -148515,7 +157297,7 @@ function createLocalHarnessConfigStore(dataDir2) {
         return;
       let legacy = null;
       try {
-        legacy = JSON.parse(await (0, import_promises39.readFile)(legacySidecarPath, "utf8"));
+        legacy = JSON.parse(await (0, import_promises40.readFile)(legacySidecarPath, "utf8"));
       } catch {
         legacy = await legacyStore.getJson(LOCAL_HARNESS_CONFIG_KEY);
       }
@@ -148524,7 +157306,7 @@ function createLocalHarnessConfigStore(dataDir2) {
         return;
       await userConfig.setSection("harnesses", migrated);
       await legacyStore.delete(LOCAL_HARNESS_CONFIG_KEY);
-      await (0, import_promises39.unlink)(legacySidecarPath).catch(() => void 0);
+      await (0, import_promises40.unlink)(legacySidecarPath).catch(() => void 0);
     })();
     return migration;
   };
@@ -148559,8 +157341,8 @@ function createLocalHarnessConfigStore(dataDir2) {
     }
   };
 }
-function createLocalAcpRunPreferencesStore(dataDir2) {
-  const store = createSqliteLocalConfigStore(dataDir2);
+function createLocalAcpRunPreferencesStore(dataDir3) {
+  const store = createSqliteLocalConfigStore(dataDir3);
   return {
     async load() {
       return normalizeRunPreferences(await store.getJson(LOCAL_ACP_RUN_PREFERENCES_KEY));
@@ -148570,8 +157352,8 @@ function createLocalAcpRunPreferencesStore(dataDir2) {
     }
   };
 }
-function createLocalAcpCapabilityCacheStore(dataDir2) {
-  const store = createSqliteLocalConfigStore(dataDir2);
+function createLocalAcpCapabilityCacheStore(dataDir3) {
+  const store = createSqliteLocalConfigStore(dataDir3);
   return {
     async load() {
       const value = await store.getJson(LOCAL_ACP_CAPABILITY_CACHE_KEY);
@@ -148723,6 +157505,9 @@ function normalizeSessionAuthenticationError(msg, agentId) {
 function isSessionCompleteMessage(msg) {
   return !!msg && typeof msg === "object" && msg.type === "session.complete" && typeof msg.session_id === "string";
 }
+function isSessionCancelledMessage(msg) {
+  return !!msg && typeof msg === "object" && msg.type === "session.cancelled" && typeof msg.session_id === "string" && typeof msg.turn_id === "string";
+}
 function agentTextFromSessionEvent(event) {
   if (!event || typeof event !== "object")
     return null;
@@ -148757,27 +157542,23 @@ function getSessionUpdateType(event) {
     return outer.type;
   return null;
 }
+function shouldPersistSessionEvent(event) {
+  const update = getSessionUpdateType(event);
+  return !update || !NON_TRANSCRIPT_SESSION_UPDATES2.has(update);
+}
 function publicSessionMessage(msg) {
   if (!isSessionReadyMessage(msg) || !("replay_events" in msg))
     return msg;
   const { replay_events: _replayEvents, ...publicMsg } = msg;
   return publicMsg;
 }
-function shouldPersistSessionEvent(event) {
-  const update = getSessionUpdateType(event);
-  return !update || !NON_TRANSCRIPT_SESSION_UPDATES2.has(update);
-}
-function replayCapabilityEvents(msg) {
+function replaySetupEvents(msg) {
   if (!isSessionReadyMessage(msg) || !Array.isArray(msg.replay_events))
     return [];
-  return msg.replay_events.filter((event) => !shouldPersistSessionEvent(event));
-}
-function eventKey2(event) {
-  try {
-    return JSON.stringify(event);
-  } catch {
-    return String(event);
-  }
+  return msg.replay_events.filter((event) => {
+    const update = getSessionUpdateType(event);
+    return update !== null && NON_TRANSCRIPT_SESSION_UPDATES2.has(update);
+  });
 }
 function isPromptQueueMode(value) {
   return value === "single" || value === "flush";
@@ -148837,15 +157618,19 @@ async function geminiAuthPreflight(env2) {
       message: "Cannot inspect Gemini auth because HOME is not set."
     };
   }
-  const settings = readJsonObject(await (0, import_promises39.readFile)((0, import_node_path43.join)(home, ".gemini", "settings.json"), "utf8").catch(() => ""));
-  const selectedType = nestedString(settings, ["security", "auth", "selectedType"]);
+  const settings = readJsonObject(await (0, import_promises40.readFile)((0, import_node_path45.join)(home, ".gemini", "settings.json"), "utf8").catch(() => ""));
+  const selectedType = nestedString(settings, [
+    "security",
+    "auth",
+    "selectedType"
+  ]);
   if (selectedType) {
     return {
       status: "configured",
       message: `Gemini auth method selected: ${selectedType}.`
     };
   }
-  const accounts = readJsonObject(await (0, import_promises39.readFile)((0, import_node_path43.join)(home, ".gemini", "google_accounts.json"), "utf8").catch(() => ""));
+  const accounts = readJsonObject(await (0, import_promises40.readFile)((0, import_node_path45.join)(home, ".gemini", "google_accounts.json"), "utf8").catch(() => ""));
   const activeAccount = nestedString(accounts, ["active"]);
   const hadOldAccounts = Array.isArray(accounts?.old) && accounts.old.length > 0;
   return {
@@ -148889,7 +157674,7 @@ function terminalAuthShellCommand(options) {
 }
 function spawnDetachedCommand(command6, args, options = {}) {
   return new Promise((resolve18, reject) => {
-    const child = (0, import_node_child_process10.spawn)(command6, args, {
+    const child = (0, import_node_child_process11.spawn)(command6, args, {
       env: {
         ...process.env,
         ...mergedStringEnv2(options.env ?? {})
@@ -148925,7 +157710,7 @@ async function launchInteractiveAuthCommand(options) {
   if (!terminal) {
     throw new Error(`Interactive auth launch is not supported on ${process.platform}. Run ${[options.command, ...options.args].join(" ")} manually.`);
   }
-  const child = (0, import_node_child_process10.spawn)(terminal, ["-e", "sh", "-lc", shellCommand], {
+  const child = (0, import_node_child_process11.spawn)(terminal, ["-e", "sh", "-lc", shellCommand], {
     detached: true,
     stdio: "ignore"
   });
@@ -148954,8 +157739,9 @@ var LocalAcpRuntimeAdapter = class {
   hostname;
   osTag;
   nowSeconds;
+  nowMilliseconds;
+  sessionEventStore = null;
   sessions = /* @__PURE__ */ new Map();
-  sessionIndex = /* @__PURE__ */ new Map();
   detectedAgentsCache = null;
   detectedAgentsCacheProbesAuth = false;
   detectedAgentsCacheProbesConfigOptions = false;
@@ -148973,7 +157759,6 @@ var LocalAcpRuntimeAdapter = class {
   capabilityCacheWrite = Promise.resolve();
   runPreferencesQueue = Promise.resolve();
   reconcileQueue = Promise.resolve();
-  sessionMessageStore = null;
   lastReconciledEnabledIds = null;
   shutdownPromise = null;
   shuttingDown = false;
@@ -149006,7 +157791,9 @@ var LocalAcpRuntimeAdapter = class {
       });
       return localAuthFromProbeStatus(agent2, status);
     });
-    this.probeAgentSessionConfig = options.probeAgentSessionConfig ?? (options.probeAgentConfigOptions ? async (agent2) => ({ configOptions: await options.probeAgentConfigOptions(agent2) }) : (agent2) => probeAgentSessionConfig({
+    this.probeAgentSessionConfig = options.probeAgentSessionConfig ?? (options.probeAgentConfigOptions ? async (agent2) => ({
+      configOptions: await options.probeAgentConfigOptions(agent2)
+    }) : (agent2) => probeAgentSessionConfig({
       agent: {
         ...agent2.spec,
         env: {
@@ -149060,7 +157847,7 @@ var LocalAcpRuntimeAdapter = class {
         ...Object.fromEntries(Object.entries(this.spawnEnv).filter((entry) => typeof entry[1] === "string"))
       }
     }));
-    this.createSessionId = options.createSessionId ?? import_node_crypto37.randomUUID;
+    this.createSessionId = options.createSessionId ?? import_node_crypto39.randomUUID;
     this.createSessionManager = options.createSessionManager ?? createDefaultSessionManager;
     this.harnessConfig = options.harnessConfig ?? null;
     this.runPreferences = options.runPreferences ?? null;
@@ -149070,11 +157857,15 @@ var LocalAcpRuntimeAdapter = class {
     this.hostname = options.hostname ?? machineName;
     this.osTag = options.osTag ?? osTag;
     this.nowSeconds = options.nowSeconds ?? (() => Math.floor(Date.now() / 1e3));
+    this.nowMilliseconds = options.nowMilliseconds ?? (() => Date.now());
     this.harnessDownloadDir = options.harnessDownloadDir ?? null;
     this.fetchImpl = options.fetch ?? fetch;
   }
   updateSpawnEnv(env2) {
     Object.assign(this.spawnEnv, env2);
+  }
+  setSessionEventStore(store) {
+    this.sessionEventStore = store;
   }
   async warmup() {
     await this.ensureCapabilityCacheLoaded();
@@ -149110,7 +157901,10 @@ var LocalAcpRuntimeAdapter = class {
       const previous = previousById.get(agent2.id);
       return !previous || !previousEnabled || !previousEnabled.has(agent2.id) || JSON.stringify(previous.spec) !== JSON.stringify(agent2.spec);
     };
-    const probedById = new Map((await Promise.all(agents.filter(shouldProbe).map((agent2) => this.probeAgentMetadata(agent2, { auth: true, configOptions: true })))).map((agent2) => [agent2.id, agent2]));
+    const probedById = new Map((await Promise.all(agents.filter(shouldProbe).map((agent2) => this.probeAgentMetadata(agent2, {
+      auth: true,
+      configOptions: true
+    })))).map((agent2) => [agent2.id, agent2]));
     this.detectedAgentsCache = agents.map((agent2) => {
       const probed = probedById.get(agent2.id);
       if (probed)
@@ -149122,9 +157916,6 @@ var LocalAcpRuntimeAdapter = class {
     this.detectedAgentsCacheProbesConfigOptions = true;
     this.detectedAgentsCacheProbeScope = "enabled";
     this.lastReconciledEnabledIds = enabled;
-  }
-  setSessionMessageStore(store) {
-    this.sessionMessageStore = store;
   }
   async refreshDetectedAgents(opts = {}) {
     this.detectedAgentsCache = null;
@@ -149154,7 +157945,11 @@ var LocalAcpRuntimeAdapter = class {
       const requestIsLightweight = !probeAuth && !probeConfigOptions;
       const pendingIsMetadataProbe = this.detectedAgentsPromiseProbesAuth || this.detectedAgentsPromiseProbesConfigOptions;
       if (requestIsLightweight && pendingIsMetadataProbe) {
-        const agents = await this.detectAgentsWithProbes({ probeAuth: false, probeConfigOptions: false, probeScope });
+        const agents = await this.detectAgentsWithProbes({
+          probeAuth: false,
+          probeConfigOptions: false,
+          probeScope
+        });
         this.detectedAgentsCache = agents;
         this.detectedAgentsCacheProbesAuth = false;
         this.detectedAgentsCacheProbesConfigOptions = false;
@@ -149173,7 +157968,11 @@ var LocalAcpRuntimeAdapter = class {
     this.detectedAgentsPromiseProbesAuth = probeAuth;
     this.detectedAgentsPromiseProbesConfigOptions = probeConfigOptions;
     this.detectedAgentsPromiseProbeScope = probeAuth ? probeScope : null;
-    this.detectedAgentsPromise = this.detectAgentsWithProbes({ probeAuth, probeConfigOptions, probeScope }).then((agents) => {
+    this.detectedAgentsPromise = this.detectAgentsWithProbes({
+      probeAuth,
+      probeConfigOptions,
+      probeScope
+    }).then((agents) => {
       this.detectedAgentsCache = agents;
       this.detectedAgentsCacheProbesAuth = probeAuth;
       this.detectedAgentsCacheProbesConfigOptions = probeConfigOptions;
@@ -149289,7 +158088,9 @@ var LocalAcpRuntimeAdapter = class {
     if (this.registryAgentCatalogCache)
       return this.registryAgentCatalogCache;
     if (!this.registryAgentCatalogPromise) {
-      this.registryAgentCatalogPromise = listAcpRegistryCatalog({ fetchImpl: this.fetchImpl }).then((agents) => agents.map((agent2) => {
+      this.registryAgentCatalogPromise = listAcpRegistryCatalog({
+        fetchImpl: this.fetchImpl
+      }).then((agents) => agents.map((agent2) => {
         const override = REGISTRY_AGENT_SPEC_OVERRIDES[agent2.id];
         const args = override?.args ?? agent2.args;
         const env2 = {
@@ -149355,7 +158156,10 @@ var LocalAcpRuntimeAdapter = class {
     const probed = await Promise.all(agents.map(async (agent2) => {
       if (!shouldProbe(agent2))
         return agent2;
-      return this.probeAgentMetadata(agent2, { auth: opts.probeAuth, configOptions: opts.probeConfigOptions });
+      return this.probeAgentMetadata(agent2, {
+        auth: opts.probeAuth,
+        configOptions: opts.probeConfigOptions
+      });
     }));
     return probed;
   }
@@ -149392,8 +158196,8 @@ var LocalAcpRuntimeAdapter = class {
         ...registryLatestVersion ? { latestVersion: registryLatestVersion } : {}
       };
     }
-    const shimPath = (0, import_node_path43.join)(this.harnessDownloadDir, (0, import_node_path43.basename)(entry.spec.command));
-    const installed = await (0, import_promises39.access)(shimPath).then(() => true, () => false);
+    const shimPath = (0, import_node_path45.join)(this.harnessDownloadDir, (0, import_node_path45.basename)(entry.spec.command));
+    const installed = await (0, import_promises40.access)(shimPath).then(() => true, () => false);
     if (!installed) {
       return {
         installed: false,
@@ -149429,7 +158233,7 @@ var LocalAcpRuntimeAdapter = class {
     if (!this.harnessDownloadDir)
       return void 0;
     try {
-      const packageJson = JSON.parse(await (0, import_promises39.readFile)((0, import_node_path43.join)(this.harnessDownloadDir, "registry", registryId, "npx", "node_modules", ...packageName.split("/"), "package.json"), "utf8"));
+      const packageJson = JSON.parse(await (0, import_promises40.readFile)((0, import_node_path45.join)(this.harnessDownloadDir, "registry", registryId, "npx", "node_modules", ...packageName.split("/"), "package.json"), "utf8"));
       return typeof packageJson.version === "string" && packageJson.version.length > 0 ? packageJson.version : void 0;
     } catch {
       return void 0;
@@ -149527,7 +158331,9 @@ var LocalAcpRuntimeAdapter = class {
     return { harnesses: await this.buildHarnesses({ probe: "none" }) };
   }
   async listAgentServers() {
-    return { agent_servers: await this.harnessConfig?.loadAgentServers?.() ?? {} };
+    return {
+      agent_servers: await this.harnessConfig?.loadAgentServers?.() ?? {}
+    };
   }
   async updateAgentServers(servers) {
     if (!this.harnessConfig?.saveAgentServers)
@@ -149551,7 +158357,7 @@ var LocalAcpRuntimeAdapter = class {
         throw new Error(`${entry.label} is missing an ACP registry id`);
       await installAcpRegistryAgent({
         registryId: entry.registryId,
-        shimName: (0, import_node_path43.basename)(entry.spec.command),
+        shimName: (0, import_node_path45.basename)(entry.spec.command),
         binDir: this.harnessDownloadDir,
         installRoot: this.harnessDownloadDir,
         fetchImpl: this.fetchImpl,
@@ -149576,7 +158382,9 @@ var LocalAcpRuntimeAdapter = class {
     this.detectedAgentsCacheProbesAuth = false;
     this.detectedAgentsCacheProbesConfigOptions = false;
     this.detectedAgentsCacheProbeScope = null;
-    return { harnesses: await this.buildHarnesses({ probe: true, refresh: true }) };
+    return {
+      harnesses: await this.buildHarnesses({ probe: true, refresh: true })
+    };
   }
   async installHarnessAdapter(id2) {
     return this.installHarness(id2);
@@ -149601,7 +158409,7 @@ var LocalAcpRuntimeAdapter = class {
         throw new Error(`${entry.label} is missing an ACP registry id`);
       await uninstallAcpRegistryAgent({
         registryId: entry.registryId,
-        shimName: (0, import_node_path43.basename)(entry.spec.command),
+        shimName: (0, import_node_path45.basename)(entry.spec.command),
         binDir: this.harnessDownloadDir,
         installRoot: this.harnessDownloadDir
       });
@@ -149621,7 +158429,9 @@ var LocalAcpRuntimeAdapter = class {
     this.detectedAgentsCacheProbesAuth = false;
     this.detectedAgentsCacheProbesConfigOptions = false;
     this.detectedAgentsCacheProbeScope = null;
-    return { harnesses: await this.buildHarnesses({ probe: true, refresh: true }) };
+    return {
+      harnesses: await this.buildHarnesses({ probe: true, refresh: true })
+    };
   }
   async listRuntimes(opts = {}) {
     const probeAuth = opts.probe === true || opts.probe === "auth" || opts.probe === "config";
@@ -149722,13 +158532,19 @@ var LocalAcpRuntimeAdapter = class {
     if (params.runtimeId !== DESKTOP_LOCAL_RUNTIME_ID) {
       throw new Error(`Unknown local runtime: ${params.runtimeId}`);
     }
-    const agents = await this.detectEnabledAgents({ probeAuth: true, probeScope: "enabled" });
+    const agents = await this.detectEnabledAgents({
+      probeAuth: true,
+      probeScope: "enabled"
+    });
     if (this.shuttingDown)
       throw new Error("Local ACP runtime is shutting down");
     const recentAgentId = !params.agentId && this.runPreferences ? normalizeRunPreferences(await this.runPreferences.load()).agent_id : void 0;
     let agent2 = params.agentId ? agents.find((candidate) => candidate.id === params.agentId) : chooseDefaultAgent(agents, recentAgentId);
     if (!agent2 && params.agentId) {
-      const detectedAgents = await this.getDetectedAgents({ probeAuth: true, probeScope: "enabled" });
+      const detectedAgents = await this.getDetectedAgents({
+        probeAuth: true,
+        probeScope: "enabled"
+      });
       const requestedAgent = detectedAgents.find((candidate) => candidate.id === params.agentId);
       const enabled = await this.enabledHarnessSet() ?? defaultEnabledHarnessSet(detectedAgents);
       const enabledByConfig = enabled ? enabled.has(params.agentId) : true;
@@ -149789,7 +158605,7 @@ var LocalAcpRuntimeAdapter = class {
           return;
       }
       this.sendToSession(entry, publicMsg);
-      for (const event of replayCapabilityEvents(normalizedMsg)) {
+      for (const event of replaySetupEvents(normalizedMsg)) {
         this.sendToSession(entry, {
           type: "session.event",
           session_id: sessionId,
@@ -149807,16 +158623,15 @@ var LocalAcpRuntimeAdapter = class {
       ...harnessVersion ? { harnessVersion } : {},
       manager: this.createSessionManager(send, (requestSessionId, request) => this.brokerPermissionRequest(entry, requestSessionId, request), (requestSessionId, request) => this.brokerElicitationRequest(entry, requestSessionId, request)),
       clients: /* @__PURE__ */ new Set(),
-      backlog: [],
-      messages: [],
       promptQueueMode: "single",
       queuedPrompts: [],
       scheduledPromptCount: 0,
       activePromptTurnId: null,
       restartPending: false,
       restartReadySent: false,
-      persistQueue: Promise.resolve(),
       promptQueue: Promise.resolve(),
+      persistQueue: Promise.resolve(),
+      events: [],
       pendingPermissions: /* @__PURE__ */ new Map(),
       pendingElicitations: /* @__PURE__ */ new Map(),
       ...params.projectId ? { projectId: params.projectId } : {},
@@ -149824,10 +158639,10 @@ var LocalAcpRuntimeAdapter = class {
     };
     entry.manager.setSpawnEnv?.(this.spawnEnv);
     this.sessions.set(sessionId, entry);
-    if (params.projectId && params.agentMemberId) {
-      this.sessionIndex.set(sessionIndexKey(params.projectId, params.agentMemberId), sessionId);
-    }
-    agent2 = await this.probeAgentMetadata(agent2, { auth: true, configOptions: false });
+    agent2 = await this.probeAgentMetadata(agent2, {
+      auth: true,
+      configOptions: false
+    });
     if (this.shuttingDown) {
       await this.disposeSession(sessionId);
       throw new Error("Local ACP runtime is shutting down");
@@ -149868,7 +158683,7 @@ var LocalAcpRuntimeAdapter = class {
     if (entry.id !== sessionId) {
       return Promise.resolve({ outcome: { outcome: "cancelled" } });
     }
-    const requestId = (0, import_node_crypto37.randomUUID)();
+    const requestId = (0, import_node_crypto39.randomUUID)();
     return new Promise((resolve18) => {
       const message = {
         type: "session.permission_request",
@@ -149915,7 +158730,7 @@ var LocalAcpRuntimeAdapter = class {
       const url2 = safeElicitationUrl(request.url);
       if (!url2 || !request.elicitationId)
         return Promise.resolve({ action: "decline" });
-      const requestId2 = (0, import_node_crypto37.randomUUID)();
+      const requestId2 = (0, import_node_crypto39.randomUUID)();
       return new Promise((resolve18) => {
         const message = {
           type: "session.elicitation_request",
@@ -149934,7 +158749,7 @@ var LocalAcpRuntimeAdapter = class {
     }
     if (request.mode !== "form")
       return Promise.resolve({ action: "decline" });
-    const requestId = (0, import_node_crypto37.randomUUID)();
+    const requestId = (0, import_node_crypto39.randomUUID)();
     return new Promise((resolve18) => {
       const message = {
         type: "session.elicitation_request",
@@ -149984,16 +158799,6 @@ var LocalAcpRuntimeAdapter = class {
       this.resolveElicitationRequest(entry, requestId, "cancel", void 0);
     }
   }
-  async pushRoomMention(projectId, agentMemberId, mention) {
-    const sessionId = this.sessionIndex.get(sessionIndexKey(projectId, agentMemberId));
-    if (!sessionId)
-      return false;
-    const entry = this.sessions.get(sessionId);
-    if (!entry)
-      return false;
-    this.sendToSession(entry, { type: "room.mention", ...mention });
-    return true;
-  }
   async runTextTask(params) {
     const sessionId = this.createSessionId();
     await this.startSession({
@@ -150006,7 +158811,7 @@ var LocalAcpRuntimeAdapter = class {
     const entry = this.sessions.get(sessionId);
     if (!entry)
       throw new Error("Local ACP text session failed to start.");
-    const turnId = `text-gen-${(0, import_node_crypto37.randomUUID)().slice(0, 8)}`;
+    const turnId = `text-gen-${(0, import_node_crypto39.randomUUID)().slice(0, 8)}`;
     const chunks = [];
     const prompt = [
       params.systemPrompt ? `System instructions:
@@ -150055,17 +158860,17 @@ ${params.systemPrompt}` : "",
       });
     });
   }
-  async listSessionMessages(sessionId) {
-    const persisted = await this.sessionMessageStore?.listSessionMessages(sessionId);
+  async listSessionEvents(sessionId) {
+    const persisted = await this.sessionEventStore?.listSessionEvents(sessionId);
     if (persisted)
       return persisted;
     const entry = this.sessions.get(sessionId);
     if (!entry)
       return null;
     return {
-      messages: entry.messages.map((message) => ({
-        ...message,
-        events: structuredClone(message.events)
+      events: entry.events.map((event) => ({
+        ...event,
+        data: structuredClone(event.data)
       }))
     };
   }
@@ -150109,8 +158914,7 @@ ${params.systemPrompt}` : "",
     this.sendPromptQueueUpdate(entry);
     const runPrompt = async () => {
       if (opts.persistUserPrompt) {
-        const promptAfterPersist = this.appendUserPrompt(entry, turnId, text) ?? Promise.resolve();
-        await promptAfterPersist;
+        await (this.appendUserPrompt(entry, turnId, text) ?? Promise.resolve());
       }
       entry.activePromptTurnId = turnId;
       this.sendPromptQueueUpdate(entry);
@@ -150122,13 +158926,13 @@ ${params.systemPrompt}` : "",
         }));
       } catch (error53) {
         const message = error53 instanceof Error ? error53.message : String(error53);
-        const errorAfterPersist = this.persistTurnError(entry, turnId, message) ?? Promise.resolve();
-        await errorAfterPersist.finally(() => this.sendToSession(entry, {
+        await (this.persistTurnError(entry, turnId, message) ?? Promise.resolve());
+        this.sendToSession(entry, {
           type: "session.error",
           session_id: entry.id,
           turn_id: turnId,
           message
-        }));
+        });
       } finally {
         if (entry.activePromptTurnId === turnId)
           entry.activePromptTurnId = null;
@@ -150169,13 +158973,13 @@ ${params.systemPrompt}` : "",
         }));
       } catch (error53) {
         const message = error53 instanceof Error ? error53.message : String(error53);
-        const errorAfterPersist = this.persistTurnError(entry, turnId, message) ?? Promise.resolve();
-        await errorAfterPersist.finally(() => this.sendToSession(entry, {
+        await (this.persistTurnError(entry, turnId, message) ?? Promise.resolve());
+        this.sendToSession(entry, {
           type: "session.error",
           session_id: entry.id,
           turn_id: turnId,
           message
-        }));
+        });
       } finally {
         entry.scheduledPromptCount = Math.max(0, entry.scheduledPromptCount - 1);
         this.sendPromptQueueUpdate(entry);
@@ -150207,113 +159011,62 @@ ${params.systemPrompt}` : "",
     entry.queuedPrompts = entry.queuedPrompts.filter((prompt) => !toSendTurns.has(prompt.turnId));
     this.sendPromptQueueUpdate(entry);
     for (const prompt of toSend) {
-      this.schedulePrompt(entry, prompt.turnId, prompt.text, { persistUserPrompt: true });
+      this.schedulePrompt(entry, prompt.turnId, prompt.text, {
+        persistUserPrompt: true
+      });
     }
     return true;
   }
   appendUserPrompt(entry, turnId, text) {
-    if (entry.messages.some((message2) => message2.id === `${turnId}-user`))
-      return this.sessionMessageStore ? entry.persistQueue : null;
-    const message = {
-      id: `${turnId}-user`,
-      sender_kind: "user",
-      sender_id: "local-user",
+    if (entry.events.some((row) => row.type === "user_prompt" && !!row.data && typeof row.data === "object" && row.data.turn_id === turnId)) {
+      return this.sessionEventStore ? entry.persistQueue : null;
+    }
+    return this.appendSessionEvent(entry, "user_prompt", {
       turn_id: turnId,
-      events: [{ type: "text", text }],
-      created_at: this.nowSeconds()
-    };
-    entry.messages.push(message);
-    return this.sessionMessageStore ? this.enqueuePersistence(entry, () => this.sessionMessageStore?.appendUserPrompt(entry.id, message)) : null;
-  }
-  appendAgentEvent(entry, turnId, event) {
-    const id2 = `${turnId}-agent`;
-    let message = entry.messages.find((candidate) => candidate.id === id2);
-    if (!message) {
-      message = {
-        id: id2,
-        sender_kind: "agent",
-        sender_id: entry.agentMemberId ?? "local-agent",
-        turn_id: turnId,
-        events: [],
-        created_at: this.nowSeconds()
-      };
-      entry.messages.push(message);
-    }
-    message.events.push(event);
-    return this.sessionMessageStore ? this.enqueuePersistence(entry, () => this.sessionMessageStore?.appendAgentEvent(entry.id, {
-      ...message,
-      events: structuredClone(message.events)
-    })) : null;
-  }
-  importReplayEvents(entry, events) {
-    const transcriptEvents = events.filter(shouldPersistSessionEvent);
-    if (transcriptEvents.length === 0)
-      return null;
-    const importId = `${entry.id}-acp-replay`;
-    const applyToMemory = () => {
-      if (entry.messages.some((message2) => message2.id !== importId && message2.events.length > 0))
-        return null;
-      let message = entry.messages.find((candidate) => candidate.id === importId);
-      if (!message) {
-        message = {
-          id: importId,
-          sender_kind: "agent",
-          sender_id: entry.agentMemberId ?? "local-agent",
-          turn_id: null,
-          events: [],
-          created_at: this.nowSeconds()
-        };
-        entry.messages.push(message);
-      }
-      const seen = new Set(message.events.map(eventKey2));
-      for (const event of transcriptEvents) {
-        const key = eventKey2(event);
-        if (seen.has(key))
-          continue;
-        message.events.push(event);
-        seen.add(key);
-      }
-      return message.events.length > 0 ? message : null;
-    };
-    if (!this.sessionMessageStore) {
-      applyToMemory();
-      return null;
-    }
-    return this.enqueuePersistence(entry, async () => {
-      const existing = await this.sessionMessageStore?.listSessionMessages(entry.id);
-      const hasExistingTranscript = existing?.messages.some((message2) => message2.id !== importId && message2.events.length > 0);
-      if (hasExistingTranscript)
-        return;
-      const message = applyToMemory();
-      if (!message)
-        return;
-      await this.sessionMessageStore?.appendAgentEvent(entry.id, {
-        ...message,
-        events: structuredClone(message.events)
-      });
+      text
     });
   }
-  persistTurnComplete(entry, turnId) {
-    return this.sessionMessageStore?.markTurnComplete ? this.enqueuePersistence(entry, () => this.sessionMessageStore?.markTurnComplete?.(entry.id, turnId)) : null;
+  appendSessionEvent(entry, type, data) {
+    const event = {
+      seq: (entry.events.at(-1)?.seq ?? 0) + 1,
+      type,
+      data: structuredClone(data),
+      ts: this.nowMilliseconds()
+    };
+    entry.events.push(event);
+    return this.sessionEventStore ? this.enqueuePersistence(entry, () => this.sessionEventStore?.appendEvent(entry.id, {
+      type: event.type,
+      data: structuredClone(event.data),
+      ts: event.ts
+    })) : null;
   }
   persistTurnError(entry, turnId, message) {
-    const safeMessage = redactAuthenticationError(message);
-    return this.sessionMessageStore?.appendTurnError ? this.enqueuePersistence(entry, () => this.sessionMessageStore?.appendTurnError?.(entry.id, turnId, safeMessage)) : null;
+    return this.appendSessionEvent(entry, "turn_failed", {
+      ...turnId ? { turn_id: turnId } : {},
+      message: redactAuthenticationError(message)
+    });
   }
   persistManagerMessage(entry, msg) {
-    if (isSessionReadyMessage(msg) && Array.isArray(msg.replay_events)) {
-      return this.importReplayEvents(entry, msg.replay_events);
-    }
     if (isSessionEventMessage(msg)) {
       if (!shouldPersistSessionEvent(msg.event))
         return null;
-      return this.appendAgentEvent(entry, msg.turn_id, msg.event);
+      return this.appendSessionEvent(entry, "session.event", {
+        turn_id: msg.turn_id,
+        event: msg.event
+      });
     }
     if (isSessionErrorMessage(msg)) {
       return this.persistTurnError(entry, msg.turn_id ?? null, msg.message);
     }
     if (isSessionCompleteMessage(msg) && msg.turn_id) {
-      return this.persistTurnComplete(entry, msg.turn_id);
+      return this.appendSessionEvent(entry, "turn_completed", {
+        turn_id: msg.turn_id
+      });
+    }
+    if (isSessionCancelledMessage(msg)) {
+      return this.appendSessionEvent(entry, "turn_cancelled", {
+        turn_id: msg.turn_id
+      });
     }
     return null;
   }
@@ -150321,20 +159074,10 @@ ${params.systemPrompt}` : "",
     const publicMsg = normalizeSessionAuthenticationError(msg, entry.harnessId);
     for (const observer of entry.observers ?? [])
       observer(publicMsg);
-    entry.backlog.push(publicMsg);
-    if (entry.backlog.length > MAX_BACKLOG_MESSAGES) {
-      entry.backlog.splice(0, entry.backlog.length - MAX_BACKLOG_MESSAGES);
-    }
     for (const client2 of entry.clients)
       sendJson(client2, publicMsg);
   }
   removeSession(sessionId) {
-    const entry = this.sessions.get(sessionId);
-    if (entry?.projectId && entry.agentMemberId) {
-      const key = sessionIndexKey(entry.projectId, entry.agentMemberId);
-      if (this.sessionIndex.get(key) === sessionId)
-        this.sessionIndex.delete(key);
-    }
     this.sessions.delete(sessionId);
   }
   async restartSession(sessionId, options) {
@@ -150447,7 +159190,7 @@ ${params.systemPrompt}` : "",
     }
     return { sessions: await this.listLocalSessions() };
   }
-  bindSessionSocket(sessionId, ws, opts = {}) {
+  bindSessionSocket(sessionId, ws) {
     const entry = this.sessions.get(sessionId);
     if (!entry) {
       sendJson(ws, {
@@ -150459,23 +159202,21 @@ ${params.systemPrompt}` : "",
       return;
     }
     entry.clients.add(ws);
-    sendJson(ws, { type: "attached", session_id: sessionId, daemon_online: true });
+    sendJson(ws, {
+      type: "attached",
+      session_id: sessionId,
+      daemon_online: true
+    });
     if (this.promptBusy(entry) || entry.queuedPrompts.length > 0)
       this.sendPromptQueueUpdate(entry);
-    if (opts.replayBacklog === false) {
-      if (entry.readyMessage)
-        sendJson(ws, entry.readyMessage);
-      if (entry.configOptionsMessage)
-        sendJson(ws, entry.configOptionsMessage);
-      if (entry.modeMessage)
-        sendJson(ws, entry.modeMessage);
-      if (entry.errorMessage)
-        sendJson(ws, entry.errorMessage);
-    }
-    if (opts.replayBacklog !== false) {
-      for (const msg of entry.backlog)
-        sendJson(ws, msg);
-    }
+    if (entry.readyMessage)
+      sendJson(ws, entry.readyMessage);
+    if (entry.configOptionsMessage)
+      sendJson(ws, entry.configOptionsMessage);
+    if (entry.modeMessage)
+      sendJson(ws, entry.modeMessage);
+    if (entry.errorMessage)
+      sendJson(ws, entry.errorMessage);
     for (const pending of entry.pendingPermissions.values()) {
       sendJson(ws, pending.message);
     }
@@ -150556,13 +159297,12 @@ ${params.systemPrompt}` : "",
               this.dispatchPrompt(entry, msg.turn_id, msg.text);
             } catch (error53) {
               const message = error53 instanceof Error ? error53.message : String(error53);
-              const errorAfterPersist = this.persistTurnError(entry, msg.turn_id ?? null, message) ?? Promise.resolve();
-              void errorAfterPersist.finally(() => this.sendToSession(entry, {
+              this.sendToSession(entry, {
                 type: "session.error",
                 session_id: sessionId,
                 turn_id: msg.turn_id,
                 message
-              }));
+              });
             }
           }
           return;
@@ -150617,15 +159357,13 @@ function attachLocalAcpSessions(server2, adapter) {
       return;
     const sessionId = decodeURIComponent(match2[1]);
     wss.handleUpgrade(request, socket, head, (ws) => {
-      adapter.bindSessionSocket(sessionId, ws, {
-        replayBacklog: url2.searchParams.get("replay") !== "0"
-      });
+      adapter.bindSessionSocket(sessionId, ws);
     });
   });
 }
 
 // ../../apps/local-api/dist/local-processor.js
-var import_node_crypto39 = require("node:crypto");
+var import_node_crypto41 = require("node:crypto");
 
 // ../../apps/local-api/dist/local-provider-receipt-ownership.js
 async function expectedProviderReceiptOwner(input) {
@@ -150662,11 +159400,11 @@ async function expectedProviderReceiptOwner(input) {
 }
 
 // ../../apps/local-api/dist/local-durable-output-staging.js
-var import_node_crypto38 = require("node:crypto");
-var import_node_module12 = require("node:module");
-var import_promises40 = require("node:fs/promises");
-var import_node_path44 = require("node:path");
-var nodeRequire11 = (0, import_node_module12.createRequire)(__clash_import_meta_url);
+var import_node_crypto40 = require("node:crypto");
+var import_node_module13 = require("node:module");
+var import_promises41 = require("node:fs/promises");
+var import_node_path46 = require("node:path");
+var nodeRequire12 = (0, import_node_module13.createRequire)(__clash_import_meta_url);
 function required3(value, label) {
   const normalized = value.trim();
   if (!normalized)
@@ -150677,11 +159415,11 @@ function normalizedContentType2(value) {
   return required3(value, "contentType").toLowerCase();
 }
 function projectAssetId(input) {
-  const digest3 = (0, import_node_crypto38.createHash)("sha256").update(input.projectId).update("\0").update(input.actionRunId).update("\0").update(input.outputSlot).digest("hex");
+  const digest3 = (0, import_node_crypto40.createHash)("sha256").update(input.projectId).update("\0").update(input.actionRunId).update("\0").update(input.outputSlot).digest("hex");
   return `local-output:${digest3}`;
 }
-function openDatabase8(path) {
-  const { DatabaseSync } = nodeRequire11("node:sqlite");
+function openDatabase9(path) {
+  const { DatabaseSync } = nodeRequire12("node:sqlite");
   const database = new DatabaseSync(path);
   database.exec(`
     PRAGMA busy_timeout = 5000;
@@ -150765,16 +159503,16 @@ function parseRow4(row) {
   };
 }
 function createLocalDurableOutputStagingStore(options) {
-  const databasePath2 = (0, import_node_path44.join)(options.dataDir, "local.sqlite");
+  const databasePath2 = (0, import_node_path46.join)(options.dataDir, "local.sqlite");
   const resources = createLocalResourceStore({ dataDir: options.dataDir });
   async function withDatabase(task) {
-    await (0, import_promises40.mkdir)(options.dataDir, { recursive: true });
-    const database = openDatabase8(databasePath2);
+    await (0, import_promises41.mkdir)(options.dataDir, { recursive: true });
+    const database = openDatabase9(databasePath2);
     try {
       return task(database);
     } finally {
       database.close();
-      await (0, import_promises40.chmod)(databasePath2, 384).catch(() => void 0);
+      await (0, import_promises41.chmod)(databasePath2, 384).catch(() => void 0);
     }
   }
   async function load(input) {
@@ -150802,7 +159540,7 @@ function createLocalDurableOutputStagingStore(options) {
       throw new Error(`Durable output ${stored.actionRunId}/${stored.outputSlot} has no complete pre-cutover receipt matching sealed Resource ${stored.resourceId}.`);
     }
     const recovered = await resources.stage({
-      bytes: new Uint8Array(await (0, import_promises40.readFile)(sealed.path))
+      bytes: new Uint8Array(await (0, import_promises41.readFile)(sealed.path))
     });
     if (recovered.resourceId !== stored.resourceId || recovered.byteLength !== stored.byteLength) {
       throw new Error(`Durable output ${stored.actionRunId}/${stored.outputSlot} recovery does not match its verified sealed Resource.`);
@@ -150882,7 +159620,7 @@ var LOCAL_EXECUTOR_BINDING = ExecutablePluginBindingSchema.parse({
   pluginId: "clash.local-executor",
   version: "1.0.0",
   exportId: "execute",
-  schemaHash: `sha256:${(0, import_node_crypto39.createHash)("sha256").update("clash.local-executor/v1").digest("hex")}`
+  schemaHash: `sha256:${(0, import_node_crypto41.createHash)("sha256").update("clash.local-executor/v1").digest("hex")}`
 });
 var REMOTION_RENDER_PLUGIN_ID = "clash.remotion";
 var REMOTION_RENDER_EXPORT_ID = "render-timeline";
@@ -151016,7 +159754,7 @@ function canvasNodeProjectionRevisionId(input) {
     duration: input.nodeData.duration ?? modelParams(input.nodeData).duration,
     referenceMode: input.nodeData.referenceMode
   };
-  const digest3 = (0, import_node_crypto39.createHash)("sha256").update(canonicalJson6(semanticProjection)).digest("hex");
+  const digest3 = (0, import_node_crypto41.createHash)("sha256").update(canonicalJson6(semanticProjection)).digest("hex");
   return `sha256:${digest3}`;
 }
 function canvasExecutorActionRevisionId(executor) {
@@ -151034,7 +159772,7 @@ function canvasExecutorActionRevisionId(executor) {
       };
     }
   }
-  const digest3 = (0, import_node_crypto39.createHash)("sha256").update(canonicalJson6({
+  const digest3 = (0, import_node_crypto41.createHash)("sha256").update(canonicalJson6({
     schemaVersion: 1,
     targetKind: executor.targetKind ?? "provider-executor",
     binding: executor.binding,
@@ -151078,7 +159816,7 @@ function durableActionOwner(frozen, actionRunId) {
     ...frozen.modelEndpoint ? { modelEndpoint: frozen.modelEndpoint } : {},
     input: frozen.input
   };
-  const digest3 = (0, import_node_crypto39.createHash)("sha256").update(JSON.stringify(publicRevision)).digest("hex");
+  const digest3 = (0, import_node_crypto41.createHash)("sha256").update(JSON.stringify(publicRevision)).digest("hex");
   return {
     kind: "run",
     actionId,
@@ -151206,7 +159944,7 @@ function mixedContentReferences(input) {
   return ordered.map((entry, index) => "text" in entry ? { slot: "content", index, text: entry.text } : assetReference(entry.asset, "content", index));
 }
 function textHash2(content) {
-  return (0, import_node_crypto39.createHash)("sha256").update(content).digest("hex").slice(0, 16);
+  return (0, import_node_crypto41.createHash)("sha256").update(content).digest("hex").slice(0, 16);
 }
 function textRevisionActor(nodeData, userId) {
   if (nodeData.actorType !== "user" && nodeData.actorType !== "agent")
@@ -151229,7 +159967,7 @@ function generatedTextRevision(options) {
     createdAt,
     actor: actor ?? null
   });
-  const suffix = (0, import_node_crypto39.createHash)("sha256").update(seed).digest("hex").slice(0, 12);
+  const suffix = (0, import_node_crypto41.createHash)("sha256").update(seed).digest("hex").slice(0, 12);
   return {
     schemaVersion: 1,
     kind: "clash.text.revision",
@@ -151257,7 +159995,7 @@ async function recordGeneratedTextRevision(options) {
   }, { resultEntityId: revision.revisionId });
   await storeTextRevisionContentBlob(options.dataDir, revision, options.content);
   await metadataStore.upsertTextRevision(revision, {
-    id: options.auditId ?? (0, import_node_crypto39.randomUUID)(),
+    id: options.auditId ?? (0, import_node_crypto41.randomUUID)(),
     createdAt: Date.now(),
     operation: mutation.operation,
     entity: mutation.entity,
@@ -151395,7 +160133,8 @@ function createLocalWorkflowProcessor(options) {
         return "http://127.0.0.1";
       return typeof options.mediaBaseUrl === "function" ? options.mediaBaseUrl() : options.mediaBaseUrl;
     },
-    ...options.assetInspection ? { assetInspection: options.assetInspection } : {}
+    ...options.assetInspection ? { assetInspection: options.assetInspection } : {},
+    ...options.assetRepresentations ? { assetRepresentations: options.assetRepresentations } : {}
   });
   const pluginAssetStaging = createLocalPluginAssetStagingStore({
     dataDir: options.dataDir
@@ -151840,6 +160579,7 @@ function createLocalWorkflowProcessor(options) {
               ]);
               publishedAsset = publication.entry;
               changed = publication.changed || changed;
+              options.assetRepresentations?.schedule(verified.source.resourceId);
             }
             if (frozen.delivery) {
               if (!publishedAsset) {
@@ -152519,8 +161259,8 @@ async function fetchIntoSlot(url2, options = {}) {
 }
 
 // ../../apps/local-api/dist/executor-asset-capability.js
-var import_node_crypto40 = require("node:crypto");
-var import_promises41 = require("node:fs/promises");
+var import_node_crypto42 = require("node:crypto");
+var import_promises42 = require("node:fs/promises");
 var import_node_http = require("node:http");
 function parseSingleRange(value, byteLength) {
   if (byteLength === 0)
@@ -152665,7 +161405,7 @@ function createLocalExecutorAssetCapabilityIssuer(options = {}) {
       if (!Number.isSafeInteger(input.byteLength) || input.byteLength < 0) {
         throw new Error("Executor Asset capability byteLength must be a non-negative integer.");
       }
-      const handle = await (0, import_promises41.open)(input.path, "r");
+      const handle = await (0, import_promises42.open)(input.path, "r");
       let keepHandle = false;
       try {
         const facts = await handle.stat();
@@ -152673,7 +161413,7 @@ function createLocalExecutorAssetCapabilityIssuer(options = {}) {
           throw new Error("Executor Asset immutable Resource length no longer matches its projection.");
         }
         const port2 = await ensureListening();
-        const token = (0, import_node_crypto40.randomBytes)(32).toString("base64url");
+        const token = (0, import_node_crypto42.randomBytes)(32).toString("base64url");
         const expiresAt = now() + ttlMs;
         let released = false;
         let expiryTimer;
@@ -153258,8 +161998,8 @@ function createLocalExecutablePluginBroker(options) {
 }
 
 // ../../apps/local-api/dist/local-speech-transcription.js
-var import_promises42 = require("node:fs/promises");
-var import_node_path45 = require("node:path");
+var import_promises43 = require("node:fs/promises");
+var import_node_path47 = require("node:path");
 function runtimeModelForCanonicalAsrCard(modelId) {
   const card = MODEL_CARDS.find((candidate) => candidate.id === modelId);
   const runtimeModel = card?.defaultParams.asr_model;
@@ -153281,9 +162021,9 @@ function createLocalSpeechTranscriptionService(options) {
     if (source.kind !== "audio" && source.kind !== "video" || source.kind !== input.reference.asset.kind) {
       throw new Error(`Project Asset ${input.reference.asset.assetId} is not an audio or video Asset matching the frozen reference.`);
     }
-    const bytes = await (0, import_promises42.readFile)(source.path);
+    const bytes = await (0, import_promises43.readFile)(source.path);
     const transcript = await options.audioConfig.transcribe({
-      file: new File([bytes], (0, import_node_path45.basename)(source.path), {
+      file: new File([bytes], (0, import_node_path47.basename)(source.path), {
         type: source.contentType ?? input.reference.asset.mediaType ?? "application/octet-stream"
       }),
       ...input.language === void 0 ? {} : { language: input.language },
@@ -153300,12 +162040,12 @@ function createLocalSpeechTranscriptionService(options) {
 }
 
 // ../../apps/local-api/dist/marketplace-skills.js
-var import_node_child_process11 = require("node:child_process");
-var import_promises43 = require("node:fs/promises");
+var import_node_child_process12 = require("node:child_process");
+var import_promises44 = require("node:fs/promises");
 var import_node_os13 = require("node:os");
-var import_node_path46 = require("node:path");
+var import_node_path48 = require("node:path");
 var import_node_util13 = require("node:util");
-var execFileAsync6 = (0, import_node_util13.promisify)(import_node_child_process11.execFile);
+var execFileAsync6 = (0, import_node_util13.promisify)(import_node_child_process12.execFile);
 async function defaultCommandRunner(executable, args) {
   const result = await execFileAsync6(executable, args, {
     encoding: "utf8",
@@ -153341,7 +162081,7 @@ function asLazyMarketplaceSkill(value) {
 }
 async function readInstalledSkillLock(agentsDir) {
   try {
-    const parsed = JSON.parse(await (0, import_promises43.readFile)((0, import_node_path46.join)(agentsDir, ".skill-lock.json"), "utf8"));
+    const parsed = JSON.parse(await (0, import_promises44.readFile)((0, import_node_path48.join)(agentsDir, ".skill-lock.json"), "utf8"));
     if (!parsed.skills || typeof parsed.skills !== "object")
       return {};
     return parsed.skills;
@@ -153349,7 +162089,7 @@ async function readInstalledSkillLock(agentsDir) {
     return {};
   }
 }
-function createNpxSkillsMarketplace({ registry: registry2, run = defaultCommandRunner, agentsDir = (0, import_node_path46.join)((0, import_node_os13.homedir)(), ".agents") }) {
+function createNpxSkillsMarketplace({ registry: registry2, run = defaultCommandRunner, agentsDir = (0, import_node_path48.join)((0, import_node_os13.homedir)(), ".agents") }) {
   const rawSkills = Array.isArray(registry2.skills) ? registry2.skills : [];
   const skills = rawSkills.map(asLazyMarketplaceSkill).filter((skill) => skill !== null);
   const byId = new Map(skills.map((skill) => [skill.id, skill]));
@@ -153368,9 +162108,9 @@ function createNpxSkillsMarketplace({ registry: registry2, run = defaultCommandR
         const lockEntry = installedByName[skill.install.skill];
         if (!lockEntry)
           return null;
-        const path = (0, import_node_path46.join)(agentsDir, "skills", skill.install.skill);
+        const path = (0, import_node_path48.join)(agentsDir, "skills", skill.install.skill);
         try {
-          await (0, import_promises43.access)((0, import_node_path46.join)(path, "SKILL.md"));
+          await (0, import_promises44.access)((0, import_node_path48.join)(path, "SKILL.md"));
         } catch {
           return null;
         }
@@ -153854,7 +162594,7 @@ var registry_default = {
       id: "clash.video.sd25-pe",
       name: "sd25-pe",
       title: "Seedance 2.5 Prompt Engineering",
-      description: "Install Volcengine's official Seedance 2.5 prompt-engineering guide on demand so agents can compile stronger prompts for all-purpose reference, editing, and video extension workflows.",
+      description: "Volcengine's official Seedance 2.5 guidance for stronger all-purpose reference, editing, and video-extension prompts.",
       type: "skill",
       kind: "detail",
       source: "provider-official",
@@ -153878,6 +162618,144 @@ var registry_default = {
       outputs: [
         "Seedance 2.5 prompt"
       ],
+      executionContract: "prompt-compiler",
+      requiredSystemCapabilities: [],
+      status: "ready",
+      systemGaps: []
+    },
+    {
+      id: "clash.openai.define-goal",
+      name: "define-goal",
+      title: "Define a Goal",
+      description: "OpenAI's official workflow for turning an ambiguous intention into a concrete, measurable objective.",
+      type: "skill",
+      kind: "detail",
+      source: "provider-official",
+      sourceVersion: "49f948faa9258a0c61caceaf225e179651397431",
+      install: {
+        kind: "npx-skills",
+        source: "https://github.com/openai/skills",
+        skill: "define-goal",
+        scope: "global"
+      },
+      tags: ["openai", "planning", "goals"],
+      inputs: ["ambiguous objective", "success criteria"],
+      outputs: ["measurable goal"],
+      executionContract: "prompt-compiler",
+      requiredSystemCapabilities: [],
+      status: "ready",
+      systemGaps: []
+    },
+    {
+      id: "clash.openai.cli-creator",
+      name: "cli-creator",
+      title: "CLI Creator",
+      description: "OpenAI's official workflow for turning API docs, OpenAPI specs, SDKs, and scripts into composable CLIs.",
+      type: "skill",
+      kind: "detail",
+      source: "provider-official",
+      sourceVersion: "49f948faa9258a0c61caceaf225e179651397431",
+      install: {
+        kind: "npx-skills",
+        source: "https://github.com/openai/skills",
+        skill: "cli-creator",
+        scope: "global"
+      },
+      tags: ["openai", "developer-tools", "cli"],
+      inputs: ["API documentation", "OpenAPI specification", "existing integration"],
+      outputs: ["composable CLI design", "implementation workflow"],
+      executionContract: "prompt-compiler",
+      requiredSystemCapabilities: [],
+      status: "ready",
+      systemGaps: []
+    },
+    {
+      id: "clash.openai.security-threat-model",
+      name: "security-threat-model",
+      title: "Security Threat Model",
+      description: "OpenAI's repository-grounded workflow for identifying trust boundaries, abuse paths, and practical mitigations.",
+      type: "skill",
+      kind: "detail",
+      source: "provider-official",
+      sourceVersion: "49f948faa9258a0c61caceaf225e179651397431",
+      install: {
+        kind: "npx-skills",
+        source: "https://github.com/openai/skills",
+        skill: "security-threat-model",
+        scope: "global"
+      },
+      tags: ["openai", "security", "architecture"],
+      inputs: ["repository", "system boundary"],
+      outputs: ["threat model", "mitigation plan"],
+      executionContract: "prompt-compiler",
+      requiredSystemCapabilities: [],
+      status: "ready",
+      systemGaps: []
+    },
+    {
+      id: "clash.cloudflare.agents-sdk",
+      name: "agents-sdk",
+      title: "Cloudflare Agents SDK",
+      description: "Cloudflare's official Agents SDK guidance for stateful agents, durable workflows, WebSockets, MCP servers, and React clients.",
+      type: "skill",
+      kind: "detail",
+      source: "provider-official",
+      sourceVersion: "f96bff754e428838818017f75817f0f9428acd48",
+      install: {
+        kind: "npx-skills",
+        source: "https://github.com/cloudflare/skills",
+        skill: "agents-sdk",
+        scope: "global"
+      },
+      tags: ["cloudflare", "agents", "workers"],
+      inputs: ["agent application requirements", "Workers project"],
+      outputs: ["Agents SDK implementation guidance"],
+      executionContract: "prompt-compiler",
+      requiredSystemCapabilities: [],
+      status: "ready",
+      systemGaps: []
+    },
+    {
+      id: "clash.cloudflare.durable-objects",
+      name: "durable-objects",
+      title: "Cloudflare Durable Objects",
+      description: "Cloudflare's official Durable Objects guidance for RPC, SQLite, alarms, WebSockets, coordination, and testing.",
+      type: "skill",
+      kind: "detail",
+      source: "provider-official",
+      sourceVersion: "f96bff754e428838818017f75817f0f9428acd48",
+      install: {
+        kind: "npx-skills",
+        source: "https://github.com/cloudflare/skills",
+        skill: "durable-objects",
+        scope: "global"
+      },
+      tags: ["cloudflare", "durable-objects", "workers"],
+      inputs: ["stateful coordination requirements", "Workers project"],
+      outputs: ["Durable Object architecture", "implementation guidance"],
+      executionContract: "prompt-compiler",
+      requiredSystemCapabilities: [],
+      status: "ready",
+      systemGaps: []
+    },
+    {
+      id: "clash.cloudflare.workers-best-practices",
+      name: "workers-best-practices",
+      title: "Workers Best Practices",
+      description: "Cloudflare's official Workers guidance for streaming, async work, bindings, secrets, observability, and Wrangler.",
+      type: "skill",
+      kind: "detail",
+      source: "provider-official",
+      sourceVersion: "f96bff754e428838818017f75817f0f9428acd48",
+      install: {
+        kind: "npx-skills",
+        source: "https://github.com/cloudflare/skills",
+        skill: "workers-best-practices",
+        scope: "global"
+      },
+      tags: ["cloudflare", "workers", "code-review"],
+      inputs: ["Workers source", "Wrangler configuration"],
+      outputs: ["implementation guidance", "review findings"],
       executionContract: "prompt-compiler",
       requiredSystemCapabilities: [],
       status: "ready",
@@ -154105,10 +162983,10 @@ var registry_default = {
 };
 
 // ../../apps/local-api/dist/director-stage-renderer.js
-var import_node_crypto41 = require("node:crypto");
+var import_node_crypto43 = require("node:crypto");
 var import_node_http2 = require("node:http");
-var import_promises44 = require("node:fs/promises");
-var import_node_path47 = require("node:path");
+var import_promises45 = require("node:fs/promises");
+var import_node_path49 = require("node:path");
 var MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -154120,7 +162998,7 @@ var MIME_TYPES = {
   ".wasm": "application/wasm"
 };
 function sha2564(value) {
-  return (0, import_node_crypto41.createHash)("sha256").update(value).digest("hex");
+  return (0, import_node_crypto43.createHash)("sha256").update(value).digest("hex");
 }
 function validatedRequest(input) {
   const state2 = DirectorStageStateSchema.parse(input.state);
@@ -154147,24 +163025,24 @@ function validatedRequest(input) {
   return { ...input, state: state2, frames };
 }
 async function startBundleServer(bundleDir) {
-  const bundleRoot = (0, import_node_path47.resolve)(bundleDir);
-  const staticRoot = (0, import_node_path47.dirname)(bundleRoot);
-  if (!(await (0, import_promises44.stat)((0, import_node_path47.resolve)(bundleRoot, "index.html"))).isFile()) {
+  const bundleRoot = (0, import_node_path49.resolve)(bundleDir);
+  const staticRoot = (0, import_node_path49.dirname)(bundleRoot);
+  if (!(await (0, import_promises45.stat)((0, import_node_path49.resolve)(bundleRoot, "index.html"))).isFile()) {
     throw new Error(`Packaged Director renderer is missing index.html: ${bundleRoot}`);
   }
   const server2 = (0, import_node_http2.createServer)(async (request, response) => {
     try {
       const pathname = decodeURIComponent(new URL(request.url ?? "/", "http://127.0.0.1").pathname);
       const requestedPath = pathname === "/" ? "/director-bundle/index.html" : pathname;
-      const filePath = (0, import_node_path47.resolve)(staticRoot, `.${requestedPath}`);
-      const outside = (0, import_node_path47.relative)(staticRoot, filePath);
-      if (outside === ".." || outside.startsWith(`..${import_node_path47.sep}`)) {
+      const filePath = (0, import_node_path49.resolve)(staticRoot, `.${requestedPath}`);
+      const outside = (0, import_node_path49.relative)(staticRoot, filePath);
+      if (outside === ".." || outside.startsWith(`..${import_node_path49.sep}`)) {
         response.writeHead(403).end("forbidden");
         return;
       }
-      const content = await (0, import_promises44.readFile)(filePath);
+      const content = await (0, import_promises45.readFile)(filePath);
       response.writeHead(200, {
-        "content-type": MIME_TYPES[(0, import_node_path47.extname)(filePath).toLowerCase()] ?? "application/octet-stream",
+        "content-type": MIME_TYPES[(0, import_node_path49.extname)(filePath).toLowerCase()] ?? "application/octet-stream",
         "cache-control": "no-store"
       });
       response.end(content);
@@ -154284,15 +163162,15 @@ function createHeadlessDirectorStageRenderer(options) {
 }
 
 // ../../apps/local-api/dist/development-bundled-plugins.js
-var import_node_child_process12 = require("node:child_process");
-var import_node_fs18 = require("node:fs");
-var import_promises45 = require("node:fs/promises");
-var import_node_path48 = require("node:path");
+var import_node_child_process13 = require("node:child_process");
+var import_node_fs19 = require("node:fs");
+var import_promises46 = require("node:fs/promises");
+var import_node_path50 = require("node:path");
 var import_node_url5 = require("node:url");
 var import_node_util14 = require("node:util");
-var execFileAsync7 = (0, import_node_util14.promisify)(import_node_child_process12.execFile);
+var execFileAsync7 = (0, import_node_util14.promisify)(import_node_child_process13.execFile);
 function workspaceRoot() {
-  return (0, import_node_path48.resolve)((0, import_node_path48.dirname)((0, import_node_url5.fileURLToPath)(__clash_import_meta_url)), "../../..");
+  return (0, import_node_path50.resolve)((0, import_node_path50.dirname)((0, import_node_url5.fileURLToPath)(__clash_import_meta_url)), "../../..");
 }
 async function buildPluginPackage(plugin) {
   const packageManager = process.env.npm_execpath;
@@ -154323,16 +163201,16 @@ async function prepareDevelopmentBundledPlugins(options) {
   const buildPlugin = options.buildPlugin ?? buildPluginPackage;
   const rebuilt = [];
   for (const plugin of selected) {
-    const pluginRoot = (0, import_node_path48.join)(root5, "plugins", plugin.workspaceDir);
-    const manifestPath = (0, import_node_path48.join)(pluginRoot, "manifest.json");
-    const manifest = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises45.readFile)(manifestPath, "utf8")));
+    const pluginRoot = (0, import_node_path50.join)(root5, "plugins", plugin.workspaceDir);
+    const manifestPath = (0, import_node_path50.join)(pluginRoot, "manifest.json");
+    const manifest = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises46.readFile)(manifestPath, "utf8")));
     if (manifest.id !== plugin.id) {
       throw new Error(`Expected development plugin ${plugin.id}, but ${manifestPath} declares ${manifest.id}.`);
     }
     if (manifest.runtime.kind !== "local" || manifest.runtime.transport !== "stdio" || !isSafePluginRelativePath(manifest.runtime.entrypoint)) {
       throw new Error(`Development plugin ${plugin.id} must declare a safe local stdio entrypoint.`);
     }
-    const entrypointPath = (0, import_node_path48.join)(pluginRoot, manifest.runtime.entrypoint);
+    const entrypointPath = (0, import_node_path50.join)(pluginRoot, manifest.runtime.entrypoint);
     await buildPlugin({
       id: plugin.id,
       packageName: plugin.packageName,
@@ -154340,11 +163218,11 @@ async function prepareDevelopmentBundledPlugins(options) {
       manifestPath,
       entrypointPath
     });
-    if (!(0, import_node_fs18.existsSync)(entrypointPath)) {
+    if (!(0, import_node_fs19.existsSync)(entrypointPath)) {
       throw new Error(`Development plugin ${plugin.id} build did not produce ${manifest.runtime.entrypoint}.`);
     }
     for (const resource of manifest.runtime.resources ?? []) {
-      if (!(0, import_node_fs18.existsSync)((0, import_node_path48.join)(pluginRoot, resource))) {
+      if (!(0, import_node_fs19.existsSync)((0, import_node_path50.join)(pluginRoot, resource))) {
         throw new Error(`Development plugin ${plugin.id} build did not produce declared resource ${resource}.`);
       }
     }
@@ -154373,25 +163251,25 @@ function resolveClashCliEntry(env2) {
   if (env2.CLASH_CLI_ENTRY_PATH)
     return env2.CLASH_CLI_ENTRY_PATH;
   const workspaceSource = (0, import_node_url6.fileURLToPath)(new URL("../../../packages/cli/src/index.ts", __clash_import_meta_url));
-  if ((0, import_node_fs19.existsSync)(workspaceSource))
+  if ((0, import_node_fs20.existsSync)(workspaceSource))
     return workspaceSource;
   throw new Error("CLASH_CLI_ENTRY_PATH is required when local-api is installed without the optional agent CLI resource.");
 }
-function createLocalAgentToolEnv({ dataDir: dataDir2, apiBaseUrl, env: env2 = process.env }) {
-  const localDataDir = (0, import_node_path49.resolve)(dataDir2);
+function createLocalAgentToolEnv({ dataDir: dataDir3, apiBaseUrl, env: env2 = process.env }) {
+  const localDataDir = (0, import_node_path51.resolve)(dataDir3);
   const clashHome = clashHomeForLocalDataDir(localDataDir);
   const profile = resolveClashProfile(env2);
-  const binDir = (0, import_node_path49.join)(localDataDir, "agent-bin");
-  (0, import_node_fs19.mkdirSync)(binDir, { recursive: true });
+  const binDir = (0, import_node_path51.join)(localDataDir, "agent-bin");
+  (0, import_node_fs20.mkdirSync)(binDir, { recursive: true });
   const apiUrl2 = apiBaseUrl;
   const cliEntry = resolveClashCliEntry(env2);
-  const cliLoader = cliEntry.endsWith(".ts") ? (0, import_node_module13.createRequire)(__clash_import_meta_url).resolve("tsx") : void 0;
+  const cliLoader = cliEntry.endsWith(".ts") ? (0, import_node_module14.createRequire)(__clash_import_meta_url).resolve("tsx") : void 0;
   const cliInvocation = [
     ...cliLoader ? ["--import", cliLoader] : [],
     cliEntry
   ].map(shellQuote3).join(" ");
-  const shim = (0, import_node_path49.join)(binDir, "clash");
-  (0, import_node_fs19.writeFileSync)(shim, [
+  const shim = (0, import_node_path51.join)(binDir, "clash");
+  (0, import_node_fs20.writeFileSync)(shim, [
     "#!/bin/sh",
     `export CLASH_API_URL=${shellQuote3(apiUrl2)}`,
     `export CLASH_HOME=${shellQuote3(clashHome)}`,
@@ -154412,7 +163290,7 @@ function createLocalAgentToolEnv({ dataDir: dataDir2, apiBaseUrl, env: env2 = pr
     `exec ${shellQuote3(process.execPath)} ${cliInvocation} "$@"`,
     ""
   ].join("\n"), "utf8");
-  (0, import_node_fs19.chmodSync)(shim, 493);
+  (0, import_node_fs20.chmodSync)(shim, 493);
   return {
     CLASH_API_URL: apiUrl2,
     CLASH_HOME: clashHome,
@@ -154424,7 +163302,7 @@ function createLocalAgentToolEnv({ dataDir: dataDir2, apiBaseUrl, env: env2 = pr
     ...env2.CLASH_AGENT_BUNDLE_ROOT ? { CLASH_AGENT_BUNDLE_ROOT: env2.CLASH_AGENT_BUNDLE_ROOT } : {},
     ...env2.CLASH_BUILTIN_PLUGIN_ROOT ? { CLASH_BUILTIN_PLUGIN_ROOT: env2.CLASH_BUILTIN_PLUGIN_ROOT } : {},
     ...env2.TSX_TSCONFIG_PATH ? { TSX_TSCONFIG_PATH: env2.TSX_TSCONFIG_PATH } : {},
-    PATH: [binDir, env2.PATH].filter(Boolean).join(import_node_path49.delimiter)
+    PATH: [binDir, env2.PATH].filter(Boolean).join(import_node_path51.delimiter)
   };
 }
 function createMockCanvasPatch(turnId, text) {
@@ -154582,7 +163460,8 @@ function createMockAcpSessionManager(send) {
       send({
         type: "session.ready",
         session_id,
-        acp_session_id: "mock-acp-session"
+        acp_session_id: "mock-acp-session",
+        supports_session_fork: false
       });
     },
     prompt: async ({ session_id, turn_id, text }) => {
@@ -154690,7 +163569,7 @@ function createMockAcpSessionManager(send) {
   };
 }
 function withMockHarnessUpdateFixture(adapter, localDataDir) {
-  const readyPath = (0, import_node_path49.join)(localDataDir, ".e2e-harness-update-ready");
+  const readyPath = (0, import_node_path51.join)(localDataDir, ".e2e-harness-update-ready");
   const listHarnesses = adapter.listHarnesses.bind(adapter);
   const getSessionRuntimeStatus = adapter.getSessionRuntimeStatus.bind(adapter);
   const restartSession = adapter.restartSession.bind(adapter);
@@ -154698,7 +163577,7 @@ function withMockHarnessUpdateFixture(adapter, localDataDir) {
   let restarted = false;
   adapter.listHarnesses = async (options) => {
     const result = await listHarnesses(options);
-    if (!(0, import_node_fs19.existsSync)(readyPath))
+    if (!(0, import_node_fs20.existsSync)(readyPath))
       return result;
     const mock = result.harnesses.find((harness) => harness.id === "mock-acp");
     if (!mock)
@@ -154762,14 +163641,14 @@ function createConfiguredLocalAcpAdapter(env2 = process.env, options = {}) {
     });
     return env2.CLASH_E2E_STUB_HARNESS_UPDATE === "1" ? withMockHarnessUpdateFixture(adapter, localDataDir) : adapter;
   }
-  const harnessDownloadDir = (0, import_node_path49.join)(localDataDir, "acp-bin");
+  const harnessDownloadDir = (0, import_node_path51.join)(localDataDir, "acp-bin");
   const acpBinDir = env2.CLASH_ACP_TEST_BIN_DIR || harnessDownloadDir;
   return createLocalAcpAdapter({
     harnessConfig: createLocalHarnessConfigStore(localDataDir),
     runPreferences: createLocalAcpRunPreferencesStore(localDataDir),
     capabilityCache: createLocalAcpCapabilityCacheStore(localDataDir),
     harnessDownloadDir,
-    probeCwd: (0, import_node_path49.join)(localDataDir, "acp-probe"),
+    probeCwd: (0, import_node_path51.join)(localDataDir, "acp-probe"),
     spawnEnv: {
       ...createLocalAgentToolEnv({
         dataDir: localDataDir,
@@ -154780,16 +163659,16 @@ function createConfiguredLocalAcpAdapter(env2 = process.env, options = {}) {
     }
   });
 }
-async function loadLocalProviderAccounts(dataDir2, userId = "local-user") {
-  const store = createLocalProviderStore(dataDir2);
+async function loadLocalProviderAccounts(dataDir3, userId = "local-user") {
+  const store = createLocalProviderStore(dataDir3);
   const [providerAccounts, providerOAuth] = await Promise.all([
     store.loadProviderAccounts(),
     store.loadProviderOAuth()
   ]);
   return providerAccountsForRuntime(providerAccounts, userId, providerOAuth);
 }
-async function loadLocalModelCards(dataDir2, userId = "local-user", pluginCards = [], pluginModelBindings = [], consumer) {
-  const store = createLocalProviderStore(dataDir2);
+async function loadLocalModelCards(dataDir3, userId = "local-user", pluginCards = [], pluginModelBindings = [], consumer) {
+  const store = createLocalProviderStore(dataDir3);
   const [providerAccounts, providerOAuth, modelCardConfigs] = await Promise.all([
     store.loadProviderAccounts(),
     store.loadProviderOAuth(),
@@ -154829,7 +163708,7 @@ function createLocalPluginBrokerServices(options) {
     }
   });
   const executorAssets = createLocalExecutorAssetCapabilityIssuer();
-  const documentReplicaStore = new FileReplicaStore((0, import_node_path49.join)(options.dataDir, "projects"));
+  const documentReplicaStore = new FileReplicaStore((0, import_node_path51.join)(options.dataDir, "projects"));
   const inspectProjectDocument = (projectId, read) => options.inspectProjectDocument ? options.inspectProjectDocument(projectId, read) : options.projectAssetReplica ? options.projectAssetReplica.inspect(projectId, read) : documentReplicaStore.recover(projectId).then(read);
   const openProjectAssetProjection = (projectId, projectAssetId2) => inspectProjectDocument(projectId, (doc) => projectAssets.openProjectionFromDoc(doc, projectId, projectAssetId2));
   const transcribeSpeech = options.audioConfig ? createLocalSpeechTranscriptionService({
@@ -154930,14 +163809,14 @@ function createLocalPluginBrokerServices(options) {
         return {
           kind: staged.kind,
           ...staged.mediaType ? { mediaType: staged.mediaType } : {},
-          bytes: new Uint8Array(await (0, import_promises46.readFile)(staged.projection.path))
+          bytes: new Uint8Array(await (0, import_promises47.readFile)(staged.projection.path))
         };
       }
       const projection = await openProjectAssetProjection(projectId, assetId);
       return {
         kind: projection.resource.kind,
         ...projection.resource.contentType ? { mediaType: projection.resource.contentType } : {},
-        bytes: new Uint8Array(await (0, import_promises46.readFile)(projection.path))
+        bytes: new Uint8Array(await (0, import_promises47.readFile)(projection.path))
       };
     },
     readDocument: async ({ documentAssetId, revisionId, projectId }) => inspectProjectDocument(projectId, async (doc) => {
@@ -155008,7 +163887,7 @@ function createLocalPluginBrokerServices(options) {
      * plugin makes the same two calls either way.
      */
     openUploadSlot: async ({ pluginId, pluginVersion, projectId, invocationId, taskId, slot, kind, byteLength, mediaType, accountId, url: url2 }) => {
-      const token = (0, import_node_crypto42.randomUUID)();
+      const token = (0, import_node_crypto44.randomUUID)();
       const assetId = `upload-${token}`;
       if (url2) {
         const fetched = await fetchIntoSlot(url2, {
@@ -155054,7 +163933,7 @@ function createLocalPluginBrokerServices(options) {
     },
     writeAsset: writeAssetBytes,
     audit: (record3) => metadataStore.appendPluginBrokerAudit({
-      id: (0, import_node_crypto42.randomUUID)(),
+      id: (0, import_node_crypto44.randomUUID)(),
       ...record3
     })
   });
@@ -155076,17 +163955,31 @@ function startLocalApiServer(options) {
     } : {}
   }));
   const clashHome = clashHomeForLocalDataDir(options.dataDir);
-  const actionsRoot = (0, import_node_path49.join)(clashHome, "actions");
+  const actionsRoot = (0, import_node_path51.join)(clashHome, "actions");
   const discoveryEnabled = options.discovery?.enabled !== false;
-  const pendingDiscoveryHostId = discoveryEnabled ? (0, import_node_crypto42.randomUUID)() : void 0;
+  const pendingDiscoveryHostId = discoveryEnabled ? (0, import_node_crypto44.randomUUID)() : void 0;
   const discoveryProfile = resolveClashProfile(process.env);
+  const sourceWatchLifecyclePid = process.env.CLASH_DAEMON_SOURCE_WATCH === "1" ? process.ppid : void 0;
   const codexImagegenMarketplace = createCodexImagegenMarketplace({
+    actionsRoot
+  });
+  const officialPluginsMarketplace = createOfficialPluginsMarketplace({
     actionsRoot
   });
   const npxSkillsMarketplace = createNpxSkillsMarketplace({
     registry: registry_default
   });
-  const projectAssetFileReplica = new FileReplicaStore((0, import_node_path49.join)(options.dataDir, "projects"));
+  const marketplaceSkills = [...npxSkillsMarketplace.skills];
+  const marketplacePlugins = [
+    ...codexImagegenMarketplace.plugins,
+    ...officialPluginsMarketplace.plugins
+  ];
+  const codexImagegenPluginId = codexImagegenMarketplace.plugins[0].id;
+  const marketplaceFeed = selectMarketplaceFeed({
+    plugins: marketplacePlugins,
+    skills: marketplaceSkills
+  });
+  const projectAssetFileReplica = new FileReplicaStore((0, import_node_path51.join)(options.dataDir, "projects"));
   let roomHub;
   const projectAssetReplica = {
     async inspect(projectId, read) {
@@ -155172,6 +164065,9 @@ function startLocalApiServer(options) {
     },
     async listGenerators() {
       return directPluginHost ? directPluginHost.listGenerators() : pluginHostClient.listGenerators();
+    },
+    async listViews() {
+      return directPluginHost ? directPluginHost.listViews() : pluginHostClient.listViews();
     },
     async resolveGeneratorDefinition(pluginId, definitionId) {
       return directPluginHost ? directPluginHost.resolveGeneratorDefinition(pluginId, definitionId) : pluginHostClient.resolveGeneratorDefinition(pluginId, definitionId);
@@ -155265,6 +164161,10 @@ function startLocalApiServer(options) {
     await ensurePluginRuntime();
     return pluginExecutionClient.listGenerators();
   };
+  const listPluginViews = async () => {
+    await ensurePluginRuntime();
+    return pluginExecutionClient.listViews();
+  };
   const resolvePluginGeneratorDefinition = async (pluginId, definitionId) => {
     await ensurePluginRuntime();
     return pluginExecutionClient.resolveGeneratorDefinition(pluginId, definitionId);
@@ -155284,7 +164184,7 @@ function startLocalApiServer(options) {
     }
     return void 0;
   };
-  const discoveryRunDir = options.discovery?.runDir ?? (0, import_node_path49.join)(clashHome, "run");
+  const discoveryRunDir = options.discovery?.runDir ?? (0, import_node_path51.join)(clashHome, "run");
   const localAcp = options.localAcp ?? createConfiguredLocalAcpAdapter(process.env, {
     apiBaseUrl: `http://127.0.0.1:${options.port}`,
     dataDir: options.dataDir
@@ -155327,6 +164227,11 @@ function startLocalApiServer(options) {
     clashRoot: clashHome,
     ...inspectAssetResource ? { inspectResource: inspectAssetResource } : {}
   });
+  const assetRepresentations = createLocalAssetRepresentationService({
+    dataDir: options.dataDir,
+    clashRoot: clashHome,
+    assetInspection
+  });
   const externalAigcOptions = {
     fal: falMock2,
     origin: `http://127.0.0.1:${options.port}`,
@@ -155341,7 +164246,7 @@ function startLocalApiServer(options) {
       if (!staged)
         return void 0;
       return {
-        bytes: new Uint8Array(await (0, import_promises46.readFile)(staged.projection.path)),
+        bytes: new Uint8Array(await (0, import_promises47.readFile)(staged.projection.path)),
         kind: staged.kind,
         ...staged.mediaType ? { contentType: staged.mediaType } : {}
       };
@@ -155406,7 +164311,7 @@ function startLocalApiServer(options) {
     acceptPluginUpload,
     hostIdentity: pendingDiscoveryHostId ? {
       hostId: pendingDiscoveryHostId,
-      pid: process.pid,
+      pid: sourceWatchLifecyclePid ?? process.pid,
       profile: discoveryProfile,
       protocolVersion: LOCAL_HOST_PROTOCOL_VERSION,
       ...process.env.CLASH_DAEMON_RUNTIME_FINGERPRINT ? {
@@ -155454,6 +164359,7 @@ function startLocalApiServer(options) {
     },
     providerPluginExecutor,
     assetInspection,
+    assetRepresentations,
     ...options.providerGenerationDeadlineMs === void 0 ? {} : {
       providerGenerationDeadlineMs: options.providerGenerationDeadlineMs
     },
@@ -155480,14 +164386,15 @@ function startLocalApiServer(options) {
         return roomHub.installImportedProject(projectId, reservationId, snapshot, commitReceiverAuthority);
       }
     },
-    marketplaceActions: [...codexImagegenMarketplace.actions],
     listInstalledMarketplaceActions: () => codexImagegenMarketplace.listInstalled(),
-    installMarketplaceAction: (packageId) => codexImagegenMarketplace.install(packageId),
-    uninstallMarketplaceAction: (actionId) => codexImagegenMarketplace.uninstall(actionId),
-    marketplaceSkills: [...npxSkillsMarketplace.skills],
+    marketplaceSkills,
+    marketplaceFeed,
     listInstalledMarketplaceSkills: () => npxSkillsMarketplace.listInstalled(),
     installMarketplaceSkill: (skillId) => npxSkillsMarketplace.install(skillId),
     uninstallMarketplaceSkill: (skillId) => npxSkillsMarketplace.uninstall(skillId),
+    marketplacePlugins,
+    installMarketplacePlugin: (packageId) => packageId === codexImagegenPluginId ? codexImagegenMarketplace.install(packageId) : officialPluginsMarketplace.install(packageId),
+    uninstallMarketplacePlugin: (pluginId) => pluginId === codexImagegenPluginId ? codexImagegenMarketplace.uninstall(pluginId) : officialPluginsMarketplace.uninstall(pluginId),
     pluginPackages: {
       list: () => listHostExecutablePluginPackages(actionsRoot),
       validate: (input) => validateHostExecutablePluginPackageContracts(input, actionsRoot),
@@ -155502,6 +164409,7 @@ function startLocalApiServer(options) {
     },
     listPluginCards,
     listPluginGenerators,
+    listPluginViews,
     resolveGeneratorDefinition: resolvePluginGeneratorDefinition,
     directorStageRenderer: options.directorStageRenderer,
     listPluginModelBindings,
@@ -155510,6 +164418,7 @@ function startLocalApiServer(options) {
   const workflowProcessor = createLocalWorkflowProcessor({
     dataDir: options.dataDir,
     assetInspection,
+    assetRepresentations,
     mediaBaseUrl: resolveMediaBaseUrl(() => boundPort),
     ...options.providerGenerationDeadlineMs === void 0 ? {} : {
       providerGenerationDeadlineMs: options.providerGenerationDeadlineMs
@@ -155569,7 +164478,7 @@ function startLocalApiServer(options) {
     void (async () => {
       await processProviderHttpInstrumentationReady;
       if (pendingDiscoveryHostId) {
-        publishedDiscoveryHostId = await writeServerDiscoveryRecord(info.port, options, discoveryRunDir, pendingDiscoveryHostId, discoveryProfile);
+        publishedDiscoveryHostId = await writeServerDiscoveryRecord(info.port, options, discoveryRunDir, pendingDiscoveryHostId, discoveryProfile, sourceWatchLifecyclePid);
       }
       startupRecovery = bootstrapLocalDurableRunRecovery({
         dataDir: options.dataDir,
@@ -155588,6 +164497,7 @@ function startLocalApiServer(options) {
     configWatcherClosed = true;
     stopConfigWatcher();
     await Promise.all([
+      assetRepresentations.close(),
       localAcp.disposeAll(),
       options.directorStageRenderer?.dispose(),
       Promise.resolve(pluginBroker.close?.()),
@@ -155598,7 +164508,7 @@ function startLocalApiServer(options) {
         await embeddedPluginHost?.stopAll().catch(() => void 0);
       })
     ]);
-  }, () => publishedDiscoveryHostId, discoveryRunDir);
+  }, () => sourceWatchLifecyclePid === void 0 ? publishedDiscoveryHostId : void 0, discoveryRunDir);
   server2.once("error", (error53) => {
     if (settled) {
       console.error("[local-api] server error", error53);
@@ -155615,15 +164525,16 @@ function startLocalApiServer(options) {
   attachLocalAcpSessions(server2, localAcp);
   return listening;
 }
-async function writeServerDiscoveryRecord(actualPort, options, runDir, hostId, profile) {
+async function writeServerDiscoveryRecord(actualPort, options, runDir, hostId, profile, lifecyclePid) {
   const record3 = createHostDiscoveryRecord({
     hostId,
     endpoint: `http://127.0.0.1:${actualPort}`,
-    agentCliPath: (0, import_node_path49.join)(options.dataDir, "agent-bin", "clash"),
+    agentCliPath: (0, import_node_path51.join)(options.dataDir, "agent-bin", "clash"),
     launchMode: options.discovery?.launchMode ?? "cli-once",
     startedBy: options.discovery?.startedBy ?? "cli",
     ownerClientId: options.discovery?.ownerClientId,
-    profile
+    profile,
+    pid: lifecyclePid
   });
   await writeHostDiscovery(record3, { runDir });
   return record3.hostId;
@@ -155657,10 +164568,10 @@ if (__clash_import_meta_url === directRunUrl && !process.env.CLASH_LOCAL_API_WRA
 }
 
 // src/development-browser-assets.ts
-var import_node_crypto43 = require("node:crypto");
-var import_promises47 = require("node:fs/promises");
+var import_node_crypto45 = require("node:crypto");
+var import_promises48 = require("node:fs/promises");
 var import_node_os14 = require("node:os");
-var import_node_path50 = require("node:path");
+var import_node_path52 = require("node:path");
 var DIRECTOR_SOURCE_PACKAGES = [
   "director-core",
   "director-ui",
@@ -155672,18 +164583,18 @@ var DIRECTOR_SOURCE_PACKAGES = [
   "shared-types"
 ];
 async function sourceFingerprint(paths2) {
-  const hash2 = (0, import_node_crypto43.createHash)("sha256");
+  const hash2 = (0, import_node_crypto45.createHash)("sha256");
   const visit = async (path) => {
-    const metadata = await (0, import_promises47.stat)(path);
+    const metadata = await (0, import_promises48.stat)(path);
     hash2.update(path);
     hash2.update(String(metadata.size));
     hash2.update(String(metadata.mtimeMs));
     if (!metadata.isDirectory()) return;
-    const entries = await (0, import_promises47.readdir)(path, { withFileTypes: true });
+    const entries = await (0, import_promises48.readdir)(path, { withFileTypes: true });
     entries.sort((left, right) => left.name.localeCompare(right.name));
     for (const entry of entries) {
       if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
-      await visit((0, import_node_path50.join)(path, entry.name));
+      await visit((0, import_node_path52.join)(path, entry.name));
     }
   };
   for (const path of paths2) await visit(path);
@@ -155691,21 +164602,21 @@ async function sourceFingerprint(paths2) {
 }
 function packageInputs(repoRoot, packageNames) {
   return packageNames.flatMap((packageName) => [
-    (0, import_node_path50.join)(repoRoot, "packages", packageName, "package.json"),
-    (0, import_node_path50.join)(repoRoot, "packages", packageName, "src")
+    (0, import_node_path52.join)(repoRoot, "packages", packageName, "package.json"),
+    (0, import_node_path52.join)(repoRoot, "packages", packageName, "src")
   ]);
 }
 function createDevelopmentBrowserAssets(options) {
-  const repoRoot = (0, import_node_path50.resolve)(options.repoRoot);
-  const cacheKey2 = (0, import_node_crypto43.createHash)("sha256").update(repoRoot).digest("hex").slice(0, 12);
-  const cacheRoot = (0, import_node_path50.resolve)(
-    options.cacheRoot ?? (0, import_node_path50.join)((0, import_node_os14.tmpdir)(), `clash-browser-assets-${cacheKey2}`)
+  const repoRoot = (0, import_node_path52.resolve)(options.repoRoot);
+  const cacheKey2 = (0, import_node_crypto45.createHash)("sha256").update(repoRoot).digest("hex").slice(0, 12);
+  const cacheRoot = (0, import_node_path52.resolve)(
+    options.cacheRoot ?? (0, import_node_path52.join)((0, import_node_os14.tmpdir)(), `clash-browser-assets-${cacheKey2}`)
   );
-  const directorBundleDir = (0, import_node_path50.join)(cacheRoot, "director-bundle");
-  const directorAssetsDir = (0, import_node_path50.join)(cacheRoot, "assets");
+  const directorBundleDir = (0, import_node_path52.join)(cacheRoot, "director-bundle");
+  const directorAssetsDir = (0, import_node_path52.join)(cacheRoot, "assets");
   const directorInputs = [
     ...packageInputs(repoRoot, DIRECTOR_SOURCE_PACKAGES),
-    (0, import_node_path50.join)(repoRoot, "packages", "director-ui", "assets")
+    (0, import_node_path52.join)(repoRoot, "packages", "director-ui", "assets")
   ];
   let directorFingerprint;
   let directorBuild;
@@ -155722,12 +164633,12 @@ function createDevelopmentBrowserAssets(options) {
         directorFingerprint ? "[clash] Director source changed; rebuilding the development bundle" : "[clash] Building the Director development bundle from source"
       );
       const { build: build2 } = await import("esbuild");
-      await (0, import_promises47.rm)(directorBundleDir, { recursive: true, force: true });
-      await (0, import_promises47.mkdir)(directorBundleDir, { recursive: true });
+      await (0, import_promises48.rm)(directorBundleDir, { recursive: true, force: true });
+      await (0, import_promises48.mkdir)(directorBundleDir, { recursive: true });
       await build2({
         absWorkingDir: repoRoot,
         entryPoints: [
-          (0, import_node_path50.join)(
+          (0, import_node_path52.join)(
             repoRoot,
             "packages",
             "director-ui",
@@ -155735,15 +164646,15 @@ function createDevelopmentBrowserAssets(options) {
             "headless-entry.tsx"
           )
         ],
-        outfile: (0, import_node_path50.join)(directorBundleDir, "index.js"),
+        outfile: (0, import_node_path52.join)(directorBundleDir, "index.js"),
         bundle: true,
         platform: "browser",
         format: "esm",
         target: "chrome120",
         sourcemap: "inline"
       });
-      await (0, import_promises47.writeFile)(
-        (0, import_node_path50.join)(directorBundleDir, "index.html"),
+      await (0, import_promises48.writeFile)(
+        (0, import_node_path52.join)(directorBundleDir, "index.html"),
         [
           "<!doctype html>",
           '<html><head><meta charset="utf-8"><style>html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;background:#171816}</style></head>',
@@ -155752,9 +164663,9 @@ function createDevelopmentBrowserAssets(options) {
         ].join("\n"),
         "utf8"
       );
-      await (0, import_promises47.rm)(directorAssetsDir, { recursive: true, force: true });
-      await (0, import_promises47.cp)(
-        (0, import_node_path50.join)(repoRoot, "packages", "director-ui", "assets"),
+      await (0, import_promises48.rm)(directorAssetsDir, { recursive: true, force: true });
+      await (0, import_promises48.cp)(
+        (0, import_node_path52.join)(repoRoot, "packages", "director-ui", "assets"),
         directorAssetsDir,
         { recursive: true }
       );
@@ -155776,16 +164687,34 @@ function createDevelopmentBrowserAssets(options) {
 // src/local-api-entry.ts
 var server;
 var stopping = false;
+var dataDir2 = defaultLocalApiDataDir(process.env);
+var logSink = createBoundedJsonlLogSink({
+  directory: (0, import_node_path53.join)(clashHomeForLocalDataDir(dataDir2), "logs", "local-api"),
+  filePrefix: "local-api",
+  maxBytes: 5 * 1024 * 1024,
+  maxFiles: 5
+});
+var observability = installProcessStdioCapture({
+  component: "local-api",
+  sink: logSink,
+  maxEventsPerWindow: 200,
+  windowMs: 1e4
+});
+observability.event("info", "process.started", { pid: process.pid });
 async function closeServer2(exitCode) {
   if (stopping) return;
   stopping = true;
+  observability.event("info", "server.stopping", { exitCode });
   if (!server) {
+    observability.close();
     process.exit(exitCode);
     return;
   }
   await new Promise((resolveClose) => {
     server.close(() => resolveClose());
   });
+  observability.event("info", "server.stopped", { exitCode });
+  observability.close();
   process.exit(exitCode);
 }
 process.once("SIGINT", () => {
@@ -155794,12 +164723,17 @@ process.once("SIGINT", () => {
 process.once("SIGTERM", () => {
   void closeServer2(0);
 });
+process.once("uncaughtExceptionMonitor", (error53, origin) => {
+  observability.event("error", "process.uncaught_exception", {
+    origin,
+    error: error53.stack ?? error53.message
+  });
+});
 async function main() {
   const startedBy = process.env.CLASH_DAEMON_STARTED_BY === "desktop" ? "desktop" : process.env.CLASH_DAEMON_STARTED_BY === "cli" ? "cli" : "plugin";
-  const dataDir2 = defaultLocalApiDataDir(process.env);
   const sourceRuntime = process.env.CLASH_SOURCE_RUNTIME === "1";
   const pluginDevelopment = sourceRuntime ? await prepareDevelopmentBundledPlugins({
-    actionsRoot: (0, import_node_path51.join)(clashHomeForLocalDataDir(dataDir2), "actions")
+    actionsRoot: (0, import_node_path53.join)(clashHomeForLocalDataDir(dataDir2), "actions")
   }) : void 0;
   if (pluginDevelopment && pluginDevelopment.rebuilt.length > 0) {
     process.stderr.write(
@@ -155812,7 +164746,7 @@ async function main() {
     repoRoot: (0, import_node_url7.fileURLToPath)(new URL("../../..", __clash_import_meta_url))
   }) : void 0;
   const directorBundle = configuredDirectorBundle || (sourceRuntime ? developmentAssets.directorBundleDir : (0, import_node_url7.fileURLToPath)(new URL("./director-bundle", __clash_import_meta_url)));
-  if ((configuredDirectorBundle || !sourceRuntime) && !(0, import_node_fs20.existsSync)(directorBundle)) {
+  if ((configuredDirectorBundle || !sourceRuntime) && !(0, import_node_fs21.existsSync)(directorBundle)) {
     throw new Error(`Director bundle is missing: ${directorBundle}`);
   }
   const directorStageRenderer = createHeadlessDirectorStageRenderer({
@@ -155826,7 +164760,7 @@ async function main() {
       });
     }
   });
-  const runDir = process.env.CLASH_HOST_RUN_DIR?.trim() || (0, import_node_path51.join)(clashHomeForLocalDataDir(dataDir2), "run");
+  const runDir = process.env.CLASH_HOST_RUN_DIR?.trim() || (0, import_node_path53.join)(clashHomeForLocalDataDir(dataDir2), "run");
   server = await startLocalApiServer({
     port: Number(process.env.PORT ?? 0),
     dataDir: dataDir2,
@@ -155838,11 +164772,19 @@ async function main() {
       startedBy
     }
   });
+  observability.event("info", "server.ready", {
+    pid: process.pid,
+    startedBy
+  });
 }
 void main().catch((error53) => {
+  observability.event("error", "process.failed", {
+    error: error53 instanceof Error ? error53.stack ?? error53.message : String(error53)
+  });
   console.error(
     error53 instanceof Error ? error53.stack ?? error53.message : String(error53)
   );
+  observability.close();
   process.exit(1);
 });
 /*! Bundled license information:
@@ -155873,4 +164815,82 @@ xmlchars/xmlns/1.0/ed3.js:
    * @license MIT
    * @copyright Louis-Dominique Dubeau
    *)
+
+sharp/lib/is.js:
+  (*!
+    Copyright 2013 Lovell Fuller and others.
+    SPDX-License-Identifier: Apache-2.0
+  *)
+
+sharp/lib/libvips.js:
+  (*!
+    Copyright 2013 Lovell Fuller and others.
+    SPDX-License-Identifier: Apache-2.0
+  *)
+
+sharp/lib/sharp.js:
+  (*!
+    Copyright 2013 Lovell Fuller and others.
+    SPDX-License-Identifier: Apache-2.0
+  *)
+
+sharp/lib/constructor.js:
+  (*!
+    Copyright 2013 Lovell Fuller and others.
+    SPDX-License-Identifier: Apache-2.0
+  *)
+
+sharp/lib/input.js:
+  (*!
+    Copyright 2013 Lovell Fuller and others.
+    SPDX-License-Identifier: Apache-2.0
+  *)
+
+sharp/lib/resize.js:
+  (*!
+    Copyright 2013 Lovell Fuller and others.
+    SPDX-License-Identifier: Apache-2.0
+  *)
+
+sharp/lib/composite.js:
+  (*!
+    Copyright 2013 Lovell Fuller and others.
+    SPDX-License-Identifier: Apache-2.0
+  *)
+
+sharp/lib/operation.js:
+  (*!
+    Copyright 2013 Lovell Fuller and others.
+    SPDX-License-Identifier: Apache-2.0
+  *)
+
+sharp/lib/colour.js:
+  (*!
+    Copyright 2013 Lovell Fuller and others.
+    SPDX-License-Identifier: Apache-2.0
+  *)
+
+sharp/lib/channel.js:
+  (*!
+    Copyright 2013 Lovell Fuller and others.
+    SPDX-License-Identifier: Apache-2.0
+  *)
+
+sharp/lib/output.js:
+  (*!
+    Copyright 2013 Lovell Fuller and others.
+    SPDX-License-Identifier: Apache-2.0
+  *)
+
+sharp/lib/utility.js:
+  (*!
+    Copyright 2013 Lovell Fuller and others.
+    SPDX-License-Identifier: Apache-2.0
+  *)
+
+sharp/lib/index.js:
+  (*!
+    Copyright 2013 Lovell Fuller and others.
+    SPDX-License-Identifier: Apache-2.0
+  *)
 */

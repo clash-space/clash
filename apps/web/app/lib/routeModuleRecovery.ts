@@ -1,22 +1,23 @@
 export type RouteModuleRecoveryResult =
-  | "reloaded"
-  | "already-retried"
-  | "unavailable"
-  | "ignored";
+  "reloaded" | "already-retried" | "unavailable" | "ignored";
 
 type RecoveryStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 const recoveryStorageKey = "clash:route-module-recovery";
 const dynamicImportFailurePattern =
   /Failed to fetch dynamically imported module:\s+(https?:\/\/\S+)/i;
+const invalidExportFailurePattern =
+  /The requested module\s+['"]([^'"]+)['"]\s+does not provide an export named/i;
 
 function failedModuleUrl(error: unknown, origin: string): URL | null {
   if (!(error instanceof Error)) return null;
-  const match = dynamicImportFailurePattern.exec(error.message);
-  if (!match?.[1]) return null;
+  const candidate =
+    dynamicImportFailurePattern.exec(error.message)?.[1] ??
+    invalidExportFailurePattern.exec(error.message)?.[1];
+  if (!candidate) return null;
 
   try {
-    const url = new URL(match[1]);
+    const url = new URL(candidate, `${origin}/`);
     return url.origin === origin ? url : null;
   } catch {
     return null;

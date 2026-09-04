@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { join, normalize } from "node:path";
+import { join, normalize, resolve } from "node:path";
 
 import { app } from "electron";
 import {
@@ -27,7 +27,9 @@ import {
 } from "../paths";
 import {
   resolveDesktopHostStartupTimeoutMs,
+  resolveDesktopRendererUrl,
   resolveDesktopRuntime,
+  resolveDesktopSourceHostDaemonEnv,
   resolveDesktopSourceHostNodeArgs,
   shouldWatchDesktopSourceHost,
   type DesktopRuntime,
@@ -35,12 +37,15 @@ import {
 import type { DesktopControllerLogger } from "./types";
 
 const require = createRequire(import.meta.url);
+declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 
 export function createDesktopRuntimeController({
   moduleDir,
+  hostDiagnosticLogPath,
   log,
 }: {
   moduleDir: string;
+  hostDiagnosticLogPath: string;
   log: DesktopControllerLogger;
 }) {
   let runtime: DesktopRuntime | null = null;
@@ -113,16 +118,26 @@ export function createDesktopRuntimeController({
       );
       const runtimeFingerprint =
         resolveLocalDaemonRuntimeFingerprint(hostEntryPath);
+      const hostStartupTimeoutMs = resolveDesktopHostStartupTimeoutMs(
+        process.env.CLASH_DESKTOP_HOST_STARTUP_TIMEOUT_MS,
+      );
       const daemon = createLocalDaemonBootstrap({
         runDir,
         profile: resolveClashProfile(process.env),
         runtimeFingerprint,
-        startupTimeoutMs: resolveDesktopHostStartupTimeoutMs(
-          process.env.CLASH_DESKTOP_HOST_STARTUP_TIMEOUT_MS,
-        ),
-        launch: async () =>
-          launchDetachedLocalDaemon({
+        startupTimeoutMs: hostStartupTimeoutMs,
+        // Source-watch restarts briefly leave the stable supervisor alive while
+        // its HTTP child is replaced. Reuse that writer once it is healthy.
+        unhealthyRecoveryTimeoutMs: hostStartupTimeoutMs ?? 15_000,
+        launch: async () => {
+          const sourceHostDaemonEnv = await resolveDesktopSourceHostDaemonEnv({
+            sourceHost,
+            watchSourceHost,
+            envPort: process.env.CLASH_LOCAL_API_PORT,
+          });
+          return launchDetachedLocalDaemon({
             entryPath: hostEntryPath,
+            diagnosticLogPath: hostDiagnosticLogPath,
             runtimeFingerprint,
             nodeArgs: sourceHost
               ? resolveDesktopSourceHostNodeArgs({
@@ -130,6 +145,10 @@ export function createDesktopRuntimeController({
                   tsxLoaderPath: require.resolve("tsx"),
                   tsxCliPath: require.resolve("tsx/cli"),
                   tsconfigPath: resolveClashDevTsconfigPath(moduleDir),
+                  pluginsRoot: resolve(
+                    resolveClashBuiltinPluginRoot(moduleDir),
+                    "..",
+                  ),
                 })
               : undefined,
             cliEntryPath: resolveClashCliEntryPath({
@@ -144,6 +163,7 @@ export function createDesktopRuntimeController({
             nodeVersion: process.versions.node,
             electronRunAsNode: true,
             daemonEnv: {
+              ...sourceHostDaemonEnv,
               CLASH_DAEMON_STARTED_BY: "desktop",
               CLASH_NODE_EXEC_PATH: process.execPath,
               CLASH_AGENT_BUNDLE_ROOT: resolveAgentBundleRoot({
@@ -163,7 +183,8 @@ export function createDesktopRuntimeController({
                   }
                 : {}),
             },
-          }),
+          });
+        },
       });
       try {
         const host = await daemon.ensureDaemon();
@@ -183,7 +204,12 @@ export function createDesktopRuntimeController({
       apiPort,
       apiBaseUrl,
       wsBaseUrl: process.env.CLASH_WS_BASE_URL,
-      webUrl: process.env.CLASH_WEB_URL,
+      webUrl: resolveDesktopRendererUrl({
+        isPackaged: app.isPackaged,
+        useBuiltRenderer: process.argv.includes("--desktop-static-renderer"),
+        forgeDevServerUrl: MAIN_WINDOW_VITE_DEV_SERVER_URL,
+        explicitWebUrl: process.env.CLASH_WEB_URL,
+      }),
     });
     process.env.CLASH_DESKTOP_RUNTIME = JSON.stringify(runtime);
     return runtime;

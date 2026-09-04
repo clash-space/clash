@@ -171,7 +171,7 @@ export interface DocumentOutputRequest {
 
 export interface CodexImageGenerateRequest {
   prompt: string;
-  aspectRatio: "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "21:9";
+  aspectRatio: string;
   slot: string;
   references?: ExecutablePluginAssetHandle[];
 }

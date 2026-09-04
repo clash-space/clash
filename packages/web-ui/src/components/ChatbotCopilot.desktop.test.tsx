@@ -33,6 +33,7 @@ import {
 const mocks = vi.hoisted(() => ({
   useClashRuntime: vi.fn(),
   useAgentCopilot: vi.fn(),
+  useIsBelowLg: vi.fn(() => false),
 }));
 
 vi.mock("@clash/web-ui/hooks/useClashRuntime", () => ({
@@ -75,6 +76,9 @@ vi.mock("react-i18next", () => ({
       if (key === "copilot.history.archive") return "Archive session";
       if (key === "copilot.history.restore") return "Restore session";
       if (key === "copilot.history.fork") return "Fork session";
+      if (key === "copilot.history.rename") return "Rename session";
+      if (key === "copilot.history.renameLabel")
+        return `Rename ${values?.title ?? "session"}`;
       if (key === "copilot.history.deletePermanently")
         return "Delete permanently";
       if (key === "copilot.history.confirmDelete")
@@ -82,6 +86,10 @@ vi.mock("react-i18next", () => ({
       if (key === "copilot.history.deleteConfirm")
         return "This cannot be undone.";
       if (key === "copilot.history.cancel") return "Cancel";
+      if (key === "copilot.turn.copyAnswer") return "Copy answer";
+      if (key === "copilot.turn.answerCopied") return "Copied";
+      if (key === "copilot.turn.continueInNewChat")
+        return "Continue in new chat";
       if (key === "copilot.history.actions")
         return `Session actions for ${values?.title ?? "session"}`;
       if (key === "copilot.history.close") return "Close session history";
@@ -109,6 +117,7 @@ vi.mock("react-i18next", () => ({
         return "Install or reconnect a persistent local runtime";
       if (key === "copilot.status.connecting")
         return "Connecting to runtime...";
+      if (key === "copilot.status.interrupted") return "Interrupted";
       if (key === "copilot.status.streaming") return "Streaming";
       if (key === "copilot.status.thinking") return "Thinking";
       if (key === "copilot.status.reconnecting")
@@ -188,7 +197,7 @@ vi.mock("framer-motion", async () => {
 });
 
 vi.mock("@clash/web-ui/lib/hooks/useMediaQuery", () => ({
-  useIsBelowLg: () => false,
+  useIsBelowLg: mocks.useIsBelowLg,
 }));
 
 vi.mock("./copilot/ChatInput", () => ({
@@ -705,8 +714,98 @@ describe("ChatbotCopilot desktop local mode", () => {
     cleanup();
     vi.clearAllMocks();
     vi.unstubAllGlobals();
+    mocks.useIsBelowLg.mockReturnValue(false);
     globalThis.__CLASH_RUNTIME_CONFIG__ = undefined;
+    window.localStorage.clear();
     window.sessionStorage.clear();
+  });
+
+  it("restores the matching composer draft when runtime sessions switch", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    Element.prototype.scrollIntoView = vi.fn();
+    const session = (id: string) =>
+      runtimeState({
+        selectedRuntimeId: "desktop-local",
+        selectedAgentId: "codex-acp",
+        sessionId: id,
+        currentSession: {
+          id,
+          threadId: id,
+          type: "runtime",
+          projectId: "project-one",
+          runtimeId: "desktop-local",
+          agentId: "codex-acp",
+          status: "active",
+        },
+        status: "connected",
+        ready: true,
+      });
+    let currentRuntime = session("session-a");
+    mocks.useClashRuntime.mockImplementation(() => currentRuntime);
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+    const copilot = (threadId: string) => (
+      <ChatbotCopilot
+        projectId="project-one"
+        threadId={threadId}
+        initialMessages={[]}
+        width={420}
+        onWidthChange={() => undefined}
+        isCollapsed={false}
+        onCollapseChange={() => undefined}
+      />
+    );
+
+    const view = render(copilot("session-a"));
+    fireEvent.change(screen.getByRole("textbox", { name: "chat draft" }), {
+      target: { value: "draft for A" },
+    });
+
+    currentRuntime = session("session-b");
+    view.rerender(copilot("session-b"));
+    const draft = screen.getByRole("textbox", { name: "chat draft" });
+    expect(draft).toHaveValue("");
+    fireEvent.change(draft, { target: { value: "draft for B" } });
+
+    currentRuntime = session("session-a");
+    view.rerender(copilot("session-a"));
+    expect(screen.getByRole("textbox", { name: "chat draft" })).toHaveValue(
+      "draft for A",
+    );
+  });
+
+  it("restores a composer draft after the chat component remounts", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    Element.prototype.scrollIntoView = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(
+      runtimeState({
+        selectedRuntimeId: "desktop-local",
+        selectedAgentId: "codex-acp",
+        sessionId: "session-reopened",
+        currentSession: {
+          id: "session-reopened",
+          threadId: "session-reopened",
+          type: "runtime",
+          projectId: "project-one",
+          runtimeId: "desktop-local",
+          agentId: "codex-acp",
+          status: "active",
+        },
+        status: "connected",
+        ready: true,
+      }),
+    );
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    const first = renderDesktopCopilot({ threadId: "session-reopened" });
+    fireEvent.change(screen.getByRole("textbox", { name: "chat draft" }), {
+      target: { value: "survives a reload" },
+    });
+    first.unmount();
+
+    renderDesktopCopilot({ threadId: "session-reopened" });
+    expect(screen.getByRole("textbox", { name: "chat draft" })).toHaveValue(
+      "survives a reload",
+    );
   });
 
   it("offers an explicit crosshair toggle for following agent actions", () => {
@@ -2209,6 +2308,43 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(headerTitle?.textContent).toBe("Storyboard beat pass");
   });
 
+  it("keeps a long prompt-derived session title compact without hiding its full label", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return { observe: vi.fn(), disconnect: vi.fn() };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(
+      runtimeState({
+        selectedRuntimeId: "desktop-local",
+        selectedAgentId: "codex-acp",
+        status: "connected",
+        ready: true,
+      }),
+    );
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+    const storedTitle =
+      "请认真思考一下，然后只回答 PRECISE\\_FIRST\\_CHAR\\_31";
+    const visibleTitle = "请认真思考一下，然后只回答 PRECISE_FIRST_CHAR_31";
+
+    const { container } = renderDesktopCopilot({
+      sessionHistory: [
+        { threadId: "thread-one", title: storedTitle, type: "cloud" },
+      ],
+    });
+
+    const headerTitle = container.querySelector(
+      ".clash-copilot-panel-header [data-copilot-session-title]",
+    );
+    expect(headerTitle).toHaveTextContent(
+      "请认真思考一下，然后只回答 PRECISE_FIRST…",
+    );
+    expect(headerTitle).toHaveAttribute("title", visibleTitle);
+  });
+
   it("labels an empty desktop draft as a new chat", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
@@ -2286,7 +2422,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(onArchiveSession).toHaveBeenCalledWith("runtime-session-one");
   });
 
-  it("renders session history through the shared sidebar", () => {
+  it("renders session history through the shared popover panel", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",
@@ -2323,20 +2459,116 @@ describe("ChatbotCopilot desktop local mode", () => {
 
     openSessionHistoryMenu();
 
-    const historySidebar = screen.getByRole("complementary", {
+    const historyPopover = screen.getByRole("dialog", {
       name: "Session history",
     });
-    expect(historySidebar.getAttribute("data-session-history-sidebar")).toBe(
-      "",
+    expect(historyPopover).toHaveAttribute("data-slot", "popover-content");
+    const historyPanel = historyPopover.querySelector(
+      '[data-session-history-popover-panel=""]',
     );
-    expect(historySidebar).toHaveClass("app-rail-surface", "w-60");
+    expect(historyPanel).toBeTruthy();
     expect(
-      historySidebar.querySelector('[data-session-history-row="true"]'),
+      historyPopover.querySelector('[data-session-history-row="true"]'),
     ).toHaveClass("h-6", "rounded-md", "text-xs");
     expect(screen.getByRole("button", { name: /^Run pwd / })).toBeTruthy();
+    expect(within(historyPopover).queryByText("Session history")).toBeNull();
   });
 
-  it("opens session history as a default-hidden sidebar that expands beside the chat", () => {
+  it("loads the next session page when the history list reaches its end", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return { observe: vi.fn(), disconnect: vi.fn() };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const onLoadMoreSessionHistory = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(
+      runtimeState({
+        selectedRuntimeId: "desktop-local",
+        selectedAgentId: "codex-acp",
+        status: "connected",
+        ready: true,
+      }),
+    );
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot({
+      sessionHistory: [
+        { threadId: "session-two", title: "Second", type: "runtime" },
+        { threadId: "session-one", title: "First", type: "runtime" },
+      ],
+      sessionHistoryHasMore: true,
+      onLoadMoreSessionHistory,
+    } as Partial<ComponentProps<typeof ChatbotCopilot>>);
+
+    openSessionHistoryMenu();
+    const historyPopover = screen.getByRole("dialog", {
+      name: "Session history",
+    });
+    const scrollRegion = historyPopover.querySelector<HTMLElement>(
+      "[data-session-history-scroll]",
+    );
+    expect(scrollRegion).toBeTruthy();
+    Object.defineProperties(scrollRegion!, {
+      scrollHeight: { configurable: true, value: 480 },
+      clientHeight: { configurable: true, value: 440 },
+      scrollTop: { configurable: true, value: 40 },
+    });
+    fireEvent.scroll(scrollRegion!);
+
+    expect(onLoadMoreSessionHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it("renames a session from its action menu", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return { observe: vi.fn(), disconnect: vi.fn() };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const onRenameSession = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(
+      runtimeState({
+        selectedRuntimeId: "desktop-local",
+        selectedAgentId: "codex-acp",
+        status: "connected",
+        ready: true,
+      }),
+    );
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot({
+      sessionHistory: [
+        {
+          threadId: "runtime-session-one",
+          title: "Run pwd",
+          type: "runtime",
+        },
+      ],
+      onRenameSession,
+    } as Partial<ComponentProps<typeof ChatbotCopilot>>);
+
+    openSessionHistoryMenu();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Session actions for Run pwd" }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename session" }));
+
+    const renameInput = screen.getByRole("textbox", { name: "Rename Run pwd" });
+    fireEvent.change(renameInput, { target: { value: "Inspect canvas" } });
+    fireEvent.keyDown(renameInput, { key: "Enter" });
+
+    expect(onRenameSession).toHaveBeenCalledWith(
+      "runtime-session-one",
+      "Inspect canvas",
+    );
+  });
+
+  it("opens session history below its trigger without resizing the chat", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",
@@ -2369,24 +2601,30 @@ describe("ChatbotCopilot desktop local mode", () => {
     });
 
     expect(
-      screen.queryByRole("complementary", { name: "Session history" }),
+      screen.queryByRole("dialog", { name: "Session history" }),
     ).toBeNull();
     const panel = container.querySelector<HTMLElement>("#clash-copilot-panel");
     expect(panel?.style.width).toBe("420px");
 
-    fireEvent.click(screen.getByRole("button", { name: "Session history" }));
+    const historyTrigger = screen.getByRole("button", {
+      name: "Session history",
+    });
+    expect(historyTrigger).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(historyTrigger);
 
+    const historyPopover = screen.getByRole("dialog", {
+      name: "Session history",
+    });
+    expect(historyPopover).toHaveAttribute("data-side", "bottom");
     expect(
-      screen.getByRole("complementary", { name: "Session history" }),
-    ).toBeTruthy();
+      screen.getByRole("button", { name: "Session history" }),
+    ).toHaveAttribute("aria-expanded", "true");
     expect(screen.queryByRole("tab")).toBeNull();
     expect(screen.getByRole("button", { name: /^Run pwd / })).toBeTruthy();
-    const expandedPanel = container.querySelector<HTMLElement>(
+    const unchangedPanel = container.querySelector<HTMLElement>(
       "#clash-copilot-panel",
     );
-    expect(
-      Number.parseInt(expandedPanel?.style.width || "0", 10),
-    ).toBeGreaterThan(420);
+    expect(unchangedPanel?.style.width).toBe("420px");
     expect(
       container.querySelector('[data-chat-column="composer"]'),
     ).toBeTruthy();
@@ -2535,10 +2773,10 @@ describe("ChatbotCopilot desktop local mode", () => {
 
     openSessionHistoryMenu();
 
-    const historySidebar = screen.getByRole("complementary", {
+    const historyPopover = screen.getByRole("dialog", {
       name: "Session history",
     });
-    expect(within(historySidebar).getByText("Session history")).toBeTruthy();
+    expect(within(historyPopover).queryByText("Session history")).toBeNull();
     expect(screen.queryByText("No history yet")).toBeNull();
     expect(screen.getAllByText("Run pwd").length).toBeGreaterThan(1);
     expect(screen.queryByRole("button", { name: "Delete session" })).toBeNull();
@@ -2614,6 +2852,59 @@ describe("ChatbotCopilot desktop local mode", () => {
     ).toContain("Cursor");
   });
 
+  it("restores the route-selected runtime session after the renderer remounts", async () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const attachSession = vi.fn().mockResolvedValue(undefined);
+    mocks.useClashRuntime.mockReturnValue(
+      runtimeState({
+        selectedRuntimeId: "desktop-local",
+        selectedAgentId: "codex-acp",
+        status: "idle",
+        ready: false,
+        attachSession,
+      }),
+    );
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot({
+      threadId: "local-session-restored-from-route",
+      sessionHistory: [
+        {
+          threadId: "local-session-restored-from-route",
+          type: "runtime",
+          title: "Inspect the canvas",
+          projectId: "project-one",
+          runtimeId: "desktop-local",
+          agentId: "codex-acp",
+          status: "active",
+        },
+      ],
+    });
+
+    await waitFor(() =>
+      expect(attachSession).toHaveBeenCalledWith({
+        id: "local-session-restored-from-route",
+        threadId: "local-session-restored-from-route",
+        type: "runtime",
+        title: "Inspect the canvas",
+        projectId: "project-one",
+        runtimeId: "desktop-local",
+        agentId: "codex-acp",
+        status: "active",
+      }),
+    );
+  });
+
   it("opens a fork draft with the source session's harness and permission mode", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
@@ -2661,6 +2952,66 @@ describe("ChatbotCopilot desktop local mode", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Fork session" }));
 
     expect(attachSession).not.toHaveBeenCalled();
+    expect(startDraft).toHaveBeenCalledWith("desktop-local", undefined, {
+      projectId: "project-one",
+      agentId: "codex-acp",
+      permissionModeId: "codex:full-access",
+      forkFromAcpSessionId: "acp-source-session",
+    });
+  });
+
+  it("forks the current ACP session from the latest completed turn footer", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return { observe: vi.fn(), disconnect: vi.fn() };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const startDraft = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(
+      runtimeState({
+        selectedRuntimeId: "desktop-local",
+        selectedAgentId: "codex-acp",
+        sessionId: "source-session",
+        currentSession: {
+          id: "source-session",
+          threadId: "source-session",
+          type: "runtime",
+          title: "Source session",
+          projectId: "project-one",
+          runtimeId: "desktop-local",
+          agentId: "codex-acp",
+          permissionMode: "codex:full-access",
+          acpSessionId: "acp-source-session",
+          supportsSessionFork: true,
+          status: "active",
+        },
+        status: "connected",
+        ready: true,
+        startDraft,
+        messages: [
+          {
+            id: "user-current-turn",
+            role: "user",
+            parts: [{ type: "text", text: "Question" }],
+          },
+          {
+            id: "assistant-current-turn",
+            role: "assistant",
+            parts: [{ type: "text", text: "Answer" }],
+          },
+        ],
+      }),
+    );
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Continue in new chat" }),
+    );
+
     expect(startDraft).toHaveBeenCalledWith("desktop-local", undefined, {
       projectId: "project-one",
       agentId: "codex-acp",
@@ -2780,7 +3131,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(screen.queryByText("Inspect the panel")).toBeNull();
   });
 
-  it("keeps Backchat turns avatar-free without replacing the Clash launcher", () => {
+  it("keeps the animated Clash persona inside a running Backchat turn without replacing the launcher", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",
@@ -2827,9 +3178,51 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(chatSurface).toBeTruthy();
     expect(turnColumn).toHaveClass("chat-turn-frame", "max-w-3xl");
     expect(composerColumn).toHaveClass("chat-composer-frame", "max-w-3xl");
+    const processAvatar = chatSurface?.querySelector(
+      "[data-session-process-state='running'] [data-session-process-avatar='true']",
+    );
+    expect(processAvatar).toBeTruthy();
     expect(
-      chatSurface?.querySelector("[data-session-process-avatar='true']"),
-    ).toBeNull();
+      processAvatar?.querySelector('[data-agent-motion-state="working"]'),
+    ).toBeTruthy();
+  });
+
+  it("uses 44px header touch targets when the copilot becomes a mobile sheet", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    mocks.useIsBelowLg.mockReturnValue(true);
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return { observe: vi.fn(), disconnect: vi.fn() };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(
+      runtimeState({
+        selectedRuntimeId: "desktop-local",
+        selectedAgentId: "codex-acp",
+        status: "connected",
+        ready: true,
+      }),
+    );
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+
+    const panel = document.querySelector<HTMLElement>("#clash-copilot-panel");
+    expect(
+      panel?.style.getPropertyValue("--clash-workspace-control-size"),
+    ).toBe("44px");
+    for (const label of [
+      "New session",
+      "Session history",
+      "Collapse AI Copilot",
+    ]) {
+      expect(screen.getByRole("button", { name: label })).toHaveClass(
+        "h-11",
+        "w-11",
+      );
+    }
   });
 
   it("moves the collapsed Clash agent into the production editor header", () => {
@@ -2919,6 +3312,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     const select = vi.fn().mockResolvedValue(undefined);
     const startDraft = vi.fn();
     const onNewSession = vi.fn();
+    const onRuntimeSessionRouteChange = vi.fn();
     mocks.useClashRuntime.mockReturnValue(
       runtimeState({
         selectedRuntimeId: "desktop-local",
@@ -2931,7 +3325,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     );
     mocks.useAgentCopilot.mockReturnValue(cloudState());
 
-    renderDesktopCopilot({ onNewSession });
+    renderDesktopCopilot({ onNewSession, onRuntimeSessionRouteChange });
     fireEvent.click(screen.getByRole("button", { name: "New session" }));
 
     expect(startDraft).toHaveBeenCalledWith("desktop-local", undefined, {
@@ -2942,6 +3336,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     });
     expect(select).not.toHaveBeenCalled();
     expect(onNewSession).not.toHaveBeenCalled();
+    expect(onRuntimeSessionRouteChange).toHaveBeenCalledWith(null);
   });
 
   it("keeps the completed runtime session in history before opening a fresh draft", () => {
@@ -2958,6 +3353,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     Element.prototype.scrollIntoView = vi.fn();
     const startDraft = vi.fn();
     const onUpsertSession = vi.fn();
+    const onRuntimeSessionRouteChange = vi.fn();
     mocks.useClashRuntime.mockReturnValue(
       runtimeState({
         selectedRuntimeId: "desktop-local",
@@ -2992,8 +3388,16 @@ describe("ChatbotCopilot desktop local mode", () => {
     );
     mocks.useAgentCopilot.mockReturnValue(cloudState());
 
-    renderDesktopCopilot({ onUpsertSession });
+    renderDesktopCopilot({
+      onUpsertSession,
+      onRuntimeSessionRouteChange,
+    });
     onUpsertSession.mockClear();
+
+    expect(onRuntimeSessionRouteChange).toHaveBeenCalledWith(
+      "runtime-session-one",
+    );
+    onRuntimeSessionRouteChange.mockClear();
 
     fireEvent.click(screen.getByRole("button", { name: "New session" }));
 
@@ -3015,6 +3419,7 @@ describe("ChatbotCopilot desktop local mode", () => {
         freshSession: true,
       }),
     );
+    expect(onRuntimeSessionRouteChange).toHaveBeenCalledWith(null);
   });
 
   it("sends the first prompt from a desktop runtime draft instead of creating an empty session first", () => {
@@ -4505,7 +4910,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     ).toContain("audio");
   });
 
-  it("keeps the session selector compact beside the avatar-free Backchat process", () => {
+  it("keeps the session selector compact beside the animated Backchat process persona", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",
@@ -4552,7 +4957,10 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(trigger.querySelector("[data-acp-agent-logo]")).toBeTruthy();
     expect(statusSlot?.textContent).toBe("");
     expect(process).toBeTruthy();
-    expect(processAvatar).toBeNull();
+    expect(processAvatar).toBeTruthy();
+    expect(
+      processAvatar?.querySelector('[data-agent-motion-state="working"]'),
+    ).toBeTruthy();
     expect(container.querySelector(".clash-copilot-agent-perch")).toBeNull();
     expect(
       container.querySelector(".clash-copilot-agent-activity-row"),
@@ -4596,7 +5004,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(container.querySelector('[data-context-used="1500"]')).toBeNull();
   });
 
-  it("keeps the latest settled duration summary avatar-free", () => {
+  it("keeps the idle persona on the latest settled duration summary", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",
@@ -4646,7 +5054,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     ).toBeTruthy();
     expect(
       container.querySelector("[data-session-process-avatar='true']"),
-    ).toBeNull();
+    ).toBeTruthy();
 
     mocks.useClashRuntime.mockReturnValue(completedState);
     act(() => {
@@ -4669,8 +5077,11 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(settled).toBeTruthy();
     expect(settled?.textContent).toContain("125");
     expect(
-      settled?.querySelector("[data-session-process-avatar-state='retained']"),
-    ).toBeNull();
+      settled?.querySelector("[data-session-process-avatar='true']"),
+    ).toBeTruthy();
+    expect(
+      settled?.querySelector('[data-agent-motion-state="idle"]'),
+    ).toBeTruthy();
     expect(
       settled?.querySelector("button")?.getAttribute("aria-expanded"),
     ).toBe("false");
@@ -4819,7 +5230,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     ).toBe("runtime-message-two");
     expect(
       runningProcesses[0]?.querySelector('[data-agent-motion-state="working"]'),
-    ).toBeNull();
+    ).toBeTruthy();
   });
 
   it("restores the Clash empty activity after a Backchat turn completes", () => {
@@ -5071,6 +5482,9 @@ describe("ChatbotCopilot desktop local mode", () => {
       "clash-copilot-agent-activity-composer-companion",
     );
     expect(emptyAnchor?.className).toContain("pb-1");
+    expect(emptyAnchor?.className).toContain("top-2");
+    expect(emptyAnchor?.className).toContain("-left-3");
+    expect(emptyAnchor?.className).not.toContain("sm:-left-6");
     expect(emptyAnchor?.closest('[data-chat-column="composer"]')).toBeTruthy();
     expect(screen.getByText("Ready when you are")).toBeTruthy();
     expect(
@@ -5148,7 +5562,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     ).toBeTruthy();
     expect(
       container.querySelector("[data-session-process-avatar='true']"),
-    ).toBeNull();
+    ).toBeTruthy();
     expect(screen.queryByTestId("acp-message-list")).toBeNull();
   });
 

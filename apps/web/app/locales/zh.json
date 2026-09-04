@@ -24,6 +24,9 @@
       "archive": "归档会话",
       "restore": "恢复会话",
       "fork": "从此会话分叉",
+      "rename": "重命名会话",
+      "renameLabel": "重命名 {{title}}",
+      "loadingMore": "正在加载更多会话",
       "actions": "{{title}} 的操作",
       "close": "关闭历史会话",
       "retry": "重试",
@@ -34,6 +37,11 @@
       "deleteConfirm": "此操作无法撤销。",
       "confirmDelete": "确认永久删除",
       "cancel": "取消"
+    },
+    "turn": {
+      "copyAnswer": "复制回答",
+      "answerCopied": "已复制",
+      "continueInNewChat": "在新对话中继续"
     },
     "runtime": {
       "menuTitle": "运行环境",
@@ -80,6 +88,7 @@
       "reconnecting": "正在重连 {{attempt}}/{{maxAttempts}}",
       "switchingTransport": "正在切换传输",
       "readyWhenYouAre": "随时可以开始",
+      "interrupted": "已中断",
       "workedForSeconds": "工作了 {{count}} 秒",
       "workedForMinutes": "工作了 {{count}} 分钟",
       "creativeThinking": [

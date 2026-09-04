@@ -172,9 +172,7 @@ describe("TopNavigation desktop chrome", () => {
 
     await waitFor(() => {
       expect(
-        container.querySelector(
-          '[data-desktop-tab-connection="disconnected"]',
-        ),
+        container.querySelector('[data-desktop-tab-connection="disconnected"]'),
       ).toBeTruthy();
     });
   });
@@ -355,9 +353,7 @@ describe("TopNavigation desktop chrome", () => {
       expect(
         within(primary)
           .getByRole("button", { name })
-          .querySelector(
-            `[data-slot="product-nav-icon"][data-kind="${kind}"]`,
-          ),
+          .querySelector(`[data-slot="product-nav-icon"][data-kind="${kind}"]`),
       ).toBeTruthy();
     }
 
@@ -512,7 +508,7 @@ describe("TopNavigation desktop chrome", () => {
     );
   });
 
-  it("keeps the top chrome stacked above the preview scrim", async () => {
+  it("keeps the preview below top chrome without dimming the workspace", async () => {
     enableDesktop();
     localStorage.setItem("clash.desktop.sidebar-collapsed", "true");
 
@@ -522,10 +518,9 @@ describe("TopNavigation desktop chrome", () => {
       </MemoryRouter>,
     );
 
-    const chrome = container.querySelector<HTMLElement>(
-      '[data-desktop-chrome="true"]',
-    )!;
-    const chromeLayer = Number(chrome.className.match(/\bz-(\d+)\b/)?.[1]);
+    expect(
+      container.querySelector<HTMLElement>('[data-desktop-chrome="true"]'),
+    ).toBeTruthy();
 
     fireEvent.pointerEnter(
       await screen.findByRole("button", {
@@ -533,9 +528,13 @@ describe("TopNavigation desktop chrome", () => {
       }),
     );
 
-    const scrim = await screen.findByTestId("desktop-auto-hide-sidebar-scrim");
-    const scrimLayer = Number(scrim.style.zIndex);
-    expect(scrimLayer).toBeLessThan(chromeLayer);
+    expect(
+      screen.queryByTestId("desktop-auto-hide-sidebar-scrim"),
+    ).not.toBeInTheDocument();
+    const panel = document.querySelector<HTMLElement>("[data-sidebar-panel]");
+    expect(panel?.className).toContain(
+      "top-[calc(var(--clash-desktop-chrome-height,0px)+0.5rem)]",
+    );
   });
 
   it("omits sidebar restore controls where there is no sidebar", async () => {

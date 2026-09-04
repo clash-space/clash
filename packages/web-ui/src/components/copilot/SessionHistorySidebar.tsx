@@ -1,13 +1,12 @@
-import type { ReactNode } from "react";
+import { useRef, useState, type ReactNode, type UIEvent } from "react";
 import {
   Archive,
   ArrowBendDownRight,
   DotsThree,
-  X,
+  PencilSimple,
 } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
 
-import { IconButton } from "../ui/icon-button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,59 +26,109 @@ export type SessionHistoryItem = {
   agentMemberId?: string;
   permissionMode?: string;
   acpSessionId?: string;
+  supportsSessionFork?: boolean;
   status?: string;
   archivedAt?: string;
   updatedAt?: string;
 };
 
-type SessionHistorySidebarProps = {
+type SessionHistoryPopoverPanelProps = {
   activeSessions: SessionHistoryItem[];
   activeSessionId?: string;
   onSelect: (session: SessionHistoryItem) => void;
   onFork: (session: SessionHistoryItem) => void;
   onArchive?: (threadId: string) => void | Promise<void>;
+  onRename?: (threadId: string, title: string) => void | Promise<void>;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void | Promise<void>;
   onClose: () => void;
   className?: string;
 };
 
-export function SessionHistorySidebar({
+export function SessionHistoryPopoverPanel({
   activeSessions,
   activeSessionId,
   onSelect,
   onFork,
   onArchive,
+  onRename,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
   onClose,
   className,
-}: SessionHistorySidebarProps) {
+}: SessionHistoryPopoverPanelProps) {
   const { t } = useTranslation();
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = useState("");
+  const renameCommittedRef = useRef(false);
+  const loadRequestedRef = useRef(false);
+
+  const beginRename = (session: SessionHistoryItem) => {
+    renameCommittedRef.current = false;
+    setEditingSessionId(session.threadId);
+    setDraftTitle(session.title?.trim() || session.threadId);
+  };
+
+  const cancelRename = () => {
+    renameCommittedRef.current = false;
+    setEditingSessionId(null);
+  };
+
+  const commitRename = (session: SessionHistoryItem) => {
+    if (renameCommittedRef.current) return;
+    const title = draftTitle.trim();
+    if (!title) {
+      cancelRename();
+      return;
+    }
+    renameCommittedRef.current = true;
+    setEditingSessionId(null);
+    if (title !== session.title?.trim()) {
+      void Promise.resolve(onRename?.(session.threadId, title)).catch(
+        () => undefined,
+      );
+    }
+  };
+
+  const handleScroll = (event: UIEvent<HTMLDivElement>) => {
+    if (!hasMore || isLoadingMore || !onLoadMore || loadRequestedRef.current) {
+      return;
+    }
+    const target = event.currentTarget;
+    if (target.scrollHeight - target.scrollTop - target.clientHeight > 32)
+      return;
+    loadRequestedRef.current = true;
+    void Promise.resolve(onLoadMore())
+      .catch(() => undefined)
+      .finally(() => {
+        loadRequestedRef.current = false;
+      });
+  };
 
   return (
-    <aside
-      aria-label={t("copilot.history.title")}
+    <div
       className={cn(
-        "app-rail-surface flex h-full w-60 shrink-0 flex-col border-l border-warm-border",
+        "flex max-h-[min(28rem,calc(100dvh-5rem))] min-h-0 flex-col",
         className,
       )}
-      data-session-history-sidebar=""
+      data-session-history-popover-panel=""
     >
-      <div className="flex h-[38px] shrink-0 items-center gap-2 px-2">
-        <div className="min-w-0 flex-1 truncate px-1 text-xs font-medium text-content-secondary">
-          {t("copilot.history.title")}
-        </div>
-        <IconButton
-          label={t("copilot.history.close")}
-          size="sm"
-          onClick={onClose}
-          icon={<X className="h-4 w-4" weight="bold" />}
-          className="clash-workspace-icon-control"
-        />
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto p-2 outline-none">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto p-2 outline-none"
+        data-session-history-scroll=""
+        onScroll={handleScroll}
+      >
         <SessionList
           sessions={activeSessions}
           activeSessionId={activeSessionId}
           emptyLabel={t("copilot.history.empty")}
+          editingSessionId={editingSessionId}
+          draftTitle={draftTitle}
+          onDraftTitleChange={setDraftTitle}
+          onRenameCommit={commitRename}
+          onRenameCancel={cancelRename}
           onSelect={(session) => {
             onSelect(session);
             onClose();
@@ -89,11 +138,27 @@ export function SessionHistorySidebar({
               session={session}
               onFork={onFork}
               onArchive={onArchive}
+              onRename={onRename ? () => beginRename(session) : undefined}
             />
           )}
         />
+        {isLoadingMore ? (
+          <div
+            className="space-y-0.5 pt-0.5"
+            role="status"
+            aria-label={t("copilot.history.loadingMore")}
+          >
+            {[0, 1, 2].map((row) => (
+              <div
+                key={row}
+                className="h-6 rounded-md bg-warm-muted"
+                aria-hidden="true"
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
-    </aside>
+    </div>
   );
 }
 
@@ -101,12 +166,22 @@ function SessionList({
   sessions,
   activeSessionId,
   emptyLabel,
+  editingSessionId,
+  draftTitle,
+  onDraftTitleChange,
+  onRenameCommit,
+  onRenameCancel,
   onSelect,
   actions,
 }: {
   sessions: SessionHistoryItem[];
   activeSessionId?: string;
   emptyLabel: string;
+  editingSessionId: string | null;
+  draftTitle: string;
+  onDraftTitleChange: (title: string) => void;
+  onRenameCommit: (session: SessionHistoryItem) => void;
+  onRenameCancel: () => void;
   onSelect?: (session: SessionHistoryItem) => void;
   actions: (session: SessionHistoryItem) => ReactNode;
 }) {
@@ -135,7 +210,36 @@ function SessionList({
                   : "hover:bg-warm-hover"
               }`}
             >
-              {onSelect ? (
+              {editingSessionId === session.threadId ? (
+                <form
+                  className="flex h-full min-w-0 flex-1 items-center"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    onRenameCommit(session);
+                  }}
+                >
+                  <input
+                    autoFocus
+                    aria-label={t("copilot.history.renameLabel", { title })}
+                    className="h-5 min-w-0 flex-1 rounded-sm border border-warm-border bg-warm-surface px-1 text-xs leading-5 text-content-primary outline-none focus:border-ring focus:ring-1 focus:ring-ring/30"
+                    value={draftTitle}
+                    onChange={(event) => onDraftTitleChange(event.target.value)}
+                    onBlur={() => onRenameCommit(session)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        onRenameCommit(session);
+                        return;
+                      }
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onRenameCancel();
+                      }
+                    }}
+                  />
+                </form>
+              ) : onSelect ? (
                 <button
                   type="button"
                   onClick={() => onSelect(session)}
@@ -165,15 +269,23 @@ function ActiveSessionActions({
   session,
   onFork,
   onArchive,
+  onRename,
 }: {
   session: SessionHistoryItem;
   onFork: (session: SessionHistoryItem) => void;
   onArchive?: (threadId: string) => void | Promise<void>;
+  onRename?: () => void;
 }) {
   const { t } = useTranslation();
   const title = session.title || session.threadId;
   return (
     <SessionActionsMenu title={title}>
+      {onRename ? (
+        <DropdownMenuItem onSelect={onRename}>
+          <PencilSimple className="h-4 w-4" />
+          {t("copilot.history.rename")}
+        </DropdownMenuItem>
+      ) : null}
       {session.type === "runtime" && session.acpSessionId ? (
         <DropdownMenuItem onSelect={() => onFork(session)}>
           <ArrowBendDownRight className="h-4 w-4" />

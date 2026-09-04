@@ -345,29 +345,32 @@ describe("PropertiesPanel item type coverage", () => {
     ).not.toContain("grid-cols-2");
   });
 
-  it("edits a custom Canvas size with one real composition-size update", () => {
+  it("edits a custom Canvas ratio with one real composition-size update", () => {
     const stateRef = renderInspector();
 
     fireEvent.change(
-      screen.getByRole("spinbutton", { name: "Aspect ratio width" }),
+      screen.getByRole("spinbutton", { name: "Aspect ratio numerator" }),
       {
-        target: { value: "2048" },
+        target: { value: "2" },
       },
     );
     fireEvent.change(
-      screen.getByRole("spinbutton", { name: "Aspect ratio height" }),
+      screen.getByRole("spinbutton", { name: "Aspect ratio denominator" }),
       {
-        target: { value: "858" },
+        target: { value: "1" },
       },
     );
+    fireEvent.blur(
+      screen.getByRole("spinbutton", { name: "Aspect ratio denominator" }),
+    );
 
-    expect(stateRef.current?.compositionWidth).toBe(2048);
-    expect(stateRef.current?.compositionHeight).toBe(858);
+    expect(stateRef.current?.compositionWidth).toBe(2160);
+    expect(stateRef.current?.compositionHeight).toBe(1080);
     expect(
       screen
         .getByRole("button", { name: "Custom" })
         .getAttribute("aria-pressed"),
-    ).toBe("true");
+    ).toBe("false");
   });
 
   it("keeps audio visual-transform-free and exposes its real source in-point", () => {

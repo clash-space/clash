@@ -11,6 +11,27 @@ export type RemotionComponentTimelineInput = {
   durationInFrames: number;
 };
 
+type CanvasConnectionNode = {
+  id: string;
+  type?: string;
+  data?: Record<string, unknown>;
+};
+
+type ConnectionTimeline = {
+  id: string;
+  state?: unknown;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function positiveInteger(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.max(1, Math.round(value))
+    : fallback;
+}
+
 function safePathSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, "-") || "component";
 }
@@ -34,6 +55,16 @@ export function appendRemotionComponentToTimelineState(
   component: RemotionComponentTimelineInput,
 ): TimelineStateLike & { tracks: Track[] } {
   const tracks = Array.isArray(state.tracks) ? state.tracks : [];
+  const alreadyConnected = tracks.some((track) =>
+    track.items.some(
+      (item) =>
+        item.type === "composition" &&
+        item.runtime === "remotion" &&
+        item.sourceNodeId === component.nodeId,
+    ),
+  );
+  if (alreadyConnected) return state as TimelineStateLike & { tracks: Track[] };
+
   const usedTrackIds = new Set(tracks.map((track) => track.id));
   const usedItemIds = new Set(tracks.flatMap((track) => track.items.map((item) => item.id)));
   const existingTrack = tracks.find(
@@ -68,4 +99,46 @@ export function appendRemotionComponentToTimelineState(
     items: [item],
   };
   return { ...state, tracks: [...tracks, track] };
+}
+
+/**
+ * A Canvas edge from a Remotion Component to a Timeline Editor is the handoff.
+ * The Timeline stores the live source-node reference; the component node does
+ * not own a second Timeline picker or imperative "add" workflow.
+ */
+export function deriveRemotionComponentConnectionUpdate(input: {
+  sourceId: string;
+  targetId: string;
+  nodes: readonly CanvasConnectionNode[];
+  timelines: readonly ConnectionTimeline[];
+}): {
+  timelineId: string;
+  state: TimelineStateLike & { tracks: Track[] };
+} | null {
+  const source = input.nodes.find((node) => node.id === input.sourceId);
+  const target = input.nodes.find((node) => node.id === input.targetId);
+  if (source?.type !== "remotion-component" || target?.type !== "video-editor") {
+    return null;
+  }
+
+  const timelineId = target.data?.timelineId;
+  if (typeof timelineId !== "string" || !timelineId) return null;
+  const timeline = input.timelines.find((candidate) => candidate.id === timelineId);
+  if (!timeline) return null;
+
+  const currentState = isRecord(timeline.state) ? timeline.state : {};
+  const nextState = appendRemotionComponentToTimelineState(currentState, {
+    nodeId: source.id,
+    componentId:
+      typeof source.data?.componentId === "string" && source.data.componentId.trim()
+        ? source.data.componentId.trim()
+        : source.id,
+    label:
+      typeof source.data?.label === "string" && source.data.label.trim()
+        ? source.data.label.trim()
+        : "Remotion Component",
+    durationInFrames: positiveInteger(source.data?.durationInFrames, 120),
+  });
+  if (nextState === currentState) return null;
+  return { timelineId, state: nextState };
 }

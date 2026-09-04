@@ -561,6 +561,52 @@ test("local-api host executes against the selected Canvas instead of falling bac
   assert.equal(client.canvasFor("main").readNode(result.childNodeId!), null);
 });
 
+test("local-api host resolves a globally active image plugin when an older project has no local action copy", () => {
+  const client = new LoroSyncClient({
+    serverUrl: "http://localhost:0",
+    projectId: "project-execute-global-plugin",
+    token: "test",
+  });
+  const pluginBinding = {
+    pluginId: "clash.codex-imagegen",
+    version: "0.1.1",
+    exportId: "generate-image",
+    schemaHash: `sha256:${"c".repeat(64)}`,
+  };
+  const trustedAction = {
+    id: "codex-imagegen",
+    name: "Codex ImageGen",
+    outputType: "image",
+    pluginBinding,
+  };
+  client.createNode("codex-action", "image_gen", {
+    prompt: "A cat",
+    content: "A cat",
+    actionType: "custom:codex-imagegen",
+    customActionId: "codex-imagegen",
+    customActionParams: { aspect_ratio: "1:1" },
+    outputType: "image",
+    pluginBinding,
+  });
+
+  const result = handleCommandForTest(
+    client,
+    {
+      action: "execute",
+      canvasId: "main",
+      nodeId: "codex-action",
+    },
+    { trustedCustomActions: [trustedAction] },
+  ) as { error?: string; childNodeId?: string };
+
+  assert.equal(result.error, undefined);
+  assert.ok(result.childNodeId);
+  assert.equal(
+    client.doc.getMap("customActions").get("codex-imagegen"),
+    undefined,
+  );
+});
+
 test("local-api host rejects an unknown Canvas scope without creating it", () => {
   const client = new LoroSyncClient({
     serverUrl: "http://localhost:0",
@@ -1123,6 +1169,53 @@ test("local-api host direct update requires an observation or legacy read receip
     },
   });
   assert.equal(client.readNode("text-1")?.data.label, "Changed from fresh read");
+});
+
+test("local-api host validates plugin View state as one structured update", () => {
+  const client = new LoroSyncClient({
+    serverUrl: "http://localhost:0",
+    projectId: "project-1",
+    token: "test",
+  });
+  client.createNode("storyboard-1", "plugin-view", {
+    label: "Storyboard",
+    view: {
+      pluginId: "community.storyboard",
+      definitionId: "storyboard",
+      version: "1.0.0",
+      schemaHash: `sha256:${"a".repeat(64)}`,
+    },
+    state: { keyElements: [], shots: [], audioLayers: [], uncategorized: [] },
+  });
+  const read = handleCommandForTest(client, {
+    action: "get",
+    nodeId: "storyboard-1",
+    actorClientType: "agent",
+  }) as { readToken: string };
+  const invalid = handleCommandForTest(client, {
+    action: "update",
+    nodeId: "storyboard-1",
+    data: { state: { keyElements: [] } },
+    actorClientType: "agent",
+    ifMatch: read.readToken,
+  });
+  assert.equal((invalid as { code?: string }).code, "INVALID_VIEW_STATE");
+
+  const reread = handleCommandForTest(client, {
+    action: "get",
+    nodeId: "storyboard-1",
+    actorClientType: "agent",
+  }) as { readToken: string };
+  const valid = handleCommandForTest(client, {
+    action: "update",
+    nodeId: "storyboard-1",
+    data: {
+      state: { keyElements: [], shots: [], audioLayers: [], uncategorized: [] },
+    },
+    actorClientType: "agent",
+    ifMatch: reread.readToken,
+  });
+  assert.equal((valid as { updated?: boolean }).updated, true);
 });
 
 test("local-api host direct update requires a host-issued read receipt for agent writes", () => {

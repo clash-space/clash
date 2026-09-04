@@ -119,6 +119,34 @@ describe('buildCopilotPrompt', () => {
     expect(result).not.toContain('clash-workspace-context');
   });
 
+  it('includes the live browser summary because ephemeral browser state is not available through Clash MCP', () => {
+    const result = buildCopilotPrompt(
+      'Compare the options on this page.',
+      {
+        projectId: 'project-7',
+        projectName: 'Launch Film',
+        activeSurface: {
+          kind: 'browser',
+          id: 'browser-1',
+          name: 'Reference docs',
+          browser: {
+            url: 'https://docs.example/models',
+            title: 'Models',
+            text: 'Fast model Accurate model',
+            interactiveElements: [
+              { tag: 'a', label: 'Accurate model', selector: '#accurate' },
+            ],
+          },
+        },
+      },
+    );
+
+    expect(result).toContain('clash-workspace-context');
+    expect(result).toContain('https://docs.example/models');
+    expect(result).toContain('Fast model Accurate model');
+    expect(result.endsWith('Compare the options on this page.')).toBe(true);
+  });
+
   it('embeds agent annotations as structured object addresses before the visible prompt', () => {
     const annotation = {
       id: 'annotation-1',

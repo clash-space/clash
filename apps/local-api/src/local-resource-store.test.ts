@@ -376,6 +376,7 @@ describe("local Resource CAS", () => {
       contentType: "image/png",
     });
     expect(second).toEqual(first);
+    expect(first.createdAt).toEqual(expect.any(Number));
     expect(first.storageKey).toBe(`local-blobs/${digest}/original.png`);
     expect(first.path).toBe(
       join(clashRoot, "assets", "blobs", digest, "original.png"),

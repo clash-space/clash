@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createRequire } from "node:module";
 
 import type { ExecutablePluginInvocation } from "@clash/shared-types/executable-plugin";
 
@@ -28,6 +29,14 @@ const invocation: ExecutablePluginInvocation = {
 };
 
 describe("browser-safe PluginModule", () => {
+  it("exposes the browser entry to CommonJS-based development loaders", () => {
+    const require = createRequire(import.meta.url);
+
+    expect(require.resolve("@clash/action-sdk/browser")).toMatch(
+      /action-sdk[/\\]dist[/\\]browser\.js$/u,
+    );
+  });
+
   it("runs one action implementation unchanged in local, cloud, and client realms", async () => {
     const module = assemblePluginModule({
       functions: [{ id: "image-editor", kind: "action" }],

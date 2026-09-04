@@ -1,0 +1,30 @@
+# Minimal, fully local workerd configuration for Vitest integration tests.
+# Keep remote AI, production workflows, containers, and R2 out of this harness.
+name = "clash-api-integration"
+main = "src/integration/test-worker.ts"
+compatibility_date = "2025-03-14"
+compatibility_flags = ["nodejs_compat"]
+
+[alias]
+"loro-crdt" = "loro-crdt/bundler"
+
+[[rules]]
+type = "CompiledWasm"
+globs = ["**/*.wasm"]
+fallthrough = true
+
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "ProjectRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ProjectRoom"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "clash-integration"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+[vars]
+ENVIRONMENT = "test"

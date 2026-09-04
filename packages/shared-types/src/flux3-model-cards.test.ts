@@ -29,7 +29,7 @@ describe("FLUX 3 model cards", () => {
     });
   });
 
-  it("routes every FLUX 3 model card through official BFL and fal", () => {
+  it("keeps only built-in BFL routes before provider plugins are composed", () => {
     const routes = listDeclaredModelUpstreamRoutes(MODEL_CARDS)
       .filter((route) => route.modelCode.startsWith("flux-3-video"));
 
@@ -41,12 +41,6 @@ describe("FLUX 3 model cards", () => {
           upstreamId: "bfl",
           apiShape: "bfl",
           upstreamModel: "flux-3-video",
-        }),
-        expect.objectContaining({
-          modelCode,
-          providerId: "fal",
-          upstreamId: "fal",
-          apiShape: "fal",
         }),
       ]));
     }

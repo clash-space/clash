@@ -18,9 +18,39 @@ const globalCss = readFileSync(
 );
 
 describe("ProjectEditor toolbar surface", () => {
+  it("gives the canvas rail a neutral toolbar layer and a semantic selected state", () => {
+    expect(
+      sourceMatches(
+        globalCss,
+        /\.clash-canvas-toolbar-surface \{.{0,700}background: var\(--clash-warm-muted\);/,
+      ),
+    ).toBe(true);
+    expect(
+      sourceMatches(
+        globalCss,
+        /\.clash-canvas-toolbar-surface \.clash-workspace-icon-control \{.{0,120}color: var\(--clash-content-secondary\);/,
+      ),
+    ).toBe(true);
+    expect(
+      sourceMatches(
+        globalCss,
+        /\.clash-canvas-toolbar-surface \.clash-workspace-icon-control:is\(.{0,180}\) \{.{0,160}background: var\(--select-item-selected\);.{0,80}color: var\(--tone-blue-ink\);/,
+      ),
+    ).toBe(true);
+  });
+
   it("exposes Director Stage as a first-class canvas tool", () => {
     expect(projectEditorSource).toContain(
       '{ id: "director-stage", label: "Director Stage", icon: Cube }',
+    );
+  });
+
+  it("keeps image plugins inside Image Gen instead of duplicating them as standalone canvas tools", () => {
+    expect(projectEditorSource).toContain(
+      '{ id: "action-badge-image", label: "Image Gen", icon: ImageIcon }',
+    );
+    expect(projectEditorSource).not.toContain(
+      'id: `action-badge-custom-${a.id}`',
     );
   });
 

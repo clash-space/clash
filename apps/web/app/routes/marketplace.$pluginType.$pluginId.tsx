@@ -7,7 +7,12 @@ import { loadMarketplaceData } from "../lib/marketplaceData";
 export async function loader({ params }: LoaderFunctionArgs) {
   const pluginType = params.pluginType;
   const pluginId = params.pluginId;
-  if ((pluginType !== "action" && pluginType !== "skill") || !pluginId) {
+  if (
+    (pluginType !== "action" &&
+      pluginType !== "skill" &&
+      pluginType !== "plugin") ||
+    !pluginId
+  ) {
     throw new Response("Plugin not found", { status: 404 });
   }
 
@@ -22,7 +27,9 @@ export async function loader({ params }: LoaderFunctionArgs) {
     installed:
       item.type === "action"
         ? marketplace.installedActionIds.includes(item.id)
-        : marketplace.installedSkillIds.includes(item.id),
+        : item.type === "plugin"
+          ? marketplace.installedPluginIds.includes(item.id)
+          : marketplace.installedSkillIds.includes(item.id),
   };
 }
 

@@ -86,13 +86,19 @@ const PlaybackProbe = () => {
 
 const HistoryProbe = () => {
   const { canUndo, undo } = useEditorHistory();
-  const { tracks } = useEditorStaticState();
+  const { selectedItemId, tracks } = useEditorStaticState();
   const clip = tracks
     .flatMap((track) => track.items)
     .find((item) => item.id === "clip");
   return (
     <>
       <output aria-label="Canvas item x">{clip?.properties?.x ?? 0}</output>
+      <output aria-label="Canvas item count">
+        {tracks.flatMap((track) => track.items).length}
+      </output>
+      <output aria-label="Canvas selected item">
+        {selectedItemId ?? "none"}
+      </output>
       <button
         type="button"
         aria-label="Undo canvas edit"
@@ -125,6 +131,7 @@ function renderPreview(
         playing: false,
         compositionWidth: 1920,
         compositionHeight: 1080,
+        selectedItemId: "clip",
         tracks: [
           {
             id: "visual",
@@ -218,6 +225,56 @@ describe("CanvasPreview transport", () => {
         .getByRole("button", { name: "Undo canvas edit" })
         .hasAttribute("disabled"),
     ).toBe(true);
+  });
+
+  it("takes keyboard focus when pressed and deletes the selected Canvas item with Backspace", async () => {
+    renderPreview();
+    const stalePropertiesInput = document.createElement("input");
+    document.body.appendChild(stalePropertiesInput);
+    stalePropertiesInput.focus();
+
+    const preview = screen.getByTestId("canvas-preview");
+    const stage = preview.querySelector<HTMLElement>("[data-preview-stage]");
+    expect(stage).toBeTruthy();
+    fireEvent.click(stage!);
+    expect(document.activeElement).toBe(stage);
+    fireEvent.keyDown(stalePropertiesInput, { key: "Backspace" });
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Canvas item count").textContent).toBe("0"),
+    );
+    stalePropertiesInput.remove();
+  });
+
+  it("clears the selected item when the Preview background is pressed", async () => {
+    renderPreview();
+
+    expect(screen.getByLabelText("Canvas selected item").textContent).toBe(
+      "clip",
+    );
+    fireEvent.pointerDown(screen.getByTestId("interactive-canvas"));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Canvas selected item").textContent).toBe(
+        "none",
+      ),
+    );
+  });
+
+  it("leaves Backspace to an input after the user returns to Properties", () => {
+    renderPreview();
+    const preview = screen.getByTestId("canvas-preview");
+    const stage = preview.querySelector<HTMLElement>("[data-preview-stage]");
+    const propertiesInput = document.createElement("input");
+    document.body.appendChild(propertiesInput);
+
+    fireEvent.click(stage!);
+    fireEvent.mouseDown(propertiesInput);
+    propertiesInput.focus();
+    fireEvent.keyDown(propertiesInput, { key: "Backspace" });
+
+    expect(screen.getByLabelText("Canvas item count").textContent).toBe("1");
+    propertiesInput.remove();
   });
 
   it("opens a real canvas zoom regulator from the viewport icon", () => {

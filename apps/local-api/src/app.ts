@@ -38,6 +38,10 @@ import {
   type LocalAssetInspector,
   type LocalAssetInspectionService,
 } from "./local-asset-inspections.js";
+import {
+  createLocalAssetRepresentationService,
+  type LocalAssetRepresentationService,
+} from "./local-asset-representations.js";
 import { localFfmpegPath, localFfprobePath } from "./local-media-binaries.js";
 import {
   createLocalMediaAnalysisConfigStore,
@@ -107,6 +111,7 @@ import {
   validateCanvasEdgeAdd,
   validateCanvasEdgeDelete,
   validateCanvasEdgePatch,
+  type ProjectCanvasPreview,
   validateCanvasEdgeReadProof,
   validateCanvasEdgesReadProof,
   validateCanvasReadProof,
@@ -136,6 +141,7 @@ import {
   type ExecutablePluginModelBindingRegistration,
   type ExecutablePluginProviderRegistration,
   type ExecutablePluginGeneratorRegistration,
+  type ExecutablePluginViewRegistration,
   type GeneratorDefinition,
   missingModelRouteCredentials,
   ExecutablePluginJsonValueSchema,
@@ -234,6 +240,7 @@ import {
   createLocalDurableRun,
   createLocalDurableRunCoordinator,
   DEFAULT_LOCAL_PROVIDER_RUN_DEADLINE_MS,
+  localDurableRunOwnerId,
   type LocalDurableRunCoordinator,
 } from "./durable-run-coordinator.js";
 import { createSqliteDurableRunJournal } from "./durable-run-journal.js";
@@ -249,6 +256,13 @@ import {
   type LocalMetadataSession as LocalSession,
 } from "./local-metadata-store.js";
 import { FileReplicaStore } from "./loro/file-replica-store.js";
+import { readThroughProjectCanvasPreviewEntry } from "./project-canvas-preview-cache.js";
+import {
+  createProjectCanvasThumbnailCache,
+  PROJECT_CANVAS_THUMBNAIL_HEIGHT,
+  PROJECT_CANVAS_THUMBNAIL_WIDTH,
+  type ProjectCanvasThumbnailInput,
+} from "./project-canvas-thumbnail.js";
 import {
   AdvanceLocalProjectGeneratorInputSchema,
   CreateLocalProjectGeneratorInputSchema,
@@ -314,6 +328,8 @@ export interface LocalApiOptions {
   inspectAssetResource?: LocalAssetInspector;
   /** Process-owned registry shared by HTTP, workflow staging, and recovery. */
   assetInspection?: LocalAssetInspectionService;
+  /** Process-owned L2/L3 derivation scheduler and representation registry. */
+  assetRepresentations?: LocalAssetRepresentationService;
   /**
    * Receive bytes for an upload slot the broker handed out.
    *
@@ -359,6 +375,8 @@ export interface LocalApiOptions {
   listPluginProviders?: () => Promise<ExecutablePluginProviderRegistration[]>;
   /** Active Generator definitions are listed and resolved by the Plugin Host. */
   listPluginGenerators?: () => Promise<ExecutablePluginGeneratorRegistration[]>;
+  /** Active declarative Views are listed by the Plugin Host and own no execution realm. */
+  listPluginViews?: () => Promise<ExecutablePluginViewRegistration[]>;
   resolveGeneratorDefinition?: (
     pluginId: string,
     definitionId: string,
@@ -402,6 +420,16 @@ export interface LocalApiOptions {
     skillId: string,
   ) => Promise<Record<string, unknown>>;
   uninstallMarketplaceSkill?: (skillId: string) => Promise<void>;
+  marketplacePlugins?: Array<
+    Record<string, unknown> & {
+      id: string;
+      packageId: string;
+    }
+  >;
+  installMarketplacePlugin?: (
+    packageId: string,
+  ) => Promise<Record<string, unknown>>;
+  uninstallMarketplacePlugin?: (pluginId: string) => Promise<void>;
   pluginPackages?: {
     list(): Promise<object>;
     validate(input: unknown): Promise<object>;
@@ -1298,7 +1326,9 @@ function createLocalSessionEventStore(
         );
         if (!session) return;
         const data =
-          event.data && typeof event.data === "object" && !Array.isArray(event.data)
+          event.data &&
+          typeof event.data === "object" &&
+          !Array.isArray(event.data)
             ? (event.data as Record<string, unknown>)
             : {};
         if (event.type === "user_prompt" && typeof data.text === "string") {
@@ -1726,25 +1756,42 @@ function purgeProjectFromState(state: LocalDb, projectId: string) {
   return { project, counts };
 }
 
+interface V1ProjectCanvasThumbnail {
+  url: string;
+  revision: string;
+  width: number;
+  height: number;
+}
+
 function toV1Project(
   project: LocalProject,
   assets: ResolvedAsset[],
   assetMode: "preview" | "all" = "preview",
   coverAssetId: string | null = null,
+  canvasPreview: ProjectCanvasPreview | null = null,
+  canvasThumbnail: V1ProjectCanvasThumbnail | null = null,
 ) {
   const projectedAssets =
     assetMode === "all"
       ? assets
-      : coverAssetId
-        ? assets.filter((asset) => asset.id === coverAssetId)
-        : [];
+      : assets
+          .filter(
+            (asset) =>
+              asset.lifecycle.state === "active" &&
+              (asset.kind === "image" || asset.kind === "video") &&
+              Boolean(asset.thumbnailUrl ?? asset.url),
+          )
+          .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+          .slice(0, 4);
   return {
     id: project.id,
     ownerId: project.ownerId,
     name: project.name,
     description: project.description,
     coverAssetId,
-    assets: projectedAssets,
+    canvasPreview,
+    canvasThumbnail,
+    assets: assetMode === "preview" && canvasThumbnail ? [] : projectedAssets,
     assetCount: assets.length,
     created_at: isoToEpochSeconds(project.createdAt),
     updated_at: isoToEpochSeconds(project.updatedAt),
@@ -2347,7 +2394,7 @@ function validateProjectReadMutation(options: {
 
 function validateSessionReadMutation(options: {
   session: LocalSession;
-  operation: "delete" | "attach" | "archive" | "restore";
+  operation: "delete" | "attach" | "archive" | "restore" | "rename";
   mutationOperation?: string;
   readOperation?: string;
   preconditions: ProjectWritePreconditions;
@@ -3512,6 +3559,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     options.clashRoot,
   );
   const replicaStore = new FileReplicaStore(join(options.dataDir, "projects"));
+  const projectCanvasThumbnailCache =
+    createProjectCanvasThumbnailCache(replicaStore);
   const projectCommandReplica: LocalProjectAssetReplica =
     options.projectAssetReplica ?? {
       inspect: async (projectId, read) =>
@@ -3519,6 +3568,31 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       mutate: (projectId, mutation) =>
         replicaStore.updateSnapshotAtomic(projectId, mutation),
     };
+  const projectCanvasPreviewEntryFor = (projectId: string) =>
+    readThroughProjectCanvasPreviewEntry({
+      projectId,
+      store: replicaStore,
+      inspect: (read) => projectCommandReplica.inspect(projectId, read),
+    });
+  const recentProjectCanvasThumbnailInputs = new Map<
+    string,
+    Map<string, ProjectCanvasThumbnailInput>
+  >();
+  const rememberProjectCanvasThumbnailInput = (
+    input: ProjectCanvasThumbnailInput,
+  ) => {
+    const remembered =
+      recentProjectCanvasThumbnailInputs.get(input.projectId) ?? new Map();
+    remembered.delete(input.entry.sourceVersion);
+    remembered.set(input.entry.sourceVersion, input);
+    while (remembered.size > 2) {
+      const oldest = remembered.keys().next().value as string | undefined;
+      if (!oldest) break;
+      remembered.delete(oldest);
+    }
+    recentProjectCanvasThumbnailInputs.set(input.projectId, remembered);
+    return input;
+  };
   const providerExecutionHandoffs = createProviderExecutionHandoffStore(
     options.dataDir,
   );
@@ -3553,8 +3627,105 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       replica: projectCommandReplica,
       readReceiptVerifier: verifyLocalApiProjectAssetReadReceipt,
       assetInspection,
+      assetRepresentations,
     });
     return projectAssetService;
+  };
+  const projectCanvasThumbnailInput = (
+    projectId: string,
+    entry: Awaited<ReturnType<typeof projectCanvasPreviewEntryFor>>,
+    service: ReturnType<typeof projectAssetServiceAt>,
+  ): ProjectCanvasThumbnailInput => ({
+    projectId,
+    entry,
+    resolveMedia: async (assetId) => {
+      const projection = await service.openProjection(projectId, assetId);
+      if (
+        projection.resource.kind !== "image" &&
+        projection.resource.kind !== "video"
+      ) {
+        return null;
+      }
+      await assetRepresentations.ensure(projection.resource.id);
+      const thumbnail = await assetRepresentations.openThumbnail(
+        projection.resource.id,
+      );
+      if (thumbnail) {
+        return { kind: "image", path: thumbnail.path };
+      }
+      return null;
+    },
+  });
+  const projectCanvasThumbnailState = async (
+    projectId: string,
+    entry: Awaited<ReturnType<typeof projectCanvasPreviewEntryFor>>,
+    service: ReturnType<typeof projectAssetServiceAt>,
+  ) => {
+    const revision = createHash("sha256")
+      .update("clash.main-canvas-thumbnail.v1\0")
+      .update(entry.sourceVersion);
+    const assetIds = [
+      ...new Set(
+        entry.preview.nodes.flatMap((node) =>
+          node.assetId && (node.type === "image" || node.type === "video")
+            ? [node.assetId]
+            : [],
+        ),
+      ),
+    ].sort();
+    for (const assetId of assetIds) {
+      revision.update("\0asset\0").update(assetId);
+      try {
+        const projection = await service.openProjection(projectId, assetId);
+        revision.update("\0source\0").update(projection.resource.id);
+        const representation = await assetRepresentations.read(
+          projection.resource.id,
+          "thumbnail",
+        );
+        if (representation?.role === "thumbnail") {
+          revision
+            .update("\0ready\0")
+            .update(representation.recipe)
+            .update("\0")
+            .update(representation.resourceId);
+        } else {
+          revision.update("\0pending");
+        }
+      } catch {
+        revision.update("\0unavailable");
+      }
+    }
+    const sourceVersion = revision.digest("hex");
+    const input = rememberProjectCanvasThumbnailInput(
+      projectCanvasThumbnailInput(
+        projectId,
+        { ...entry, sourceVersion },
+        service,
+      ),
+    );
+    return {
+      sourceVersion,
+      input,
+    };
+  };
+  const projectCanvasThumbnailProjection = (
+    origin: string,
+    projectId: string,
+    entry: Awaited<ReturnType<typeof projectCanvasPreviewEntryFor>>,
+    revision: string,
+  ): V1ProjectCanvasThumbnail | null => {
+    if (!entry.preview.bounds || entry.preview.nodes.length === 0) return null;
+    const url = new URL(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/canvas/thumbnail`,
+      origin,
+    );
+    url.searchParams.set("revision", revision);
+    return {
+      url: url.toString(),
+      revision,
+      width: PROJECT_CANVAS_THUMBNAIL_WIDTH,
+      height: PROJECT_CANVAS_THUMBNAIL_HEIGHT,
+    };
   };
   const editActionAssetBindings = (input: {
     invocation: AssetEditActionInvocation;
@@ -3608,6 +3779,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       projectionOrigin:
         configuredProjectionOrigin?.trim() || requestProjectionOrigin,
       assetInspection,
+      assetRepresentations,
     });
     return globalAssetService;
   };
@@ -3628,6 +3800,19 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       clashRoot,
       inspectResource: inspectAssetResource,
     });
+  const assetRepresentations =
+    options.assetRepresentations ??
+    createLocalAssetRepresentationService({
+      dataDir: options.dataDir,
+      clashRoot,
+      assetInspection,
+    });
+  void assetRepresentations.start().catch((error) => {
+    console.error(
+      "[local-api] representation startup recovery degraded:",
+      error instanceof Error ? error.message : String(error),
+    );
+  });
   const workspaceProjectLease = new LocalWorkspaceProjectOperationLease();
   const workspaceTransfer = options.workspaceProjectAuthority
     ? createLocalWorkspaceTransferService({
@@ -3690,7 +3875,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       ? createLocalGeneratorProductService({
           authority: options.generatorProjectAuthority,
           resolveDefinition: options.resolveGeneratorDefinition,
-          ownerId: options.hostIdentity?.hostId ?? "local-api",
+          ownerId: localDurableRunOwnerId(options.hostIdentity?.hostId),
           journal: durableRunJournal,
           actor: { kind: "user", id: userId },
           ...(options.resolveGeneratorModelConsumer
@@ -4835,6 +5020,66 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     },
   );
 
+  app.get(
+    "/api/v1/projects/:projectId/assets/:projectAssetId/thumbnail",
+    async (c) => {
+      try {
+        const source = await projectAssetServiceAt(
+          requestOrigin(c),
+        ).openProjection(
+          c.req.param("projectId"),
+          c.req.param("projectAssetId"),
+        );
+        await assetRepresentations.ensure(source.resource.id);
+        const projection = await assetRepresentations.openThumbnail(
+          source.resource.id,
+        );
+        if (!projection) {
+          return c.json({ error: "Asset thumbnail is not available" }, 404);
+        }
+        return await serveImmutableFileProjection({
+          path: projection.path,
+          contentType: projection.resource.contentType ?? "image/webp",
+          expectedByteLength: projection.resource.byteLength,
+        });
+      } catch (error) {
+        return localProjectAssetErrorResponse(error);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v1/projects/:projectId/assets/:projectAssetId/waveform",
+    async (c) => {
+      try {
+        const source = await projectAssetServiceAt(
+          requestOrigin(c),
+        ).openProjection(
+          c.req.param("projectId"),
+          c.req.param("projectAssetId"),
+        );
+        await assetRepresentations.ensure(source.resource.id);
+        const representation = await assetRepresentations.read(
+          source.resource.id,
+          "waveform",
+        );
+        if (!representation || representation.role !== "waveform") {
+          return c.json({ error: "Asset waveform is not available" }, 404);
+        }
+        c.header("cache-control", "private, max-age=31536000, immutable");
+        return c.json({
+          recipe: representation.recipe,
+          peaks: representation.peaks,
+          ...(representation.durationMs !== undefined
+            ? { durationMs: representation.durationMs }
+            : {}),
+        });
+      } catch (error) {
+        return localProjectAssetErrorResponse(error);
+      }
+    },
+  );
+
   app.get("/api/v1/projects/:projectId/assets/:projectAssetId", async (c) => {
     try {
       const observed = await projectAssetServiceAt(
@@ -5089,6 +5334,66 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           expectedByteLength: projection.resource.byteLength,
           ...(c.req.header("range")
             ? { rangeHeader: c.req.header("range") }
+            : {}),
+        });
+      } catch (error) {
+        return localGlobalAssetErrorResponse(error);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v1/libraries/personal/assets/:globalAssetId/thumbnail",
+    async (c) => {
+      try {
+        const source = await globalAssetServiceAt(
+          requestOrigin(c),
+        ).openProjection(
+          PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
+          c.req.param("globalAssetId"),
+        );
+        await assetRepresentations.ensure(source.resource.id);
+        const projection = await assetRepresentations.openThumbnail(
+          source.resource.id,
+        );
+        if (!projection) {
+          return c.json({ error: "Asset thumbnail is not available" }, 404);
+        }
+        return await serveImmutableFileProjection({
+          path: projection.path,
+          contentType: projection.resource.contentType ?? "image/webp",
+          expectedByteLength: projection.resource.byteLength,
+        });
+      } catch (error) {
+        return localGlobalAssetErrorResponse(error);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v1/libraries/personal/assets/:globalAssetId/waveform",
+    async (c) => {
+      try {
+        const source = await globalAssetServiceAt(
+          requestOrigin(c),
+        ).openProjection(
+          PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
+          c.req.param("globalAssetId"),
+        );
+        await assetRepresentations.ensure(source.resource.id);
+        const representation = await assetRepresentations.read(
+          source.resource.id,
+          "waveform",
+        );
+        if (!representation || representation.role !== "waveform") {
+          return c.json({ error: "Asset waveform is not available" }, 404);
+        }
+        c.header("cache-control", "private, max-age=31536000, immutable");
+        return c.json({
+          recipe: representation.recipe,
+          peaks: representation.peaks,
+          ...(representation.durationMs !== undefined
+            ? { durationMs: representation.durationMs }
             : {}),
         });
       } catch (error) {
@@ -6790,6 +7095,19 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       actions: executablePluginActionDefinitions(registrations),
     });
   });
+  app.get("/api/v1/plugin-views", async (c) => {
+    const registrations = options.listPluginViews
+      ? await options.listPluginViews()
+      : [];
+    return c.json({
+      views: registrations.map((registration) => ({
+        pluginId: registration.pluginId,
+        version: registration.version,
+        schemaHash: registration.schemaHash,
+        ...registration.document.spec,
+      })),
+    });
+  });
   app.get("/api/v1/plugin-providers", async (c) => {
     const registrations = options.listPluginProviders
       ? await options.listPluginProviders()
@@ -6964,6 +7282,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       version: 1,
       actions: options.marketplaceActions ?? [],
       skills: options.marketplaceSkills ?? [],
+      plugins: options.marketplacePlugins ?? [],
     }),
   );
   app.get("/api/marketplace/feed", (c) =>
@@ -7024,6 +7343,30 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       if (!item)
         return c.json({ error: "Unknown local marketplace skill" }, 404);
       await options.uninstallMarketplaceSkill!(skillId);
+      return new Response(null, { status: 204 });
+    });
+  }
+  if (options.installMarketplacePlugin) {
+    app.post("/api/marketplace/plugins/:packageId/install", async (c) => {
+      const packageId = c.req.param("packageId");
+      const item = options.marketplacePlugins?.find(
+        (candidate) => candidate.packageId === packageId,
+      );
+      if (!item) {
+        return c.json({ error: "Unknown local marketplace plugin" }, 404);
+      }
+      return c.json(await options.installMarketplacePlugin!(packageId));
+    });
+  }
+  if (options.uninstallMarketplacePlugin) {
+    app.delete("/api/marketplace/plugins/:packageId/install", async (c) => {
+      const item = options.marketplacePlugins?.find(
+        (candidate) => candidate.packageId === c.req.param("packageId"),
+      );
+      if (!item) {
+        return c.json({ error: "Unknown local marketplace plugin" }, 404);
+      }
+      await options.uninstallMarketplacePlugin!(item.id);
       return new Response(null, { status: 204 });
     });
   }
@@ -9133,6 +9476,56 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
   });
 
+  app.get("/api/v1/projects/:projectId/canvas/thumbnail", async (c) => {
+    const projectId = c.req.param("projectId");
+    const revision = c.req.query("revision")?.trim() ?? "";
+    if (!/^[a-f0-9]{64}$/u.test(revision)) {
+      return c.json({ error: "A valid canvas revision is required" }, 400);
+    }
+    const state = await db.load();
+    if (!findActiveProject(state, projectId)) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+    try {
+      const entry = await projectCanvasPreviewEntryFor(projectId);
+      let bytes = await replicaStore.readCanvasThumbnail(projectId, revision);
+      if (!bytes) {
+        if (!entry.preview.bounds || entry.preview.nodes.length === 0) {
+          return c.json({ error: "Main canvas is empty" }, 404);
+        }
+        let input = recentProjectCanvasThumbnailInputs
+          .get(projectId)
+          ?.get(revision);
+        if (!input) {
+          const service = projectAssetServiceAt(requestOrigin(c));
+          const thumbnailState = await projectCanvasThumbnailState(
+            projectId,
+            entry,
+            service,
+          );
+          if (thumbnailState.sourceVersion !== revision) {
+            return c.json(
+              { error: "Canvas thumbnail revision not found" },
+              404,
+            );
+          }
+          input = thumbnailState.input;
+        }
+        bytes = await projectCanvasThumbnailCache.get(input);
+      }
+      return new Response(Uint8Array.from(bytes).buffer, {
+        headers: {
+          "content-type": "image/webp",
+          "content-length": String(bytes.byteLength),
+          "cache-control": "public, max-age=31536000, immutable",
+          etag: `"${revision}"`,
+        },
+      });
+    } catch (error) {
+      return localProjectAssetErrorResponse(error);
+    }
+  });
+
   app.get("/api/v1/projects", async (c) => {
     const state = await db.load();
     const archived = c.req.query("archived") ?? "active";
@@ -9153,9 +9546,34 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       return c.json({
         projects: await Promise.all(
           visibleProjects.map(async (project) => {
-            const assets = await service.list(project.id);
-            const coverAssetId = await service.readProjectCover(project.id);
-            return toV1Project(project, assets, "preview", coverAssetId);
+            const [assets, coverAssetId, canvasPreviewEntry] =
+              await Promise.all([
+                service.list(project.id),
+                service.readProjectCover(project.id),
+                projectCanvasPreviewEntryFor(project.id),
+              ]);
+            const thumbnailState = await projectCanvasThumbnailState(
+              project.id,
+              canvasPreviewEntry,
+              service,
+            );
+            const canvasThumbnail = projectCanvasThumbnailProjection(
+              requestOrigin(c),
+              project.id,
+              canvasPreviewEntry,
+              thumbnailState.sourceVersion,
+            );
+            if (canvasThumbnail) {
+              projectCanvasThumbnailCache.schedule(thumbnailState.input);
+            }
+            return toV1Project(
+              project,
+              assets,
+              "preview",
+              coverAssetId,
+              canvasPreviewEntry.preview,
+              canvasThumbnail,
+            );
           }),
         ),
       });
@@ -9390,9 +9808,35 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
     try {
       const service = projectAssetServiceAt(requestOrigin(c));
-      const assets = await service.list(project.id);
-      const coverAssetId = await service.readProjectCover(project.id);
-      return c.json(toV1Project(project, assets, "all", coverAssetId));
+      const [assets, coverAssetId, canvasPreviewEntry] = await Promise.all([
+        service.list(project.id),
+        service.readProjectCover(project.id),
+        projectCanvasPreviewEntryFor(project.id),
+      ]);
+      const thumbnailState = await projectCanvasThumbnailState(
+        project.id,
+        canvasPreviewEntry,
+        service,
+      );
+      const canvasThumbnail = projectCanvasThumbnailProjection(
+        requestOrigin(c),
+        project.id,
+        canvasPreviewEntry,
+        thumbnailState.sourceVersion,
+      );
+      if (canvasThumbnail) {
+        projectCanvasThumbnailCache.schedule(thumbnailState.input);
+      }
+      return c.json(
+        toV1Project(
+          project,
+          assets,
+          "all",
+          coverAssetId,
+          canvasPreviewEntry.preview,
+          canvasThumbnail,
+        ),
+      );
     } catch (error) {
       return localProjectAssetErrorResponse(error);
     }
@@ -11157,23 +11601,39 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       (archiveFilter === "only"
         ? session.archivedAt !== undefined
         : session.archivedAt === undefined);
+    const matchingSessions = projectId
+      ? isDeletedKnownProject(state, projectId)
+        ? []
+        : state.sessions.filter(
+            (session) =>
+              session.projectId === projectId && filterArchive(session),
+          )
+      : state.sessions.filter(
+          (session) =>
+            filterArchive(session) &&
+            (!isDeletedKnownProject(state, session.projectId) ||
+              activeProjectIds.has(session.projectId)),
+        );
+    const rawLimit = c.req.query("limit");
+    const rawOffset = c.req.query("offset");
+    const paginated = rawLimit !== undefined || rawOffset !== undefined;
+    if (!paginated) {
+      return c.json({ sessions: matchingSessions.map(publicLocalSession) });
+    }
+    const limit = rawLimit === undefined ? 20 : Number(rawLimit);
+    const offset = rawOffset === undefined ? 0 : Number(rawOffset);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      return c.json({ error: "limit must be an integer from 1 to 100" }, 400);
+    }
+    if (!Number.isInteger(offset) || offset < 0) {
+      return c.json({ error: "offset must be a non-negative integer" }, 400);
+    }
+    const page = matchingSessions.slice(offset, offset + limit);
+    const hasMore = offset + page.length < matchingSessions.length;
     return c.json({
-      sessions: projectId
-        ? (isDeletedKnownProject(state, projectId)
-            ? []
-            : state.sessions.filter(
-                (session) =>
-                  session.projectId === projectId && filterArchive(session),
-              )
-          ).map(publicLocalSession)
-        : state.sessions
-            .filter(
-              (session) =>
-                filterArchive(session) &&
-                (!isDeletedKnownProject(state, session.projectId) ||
-                  activeProjectIds.has(session.projectId)),
-            )
-            .map(publicLocalSession),
+      sessions: page.map(publicLocalSession),
+      hasMore,
+      nextOffset: hasMore ? offset + page.length : null,
     });
   });
 
@@ -11259,12 +11719,28 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const sessionId = c.req.param("sessionId");
     const body = (await c.req.json().catch(() => ({}))) as {
       archived?: unknown;
+      title?: unknown;
     } & ProjectWriteBody;
-    if (typeof body.archived !== "boolean") {
-      return c.json({ error: "Missing archived boolean" }, 400);
+    const isRename = body.title !== undefined;
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    if (isRename && !title) {
+      return c.json({ error: "Session title cannot be empty" }, 400);
+    }
+    if (isRename && body.archived !== undefined) {
+      return c.json(
+        { error: "Rename and archive must be separate mutations" },
+        400,
+      );
+    }
+    if (!isRename && typeof body.archived !== "boolean") {
+      return c.json({ error: "Missing archived boolean or title" }, 400);
     }
     const preconditions = requestProjectWritePreconditions(c, body);
-    const operation = body.archived ? "archive" : "restore";
+    const operation = isRename
+      ? "rename"
+      : body.archived
+        ? "archive"
+        : "restore";
     const result = await db.update((state) => {
       const session = state.sessions.find(
         (candidate) => candidate.id === sessionId,
@@ -11306,7 +11782,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       }
 
       const at = nowIso();
-      if (body.archived) session.archivedAt = at;
+      if (isRename) session.title = title;
+      else if (body.archived) session.archivedAt = at;
       else delete session.archivedAt;
       session.updatedAt = at;
       const mutation = hostMutationSucceeded(

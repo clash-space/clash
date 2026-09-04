@@ -31,6 +31,7 @@
     0 1px 2px rgba(0, 0, 0, 0.035), 0 4px 12px rgba(0, 0, 0, 0.035);
   --clash-shadow-floating:
     0 2px 8px rgba(0, 0, 0, 0.045), 0 12px 32px rgba(0, 0, 0, 0.055);
+  --clash-shadow-sidebar-preview: 0 2px 8px rgba(28, 25, 23, 0.12);
   --clash-overlay-shadow: var(--clash-shadow-floating);
   --clash-brand: #ff6b50;
   /* Semantic palette: coral = error/danger/attention/signature only. */
@@ -189,9 +190,8 @@
   --app-page-content-wide: 100rem;
   --clash-home-section-card-gap: var(--clash-project-chrome-gutter);
   --clash-home-section-stack-gap: 1.5rem;
-  /* Dashboard uses a two-tier composer: a compact editor row plus the shared
-     28px control rail. Project/session composers keep their richer stack. */
-  --clash-dashboard-composer-resting-height: 5rem;
+  /* The dashboard reserves the same compact Composer height as chat. */
+  --clash-dashboard-composer-resting-height: 6.125rem;
   /* Collapsed is fully off canvas, not an icon rail: content reclaims the space. */
   --clash-app-sidebar-collapsed-width: 0px;
   --clash-home-floating-inline-gap: clamp(0.75rem, 1.5vw, 1.25rem);
@@ -465,6 +465,7 @@
     0 1px 2px rgba(0, 0, 0, 0.22), 0 4px 12px rgba(0, 0, 0, 0.18);
   --clash-shadow-floating:
     0 2px 8px rgba(0, 0, 0, 0.28), 0 12px 32px rgba(0, 0, 0, 0.28);
+  --clash-shadow-sidebar-preview: 0 2px 8px rgba(0, 0, 0, 0.3);
   --clash-overlay-shadow: var(--clash-shadow-floating);
   --clash-blue: #8fb0f4;
   --clash-blue-soft: #1c2740;
@@ -1248,7 +1249,9 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   flex: none;
   overflow: visible;
   border-radius: var(--clash-workspace-surface-radius);
-  box-shadow: var(--clash-workspace-surface-shadow);
+  border-color: var(--clash-warm-border);
+  background: var(--clash-warm-muted);
+  box-shadow: var(--clash-shadow-raised);
 }
 
 .clash-canvas-toolbar-surface > *,
@@ -1730,10 +1733,6 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   display: block;
 }
 
-.clash-copilot-launcher--header .clash-agent-motion__svg {
-  opacity: 0.9;
-}
-
 .clash-agent-motion--compact .clash-agent-motion__svg {
   shape-rendering: geometricPrecision;
 }
@@ -1882,17 +1881,6 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-agent-motion--review .clash-agent-motion__pen {
   animation: clash-agent-review-pen 2.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
-}
-
-.clash-copilot-launcher .clash-agent-motion {
-  filter: drop-shadow(0 10px 18px rgba(35, 31, 25, 0.12))
-    drop-shadow(0 2px 6px rgba(255, 107, 80, 0.08));
-  transition: filter 180ms ease;
-}
-
-.clash-copilot-launcher:hover .clash-agent-motion {
-  filter: drop-shadow(0 12px 22px rgba(35, 31, 25, 0.15))
-    drop-shadow(0 3px 9px rgba(255, 107, 80, 0.12));
 }
 
 .clash-collapsible-content[data-state="open"] {
@@ -2194,15 +2182,130 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   }
 }
 
+.clash-asset-generation-preview {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  color: var(--clash-content-secondary);
+  contain: layout paint;
+}
+
+.clash-asset-generation-preview__stage {
+  position: relative;
+  width: 10rem;
+  height: 7.25rem;
+  overflow: visible;
+}
+
+.clash-asset-generation-preview__agent {
+  position: absolute;
+  left: 0.5rem;
+  bottom: 0.35rem;
+  width: 5rem;
+  height: 5rem;
+  z-index: 2;
+}
+
+.clash-asset-generation-preview__output {
+  position: absolute;
+  inset: 0;
+  color: var(--clash-agent-avatar-ink);
+}
+
+.clash-asset-generation-preview__card {
+  position: absolute;
+  left: 4.3rem;
+  bottom: 1.45rem;
+  display: grid;
+  width: 2.75rem;
+  height: 2.1rem;
+  place-items: center;
+  border: 2px solid currentColor;
+  border-radius: 0.5rem;
+  background: var(--color-warm-surface);
+  color: var(--clash-agent-avatar-ink);
+  opacity: 0;
+  transform-origin: center;
+  animation: clash-asset-generation-card 2.4s cubic-bezier(0.22, 1, 0.36, 1)
+    infinite;
+}
+
+.clash-asset-generation-preview__card svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.clash-asset-generation-preview__card--one {
+  animation-delay: -1.6s;
+}
+
+.clash-asset-generation-preview__card--two {
+  animation-delay: -0.8s;
+}
+
+.clash-asset-generation-preview__card--three {
+  animation-delay: 0s;
+}
+
+.clash-asset-generation-preview__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1rem;
+  color: var(--clash-content-secondary);
+}
+
+@keyframes clash-asset-generation-card {
+  0% {
+    opacity: 0;
+    transform: translate3d(-0.8rem, 0.55rem, 0) scale(0.72) rotate(-6deg);
+  }
+
+  12%,
+  58% {
+    opacity: 1;
+  }
+
+  34% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+  }
+
+  76%,
+  100% {
+    opacity: 0;
+    transform: translate3d(2.7rem, -2.45rem, 0) scale(0.88) rotate(5deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clash-asset-generation-preview__card {
+    animation: none !important;
+    opacity: 1;
+  }
+
+  .clash-asset-generation-preview__card--one {
+    transform: translate3d(-0.15rem, 0.15rem, 0) rotate(-5deg);
+  }
+
+  .clash-asset-generation-preview__card--two {
+    transform: translate3d(1.05rem, -0.65rem, 0) rotate(0deg);
+  }
+
+  .clash-asset-generation-preview__card--three {
+    transform: translate3d(2.2rem, -1.45rem, 0) rotate(5deg);
+  }
+}
+
 .clash-copilot-panel-shell {
   isolation: isolate;
   border-radius: var(--clash-workbench-surface-radius);
   border: 1px solid rgba(225, 221, 213, 0.82);
   background: var(--color-warm-page);
-  box-shadow:
-    0 24px 64px rgba(35, 31, 25, 0.14),
-    0 8px 24px rgba(35, 31, 25, 0.075),
-    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  box-shadow: none;
   contain: layout paint;
   will-change: transform, opacity;
 }
@@ -2220,21 +2323,6 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   box-shadow: none;
 }
 
-.clash-copilot-composer-bottom-fade {
-  position: absolute;
-  inset-inline: 0;
-  top: 50%;
-  bottom: 0;
-  z-index: 0;
-  pointer-events: none;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 254, 253, 0) 0%,
-    rgba(255, 254, 253, 0.72) 42%,
-    rgba(255, 254, 253, 0.98) 100%
-  );
-}
-
 .clash-session-config-trigger {
   background: transparent;
   box-shadow: none;
@@ -2242,12 +2330,6 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-session-config-status-slot {
   letter-spacing: 0;
-}
-
-.clash-copilot-agent-perch {
-  background: none;
-  box-shadow: none;
-  color: #171412;
 }
 
 .clash-copilot-resize-handle::before {
@@ -2746,19 +2828,147 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   white-space: nowrap;
 }
 
-.clash-project-card-preview-grid {
-  overflow: hidden;
-  background: var(--clash-warm-border);
+.clash-project-canvas-preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: color-mix(
+    in srgb,
+    var(--clash-content-muted) 20%,
+    var(--clash-warm-muted)
+  );
 }
 
-.clash-project-card-preview-cell {
-  position: relative;
-  overflow: hidden;
-  background: var(--clash-warm-muted);
+.clash-project-canvas-preview-node {
+  fill: color-mix(
+    in srgb,
+    var(--clash-content-muted) 12%,
+    var(--clash-warm-muted)
+  );
+  stroke: var(--clash-warm-border);
+  stroke-width: 1.25px;
+}
+
+.clash-project-canvas-preview-node-group {
+  fill: color-mix(in srgb, var(--clash-warm-muted) 60%, transparent);
+  stroke-dasharray: 5 4;
+}
+
+.clash-project-canvas-preview-node-media,
+.clash-project-canvas-preview-node-media-placeholder {
+  fill: color-mix(
+    in srgb,
+    var(--clash-content-secondary) 32%,
+    var(--clash-warm-muted)
+  );
+  stroke: color-mix(
+    in srgb,
+    var(--clash-content-secondary) 32%,
+    var(--clash-warm-border)
+  );
+}
+
+.clash-project-canvas-preview-node-action {
+  fill: color-mix(in srgb, var(--clash-accent) 24%, var(--clash-warm-muted));
+  stroke: color-mix(in srgb, var(--clash-accent) 52%, var(--clash-warm-border));
+}
+
+.clash-project-canvas-preview-node-image-editor,
+.clash-project-canvas-preview-node-browser {
+  fill: color-mix(
+    in srgb,
+    var(--clash-content-secondary) 18%,
+    var(--clash-warm-muted)
+  );
+}
+
+.clash-project-canvas-preview-node-timeline {
+  fill: color-mix(
+    in srgb,
+    var(--clash-content-primary) 26%,
+    var(--clash-warm-muted)
+  );
+  stroke: color-mix(
+    in srgb,
+    var(--clash-content-primary) 30%,
+    var(--clash-warm-border)
+  );
+}
+
+.clash-project-canvas-preview-content-mark {
+  fill: color-mix(in srgb, var(--clash-content-secondary) 36%, transparent);
+  pointer-events: none;
+}
+
+.clash-project-canvas-preview-content-mark-strong {
+  fill: color-mix(in srgb, var(--clash-content-secondary) 62%, transparent);
+}
+
+.clash-project-canvas-preview-content-mark-badge {
+  fill: color-mix(in srgb, var(--clash-accent) 70%, transparent);
+}
+
+.clash-project-canvas-preview-content-mark-toolbar {
+  fill: color-mix(in srgb, var(--clash-content-secondary) 48%, transparent);
+}
+
+.clash-project-canvas-preview-content-mark-frame {
+  fill: color-mix(in srgb, var(--clash-warm-surface) 35%, transparent);
+  stroke: color-mix(in srgb, var(--clash-content-secondary) 58%, transparent);
+  stroke-width: 2px;
+}
+
+.clash-project-canvas-preview-content-mark-preview {
+  fill: color-mix(in srgb, var(--clash-content-primary) 46%, transparent);
+}
+
+.clash-project-canvas-preview-content-mark-media-frame {
+  fill: color-mix(in srgb, var(--clash-warm-muted) 34%, transparent);
+  stroke: color-mix(in srgb, var(--clash-content-secondary) 44%, transparent);
+  stroke-width: 2px;
+}
+
+.clash-project-canvas-preview-label {
+  fill: var(--clash-content-secondary);
+  font-family: var(--font-product);
+  font-weight: 600;
+  pointer-events: none;
 }
 
 .clash-project-card-preview-img {
   display: block;
+}
+
+.clash-project-card-canvas-thumbnail {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity var(--motion-feedback-duration)
+    var(--motion-feedback-ease);
+}
+
+.clash-project-card-canvas-thumbnail[data-state="ready"] {
+  opacity: 1;
+}
+
+.clash-project-card-canvas-thumbnail[data-state="failed"] {
+  display: none;
+}
+
+.clash-project-card-action {
+  color: var(--clash-content-primary);
+  background: color-mix(in srgb, var(--clash-warm-surface) 92%, transparent);
+  box-shadow: 0 1px 4px rgba(28, 25, 23, 0.2);
+  backdrop-filter: blur(8px);
+}
+
+.clash-project-card-action:hover {
+  background: var(--clash-warm-surface);
 }
 
 .clash-project-card-asset-fallback {
@@ -3052,6 +3262,24 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-canvas-toolbar-surface .clash-workspace-icon-control[data-state="open"] {
   background: var(--control-bg-open);
   color: var(--clash-content-primary);
+}
+
+.clash-canvas-toolbar-surface .clash-workspace-icon-control {
+  color: var(--clash-content-secondary);
+}
+
+.clash-canvas-toolbar-surface .clash-toolbar-button:hover {
+  color: var(--clash-content-primary);
+}
+
+.clash-canvas-toolbar-surface
+  .clash-workspace-icon-control:is(
+    [data-state="on"],
+    [aria-pressed="true"],
+    [data-state="open"]
+  ) {
+  background: var(--select-item-selected);
+  color: var(--tone-blue-ink);
 }
 
 .clash-toolbar-button-active,
@@ -3396,99 +3624,10 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   box-shadow: none;
 }
 
-.clash-dashboard-composer-dock .clash-chat-input-surface {
-  display: flex;
-  min-height: var(--clash-dashboard-composer-resting-height);
-  align-items: stretch;
-  padding: 0.5rem;
-  border: 0;
-  border-radius: 0.875rem;
-  background: var(--clash-warm-surface);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--clash-content-primary) 16%, transparent),
-    0 3px 10px color-mix(in srgb, var(--clash-content-primary) 7%, transparent);
-}
-
-.clash-dashboard-composer-dock .clash-chat-input-surface:hover {
-  background: var(--clash-warm-surface);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--clash-content-primary) 16%, transparent),
-    0 3px 10px color-mix(in srgb, var(--clash-content-primary) 7%, transparent);
-}
-
-.clash-dashboard-composer-dock
-  .clash-chat-input-surface:has(.clash-chat-input-editor:focus-within) {
-  background: var(--clash-warm-surface);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--clash-content-primary) 28%, transparent),
-    0 4px 12px color-mix(in srgb, var(--clash-content-primary) 9%, transparent);
-}
-
 .clash-dashboard-composer-dock[data-is-over="true"] .clash-chat-input-surface {
   box-shadow:
     0 0 0 2px color-mix(in srgb, var(--clash-blue) 45%, transparent),
     var(--clash-shadow-floating);
-}
-
-.clash-dashboard-composer-dock .clash-chat-input-hero-layout {
-  display: flex;
-  width: 100%;
-  min-height: 100%;
-  flex-direction: column;
-  gap: var(--clash-control-gap, 0.25rem);
-}
-
-.clash-dashboard-composer-dock .clash-chat-input-editor--hero {
-  --composer-editor-max-height: 10rem;
-  --composer-text-inline-inset: 0.5rem;
-  --composer-text-block-inset: var(--clash-control-gap, 0.25rem);
-  --composer-text-line-height: 1.3125rem;
-  display: flex;
-  min-height: var(--control-height-default);
-  max-height: var(--composer-editor-max-height);
-  flex: 1 1 auto;
-  align-items: flex-start;
-  padding-block-start: var(--composer-text-block-inset);
-  padding-inline: var(--composer-text-inline-inset);
-}
-
-.clash-dashboard-composer-dock
-  .clash-chat-input-editor--hero
-  .milkdown-editor-wrapper {
-  display: flex;
-  min-height: var(--composer-text-line-height);
-  align-items: flex-start;
-}
-
-.clash-dashboard-composer-dock .clash-chat-input-editor--hero .ProseMirror {
-  min-height: var(--composer-text-line-height);
-  line-height: var(--composer-text-line-height);
-}
-
-.clash-dashboard-composer-dock .clash-chat-input-toolbar-row {
-  display: flex;
-  width: 100%;
-  margin-top: auto;
-  justify-content: space-between;
-  padding: 0;
-}
-
-.clash-dashboard-composer-dock
-  .clash-chat-input-hero-layout[data-input-state="multiline"]
-  .clash-chat-input-editor--hero,
-.clash-dashboard-composer-dock
-  .clash-chat-input-surface[data-composer-visual-state="growing"]
-  .clash-chat-input-editor--hero {
-  display: block;
-  min-height: 3rem;
-  padding-block: 0.375rem;
-}
-
-.clash-dashboard-composer-dock
-  .clash-chat-input-surface[data-composer-visual-state="growing"]
-  .clash-chat-input-editor--hero
-  .milkdown-editor-wrapper {
-  display: block;
 }
 
 html[data-dashboard-composer-transition="source"]
@@ -5101,6 +5240,8 @@ html.dark .clash-download-card {
 
 [data-chat-surface="main"] .composer-card .clash-chat-input-editor {
   min-height: var(--composer-body-min-height);
+  max-height: var(--composer-editor-max-height);
+  overflow-y: auto;
   font-family: var(--font-chat);
   font-size: 14px;
   line-height: 1.75rem;
@@ -5109,11 +5250,33 @@ html.dark .clash-download-card {
 /* Backchat's textarea starts on the composer's shared body inset. Milkdown's
    generic wrapper padding would add a second inset and move both the caret and
    placeholder down and to the right. */
-[data-chat-surface="main"]
+.composer-card .clash-chat-input-editor--default .milkdown-editor-wrapper {
+  padding: 0 !important;
+}
+
+/* The compact three-row composer anchors text near the top and controls at the
+   bottom. Its first line keeps the balanced outer inset while the extra row is
+   left between writing and controls, matching Codex's resting geometry. */
+[data-chat-density="compact"] .composer-card .clash-chat-input-editor--default {
+  display: flex;
+  align-items: flex-start;
+  padding-block-start: 0.3125rem;
+}
+
+[data-chat-density="compact"]
   .composer-card
   .clash-chat-input-editor--default
   .milkdown-editor-wrapper {
-  padding: 0 !important;
+  width: 100%;
+  flex: 0 0 auto;
+}
+
+[data-chat-density="compact"]
+  .composer-card
+  .clash-chat-input-editor--default
+  .ProseMirror {
+  min-height: 1.25rem;
+  line-height: 1.25rem;
 }
 
 .clash-chat-input-actions {
@@ -5462,44 +5625,9 @@ html.dark .clash-download-card {
   box-shadow: none;
 }
 
-.dark .clash-copilot-composer-bottom-fade {
-  background: linear-gradient(
-    180deg,
-    rgba(21, 21, 21, 0) 0%,
-    rgba(21, 21, 21, 0.72) 42%,
-    rgba(21, 21, 21, 0.98) 100%
-  );
-}
-
-.dark .clash-copilot-agent-perch,
 .dark .clash-agent-motion,
 .dark .clash-project-return-button {
   color: var(--foreground);
-}
-
-.dark .clash-copilot-launcher .clash-agent-motion {
-  color: #a3a3a3;
-  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.28));
-}
-
-.dark .clash-copilot-launcher--header .clash-agent-motion {
-  color: #d6d3d1;
-}
-
-.dark .clash-copilot-launcher:hover .clash-agent-motion {
-  filter: drop-shadow(0 12px 22px rgba(0, 0, 0, 0.34));
-}
-
-.dark .clash-copilot-launcher .clash-agent-motion__pen {
-  fill: var(--clash-agent-avatar-accent);
-}
-
-.dark .clash-copilot-launcher .clash-agent-motion__attached-mark {
-  color: #8b8b8b;
-}
-
-.dark .clash-copilot-launcher--header .clash-agent-motion__attached-mark {
-  color: #b8b8b8;
 }
 
 .dark .clash-project-return-button:hover {

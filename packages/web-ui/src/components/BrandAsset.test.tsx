@@ -36,4 +36,13 @@ describe("BrandAsset", () => {
     expect(image).toHaveAttribute("alt", "Clash error avatar");
     expect(image).not.toHaveAttribute("aria-hidden");
   });
+
+  it("uses the host-owned route-error artwork", () => {
+    const { container } = render(
+      <BrandAsset name="error" alt="Clash error avatar" />,
+    );
+    const image = container.querySelector("img");
+
+    expect(image).toHaveAttribute("src", "/brand/avatar-error.png");
+  });
 });

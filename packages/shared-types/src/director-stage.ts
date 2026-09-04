@@ -971,7 +971,7 @@ export function attachDirectorStageToCanvas(
     stageId: string;
     canvasId: string;
     actionNodeId: string;
-    position: { x: number; y: number };
+    position?: { x: number; y: number };
   },
 ): ProjectDirectorStageMutationResult {
   const stage = readProjectDirectorStage(doc, input.stageId);
@@ -987,10 +987,11 @@ export function attachDirectorStageToCanvas(
   if (!canvases.get(input.canvasId)) {
     return { ok: false, error: `Canvas ${input.canvasId} not found` };
   }
-  const nodes = doc.getMap("nodes");
-  if (nodes.get(input.actionNodeId)) {
+  if (doc.getMap("nodes").get(input.actionNodeId)) {
     return { ok: false, error: `Node ${input.actionNodeId} already exists` };
   }
+  const fields = doc.getMap("directorStages").get(input.stageId);
+  if (!isLoroMap(fields)) return { ok: false, error: `Director Stage ${input.stageId} not found` };
   const next: ProjectDirectorStage = {
     ...stage,
     owner: {
@@ -999,17 +1000,20 @@ export function attachDirectorStageToCanvas(
       actionNodeId: input.actionNodeId,
     },
   };
+  const hostCanvas = new Canvas(doc, () => {}, input.canvasId);
+  const view = hostCanvas.createNode(
+    input.actionNodeId,
+    "director-stage",
+    { stageId: input.stageId, label: stage.name },
+    input.position,
+  );
+  if (view.error) return { ok: false, error: view.error };
   const bindingError = rehomeProjectDirectorAssetInputs(doc, stage, next);
-  if (bindingError) return bindingError;
-  const fields = doc.getMap("directorStages").get(input.stageId);
-  if (!isLoroMap(fields)) return { ok: false, error: `Director Stage ${input.stageId} not found` };
+  if (bindingError) {
+    hostCanvas.deleteNode(input.actionNodeId);
+    return bindingError;
+  }
   fields.set("owner", next.owner);
-  nodes.set(input.actionNodeId, {
-    canvasId: input.canvasId,
-    type: "director-stage",
-    data: { stageId: input.stageId, label: stage.name },
-    position: input.position,
-  });
   return { ok: true, stage: next };
 }
 

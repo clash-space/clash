@@ -29,16 +29,17 @@
 
 import { LoroDoc } from "loro-crdt";
 
-const SNAPSHOT_KEY = "loro:snapshot";
-const SNAPSHOT_SEQ_KEY = "loro:snapshot-seq";
-const NEXT_SEQ_KEY = "loro:next-seq";
-const UPDATE_PREFIX = "loro:u:";
+export const SNAPSHOT_KEY = "loro:snapshot";
+export const SNAPSHOT_SEQ_KEY = "loro:snapshot-seq";
+export const NEXT_SEQ_KEY = "loro:next-seq";
+export const CHECKPOINT_REQUESTED_SEQ_KEY = "loro:checkpoint-requested-seq";
+export const UPDATE_PREFIX = "loro:u:";
 // 12-digit zero-padded sequence: lexical key order matches numeric seq order.
 // 10^12 updates per project before this overflows — a few thousand years at
 // 10 writes/sec.
 const SEQ_PAD = 12;
 
-function seqKey(seq: number): string {
+export function seqKey(seq: number): string {
   return UPDATE_PREFIX + String(seq).padStart(SEQ_PAD, "0");
 }
 
@@ -173,7 +174,14 @@ export async function compactToSnapshot(
  */
 export async function wipeDocState(storage: DurableObjectStorage): Promise<void> {
   // Legacy keys from the pre-update-log layout; safe to delete unconditionally.
-  await storage.delete([SNAPSHOT_KEY, SNAPSHOT_SEQ_KEY, NEXT_SEQ_KEY, "loro:version", "loro:snapshot"]);
+  await storage.delete([
+    SNAPSHOT_KEY,
+    SNAPSHOT_SEQ_KEY,
+    NEXT_SEQ_KEY,
+    CHECKPOINT_REQUESTED_SEQ_KEY,
+    "loro:version",
+    "loro:snapshot",
+  ]);
   const updates = await storage.list({ prefix: UPDATE_PREFIX });
   if (updates.size > 0) await storage.delete([...updates.keys()]);
 }

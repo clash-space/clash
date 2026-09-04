@@ -60,8 +60,7 @@ describe('EditableProjectAssetSurface', () => {
     expect(screen.getByRole('main', { name: 'image-1 preview' })).toBeTruthy();
   });
 
-  it('sets and clears the explicit Project Asset cover id through the host callback', () => {
-    const onProjectCoverChange = vi.fn();
+  it('does not offer a manual project cover control', () => {
     render(
       <EditableProjectAssetSurface
         asset={{
@@ -74,12 +73,10 @@ describe('EditableProjectAssetSurface', () => {
         }}
         projectId="project-1"
         onApplied={vi.fn()}
-        onProjectCoverChange={onProjectCoverChange}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Use as project cover' }));
-    expect(onProjectCoverChange).toHaveBeenCalledWith(true);
+    expect(screen.queryByRole('button', { name: 'Use as project cover' })).toBeNull();
   });
 
   it('renders a docked provenance rail with navigable Canvas, Timeline, source, and prompt relations', () => {
@@ -182,7 +179,6 @@ describe('EditableProjectAssetSurface', () => {
         }}
         projectId="project-1"
         onApplied={vi.fn()}
-        onProjectCoverChange={vi.fn()}
       />,
     );
 

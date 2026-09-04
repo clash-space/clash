@@ -172,7 +172,6 @@ apps/
   web/                  Vite SPA + Cloudflare Worker entry
   api-cf/               Hono + DOs + Workflow + container DO
   render-server/        Remotion image (built once → GHCR, pulled by Container DO)
-  loro-sync-server/     legacy shell, sync moved into api-cf
 packages/
   director-{core,ui}/   3D Director Stage state and interface
   mcp-server/           internal typed peer capability surface for the plugin MCP
@@ -210,7 +209,7 @@ own Cloudflare resources and paste the IDs back in.
 wrangler login
 
 wrangler d1 create clash-d1
-# Copy the printed `database_id` into apps/{api-cf,web,loro-sync-server}/wrangler.toml
+# Copy the printed `database_id` into apps/{api-cf,web}/wrangler.toml
 
 wrangler r2 bucket create clash-r2
 

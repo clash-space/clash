@@ -13,6 +13,7 @@ interface HomePageClientProps {
   marketplaceFeed?: {
     featuredPlugins: RegistryItem[];
     installedActionIds: string[];
+    installedPluginIds: string[];
     installedSkillIds: string[];
   };
 }
@@ -22,6 +23,7 @@ export default function HomePageClient({
   marketplaceFeed = {
     featuredPlugins: [],
     installedActionIds: [],
+    installedPluginIds: [],
     installedSkillIds: [],
   },
 }: HomePageClientProps) {

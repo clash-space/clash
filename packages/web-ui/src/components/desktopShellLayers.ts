@@ -6,6 +6,5 @@
 export const DESKTOP_SHELL_LAYERS = {
   dashboardTask: 20,
   sidebarRecovery: 30,
-  sidebarScrim: 40,
   sidebarPreview: 50,
 } as const;

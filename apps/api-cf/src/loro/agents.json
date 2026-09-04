@@ -1,0 +1,12 @@
+{
+  "summary": "Cloudflare adapters and Project Loro processing helpers.",
+  "context_hints": [
+    "replica-ports.ts adapts Durable Object Storage and alarms to @clash/replica; durable ordering belongs to the portable engine.",
+    "storage.ts retains compatibility helpers and stable storage key definitions. Do not introduce foreign keys or runtime-specific types into @clash/replica.",
+    "Full snapshots remain the default until an offline-replica-aware shallow-history GC frontier exists."
+  ],
+  "key_files": {
+    "replica-ports.ts": "Durable Object event log, checkpoint, deduplication and scheduling ports.",
+    "storage.ts": "Existing snapshot/update storage keys and migration-compatible helpers."
+  }
+}

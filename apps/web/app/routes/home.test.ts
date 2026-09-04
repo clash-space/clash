@@ -5,10 +5,85 @@ import { loader } from "./home";
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  globalThis.__CLASH_RUNTIME_CONFIG__ = undefined;
 });
 
 describe("home loader marketplace feed", () => {
-  it("maps only configured featured plugins into the authenticated homepage", async () => {
+  it.each(["local", "desktop"] as const)(
+    "opens the %s product home without a Better Auth session",
+    async (mode) => {
+      globalThis.__CLASH_RUNTIME_CONFIG__ = {
+        mode,
+        apiBaseUrl: "http://127.0.0.1:8789",
+      };
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: string | URL | Request) => {
+          const path = new URL(String(input), "http://clash.local").pathname;
+          if (path === "/api/better-auth/get-session") {
+            throw new Error("Local Home must not depend on Better Auth");
+          }
+          if (path === "/api/v1/projects") {
+            return Response.json({ projects: [] });
+          }
+          if (path === "/api/marketplace/feed") {
+            return Response.json({ version: 1, featuredPlugins: [] });
+          }
+          if (
+            path === "/api/settings/actions" ||
+            path === "/api/v1/local/plugins" ||
+            path === "/api/settings/skills"
+          ) {
+            return Response.json([]);
+          }
+          throw new Error(`Unexpected request: ${path}`);
+        }),
+      );
+
+      await expect(loader({} as never)).resolves.toEqual({
+        authed: true,
+        projects: [],
+        marketplaceFeed: {
+          featuredPlugins: [],
+          installedActionIds: [],
+          installedPluginIds: [],
+          installedSkillIds: [],
+        },
+      });
+    },
+  );
+
+  it("redirects an unauthenticated hosted visitor to login instead of rendering Landing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 401 })),
+    );
+
+    await expect(loader({} as never)).rejects.toMatchObject({ status: 302 });
+  });
+
+  it("redirects when the hosted project read reports an expired session", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const path = new URL(String(input), "http://clash.local").pathname;
+        if (path === "/api/better-auth/get-session") {
+          return Response.json({ user: { id: "user-1" } });
+        }
+        if (path === "/api/v1/projects") {
+          return new Response(null, { status: 401 });
+        }
+        if (path === "/api/marketplace/feed") {
+          return Response.json({ version: 1, featuredPlugins: [] });
+        }
+        return Response.json([]);
+      }),
+    );
+
+    await expect(loader({} as never)).rejects.toMatchObject({ status: 302 });
+  });
+
+  it("maps the Plugin feed and its matching installed Plugin ids into Home", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL | Request) => {
@@ -23,7 +98,17 @@ describe("home loader marketplace feed", () => {
           return Response.json({
             version: 1,
             featuredPlugins: [
-              { id: "skill-1", type: "skill", name: "Skill One" },
+              {
+                id: "clash.storyboard",
+                type: "plugin",
+                name: "Storyboard",
+                artwork: { src: "/brand/avatar-storyboard.png" },
+              },
+              {
+                id: "clash.video.sd25-pe",
+                type: "skill",
+                name: "sd25-pe",
+              },
             ],
           });
         }
@@ -34,7 +119,10 @@ describe("home loader marketplace feed", () => {
           return Response.json([{ actionId: "action-1" }]);
         }
         if (path === "/api/settings/skills") {
-          return Response.json([{ skillId: "skill-1" }]);
+          return Response.json([{ skillId: "clash.video.sd25-pe" }]);
+        }
+        if (path === "/api/v1/local/plugins") {
+          return Response.json([{ id: "clash.storyboard" }]);
         }
         throw new Error(`Unexpected request: ${path}`);
       }),
@@ -45,10 +133,21 @@ describe("home loader marketplace feed", () => {
       projects: [{ id: "project-1" }],
       marketplaceFeed: {
         featuredPlugins: [
-          { id: "skill-1", type: "skill", name: "Skill One" },
+          {
+            id: "clash.storyboard",
+            type: "plugin",
+            name: "Storyboard",
+            artwork: { src: "/brand/avatar-storyboard.png" },
+          },
+          {
+            id: "clash.video.sd25-pe",
+            type: "skill",
+            name: "sd25-pe",
+          },
         ],
         installedActionIds: ["action-1"],
-        installedSkillIds: ["skill-1"],
+        installedPluginIds: ["clash.storyboard"],
+        installedSkillIds: ["clash.video.sd25-pe"],
       },
     });
   });
@@ -74,6 +173,7 @@ describe("home loader marketplace feed", () => {
       marketplaceFeed: {
         featuredPlugins: [],
         installedActionIds: [],
+        installedPluginIds: [],
         installedSkillIds: [],
       },
     });
@@ -87,7 +187,7 @@ describe("home loader marketplace feed", () => {
         if (path === "/api/better-auth/get-session") {
           return Response.json({ user: { id: "user-1" } });
         }
-        if (path === "/api/settings/skills") {
+        if (path === "/api/v1/local/plugins") {
           return new Response(null, { status: 401 });
         }
         if (path === "/api/v1/projects") {

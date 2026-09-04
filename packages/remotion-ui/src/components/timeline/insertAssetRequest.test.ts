@@ -38,12 +38,17 @@ describe("buildTimelineAssetInsertion", () => {
           from: 42,
           durationInFrames: 90,
           src: "/opening.png",
+          mediaFit: "contain",
+          properties: {
+            width: 1,
+            height: 1,
+          },
         },
       ],
     });
   });
 
-  it("uses Host-probed duration and dimensions for a real landscape video insertion", () => {
+  it("keeps a real landscape video proportional when inserting it into a portrait canvas", () => {
     const result = buildTimelineAssetInsertion({
       asset: {
         id: "talking-head-placement",
@@ -73,8 +78,9 @@ describe("buildTimelineAssetInsertion", () => {
       durationInFrames: 980,
       properties: {
         width: 1,
-        height: 0.31640625,
+        height: 1,
       },
+      mediaFit: "contain",
     });
     expect(result.asset).not.toHaveProperty("waveform");
     expect(result.track.items[0]).not.toHaveProperty("waveform");

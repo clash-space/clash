@@ -62,6 +62,7 @@ import {
   type LocalAssetInspectionService,
 } from "./local-asset-inspections.js";
 import type { LocalAssetInspectionFacts } from "./local-asset-inspections.js";
+import type { LocalAssetRepresentationService } from "./local-asset-representations.js";
 import { FileReplicaStore } from "./loro/file-replica-store.js";
 
 export type LocalProjectAssetMigrationErrorCode =
@@ -339,6 +340,22 @@ function mediaUrl(
   return `${origin.replace(/\/+$/, "")}/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(projectAssetId)}/media`;
 }
 
+function thumbnailUrl(
+  origin: string,
+  projectId: string,
+  projectAssetId: string,
+): string {
+  return `${origin.replace(/\/+$/, "")}/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(projectAssetId)}/thumbnail`;
+}
+
+function waveformUrl(
+  origin: string,
+  projectId: string,
+  projectAssetId: string,
+): string {
+  return `${origin.replace(/\/+$/, "")}/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(projectAssetId)}/waveform`;
+}
+
 function mutationFailure(result: {
   ok: false;
   error: { code: string; message: string };
@@ -450,6 +467,10 @@ export function createLocalProjectAssetService(options: {
   clashRoot?: string;
   projectionOrigin: string | (() => string);
   assetInspection?: LocalAssetInspectionService;
+  assetRepresentations?: Pick<
+    LocalAssetRepresentationService,
+    "schedule" | "read"
+  >;
   replica?: LocalProjectAssetReplica;
   readReceiptVerifier?: AgentReadReceiptVerifier;
 }): LocalProjectAssetService {
@@ -624,6 +645,7 @@ export function createLocalProjectAssetService(options: {
           return projection
             ? {
                 status: "ready" as const,
+                createdAt: projection.createdAt,
                 resource: {
                   ...projection.resource,
                   ...(contentType ? { contentType } : {}),
@@ -649,10 +671,26 @@ export function createLocalProjectAssetService(options: {
             ? options.projectionOrigin()
             : options.projectionOrigin;
         const url = mediaUrl(origin, projectId, entry.id);
+        const representationRole =
+          entry.kind === "audio" ? "waveform" : "thumbnail";
+        const representation = options.assetRepresentations
+          ? await options.assetRepresentations.read(
+              entry.source.resourceId,
+              representationRole,
+            )
+          : undefined;
+        options.assetRepresentations?.schedule(entry.source.resourceId);
         return {
           status: "ready" as const,
           url,
-          ...(entry.kind === "image" ? { thumbnailUrl: url } : {}),
+          ...(representation?.role === "thumbnail"
+            ? { thumbnailUrl: thumbnailUrl(origin, projectId, entry.id) }
+            : entry.kind === "image"
+              ? { thumbnailUrl: url }
+              : {}),
+          ...(representation?.role === "waveform"
+            ? { waveformUrl: waveformUrl(origin, projectId, entry.id) }
+            : {}),
         };
       },
     },
@@ -749,6 +787,7 @@ export function createLocalProjectAssetService(options: {
       kind: input.kind,
       source: { kind: "owned", resourceId },
       lifecycle: { state: "active" },
+      createdAt: finalized.source.createdAt,
       ...(input.name ? { name: input.name } : {}),
       metadata: canonicalMetadata({
         source: finalized.source,
@@ -775,6 +814,7 @@ export function createLocalProjectAssetService(options: {
       kind: input.kind,
       source: { kind: "owned", resourceId: input.resourceId },
       lifecycle: { state: "active" },
+      createdAt: finalized.source.createdAt,
       ...(input.name ? { name: input.name } : {}),
       metadata: canonicalMetadata({
         source: finalized.source,
@@ -823,6 +863,7 @@ export function createLocalProjectAssetService(options: {
         },
       },
       lifecycle: { state: "active" },
+      createdAt: finalized.source.createdAt,
       ...(input.name ? { name: input.name } : {}),
       metadata: canonicalMetadata({
         source: finalized.source,
@@ -894,6 +935,7 @@ export function createLocalProjectAssetService(options: {
       kind: asset.kind,
       source: { kind: "owned", resourceId: projection.resource.id },
       lifecycle: { state: "active" },
+      createdAt: asset.createdAt,
       ...(legacyMetadata.originalName
         ? { name: legacyMetadata.originalName }
         : {}),

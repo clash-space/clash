@@ -45,6 +45,10 @@ import {
 import type { DesktopControllerLogger } from "./types";
 import { openExternalHttpUrl } from "../external-url";
 import { createDeduplicatedLogEmitter } from "../stdio-logger";
+import {
+  isProjectBrowserUrl,
+  PROJECT_BROWSER_OPEN_TAB_CHANNEL,
+} from "../project-browser-events";
 
 function contentTypeForPath(path: string): string {
   if (path.endsWith(".html")) return "text/html";
@@ -258,7 +262,7 @@ export function createDesktopWindowController({
     const window = new BrowserWindow({
       ...resolveDesktopWindowOptions(windowRegistry.count(), nativeTheme.shouldUseDarkColors),
       webPreferences: {
-        ...resolveDesktopWebPreferences(join(moduleDir, "preload.js")),
+        ...resolveDesktopWebPreferences(join(moduleDir, "preload.cjs")),
         backgroundThrottling: false,
       },
     });
@@ -284,6 +288,21 @@ export function createDesktopWindowController({
     protocol.handle("clash", async (request) => {
       const url = new URL(request.url);
       return readWebAsset(distDir, url.pathname);
+    });
+  }
+
+  function registerProjectBrowserWindowRouting(): void {
+    app.on("web-contents-created", (_event, contents) => {
+      if (contents.getType() !== "webview") return;
+      contents.setWindowOpenHandler(({ url, disposition }) => {
+        if (isProjectBrowserUrl(url)) {
+          contents.hostWebContents?.send(PROJECT_BROWSER_OPEN_TAB_CHANNEL, {
+            url,
+            disposition,
+          });
+        }
+        return { action: "deny" };
+      });
     });
   }
 
@@ -374,6 +393,7 @@ export function createDesktopWindowController({
 
   function registerHostBindings(): void {
     registerWebProtocol();
+    registerProjectBrowserWindowRouting();
     installApplicationMenu();
     registerWindowIpc();
   }

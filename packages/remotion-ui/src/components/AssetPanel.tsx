@@ -283,14 +283,15 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
                   </div>
                   <div className={`mt-0.5 capitalize text-slate-500 dark:text-stone-400 ${editorTypeClassName.caption}`}>{asset.type}</div>
                 </div>
-                {!asset.readOnly && (
-                  <RemotionButton
-                    onClick={() => dispatch({ type: 'REMOVE_ASSET', payload: asset.id })}
-                    className="flex h-6 w-6 items-center justify-center rounded text-slate-400 opacity-0 transition-colors hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 dark:text-stone-500 dark:hover:bg-red-950/40 dark:hover:text-red-400"
-                  >
-                    ×
-                  </RemotionButton>
-                )}
+                <RemotionButton
+                  type="button"
+                  aria-label={`Remove ${asset.name} from Timeline media`}
+                  title="Remove from Timeline media"
+                  onClick={() => dispatch({ type: 'REMOVE_ASSET', payload: asset.id })}
+                  className="flex h-6 w-6 items-center justify-center rounded text-slate-400 opacity-60 transition-[color,background-color,opacity] hover:bg-red-50 hover:text-red-600 hover:opacity-100 focus-visible:opacity-100 dark:text-stone-500 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                >
+                  ×
+                </RemotionButton>
               </div>
             ))
           )}

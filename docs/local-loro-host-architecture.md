@@ -357,7 +357,6 @@ Cloud-first code should be refactored downward into shared core, not replaced.
 Current reusable assets:
 
 - `apps/api-cf/src/agents/project-room.ts`: ProjectRoom, cloud Loro room.
-- `apps/loro-sync-server/src/LoroRoom.ts`: older standalone room implementation.
 - `packages/shared-types/src/canvas-ops.ts`: Canvas operation API.
 - `packages/shared-types/src/loro-client.ts`: LoroSyncClient.
 - `packages/shared-types/src/presence.ts`: sideband presence/activity types.

@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createLocalDurableRunCoordinator,
+  localDurableRunOwnerId,
   type LocalDurableRunCoordinatorOptions,
 } from "./durable-run-coordinator";
 import { createSqliteDurableRunJournal } from "./durable-run-journal";
@@ -225,6 +226,12 @@ async function advanceCompletedExecutable(
 }
 
 describe("Local Durable Run coordinator", () => {
+  it("keeps the local durable owner stable when the discovery host restarts", () => {
+    expect(localDurableRunOwnerId("discovery-host-before-restart")).toBe(
+      localDurableRunOwnerId("discovery-host-after-restart"),
+    );
+  });
+
   it.each([
     {
       name: "two legacy text values",
@@ -329,6 +336,15 @@ describe("Local Durable Run coordinator", () => {
         targetKind: "action" as const,
         kind: "image" as const,
         outputs: [assetOutput("media", "image")],
+      },
+      durableOutput: assetOutput("media", "image"),
+    },
+    {
+      name: "typed image Asset",
+      input: {
+        targetKind: "action" as const,
+        kind: "image" as const,
+        outputs: [assetOutput("image", "image")],
       },
       durableOutput: assetOutput("media", "image"),
     },

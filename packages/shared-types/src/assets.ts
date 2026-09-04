@@ -156,6 +156,8 @@ export const ProjectAssetEntrySchema = z
     kind: AssetKindSchema,
     source: ProjectAssetSourceSchema,
     lifecycle: ProjectAssetLifecycleSchema,
+    /** Immutable wall-clock production/admission time in Unix milliseconds. */
+    createdAt: z.number().int().nonnegative().optional(),
     name: z.string().trim().min(1).optional(),
     metadata: ProjectAssetMetadataSchema,
     provenance: ProjectAssetProvenanceSchema.optional(),
@@ -220,6 +222,8 @@ export const ResolvedAssetSchema = z
   .object({
     id: z.string().trim().min(1),
     kind: AssetKindSchema,
+    /** Project Asset production time, or a Host Resource time for legacy entries. */
+    createdAt: z.number().int().nonnegative().optional(),
     name: z.string().trim().min(1).optional(),
     metadata: ProjectAssetMetadataSchema,
     provenance: ProjectAssetProvenanceSchema.optional(),
@@ -234,6 +238,8 @@ export const ResolvedAssetSchema = z
     ]),
     url: z.string().url().optional(),
     thumbnailUrl: z.string().url().optional(),
+    /** Host-authorized projection of a bounded waveform representation. */
+    waveformUrl: z.string().url().optional(),
     progress: z.number().min(0).max(1).optional(),
     error: z.string().trim().min(1).optional(),
   })
@@ -249,8 +255,9 @@ export type ResolvedAsset = z.infer<typeof ResolvedAssetSchema>;
  * (contentHash, hasAudio, dominantColor, codec, ...) without a D1 migration.
  *
  * `waveform` is retained only so hosted migration code can read historical
- * rows. New Asset publication and Timeline persistence strip it; presentation
- * derives waveform peaks into a bounded device cache instead.
+ * rows. New Asset publication and Timeline persistence strip it; the Local
+ * Host stores derived peaks in its private representation registry and exposes
+ * them only through an authorized `ResolvedAsset.waveformUrl` projection.
  */
 export const AssetMetadataSchema = z.object({
   width: z.number().int().optional(),

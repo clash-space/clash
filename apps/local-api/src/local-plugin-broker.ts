@@ -193,7 +193,7 @@ export interface LocalExecutablePluginBrokerOptions {
   }) => Promise<void>;
   generateCodexImage?: (input: {
     prompt: string;
-    aspectRatio: "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "21:9";
+    aspectRatio: string;
     references: Array<{
       asset: ExecutablePluginAssetHandle;
       mediaType?: string;

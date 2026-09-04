@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { access, readFile, readdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { sourceMatches } from "../../../packages/gui/test-support/source-match.js";
@@ -136,6 +136,39 @@ test("the real runtime smoke keeps workspace location independent from CLASH_HOM
   assert.doesNotMatch(source, /join\(clashHome,\s*"workspace"\)/);
 });
 
+test("source CLI, MCP, and local Host share the Action SDK workspace entrypoints", async () => {
+  const configUrls = [
+    new URL("../tsconfig.dev.json", import.meta.url),
+    new URL("../../../packages/cli/tsconfig.dev.json", import.meta.url),
+    new URL("../../../apps/local-api/tsconfig.dev.json", import.meta.url),
+  ];
+  const configs = await Promise.all(
+    configUrls.map((url) => readFile(url, "utf8").then(JSON.parse)),
+  );
+  const expectedIndex = fileURLToPath(
+    new URL("../../../packages/action-sdk/src/index.ts", import.meta.url),
+  );
+  const expectedBrowser = fileURLToPath(
+    new URL("../../../packages/action-sdk/src/browser.ts", import.meta.url),
+  );
+
+  for (const [index, config] of configs.entries()) {
+    const paths = config.compilerOptions?.paths as
+      | Record<string, string[]>
+      | undefined;
+    assert.ok(paths, "development runtime must declare workspace paths");
+    const configDir = dirname(fileURLToPath(configUrls[index]!));
+    assert.equal(
+      resolve(configDir, paths["@clash/action-sdk"]?.[0] ?? ""),
+      expectedIndex,
+    );
+    assert.equal(
+      resolve(configDir, paths["@clash/action-sdk/browser"]?.[0] ?? ""),
+      expectedBrowser,
+    );
+  }
+});
+
 test("the base Clash skill teaches peer CLI and MCP navigation without AGENTS injection", async () => {
   const markdown = await readFile(
     join(pluginRoot, "skills", "clash", "SKILL.md"),
@@ -183,7 +216,30 @@ test("the base Clash skill teaches peer CLI and MCP navigation without AGENTS in
     true,
     "Generator guidance must cover submission, background polling, and persisted output readback",
   );
-  assert.match(markdown, /clash init --json/);
+  assert.equal(
+    sourceMatches(
+      markdown,
+      /existing `.clash\/project\.toml`.{0,180}(?:do not|skip).{0,80}(?:`clash init`|`clash_workspace_init`)/i,
+    ),
+    true,
+    "a bound project must proceed directly instead of re-running init",
+  );
+  assert.equal(
+    sourceMatches(
+      markdown,
+      /only.{0,80}(?:run|call).{0,80}(?:`clash init`|`clash_workspace_init`).{0,180}`\.clash\/project\.toml`.{0,80}(?:missing|absent)/i,
+    ),
+    true,
+    "init is only for an explicitly requested binding when no marker exists",
+  );
+  assert.equal(
+    sourceMatches(
+      markdown,
+      /(?:startup|transport|MCP).{0,160}(?:failure|error).{0,180}(?:does not mean|is not evidence).{0,120}(?:unbound|uninitialized)/i,
+    ),
+    true,
+    "transport failures must not make an agent infer that an existing workspace is unbound",
+  );
   assert.match(markdown, /root `clash` tool/i);
   assert.match(markdown, /root `clash`[\s\S]*navigation/i);
   assert.match(markdown, /`clash_canvas`[\s\S]*Canvas operations/i);
@@ -415,6 +471,37 @@ test("the packaged host carries the exact current first-party plugin payloads", 
       `packaged ${directory} contains undeclared or missing payload files`,
     );
   }
+});
+
+test("the packaged host carries Storyboard as an installable official payload outside the preload root", async () => {
+  const sourceRoot = new URL("../../official/storyboard/", import.meta.url);
+  const packagedRoot = new URL(
+    "../runtime/official-plugins/storyboard/",
+    import.meta.url,
+  );
+  await assert.doesNotReject(
+    access(new URL("manifest.json", packagedRoot)),
+    "packaged official Storyboard manifest is missing",
+  );
+
+  const declared = new Set(
+    await bundledPluginPayloadFiles(
+      JSON.parse(await readFile(new URL("manifest.json", sourceRoot), "utf8")),
+      fileURLToPath(sourceRoot),
+    ),
+  );
+  for (const path of declared) {
+    assert.equal(
+      sha256(await readFile(new URL(path, packagedRoot))),
+      sha256(await readFile(new URL(path, sourceRoot))),
+      `packaged official storyboard/${path} is stale`,
+    );
+  }
+  assert.deepEqual(
+    await relativeFiles(packagedRoot),
+    [...declared].sort(),
+    "packaged official Storyboard contains undeclared or missing payload files",
+  );
 });
 
 test("the MCP host client uses the shared canonical Clash home helper, not the local-api server entry", async () => {

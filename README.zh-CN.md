@@ -165,7 +165,6 @@ apps/
   web/                  Vite SPA + Cloudflare Worker 入口
   api-cf/               Hono + DOs + Workflow + container DO
   render-server/        Remotion 镜像（构一次推到 GHCR，由 Container DO 拉）
-  loro-sync-server/     遗留壳子，sync 逻辑已搬进 api-cf
 packages/
   director-{core,ui}/   3D Director Stage 状态与界面
   mcp-server/           插件 MCP 内部使用、与 CLI 对等的类型化能力层
@@ -203,7 +202,7 @@ plugins/
 wrangler login
 
 wrangler d1 create clash-d1
-# 把打印出来的 database_id 粘进 apps/{api-cf,web,loro-sync-server}/wrangler.toml
+# 把打印出来的 database_id 粘进 apps/{api-cf,web}/wrangler.toml
 
 wrangler r2 bucket create clash-r2
 

@@ -1,0 +1,15 @@
+{
+  "summary": "Node/file and cloud-link adapters for the local Project Loro replica.",
+  "context_hints": [
+    "local-api is the machine's durable replica authority; Desktop, CLI and local agents connect to it rather than directly to hosted ProjectRoom.",
+    "File writes must complete before a peer or cloud update is acknowledged.",
+    "The cloud link is replaceable infrastructure and uses VersionVector recovery instead of a volatile resend queue.",
+    "The deterministic chaos suite uses real loopback WebSockets and fixed seeds; do not replace protocol readiness with timing sleeps."
+  ],
+  "key_files": {
+    "file-replica-store.ts": "Atomic snapshot and framed update-log filesystem storage.",
+    "replica-ports.ts": "File storage adapter for the portable ReplicaEngine.",
+    "cloud-replica-link.ts": "Reconnectable Node WebSocket adapter for official Loro protocol server-to-server sync.",
+    "cloud-replication.chaos.test.ts": "Two durable local replicas and a restartable cloud core under loss, duplicate, reorder, partition, checkpoint, and restart faults."
+  }
+}

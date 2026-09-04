@@ -15,6 +15,7 @@ import {
   ExecutablePluginManifestSchema,
   ExecutablePluginActivationReceiptSchema,
   ExecutablePluginGeneratorRegistrationSchema,
+  ExecutablePluginViewRegistrationSchema,
   isSafePluginRelativePath,
   generatorDefinitionFromExecutablePluginRegistration,
   pluginIdSchema,
@@ -22,6 +23,8 @@ import {
   type ExecutablePluginContractTestDocument,
   type ExecutablePluginGeneratorDocument,
   type ExecutablePluginGeneratorRegistration,
+  type ExecutablePluginViewDocument,
+  type ExecutablePluginViewRegistration,
   type ExecutablePluginModelBindingDocument,
   type ExecutablePluginProviderDocument,
   type GeneratorDefinition,
@@ -113,6 +116,11 @@ function validateHostExecutablePluginArtifacts(
     input.files,
     "Generator document",
   );
+  const views = decodeJsonDocuments<ExecutablePluginViewDocument>(
+    manifest.contributes.views,
+    input.files,
+    "View document",
+  );
   const contractTests =
     decodeJsonDocuments<ExecutablePluginContractTestDocument>(
       manifest.contractTests.map((path) => ({ path })),
@@ -123,6 +131,7 @@ function validateHostExecutablePluginArtifacts(
     providers,
     modelBindings,
     generators,
+    views,
   });
 }
 
@@ -224,6 +233,7 @@ export interface ValidatedHostExecutablePluginPackage {
   version: string;
   generatorRegistrations: ExecutablePluginGeneratorRegistration[];
   generatorDefinitions: GeneratorDefinition[];
+  viewRegistrations: ExecutablePluginViewRegistration[];
   contractTests?: ExecutablePluginContractTestRun;
 }
 
@@ -257,6 +267,29 @@ function generatorArtifactsFor(
   };
 }
 
+function viewArtifactsFor(
+  validatedPackage: ReturnType<typeof validateHostExecutablePluginArtifacts>,
+  schemaHash: string,
+): Pick<ValidatedHostExecutablePluginPackage, "viewRegistrations"> {
+  const { manifest } = validatedPackage;
+  return {
+    viewRegistrations: Object.values(validatedPackage.views)
+      .map((document) =>
+        ExecutablePluginViewRegistrationSchema.parse({
+          pluginId: manifest.id,
+          version: manifest.version,
+          schemaHash,
+          document,
+        }),
+      )
+      .sort((left, right) =>
+        left.document.spec.definitionId.localeCompare(
+          right.document.spec.definitionId,
+        ),
+      ),
+  };
+}
+
 /** Validate and execute a package's declared contracts without activating it. */
 export async function validateHostExecutablePluginPackageContracts(
   input: HostExecutablePluginPackage,
@@ -275,6 +308,7 @@ export async function validateHostExecutablePluginPackageContracts(
       id: manifest.id,
       version: manifest.version,
       ...generatorArtifactsFor(validatedPackage, schemaHash),
+      ...viewArtifactsFor(validatedPackage, schemaHash),
       ...(contractTests ? { contractTests } : {}),
     };
   } finally {
@@ -448,6 +482,7 @@ export async function readHostExecutablePluginPackage(
     Pick<
       ValidatedHostExecutablePluginPackage,
       "generatorRegistrations" | "generatorDefinitions"
+      | "viewRegistrations"
     > & { version: string }
 > {
   const id = pluginIdSchema.parse(inputId);
@@ -488,6 +523,7 @@ export async function readHostExecutablePluginPackage(
     manifest,
     files,
     ...generatorArtifactsFor(validatedPackage, currentReceipt.schemaHash),
+    ...viewArtifactsFor(validatedPackage, currentReceipt.schemaHash),
   };
 }
 

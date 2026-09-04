@@ -20393,183 +20393,9 @@ var import_node_fs2 = require("node:fs");
 var import_promises9 = require("node:fs/promises");
 var import_node_path9 = require("node:path");
 
-// ../../packages/shared-runtime/dist/runtime-config.js
-var desktopChromeMetrics = {
-  tabStripHeight: 40,
-  nativeWindowButtonFrameSize: 20,
-  trafficLightInsetX: 12,
-  trafficLightOpticalOffsetY: 2,
-  toolbarLeftInset: 92
-};
-var desktopTrafficLightPosition = {
-  x: desktopChromeMetrics.trafficLightInsetX,
-  y: Math.round((desktopChromeMetrics.tabStripHeight - desktopChromeMetrics.nativeWindowButtonFrameSize) / 2) + desktopChromeMetrics.trafficLightOpticalOffsetY
-};
-
-// ../../packages/shared-runtime/dist/metadata-body-blobs.js
-var import_node_crypto2 = require("node:crypto");
-var import_promises3 = require("node:fs/promises");
-var import_node_path2 = require("node:path");
-
-// ../../packages/shared-runtime/dist/content-addressed-file.js
-var import_node_crypto = require("node:crypto");
-var import_promises = require("node:fs/promises");
-var import_node_path = require("node:path");
-var import_promises2 = require("node:timers/promises");
-function isAlreadyExists(error51) {
-  return typeof error51 === "object" && error51 !== null && "code" in error51 && error51.code === "EEXIST";
-}
-function isMissing(error51) {
-  return typeof error51 === "object" && error51 !== null && "code" in error51 && error51.code === "ENOENT";
-}
-async function syncDirectory(path) {
-  const handle = await (0, import_promises.open)(path, "r");
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-}
-async function publishContentAddressedFile(path, bytes, options) {
-  if (!options.isValidForIdentity(bytes)) {
-    throw new Error("Content-addressed candidate does not match its path identity.");
-  }
-  const directory = (0, import_node_path.dirname)(path);
-  await (0, import_promises.mkdir)(directory, { recursive: true });
-  const temporaryPath = (0, import_node_path.join)(directory, `.${(0, import_node_crypto.randomUUID)()}.content-addressed.tmp`);
-  let temporaryExists = false;
-  try {
-    const handle = await (0, import_promises.open)(temporaryPath, "wx", 384);
-    temporaryExists = true;
-    try {
-      await handle.writeFile(bytes);
-      await handle.chmod(292);
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-    try {
-      await (0, import_promises.link)(temporaryPath, path);
-      await syncDirectory(directory);
-      return "created";
-    } catch (error51) {
-      if (!isAlreadyExists(error51))
-        throw error51;
-    }
-    const repairLock = `${path}.repair-lock`;
-    let lockHeld = false;
-    for (let attempt = 0; attempt < 200; attempt += 1) {
-      try {
-        await (0, import_promises.mkdir)(repairLock);
-        lockHeld = true;
-        break;
-      } catch (error51) {
-        if (!isAlreadyExists(error51))
-          throw error51;
-        await (0, import_promises2.setTimeout)(5);
-      }
-    }
-    if (!lockHeld) {
-      throw new Error("Content-addressed repair is already in progress.");
-    }
-    try {
-      let existing;
-      try {
-        existing = await (0, import_promises.readFile)(path);
-      } catch (error51) {
-        if (!isMissing(error51))
-          throw error51;
-        try {
-          await (0, import_promises.link)(temporaryPath, path);
-          await syncDirectory(directory);
-          return "created";
-        } catch (publishError) {
-          if (!isAlreadyExists(publishError))
-            throw publishError;
-          existing = await (0, import_promises.readFile)(path);
-        }
-      }
-      if (existing.equals(Buffer.from(bytes))) {
-        await (0, import_promises.chmod)(path, 292);
-        return "existing";
-      }
-      if (options.isValidForIdentity(existing)) {
-        throw new Error("Content-addressed identity collision: existing bytes differ.");
-      }
-      await (0, import_promises.rename)(temporaryPath, path);
-      temporaryExists = false;
-      await syncDirectory(directory);
-      return "repaired";
-    } finally {
-      await (0, import_promises.rm)(repairLock, { recursive: true, force: true });
-      await syncDirectory(directory).catch(() => void 0);
-    }
-  } finally {
-    if (temporaryExists) {
-      await (0, import_promises.rm)(temporaryPath, { force: true }).catch(() => void 0);
-    }
-  }
-}
-
-// ../../packages/shared-runtime/dist/metadata-body-blobs.js
-var METADATA_BODY_BLOB_DIRNAME = "metadata-blobs";
-function metadataBodyContentHash(body) {
-  return `sha256:${(0, import_node_crypto2.createHash)("sha256").update(body, "utf8").digest("hex")}`;
-}
-function metadataBodyBlobPath(dataDir, contentHash) {
-  const digest = /^sha256:([a-f0-9]{64})$/u.exec(contentHash)?.[1];
-  if (!digest)
-    throw new Error(`Invalid metadata body content hash: ${contentHash}`);
-  return (0, import_node_path2.join)(dataDir, METADATA_BODY_BLOB_DIRNAME, digest.slice(0, 2), `${digest}.json`);
-}
-function canonicalMetadataBody(body) {
-  const canonical = (value) => {
-    if (Array.isArray(value))
-      return value.map(canonical);
-    if (value && typeof value === "object") {
-      return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== void 0).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([key, item]) => [key, canonical(item)]));
-    }
-    return value;
-  };
-  return JSON.stringify(canonical(body));
-}
-async function storeMetadataBody(options) {
-  const serialized = canonicalMetadataBody(options.body);
-  const contentHash = metadataBodyContentHash(serialized);
-  if (options.expectedContentHash && options.expectedContentHash !== contentHash) {
-    throw new Error(`metadata body content hash mismatch: expected ${options.expectedContentHash}, got ${contentHash}`);
-  }
-  const path = metadataBodyBlobPath(options.dataDir, contentHash);
-  const bytes = Buffer.byteLength(serialized);
-  const publication = await publishContentAddressedFile(path, new TextEncoder().encode(serialized), {
-    isValidForIdentity: (candidate) => metadataBodyContentHash(Buffer.from(candidate).toString("utf8")) === contentHash
-  });
-  return {
-    contentHash,
-    path,
-    bytes,
-    deduplicated: publication === "existing"
-  };
-}
-async function readMetadataBody(options) {
-  const path = metadataBodyBlobPath(options.dataDir, options.contentHash);
-  const serialized = await (0, import_promises3.readFile)(path, "utf8").catch((error51) => {
-    if (error51 && typeof error51 === "object" && error51.code === "ENOENT") {
-      throw new Error(`metadata body ${options.contentHash} is not stored`);
-    }
-    throw error51;
-  });
-  const actual = metadataBodyContentHash(serialized);
-  if (actual !== options.contentHash) {
-    throw new Error(`metadata body blob is corrupt: ${options.contentHash} contains ${actual}`);
-  }
-  return JSON.parse(serialized);
-}
-
-// ../../packages/shared-runtime/dist/workspace-bundle.js
-var import_node_crypto4 = require("node:crypto");
-var import_promises5 = require("node:fs/promises");
-var import_node_path4 = require("node:path");
+// ../../packages/action-sdk/dist/browser.js
+var KIND = Symbol.for("clash.plugin.kind");
+var ACTION_MODE = Symbol.for("clash.plugin.action-mode");
 
 // ../../node_modules/.pnpm/zod@3.24.4/node_modules/zod/lib/index.mjs
 var util;
@@ -24632,7 +24458,7 @@ var z = /* @__PURE__ */ Object.freeze({
   ZodError
 });
 
-// ../../packages/shared-types/dist/chunk-GWDIKZMB.js
+// ../../packages/shared-types/dist/chunk-EQ2BPN4E.js
 function agentReadToken(options) {
   const namespace = normalizeTokenPart(options.namespace, "namespace");
   const version2 = normalizeTokenPart(options.version ?? "v1", "version");
@@ -24761,6 +24587,8 @@ var ProjectAssetEntrySchema = z.object({
   kind: AssetKindSchema,
   source: ProjectAssetSourceSchema,
   lifecycle: ProjectAssetLifecycleSchema,
+  /** Immutable wall-clock production/admission time in Unix milliseconds. */
+  createdAt: z.number().int().nonnegative().optional(),
   name: z.string().trim().min(1).optional(),
   metadata: ProjectAssetMetadataSchema,
   provenance: ProjectAssetProvenanceSchema.optional()
@@ -24802,6 +24630,8 @@ var ActionAssetBindingSchema = z.object({
 var ResolvedAssetSchema = z.object({
   id: z.string().trim().min(1),
   kind: AssetKindSchema,
+  /** Project Asset production time, or a Host Resource time for legacy entries. */
+  createdAt: z.number().int().nonnegative().optional(),
   name: z.string().trim().min(1).optional(),
   metadata: ProjectAssetMetadataSchema,
   provenance: ProjectAssetProvenanceSchema.optional(),
@@ -24816,6 +24646,8 @@ var ResolvedAssetSchema = z.object({
   ]),
   url: z.string().url().optional(),
   thumbnailUrl: z.string().url().optional(),
+  /** Host-authorized projection of a bounded waveform representation. */
+  waveformUrl: z.string().url().optional(),
   progress: z.number().min(0).max(1).optional(),
   error: z.string().trim().min(1).optional()
 }).strict();
@@ -24879,7 +24711,324 @@ var AssetRefRowSchema = z.object({
   importedAt: z.number()
 });
 
-// ../../packages/shared-types/dist/chunk-UZSXLAEL.js
+// ../../packages/shared-types/dist/chunk-YKBFTDJ4.js
+var ActionFamilySchema = z.enum(["generate", "edit", "custom"]);
+var ActionOperationSpecSchema = z.object({
+  id: z.string().min(1),
+  outputKind: AssetKindSchema
+});
+var ActionSpecSchema = z.object({
+  id: z.string().min(1),
+  version: z.string().min(1),
+  name: z.string().min(1),
+  family: ActionFamilySchema,
+  inputKinds: z.array(AssetKindSchema).min(1),
+  operations: z.array(ActionOperationSpecSchema).min(1)
+});
+var ActionInvocationModeSchema = z.enum(["explicit", "implicit"]);
+var ActionSurfaceSchema = z.enum(["canvas", "asset-preview"]);
+var ACTION_INVOCATION_MODE = {
+  Explicit: "explicit",
+  Implicit: "implicit"
+};
+function invocationModeForSurface(surface) {
+  return surface === "canvas" ? ACTION_INVOCATION_MODE.Explicit : ACTION_INVOCATION_MODE.Implicit;
+}
+var ASSET_ACTION_ID = {
+  ImageEditor: "image-editor",
+  VideoClipper: "video-clipper"
+};
+var CropRectSchema = z.object({
+  x: z.number().int().nonnegative(),
+  y: z.number().int().nonnegative(),
+  width: z.number().int().positive(),
+  height: z.number().int().positive()
+});
+var ImageEditParamsSchema = z.object({
+  crop: CropRectSchema.optional(),
+  rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional()
+});
+var VideoClipParamsSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("screenshot"),
+    frameTimeSec: z.number().nonnegative()
+  }),
+  z.object({
+    mode: z.literal("crop"),
+    startSec: z.number().nonnegative(),
+    endSec: z.number().positive()
+  })
+]).superRefine((value, context) => {
+  if (value.mode === "crop" && value.endSec <= value.startSec) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "endSec must be greater than startSec",
+      path: ["endSec"]
+    });
+  }
+});
+var BUILT_IN_ASSET_ACTION_SPECS = {
+  [ASSET_ACTION_ID.ImageEditor]: ActionSpecSchema.parse({
+    id: ASSET_ACTION_ID.ImageEditor,
+    version: "1",
+    name: "Image Editor",
+    family: "edit",
+    inputKinds: ["image"],
+    operations: [{ id: "transform", outputKind: "image" }]
+  }),
+  [ASSET_ACTION_ID.VideoClipper]: ActionSpecSchema.parse({
+    id: ASSET_ACTION_ID.VideoClipper,
+    version: "1",
+    name: "Video Clipper",
+    family: "edit",
+    inputKinds: ["video"],
+    operations: [
+      { id: "screenshot", outputKind: "image" },
+      { id: "crop", outputKind: "video" }
+    ]
+  })
+};
+var InvocationBaseSchema = z.object({
+  projectId: z.string().min(1),
+  mode: ActionInvocationModeSchema,
+  surface: ActionSurfaceSchema
+});
+var ImageEditActionInvocationSchema = InvocationBaseSchema.extend({
+  actionId: z.literal(ASSET_ACTION_ID.ImageEditor),
+  source: z.object({ assetId: z.string().min(1), kind: z.literal("image") }),
+  params: ImageEditParamsSchema
+});
+var VideoEditActionInvocationSchema = InvocationBaseSchema.extend({
+  actionId: z.literal(ASSET_ACTION_ID.VideoClipper),
+  source: z.object({ assetId: z.string().min(1), kind: z.literal("video") }),
+  params: VideoClipParamsSchema
+});
+var AssetEditActionInvocationSchema = z.discriminatedUnion("actionId", [
+  ImageEditActionInvocationSchema,
+  VideoEditActionInvocationSchema
+]).refine((value) => value.mode === invocationModeForSurface(value.surface), {
+  message: "Invocation mode must match its surface",
+  path: ["mode"]
+});
+
+// ../../packages/shared-runtime/dist/asset-edit-plugin.js
+var PLUGIN_SCHEMA_HASH = `sha256:${"a".repeat(64)}`;
+
+// ../../packages/shared-runtime/dist/runtime-config.js
+var desktopChromeMetrics = {
+  tabStripHeight: 40,
+  nativeWindowButtonFrameSize: 20,
+  trafficLightInsetX: 12,
+  trafficLightOpticalOffsetY: 2,
+  toolbarLeftInset: 92
+};
+var desktopTrafficLightPosition = {
+  x: desktopChromeMetrics.trafficLightInsetX,
+  y: Math.round((desktopChromeMetrics.tabStripHeight - desktopChromeMetrics.nativeWindowButtonFrameSize) / 2) + desktopChromeMetrics.trafficLightOpticalOffsetY
+};
+
+// ../../packages/shared-runtime/dist/metadata-body-blobs.js
+var import_node_crypto2 = require("node:crypto");
+var import_promises3 = require("node:fs/promises");
+var import_node_path2 = require("node:path");
+
+// ../../packages/shared-runtime/dist/content-addressed-file.js
+var import_node_crypto = require("node:crypto");
+var import_promises = require("node:fs/promises");
+var import_node_path = require("node:path");
+var import_promises2 = require("node:timers/promises");
+function isAlreadyExists(error51) {
+  return typeof error51 === "object" && error51 !== null && "code" in error51 && error51.code === "EEXIST";
+}
+function isMissing(error51) {
+  return typeof error51 === "object" && error51 !== null && "code" in error51 && error51.code === "ENOENT";
+}
+async function syncDirectory(path) {
+  const handle = await (0, import_promises.open)(path, "r");
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+async function publishContentAddressedFile(path, bytes, options) {
+  if (!options.isValidForIdentity(bytes)) {
+    throw new Error("Content-addressed candidate does not match its path identity.");
+  }
+  const directory = (0, import_node_path.dirname)(path);
+  await (0, import_promises.mkdir)(directory, { recursive: true });
+  const temporaryPath = (0, import_node_path.join)(directory, `.${(0, import_node_crypto.randomUUID)()}.content-addressed.tmp`);
+  let temporaryExists = false;
+  try {
+    const handle = await (0, import_promises.open)(temporaryPath, "wx", 384);
+    temporaryExists = true;
+    try {
+      await handle.writeFile(bytes);
+      await handle.chmod(292);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    try {
+      await (0, import_promises.link)(temporaryPath, path);
+      await syncDirectory(directory);
+      return "created";
+    } catch (error51) {
+      if (!isAlreadyExists(error51))
+        throw error51;
+    }
+    const repairLock = `${path}.repair-lock`;
+    let lockHeld = false;
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      try {
+        await (0, import_promises.mkdir)(repairLock);
+        lockHeld = true;
+        break;
+      } catch (error51) {
+        if (!isAlreadyExists(error51))
+          throw error51;
+        await (0, import_promises2.setTimeout)(5);
+      }
+    }
+    if (!lockHeld) {
+      throw new Error("Content-addressed repair is already in progress.");
+    }
+    try {
+      let existing;
+      try {
+        existing = await (0, import_promises.readFile)(path);
+      } catch (error51) {
+        if (!isMissing(error51))
+          throw error51;
+        try {
+          await (0, import_promises.link)(temporaryPath, path);
+          await syncDirectory(directory);
+          return "created";
+        } catch (publishError) {
+          if (!isAlreadyExists(publishError))
+            throw publishError;
+          existing = await (0, import_promises.readFile)(path);
+        }
+      }
+      if (existing.equals(Buffer.from(bytes))) {
+        await (0, import_promises.chmod)(path, 292);
+        return "existing";
+      }
+      if (options.isValidForIdentity(existing)) {
+        throw new Error("Content-addressed identity collision: existing bytes differ.");
+      }
+      await (0, import_promises.rename)(temporaryPath, path);
+      temporaryExists = false;
+      await syncDirectory(directory);
+      return "repaired";
+    } finally {
+      await (0, import_promises.rm)(repairLock, { recursive: true, force: true });
+      await syncDirectory(directory).catch(() => void 0);
+    }
+  } finally {
+    if (temporaryExists) {
+      await (0, import_promises.rm)(temporaryPath, { force: true }).catch(() => void 0);
+    }
+  }
+}
+
+// ../../packages/shared-runtime/dist/metadata-body-blobs.js
+var METADATA_BODY_BLOB_DIRNAME = "metadata-blobs";
+function metadataBodyContentHash(body) {
+  return `sha256:${(0, import_node_crypto2.createHash)("sha256").update(body, "utf8").digest("hex")}`;
+}
+function metadataBodyBlobPath(dataDir, contentHash) {
+  const digest = /^sha256:([a-f0-9]{64})$/u.exec(contentHash)?.[1];
+  if (!digest)
+    throw new Error(`Invalid metadata body content hash: ${contentHash}`);
+  return (0, import_node_path2.join)(dataDir, METADATA_BODY_BLOB_DIRNAME, digest.slice(0, 2), `${digest}.json`);
+}
+function canonicalMetadataBody(body) {
+  const canonical = (value) => {
+    if (Array.isArray(value))
+      return value.map(canonical);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== void 0).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([key, item]) => [key, canonical(item)]));
+    }
+    return value;
+  };
+  return JSON.stringify(canonical(body));
+}
+async function storeMetadataBody(options) {
+  const serialized = canonicalMetadataBody(options.body);
+  const contentHash = metadataBodyContentHash(serialized);
+  if (options.expectedContentHash && options.expectedContentHash !== contentHash) {
+    throw new Error(`metadata body content hash mismatch: expected ${options.expectedContentHash}, got ${contentHash}`);
+  }
+  const path = metadataBodyBlobPath(options.dataDir, contentHash);
+  const bytes = Buffer.byteLength(serialized);
+  const publication = await publishContentAddressedFile(path, new TextEncoder().encode(serialized), {
+    isValidForIdentity: (candidate) => metadataBodyContentHash(Buffer.from(candidate).toString("utf8")) === contentHash
+  });
+  return {
+    contentHash,
+    path,
+    bytes,
+    deduplicated: publication === "existing"
+  };
+}
+async function readMetadataBody(options) {
+  const path = metadataBodyBlobPath(options.dataDir, options.contentHash);
+  const serialized = await (0, import_promises3.readFile)(path, "utf8").catch((error51) => {
+    if (error51 && typeof error51 === "object" && error51.code === "ENOENT") {
+      throw new Error(`metadata body ${options.contentHash} is not stored`);
+    }
+    throw error51;
+  });
+  const actual = metadataBodyContentHash(serialized);
+  if (actual !== options.contentHash) {
+    throw new Error(`metadata body blob is corrupt: ${options.contentHash} contains ${actual}`);
+  }
+  return JSON.parse(serialized);
+}
+
+// ../../packages/shared-runtime/dist/workspace-bundle.js
+var import_node_crypto4 = require("node:crypto");
+var import_promises5 = require("node:fs/promises");
+var import_node_path4 = require("node:path");
+
+// ../../packages/shared-types/dist/chunk-MMCIZQ23.js
+var AspectRatioSchema = z.object({
+  width: z.number().int().positive(),
+  height: z.number().int().positive()
+}).strict();
+var AspectRatioStringSchema = z.string().trim().transform((value, ctx) => {
+  const ratio = parseAspectRatio(value);
+  if (!ratio) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Aspect ratio must be two positive integers separated by a colon."
+    });
+    return z.NEVER;
+  }
+  return aspectRatioLabel(ratio);
+});
+function greatestCommonDivisor(a, b) {
+  return b === 0 ? a : greatestCommonDivisor(b, a % b);
+}
+function reduceAspectRatio(ratio) {
+  const divisor = greatestCommonDivisor(ratio.width, ratio.height);
+  return { width: ratio.width / divisor, height: ratio.height / divisor };
+}
+function aspectRatioLabel(ratio) {
+  const reduced = reduceAspectRatio(ratio);
+  return `${reduced.width}:${reduced.height}`;
+}
+function parseAspectRatio(text) {
+  const match = /^\s*(\d+)\s*[:x×]\s*(\d+)\s*$/i.exec(text);
+  if (!match) return void 0;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    return void 0;
+  }
+  return { width, height };
+}
 var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
 var pluginIdSchema = z.string().trim().superRefine((value, ctx) => {
   const segments = value.split(".");
@@ -26284,6 +26433,9 @@ var ModelParameterSchema = z.object({
   /** Provider-fixed output characteristic. It remains visible in the common
    * parameter surface, but UI and external payloads cannot override it. */
   readOnly: z.boolean().optional(),
+  /** Select controls may accept values beyond their preset menu. Aspect-ratio
+   * custom values remain positive integer W:H pairs. */
+  allowCustom: z.boolean().optional(),
   required: z.boolean().default(false),
   options: z.array(
     z.object({
@@ -26297,6 +26449,13 @@ var ModelParameterSchema = z.object({
   placeholder: z.string().optional(),
   defaultValue: z.union([z.string(), z.number(), z.boolean()]).optional()
 });
+function acceptsCustomModelParameterValue(parameter, value) {
+  if (parameter.type !== "select" || !parameter.allowCustom) return false;
+  if (parameter.id === "aspect_ratio") {
+    return typeof value === "string" && parseAspectRatio(value) !== void 0;
+  }
+  return typeof value === "string" || typeof value === "number";
+}
 var ReferenceMediaConstraintsSchema = z.object({
   mimeTypes: z.array(z.string().min(1)).optional(),
   fileExtensions: z.array(z.string().min(1)).optional(),
@@ -26577,7 +26736,7 @@ var ModelCardSchema = z.object({
     if (value === void 0) return;
     if (parameter.type === "select") {
       const optionValues = parameter.options?.map((option) => option.value) ?? [];
-      if (!optionValues.some((candidate) => sameCandidate(candidate, value))) {
+      if (!optionValues.some((candidate) => sameCandidate(candidate, value)) && !acceptsCustomModelParameterValue(parameter, value)) {
         ctx.addIssue({
           code: "custom",
           path,
@@ -26627,6 +26786,13 @@ var ModelCardSchema = z.object({
     }
     parameterIds.add(parameter.id);
     parametersById.set(parameter.id, parameter);
+    if (parameter.allowCustom && parameter.type !== "select") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["parameters", index, "allowCustom"],
+        message: "Only select parameters may allow custom values."
+      });
+    }
     if (parameter.type === "select") {
       if (!parameter.options?.length) {
         ctx.addIssue({
@@ -32308,10 +32474,6 @@ var MEDIA_ANALYSIS_DOCUMENT_KIND_BY_CATEGORY = {
   ocr: "media.analysis.ocr",
   "audio-semantics": "media.analysis.audio-semantics"
 };
-var AspectRatioSchema = z.object({
-  width: z.number().int().positive(),
-  height: z.number().int().positive()
-}).strict();
 var PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 var SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 var SHA256_PATTERN = /^sha256:[0-9a-f]{64}$/;
@@ -32384,6 +32546,11 @@ var ExecutablePluginModelBindingExportSchema = z.object({
 var ExecutablePluginGeneratorExportSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
   kind: z.literal("generator"),
+  path: PluginRelativePathSchema
+}).strict();
+var ExecutablePluginViewExportSchema = z.object({
+  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  kind: z.literal("view"),
   path: PluginRelativePathSchema
 }).strict();
 var ExecutableActionPresentationSchema = z.discriminatedUnion("type", [
@@ -32541,6 +32708,99 @@ var ExecutablePluginGeneratorDocumentSchema = z.object({
   apiVersion: z.literal("clash.generator/v1"),
   kind: z.literal("generator"),
   spec: GeneratorDefinitionSpecSchema
+}).strict();
+var StoryboardViewResourceSchema = z.object({
+  id: z.string().trim().min(1),
+  projectAssetId: z.string().trim().min(1),
+  mediaKind: z.enum(["image", "video", "audio", "model"]),
+  modelName: z.string().trim().min(1).optional(),
+  generatedBy: z.object({
+    generatorId: z.string().trim().min(1),
+    generatorRevisionId: z.string().trim().min(1),
+    actionRunId: z.string().trim().min(1),
+    outputCommitId: z.string().trim().min(1),
+    outputSlot: z.string().trim().min(1).optional()
+  }).strict().optional()
+}).strict();
+var StoryboardViewDescriptionPartSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("text"), text: z.string() }).strict(),
+  z.object({
+    type: z.literal("entity-reference"),
+    entityId: z.string().trim().min(1)
+  }).strict()
+]);
+var StoryboardViewMaterialSchema = z.object({
+  id: z.string().trim().min(1),
+  label: z.string().trim().min(1).optional(),
+  mediaKind: z.enum(["image", "video", "audio", "model"]),
+  promptDraft: z.object({
+    id: z.string().trim().min(1),
+    text: z.string()
+  }).strict().optional(),
+  candidates: z.array(StoryboardViewResourceSchema).default([]),
+  selectedCandidateId: z.string().trim().min(1).optional()
+}).strict().superRefine((material, ctx) => {
+  if (material.selectedCandidateId && !material.candidates.some(
+    (candidate) => candidate.id === material.selectedCandidateId
+  )) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["selectedCandidateId"],
+      message: "A selected candidate must belong to the same material slot."
+    });
+  }
+  const candidateIds = /* @__PURE__ */ new Set();
+  material.candidates.forEach((candidate, index) => {
+    if (candidateIds.has(candidate.id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["candidates", index, "id"],
+        message: "Candidate ids must be unique within a material slot."
+      });
+    }
+    candidateIds.add(candidate.id);
+    if (candidate.mediaKind !== material.mediaKind) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["candidates", index, "mediaKind"],
+        message: "A candidate must match its material slot media kind."
+      });
+    }
+  });
+});
+var StoryboardViewItemBaseSchema = z.object({
+  id: z.string().trim().min(1),
+  label: z.string().trim().min(1).optional(),
+  description: z.array(StoryboardViewDescriptionPartSchema).default([]),
+  details: z.string().optional(),
+  materials: z.array(StoryboardViewMaterialSchema).default([])
+});
+var StoryboardViewItemSchema = StoryboardViewItemBaseSchema.strict();
+var StoryboardViewShotSchema = StoryboardViewItemBaseSchema.extend({
+  durationSeconds: z.number().finite().positive().optional()
+}).strict();
+var StoryboardViewStateSchema = z.object({
+  keyElements: z.array(StoryboardViewItemSchema),
+  shots: z.array(StoryboardViewShotSchema),
+  audioLayers: z.array(StoryboardViewItemSchema),
+  uncategorized: z.array(StoryboardViewResourceSchema)
+}).strict();
+var ExecutablePluginViewDocumentSchema = z.object({
+  apiVersion: z.literal("clash.view/v1"),
+  kind: z.literal("view"),
+  spec: z.object({
+    definitionId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    name: z.string().trim().min(1),
+    description: z.string().trim().min(1).optional(),
+    presentation: z.object({ type: z.literal("storyboard") }).strict(),
+    initialState: StoryboardViewStateSchema
+  }).strict()
+}).strict();
+var ExecutablePluginViewReferenceSchema = z.object({
+  pluginId: pluginIdSchema,
+  definitionId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  version: z.string().trim().regex(SEMVER_PATTERN),
+  schemaHash: z.string().regex(SHA256_PATTERN)
 }).strict();
 var ExecutablePluginProviderDefinitionSchema = z.object({
   /**
@@ -32708,6 +32968,12 @@ var ExecutablePluginGeneratorRegistrationSchema = z.object({
   version: z.string().trim().regex(SEMVER_PATTERN),
   schemaHash: z.string().regex(SHA256_PATTERN),
   document: ExecutablePluginGeneratorDocumentSchema
+}).strict();
+var ExecutablePluginViewRegistrationSchema = z.object({
+  pluginId: pluginIdSchema,
+  version: z.string().trim().regex(SEMVER_PATTERN),
+  schemaHash: z.string().regex(SHA256_PATTERN),
+  document: ExecutablePluginViewDocumentSchema
 }).strict();
 var ExecutablePluginBindingSchema = z.object({
   pluginId: pluginIdSchema,
@@ -33215,7 +33481,7 @@ var ExecutablePluginBrokerOperationSchema = z.union([
   z.object({
     kind: z.literal("codex.image.generate"),
     prompt: z.string().trim().min(1).max(2e4),
-    aspectRatio: z.enum(["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"]).default("1:1"),
+    aspectRatio: AspectRatioStringSchema.default("1:1"),
     slot: z.string().trim().min(1),
     references: z.array(
       ExecutablePluginAssetHandleObjectSchema.extend({
@@ -33319,6 +33585,7 @@ var ExecutablePluginContributionsSchema = z.object({
   providers: z.array(ExecutablePluginProviderExportSchema).default([]),
   modelBindings: z.array(ExecutablePluginModelBindingExportSchema).default([]),
   generators: z.array(ExecutablePluginGeneratorExportSchema).default([]),
+  views: z.array(ExecutablePluginViewExportSchema).default([]),
   functions: z.array(ExecutablePluginFunctionExportSchema).default([]),
   hostTools: z.array(z.enum(["codex.imagegen", "speech.transcribe", "media.analyze", "director.stage.capture-frame", "video.enhance"])).default([])
 }).strict();
@@ -33340,6 +33607,7 @@ var ExecutablePluginManifestSchema = z.object({
     ["providers", manifest.contributes.providers],
     ["modelBindings", manifest.contributes.modelBindings],
     ["generators", manifest.contributes.generators],
+    ["views", manifest.contributes.views],
     ["functions", manifest.contributes.functions]
   ]) {
     const ids = /* @__PURE__ */ new Set();
@@ -33369,7 +33637,8 @@ var ExecutablePluginManifestSchema = z.object({
   for (const artifact of [
     ...manifest.contributes.providers,
     ...manifest.contributes.modelBindings,
-    ...manifest.contributes.generators
+    ...manifest.contributes.generators,
+    ...manifest.contributes.views
   ]) {
     if (artifactPaths.has(artifact.path)) {
       ctx.addIssue({
@@ -33428,6 +33697,7 @@ function validateExecutablePluginPackage(manifestInput, cardDocuments, contractT
   const providers = {};
   const modelBindings = {};
   const generators = {};
+  const views = {};
   const contractTests = {};
   for (const cardExport of manifest.contributes.cards) {
     if (!Object.prototype.hasOwnProperty.call(cardDocuments, cardExport.path)) {
@@ -33546,6 +33816,19 @@ function validateExecutablePluginPackage(manifestInput, cardDocuments, contractT
     }
     generators[generatorExport.path] = generator;
   }
+  for (const viewExport of manifest.contributes.views) {
+    const input = artifacts.views?.[viewExport.path];
+    if (input === void 0) {
+      throw new Error(`Missing declared View document: ${viewExport.path}`);
+    }
+    const view = ExecutablePluginViewDocumentSchema.parse(input);
+    if (view.spec.definitionId !== viewExport.id) {
+      throw new Error(
+        `View ${viewExport.path} id ${view.spec.definitionId} does not match export id ${viewExport.id}.`
+      );
+    }
+    views[viewExport.path] = view;
+  }
   for (const path of manifest.contractTests) {
     if (!Object.prototype.hasOwnProperty.call(contractTestDocuments, path)) {
       throw new Error(`Missing declared contract test: ${path}`);
@@ -33567,6 +33850,7 @@ function validateExecutablePluginPackage(manifestInput, cardDocuments, contractT
     providers,
     modelBindings,
     generators,
+    views,
     contractTests
   };
 }
@@ -39422,110 +39706,6 @@ var MEDIA_REFERENCE_PLURAL_NOUN = Object.fromEntries(
 var MEDIA_REFERENCE_COUNT_NOUN = Object.fromEntries(
   MEDIA_REFERENCE_FIELDS.map((field3) => [field3.modality, field3.countNoun])
 );
-var ActionFamilySchema = z.enum(["generate", "edit", "custom"]);
-var ActionExecutorSchema = z.enum([
-  "model",
-  "client-render",
-  "server-transform",
-  "runtime"
-]);
-var ActionOperationSpecSchema = z.object({
-  id: z.string().min(1),
-  executor: ActionExecutorSchema,
-  outputKind: AssetKindSchema
-});
-var ActionSpecSchema = z.object({
-  id: z.string().min(1),
-  version: z.string().min(1),
-  name: z.string().min(1),
-  family: ActionFamilySchema,
-  inputKinds: z.array(AssetKindSchema).min(1),
-  operations: z.array(ActionOperationSpecSchema).min(1)
-});
-var ActionInvocationModeSchema = z.enum(["explicit", "implicit"]);
-var ActionSurfaceSchema = z.enum(["canvas", "asset-preview"]);
-var ACTION_INVOCATION_MODE = {
-  Explicit: "explicit",
-  Implicit: "implicit"
-};
-function invocationModeForSurface(surface) {
-  return surface === "canvas" ? ACTION_INVOCATION_MODE.Explicit : ACTION_INVOCATION_MODE.Implicit;
-}
-var ASSET_ACTION_ID = {
-  ImageEditor: "image-editor",
-  VideoClipper: "video-clipper"
-};
-var CropRectSchema = z.object({
-  x: z.number().int().nonnegative(),
-  y: z.number().int().nonnegative(),
-  width: z.number().int().positive(),
-  height: z.number().int().positive()
-});
-var ImageEditParamsSchema = z.object({
-  crop: CropRectSchema.optional(),
-  rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional()
-});
-var VideoClipParamsSchema = z.discriminatedUnion("mode", [
-  z.object({ mode: z.literal("screenshot"), frameTimeSec: z.number().nonnegative() }),
-  z.object({
-    mode: z.literal("crop"),
-    startSec: z.number().nonnegative(),
-    endSec: z.number().positive()
-  })
-]).superRefine((value, context) => {
-  if (value.mode === "crop" && value.endSec <= value.startSec) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "endSec must be greater than startSec",
-      path: ["endSec"]
-    });
-  }
-});
-var BUILT_IN_ASSET_ACTION_SPECS = {
-  [ASSET_ACTION_ID.ImageEditor]: ActionSpecSchema.parse({
-    id: ASSET_ACTION_ID.ImageEditor,
-    version: "1",
-    name: "Image Editor",
-    family: "edit",
-    inputKinds: ["image"],
-    operations: [
-      { id: "transform", executor: "client-render", outputKind: "image" }
-    ]
-  }),
-  [ASSET_ACTION_ID.VideoClipper]: ActionSpecSchema.parse({
-    id: ASSET_ACTION_ID.VideoClipper,
-    version: "1",
-    name: "Video Clipper",
-    family: "edit",
-    inputKinds: ["video"],
-    operations: [
-      { id: "screenshot", executor: "client-render", outputKind: "image" },
-      { id: "crop", executor: "server-transform", outputKind: "video" }
-    ]
-  })
-};
-var InvocationBaseSchema = z.object({
-  projectId: z.string().min(1),
-  mode: ActionInvocationModeSchema,
-  surface: ActionSurfaceSchema
-});
-var ImageEditActionInvocationSchema = InvocationBaseSchema.extend({
-  actionId: z.literal(ASSET_ACTION_ID.ImageEditor),
-  source: z.object({ assetId: z.string().min(1), kind: z.literal("image") }),
-  params: ImageEditParamsSchema
-});
-var VideoEditActionInvocationSchema = InvocationBaseSchema.extend({
-  actionId: z.literal(ASSET_ACTION_ID.VideoClipper),
-  source: z.object({ assetId: z.string().min(1), kind: z.literal("video") }),
-  params: VideoClipParamsSchema
-});
-var AssetEditActionInvocationSchema = z.discriminatedUnion("actionId", [
-  ImageEditActionInvocationSchema,
-  VideoEditActionInvocationSchema
-]).refine((value) => value.mode === invocationModeForSurface(value.surface), {
-  message: "Invocation mode must match its surface",
-  path: ["mode"]
-});
 var PositionSchema2 = z.object({
   x: z.number(),
   y: z.number()
@@ -40306,6 +40486,7 @@ function storageFreeMediaRecord(input, label) {
     src: _src,
     previewUrl: _previewUrl,
     thumbnailUrl: _thumbnailUrl,
+    waveformUrl: _waveformUrl,
     url: _url2,
     localPath: _localPath,
     storageKey: _storageKey,
@@ -40884,6 +41065,9 @@ var addCommand = z.object({
     "text",
     "group",
     "remotion",
+    "image",
+    "video",
+    "audio",
     "image_gen",
     "video_gen",
     "audio_gen",
@@ -40896,6 +41080,7 @@ var addCommand = z.object({
   parentId: id.optional(),
   modelId: id.optional(),
   actionId: id.optional(),
+  assetId: id.optional(),
   refs: z.array(id).optional(),
   params: z.record(id, primitiveParameter).optional(),
   actorClientType,
@@ -41693,6 +41878,33 @@ function resolveLocalSpeechModelId(entries, capability2, requested) {
   const wanted = requested.trim();
   return cards.find((card) => card.cardId === wanted)?.model ?? cards.find((card) => card.model === wanted)?.model;
 }
+var ProjectCanvasPreviewNodeSchema = z.object({
+  id: z.string().trim().min(1),
+  type: z.string().trim().min(1),
+  x: z.number().finite(),
+  y: z.number().finite(),
+  width: z.number().finite().positive(),
+  height: z.number().finite().positive(),
+  parentId: z.string().trim().min(1).optional(),
+  assetId: z.string().trim().min(1).optional(),
+  label: z.string().trim().min(1).optional()
+}).strict();
+var ProjectCanvasPreviewSchema = z.object({
+  canvasId: z.string().trim().min(1),
+  bounds: z.object({
+    x: z.number().finite(),
+    y: z.number().finite(),
+    width: z.number().finite().nonnegative(),
+    height: z.number().finite().nonnegative()
+  }).strict().nullable(),
+  nodes: z.array(ProjectCanvasPreviewNodeSchema)
+}).strict();
+var ProjectCanvasThumbnailSchema = z.object({
+  url: z.string().url(),
+  revision: z.string().regex(/^[a-f0-9]{64}$/u),
+  width: z.number().int().positive(),
+  height: z.number().int().positive()
+}).strict();
 var CopilotProjectAssetReferenceSchema = z.object({
   projectAssetId: z.string().trim().min(1),
   kind: AssetKindSchema,
@@ -43280,7 +43492,7 @@ async function resolveWorkspaceTextInput(input) {
   }
   const bytes = await (0, import_promises6.readFile)(realCandidate);
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
   } catch {
     throw new Error("Content file must contain valid UTF-8");
   }
@@ -43754,11 +43966,6 @@ function deniedGate(reason, requirements = []) {
 function projectTracePolicy() {
   return {
     schemaVersion: 1,
-    roomMessages: {
-      kind: "project-chat",
-      syncDefault: "sync-when-project-sync-enabled",
-      rawAgentTrace: false
-    },
     agentSessionMetadata: {
       kind: "public-session-metadata",
       syncDefault: "sync-when-project-sync-enabled",
@@ -44808,6 +45015,7 @@ function launchDetachedLocalDaemon(options) {
   const launchedProcessExists = options.processExists ?? processExists;
   const killProcess = options.killProcess ?? process.kill;
   const env = options.env ?? process.env;
+  const sourceWatchSupervisor = options.nodeArgs?.includes("watch") === true;
   if (options.nodePath && !isDaemonNodeVersionSupported(options.nodeVersion, DAEMON_SUPPORTED_NODE_RANGE)) {
     throw new Error(`Explicit daemon Node ${options.nodeVersion ?? "unknown"} does not satisfy ${DAEMON_SUPPORTED_NODE_RANGE}.`);
   }
@@ -44822,24 +45030,37 @@ function launchDetachedLocalDaemon(options) {
     supportedRange: DAEMON_SUPPORTED_NODE_RANGE,
     candidates: defaultDaemonNodeCandidates(env)
   });
-  const child = spawnProcess(runtime.nodePath, [...options.nodeArgs ?? [], options.entryPath], {
-    detached: true,
-    env: {
-      ...env,
-      ...options.daemonEnv ?? {},
-      CLASH_LOCAL_DATA_DIR: options.dataDir,
-      CLASH_HOST_RUN_DIR: options.runDir,
-      CLASH_CLI_ENTRY_PATH: options.cliEntryPath,
-      CLASH_LOCAL_API_WRAPPER_ENTRY: "1",
-      CLASH_DAEMON_RUNTIME_FINGERPRINT: options.runtimeFingerprint,
-      // Electron Node mode is still a detached Node process; without this
-      // explicit opt-in an Electron executable would recursively open the GUI.
-      ELECTRON_RUN_AS_NODE: options.electronRunAsNode ? "1" : void 0,
-      CLASH_DAEMON_NODE_PATH: runtime.nodePath,
-      PORT: "0"
-    },
-    stdio: "ignore"
-  });
+  let diagnosticFd;
+  if (options.diagnosticLogPath) {
+    (0, import_node_fs2.mkdirSync)((0, import_node_path9.dirname)(options.diagnosticLogPath), { recursive: true });
+    diagnosticFd = (0, import_node_fs2.openSync)(options.diagnosticLogPath, "w", 384);
+  }
+  let child;
+  try {
+    child = spawnProcess(runtime.nodePath, [...options.nodeArgs ?? [], options.entryPath], {
+      detached: true,
+      env: {
+        ...env,
+        ...options.daemonEnv ?? {},
+        CLASH_LOCAL_DATA_DIR: options.dataDir,
+        CLASH_HOST_RUN_DIR: options.runDir,
+        CLASH_CLI_ENTRY_PATH: options.cliEntryPath,
+        CLASH_LOCAL_API_WRAPPER_ENTRY: "1",
+        // The watcher, rather than its replaceable child, owns discovery.
+        CLASH_DAEMON_SOURCE_WATCH: sourceWatchSupervisor ? "1" : void 0,
+        CLASH_DAEMON_RUNTIME_FINGERPRINT: options.runtimeFingerprint,
+        // Electron Node mode is still a detached Node process; without this
+        // explicit opt-in an Electron executable would recursively open the GUI.
+        ELECTRON_RUN_AS_NODE: options.electronRunAsNode ? "1" : void 0,
+        CLASH_DAEMON_NODE_PATH: runtime.nodePath,
+        PORT: options.daemonEnv?.PORT ?? "0"
+      },
+      stdio: diagnosticFd === void 0 ? "ignore" : ["ignore", diagnosticFd, diagnosticFd]
+    });
+  } finally {
+    if (diagnosticFd !== void 0)
+      (0, import_node_fs2.closeSync)(diagnosticFd);
+  }
   if (!child.pid)
     throw new Error("Failed to start Clash daemon process");
   const pid = child.pid;
@@ -46346,7 +46567,7 @@ To view this ${node.type}, open or read the file at the path above.`);
     }
   }
 });
-canvasCommand.command("add").description("Add a text, group, Remotion component, or action-badge node").option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)").requiredOption("--type <type>", "Node type: text, group, remotion, image_gen, video_gen, audio_gen, text_gen").requiredOption("--label <label>", "Node label").option("--prompt <text>", "Generation prompt for *_gen nodes. May contain `@[Label](node:<id>)` mentions to reference canvas asset nodes; type partitioning is automatic from the referenced asset's kind.").option("--content <content>", "Body content for text / group nodes or single-file Remotion TSX for remotion nodes. Ignored for *_gen nodes \u2014 use --prompt there.").option("--content-file <path>", "Workspace-relative UTF-8 file read once as exact content; the path is not persisted. Mutually exclusive with --content.").option("--parent <id>", "Parent group ID").option(
+canvasCommand.command("add").description("Add content, an existing Project Asset, or an action-badge node").option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)").requiredOption("--type <type>", "Node type: text, group, remotion, image, video, audio, image_gen, video_gen, audio_gen, text_gen, model_gen").requiredOption("--label <label>", "Node label").option("--asset <id>", "Existing active Project Asset ID. Required for type image, video, or audio; projects independently with no lineage edge.").option("--prompt <text>", "Generation prompt for *_gen nodes. May contain `@[Label](node:<id>)` mentions to reference canvas asset nodes; type partitioning is automatic from the referenced asset's kind.").option("--content <content>", "Body content for text / group nodes or single-file Remotion TSX for remotion nodes. Ignored for *_gen nodes \u2014 use --prompt there.").option("--content-file <path>", "Workspace-relative UTF-8 file read once as exact content; the path is not persisted. Mutually exclusive with --content.").option("--parent <id>", "Parent group ID").option(
   "--model <id>",
   "Generation model id (e.g. nano-banana-2, gpt-image-2, veo-3.1-fast). Stored as data.modelId. Required for *_gen action nodes when no marketplace action is installed."
 ).option(
@@ -46385,6 +46606,7 @@ canvasCommand.command("add").description("Add a text, group, Remotion component,
     parentId: options.parent,
     modelId: options.model,
     actionId: options.action,
+    assetId: options.asset,
     refs: options.ref?.length > 0 ? options.ref : void 0,
     params: Object.keys(params).length > 0 ? params : void 0,
     actorClientType: presence.clientType,
@@ -46430,7 +46652,7 @@ canvasCommand.command("execute").description(
   if (isJsonMode(options)) printJson(publicMutationResult(hostResult));
   else printExecuteResult(hostResult.kind, hostResult.childNodeId, hostResult.childNodeType);
 });
-canvasCommand.command("update").description("Update a node's data").option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)").requiredOption("--node <id>", "Node ID").option("--label <label>", "New label").option("--content <content>", "New content").option("--content-file <path>", "Workspace-relative UTF-8 file read once as exact content; the path is not persisted. Mutually exclusive with --content.").option("--asset-id <id>", "Bind an existing asset (image/video/audio) to this node \u2014 its preview will render").option(
+canvasCommand.command("update").description("Update a node's data").option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)").requiredOption("--node <id>", "Node ID").option("--label <label>", "New label").option("--content <content>", "New content").option("--content-file <path>", "Workspace-relative UTF-8 file read once as exact content; the path is not persisted. Mutually exclusive with --content.").option("--asset-id <id>", "Bind an existing asset (image/video/audio) to this node \u2014 its preview will render").option("--view-state-json <json>", "Complete structured plugin View state as JSON").option("--view-state-file <path>", "Workspace-relative JSON file containing complete plugin View state").option(
   "--data <key=value...>",
   "Arbitrary node-data field (repeatable). Example: --data status=completed --data description='hello'",
   (val, prev) => {
@@ -46461,13 +46683,29 @@ canvasCommand.command("update").description("Update a node's data").option("--pr
   const extraData = {};
   if (options.assetId) extraData.assetId = options.assetId;
   for (const [k, v] of options.data ?? []) extraData[k] = v;
+  if (options.viewStateJson !== void 0 && options.viewStateFile !== void 0) {
+    console.error("Error: --view-state-json and --view-state-file are mutually exclusive");
+    process.exit(1);
+  }
+  if (options.viewStateJson !== void 0 || options.viewStateFile !== void 0) {
+    const encoded = options.viewStateFile !== void 0 ? await resolveWorkspaceTextInput({
+      workspaceRoot: context.workspaceRoot ?? process.cwd(),
+      filePath: options.viewStateFile
+    }) : options.viewStateJson;
+    try {
+      extraData.state = StoryboardViewStateSchema.parse(JSON.parse(encoded ?? ""));
+    } catch (error51) {
+      console.error(`Error: Invalid View state JSON: ${error51.message}`);
+      process.exit(1);
+    }
+  }
   const guard = validateCanvasUpdateDataFields(Object.keys(extraData));
   if (!guard.ok) {
     console.error(`Error: ${guard.error}`);
     process.exit(1);
   }
   if (Object.keys(extraData).length === 0 && typeof options.label !== "string" && typeof content !== "string") {
-    console.error("Provide at least one field to update (--label, --content, --content-file, --asset-id, --data k=v)");
+    console.error("Provide at least one field to update (--label, --content, --content-file, --asset-id, --view-state-file, --data k=v)");
     process.exit(1);
   }
   const hostResult = await runCommand(projectId2, {
@@ -67943,6 +68181,22 @@ function validateDownloadedActionPackage(input) {
       );
     }
   }
+  const viewDocuments = {};
+  for (const view of contributions.views) {
+    const encoded = files[view.path];
+    if (typeof encoded !== "string") {
+      throw new Error(`Missing declared View document: ${view.path}`);
+    }
+    try {
+      viewDocuments[view.path] = JSON.parse(
+        Buffer.from(encoded, "base64").toString("utf8")
+      );
+    } catch (error51) {
+      throw new Error(
+        `Invalid View JSON at ${view.path}: ${error51.message}`
+      );
+    }
+  }
   const contractTestDocuments = {};
   for (const path of parsedManifest.contractTests) {
     const encoded = files[path];
@@ -67966,7 +68220,8 @@ function validateDownloadedActionPackage(input) {
     {
       providers: providerDocuments,
       modelBindings: modelBindingDocuments,
-      generators: generatorDocuments
+      generators: generatorDocuments,
+      views: viewDocuments
     }
   );
   return {
@@ -67974,7 +68229,8 @@ function validateDownloadedActionPackage(input) {
     format: "executable-plugin",
     manifest: validated.manifest,
     files,
-    generators: validated.generators
+    generators: validated.generators,
+    views: validated.views
   };
 }
 async function checkoutExecutablePluginDraft(options) {

@@ -3,12 +3,15 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import wasm from "vite-plugin-wasm";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "../..");
 const openmaCommonRoot = resolve(repoRoot, "../openma-common");
+const webNodeModules = resolve(__dirname, "node_modules");
+const hostUiNodeModules = resolve(repoRoot, "packages/web-ui/node_modules");
 const persistStatePath = process.env.CLASH_WEB_E2E_PERSIST_STATE?.trim()
   ? resolve(process.env.CLASH_WEB_E2E_PERSIST_STATE)
   : resolve(repoRoot, ".wrangler/state");
@@ -17,6 +20,24 @@ const persistStatePath = process.env.CLASH_WEB_E2E_PERSIST_STATE?.trim()
 // generated package exports. This preserves source HMR while allowing Vite to
 // ignore dist writes produced by tests/builds without serving stale modules.
 export const DEV_SOURCE_ALIASES = [
+  {
+    find: /^eventsource-parser\/stream$/,
+    replacement: realpathSync(
+      resolve(webNodeModules, "eventsource-parser/dist/stream.js"),
+    ),
+  },
+  {
+    find: /^@radix-ui\/react-collapsible$/,
+    replacement: realpathSync(
+      resolve(hostUiNodeModules, "@radix-ui/react-collapsible/dist/index.mjs"),
+    ),
+  },
+  {
+    find: /^streamdown$/,
+    replacement: realpathSync(
+      resolve(hostUiNodeModules, "streamdown/dist/index.js"),
+    ),
+  },
   // @openma/common is intentionally linked from a sibling checkout while the
   // two products are developed together. Its package exports point at dist,
   // which can be replaced underneath Vite and leave a stale named-export
@@ -59,6 +80,18 @@ export const DEV_SOURCE_ALIASES = [
     replacement: resolve(repoRoot, "packages/asset-sdk/src/index.ts"),
   },
   {
+    find: /^@clash\/web-ui\/(.+)$/,
+    replacement: resolve(repoRoot, "packages/web-ui/src/$1"),
+  },
+  {
+    find: /^@clash\/web-ui$/,
+    replacement: resolve(repoRoot, "packages/web-ui/src/index.ts"),
+  },
+  {
+    find: /^@clash\/remotion-ui$/,
+    replacement: resolve(repoRoot, "packages/remotion-ui/src/index.ts"),
+  },
+  {
     find: /^@clash\/gui\/(.+)$/,
     replacement: resolve(repoRoot, "packages/gui/src/$1"),
   },
@@ -69,6 +102,27 @@ export const DEV_SOURCE_ALIASES = [
   {
     find: /^@clash\/shared-layout$/,
     replacement: resolve(repoRoot, "packages/shared-layout/src/index.ts"),
+  },
+  {
+    find: /^@clash\/shared-types\/actions\/asset-edit$/,
+    replacement: resolve(
+      repoRoot,
+      "packages/shared-types/src/actions/asset-edit.ts",
+    ),
+  },
+  {
+    find: /^@clash\/shared-types\/executable-plugin$/,
+    replacement: resolve(
+      repoRoot,
+      "packages/shared-types/src/executable-plugin.ts",
+    ),
+  },
+  {
+    find: /^@clash\/shared-types\/timeline-contract$/,
+    replacement: resolve(
+      repoRoot,
+      "packages/shared-types/src/timeline-contract.ts",
+    ),
   },
   {
     find: /^@clash\/shared-types$/,
@@ -101,7 +155,17 @@ export const DEV_SOURCE_ALIASES = [
 // Prebundling these breaks the mixed zod v3/v4 graph (see optimizeDeps note
 // below). Shared by the client graph and the auxiliary api-cf worker
 // environment, which does not inherit the top-level exclusion.
-export const NO_PREBUNDLE_DEPS = ["loro-crdt", "zod", "zod-to-json-schema"];
+export const NO_PREBUNDLE_DEPS = [
+  "@clash/web-ui",
+  "@clash/remotion-ui",
+  "@clash/remotion-components",
+  "@clash/remotion-core",
+  "@clash/remotion-effects",
+  "@clash/director-ui",
+  "loro-crdt",
+  "zod",
+  "zod-to-json-schema",
+];
 
 export const DEV_WATCH_IGNORES = ["**/dist/**", "**/release/**", "**/.tmp/**"];
 
@@ -213,6 +277,19 @@ export default defineConfig(async ({ command, isPreview }) => {
       },
     },
     optimizeDeps: {
+      // The project editor is route-lazy. Make it a first-class scan entry so
+      // its workspace graph and CommonJS browser dependencies are optimized
+      // before the first project is opened instead of failing one package at
+      // a time after Dashboard has already mounted.
+      entries: [
+        resolve(__dirname, "index.html"),
+        resolve(__dirname, "app/routes/project.$id.tsx"),
+        resolve(repoRoot, "packages/web-ui/src/components/HomePageClient.tsx"),
+        resolve(repoRoot, "packages/web-ui/src/components/ProjectEditor.tsx"),
+        resolve(repoRoot, "packages/web-ui/src/components/MilkdownEditor.tsx"),
+        resolve(repoRoot, "packages/remotion-ui/src/index.ts"),
+        resolve(repoRoot, "packages/remotion-components/src/index.ts"),
+      ],
       // loro-crdt ships a .wasm alongside JS — exclude from esbuild prebundle so
       // vite-plugin-wasm handles it at request time.
       // zod / zod-to-json-schema: the dev source aliases put shared-types
@@ -223,7 +300,25 @@ export default defineConfig(async ({ command, isPreview }) => {
       // nested items". Excluding them keeps each importer on its own resolved
       // copy.
       exclude: NO_PREBUNDLE_DEPS,
-      include: ["react-dom/client", "react/jsx-runtime"],
+      include: [
+        "react-dom/client",
+        "react/jsx-runtime",
+        "react-dropzone",
+        "attr-accept",
+        "react-markdown",
+        "@cloudflare/ai-chat/react",
+        "debug",
+        "extend",
+        // ProjectEditor is route-lazy, so the initial dependency crawl cannot
+        // discover remotion-components' CommonJS TypeScript compiler. Without
+        // an explicit entry Vite serves typescript.js as native ESM and the
+        // project route fails before React can mount it.
+        "typescript",
+        "use-sync-external-store/shim/with-selector",
+        "use-sync-external-store/shim/with-selector.js",
+        "scheduler",
+        "stats.js",
+      ],
     },
   };
 });

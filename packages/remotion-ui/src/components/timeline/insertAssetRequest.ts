@@ -11,6 +11,19 @@ export type TimelineAssetInsertRequest = {
   asset: EditorAssetInput;
 };
 
+export const TIMELINE_INSERT_MEDIA_FIT = "contain" as const;
+
+export function createTimelineInsertProperties() {
+  return {
+    x: 0,
+    y: 0,
+    width: 1,
+    height: 1,
+    rotation: 0,
+    opacity: 1,
+  };
+}
+
 export function hasTimelineAssetInsertReceipt(
   tracks: readonly { id: string; items: readonly { id: string }[] }[],
   requestId: string,
@@ -27,8 +40,6 @@ export function buildTimelineAssetInsertion({
   asset: input,
   frame,
   fps,
-  compositionWidth,
-  compositionHeight,
   requestId,
 }: TimelineAssetInsertRequest & {
   frame: number;
@@ -44,28 +55,10 @@ export function buildTimelineAssetInsertion({
       "Timeline media must be admitted as a Project Asset before insertion",
     );
   }
-  const canvasRatio = compositionWidth / compositionHeight;
-  const assetRatio =
-    asset.width && asset.height ? asset.width / asset.height : null;
-  const properties = assetRatio
-    ? assetRatio >= canvasRatio
-      ? {
-          x: 0,
-          y: 0,
-          width: 1,
-          height: canvasRatio / assetRatio,
-          rotation: 0,
-          opacity: 1,
-        }
-      : {
-          x: 0,
-          y: 0,
-          width: assetRatio / canvasRatio,
-          height: 1,
-          rotation: 0,
-          opacity: 1,
-        }
-    : { x: 0, y: 0, width: 1, height: 1, rotation: 0, opacity: 1 };
+  // The renderer treats 1 × 1 as its contain-fit sentinel: it scales both
+  // axes uniformly from the source's natural dimensions. Pre-scaling one axis
+  // here would apply that adjustment a second time and visibly distort media.
+  const properties = createTimelineInsertProperties();
   const durationInFrames =
     asset.type === "image"
       ? 90
@@ -83,11 +76,16 @@ export function buildTimelineAssetInsertion({
   };
   const item: Item =
     asset.type === "image"
-      ? { ...common, type: "image" }
+      ? {
+          ...common,
+          type: "image",
+          mediaFit: TIMELINE_INSERT_MEDIA_FIT,
+        }
       : asset.type === "video"
         ? {
             ...common,
             type: "video",
+            mediaFit: TIMELINE_INSERT_MEDIA_FIT,
             sourceStartInFrames: 0,
           }
         : {

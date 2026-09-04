@@ -216,6 +216,7 @@ function AnnotationHighlight({
           <button
             type="button"
             data-agent-annotation-pin=""
+            data-agent-annotation-anchor={annotation.id}
             aria-label={`Annotation ${number}`}
             aria-pressed={active}
             className={pinClassName}

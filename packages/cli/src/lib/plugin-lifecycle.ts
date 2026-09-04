@@ -13,6 +13,7 @@ import {
   isSafePluginRelativePath,
   validateExecutablePluginPackage,
   type ExecutablePluginGeneratorDocument,
+  type ExecutablePluginViewDocument,
 } from "@clash/shared-types";
 import { getServerUrl } from "./config";
 import { assertDraftOutsideManagedStorage } from "./plugin-draft-location";
@@ -84,6 +85,7 @@ interface ActionPackage {
 export interface ValidatedDownloadedActionPackage extends ActionPackage {
   format: "executable-plugin";
   generators: Record<string, ExecutablePluginGeneratorDocument>;
+  views: Record<string, ExecutablePluginViewDocument>;
 }
 
 export interface LocalMarketplaceInstallResult {
@@ -230,6 +232,22 @@ export function validateDownloadedActionPackage(
       );
     }
   }
+  const viewDocuments: Record<string, unknown> = {};
+  for (const view of contributions.views) {
+    const encoded = files[view.path];
+    if (typeof encoded !== "string") {
+      throw new Error(`Missing declared View document: ${view.path}`);
+    }
+    try {
+      viewDocuments[view.path] = JSON.parse(
+        Buffer.from(encoded, "base64").toString("utf8"),
+      );
+    } catch (error) {
+      throw new Error(
+        `Invalid View JSON at ${view.path}: ${(error as Error).message}`,
+      );
+    }
+  }
   const contractTestDocuments: Record<string, unknown> = {};
   for (const path of parsedManifest.contractTests) {
     const encoded = files[path];
@@ -254,6 +272,7 @@ export function validateDownloadedActionPackage(
       providers: providerDocuments,
       modelBindings: modelBindingDocuments,
       generators: generatorDocuments,
+      views: viewDocuments,
     },
   );
   return {
@@ -262,6 +281,7 @@ export function validateDownloadedActionPackage(
     manifest: validated.manifest,
     files,
     generators: validated.generators,
+    views: validated.views,
   };
 }
 

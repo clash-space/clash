@@ -8,6 +8,7 @@ import {
   type ProjectTimeline,
 } from "./index.js";
 import {
+  ProjectTimelineEnvelopeSchema,
   projectTimelineFromGeneratorRevision,
   projectTimelineToGeneratorRevisionState,
 } from "./timeline-generator-projection.js";
@@ -103,6 +104,20 @@ function definitionRefOf(definition: GeneratorDefinition) {
 }
 
 describe("Timeline <-> native Generator projection", () => {
+  it("exports the strict Timeline envelope contract used by render executors", () => {
+    expect(
+      ProjectTimelineEnvelopeSchema.parse({
+        name: "Rough cut",
+        owner: { kind: "project" },
+        state: { tracks: [] },
+      }),
+    ).toEqual({
+      name: "Rough cut",
+      owner: { kind: "project" },
+      state: { tracks: [] },
+    });
+  });
+
   it("round-trips a named, owned, multi-item Project Timeline through a native Generator revision", () => {
     const definition = timelineDefinition();
     const timeline = projectTimelineFixture();

@@ -113,7 +113,6 @@ pnpm workspaces + Turborepo. All apps deploy to **Cloudflare** (Workers / Pages)
 | `apps/api-cf`                 | Hono API + Durable Objects + Workflows                | Cloudflare Workers            |
 | `apps/auth-gateway`           | Reverse proxy, auth validation, request routing       | Cloudflare Workers            |
 | `apps/render-server`          | Remotion video rendering (Node.js)                    | Cloudflare Containers         |
-| `apps/loro-sync-server`       | Legacy CRDT sync (functionality merged into api-cf)   | Cloudflare Workers            |
 | `packages/shared-types`       | Zod schemas, TS types, model cards, Loro operations   | Shared library                |
 | `packages/shared-layout`      | Canvas node layout algorithms (zero deps)             | Shared library                |
 | `packages/cli`                | Terminal CLI (`clash` command) for project/canvas ops | Node.js                       |

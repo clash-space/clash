@@ -4,9 +4,9 @@ import {
   type SpawnOptions,
 } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { mkdir, open, readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   LOCAL_HOST_PROTOCOL_VERSION,
   isCompatibleHost,
@@ -43,6 +43,8 @@ export interface DetachedLocalDaemonOptions {
   dataDir: string;
   runDir: string;
   cliEntryPath: string;
+  /** Truncated on each launch and used only for failures before normal logging starts. */
+  diagnosticLogPath?: string;
   env?: NodeJS.ProcessEnv;
   daemonEnv?: NodeJS.ProcessEnv;
   nodePath?: string;
@@ -74,6 +76,11 @@ export interface LocalDaemonBootstrapOptions {
   runtimeFingerprint?: string;
   retire?: (record: LocalHostDiscoveryRecord) => Promise<void>;
   startupTimeoutMs?: number;
+  /**
+   * How long to wait for an already-running daemon to recover its health
+   * endpoint. This never authorizes launching a second writer.
+   */
+  unhealthyRecoveryTimeoutMs?: number;
   lockTimeoutMs?: number;
   pollIntervalMs?: number;
 }
@@ -114,6 +121,7 @@ export function launchDetachedLocalDaemon(
   const launchedProcessExists = options.processExists ?? processExists;
   const killProcess = options.killProcess ?? process.kill;
   const env = options.env ?? process.env;
+  const sourceWatchSupervisor = options.nodeArgs?.includes("watch") === true;
   // Decoupled from the launcher on purpose. Desktop may explicitly use its
   // bundled Electron executable in Node mode after validating that embedded
   // Node against DAEMON_SUPPORTED_NODE_RANGE; every other launcher resolves a
@@ -144,28 +152,43 @@ export function launchDetachedLocalDaemon(
           env as Record<string, string | undefined>,
         ),
       });
-  const child = spawnProcess(
-    runtime.nodePath,
-    [...(options.nodeArgs ?? []), options.entryPath],
-    {
-      detached: true,
-      env: {
-        ...env,
-        ...(options.daemonEnv ?? {}),
-        CLASH_LOCAL_DATA_DIR: options.dataDir,
-        CLASH_HOST_RUN_DIR: options.runDir,
-        CLASH_CLI_ENTRY_PATH: options.cliEntryPath,
-        CLASH_LOCAL_API_WRAPPER_ENTRY: "1",
-        CLASH_DAEMON_RUNTIME_FINGERPRINT: options.runtimeFingerprint,
-        // Electron Node mode is still a detached Node process; without this
-        // explicit opt-in an Electron executable would recursively open the GUI.
-        ELECTRON_RUN_AS_NODE: options.electronRunAsNode ? "1" : undefined,
-        CLASH_DAEMON_NODE_PATH: runtime.nodePath,
-        PORT: "0",
+  let diagnosticFd: number | undefined;
+  if (options.diagnosticLogPath) {
+    mkdirSync(dirname(options.diagnosticLogPath), { recursive: true });
+    diagnosticFd = openSync(options.diagnosticLogPath, "w", 0o600);
+  }
+  let child: Pick<ChildProcess, "pid" | "unref">;
+  try {
+    child = spawnProcess(
+      runtime.nodePath,
+      [...(options.nodeArgs ?? []), options.entryPath],
+      {
+        detached: true,
+        env: {
+          ...env,
+          ...(options.daemonEnv ?? {}),
+          CLASH_LOCAL_DATA_DIR: options.dataDir,
+          CLASH_HOST_RUN_DIR: options.runDir,
+          CLASH_CLI_ENTRY_PATH: options.cliEntryPath,
+          CLASH_LOCAL_API_WRAPPER_ENTRY: "1",
+          // The watcher, rather than its replaceable child, owns discovery.
+          CLASH_DAEMON_SOURCE_WATCH: sourceWatchSupervisor ? "1" : undefined,
+          CLASH_DAEMON_RUNTIME_FINGERPRINT: options.runtimeFingerprint,
+          // Electron Node mode is still a detached Node process; without this
+          // explicit opt-in an Electron executable would recursively open the GUI.
+          ELECTRON_RUN_AS_NODE: options.electronRunAsNode ? "1" : undefined,
+          CLASH_DAEMON_NODE_PATH: runtime.nodePath,
+          PORT: options.daemonEnv?.PORT ?? "0",
+        },
+        stdio:
+          diagnosticFd === undefined
+            ? "ignore"
+            : ["ignore", diagnosticFd, diagnosticFd],
       },
-      stdio: "ignore",
-    },
-  );
+    );
+  } finally {
+    if (diagnosticFd !== undefined) closeSync(diagnosticFd);
+  }
   if (!child.pid) throw new Error("Failed to start Clash daemon process");
   const pid = child.pid;
   child.unref();
@@ -389,6 +412,7 @@ export function createLocalDaemonBootstrap(
   const pidExists = options.pidExists ?? processExists;
   const probe = options.probe ?? defaultHealthProbe;
   const startupTimeoutMs = options.startupTimeoutMs ?? 30_000;
+  const unhealthyRecoveryTimeoutMs = options.unhealthyRecoveryTimeoutMs ?? 0;
   const lockTimeoutMs = options.lockTimeoutMs ?? 15_000;
   const pollIntervalMs = options.pollIntervalMs ?? 50;
   const inspectDaemon = () =>
@@ -402,9 +426,28 @@ export function createLocalDaemonBootstrap(
   let ensuring: Promise<LocalHostDiscoveryRecord> | undefined;
   let closed = false;
 
+  const waitForUnhealthyDaemonRecovery = async (
+    initial: Extract<LocalDaemonInspection, { status: "unhealthy" }>,
+  ): Promise<LocalDaemonInspection> => {
+    const deadline = Date.now() + unhealthyRecoveryTimeoutMs;
+    let latest: LocalDaemonInspection = initial;
+    while (
+      latest.status === "unhealthy" &&
+      latest.record.pid === initial.record.pid &&
+      Date.now() < deadline
+    ) {
+      await delay(Math.min(pollIntervalMs, deadline - Date.now()));
+      latest = await inspectDaemon();
+    }
+    return latest;
+  };
+
   const establish = async (): Promise<LocalHostDiscoveryRecord> => {
     if (closed) throw new Error("Clash daemon bootstrap is closed");
-    const active = await inspectDaemon();
+    let active = await inspectDaemon();
+    if (active.status === "unhealthy") {
+      active = await waitForUnhealthyDaemonRecovery(active);
+    }
     if (active.status === "healthy") return active.record;
     // Retirement happens only after taking the startup lock below. Until then,
     // another client may already be replacing the same artifact.
@@ -423,7 +466,10 @@ export function createLocalDaemonBootstrap(
     });
     let launched: LocalDaemonLaunchResult | undefined;
     try {
-      const activeAfterLock = await inspectDaemon();
+      let activeAfterLock = await inspectDaemon();
+      if (activeAfterLock.status === "unhealthy") {
+        activeAfterLock = await waitForUnhealthyDaemonRecovery(activeAfterLock);
+      }
       if (activeAfterLock.status === "healthy") return activeAfterLock.record;
       if (activeAfterLock.status === "obsolete") {
         await (

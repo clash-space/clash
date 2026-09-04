@@ -21,7 +21,12 @@ import {
   useDashboardComposer,
 } from "./DashboardComposerContext";
 import type { UseClashRuntimeReturn } from "@clash/web-ui/hooks/useClashRuntime";
-import { initialSessionTranscript } from "@openma/common/session";
+import { createAgentUIStore } from "@openma/common/agent-ui";
+
+function emptyAgentUIRuntime() {
+  const store = createAgentUIStore("draft");
+  return { agentUIStore: store, agentUIState: store.getState() };
+}
 
 const mocks = vi.hoisted(() => ({
   runtimeState: {
@@ -135,8 +140,7 @@ vi.mock("@clash/web-ui/hooks/useClashRuntime", () => ({
     errorMessage: null,
     transientStatus: null,
     diagnostics: [],
-    transcript: initialSessionTranscript("draft"),
-    notice: null,
+    ...emptyAgentUIRuntime(),
     messages: [],
     availableCommands: [],
     promptQueue: [],
@@ -171,7 +175,6 @@ vi.mock("@clash/web-ui/hooks/useClashRuntime", () => ({
     respondPermission: vi.fn(),
     respondElicitation: vi.fn(),
     restartSession: vi.fn(),
-    dismissNotice: vi.fn(),
     cancel: vi.fn(),
     shutdown: vi.fn(),
   }),
@@ -210,6 +213,9 @@ vi.mock("./copilot/ChatInput", () => ({
           data-testid="dashboard-composer-runtime"
           data-variant={props.variant}
           data-visual-state={props.visualState}
+          data-has-reference-accessory={String(
+            Boolean(props.referenceAccessory),
+          )}
           data-can-attach={String(
             Boolean(props.projectId || props.ensureProjectId),
           )}
@@ -336,10 +342,14 @@ describe("dashboard composer runtime", () => {
 
     expect(
       screen.getByTestId("dashboard-composer-runtime").dataset.variant,
-    ).toBe("hero");
+    ).toBe("default");
     expect(
       screen.getByTestId("dashboard-composer-runtime").dataset.visualState,
-    ).toBe("compact");
+    ).toBeUndefined();
+    expect(
+      screen.getByTestId("dashboard-composer-runtime").dataset
+        .hasReferenceAccessory,
+    ).toBe("false");
     expect(
       screen.getByTestId("dashboard-composer-runtime"),
     ).not.toHaveAttribute("data-placeholder");

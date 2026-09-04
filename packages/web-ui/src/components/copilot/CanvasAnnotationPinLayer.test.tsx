@@ -86,7 +86,7 @@ describe("CanvasAnnotationPinLayer", () => {
     expect(pin.style.top).toBe("20px");
   });
 
-  it("routes pin clicks into the shared annotation inspector", async () => {
+  it("routes pin clicks into the source-anchored annotation editor", async () => {
     const flow = document.createElement("div");
     vi.spyOn(flow, "getBoundingClientRect").mockReturnValue({
       left: 0,

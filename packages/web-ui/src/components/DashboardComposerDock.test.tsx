@@ -90,6 +90,11 @@ describe("DashboardComposerDock", () => {
     const dock = screen.getByRole("region", { name: "Dashboard composer" });
     expect(dock.dataset.slot).toBe("dashboard-composer-dock");
     expect(dock.dataset.density).toBe("compact");
+    expect(dock.dataset.chatDensity).toBe("compact");
+    expect(dock.dataset.chatSurface).toBe("main");
+    expect(dock.style.getPropertyValue("--composer-body-min-height")).toBe(
+      "48px",
+    );
     expect(dock.dataset.size).toBe("lg");
     expect(screen.getByTestId("shared-composer").closest("[data-slot]")).toBe(
       dock,

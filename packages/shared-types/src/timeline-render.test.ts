@@ -54,6 +54,66 @@ function authoritativeTimelineDoc(): LoroDoc {
 }
 
 describe("Timeline render requests", () => {
+  it("projects one render node into the shared Timeline export progress contract", () => {
+    expect(
+      timelineRender.timelineExportProgressFromRenderNode,
+    ).toBeTypeOf("function");
+    expect(
+      timelineRender.timelineExportProgressFromRenderNode(
+        "render-1",
+        {
+          type: "video",
+          data: {
+            sourceTimelineId: "timeline-1",
+            sourceTimelineRevisionId: "timeline-revision-v1:abc",
+            status: "generating",
+            progress: 0.42,
+          },
+        },
+      ),
+    ).toEqual({
+      renderNodeId: "render-1",
+      timelineId: "timeline-1",
+      timelineRevisionId: "timeline-revision-v1:abc",
+      status: "rendering",
+      progress: 0.42,
+    });
+  });
+
+  it("lists persisted exports for one Timeline from the shared Loro replica", () => {
+    const doc = new LoroDoc();
+    doc.getMap("nodes").set("render-current", {
+      type: "video",
+      data: {
+        sourceTimelineId: "timeline-1",
+        sourceTimelineRevisionId: "timeline-revision-v1:abc",
+        status: "pending",
+      },
+    });
+    doc.getMap("nodes").set("render-other", {
+      type: "video",
+      data: {
+        sourceTimelineId: "timeline-2",
+        sourceTimelineRevisionId: "timeline-revision-v1:def",
+        status: "generating",
+      },
+    });
+
+    expect(timelineRender.listTimelineExportProgress).toBeTypeOf(
+      "function",
+    );
+    expect(
+      timelineRender.listTimelineExportProgress(doc, "timeline-1"),
+    ).toEqual([
+      {
+        renderNodeId: "render-current",
+        timelineId: "timeline-1",
+        timelineRevisionId: "timeline-revision-v1:abc",
+        status: "queued",
+      },
+    ]);
+  });
+
   it("exports the canonical render DSL projection shared with authority validation", () => {
     expect((timelineRender as any).canonicalTimelineRenderDsl).toBeTypeOf(
       "function",

@@ -1,6 +1,7 @@
 import * as Ariakit from '@ariakit/react';
 import React from 'react';
 import type { NleAvailability, NleTarget } from '@clash/remotion-core';
+import type { TimelineExportProgress } from '@clash/shared-types';
 
 const targets: Array<{ id: NleTarget; label: string }> = [
   { id: 'premiere-pro', label: 'Adobe Premiere Pro' },
@@ -74,12 +75,14 @@ function NleIcon({ target }: { target: NleTarget }) {
 
 export function OpenInMenu({
   onExport,
+  exportProgress = [],
   onOpenInNle,
   availability,
   availabilityError,
   onRefreshAvailability,
 }: {
   onExport?: () => Promise<void>;
+  exportProgress?: readonly TimelineExportProgress[];
   onOpenInNle?: (target: NleTarget) => Promise<void>;
   availability: NleAvailability[] | null;
   availabilityError?: string | null;
@@ -88,9 +91,13 @@ export function OpenInMenu({
   const [exporting, setExporting] = React.useState(false);
   const [opening, setOpening] = React.useState<NleTarget | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const activeExports = exportProgress.filter(
+    (entry) => entry.status === 'queued' || entry.status === 'rendering',
+  );
+  const hasActiveExport = activeExports.length > 0;
 
   const exportVideo = React.useCallback(async () => {
-    if (!onExport || exporting || opening) return;
+    if (!onExport || exporting || opening || hasActiveExport) return;
     setExporting(true);
     setError(null);
     try {
@@ -102,7 +109,7 @@ export function OpenInMenu({
     } finally {
       setExporting(false);
     }
-  }, [exporting, onExport, opening]);
+  }, [exporting, hasActiveExport, onExport, opening]);
 
   const open = React.useCallback(
     async (target: NleTarget) => {
@@ -124,17 +131,22 @@ export function OpenInMenu({
     [exporting, onOpenInNle, opening],
   );
 
-  const busy = exporting || opening !== null;
+  const operationBusy = exporting || opening !== null;
+  const exportBusy = operationBusy || hasActiveExport;
 
   return (
     <div className="min-w-0">
       <Ariakit.MenuProvider>
         <Ariakit.MenuButton
-          disabled={busy}
+          disabled={operationBusy}
           className="clash-workbench-control-button flex h-8 min-w-[92px] items-center justify-between gap-2 bg-brand px-3 text-xs font-semibold text-brand-foreground shadow-sm transition-colors hover:bg-brand/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-wait disabled:opacity-80"
         >
           <span>
-            {exporting ? 'Exporting…' : opening ? 'Opening…' : 'Export'}
+            {exporting || hasActiveExport
+              ? 'Exporting…'
+              : opening
+                ? 'Opening…'
+                : 'Export'}
           </span>
           <svg
             viewBox="0 0 12 12"
@@ -156,10 +168,55 @@ export function OpenInMenu({
           gutter={6}
           className="z-40 min-w-[232px] rounded-lg border border-overlay-border bg-overlay-surface p-1.5 text-content-primary shadow-overlay outline-none backdrop-blur-xl"
         >
+          {activeExports.map((entry) => {
+            const percentage =
+              entry.progress === undefined
+                ? null
+                : Math.round(entry.progress * 100);
+            return (
+              <div
+                key={entry.renderNodeId}
+                className="rounded-md bg-info-soft px-2.5 py-2 text-xs text-content-primary"
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <span className="font-semibold">Exporting video</span>
+                  <span className="text-[10px] font-semibold tabular-nums text-info">
+                    {percentage === null
+                      ? entry.status === 'queued'
+                        ? 'Queued'
+                        : 'Rendering'
+                      : `${percentage}%`}
+                  </span>
+                </div>
+                <div
+                  role="progressbar"
+                  aria-label="Video export progress"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  {...(percentage === null
+                    ? { 'aria-valuetext': 'Rendering' }
+                    : { 'aria-valuenow': percentage })}
+                  className="mt-2 h-1.5 overflow-hidden rounded-full bg-overlay-border"
+                >
+                  <div
+                    className={`h-full rounded-full bg-info transition-[width] duration-200 motion-reduce:transition-none ${percentage === null ? 'w-1/3 animate-pulse motion-reduce:animate-none' : ''}`}
+                    style={
+                      percentage === null
+                        ? undefined
+                        : { width: `${percentage}%` }
+                    }
+                  />
+                </div>
+              </div>
+            );
+          })}
+          {hasActiveExport && onExport ? (
+            <Ariakit.MenuSeparator className="mx-2 my-1 h-px border-0 bg-overlay-border" />
+          ) : null}
           {onExport ? (
             <Ariakit.MenuItem
               aria-label="Export video"
-              disabled={busy}
+              disabled={exportBusy}
               onClick={() => void exportVideo()}
               className="flex min-h-10 items-center justify-between gap-4 rounded-md px-2.5 text-xs font-semibold text-content-primary outline-none data-[active-item]:bg-warm-muted/80 disabled:opacity-60"
             >

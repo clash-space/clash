@@ -1,16 +1,21 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import type { Node, NodeProps } from "@xyflow/react";
-import { Code, FilmStrip, FloppyDisk, Plus, X } from "@phosphor-icons/react";
+import { memo, useCallback, useEffect, useState } from "react";
+import {
+  Handle,
+  Position,
+  useReactFlow,
+  type Node,
+  type NodeProps,
+} from "@xyflow/react";
+import { Code, FilmStrip, FloppyDisk, X } from "@phosphor-icons/react";
 import { Player } from "@remotion/player";
 import { RemotionSourceComposition } from "@clash/remotion-components";
 
-import { appendRemotionComponentToTimelineState } from "@clash/web-ui/lib/remotionComponentTimeline";
 import { useOptionalLoroSyncContext } from "../LoroSyncContext";
 import { NodeModalDialog } from "./NodeModalDialog";
+import { calculateScaledDimensions } from "./assetNodeSizing";
 import { Button } from "../ui/button";
 import { IconButton } from "../ui/icon-button";
 import { Input } from "../ui/input";
-import { SelectMenu, type SelectOption } from "../ui/select";
 import { Textarea } from "../ui/textarea";
 
 export const DEFAULT_REMOTION_COMPONENT_SOURCE = `import React from "react";
@@ -39,6 +44,23 @@ export default function Component() {
 }
 `;
 
+const REMOTION_COMPONENT_HEADER_HEIGHT = 44;
+
+export function calculateRemotionComponentNodeDimensions(
+  compositionWidth: number,
+  compositionHeight: number,
+) {
+  const preview = calculateScaledDimensions(
+    compositionWidth,
+    compositionHeight,
+  );
+  return {
+    width: preview.width,
+    height: preview.height + REMOTION_COMPONENT_HEADER_HEIGHT,
+    preview,
+  };
+}
+
 function positiveInteger(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.max(1, Math.round(value))
@@ -48,12 +70,14 @@ function positiveInteger(value: unknown, fallback: number): number {
 function componentValue(data: Record<string, unknown>, id: string) {
   return {
     label: typeof data.label === "string" ? data.label : "Remotion Component",
-    componentId: typeof data.componentId === "string" && data.componentId.trim()
-      ? data.componentId.trim()
-      : id,
-    source: typeof data.content === "string" && data.content.trim()
-      ? data.content
-      : DEFAULT_REMOTION_COMPONENT_SOURCE,
+    componentId:
+      typeof data.componentId === "string" && data.componentId.trim()
+        ? data.componentId.trim()
+        : id,
+    source:
+      typeof data.content === "string" && data.content.trim()
+        ? data.content
+        : DEFAULT_REMOTION_COMPONENT_SOURCE,
     width: positiveInteger(data.compositionWidth, 720),
     height: positiveInteger(data.compositionHeight, 1280),
     fps: positiveInteger(data.fps, 30),
@@ -65,40 +89,73 @@ const RemotionComponentNode = ({
   data,
   selected,
   id,
+  width,
+  height,
 }: NodeProps<Node<Record<string, unknown>>>) => {
   const loroSync = useOptionalLoroSyncContext();
+  const { getNode, setNodes } = useReactFlow();
   const persisted = componentValue(data, id);
   const [editorOpen, setEditorOpen] = useState(false);
   const [draftLabel, setDraftLabel] = useState(persisted.label);
   const [draftSource, setDraftSource] = useState(persisted.source);
-  const [selectedTimelineId, setSelectedTimelineId] = useState(
-    () => loroSync?.timelines[0]?.id ?? "",
-  );
   const [message, setMessage] = useState<string | null>(null);
+  const nodeDimensions = calculateRemotionComponentNodeDimensions(
+    persisted.width,
+    persisted.height,
+  );
+  const previewSize = nodeDimensions.preview;
+
+  useEffect(() => {
+    if (
+      !Number.isFinite(width) ||
+      !Number.isFinite(height) ||
+      (width === nodeDimensions.width && height === nodeDimensions.height)
+    ) {
+      return;
+    }
+    const style = {
+      ...(getNode(id)?.style ?? {}),
+      width: nodeDimensions.width,
+      height: nodeDimensions.height,
+    };
+    setNodes((nodes) =>
+      nodes.map((node) =>
+        node.id === id
+          ? {
+              ...node,
+              width: nodeDimensions.width,
+              height: nodeDimensions.height,
+              style,
+            }
+          : node,
+      ),
+    );
+    loroSync?.updateNode(id, {
+      width: nodeDimensions.width,
+      height: nodeDimensions.height,
+      style,
+    });
+  }, [
+    getNode,
+    height,
+    id,
+    loroSync,
+    nodeDimensions.height,
+    nodeDimensions.width,
+    setNodes,
+    width,
+  ]);
 
   useEffect(() => {
     setDraftLabel(persisted.label);
     setDraftSource(persisted.source);
   }, [persisted.label, persisted.source]);
 
-  useEffect(() => {
-    if (selectedTimelineId && loroSync?.timelines.some((timeline) => timeline.id === selectedTimelineId)) {
-      return;
-    }
-    setSelectedTimelineId(loroSync?.timelines[0]?.id ?? "");
-  }, [loroSync?.timelines, selectedTimelineId]);
-
-  const timelineOptions = useMemo<SelectOption<string>[]>(
-    () => (loroSync?.timelines ?? []).map((timeline) => ({
-      value: timeline.id,
-      label: timeline.name,
-    })),
-    [loroSync?.timelines],
-  );
-
   const saveComponent = useCallback(() => {
     const nextLabel = draftLabel.trim() || "Remotion Component";
-    const nextSource = draftSource.trim() ? draftSource : DEFAULT_REMOTION_COMPONENT_SOURCE;
+    const nextSource = draftSource.trim()
+      ? draftSource
+      : DEFAULT_REMOTION_COMPONENT_SOURCE;
     const ok = loroSync?.updateNode(id, {
       data: {
         label: nextLabel,
@@ -111,35 +168,14 @@ const RemotionComponentNode = ({
       },
     });
     if (ok === false) {
-      setMessage("The component changed concurrently. Reload it and try again.");
+      setMessage(
+        "The component changed concurrently. Reload it and try again.",
+      );
       return;
     }
     setMessage(null);
     setEditorOpen(false);
   }, [draftLabel, draftSource, id, loroSync, persisted]);
-
-  const addToTimeline = useCallback(() => {
-    const sync = loroSync;
-    const timeline = sync?.timelines.find((candidate) => candidate.id === selectedTimelineId);
-    if (!sync || !timeline) {
-      setMessage("Create or select a Timeline first.");
-      return;
-    }
-    const currentState = timeline.state && typeof timeline.state === "object"
-      ? timeline.state as Record<string, unknown>
-      : {};
-    const nextState = appendRemotionComponentToTimelineState(currentState, {
-      nodeId: id,
-      componentId: persisted.componentId,
-      label: persisted.label,
-      durationInFrames: persisted.durationInFrames,
-    });
-    if (!sync.applyTimelineState(timeline.id, nextState)) {
-      setMessage("Timeline changed concurrently. Reopen it and try again.");
-      return;
-    }
-    setMessage(`Added to ${timeline.name}. Future component edits keep this same node reference.`);
-  }, [id, loroSync, persisted, selectedTimelineId]);
 
   const player = (
     <Player
@@ -149,8 +185,11 @@ const RemotionComponentNode = ({
       compositionHeight={persisted.height}
       durationInFrames={persisted.durationInFrames}
       fps={persisted.fps}
-      inputProps={{ source: persisted.source, componentId: persisted.componentId }}
-      controls
+      inputProps={{
+        source: persisted.source,
+        componentId: persisted.componentId,
+      }}
+      controls={false}
       loop
       style={{ width: "100%", height: "100%" }}
     />
@@ -158,60 +197,55 @@ const RemotionComponentNode = ({
 
   return (
     <>
-      <article
+      <div
         data-testid="remotion-component-node"
-        className={`group relative flex h-[320px] w-[420px] flex-col overflow-hidden rounded-matrix bg-warm-surface shadow-lg ring-1 ring-warm-border ${
-          selected ? "ring-4 ring-brand ring-offset-2" : ""
-        }`}
+        className="group relative"
+        style={{ width: previewSize.width }}
       >
-        <header className="flex h-11 shrink-0 items-center gap-2 border-b border-warm-border px-3">
-          <FilmStrip className="h-4 w-4 text-brand" weight="duotone" />
-          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-content-primary">
-            {persisted.label}
-          </span>
-          <Button
-            size="sm"
-            shape="rounded"
-            aria-label="Edit code"
-            leftIcon={<Code className="h-3.5 w-3.5" />}
-            onClick={() => setEditorOpen(true)}
-            className="nodrag h-7 min-h-7 px-2 text-xs"
+        <article
+          className={`flex flex-col overflow-hidden rounded-matrix bg-warm-surface shadow-lg ring-1 ring-warm-border ${
+            selected ? "ring-4 ring-brand ring-offset-2" : ""
+          }`}
+        >
+          <header className="flex h-11 shrink-0 items-center gap-2 border-b border-warm-border px-3">
+            <FilmStrip className="h-4 w-4 text-brand" weight="duotone" />
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-content-primary">
+              {persisted.label}
+            </span>
+            <Button
+              size="sm"
+              shape="rounded"
+              aria-label="Edit code"
+              leftIcon={<Code className="h-3.5 w-3.5" />}
+              onClick={() => setEditorOpen(true)}
+              className="nodrag h-7 min-h-7 px-2 text-xs"
+            >
+              Edit code
+            </Button>
+          </header>
+          <div
+            data-testid="remotion-component-preview"
+            className="pointer-events-none shrink-0 select-none bg-black"
+            style={{ width: previewSize.width, height: previewSize.height }}
           >
-            Edit code
-          </Button>
-        </header>
-        <div className="nodrag min-h-0 flex-1 bg-black">{player}</div>
-        <footer className="nodrag flex min-h-12 items-center gap-2 border-t border-warm-border px-3 py-2">
-          <SelectMenu<string>
-            ariaLabel="Target Timeline"
-            value={selectedTimelineId}
-            options={timelineOptions}
-            onValueChange={setSelectedTimelineId}
-            placeholder="No Timeline"
-            variant="field"
-            size="sm"
-            menuWidth="trigger"
-            triggerClassName="h-8 min-h-8 flex-1"
-            stopPropagation
-          />
-          <Button
-            size="sm"
-            shape="rounded"
-            aria-label="Add to Timeline"
-            leftIcon={<Plus className="h-3.5 w-3.5" />}
-            disabled={!selectedTimelineId}
-            onClick={addToTimeline}
-            className="h-8 min-h-8 whitespace-nowrap px-2.5 text-xs"
-          >
-            Add to Timeline
-          </Button>
-        </footer>
-        {message ? (
-          <p role="status" className="border-t border-warm-border px-3 py-1.5 text-[11px] text-content-secondary">
-            {message}
-          </p>
-        ) : null}
-      </article>
+            {player}
+          </div>
+          {message ? (
+            <p
+              role="status"
+              className="border-t border-warm-border px-3 py-1.5 text-[11px] text-content-secondary"
+            >
+              {message}
+            </p>
+          ) : null}
+        </article>
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="output"
+          className="!h-4 !w-4 !translate-x-2 !border-4 !border-warm-surface !bg-content-muted shadow-sm transition-all hover:scale-125 hover:!bg-brand"
+        />
+      </div>
 
       <NodeModalDialog
         open={editorOpen}
@@ -253,7 +287,11 @@ const RemotionComponentNode = ({
             />
           </div>
           <div className="flex min-h-0 items-center justify-center overflow-hidden bg-stone-950 p-4">
-            <div className="aspect-[9/16] max-h-full max-w-full overflow-hidden rounded-matrix bg-black shadow-2xl">
+            <div
+              data-testid="remotion-component-editor-preview"
+              className="max-h-full max-w-full overflow-hidden rounded-matrix bg-black shadow-2xl"
+              style={{ width: previewSize.width, height: previewSize.height }}
+            >
               <Player
                 key={`draft:${draftSource}`}
                 component={RemotionSourceComposition}
@@ -261,7 +299,10 @@ const RemotionComponentNode = ({
                 compositionHeight={persisted.height}
                 durationInFrames={persisted.durationInFrames}
                 fps={persisted.fps}
-                inputProps={{ source: draftSource, componentId: persisted.componentId }}
+                inputProps={{
+                  source: draftSource,
+                  componentId: persisted.componentId,
+                }}
                 controls
                 loop
                 style={{ width: "100%", height: "100%" }}

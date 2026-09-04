@@ -126,6 +126,41 @@ function computePeaks(audioBuffer: AudioBuffer, bars: number): number[] {
   return peaks;
 }
 
+function parseWaveformProjection(value: unknown): {
+  peaks: number[];
+  duration: number;
+} {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Invalid waveform representation");
+  }
+  const projection = value as Record<string, unknown>;
+  if (
+    typeof projection.recipe !== "string" ||
+    !projection.recipe.startsWith("audio-waveform/") ||
+    !Array.isArray(projection.peaks) ||
+    projection.peaks.length !== WAVEFORM_BARS ||
+    !projection.peaks.every(
+      (peak) =>
+        typeof peak === "number" &&
+        Number.isFinite(peak) &&
+        peak >= 0 &&
+        peak <= 1,
+    ) ||
+    (projection.durationMs !== undefined &&
+      (!Number.isSafeInteger(projection.durationMs) ||
+        (projection.durationMs as number) < 0))
+  ) {
+    throw new Error("Invalid waveform representation");
+  }
+  return {
+    peaks: projection.peaks as number[],
+    duration:
+      typeof projection.durationMs === "number"
+        ? projection.durationMs / 1_000
+        : 0,
+  };
+}
+
 const AudioNode = ({
   data,
   selected,
@@ -141,6 +176,7 @@ const AudioNode = ({
       : undefined;
   const asset = useAsset(projectId, projectAssetId);
   const projectedAudioUrl = asset?.url;
+  const projectedWaveformUrl = asset?.waveformUrl;
   const waveformCacheKey = scopedWaveformCacheKey(projectId, projectAssetId);
   const [status, setStatus] = useState<AssetStatus>(
     normalizeStatus(data.status) || (data.assetId ? "completed" : "generating"),
@@ -152,7 +188,7 @@ const AudioNode = ({
     data.status === "pending" && loroSync?.connected === false;
 
   // Duration may come from byte inspection. Inline waveform is migration-only;
-  // new Assets derive peaks in the browser and keep them in the bounded cache.
+  // new Assets resolve a Host-derived waveform and cache that bounded payload.
   const metaDurationMs = asset?.metadata?.durationMs;
   const legacyWaveform = asset?.metadata?.waveform;
 
@@ -198,12 +234,17 @@ const AudioNode = ({
         ? legacyWaveform
         : undefined,
     );
-  }, [projectedAudioUrl, metaDurationMs, legacyWaveform]);
+  }, [
+    projectedAudioUrl,
+    projectedWaveformUrl,
+    metaDurationMs,
+    legacyWaveform,
+  ]);
 
-  // New waveform presentation is always decoded client-side and cached only
-  // for this page/device. Legacy inline peaks remain a read-only shortcut.
+  // Prefer the Host's durable representation. Browser decoding remains a
+  // compatibility fallback for Hosts that have not derived it yet.
   useEffect(() => {
-    if (!showModal || !audioUrl) return;
+    if (!audioUrl || (!showModal && !projectedWaveformUrl)) return;
     const hasDuration = duration > 0;
     const hasPeaks = !!peaks && peaks.length > 0;
     if (hasDuration && hasPeaks) return;
@@ -220,6 +261,41 @@ const AudioNode = ({
     setDecoding(true);
     (async () => {
       try {
+        if (projectedWaveformUrl) {
+          try {
+            const representationResponse = await fetch(projectedWaveformUrl, {
+              signal: controller.signal,
+            });
+            if (!representationResponse.ok) {
+              throw new Error(`fetch ${representationResponse.status}`);
+            }
+            const representation = parseWaveformProjection(
+              await representationResponse.json(),
+            );
+            if (aborted) return;
+            const representationDuration =
+              representation.duration > 0
+                ? representation.duration
+                : duration;
+            if (waveformCacheKey) {
+              writeWaveformCache(waveformCacheKey, {
+                peaks: representation.peaks,
+                duration: representationDuration,
+              });
+            }
+            setPeaks(representation.peaks);
+            if (representation.duration > 0) {
+              setDuration((previous) =>
+                previous > 0 ? previous : representation.duration,
+              );
+            }
+            return;
+          } catch (error) {
+            if (aborted || controller.signal.aborted) return;
+            console.warn("[AudioNode] waveform representation failed", error);
+          }
+        }
+        if (!showModal) return;
         const resp = await fetch(audioUrl, { signal: controller.signal });
         if (!resp.ok) throw new Error(`fetch ${resp.status}`);
         const buf = await resp.arrayBuffer();
@@ -251,7 +327,7 @@ const AudioNode = ({
       aborted = true;
       controller.abort();
     };
-  }, [showModal, audioUrl, waveformCacheKey]);
+  }, [showModal, audioUrl, projectedWaveformUrl, waveformCacheKey]);
 
   // Bind <audio> element events — drives currentTime + provides a duration
   // fallback in case decode hasn't finished yet.

@@ -67,4 +67,12 @@ describe('Timeline surface tokens', () => {
       'clash-copilot-panel-shell fixed z-50 flex flex-col overflow-hidden bg-warm-page',
     );
   });
+
+  it('does not double-elevate the bordered Copilot panel with a wide shadow', () => {
+    const rule = cssSource.match(/\.clash-copilot-panel-shell\s*\{[\s\S]*?\}/)?.[0] ?? '';
+    expect(rule).toMatch(/border:\s*1px solid/);
+    expect(rule).not.toMatch(
+      /box-shadow:[\s\S]*?\b(?:1[6-9]|[2-9]\d+)px\b/,
+    );
+  });
 });

@@ -83,13 +83,27 @@ export function saveProjectBrowserSession(
 export function openProjectBrowserTab(
   tabs: readonly ProjectBrowserTab[],
   id: string,
+  initial?: { url?: string; title?: string },
 ): { tabs: ProjectBrowserTab[]; tab: ProjectBrowserTab } {
+  const url = initial?.url?.trim() || "about:blank";
+  let title = initial?.title?.trim();
+  if (!title && url !== "about:blank") {
+    try {
+      title = new URL(url).host || "New Browser";
+    } catch {
+      title = "New Browser";
+    }
+  }
   const tab: ProjectBrowserTab = {
     id,
-    title: "New Browser",
-    url: "about:blank",
+    title: title || "New Browser",
+    url,
   };
   return { tabs: [...tabs, tab], tab };
+}
+
+export function shouldActivateProjectBrowserTab(disposition: string): boolean {
+  return disposition !== "background-tab";
 }
 
 export function updateProjectBrowserTab(

@@ -2,6 +2,7 @@ import { pluginCapabilities } from "./plugin-capabilities.js";
 import { z } from "zod";
 
 import { AssetKindSchema } from "./assets.js";
+import { AspectRatioStringSchema } from "./aspect-ratio.js";
 import { pluginIdSchema } from "./plugin-namespace.js";
 import { PluginAuthDeclarationSchema } from "./plugin-auth.js";
 import { AsrTimedTranscriptSchema } from "./production-metadata.js";
@@ -52,6 +53,7 @@ export {
 // its first import into "Dynamic require of ... is not supported" at spawn.
 export { AssetKindSchema, type AssetKind } from "./assets.js";
 export {
+  AspectRatioStringSchema,
   aspectRatioLabel,
   parseAspectRatio,
   reduceAspectRatio,
@@ -180,6 +182,14 @@ export const ExecutablePluginGeneratorExportSchema = z
   .object({
     id: z.string().trim().regex(PLUGIN_ID_PATTERN),
     kind: z.literal("generator"),
+    path: PluginRelativePathSchema,
+  })
+  .strict();
+
+export const ExecutablePluginViewExportSchema = z
+  .object({
+    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    kind: z.literal("view"),
     path: PluginRelativePathSchema,
   })
   .strict();
@@ -390,6 +400,147 @@ export const ExecutablePluginGeneratorDocumentSchema = z
   .strict();
 export type ExecutablePluginGeneratorDocument = z.infer<
   typeof ExecutablePluginGeneratorDocumentSchema
+>;
+
+/** One immutable Project Asset offered as a candidate for a View material slot. */
+export const StoryboardViewResourceSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    projectAssetId: z.string().trim().min(1),
+    mediaKind: z.enum(["image", "video", "audio", "model"]),
+    modelName: z.string().trim().min(1).optional(),
+    generatedBy: z
+      .object({
+        generatorId: z.string().trim().min(1),
+        generatorRevisionId: z.string().trim().min(1),
+        actionRunId: z.string().trim().min(1),
+        outputCommitId: z.string().trim().min(1),
+        outputSlot: z.string().trim().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+export type StoryboardViewResource = z.infer<typeof StoryboardViewResourceSchema>;
+
+export const StoryboardViewDescriptionPartSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("text"), text: z.string() }).strict(),
+  z
+    .object({
+      type: z.literal("entity-reference"),
+      entityId: z.string().trim().min(1),
+    })
+    .strict(),
+]);
+
+export const StoryboardViewMaterialSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    label: z.string().trim().min(1).optional(),
+    mediaKind: z.enum(["image", "video", "audio", "model"]),
+    promptDraft: z
+      .object({
+        id: z.string().trim().min(1),
+        text: z.string(),
+      })
+      .strict()
+      .optional(),
+    candidates: z.array(StoryboardViewResourceSchema).default([]),
+    selectedCandidateId: z.string().trim().min(1).optional(),
+  })
+  .strict()
+  .superRefine((material, ctx) => {
+    if (
+      material.selectedCandidateId &&
+      !material.candidates.some(
+        (candidate) => candidate.id === material.selectedCandidateId,
+      )
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["selectedCandidateId"],
+        message: "A selected candidate must belong to the same material slot.",
+      });
+    }
+    const candidateIds = new Set<string>();
+    material.candidates.forEach((candidate, index) => {
+      if (candidateIds.has(candidate.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["candidates", index, "id"],
+          message: "Candidate ids must be unique within a material slot.",
+        });
+      }
+      candidateIds.add(candidate.id);
+      if (candidate.mediaKind !== material.mediaKind) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["candidates", index, "mediaKind"],
+          message: "A candidate must match its material slot media kind.",
+        });
+      }
+    });
+  });
+export type StoryboardViewMaterial = z.infer<typeof StoryboardViewMaterialSchema>;
+
+const StoryboardViewItemBaseSchema = z.object({
+  id: z.string().trim().min(1),
+  label: z.string().trim().min(1).optional(),
+  description: z.array(StoryboardViewDescriptionPartSchema).default([]),
+  details: z.string().optional(),
+  materials: z.array(StoryboardViewMaterialSchema).default([]),
+});
+
+export const StoryboardViewItemSchema = StoryboardViewItemBaseSchema.strict();
+export const StoryboardViewShotSchema = StoryboardViewItemBaseSchema.extend({
+  durationSeconds: z.number().finite().positive().optional(),
+}).strict();
+export type StoryboardViewItem = z.infer<typeof StoryboardViewItemSchema>;
+export type StoryboardViewShot = z.infer<typeof StoryboardViewShotSchema>;
+
+/**
+ * Trace-backed Storyboard projection. It is draft structure only: generation is performed by an
+ * installed native Generator and its Output Commit is attached as a resource candidate.
+ */
+export const StoryboardViewStateSchema = z
+  .object({
+    keyElements: z.array(StoryboardViewItemSchema),
+    shots: z.array(StoryboardViewShotSchema),
+    audioLayers: z.array(StoryboardViewItemSchema),
+    uncategorized: z.array(StoryboardViewResourceSchema),
+  })
+  .strict();
+export type StoryboardViewState = z.infer<typeof StoryboardViewStateSchema>;
+
+export const ExecutablePluginViewDocumentSchema = z
+  .object({
+    apiVersion: z.literal("clash.view/v1"),
+    kind: z.literal("view"),
+    spec: z
+      .object({
+        definitionId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+        name: z.string().trim().min(1),
+        description: z.string().trim().min(1).optional(),
+        presentation: z.object({ type: z.literal("storyboard") }).strict(),
+        initialState: StoryboardViewStateSchema,
+      })
+      .strict(),
+  })
+  .strict();
+export type ExecutablePluginViewDocument = z.infer<
+  typeof ExecutablePluginViewDocumentSchema
+>;
+
+export const ExecutablePluginViewReferenceSchema = z
+  .object({
+    pluginId: pluginIdSchema,
+    definitionId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    version: z.string().trim().regex(SEMVER_PATTERN),
+    schemaHash: z.string().regex(SHA256_PATTERN),
+  })
+  .strict();
+export type ExecutablePluginViewReference = z.infer<
+  typeof ExecutablePluginViewReferenceSchema
 >;
 
 export const ExecutablePluginProviderDefinitionSchema = z
@@ -661,6 +812,19 @@ export const ExecutablePluginGeneratorRegistrationSchema = z
   .strict();
 export type ExecutablePluginGeneratorRegistration = z.infer<
   typeof ExecutablePluginGeneratorRegistrationSchema
+>;
+
+/** View registrations are declarative UI/data contracts and carry no executable runtime. */
+export const ExecutablePluginViewRegistrationSchema = z
+  .object({
+    pluginId: pluginIdSchema,
+    version: z.string().trim().regex(SEMVER_PATTERN),
+    schemaHash: z.string().regex(SHA256_PATTERN),
+    document: ExecutablePluginViewDocumentSchema,
+  })
+  .strict();
+export type ExecutablePluginViewRegistration = z.infer<
+  typeof ExecutablePluginViewRegistrationSchema
 >;
 
 export function generatorDefinitionFromExecutablePluginRegistration(
@@ -1470,9 +1634,7 @@ export const ExecutablePluginBrokerOperationSchema = z.union([
     .object({
       kind: z.literal("codex.image.generate"),
       prompt: z.string().trim().min(1).max(20_000),
-      aspectRatio: z
-        .enum(["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"])
-        .default("1:1"),
+      aspectRatio: AspectRatioStringSchema.default("1:1"),
       slot: z.string().trim().min(1),
       references: z
         .array(
@@ -1651,6 +1813,7 @@ export const ExecutablePluginContributionsSchema = z
       .array(ExecutablePluginModelBindingExportSchema)
       .default([]),
     generators: z.array(ExecutablePluginGeneratorExportSchema).default([]),
+    views: z.array(ExecutablePluginViewExportSchema).default([]),
     functions: z.array(ExecutablePluginFunctionExportSchema).default([]),
     hostTools: z
       .array(z.enum(["codex.imagegen", "speech.transcribe", "media.analyze", "director.stage.capture-frame", "video.enhance"]))
@@ -1679,6 +1842,7 @@ export const ExecutablePluginManifestSchema = z
       ["providers", manifest.contributes.providers],
       ["modelBindings", manifest.contributes.modelBindings],
       ["generators", manifest.contributes.generators],
+      ["views", manifest.contributes.views],
       ["functions", manifest.contributes.functions],
     ] as const) {
       const ids = new Set<string>();
@@ -1709,6 +1873,7 @@ export const ExecutablePluginManifestSchema = z
       ...manifest.contributes.providers,
       ...manifest.contributes.modelBindings,
       ...manifest.contributes.generators,
+      ...manifest.contributes.views,
     ]) {
       if (artifactPaths.has(artifact.path)) {
         ctx.addIssue({
@@ -1836,6 +2001,7 @@ export interface ValidatedExecutablePluginPackage {
   providers: Record<string, ExecutablePluginProviderDocument>;
   modelBindings: Record<string, ExecutablePluginModelBindingDocument>;
   generators: Record<string, ExecutablePluginGeneratorDocument>;
+  views: Record<string, ExecutablePluginViewDocument>;
   contractTests: Record<string, ExecutablePluginContractTestDocument>;
 }
 
@@ -1894,6 +2060,7 @@ export function validateExecutablePluginPackage(
     providers?: Record<string, unknown>;
     modelBindings?: Record<string, unknown>;
     generators?: Record<string, unknown>;
+    views?: Record<string, unknown>;
   } = {},
 ): ValidatedExecutablePluginPackage {
   const manifest = ExecutablePluginManifestSchema.parse(manifestInput);
@@ -1905,6 +2072,7 @@ export function validateExecutablePluginPackage(
   const modelBindings: Record<string, ExecutablePluginModelBindingDocument> =
     {};
   const generators: Record<string, ExecutablePluginGeneratorDocument> = {};
+  const views: Record<string, ExecutablePluginViewDocument> = {};
   const contractTests: Record<string, ExecutablePluginContractTestDocument> =
     {};
 
@@ -2044,6 +2212,21 @@ export function validateExecutablePluginPackage(
     generators[generatorExport.path] = generator;
   }
 
+  for (const viewExport of manifest.contributes.views) {
+    const input = artifacts.views?.[viewExport.path];
+    if (input === undefined) {
+      throw new Error(`Missing declared View document: ${viewExport.path}`);
+    }
+    const view = ExecutablePluginViewDocumentSchema.parse(input);
+    if (view.spec.definitionId !== viewExport.id) {
+      throw new Error(
+        `View ${viewExport.path} id ${view.spec.definitionId} ` +
+          `does not match export id ${viewExport.id}.`,
+      );
+    }
+    views[viewExport.path] = view;
+  }
+
   for (const path of manifest.contractTests) {
     if (!Object.prototype.hasOwnProperty.call(contractTestDocuments, path)) {
       throw new Error(`Missing declared contract test: ${path}`);
@@ -2067,6 +2250,7 @@ export function validateExecutablePluginPackage(
     providers,
     modelBindings,
     generators,
+    views,
     contractTests,
   };
 }
@@ -2185,6 +2369,9 @@ export type ExecutablePluginProviderExport = z.infer<
 >;
 export type ExecutablePluginModelBindingExport = z.infer<
   typeof ExecutablePluginModelBindingExportSchema
+>;
+export type ExecutablePluginViewExport = z.infer<
+  typeof ExecutablePluginViewExportSchema
 >;
 export type ExecutablePluginFunctionExport = z.infer<
   typeof ExecutablePluginFunctionExportSchema

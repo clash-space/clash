@@ -272,6 +272,9 @@ async function resolveGlobalAsset(
         ...(projection.thumbnailUrl === undefined
           ? {}
           : { thumbnailUrl: projection.thumbnailUrl }),
+        ...(projection.waveformUrl === undefined
+          ? {}
+          : { waveformUrl: projection.waveformUrl }),
       });
     case "downloading":
       return parseResolved({

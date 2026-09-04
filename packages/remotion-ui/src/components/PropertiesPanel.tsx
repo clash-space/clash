@@ -1,4 +1,5 @@
 import React from 'react';
+import { flushSync } from 'react-dom';
 import {
   AUDIO_GAIN_DB_MAX,
   AUDIO_GAIN_DB_MIN,
@@ -111,6 +112,55 @@ const CANVAS_ASPECT_RATIO_PRESETS = [
   { value: '21:9', label: '21:9', width: 2560, height: 1080 },
   { value: '4:5', label: '4:5', width: 1080, height: 1350 },
 ];
+
+type CanvasViewTransitionDocument = Document & {
+  startViewTransition?: (update: () => void) => {
+    updateCallbackDone?: Promise<unknown>;
+    skipTransition?: () => void;
+  };
+};
+
+const commitCanvasAspectRatio = (update: () => void): void => {
+  if (typeof document === 'undefined') {
+    update();
+    return;
+  }
+
+  const startViewTransition = (document as CanvasViewTransitionDocument).startViewTransition;
+  if (!startViewTransition) {
+    update();
+    return;
+  }
+
+  let committed = false;
+  const commit = () => {
+    if (committed) return;
+    committed = true;
+    flushSync(update);
+  };
+
+  try {
+    const transition = startViewTransition.call(document, commit);
+    if (!transition?.skipTransition) return;
+    const finishWithoutAnimation = () => {
+      try {
+        transition.skipTransition?.();
+      } catch {
+        // The transition may already have finished; the state is committed.
+      }
+    };
+    if (transition.updateCallbackDone) {
+      void transition.updateCallbackDone.then(
+        finishWithoutAnimation,
+        finishWithoutAnimation,
+      );
+    } else {
+      finishWithoutAnimation();
+    }
+  } catch {
+    commit();
+  }
+};
 
 const MediaFitControl: React.FC<{
   value?: MediaFit;
@@ -1073,6 +1123,14 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
   const selectedItemData = selectedItem?.item;
   const itemEnd = selectedItemData ? selectedItemData.from + selectedItemData.durationInFrames : 0;
+  const setCompositionSize = React.useCallback((dimensions: { width: number; height: number }) => {
+    commitCanvasAspectRatio(() => {
+      dispatch({
+        type: 'SET_COMPOSITION_SIZE',
+        payload: dimensions,
+      });
+    });
+  }, [dispatch]);
 
   // Format time helper
   const formatTime = (frames: number): string => {
@@ -1096,11 +1154,12 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
         <div className={panelScrollClassName}>
           {/* Canvas Section */}
           <div className={inspectorSectionClassName}>
-            <h3 className={sectionTitleClassName}>Canvas</h3>
+            <h3 className={sectionTitleClassName}>Aspect ratio</h3>
 
             <AspectRatioPicker
               ariaLabel="Canvas aspect ratio"
               className="mb-1"
+              density="compact"
               options={CANVAS_ASPECT_RATIO_PRESETS}
               value={CANVAS_ASPECT_RATIO_PRESETS.find((preset) => (
                 preset.width === compositionWidth && preset.height === compositionHeight
@@ -1108,18 +1167,12 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
               onValueChange={(nextValue) => {
                 const preset = CANVAS_ASPECT_RATIO_PRESETS.find((candidate) => candidate.value === nextValue);
                 if (!preset) return;
-                dispatch({
-                  type: 'SET_COMPOSITION_SIZE',
-                  payload: { width: preset.width, height: preset.height },
-                });
+                setCompositionSize({ width: preset.width, height: preset.height });
               }}
               customDimensions={{
                 width: compositionWidth,
                 height: compositionHeight,
-                onChange: (dimensions) => dispatch({
-                  type: 'SET_COMPOSITION_SIZE',
-                  payload: dimensions,
-                }),
+                onChange: setCompositionSize,
               }}
             />
           </div>

@@ -94,11 +94,7 @@ interface ChatInputProps {
   onCaretTargetChange?: (target: { x: number; y: number } | null) => void;
   /** Structured review context attached from Canvas, Timeline, or Director Stage. */
   annotationBlocks?: AgentAnnotationDraft[];
-  onAnnotationOpen?: (annotationId: string) => void;
-  onAnnotationChange?: (annotationId: string, note: string) => void;
   onAnnotationRemove?: (annotationId: string) => void;
-  /** Jumps the workspace to the annotated object and flashes a highlight. */
-  onAnnotationLocate?: (annotationId: string) => void;
 }
 
 export interface ChatInputHandle {
@@ -304,10 +300,7 @@ function ChatInputInner(
     referenceAccessory,
     onCaretTargetChange,
     annotationBlocks = [],
-    onAnnotationOpen,
-    onAnnotationChange,
     onAnnotationRemove,
-    onAnnotationLocate,
   }: ChatInputProps,
   ref: ForwardedRef<ChatInputHandle>,
 ) {
@@ -713,10 +706,7 @@ function ChatInputInner(
               <AgentAnnotationTray
                 annotations={annotationBlocks}
                 disabled={actionLocked}
-                onOpen={onAnnotationOpen}
-                onChange={onAnnotationChange}
                 onRemove={onAnnotationRemove}
-                onLocate={onAnnotationLocate}
               />
               <div
                 ref={editorHostRef}

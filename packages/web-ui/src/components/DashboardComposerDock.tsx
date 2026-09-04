@@ -1,5 +1,6 @@
 import { Folder, Plus } from "@phosphor-icons/react";
 import { useDroppable } from "@dnd-kit/core";
+import { agentChatDensityAttributes } from "@openma/common/chat-ui";
 import {
   useEffect,
   useState,
@@ -33,15 +34,21 @@ export function DashboardComposerDockFrame({
   projectTag,
   setNodeRef,
 }: DashboardComposerDockFrameProps) {
+  const densityAttributes = agentChatDensityAttributes("compact");
   return (
     <section
+      {...densityAttributes}
       role="region"
       aria-label="Dashboard composer"
       data-slot="dashboard-composer-dock"
       data-density="compact"
+      data-chat-surface="main"
       data-size="lg"
       data-is-over={isOver ? "true" : "false"}
-      style={{ zIndex: DESKTOP_SHELL_LAYERS.dashboardTask }}
+      style={{
+        ...densityAttributes.style,
+        zIndex: DESKTOP_SHELL_LAYERS.dashboardTask,
+      }}
       className="clash-dashboard-composer-dock"
     >
       <div ref={setNodeRef} className="clash-dashboard-composer-dock-inner">

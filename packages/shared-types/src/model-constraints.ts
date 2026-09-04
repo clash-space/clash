@@ -1,4 +1,9 @@
-import type { ModelCard, ModelConstraintRule, ModelParameter } from "./models.js";
+import {
+  acceptsCustomModelParameterValue,
+  type ModelCard,
+  type ModelConstraintRule,
+  type ModelParameter,
+} from "./models.js";
 
 export interface ParameterConfigurationContract {
   parameters: readonly ModelParameter[];
@@ -94,7 +99,13 @@ function validateParameterCandidates(
       continue;
     }
     if (parameter.type === "select") {
-      if (!parameter.options?.some((option) => sameValue(option.value, value))) {
+      if (
+        !parameter.options?.some((option) => sameValue(option.value, value))
+        && !acceptsCustomModelParameterValue(parameter, value)
+      ) {
+        if (parameter.allowCustom && parameter.id === "aspect_ratio") {
+          return `${parameter.label} must be a valid custom ratio.`;
+        }
         return `${parameter.label} must be one of the configured candidates.`;
       }
       continue;
@@ -209,7 +220,10 @@ export function normalizeModelParametersForCard(
     const value = next[parameter.id] ?? parameter.defaultValue;
     let valid = value !== undefined;
     if (parameter.type === "select") {
-      valid = valid && !!parameter.options?.some((option) => option.value === value);
+      valid = valid && (
+        !!parameter.options?.some((option) => option.value === value)
+        || acceptsCustomModelParameterValue(parameter, value)
+      );
     } else if (parameter.type === "number" || parameter.type === "slider") {
       valid = typeof value === "number" && Number.isFinite(value)
         && (parameter.min === undefined || value >= parameter.min)

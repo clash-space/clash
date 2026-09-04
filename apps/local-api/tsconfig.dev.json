@@ -11,6 +11,8 @@
       "@clash/asset-sdk": ["../../packages/asset-sdk/src/index.ts"],
       "@clash/action-sdk": ["../../packages/action-sdk/src/index.ts"],
       "@clash/action-sdk/browser": ["../../packages/action-sdk/src/browser.ts"],
+      "@clash/replica": ["../../packages/shared-replica/src/index.ts"],
+      "@clash/replica/*": ["../../packages/shared-replica/src/*.ts"],
       "@clash/sdk": ["../../packages/clash-sdk/js/src/index.ts"]
     }
   }

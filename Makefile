@@ -1,4 +1,4 @@
-.PHONY: install dev dev-desktop dev-web dev-api-cf dev-full build test lint typecheck clean format setup db-web-local check-tools help bundle remotion-bundle remotion-render deploy deploy-api deploy-web deploy-loro-sync deploy-all predeploy-check wrangler-whoami deploy-staging deploy-api-staging deploy-web-staging
+.PHONY: install dev dev-desktop dev-web dev-api-cf dev-full build test lint typecheck clean format setup db-web-local check-tools help bundle remotion-bundle remotion-render deploy deploy-api deploy-web predeploy-check wrangler-whoami deploy-staging deploy-api-staging deploy-web-staging
 
 # Use interactive shell to load .zshrc environment
 
@@ -81,8 +81,8 @@ db-local: db-web-local ## Setup all local D1 databases
 # Development Servers
 #==============================================================================
 
-dev-desktop: check-tools ## Start Electron with Desktop-only renderer HMR on :3001
-	@echo "$(BLUE)Starting Clash Desktop with HMR on http://127.0.0.1:$(DESKTOP_RENDERER_PORT)...$(NC)"
+dev-desktop: check-tools ## Start Electron with Desktop HMR (prefers :3001)
+	@echo "$(BLUE)Starting Clash Desktop with HMR (preferred port: $(DESKTOP_RENDERER_PORT))...$(NC)"
 	@CLASH_DESKTOP_RENDERER_PORT=$(DESKTOP_RENDERER_PORT) pnpm --filter @clash/desktop dev
 
 dev-web: ## Start web app (Vite + RR7 + Cloudflare Vite plugin) on :3000
@@ -242,25 +242,12 @@ deploy-web: predeploy-check ## Build + deploy web (Pages/Worker)
 	@pnpm --filter @clash/web run deploy
 	@echo "$(GREEN)✓ web deployed$(NC)"
 
-deploy-loro-sync: predeploy-check ## Deploy legacy loro-sync-server (rare)
-	@echo "$(YELLOW)⚠ loro-sync-server is legacy — verify you really want to deploy it.$(NC)"
-	@cd apps/loro-sync-server && pnpm run deploy
-	@echo "$(GREEN)✓ loro-sync-server deployed$(NC)"
-
 deploy: predeploy-check ## Deploy api-cf then web (the standard production path)
 	@echo "$(BLUE)Deploying api-cf + web (in order)...$(NC)"
 	@$(MAKE) deploy-api SKIP_CHECKS=1
 	@$(MAKE) deploy-web SKIP_CHECKS=1
 	@echo ""
 	@echo "$(GREEN)✓ Standard deploy complete (api-cf + web)$(NC)"
-	@echo "$(YELLOW)Note: loro-sync-server is legacy and was not deployed.$(NC)"
-	@echo "$(YELLOW)      Run 'make deploy-loro-sync' explicitly if needed.$(NC)"
-
-deploy-all: predeploy-check ## Deploy everything including legacy loro-sync-server
-	@$(MAKE) deploy-api SKIP_CHECKS=1
-	@$(MAKE) deploy-web SKIP_CHECKS=1
-	@$(MAKE) deploy-loro-sync SKIP_CHECKS=1
-	@echo "$(GREEN)✓ All workers deployed$(NC)"
 
 # ─── Staging ──────────────────────────────────────────────────────────
 # `[env.staging]` in each app's wrangler.toml binds staging workers to

@@ -194,17 +194,21 @@ describe("local Timeline live references", () => {
     expect(remotion.requests).toHaveLength(1);
     expect(remotion.requests[0]!.input).toMatchObject({
       values: {
-        timelineDsl: {
-          tracks: [
-            {
-              items: [
-                expect.objectContaining({
-                  id: "voice",
-                  assetId: "asset:voice",
-                }),
-              ],
-            },
-          ],
+        timeline: {
+          name: "Voice cut",
+          owner: { kind: "project" },
+          state: {
+            tracks: [
+              {
+                items: [
+                  expect.objectContaining({
+                    id: "voice",
+                    assetId: "asset:voice",
+                  }),
+                ],
+              },
+            ],
+          },
         },
       },
       references: [
@@ -346,7 +350,7 @@ describe("local Timeline live references", () => {
     }).process({ doc, projectId, checkpoint: async () => {} });
 
     expect(remotion.requests).toHaveLength(1);
-    const renderedDsl = remotion.requests[0]!.input.values.timelineDsl;
+    const renderedDsl = remotion.requests[0]!.input.values.timeline.state;
     expect(renderedDsl.tracks[0].items[0]).toMatchObject({
       id: "clip-1",
       assetId: "asset:original",
@@ -471,13 +475,13 @@ describe("local Timeline live references", () => {
 
     expect(remotion.requests).toHaveLength(2);
     expect(
-      remotion.requests[0]!.input.values.timelineDsl.tracks[0].items[0],
+      remotion.requests[0]!.input.values.timeline.state.tracks[0].items[0],
     ).toMatchObject({
       sourceNodeId: "remotion-fixed",
       componentSource: expect.stringContaining("Before"),
     });
     expect(
-      remotion.requests[1]!.input.values.timelineDsl.tracks[0].items[0],
+      remotion.requests[1]!.input.values.timeline.state.tracks[0].items[0],
     ).toMatchObject({
       sourceNodeId: "remotion-fixed",
       componentSource: expect.stringContaining("After"),

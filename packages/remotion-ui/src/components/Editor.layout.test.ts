@@ -419,7 +419,7 @@ describe("Editor embedded layout", () => {
       "data-inspector-collapsed={inspectorCollapsed ? 'true' : 'false'}",
     );
     expect(source).toContainSource(
-      "'--clash-timeline-inspector-width': inspectorCollapsed ? '0px' : 'clamp(280px,22%,340px)'",
+      "'--clash-timeline-inspector-width': inspectorCollapsed ? '0px' : `${inspectorWidth}px`",
     );
     expect(source).toContainSource("var(--clash-timeline-inspector-width)");
     expect(source).toContainSource('aria-label="Expand Properties"');
@@ -459,6 +459,40 @@ describe("Editor embedded layout", () => {
     expect(source).toContainSource(
       'className="ml-auto flex w-max shrink-0 items-center justify-end gap-2"',
     );
+  });
+
+  it("resizes Properties from its left edge with pointer and keyboard controls", () => {
+    const source = readFileSync(
+      new URL("./Editor.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContainSource(
+      "const [inspectorWidth, setInspectorWidth]",
+    );
+    expect(source).toContainSource(
+      'data-editor-resize-handle="inspector"',
+    );
+    expect(source).toContainSource('aria-label="Resize Properties panel"');
+    expect(source).toContainSource('aria-orientation="vertical"');
+    expect(source).toContainSource(
+      "if (event.key === 'ArrowLeft') resizeInspectorBy(12)",
+    );
+    expect(source).toContainSource(
+      "if (event.key === 'ArrowRight') resizeInspectorBy(-12)",
+    );
+    expect(source).toContainSource(
+      "onPointerDown={handleInspectorResizePointerDown}",
+    );
+    expect(source).toContainSource(
+      "onPointerMove={handleInspectorResizePointerMove}",
+    );
+    expect(source).toContainSource("onPointerUp={finishInspectorResize}");
+    expect(source).toContainSource("onPointerCancel={finishInspectorResize}");
+    expect(source).toContainSource("[grid-column:3] [grid-row:2]");
+    expect(source).toContainSource("cursor-col-resize");
+    expect(source).toContainSource("const keepInspectorInsideWorkspace");
+    expect(source).not.toContainSource("const keepPanelsInsideWorkspace");
   });
 
   it("keeps the side controls flat and lets the content own the floating surface", () => {

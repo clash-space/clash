@@ -19,12 +19,15 @@ import {
   ChatMarkdown,
   ChatThoughtEventRow,
   projectChatThoughtEvent,
+  type AgentChatDensity,
   type AgentChatViewSlots,
   type ChatCollapsiblePrimitives,
   type ChatThoughtEventProjection,
 } from "@openma/common/chat-ui";
+import { SessionTurnFooter } from "@openma/common/session-ui";
 import { ListChecksIcon, Loader2Icon } from "lucide-react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { MentionableNode } from "../MilkdownEditor";
 import {
@@ -38,6 +41,11 @@ import {
   pickToolVerb,
   type ClashProjectEntity,
 } from "./AcpInlineRenderers";
+import {
+  AgentMotion,
+  type AgentGazeSource,
+  useAgentGazeSurface,
+} from "./AgentMotion";
 import { UserMessage } from "./UserMessage";
 
 const CLASH_COLLAPSIBLE_PRIMITIVES: ChatCollapsiblePrimitives = {
@@ -53,6 +61,7 @@ export function RuntimeSessionTimeline({
   onOpenClashEntity,
   phase = "active",
   slots,
+  onFork,
   className,
 }: {
   store: AgentUIStore;
@@ -62,34 +71,46 @@ export function RuntimeSessionTimeline({
   onOpenClashEntity?: (entity: ClashProjectEntity) => void;
   phase?: "missing" | "draft" | "active";
   slots?: AgentChatViewSlots;
+  /** Forks the current ACP session; only the latest settled turn exposes it. */
+  onFork?: () => void;
   className?: string;
 }) {
   const state = useAgentUIState(store);
+  const { bindAgentGazeSurface, gazeSource } = useAgentGazeSurface();
   const turns = state.turnOrder.flatMap((turnId) => {
     const turn = state.turns[turnId];
     return turn ? [turn] : [];
   });
+  const latestForkableTurnId =
+    onFork && !state.activeTurnId
+      ? [...turns].reverse().find((turn) => turn.status === "completed")?.id
+      : undefined;
   return (
     <div
       className={className}
       data-testid="runtime-session-timeline"
       data-renderer="backchat"
       data-backchat-session-timeline="true"
+      {...bindAgentGazeSurface()}
     >
       <AgentChatView
+        density="compact"
         sessionId={state.sessionId}
         surface="main"
         phase={phase}
         turns={turns}
         slots={slots ?? { composer: null }}
-        renderTurn={({ turn }) => (
+        renderTurn={({ turn, density }) => (
           <RuntimeTurn
             key={turn.id}
+            density={density}
             store={store}
             turn={turn}
             mentionableNodes={mentionableNodes}
             clashEntities={clashEntities}
             onOpenClashEntity={onOpenClashEntity}
+            gazeSource={gazeSource}
+            onFork={turn.id === latestForkableTurnId ? onFork : undefined}
           />
         )}
       />
@@ -103,17 +124,25 @@ function RuntimeTurn({
   mentionableNodes,
   clashEntities,
   onOpenClashEntity,
+  density,
+  gazeSource,
+  onFork,
 }: {
   store: AgentUIStore;
   turn: AgentUITurnState;
   mentionableNodes: MentionableNode[];
   clashEntities: readonly ClashProjectEntity[];
   onOpenClashEntity?: (entity: ClashProjectEntity) => void;
+  density: AgentChatDensity;
+  gazeSource: AgentGazeSource;
+  onFork?: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <AgentUITurnView
       sessionId={store.getState().sessionId}
       turn={turn}
+      density={density}
       thoughts="history"
       activityTools="all"
       collapsiblePrimitives={CLASH_COLLAPSIBLE_PRIMITIVES}
@@ -121,24 +150,38 @@ function RuntimeTurn({
       labels={{
         workingFor: (seconds) => `正在工作 ${seconds} 秒`,
         workedFor: (seconds) => `已工作 ${seconds} 秒`,
+        cancelled: t("copilot.status.interrupted"),
         thinking: "正在思考",
         thoughtFor: (seconds) => `已思考 ${seconds} 秒`,
         toolActivity: describeTool,
         toolRunSummary: (tools) => `已执行 ${tools.length} 项操作`,
       }}
       slots={{
+        renderProcessLeading: ({ live }) => (
+          <span
+            data-session-process-avatar="true"
+            className="grid h-5 w-5 shrink-0 place-items-center"
+            aria-hidden="true"
+          >
+            <AgentMotion
+              state={live ? "working" : "idle"}
+              className="clash-agent-motion--compact h-5 w-5"
+              gazeSource={gazeSource}
+            />
+          </span>
+        ),
         renderPrompt: ({ item }) =>
           item.text ? (
             <UserMessage content={item.text} mentionNodes={mentionableNodes} />
           ) : null,
         renderAssistant: ({ item, section, live, prefixSkip }) =>
-          live && item.status === "streaming" ? (
+          live ? (
             <AgentUIStreamingMarkdown
               store={store}
               turnId={turn.id}
               kind="assistant"
               prefixSkip={prefixSkip}
-              paceReplay={section === "process"}
+              paceReplay
               className={CHAT_ASSISTANT_MARKDOWN_CLASS}
             />
           ) : (
@@ -182,11 +225,12 @@ function RuntimeTurn({
           );
         },
         projectToolActivity: ({ tool, live }) => ({
-          leading: live || isToolRunning(tool) ? (
-            <Loader2Icon className="chat-activity-icon animate-spin" />
-          ) : (
-            <ListChecksIcon className="chat-activity-icon" />
-          ),
+          leading:
+            live || isToolRunning(tool) ? (
+              <Loader2Icon className="chat-activity-icon animate-spin" />
+            ) : (
+              <ListChecksIcon className="chat-activity-icon" />
+            ),
           summary: describeTool(tool, live),
         }),
         projectToolRun: ({ tools }) => ({
@@ -205,6 +249,19 @@ function RuntimeTurn({
         ),
         renderError: ({ message }) => (
           <p className="text-sm text-status-down">{message ?? "运行失败"}</p>
+        ),
+        renderFooter: ({ answerText }) => (
+          <SessionTurnFooter
+            status={turn.status === "failed" ? "error" : turn.status}
+            timestamp={turn.endedAt}
+            copyText={answerText}
+            onFork={onFork}
+            labels={{
+              copyAnswer: t("copilot.turn.copyAnswer"),
+              answerCopied: t("copilot.turn.answerCopied"),
+              continueInNewChat: t("copilot.turn.continueInNewChat"),
+            }}
+          />
         ),
       }}
     />

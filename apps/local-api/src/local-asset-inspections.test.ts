@@ -1522,7 +1522,7 @@ describe("Local Asset inspection", () => {
     );
   });
 
-  it("removes the obsolete backend representation registry when inspection opens", async () => {
+  it("keeps the backend representation registry intact when inspection opens", async () => {
     const { dataDir, resources } = await fixture();
     const { DatabaseSync } = nodeRequire("node:sqlite") as {
       DatabaseSync: new (path: string) => {
@@ -1572,7 +1572,7 @@ describe("Local Asset inspection", () => {
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
           )
           .get("local_asset_representations"),
-      ).toBeUndefined();
+      ).toEqual({ name: "local_asset_representations" });
     } finally {
       inspected.close();
     }

@@ -51,6 +51,39 @@ function pluginSource(id: string) {
 }
 
 describe("bundled plugins", () => {
+  it("keeps the official Storyboard View installable but unpreloaded", () => {
+    const workspace = join(
+      __dirname,
+      "../../../plugins/official/storyboard",
+    );
+    expect(existsSync(join(workspace, "manifest.json"))).toBe(true);
+
+    const manifest = JSON.parse(
+      readFileSync(join(workspace, "manifest.json"), "utf8"),
+    ) as {
+      id: string;
+      author?: string;
+      contributes?: {
+        views?: unknown[];
+        generators?: unknown[];
+        functions?: unknown[];
+      };
+    };
+
+    expect(manifest).toMatchObject({
+      id: "clash.storyboard",
+      author: "Clash",
+      contributes: {
+        generators: [],
+        functions: [],
+      },
+    });
+    expect(manifest.contributes?.views).toHaveLength(1);
+    expect(
+      BUNDLED_PLUGINS.map(({ id }): string => id),
+    ).not.toContain("clash.storyboard");
+  });
+
   it("registers Asset Edit as one trusted local/cloud/client Generator module", () => {
     expect(
       BUNDLED_PLUGINS.find((plugin) => plugin.id === "clash.asset-edit"),

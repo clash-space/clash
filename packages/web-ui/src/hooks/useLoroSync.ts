@@ -16,6 +16,7 @@ import {
   canvasGraphReconciliationChanged,
   DEFAULT_CANVAS_ID,
   createProjectCanvas,
+  createProjectPluginView,
   createProjectTimeline,
   deleteProjectCanvas,
   deleteProjectTimeline,
@@ -62,6 +63,8 @@ import {
   type ProjectCanvas,
   type ProjectCanvasDeleteResult,
   type ProjectCanvasMutationResult,
+  type ProjectPluginViewMutationResult,
+  type ExecutablePluginViewReference,
   type ProjectTimeline,
   type ProjectTimelineDeleteResult,
   type ProjectTimelineMutationResult,
@@ -70,6 +73,11 @@ import {
   type ProjectDirectorStageMutationResult,
 } from "@clash/shared-types";
 import { sanitizeNodesForReactFlow } from "../lib/canvasNodeOrder";
+import { LoroProtocolClientSession } from "@clash/replica/loro-protocol";
+
+function officialLoroProtocolUrl(url: string): string {
+  return `${url}${url.includes("?") ? "&" : "?"}protocol=loro-v1`;
+}
 
 function reconcileImportedWorkspace(doc: LoroDoc): void {
   const graph = reconcileCanvasGraph(doc);
@@ -123,6 +131,13 @@ export interface UseLoroSyncReturn {
     id: string;
     name: string;
   }) => ProjectCanvasMutationResult;
+  createPluginView: (input: {
+    nodeId: string;
+    label: string;
+    view: ExecutablePluginViewReference;
+    state: unknown;
+    canvasId?: string;
+  }) => ProjectPluginViewMutationResult;
   renameCanvas: (canvasId: string, name: string) => ProjectCanvasMutationResult;
   deleteCanvas: (canvasId: string) => ProjectCanvasDeleteResult;
   timelines: ProjectTimeline[];
@@ -138,8 +153,9 @@ export interface UseLoroSyncReturn {
   ) => ProjectTimelineDeleteResult;
   attachTimeline: (input: {
     timelineId: string;
+    canvasId?: string;
     actionNodeId: string;
-    position: { x: number; y: number };
+    position?: { x: number; y: number };
   }) => ProjectTimelineMutationResult;
   detachTimeline: (timelineId: string) => ProjectTimelineMutationResult;
   directorStages: ProjectDirectorStage[];
@@ -151,8 +167,9 @@ export interface UseLoroSyncReturn {
   }) => ProjectDirectorStageMutationResult;
   attachDirectorStage: (input: {
     stageId: string;
+    canvasId?: string;
     actionNodeId: string;
-    position: { x: number; y: number };
+    position?: { x: number; y: number };
   }) => ProjectDirectorStageMutationResult;
   detachDirectorStage: (stageId: string) => ProjectDirectorStageMutationResult;
   applyDirectorStageState: (
@@ -446,6 +463,7 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
   const [canRedo, setCanRedo] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
+  const protocolSessionRef = useRef<LoroProtocolClientSession | null>(null);
   const [connected, setConnected] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
 
@@ -703,14 +721,6 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const retryCountRef = useRef(0);
   const isUnmountingRef = useRef(false);
-  const localUpdateSubRef = useRef<any>(null);
-
-  // Send update to server (used by subscribeLocalUpdate)
-  const sendUpdate = useCallback((update: Uint8Array) => {
-    const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(update);
-  }, []);
 
   // Send a JSON sideband message (presence-style) on the same WS. Best-effort:
   // if the socket isn't open we silently drop. The server treats absence of
@@ -768,14 +778,33 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       }
     }
 
-    const wsUrl = syncServerUrl
+    const baseWsUrl = syncServerUrl
       ? `${syncServerUrl.replace(/\/+$/, "")}/sync/${encodeURIComponent(projectId)}`
       : runtimeSyncWebSocketUrl(projectId);
+    const wsUrl = officialLoroProtocolUrl(baseWsUrl);
     console.log("[useLoroSync] connecting WebSocket", wsUrl);
 
     const ws = new WebSocket(wsUrl);
     ws.binaryType = "arraybuffer";
     wsRef.current = ws;
+    const protocolSession = new LoroProtocolClientSession({
+      roomId: projectId,
+      doc,
+      send: (frame) => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          throw new Error("Loro WebSocket is not open");
+        }
+        ws.send(frame);
+      },
+      onError: (error) => {
+        console.error("[useLoroSync] Loro protocol error:", error);
+      },
+      onUpdateRejected: (_batchId, status) => {
+        console.error("[useLoroSync] Loro update rejected:", status);
+      },
+    });
+    protocolSessionRef.current?.destroy();
+    protocolSessionRef.current = protocolSession;
 
     ws.onopen = () => {
       console.log("[useLoroSync] ws open", wsUrl);
@@ -786,9 +815,8 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       setConnected(true);
       retryCountRef.current = 0;
 
-      // Send full snapshot on connect to sync with server
-      const snapshot = doc.export({ mode: "snapshot" });
-      ws.send(snapshot);
+      // Version-vector handshake catches up both sides and uploads offline work.
+      protocolSession.join();
 
       if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
       pingIntervalRef.current = setInterval(() => {
@@ -829,12 +857,13 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
 
       // Binary messages = Loro CRDT updates
       try {
-        const update = new Uint8Array(event.data);
-        doc.import(update);
+        const frame = new Uint8Array(event.data);
+        await protocolSession.receive(frame);
       } catch (error: any) {
-        console.error("[useLoroSync] Error importing update:", error);
-        // Don't reload — just log the error. The next full snapshot
-        // from the server (on reconnect) will fix the state.
+        console.error(
+          "[useLoroSync] Error handling Loro protocol frame:",
+          error,
+        );
       }
     };
 
@@ -849,6 +878,10 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
         wasClean: event.wasClean,
       });
       setConnected(false);
+      protocolSession.destroy();
+      if (protocolSessionRef.current === protocolSession) {
+        protocolSessionRef.current = null;
+      }
       if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
       if (!isUnmountingRef.current) {
         scheduleReconnect();
@@ -867,14 +900,6 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
 
     isUnmountingRef.current = false;
 
-    // Subscribe to local updates - this is the recommended way to send changes to server
-    // subscribeLocalUpdates automatically gives us the bytes to send whenever local changes happen
-    localUpdateSubRef.current = doc.subscribeLocalUpdates(
-      (update: Uint8Array) => {
-        sendUpdate(update);
-      },
-    );
-
     connect();
 
     return () => {
@@ -883,12 +908,10 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       if (reconnectTimeoutRef.current)
         clearTimeout(reconnectTimeoutRef.current);
       if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-      if (localUpdateSubRef.current) {
-        localUpdateSubRef.current();
-        localUpdateSubRef.current = null;
-      }
+      protocolSessionRef.current?.destroy();
+      protocolSessionRef.current = null;
     };
-  }, [isInitialized, connect, doc, sendUpdate]);
+  }, [isInitialized, connect]);
 
   // Helper methods for modifying the document
   // Note: subscribeLocalUpdate automatically sends changes to server
@@ -1023,10 +1046,33 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       if (result.ok) {
         doc.commit();
         setCanvases(listProjectCanvases(doc));
+        const state = readStateFromLoro();
+        callbacksRef.current.onNodesChange?.(state.nodes);
+        callbacksRef.current.onEdgesChange?.(state.edges);
       }
       return result;
     },
-    [doc],
+    [doc, readStateFromLoro],
+  );
+
+  const createPluginView = useCallback(
+    (input: {
+      nodeId: string;
+      label: string;
+      view: ExecutablePluginViewReference;
+      state: unknown;
+      canvasId?: string;
+    }) => {
+      const result = createProjectPluginView(doc, input);
+      if (result.ok) {
+        doc.commit();
+        const state = readStateFromLoro();
+        callbacksRef.current.onNodesChange?.(state.nodes);
+        callbacksRef.current.onEdgesChange?.(state.edges);
+      }
+      return result;
+    },
+    [doc, readStateFromLoro],
   );
 
   const renameCanvas = useCallback(
@@ -1035,10 +1081,13 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       if (result.ok) {
         doc.commit();
         setCanvases(listProjectCanvases(doc));
+        const state = readStateFromLoro();
+        callbacksRef.current.onNodesChange?.(state.nodes);
+        callbacksRef.current.onEdgesChange?.(state.edges);
       }
       return result;
     },
-    [doc],
+    [doc, readStateFromLoro],
   );
 
   const deleteCanvas = useCallback(
@@ -1047,10 +1096,13 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       if (result.ok) {
         doc.commit();
         setCanvases(listProjectCanvases(doc));
+        const state = readStateFromLoro();
+        callbacksRef.current.onNodesChange?.(state.nodes);
+        callbacksRef.current.onEdgesChange?.(state.edges);
       }
       return result;
     },
-    [doc],
+    [doc, readStateFromLoro],
   );
 
   const createTimeline = useCallback(
@@ -1083,12 +1135,13 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
   const attachTimeline = useCallback(
     (input: {
       timelineId: string;
+      canvasId?: string;
       actionNodeId: string;
-      position: { x: number; y: number };
+      position?: { x: number; y: number };
     }) => {
       const result = attachTimelineToCanvas(doc, {
         ...input,
-        canvasId: canvasIdRef.current,
+        canvasId: input.canvasId?.trim() || canvasIdRef.current,
       });
       if (result.ok) {
         doc.commit();
@@ -1132,12 +1185,13 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
   const attachDirectorStage = useCallback(
     (input: {
       stageId: string;
+      canvasId?: string;
       actionNodeId: string;
-      position: { x: number; y: number };
+      position?: { x: number; y: number };
     }) => {
       const result = attachDirectorStageToCanvas(doc, {
         ...input,
-        canvasId: canvasIdRef.current,
+        canvasId: input.canvasId?.trim() || canvasIdRef.current,
       });
       if (result.ok) {
         doc.commit();
@@ -1996,6 +2050,7 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       isInitialized,
       canvases,
       createCanvas,
+      createPluginView,
       renameCanvas,
       deleteCanvas,
       timelines,
@@ -2044,6 +2099,7 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       canvases,
       connected,
       createCanvas,
+      createPluginView,
       createTimeline,
       deleteTimeline,
       createDirectorStage,

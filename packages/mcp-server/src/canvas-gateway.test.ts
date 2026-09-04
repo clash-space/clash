@@ -78,6 +78,47 @@ test("Canvas reads and mutations use typed ProjectHost commands with the host re
   ]);
 });
 
+test("Canvas View state applies as one structured CAS patch after a read", async () => {
+  const { createCanvasProjectHostGateway } = await import("./canvas-gateway");
+  const calls: ProjectHostRequest[] = [];
+  const gateway = createCanvasProjectHostGateway(hostClient((request) => {
+    if (request.command.action === "get") {
+      return {
+        node: { id: "storyboard-1", type: "plugin-view", data: { state: {} } },
+        readToken: "host-receipt-view-1",
+      };
+    }
+    return { updated: true, nodeId: "storyboard-1", readToken: "host-receipt-view-2" };
+  }, calls));
+  await gateway.invoke("clash_canvas_get", { nodeId: "storyboard-1" });
+  await gateway.invoke("clash_canvas_update", {
+    nodeId: "storyboard-1",
+    viewState: {
+      keyElements: [],
+      shots: [],
+      audioLayers: [],
+      uncategorized: [],
+    },
+  });
+
+  assert.deepEqual(calls[1]?.command, {
+    action: "update",
+    canvasId: "main",
+    nodeId: "storyboard-1",
+    data: {
+      state: {
+        keyElements: [],
+        shots: [],
+        audioLayers: [],
+        uncategorized: [],
+      },
+    },
+    actorClientType: "mcp",
+    observedVersion: "host-receipt-view-1",
+    ifMatch: "host-receipt-view-1",
+  });
+});
+
 test("Canvas mutation without a host observation fails before any request", async () => {
   const { createCanvasProjectHostGateway } = await import("./canvas-gateway");
   const calls: ProjectHostRequest[] = [];

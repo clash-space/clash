@@ -52,6 +52,7 @@ interface LocalResourceRow {
   contentType?: string;
   storageKey: string;
   factsVerified: boolean;
+  createdAt: number;
 }
 
 interface LocalResourceStagingRow {
@@ -63,6 +64,7 @@ interface LocalResourceStagingRow {
 
 export interface LocalResourceProjection {
   resource: Resource;
+  createdAt: number;
   storageKey: string;
   path: string;
 }
@@ -142,7 +144,7 @@ export interface LocalResourceStore {
 type LocalResourceSealInput = Parameters<LocalResourceStore["seal"]>[0];
 type LocalResourceFacts = Omit<
   LocalResourceRow,
-  "storageKey" | "factsVerified"
+  "storageKey" | "factsVerified" | "createdAt"
 >;
 
 export function resourceIdForSha256(digest: string): string {
@@ -240,6 +242,7 @@ function parseRow(row: Record<string, unknown>): LocalResourceRow {
   const contentType = row.content_type;
   const storageKey = row.storage_key;
   const factsVerified = row.facts_verified;
+  const createdAt = row.created_at;
   if (
     typeof resourceId !== "string" ||
     !kind.success ||
@@ -250,7 +253,10 @@ function parseRow(row: Record<string, unknown>): LocalResourceRow {
     byteLength < 0 ||
     (contentType !== null && typeof contentType !== "string") ||
     typeof storageKey !== "string" ||
-    (factsVerified !== 0 && factsVerified !== 1)
+    (factsVerified !== 0 && factsVerified !== 1) ||
+    typeof createdAt !== "number" ||
+    !Number.isSafeInteger(createdAt) ||
+    createdAt < 0
   ) {
     throw new Error("Local Resource registry row is corrupt.");
   }
@@ -267,6 +273,7 @@ function parseRow(row: Record<string, unknown>): LocalResourceRow {
     ...(typeof contentType === "string" && contentType ? { contentType } : {}),
     storageKey,
     factsVerified: factsVerified === 1,
+    createdAt,
   };
 }
 
@@ -394,7 +401,7 @@ export function createLocalResourceStore(options: {
         .prepare(
           `
           SELECT resource_id, kind, digest_sha256, byte_length,
-                 content_type, storage_key, facts_verified
+                 content_type, storage_key, facts_verified, created_at
           FROM local_resources
           WHERE resource_id = ?
         `,
@@ -458,7 +465,12 @@ export function createLocalResourceStore(options: {
         { cause: error },
       );
     }
-    return { resource: resourceFromRow(row), storageKey: row.storageKey, path };
+    return {
+      resource: resourceFromRow(row),
+      createdAt: row.createdAt,
+      storageKey: row.storageKey,
+      path,
+    };
   }
 
   async function stagingProjection(

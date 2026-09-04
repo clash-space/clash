@@ -76,7 +76,7 @@ describe("generation provider registry", () => {
     })).name).toBe("google-image");
   });
 
-  it("preserves the selected GPT Image 2 provider route", () => {
+  it("keeps plugin-owned Fal routes out of the hosted adapter registry", () => {
     const falRoute: ModelUpstreamRoute = {
       modelCode: "gpt-image-2",
       kind: "image",
@@ -98,8 +98,12 @@ describe("generation provider registry", () => {
       priority: 10,
     };
 
-    expect(resolveAdapter(params("image_gen", "gpt-image-2", falRoute)).name).toBe("fal-image");
-    expect(resolveAdapter(params("image_gen", "gpt-image-2", officialRoute)).name).toBe("openai-image");
+    expect(() =>
+      resolveAdapter(params("image_gen", "gpt-image-2", falRoute)),
+    ).toThrow("Hosted provider adapter is not implemented for fal");
+    expect(
+      resolveAdapter(params("image_gen", "gpt-image-2", officialRoute)).name,
+    ).toBe("openai-image");
   });
 
   it("does not choose a default image provider when no route was selected", () => {
@@ -120,16 +124,20 @@ describe("generation provider registry", () => {
     })).name).toBe("minimax-audio");
   });
 
-  it("routes the selected fal MiniMax Music 3 implementation to the fal audio provider", () => {
-    expect(resolveAdapter(params("audio_gen", "minimax-music-3", {
-      modelCode: "minimax-music-3",
-      kind: "audio",
-      providerId: "fal",
-      upstreamId: "fal",
-      upstreamModel: "fal-ai/minimax-music/v3",
-      apiShape: "fal",
-      priority: 9,
-    })).name).toBe("fal-audio");
+  it("does not retain a second Fal audio execution path", () => {
+    expect(() =>
+      resolveAdapter(
+        params("audio_gen", "minimax-music-3", {
+          modelCode: "minimax-music-3",
+          kind: "audio",
+          providerId: "fal",
+          upstreamId: "fal",
+          upstreamModel: "fal-ai/minimax-music/v3",
+          apiShape: "fal",
+          priority: 9,
+        }),
+      ),
+    ).toThrow("Hosted provider adapter is not implemented for fal");
   });
 
   it("routes MiniMax H3 to the hosted MiniMax video provider", () => {

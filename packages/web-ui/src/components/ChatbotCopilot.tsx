@@ -1,4 +1,12 @@
-import { memo, useState, useRef, useEffect, useCallback, useMemo } from "react";
+import {
+  memo,
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  useMemo,
+  type CSSProperties,
+} from "react";
 import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import {
   ArrowBendDownRight,
@@ -28,6 +36,7 @@ import {
   ShieldCheckIcon,
   type LucideIcon,
 } from "lucide-react";
+import { createComposerDraftStore } from "@openma/common/chat-ui";
 import { useTranslation } from "react-i18next";
 import { UserMessage } from "./copilot/UserMessage";
 import { AgentCard, type AgentLog } from "./copilot/AgentCard";
@@ -35,7 +44,6 @@ import { ToolCall } from "./copilot/ToolCall";
 import { ApprovalCard } from "./copilot/ApprovalCard";
 import { ThinkingProcess } from "./copilot/ThinkingProcess";
 import { ChatInput } from "./copilot/ChatInput";
-import { AgentAnnotationInspector } from "./copilot/AgentAnnotationBlock";
 import { RuntimePromptQueueContent } from "./copilot/RuntimePromptQueueContent";
 import { parseUserMessageContent } from "./copilot/userMessageContent";
 import { TodoList, TodoItem } from "./copilot/TodoList";
@@ -49,7 +57,7 @@ import { MessageErrorBoundary } from "./copilot/MessageErrorBoundary";
 import { RuntimePickerDialog } from "./copilot/RuntimePickerDialog";
 import { SessionHarnessUpdateControl } from "./copilot/SessionHarnessUpdateControl";
 import {
-  SessionHistorySidebar,
+  SessionHistoryPopoverPanel,
   type SessionHistoryItem,
 } from "./copilot/SessionHistorySidebar";
 import { Dialog } from "./ui/dialog";
@@ -60,6 +68,7 @@ import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 import { SelectMenu, type SelectSection } from "./ui/select";
 import { Sheet, SheetContent, SheetOverlay } from "./ui/sheet";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import {
   Collapsible,
   CollapsibleContent,
@@ -155,10 +164,8 @@ import {
   withSessionStateCommands,
 } from "@clash/web-ui/lib/sessionConfigOptions";
 import { preferredRecentAgentId } from "@clash/web-ui/lib/recentRunPreferences";
-import {
-  clampCopilotPanelWidthForViewport,
-  expandCopilotPanelWidth,
-} from "./copilotPanelLayout";
+import { withoutInitialProjectPrompt } from "@clash/web-ui/lib/projectSessionRoute";
+import { clampCopilotPanelWidthForViewport } from "./copilotPanelLayout";
 
 interface Message {
   id: string;
@@ -217,10 +224,15 @@ interface ChatbotCopilotProps {
   initialPrompt?: string;
   /** Session history + actions passed from parent */
   sessionHistory?: Array<CopilotSessionHistoryItem>;
+  sessionHistoryHasMore?: boolean;
+  sessionHistoryLoadingMore?: boolean;
+  onLoadMoreSessionHistory?: () => void | Promise<void>;
   onNewSession?: () => void;
   onSwitchSession?: (threadId: string) => void;
   onArchiveSession?: (threadId: string) => void | Promise<void>;
+  onRenameSession?: (threadId: string, title: string) => void | Promise<void>;
   onUpsertSession?: (session: CopilotSessionHistoryItem) => void;
+  onRuntimeSessionRouteChange?: (threadId: string | null) => void;
   /** Called when user sends first message with no active session */
   onCreateSession?: (initialMessage: string) => void;
   /** Create canvas nodes from already-uploaded attachments */
@@ -230,12 +242,7 @@ interface ChatbotCopilotProps {
   /** Human user represented by the selected local agent. */
   actorUserId?: string;
   annotationBlocks?: AgentAnnotationDraft[];
-  activeAnnotationId?: string | null;
-  onAnnotationOpen?: (annotationId: string) => void;
-  onAnnotationClose?: () => void;
-  onAnnotationChange?: (annotationId: string, note: string) => void;
   onAnnotationRemove?: (annotationId: string) => void;
-  onAnnotationLocate?: (annotationId: string) => void;
   onAnnotationsSubmitted?: (annotationIds: string[]) => void;
 }
 
@@ -289,6 +296,7 @@ function runtimeSessionToHistoryItem(
     agentMemberId: session.agentMemberId,
     permissionMode: session.permissionMode,
     acpSessionId: session.acpSessionId,
+    supportsSessionFork: session.supportsSessionFork,
     status: session.status,
   };
 }
@@ -460,11 +468,22 @@ function sessionTitleForHeader(
   fallback: string,
 ): string {
   if (!threadId) return fallback;
-  const title = sessionHistory
+  const storedTitle = sessionHistory
     .find((session) => session.threadId === threadId)
     ?.title?.trim();
+  const title = storedTitle
+    ? visibleUserPromptText(storedTitle)
+        .replace(/\\([\\`*_[\]{}()#+\-.!>])/g, "$1")
+        .trim()
+    : "";
   if (title === "New session") return fallback;
   return title || fallback;
+}
+
+function compactSessionTitleForHeader(title: string): string {
+  const characters = Array.from(title);
+  if (characters.length <= 28) return title;
+  return `${characters.slice(0, 27).join("")}…`;
 }
 
 function normalizedRuntimeSessionTitle(
@@ -723,20 +742,20 @@ function ChatbotCopilot({
   workspaceContext,
   initialPrompt,
   sessionHistory = [],
+  sessionHistoryHasMore = false,
+  sessionHistoryLoadingMore = false,
+  onLoadMoreSessionHistory,
   onNewSession,
   onSwitchSession,
   onArchiveSession,
+  onRenameSession,
   onUpsertSession,
+  onRuntimeSessionRouteChange,
   onCreateSession,
   onUploadFiles,
   actorUserId,
   annotationBlocks = [],
-  activeAnnotationId = null,
-  onAnnotationOpen,
-  onAnnotationClose,
-  onAnnotationChange,
   onAnnotationRemove,
-  onAnnotationLocate,
   onAnnotationsSubmitted,
 }: ChatbotCopilotProps) {
   const { t } = useTranslation();
@@ -755,6 +774,7 @@ function ChatbotCopilot({
   // sheet over the canvas. Desktop keeps a resizable bottom-right popover.
   const isMobile = useIsBelowLg();
   const isDocked = !isMobile && layoutMode === "docked";
+  const panelHeaderControlSize = isMobile ? "lg" : "sm";
   const collapsesIntoHeader = collapsedLauncherPlacement === "header";
   const desktopTransformOrigin = collapsesIntoHeader
     ? COPILOT_PANEL_HEADER_TRANSFORM_ORIGIN
@@ -763,20 +783,43 @@ function ChatbotCopilot({
     ? COPILOT_PANEL_COLLAPSED_HEADER_STATE
     : COPILOT_PANEL_COLLAPSED_CANVAS_STATE;
   // ─── UI State ──────────────────────────────────────────────
-  const [input, setInput] = useState(() => initialPrompt ?? "");
+  const composerDrafts = useMemo(() => {
+    let storage: Storage | undefined;
+    try {
+      storage = window.localStorage;
+    } catch {
+      storage = undefined;
+    }
+    return createComposerDraftStore({
+      namespace: "clash.project-composer",
+      storage,
+    });
+  }, []);
+  const composerDraftScope = `${projectId}:${threadId || "new"}`;
+  const [inputState, setInputState] = useState(() => {
+    const value = initialPrompt ?? composerDrafts.read(composerDraftScope);
+    if (initialPrompt !== undefined) {
+      composerDrafts.write(composerDraftScope, initialPrompt);
+    }
+    return { scope: composerDraftScope, value };
+  });
+  const input =
+    inputState.scope === composerDraftScope
+      ? inputState.value
+      : composerDrafts.read(composerDraftScope);
+  const setInput = useCallback(
+    (value: string) => {
+      composerDrafts.write(composerDraftScope, value);
+      setInputState({ scope: composerDraftScope, value });
+    },
+    [composerDraftScope, composerDrafts],
+  );
   const [dismissedSlashCommand, setDismissedSlashCommand] = useState<
     string | null
   >(null);
   const [isResizing, setIsResizing] = useState(false);
   const [sessionHistoryOpen, setSessionHistoryOpen] = useState(false);
-  const presentationWidth =
-    sessionHistoryOpen && !isMobile
-      ? expandCopilotPanelWidth(
-          width,
-          288,
-          typeof window === "undefined" ? width + 288 : window.innerWidth,
-        )
-      : width;
+  const presentationWidth = width;
   const [todoItems, setTodoItems] = useState<TodoItem[]>([]);
   const [suggestions, setSuggestions] = useState<
     Array<{ label: string; message: string }>
@@ -791,6 +834,7 @@ function ChatbotCopilot({
     string | null
   >(null);
   const runtimeSessionSwitchSeq = useRef(0);
+  const restoredRouteSessionRef = useRef<string | null>(null);
   const [sessionHarnessId, setSessionHarnessId] = useState<string | null>(null);
   const [sessionPermissionModeByAgentId, setSessionPermissionModeByAgentId] =
     useState<Record<string, string>>({});
@@ -1033,6 +1077,7 @@ function ChatbotCopilot({
       ? t("copilot.header.newChat")
       : t("copilot.panel.label"),
   );
+  const compactPanelTitle = compactSessionTitleForHeader(panelTitle);
 
   useEffect(() => {
     if (chatMode !== "runtime" || !clashRt.currentSession || !onUpsertSession)
@@ -1041,6 +1086,11 @@ function ChatbotCopilot({
       runtimeSessionToHistoryItem(clashRt.currentSession, runtimeTitle),
     );
   }, [chatMode, clashRt.currentSession, onUpsertSession, runtimeTitle]);
+
+  useEffect(() => {
+    if (chatMode !== "runtime" || !clashRt.currentSession) return;
+    onRuntimeSessionRouteChange?.(clashRt.currentSession.threadId);
+  }, [chatMode, clashRt.currentSession, onRuntimeSessionRouteChange]);
 
   useEffect(() => {
     if (sessionHarnessOptions.length === 0) return;
@@ -1982,6 +2032,7 @@ function ChatbotCopilot({
     clearCustomEvents();
     const runtime = selectedRuntimeForSession ?? desktopLocalRuntime;
     if (chatMode === "runtime" && runtime?.status === "online") {
+      onRuntimeSessionRouteChange?.(null);
       clashRt.startDraft(runtime.id, undefined, {
         projectId,
         agentId:
@@ -2000,6 +2051,7 @@ function ChatbotCopilot({
     desktopLocalRuntime,
     effectiveSessionHarnessId,
     onNewSession,
+    onRuntimeSessionRouteChange,
     onUpsertSession,
     projectId,
     runtimeHistoryItem,
@@ -2016,6 +2068,7 @@ function ChatbotCopilot({
       if (item.permissionMode)
         setSessionPermissionModeForAgent(nextAgentId, item.permissionMode);
       setChatMode("runtime");
+      onRuntimeSessionRouteChange?.(null);
       clashRt.startDraft(item.runtimeId, item.agentMemberId, {
         projectId: item.projectId ?? projectId,
         ...(nextAgentId ? { agentId: nextAgentId } : {}),
@@ -2028,10 +2081,16 @@ function ChatbotCopilot({
     [
       clashRt.startDraft,
       effectiveSessionHarnessId,
+      onRuntimeSessionRouteChange,
       projectId,
       setSessionPermissionModeForAgent,
     ],
   );
+
+  const forkCurrentRuntimeSession = useCallback(() => {
+    if (!runtimeHistoryItem?.supportsSessionFork) return;
+    forkRuntimeSession(runtimeHistoryItem);
+  }, [forkRuntimeSession, runtimeHistoryItem]);
 
   const handleStop = async () => {
     if (chatMode === "runtime") {
@@ -2050,6 +2109,7 @@ function ChatbotCopilot({
         if (item.permissionMode)
           setSessionPermissionModeForAgent(nextAgentId, item.permissionMode);
         setChatMode("runtime");
+        onRuntimeSessionRouteChange?.(item.threadId);
         setSwitchingRuntimeSessionId(item.id ?? item.threadId);
         void clashRt
           .attachSession({
@@ -2082,10 +2142,36 @@ function ChatbotCopilot({
       clashRt.attachSession,
       effectiveSessionHarnessId,
       onSwitchSession,
+      onRuntimeSessionRouteChange,
       projectId,
       setSessionPermissionModeForAgent,
     ],
   );
+
+  useEffect(() => {
+    if (!threadId) {
+      restoredRouteSessionRef.current = null;
+      return;
+    }
+    if (clashRt.currentSession?.threadId === threadId) {
+      restoredRouteSessionRef.current = threadId;
+      return;
+    }
+    const routeSession = sessionHistory.find(
+      (session) =>
+        session.threadId === threadId &&
+        session.type === "runtime" &&
+        Boolean(session.runtimeId),
+    );
+    if (!routeSession || restoredRouteSessionRef.current === threadId) return;
+    restoredRouteSessionRef.current = threadId;
+    selectHistoryItem(routeSession);
+  }, [
+    clashRt.currentSession?.threadId,
+    selectHistoryItem,
+    sessionHistory,
+    threadId,
+  ]);
 
   // On mobile, the panel covers the canvas. Sheet owns dialog semantics
   // and focus behavior; this keeps the page behind it from scrolling.
@@ -2239,7 +2325,10 @@ function ChatbotCopilot({
     const addEntity = (entity: ClashProjectEntity) => {
       entities.set(`${entity.kind}:${entity.id}`, entity);
     };
-    if (workspaceContext?.activeSurface) {
+    if (
+      workspaceContext?.activeSurface &&
+      workspaceContext.activeSurface.kind !== "browser"
+    ) {
       addEntity({
         kind: workspaceContext.activeSurface.kind,
         id: workspaceContext.activeSurface.id,
@@ -2492,7 +2581,11 @@ function ChatbotCopilot({
   // doesn't re-send the original landing prompt.
   useEffect(() => {
     if (initialPrompt && window.location.search.includes("prompt=")) {
-      window.history.replaceState({}, "", window.location.pathname);
+      window.history.replaceState(
+        {},
+        "",
+        `${window.location.pathname}${withoutInitialProjectPrompt(window.location.search)}${window.location.hash}`,
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -2679,7 +2772,9 @@ function ChatbotCopilot({
               }
               style={
                 isMobile
-                  ? undefined
+                  ? ({
+                      "--clash-workspace-control-size": "44px",
+                    } as CSSProperties)
                   : {
                       width: `${presentationWidth}px`,
                       height: isDocked
@@ -2709,7 +2804,7 @@ function ChatbotCopilot({
                     already shows its purpose via design + the floating
                     toggle button. */}
               <h2 className="sr-only">{t("copilot.panel.label")}</h2>
-              {!isCollapsed && !isMobile && !sessionHistoryOpen && (
+              {!isCollapsed && !isMobile && (
                 <div
                   {...resizeGestureBind()}
                   role="separator"
@@ -2735,8 +2830,12 @@ function ChatbotCopilot({
                     >
                       <div className="clash-copilot-panel-header relative z-20 flex h-[38px] shrink-0 items-center gap-2 px-4">
                         <div className="min-w-0 flex-1">
-                          <div className="truncate font-display text-[14px] font-semibold text-slate-900 dark:text-slate-100">
-                            {panelTitle}
+                          <div
+                            className="truncate font-display text-[14px] font-semibold text-slate-900 dark:text-slate-100"
+                            data-copilot-session-title
+                            title={panelTitle}
+                          >
+                            {compactPanelTitle}
                           </div>
                         </div>
 
@@ -2762,28 +2861,51 @@ function ChatbotCopilot({
                           <IconButton
                             onClick={handleNewSession}
                             label={t("copilot.header.newSession")}
-                            size="sm"
+                            size={panelHeaderControlSize}
                             disabled={desktopRuntimeUnavailable}
                             className="clash-workspace-icon-control"
                             icon={<Plus className="w-4 h-4" weight="bold" />}
                           />
-                          <IconButton
-                            ref={historyButtonRef}
-                            label={t("copilot.header.history")}
-                            size="sm"
-                            aria-pressed={sessionHistoryOpen}
-                            disabled={desktopRuntimeUnavailable}
-                            className="clash-workspace-icon-control relative"
-                            onClick={() =>
-                              setSessionHistoryOpen((current) => !current)
-                            }
-                            icon={
-                              <ClockCounterClockwise
-                                className="h-4 w-4"
-                                weight="bold"
+                          <Popover
+                            open={sessionHistoryOpen}
+                            onOpenChange={setSessionHistoryOpen}
+                          >
+                            <PopoverTrigger asChild>
+                              <IconButton
+                                ref={historyButtonRef}
+                                label={t("copilot.header.history")}
+                                size={panelHeaderControlSize}
+                                disabled={desktopRuntimeUnavailable}
+                                className="clash-workspace-icon-control relative"
+                                icon={
+                                  <ClockCounterClockwise
+                                    className="h-4 w-4"
+                                    weight="bold"
+                                  />
+                                }
                               />
-                            }
-                          />
+                            </PopoverTrigger>
+                            <PopoverContent
+                              aria-label={t("copilot.history.title")}
+                              align="end"
+                              side="bottom"
+                              sideOffset={6}
+                              className="w-80 max-w-[calc(100vw-1rem)] gap-0 overflow-hidden bg-warm-surface p-0"
+                            >
+                              <SessionHistoryPopoverPanel
+                                activeSessions={visibleSessionHistory}
+                                activeSessionId={activeSessionId}
+                                onSelect={selectHistoryItem}
+                                onFork={forkRuntimeSession}
+                                onArchive={onArchiveSession}
+                                onRename={onRenameSession}
+                                hasMore={sessionHistoryHasMore}
+                                isLoadingMore={sessionHistoryLoadingMore}
+                                onLoadMore={onLoadMoreSessionHistory}
+                                onClose={() => setSessionHistoryOpen(false)}
+                              />
+                            </PopoverContent>
+                          </Popover>
                           {!isDesktopLocalMode && (
                             <div className="relative">
                               <DropdownMenu
@@ -2794,6 +2916,7 @@ function ChatbotCopilot({
                                 <DropdownMenuTrigger asChild>
                                   <IconButton
                                     label={t("copilot.header.runOn")}
+                                    size={panelHeaderControlSize}
                                     variant={
                                       chatMode !== "cloud"
                                         ? "active"
@@ -2871,7 +2994,7 @@ function ChatbotCopilot({
                           <CollapsibleTrigger asChild>
                             <IconButton
                               label={t("copilot.panel.collapse")}
-                              size="sm"
+                              size={panelHeaderControlSize}
                               icon={
                                 <CaretRight className="h-4 w-4" weight="bold" />
                               }
@@ -2890,6 +3013,11 @@ function ChatbotCopilot({
                           mentionableNodes={mentionableNodes}
                           clashEntities={clashProjectEntities}
                           onOpenClashEntity={onOpenClashEntity}
+                          onFork={
+                            runtimeHistoryItem?.supportsSessionFork
+                              ? forkCurrentRuntimeSession
+                              : undefined
+                          }
                           slots={{
                             empty: (
                               <>
@@ -2946,7 +3074,7 @@ function ChatbotCopilot({
                               <>
                                 {showRuntimeComposerCompanion && (
                                   <motion.div
-                                    className="clash-copilot-agent-activity-empty-anchor clash-copilot-agent-activity-composer-companion relative z-20 mx-auto w-full max-w-[68rem] px-4 pb-1 sm:px-6"
+                                    className="clash-copilot-agent-activity-empty-anchor clash-copilot-agent-activity-composer-companion relative -left-3 top-2 z-20 mx-auto w-full max-w-[68rem] px-4 pb-1 sm:px-6"
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: 6 }}
@@ -3064,10 +3192,7 @@ function ChatbotCopilot({
                                       mentionableNodes={mentionableNodes}
                                       projectId={projectId}
                                       annotationBlocks={annotationBlocks}
-                                      onAnnotationOpen={onAnnotationOpen}
-                                      onAnnotationChange={onAnnotationChange}
                                       onAnnotationRemove={onAnnotationRemove}
-                                      onAnnotationLocate={onAnnotationLocate}
                                       toolbarAccessory={
                                         <div className="clash-composer-session-controls flex min-w-0 items-center gap-1">
                                           {onFollowingAgentChange ? (
@@ -3327,7 +3452,7 @@ function ChatbotCopilot({
                         >
                           {showRuntimeComposerCompanion && (
                             <motion.div
-                              className="clash-copilot-agent-activity-empty-anchor clash-copilot-agent-activity-composer-companion relative z-20 mx-auto w-full max-w-[68rem] px-4 pb-1 sm:px-6"
+                              className="clash-copilot-agent-activity-empty-anchor clash-copilot-agent-activity-composer-companion relative -left-3 top-2 z-20 mx-auto w-full max-w-[68rem] px-4 pb-1 sm:px-6"
                               initial={{ opacity: 0, y: 10 }}
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: 6 }}
@@ -3396,10 +3521,7 @@ function ChatbotCopilot({
                                   mentionableNodes={mentionableNodes}
                                   projectId={projectId}
                                   annotationBlocks={annotationBlocks}
-                                  onAnnotationOpen={onAnnotationOpen}
-                                  onAnnotationChange={onAnnotationChange}
                                   onAnnotationRemove={onAnnotationRemove}
-                                  onAnnotationLocate={onAnnotationLocate}
                                   toolbarAccessory={
                                     <div className="clash-composer-session-controls flex min-w-0 items-center gap-1">
                                       {onFollowingAgentChange ? (
@@ -3539,62 +3661,7 @@ function ChatbotCopilot({
                           </div>
                         </div>
                       )}
-                      <AnimatePresence>
-                        {activeAnnotationId &&
-                        annotationBlocks.some(
-                          (annotation) => annotation.id === activeAnnotationId,
-                        ) ? (
-                          <motion.div
-                            key="annotation-inspector"
-                            className="absolute inset-0 z-[80] bg-warm-page"
-                            initial={{ opacity: 0, x: 16 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 12 }}
-                            transition={{
-                              duration: 0.18,
-                              ease: [0.16, 1, 0.3, 1],
-                            }}
-                          >
-                            <AgentAnnotationInspector
-                              annotations={annotationBlocks}
-                              activeId={activeAnnotationId}
-                              disabled={isProcessing}
-                              onSelect={(annotationId) =>
-                                onAnnotationOpen?.(annotationId)
-                              }
-                              onBack={() => onAnnotationClose?.()}
-                              onChange={onAnnotationChange}
-                              onRemove={onAnnotationRemove}
-                              onLocate={onAnnotationLocate}
-                            />
-                          </motion.div>
-                        ) : null}
-                      </AnimatePresence>
                     </div>
-                    {sessionHistoryOpen ? (
-                      <div
-                        className={
-                          isMobile ? "absolute inset-0 z-[90]" : "h-full"
-                        }
-                      >
-                        <SessionHistorySidebar
-                          activeSessions={visibleSessionHistory}
-                          activeSessionId={activeSessionId}
-                          onSelect={selectHistoryItem}
-                          onFork={forkRuntimeSession}
-                          onArchive={onArchiveSession}
-                          onClose={() => {
-                            setSessionHistoryOpen(false);
-                            historyButtonRef.current?.focus();
-                          }}
-                          className={
-                            isMobile
-                              ? "w-full border-l-0 bg-warm-page"
-                              : undefined
-                          }
-                        />
-                      </div>
-                    ) : null}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -5207,7 +5274,7 @@ function RuntimeEmptyState({
     localRuntime.agents.length > 0;
   const activitySlot = (
     <motion.div
-      className="clash-copilot-agent-activity-empty-anchor clash-copilot-agent-activity-composer-companion mx-auto flex min-h-[calc(100dvh-6.5rem)] w-full max-w-[68rem] flex-col justify-end gap-3 pb-0"
+      className="clash-copilot-agent-activity-empty-anchor clash-copilot-agent-activity-composer-companion relative -left-3 top-2 mx-auto flex min-h-[calc(100dvh-6.5rem)] w-full max-w-[68rem] flex-col justify-end gap-3 pb-0"
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}

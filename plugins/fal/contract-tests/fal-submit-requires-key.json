@@ -44,6 +44,16 @@
         "status": "ok",
         "result": {}
       }
+    },
+    {
+      "operation": {
+        "kind": "store.get",
+        "key": "storageBaseUrl"
+      },
+      "response": {
+        "status": "ok",
+        "result": {}
+      }
     }
   ]
 }

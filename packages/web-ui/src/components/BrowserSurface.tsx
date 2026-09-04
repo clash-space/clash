@@ -25,6 +25,7 @@ import { InlineAlert } from "./ui/feedback";
 import { Input } from "./ui/input";
 import { Tooltip } from "./ui/tooltip";
 import type { ProjectBrowserTab } from "./ProjectWorkspaceNavigator";
+import type { BrowserAgentContext } from "../lib/copilotWorkspaceContext";
 
 /** Backchat's omnibox rule: preserve URLs, promote host-like input, search text. */
 export function normalizeBrowserUrl(
@@ -96,6 +97,9 @@ interface BrowserRegionDrag {
 }
 
 const ANNOTATION_DRAG_THRESHOLD = 6;
+// Electron types `allowpopups` as boolean, while React only preserves this
+// custom-element attribute when it receives a string.
+const WEBVIEW_ALLOW_POPUPS = "true" as unknown as boolean;
 
 function browserPageKey(raw: string): string | null {
   try {
@@ -247,6 +251,70 @@ function elementAtPointScript(point: BrowserPoint): string {
   })()`;
 }
 
+function browserAgentContextScript(): string {
+  return String.raw`(() => {
+    const truncate = (value, max) => {
+      const text = String(value ?? "").replace(/\s+/g, " ").trim();
+      return text.length > max ? text.slice(0, max - 1) + "…" : text;
+    };
+    const escapeCss = (value) => {
+      try { return CSS.escape(value); }
+      catch { return String(value).replace(/[^a-zA-Z0-9_-]/g, "\\$&"); }
+    };
+    const selectorFor = (element) => {
+      if (element.id) return "#" + escapeCss(element.id);
+      const testId = element.getAttribute("data-testid");
+      if (testId) return '[data-testid="' + escapeCss(testId) + '"]';
+      const parts = [];
+      let current = element;
+      while (current && parts.length < 5) {
+        let part = current.tagName.toLowerCase();
+        const parent = current.parentElement;
+        if (parent) {
+          const siblings = Array.from(parent.children).filter(
+            (sibling) => sibling.tagName === current.tagName,
+          );
+          if (siblings.length > 1) {
+            part += ":nth-of-type(" + (siblings.indexOf(current) + 1) + ")";
+          }
+        }
+        parts.unshift(part);
+        current = parent;
+      }
+      return parts.join(" > ");
+    };
+    const interactiveElements = Array.from(document.querySelectorAll(
+      'a[href], button, input:not([type="password"]), textarea, select, [role="button"], [role="link"]',
+    ))
+      .filter((element) => {
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+      })
+      .slice(0, 80)
+      .map((element) => ({
+        tag: element.tagName.toLowerCase(),
+        label: truncate(
+          element.getAttribute("aria-label") ||
+            element.getAttribute("title") ||
+            element.getAttribute("placeholder") ||
+            element.innerText ||
+            element.textContent ||
+            element.getAttribute("name"),
+          200,
+        ),
+        selector: selectorFor(element),
+      }))
+      .filter((element) => element.label);
+    return {
+      url: truncate(location.href, 2048),
+      title: truncate(document.title, 300),
+      text: truncate(document.body?.innerText || document.body?.textContent, 6000),
+      interactiveElements,
+    };
+  })()`;
+}
+
 function browserAnnotationTarget(
   projectId: string,
   tab: ProjectBrowserTab,
@@ -282,14 +350,17 @@ function webviewReady(
 export function BrowserSurface({
   projectId,
   tab,
+  headerEndInset = 0,
   annotations,
   activeAnnotationId,
   onTabChange,
   onCreateAnnotation,
   onSelectAnnotation,
+  onAgentContextChange,
 }: {
   projectId: string;
   tab: ProjectBrowserTab;
+  headerEndInset?: number;
   annotations: readonly AgentAnnotationDraft[];
   activeAnnotationId: string | null;
   onTabChange: (
@@ -297,6 +368,10 @@ export function BrowserSurface({
   ) => void;
   onCreateAnnotation: (target: AgentAnnotationTarget) => string;
   onSelectAnnotation: (annotationId: string) => void;
+  onAgentContextChange?: (
+    browserId: string,
+    context: BrowserAgentContext,
+  ) => void;
 }) {
   const webviewRef = useRef<BrowserWebviewElement | null>(null);
   const hoverFrameRef = useRef<number | null>(null);
@@ -312,6 +387,24 @@ export function BrowserSurface({
   const [annotating, setAnnotating] = useState(false);
   const [hover, setHover] = useState<BrowserElementContext | null>(null);
   const [drag, setDrag] = useState<BrowserRegionDrag | null>(null);
+
+  const publishAgentContext = useCallback(async () => {
+    const webview = webviewRef.current;
+    if (!onAgentContextChange || !webviewReady(webview)) return;
+    try {
+      const context = await webview.executeJavaScript<BrowserAgentContext>(
+        browserAgentContextScript(),
+      );
+      onAgentContextChange(tab.id, context);
+    } catch {
+      onAgentContextChange(tab.id, {
+        url: webview.getURL?.() || tab.url,
+        title: webview.getTitle?.() || tab.title,
+        text: "",
+        interactiveElements: [],
+      });
+    }
+  }, [onAgentContextChange, tab.id, tab.title, tab.url]);
 
   const updateNavigationState = useCallback(() => {
     const webview = webviewRef.current;
@@ -337,6 +430,7 @@ export function BrowserSurface({
       setAnnotating(false);
       setHover(null);
       updateNavigationState();
+      void publishAgentContext();
     };
     const onTitle = (rawEvent: Event) => {
       const event = rawEvent as BrowserNavigationEvent;
@@ -352,6 +446,7 @@ export function BrowserSurface({
         ...(nextUrl ? { url: nextUrl } : {}),
         ...(title ? { title } : {}),
       });
+      void publishAgentContext();
     };
     const onLoadStart = () => {
       setLoading(true);
@@ -361,6 +456,7 @@ export function BrowserSurface({
       setLoading(false);
       setReady(true);
       updateNavigationState();
+      void publishAgentContext();
     };
     const onLoadFailure = (rawEvent: Event) => {
       const event = rawEvent as BrowserNavigationEvent;
@@ -373,6 +469,7 @@ export function BrowserSurface({
     webview.addEventListener("did-stop-loading", onLoadStop);
     webview.addEventListener("did-navigate", onNavigation);
     webview.addEventListener("did-navigate-in-page", onNavigation);
+    webview.addEventListener("did-redirect-navigation", onNavigation);
     webview.addEventListener("page-title-updated", onTitle);
     webview.addEventListener("did-fail-load", onLoadFailure);
     return () => {
@@ -381,10 +478,11 @@ export function BrowserSurface({
       webview.removeEventListener("did-stop-loading", onLoadStop);
       webview.removeEventListener("did-navigate", onNavigation);
       webview.removeEventListener("did-navigate-in-page", onNavigation);
+      webview.removeEventListener("did-redirect-navigation", onNavigation);
       webview.removeEventListener("page-title-updated", onTitle);
       webview.removeEventListener("did-fail-load", onLoadFailure);
     };
-  }, [onTabChange, tab.url, updateNavigationState]);
+  }, [onTabChange, publishAgentContext, tab.url, updateNavigationState]);
 
   useEffect(
     () => () => {
@@ -499,10 +597,14 @@ export function BrowserSurface({
   return (
     <section
       aria-label={`Browser: ${tab.title}`}
-      className="flex h-full min-h-0 flex-col overflow-hidden bg-warm-page"
+      className="flex h-full min-h-0 flex-col overflow-hidden border-r border-warm-border bg-warm-page"
       data-project-browser={tab.id}
     >
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-warm-border bg-warm-page px-2">
+      <div
+        data-browser-toolbar=""
+        className="flex h-10 shrink-0 items-center gap-1 border-b border-warm-border bg-warm-page px-2"
+        style={{ paddingRight: headerEndInset || undefined }}
+      >
         <Tooltip label="Back">
           <IconButton
             label="Back"
@@ -600,6 +702,7 @@ export function BrowserSurface({
           ref={webviewRef}
           src={normalizeBrowserUrl(tab.url)}
           partition="persist:clash-browser"
+          allowpopups={WEBVIEW_ALLOW_POPUPS}
           webpreferences="contextIsolation=yes"
           className="h-full w-full bg-warm-surface"
         />
@@ -702,6 +805,7 @@ export function BrowserSurface({
                 >
                   <button
                     type="button"
+                    data-agent-annotation-anchor={annotation.id}
                     aria-label={`Open browser annotation ${index + 1}`}
                     className="pointer-events-auto absolute -right-3 -top-3 grid h-6 w-6 place-items-center rounded-full border-2 border-warm-surface bg-brand text-[10px] font-semibold text-white shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                     onClick={() => onSelectAnnotation(annotation.id)}

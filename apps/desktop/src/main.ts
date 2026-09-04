@@ -1,12 +1,13 @@
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app } from "electron";
+import { app, dialog } from "electron";
 
 import { configureDesktopHost } from "./controller/host";
 import { createDesktopRuntimeController } from "./controller/runtime";
 import { createDesktopWindowController } from "./controller/windows";
 import { ownDesktopInstance } from "./single-instance";
+import { startDesktopWithRecovery } from "./startup-recovery";
 import { createDesktopFileLogSink, createDesktopLogger } from "./stdio-logger";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -15,6 +16,7 @@ const ownsDesktopInstance = ownDesktopInstance(app, () => recoverOwnedWindow());
 
 if (ownsDesktopInstance) {
   const { dataDir } = configureDesktopHost();
+  const hostDiagnosticLogPath = join(app.getPath("logs"), "host-startup.log");
   const fileSink = createDesktopFileLogSink({
     directory: app.getPath("logs"),
     maxBytes: 5 * 1024 * 1024,
@@ -26,6 +28,7 @@ if (ownsDesktopInstance) {
   app.on("will-quit", () => desktopLog.close());
   const runtimeController = createDesktopRuntimeController({
     moduleDir,
+    hostDiagnosticLogPath,
     log: desktopLog,
   });
   const windowController = createDesktopWindowController({
@@ -44,12 +47,42 @@ if (ownsDesktopInstance) {
       );
   };
 
-  app.whenReady().then(async () => {
-    windowController.registerHostBindings();
-    await runtimeController.initialize(dataDir);
-    await windowController.createWindow();
-    app.on("activate", windowController.activate);
-  });
+  void app
+    .whenReady()
+    .then(async () => {
+      windowController.registerHostBindings();
+      const outcome = await startDesktopWithRecovery({
+        start: async () => {
+          await runtimeController.initialize(dataDir);
+          await windowController.createWindow();
+        },
+        decide: async (error) => {
+          const detail = error instanceof Error ? error.message : String(error);
+          desktopLog.error("[desktop] startup attempt failed", error);
+          const { response } = await dialog.showMessageBox({
+            type: "error",
+            title: "Clash could not start",
+            message: "Clash could not finish starting its local Host.",
+            detail: `${detail}\n\nDiagnostics: ${hostDiagnosticLogPath}`,
+            buttons: ["Retry", "Quit"],
+            defaultId: 0,
+            cancelId: 1,
+            noLink: true,
+          });
+          return response === 0 ? "retry" : "quit";
+        },
+        quit: () => app.quit(),
+      });
+      if (outcome === "started") app.on("activate", windowController.activate);
+    })
+    .catch((error) => {
+      desktopLog.error("[desktop] unrecoverable startup failure", error);
+      dialog.showErrorBox(
+        "Clash could not start",
+        `${error instanceof Error ? error.message : String(error)}\n\nDiagnostics: ${hostDiagnosticLogPath}`,
+      );
+      app.quit();
+    });
 
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit();

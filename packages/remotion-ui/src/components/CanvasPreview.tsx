@@ -28,6 +28,12 @@ import {
 } from "./previewAudioMeter";
 
 const PREVIEW_STYLES = `
+  ::view-transition-group(clash-canvas-preview),
+  ::view-transition-old(clash-canvas-preview),
+  ::view-transition-new(clash-canvas-preview) {
+    animation: none;
+    mix-blend-mode: normal;
+  }
   @container preview (max-width: 560px) {
     [data-canvas-preview] [data-preview-duration],
     [data-canvas-preview] [data-preview-aspect] {
@@ -61,6 +67,22 @@ const METER_ICON_HEIGHT = 14;
 const SILENT_AUDIO_LEVELS: StereoAudioLevels = { left: 0, right: 0 };
 const subscribeToSilence = () => () => undefined;
 const getSilentAudioLevels = () => SILENT_AUDIO_LEVELS;
+
+const shouldClaimCanvasKeyboardFocus = (
+  target: EventTarget | null,
+): boolean =>
+  target instanceof HTMLElement &&
+  !target.closest(
+    'button, input, textarea, select, [contenteditable="true"], [role="slider"], [role="spinbutton"]',
+  );
+
+const isCanvasSelectionTarget = (target: EventTarget | null): boolean =>
+  target instanceof Element &&
+  Boolean(
+    target.closest(
+      '.item-clickable, .control-handle, [aria-label="Canvas minimap"], button, input, textarea, select, [contenteditable="true"], [role="slider"], [role="spinbutton"]',
+    ),
+  );
 
 const getMeterFillGeometry = (amplitude: number) => {
   const height =
@@ -160,6 +182,8 @@ export const CanvasPreview: React.FC<CanvasPreviewProps> = React.memo(
     const { currentFrame, playing } = useEditorPlayback();
     const { currentFrameRef, playingRef } = useEditorPlaybackRefs();
     const rootRef = useRef<HTMLDivElement>(null);
+    const stageRef = useRef<HTMLDivElement>(null);
+    const canvasKeyboardActiveRef = useRef(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [viewportCommand, setViewportCommand] =
       useState<CanvasViewportCommand>();
@@ -235,16 +259,116 @@ export const CanvasPreview: React.FC<CanvasPreviewProps> = React.memo(
       void rootRef.current?.requestFullscreen?.();
     }, []);
 
+    const claimCanvasKeyboardFocus = useCallback(
+      (event: React.SyntheticEvent<HTMLElement>) => {
+        const shouldClaim = shouldClaimCanvasKeyboardFocus(event.target);
+        canvasKeyboardActiveRef.current = shouldClaim;
+        if (!shouldClaim) return;
+        stageRef.current?.focus({ preventScroll: true });
+      },
+      [],
+    );
+
+    const handleCanvasSurfacePress = useCallback(
+      (event: React.SyntheticEvent<HTMLDivElement>) => {
+        claimCanvasKeyboardFocus(event);
+        const target = event.target;
+        if (
+          !selectedItemId ||
+          !(target instanceof Node) ||
+          !stageRef.current?.contains(target) ||
+          isCanvasSelectionTarget(target)
+        ) {
+          return;
+        }
+        dispatch({ type: "SELECT_ITEM", payload: null });
+      },
+      [claimCanvasKeyboardFocus, dispatch, selectedItemId],
+    );
+
+    useEffect(() => {
+      const deactivateOutsideCanvas = (event: Event) => {
+        const root = rootRef.current;
+        if (!root || !(event.target instanceof Node)) return;
+        if (!root.contains(event.target)) {
+          canvasKeyboardActiveRef.current = false;
+        }
+      };
+      document.addEventListener("pointerdown", deactivateOutsideCanvas, true);
+      document.addEventListener("mousedown", deactivateOutsideCanvas, true);
+      return () => {
+        document.removeEventListener(
+          "pointerdown",
+          deactivateOutsideCanvas,
+          true,
+        );
+        document.removeEventListener("mousedown", deactivateOutsideCanvas, true);
+      };
+    }, []);
+
+    useEffect(() => {
+      const handleCanvasDelete = (event: KeyboardEvent) => {
+        const key = event.key.toLowerCase();
+        if (
+          !canvasKeyboardActiveRef.current ||
+          event.defaultPrevented ||
+          event.metaKey ||
+          event.ctrlKey ||
+          (key !== "delete" && key !== "backspace") ||
+          !selectedItemId
+        ) {
+          return;
+        }
+        const selectedTrack = tracks.find((track) =>
+          track.items.some((item) => item.id === selectedItemId),
+        );
+        if (!selectedTrack) return;
+
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        dispatch({
+          type: "REMOVE_ITEM",
+          payload: { trackId: selectedTrack.id, itemId: selectedItemId },
+        });
+      };
+      window.addEventListener("keydown", handleCanvasDelete, true);
+      return () =>
+        window.removeEventListener("keydown", handleCanvasDelete, true);
+    }, [dispatch, selectedItemId, tracks]);
+
     return (
       <div
         ref={rootRef}
         data-testid="canvas-preview"
         data-canvas-preview=""
         data-surface="warm-panel"
-        style={styles.container}
+        onPointerDownCapture={handleCanvasSurfacePress}
+        onMouseDownCapture={handleCanvasSurfacePress}
+        onClickCapture={claimCanvasKeyboardFocus}
+        style={{ ...styles.container, outline: "none" }}
       >
         <style>{PREVIEW_STYLES}</style>
-        <div data-preview-stage="" style={styles.stage}>
+        <div
+          ref={stageRef}
+          role="application"
+          tabIndex={0}
+          aria-label="Canvas editor"
+          data-preview-stage=""
+          onFocusCapture={() => {
+            canvasKeyboardActiveRef.current = true;
+          }}
+          onBlurCapture={(event) => {
+            const nextTarget = event.relatedTarget;
+            if (
+              !(nextTarget instanceof Node) ||
+              !rootRef.current?.contains(nextTarget)
+            ) {
+              canvasKeyboardActiveRef.current = false;
+            }
+          }}
+          className="outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/45"
+          style={styles.stage}
+        >
           <InteractiveCanvas
             key="interactive-canvas"
             tracks={tracks}
@@ -484,6 +608,7 @@ const styles: Record<string, React.CSSProperties> = {
     minHeight: 0,
     overflow: "hidden",
     backgroundColor: colors.bg.primary,
+    viewTransitionName: "clash-canvas-preview",
   },
   transport: {
     position: "relative",

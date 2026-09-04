@@ -11428,7 +11428,7 @@ var z = /* @__PURE__ */ Object.freeze({
   ZodError
 });
 
-// ../../packages/shared-types/dist/chunk-GWDIKZMB.js
+// ../../packages/shared-types/dist/chunk-EQ2BPN4E.js
 var AssetKindSchema = z.enum(["image", "video", "audio", "model"]);
 var ResourceIdSchema = z.string().trim().min(1);
 var ResourceSchema = z.object({
@@ -11521,6 +11521,8 @@ var ProjectAssetEntrySchema = z.object({
   kind: AssetKindSchema,
   source: ProjectAssetSourceSchema,
   lifecycle: ProjectAssetLifecycleSchema,
+  /** Immutable wall-clock production/admission time in Unix milliseconds. */
+  createdAt: z.number().int().nonnegative().optional(),
   name: z.string().trim().min(1).optional(),
   metadata: ProjectAssetMetadataSchema,
   provenance: ProjectAssetProvenanceSchema.optional()
@@ -11562,6 +11564,8 @@ var ActionAssetBindingSchema = z.object({
 var ResolvedAssetSchema = z.object({
   id: z.string().trim().min(1),
   kind: AssetKindSchema,
+  /** Project Asset production time, or a Host Resource time for legacy entries. */
+  createdAt: z.number().int().nonnegative().optional(),
   name: z.string().trim().min(1).optional(),
   metadata: ProjectAssetMetadataSchema,
   provenance: ProjectAssetProvenanceSchema.optional(),
@@ -11576,6 +11580,8 @@ var ResolvedAssetSchema = z.object({
   ]),
   url: z.string().url().optional(),
   thumbnailUrl: z.string().url().optional(),
+  /** Host-authorized projection of a bounded waveform representation. */
+  waveformUrl: z.string().url().optional(),
   progress: z.number().min(0).max(1).optional(),
   error: z.string().trim().min(1).optional()
 }).strict();
@@ -11639,7 +11645,43 @@ var AssetRefRowSchema = z.object({
   importedAt: z.number()
 });
 
-// ../../packages/shared-types/dist/chunk-UZSXLAEL.js
+// ../../packages/shared-types/dist/chunk-MMCIZQ23.js
+var AspectRatioSchema = z.object({
+  width: z.number().int().positive(),
+  height: z.number().int().positive()
+}).strict();
+var AspectRatioStringSchema = z.string().trim().transform((value, ctx) => {
+  const ratio = parseAspectRatio(value);
+  if (!ratio) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Aspect ratio must be two positive integers separated by a colon."
+    });
+    return z.NEVER;
+  }
+  return aspectRatioLabel(ratio);
+});
+function greatestCommonDivisor(a, b) {
+  return b === 0 ? a : greatestCommonDivisor(b, a % b);
+}
+function reduceAspectRatio(ratio) {
+  const divisor = greatestCommonDivisor(ratio.width, ratio.height);
+  return { width: ratio.width / divisor, height: ratio.height / divisor };
+}
+function aspectRatioLabel(ratio) {
+  const reduced = reduceAspectRatio(ratio);
+  return `${reduced.width}:${reduced.height}`;
+}
+function parseAspectRatio(text) {
+  const match = /^\s*(\d+)\s*[:x×]\s*(\d+)\s*$/i.exec(text);
+  if (!match) return void 0;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    return void 0;
+  }
+  return { width, height };
+}
 var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
 var pluginIdSchema = z.string().trim().superRefine((value, ctx) => {
   const segments = value.split(".");
@@ -12991,6 +13033,9 @@ var ModelParameterSchema = z.object({
   /** Provider-fixed output characteristic. It remains visible in the common
    * parameter surface, but UI and external payloads cannot override it. */
   readOnly: z.boolean().optional(),
+  /** Select controls may accept values beyond their preset menu. Aspect-ratio
+   * custom values remain positive integer W:H pairs. */
+  allowCustom: z.boolean().optional(),
   required: z.boolean().default(false),
   options: z.array(
     z.object({
@@ -13004,6 +13049,13 @@ var ModelParameterSchema = z.object({
   placeholder: z.string().optional(),
   defaultValue: z.union([z.string(), z.number(), z.boolean()]).optional()
 });
+function acceptsCustomModelParameterValue(parameter, value) {
+  if (parameter.type !== "select" || !parameter.allowCustom) return false;
+  if (parameter.id === "aspect_ratio") {
+    return typeof value === "string" && parseAspectRatio(value) !== void 0;
+  }
+  return typeof value === "string" || typeof value === "number";
+}
 var ReferenceMediaConstraintsSchema = z.object({
   mimeTypes: z.array(z.string().min(1)).optional(),
   fileExtensions: z.array(z.string().min(1)).optional(),
@@ -13284,7 +13336,7 @@ var ModelCardSchema = z.object({
     if (value === void 0) return;
     if (parameter.type === "select") {
       const optionValues = parameter.options?.map((option) => option.value) ?? [];
-      if (!optionValues.some((candidate) => sameCandidate(candidate, value))) {
+      if (!optionValues.some((candidate) => sameCandidate(candidate, value)) && !acceptsCustomModelParameterValue(parameter, value)) {
         ctx.addIssue({
           code: "custom",
           path,
@@ -13334,6 +13386,13 @@ var ModelCardSchema = z.object({
     }
     parameterIds.add(parameter.id);
     parametersById.set(parameter.id, parameter);
+    if (parameter.allowCustom && parameter.type !== "select") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["parameters", index, "allowCustom"],
+        message: "Only select parameters may allow custom values."
+      });
+    }
     if (parameter.type === "select") {
       if (!parameter.options?.length) {
         ctx.addIssue({
@@ -19009,10 +19068,6 @@ var MEDIA_ANALYSIS_DOCUMENT_KIND_BY_CATEGORY = {
   ocr: "media.analysis.ocr",
   "audio-semantics": "media.analysis.audio-semantics"
 };
-var AspectRatioSchema = z.object({
-  width: z.number().int().positive(),
-  height: z.number().int().positive()
-}).strict();
 var PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 var SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 var SHA256_PATTERN = /^sha256:[0-9a-f]{64}$/;
@@ -19085,6 +19140,11 @@ var ExecutablePluginModelBindingExportSchema = z.object({
 var ExecutablePluginGeneratorExportSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
   kind: z.literal("generator"),
+  path: PluginRelativePathSchema
+}).strict();
+var ExecutablePluginViewExportSchema = z.object({
+  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  kind: z.literal("view"),
   path: PluginRelativePathSchema
 }).strict();
 var ExecutableActionPresentationSchema = z.discriminatedUnion("type", [
@@ -19243,6 +19303,99 @@ var ExecutablePluginGeneratorDocumentSchema = z.object({
   kind: z.literal("generator"),
   spec: GeneratorDefinitionSpecSchema
 }).strict();
+var StoryboardViewResourceSchema = z.object({
+  id: z.string().trim().min(1),
+  projectAssetId: z.string().trim().min(1),
+  mediaKind: z.enum(["image", "video", "audio", "model"]),
+  modelName: z.string().trim().min(1).optional(),
+  generatedBy: z.object({
+    generatorId: z.string().trim().min(1),
+    generatorRevisionId: z.string().trim().min(1),
+    actionRunId: z.string().trim().min(1),
+    outputCommitId: z.string().trim().min(1),
+    outputSlot: z.string().trim().min(1).optional()
+  }).strict().optional()
+}).strict();
+var StoryboardViewDescriptionPartSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("text"), text: z.string() }).strict(),
+  z.object({
+    type: z.literal("entity-reference"),
+    entityId: z.string().trim().min(1)
+  }).strict()
+]);
+var StoryboardViewMaterialSchema = z.object({
+  id: z.string().trim().min(1),
+  label: z.string().trim().min(1).optional(),
+  mediaKind: z.enum(["image", "video", "audio", "model"]),
+  promptDraft: z.object({
+    id: z.string().trim().min(1),
+    text: z.string()
+  }).strict().optional(),
+  candidates: z.array(StoryboardViewResourceSchema).default([]),
+  selectedCandidateId: z.string().trim().min(1).optional()
+}).strict().superRefine((material, ctx) => {
+  if (material.selectedCandidateId && !material.candidates.some(
+    (candidate) => candidate.id === material.selectedCandidateId
+  )) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["selectedCandidateId"],
+      message: "A selected candidate must belong to the same material slot."
+    });
+  }
+  const candidateIds = /* @__PURE__ */ new Set();
+  material.candidates.forEach((candidate, index) => {
+    if (candidateIds.has(candidate.id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["candidates", index, "id"],
+        message: "Candidate ids must be unique within a material slot."
+      });
+    }
+    candidateIds.add(candidate.id);
+    if (candidate.mediaKind !== material.mediaKind) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["candidates", index, "mediaKind"],
+        message: "A candidate must match its material slot media kind."
+      });
+    }
+  });
+});
+var StoryboardViewItemBaseSchema = z.object({
+  id: z.string().trim().min(1),
+  label: z.string().trim().min(1).optional(),
+  description: z.array(StoryboardViewDescriptionPartSchema).default([]),
+  details: z.string().optional(),
+  materials: z.array(StoryboardViewMaterialSchema).default([])
+});
+var StoryboardViewItemSchema = StoryboardViewItemBaseSchema.strict();
+var StoryboardViewShotSchema = StoryboardViewItemBaseSchema.extend({
+  durationSeconds: z.number().finite().positive().optional()
+}).strict();
+var StoryboardViewStateSchema = z.object({
+  keyElements: z.array(StoryboardViewItemSchema),
+  shots: z.array(StoryboardViewShotSchema),
+  audioLayers: z.array(StoryboardViewItemSchema),
+  uncategorized: z.array(StoryboardViewResourceSchema)
+}).strict();
+var ExecutablePluginViewDocumentSchema = z.object({
+  apiVersion: z.literal("clash.view/v1"),
+  kind: z.literal("view"),
+  spec: z.object({
+    definitionId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    name: z.string().trim().min(1),
+    description: z.string().trim().min(1).optional(),
+    presentation: z.object({ type: z.literal("storyboard") }).strict(),
+    initialState: StoryboardViewStateSchema
+  }).strict()
+}).strict();
+var ExecutablePluginViewReferenceSchema = z.object({
+  pluginId: pluginIdSchema,
+  definitionId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  version: z.string().trim().regex(SEMVER_PATTERN),
+  schemaHash: z.string().regex(SHA256_PATTERN)
+}).strict();
 var ExecutablePluginProviderDefinitionSchema = z.object({
   /**
    * What this provider needs to authenticate, and how to draw it.
@@ -19376,6 +19529,12 @@ var ExecutablePluginGeneratorRegistrationSchema = z.object({
   version: z.string().trim().regex(SEMVER_PATTERN),
   schemaHash: z.string().regex(SHA256_PATTERN),
   document: ExecutablePluginGeneratorDocumentSchema
+}).strict();
+var ExecutablePluginViewRegistrationSchema = z.object({
+  pluginId: pluginIdSchema,
+  version: z.string().trim().regex(SEMVER_PATTERN),
+  schemaHash: z.string().regex(SHA256_PATTERN),
+  document: ExecutablePluginViewDocumentSchema
 }).strict();
 var ExecutablePluginBindingSchema = z.object({
   pluginId: pluginIdSchema,
@@ -19883,7 +20042,7 @@ var ExecutablePluginBrokerOperationSchema = z.union([
   z.object({
     kind: z.literal("codex.image.generate"),
     prompt: z.string().trim().min(1).max(2e4),
-    aspectRatio: z.enum(["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"]).default("1:1"),
+    aspectRatio: AspectRatioStringSchema.default("1:1"),
     slot: z.string().trim().min(1),
     references: z.array(
       ExecutablePluginAssetHandleObjectSchema.extend({
@@ -19987,6 +20146,7 @@ var ExecutablePluginContributionsSchema = z.object({
   providers: z.array(ExecutablePluginProviderExportSchema).default([]),
   modelBindings: z.array(ExecutablePluginModelBindingExportSchema).default([]),
   generators: z.array(ExecutablePluginGeneratorExportSchema).default([]),
+  views: z.array(ExecutablePluginViewExportSchema).default([]),
   functions: z.array(ExecutablePluginFunctionExportSchema).default([]),
   hostTools: z.array(z.enum(["codex.imagegen", "speech.transcribe", "media.analyze", "director.stage.capture-frame", "video.enhance"])).default([])
 }).strict();
@@ -20008,6 +20168,7 @@ var ExecutablePluginManifestSchema = z.object({
     ["providers", manifest.contributes.providers],
     ["modelBindings", manifest.contributes.modelBindings],
     ["generators", manifest.contributes.generators],
+    ["views", manifest.contributes.views],
     ["functions", manifest.contributes.functions]
   ]) {
     const ids = /* @__PURE__ */ new Set();
@@ -20037,7 +20198,8 @@ var ExecutablePluginManifestSchema = z.object({
   for (const artifact of [
     ...manifest.contributes.providers,
     ...manifest.contributes.modelBindings,
-    ...manifest.contributes.generators
+    ...manifest.contributes.generators,
+    ...manifest.contributes.views
   ]) {
     if (artifactPaths.has(artifact.path)) {
       ctx.addIssue({
@@ -24924,6 +25086,106 @@ var TimelineLibraryItemSchema = z.discriminatedUnion("category", [
   AdjustmentLibraryItemSchema
 ]);
 
+// ../../packages/shared-types/dist/chunk-YKBFTDJ4.js
+var ActionFamilySchema = z.enum(["generate", "edit", "custom"]);
+var ActionOperationSpecSchema = z.object({
+  id: z.string().min(1),
+  outputKind: AssetKindSchema
+});
+var ActionSpecSchema = z.object({
+  id: z.string().min(1),
+  version: z.string().min(1),
+  name: z.string().min(1),
+  family: ActionFamilySchema,
+  inputKinds: z.array(AssetKindSchema).min(1),
+  operations: z.array(ActionOperationSpecSchema).min(1)
+});
+var ActionInvocationModeSchema = z.enum(["explicit", "implicit"]);
+var ActionSurfaceSchema = z.enum(["canvas", "asset-preview"]);
+var ACTION_INVOCATION_MODE = {
+  Explicit: "explicit",
+  Implicit: "implicit"
+};
+function invocationModeForSurface(surface) {
+  return surface === "canvas" ? ACTION_INVOCATION_MODE.Explicit : ACTION_INVOCATION_MODE.Implicit;
+}
+var ASSET_ACTION_ID = {
+  ImageEditor: "image-editor",
+  VideoClipper: "video-clipper"
+};
+var CropRectSchema = z.object({
+  x: z.number().int().nonnegative(),
+  y: z.number().int().nonnegative(),
+  width: z.number().int().positive(),
+  height: z.number().int().positive()
+});
+var ImageEditParamsSchema = z.object({
+  crop: CropRectSchema.optional(),
+  rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional()
+});
+var VideoClipParamsSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("screenshot"),
+    frameTimeSec: z.number().nonnegative()
+  }),
+  z.object({
+    mode: z.literal("crop"),
+    startSec: z.number().nonnegative(),
+    endSec: z.number().positive()
+  })
+]).superRefine((value, context) => {
+  if (value.mode === "crop" && value.endSec <= value.startSec) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "endSec must be greater than startSec",
+      path: ["endSec"]
+    });
+  }
+});
+var BUILT_IN_ASSET_ACTION_SPECS = {
+  [ASSET_ACTION_ID.ImageEditor]: ActionSpecSchema.parse({
+    id: ASSET_ACTION_ID.ImageEditor,
+    version: "1",
+    name: "Image Editor",
+    family: "edit",
+    inputKinds: ["image"],
+    operations: [{ id: "transform", outputKind: "image" }]
+  }),
+  [ASSET_ACTION_ID.VideoClipper]: ActionSpecSchema.parse({
+    id: ASSET_ACTION_ID.VideoClipper,
+    version: "1",
+    name: "Video Clipper",
+    family: "edit",
+    inputKinds: ["video"],
+    operations: [
+      { id: "screenshot", outputKind: "image" },
+      { id: "crop", outputKind: "video" }
+    ]
+  })
+};
+var InvocationBaseSchema = z.object({
+  projectId: z.string().min(1),
+  mode: ActionInvocationModeSchema,
+  surface: ActionSurfaceSchema
+});
+var ImageEditActionInvocationSchema = InvocationBaseSchema.extend({
+  actionId: z.literal(ASSET_ACTION_ID.ImageEditor),
+  source: z.object({ assetId: z.string().min(1), kind: z.literal("image") }),
+  params: ImageEditParamsSchema
+});
+var VideoEditActionInvocationSchema = InvocationBaseSchema.extend({
+  actionId: z.literal(ASSET_ACTION_ID.VideoClipper),
+  source: z.object({ assetId: z.string().min(1), kind: z.literal("video") }),
+  params: VideoClipParamsSchema
+});
+var AssetEditActionInvocationSchema = z.discriminatedUnion("actionId", [
+  ImageEditActionInvocationSchema,
+  VideoEditActionInvocationSchema
+]).refine((value) => value.mode === invocationModeForSurface(value.surface), {
+  message: "Invocation mode must match its surface",
+  path: ["mode"]
+});
+
 // ../../packages/shared-types/dist/index.js
 import { LoroMap as LoroMap3 } from "loro-crdt";
 import { LoroMap } from "loro-crdt";
@@ -25362,110 +25624,6 @@ var MEDIA_REFERENCE_PLURAL_NOUN = Object.fromEntries(
 var MEDIA_REFERENCE_COUNT_NOUN = Object.fromEntries(
   MEDIA_REFERENCE_FIELDS.map((field3) => [field3.modality, field3.countNoun])
 );
-var ActionFamilySchema = z.enum(["generate", "edit", "custom"]);
-var ActionExecutorSchema = z.enum([
-  "model",
-  "client-render",
-  "server-transform",
-  "runtime"
-]);
-var ActionOperationSpecSchema = z.object({
-  id: z.string().min(1),
-  executor: ActionExecutorSchema,
-  outputKind: AssetKindSchema
-});
-var ActionSpecSchema = z.object({
-  id: z.string().min(1),
-  version: z.string().min(1),
-  name: z.string().min(1),
-  family: ActionFamilySchema,
-  inputKinds: z.array(AssetKindSchema).min(1),
-  operations: z.array(ActionOperationSpecSchema).min(1)
-});
-var ActionInvocationModeSchema = z.enum(["explicit", "implicit"]);
-var ActionSurfaceSchema = z.enum(["canvas", "asset-preview"]);
-var ACTION_INVOCATION_MODE = {
-  Explicit: "explicit",
-  Implicit: "implicit"
-};
-function invocationModeForSurface(surface) {
-  return surface === "canvas" ? ACTION_INVOCATION_MODE.Explicit : ACTION_INVOCATION_MODE.Implicit;
-}
-var ASSET_ACTION_ID = {
-  ImageEditor: "image-editor",
-  VideoClipper: "video-clipper"
-};
-var CropRectSchema = z.object({
-  x: z.number().int().nonnegative(),
-  y: z.number().int().nonnegative(),
-  width: z.number().int().positive(),
-  height: z.number().int().positive()
-});
-var ImageEditParamsSchema = z.object({
-  crop: CropRectSchema.optional(),
-  rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional()
-});
-var VideoClipParamsSchema = z.discriminatedUnion("mode", [
-  z.object({ mode: z.literal("screenshot"), frameTimeSec: z.number().nonnegative() }),
-  z.object({
-    mode: z.literal("crop"),
-    startSec: z.number().nonnegative(),
-    endSec: z.number().positive()
-  })
-]).superRefine((value, context) => {
-  if (value.mode === "crop" && value.endSec <= value.startSec) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "endSec must be greater than startSec",
-      path: ["endSec"]
-    });
-  }
-});
-var BUILT_IN_ASSET_ACTION_SPECS = {
-  [ASSET_ACTION_ID.ImageEditor]: ActionSpecSchema.parse({
-    id: ASSET_ACTION_ID.ImageEditor,
-    version: "1",
-    name: "Image Editor",
-    family: "edit",
-    inputKinds: ["image"],
-    operations: [
-      { id: "transform", executor: "client-render", outputKind: "image" }
-    ]
-  }),
-  [ASSET_ACTION_ID.VideoClipper]: ActionSpecSchema.parse({
-    id: ASSET_ACTION_ID.VideoClipper,
-    version: "1",
-    name: "Video Clipper",
-    family: "edit",
-    inputKinds: ["video"],
-    operations: [
-      { id: "screenshot", executor: "client-render", outputKind: "image" },
-      { id: "crop", executor: "server-transform", outputKind: "video" }
-    ]
-  })
-};
-var InvocationBaseSchema = z.object({
-  projectId: z.string().min(1),
-  mode: ActionInvocationModeSchema,
-  surface: ActionSurfaceSchema
-});
-var ImageEditActionInvocationSchema = InvocationBaseSchema.extend({
-  actionId: z.literal(ASSET_ACTION_ID.ImageEditor),
-  source: z.object({ assetId: z.string().min(1), kind: z.literal("image") }),
-  params: ImageEditParamsSchema
-});
-var VideoEditActionInvocationSchema = InvocationBaseSchema.extend({
-  actionId: z.literal(ASSET_ACTION_ID.VideoClipper),
-  source: z.object({ assetId: z.string().min(1), kind: z.literal("video") }),
-  params: VideoClipParamsSchema
-});
-var AssetEditActionInvocationSchema = z.discriminatedUnion("actionId", [
-  ImageEditActionInvocationSchema,
-  VideoEditActionInvocationSchema
-]).refine((value) => value.mode === invocationModeForSurface(value.surface), {
-  message: "Invocation mode must match its surface",
-  path: ["mode"]
-});
 var PositionSchema2 = z.object({
   x: z.number(),
   y: z.number()
@@ -27118,6 +27276,9 @@ var addCommand = z.object({
     "text",
     "group",
     "remotion",
+    "image",
+    "video",
+    "audio",
     "image_gen",
     "video_gen",
     "audio_gen",
@@ -27130,6 +27291,7 @@ var addCommand = z.object({
   parentId: id.optional(),
   modelId: id.optional(),
   actionId: id.optional(),
+  assetId: id.optional(),
   refs: z.array(id).optional(),
   params: z.record(id, primitiveParameter).optional(),
   actorClientType,
@@ -27585,6 +27747,33 @@ var MODEL_UPSTREAM_ROUTES = [
   ...MOCK_DECLARED_ROUTES,
   ...MOCK_ROUTES
 ];
+var ProjectCanvasPreviewNodeSchema = z.object({
+  id: z.string().trim().min(1),
+  type: z.string().trim().min(1),
+  x: z.number().finite(),
+  y: z.number().finite(),
+  width: z.number().finite().positive(),
+  height: z.number().finite().positive(),
+  parentId: z.string().trim().min(1).optional(),
+  assetId: z.string().trim().min(1).optional(),
+  label: z.string().trim().min(1).optional()
+}).strict();
+var ProjectCanvasPreviewSchema = z.object({
+  canvasId: z.string().trim().min(1),
+  bounds: z.object({
+    x: z.number().finite(),
+    y: z.number().finite(),
+    width: z.number().finite().nonnegative(),
+    height: z.number().finite().nonnegative()
+  }).strict().nullable(),
+  nodes: z.array(ProjectCanvasPreviewNodeSchema)
+}).strict();
+var ProjectCanvasThumbnailSchema = z.object({
+  url: z.string().url(),
+  revision: z.string().regex(/^[a-f0-9]{64}$/u),
+  width: z.number().int().positive(),
+  height: z.number().int().positive()
+}).strict();
 var CopilotProjectAssetReferenceSchema = z.object({
   projectAssetId: z.string().trim().min(1),
   kind: AssetKindSchema,

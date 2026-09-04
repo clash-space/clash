@@ -119,6 +119,63 @@ describe("asset node preview navigation", () => {
     },
   );
 
+  it.each([
+    ["image", ImageNode, "Generating image asset", "Building image"],
+    ["video", VideoNode, "Generating video asset", "Building video"],
+  ] as const)(
+    "announces active %s generation as an asset-building status",
+    (kind, Component, accessibleName, visibleLabel) => {
+      render(
+        <Component
+          {...baseNodeProps}
+          id={`${kind}-generating-node`}
+          type={kind}
+          width={320}
+          height={180}
+          data={{
+            label: `Generating ${kind}`,
+            status: "pending",
+          }}
+        />,
+      );
+
+      expect(
+        screen.getByRole("status", { name: accessibleName }),
+      ).toHaveTextContent(visibleLabel);
+    },
+  );
+
+  it.each([
+    ["image", ImageNode, "Generating image asset"],
+    ["video", VideoNode, "Generating video asset"],
+  ] as const)(
+    "renders dedicated %s generation motion without shared artwork",
+    (kind, Component, accessibleName) => {
+      render(
+        <Component
+          {...baseNodeProps}
+          id={`${kind}-reference-generation-node`}
+          type={kind}
+          width={320}
+          height={180}
+          data={{
+            label: `Generating ${kind}`,
+            status: "pending",
+          }}
+        />,
+      );
+
+      const status = screen.getByRole("status", { name: accessibleName });
+      expect(status.querySelector('[data-ui="brand-asset"]')).toBeNull();
+      expect(
+        status.querySelector('[data-slot="clash-agent-avatar"]'),
+      ).toHaveAttribute("data-status", "working");
+      expect(
+        status.querySelectorAll(`[data-generation-asset="${kind}"]`),
+      ).toHaveLength(3);
+    },
+  );
+
   it("keeps a single click on an audio node from opening the enlarged player", () => {
     const { container } = render(
       <AudioNode

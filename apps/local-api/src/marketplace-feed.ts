@@ -1,23 +1,23 @@
 export type MarketplaceFeedItem = Record<string, unknown> & { id: string };
 
 export const FEATURED_MARKETPLACE_PLUGIN_IDS = [
-  "codex-imagegen",
+  "clash.storyboard",
+  "clash.codex-imagegen",
   "clash.video.sd25-pe",
-  "clash.openai.define-goal",
-  "clash.openai.cli-creator",
 ] as const;
 
 export function selectMarketplaceFeed({
-  actions,
-  skills,
+  plugins,
+  skills = [],
   featuredPluginIds = FEATURED_MARKETPLACE_PLUGIN_IDS,
 }: {
-  actions: readonly MarketplaceFeedItem[];
-  skills: readonly MarketplaceFeedItem[];
+  actions?: readonly MarketplaceFeedItem[];
+  plugins: readonly MarketplaceFeedItem[];
+  skills?: readonly MarketplaceFeedItem[];
   featuredPluginIds?: readonly string[];
 }): MarketplaceFeedItem[] {
   const catalog = new Map(
-    [...actions, ...skills].map((plugin) => [plugin.id, plugin]),
+    [...plugins, ...skills].map((plugin) => [plugin.id, plugin]),
   );
 
   return featuredPluginIds.flatMap((pluginId) => {

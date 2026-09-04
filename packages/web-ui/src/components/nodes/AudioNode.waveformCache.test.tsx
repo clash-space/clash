@@ -15,6 +15,7 @@ const scope = vi.hoisted(() => ({
   projectId: "project-a",
   assetId: "shared-asset-id",
   decodedDuration: 1,
+  waveformUrl: undefined as string | undefined,
 }));
 
 vi.mock("@xyflow/react", () => ({
@@ -36,6 +37,7 @@ vi.mock("@clash/web-ui/lib/hooks/useAsset", () => ({
     kind: "audio",
     status: "ready",
     url: `https://media.clash.test/${scope.assetId}.wav`,
+    waveformUrl: scope.waveformUrl,
     metadata: {},
     lifecycle: { state: "active" },
   }),
@@ -64,6 +66,7 @@ afterEach(() => {
   scope.projectId = "project-a";
   scope.assetId = "shared-asset-id";
   scope.decodedDuration = 1;
+  scope.waveformUrl = undefined;
 });
 
 function renderAudioNode() {
@@ -82,6 +85,41 @@ function renderAudioNode() {
 }
 
 describe("AudioNode waveform cache authority", () => {
+  it("uses the Host waveform representation without downloading and decoding the audio", async () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    scope.assetId = "host-waveform-asset";
+    scope.waveformUrl =
+      "https://media.clash.test/host-waveform-asset/waveform";
+    const fetchRepresentation = vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toBe(scope.waveformUrl);
+      return Response.json({
+        recipe: "audio-waveform/v1:test",
+        peaks: new Array(128).fill(0.5),
+        durationMs: 2_000,
+      });
+    });
+    vi.stubGlobal("fetch", fetchRepresentation);
+    const AudioContext = vi.fn(() => {
+      throw new Error("AudioContext must not decode a ready representation");
+    });
+    vi.stubGlobal("AudioContext", AudioContext);
+
+    const rendered = renderAudioNode();
+    await waitFor(() => expect(fetchRepresentation).toHaveBeenCalledTimes(1));
+
+    fireEvent.doubleClick(rendered.container.querySelector(".cursor-pointer")!);
+    await waitFor(() => expect(screen.getByText("0:02")).toBeTruthy());
+    expect(fetchRepresentation).toHaveBeenCalledTimes(1);
+    expect(AudioContext).not.toHaveBeenCalled();
+  });
+
   it("does not share decoded waveform facts across Projects with the same Asset id", async () => {
     vi.stubGlobal(
       "ResizeObserver",

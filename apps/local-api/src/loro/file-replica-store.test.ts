@@ -200,6 +200,74 @@ describe("FileReplicaStore", () => {
     expect(Array.from(persistedLog.subarray(4))).toEqual(Array.from(update));
   });
 
+  it("persists the derived Main canvas preview as a replaceable cache", async () => {
+    const store = new FileReplicaStore(rootDir);
+    const projectId = "project/preview cache";
+    const first = {
+      sourceVersion: "version-1",
+      generatedAt: "2026-08-27T00:00:00.000Z",
+      preview: {
+        canvasId: "main",
+        bounds: { x: -100, y: 50, width: 600, height: 400 },
+        nodes: [
+          {
+            id: "hero",
+            type: "image",
+            x: 100,
+            y: 200,
+            width: 400,
+            height: 225,
+            assetId: "asset-hero",
+          },
+        ],
+      },
+    };
+
+    await expect(store.readCanvasPreview(projectId)).resolves.toBeNull();
+    await store.writeCanvasPreview(projectId, first);
+    await expect(store.readCanvasPreview(projectId)).resolves.toEqual(first);
+
+    const second = {
+      sourceVersion: "version-2",
+      generatedAt: "2026-08-27T00:01:00.000Z",
+      preview: {
+        canvasId: "main",
+        bounds: null,
+        nodes: [],
+      },
+    };
+    await store.writeCanvasPreview(projectId, second);
+    await expect(store.readCanvasPreview(projectId)).resolves.toEqual(second);
+  });
+
+  it("atomically replaces the Main canvas thumbnail instead of retaining revisions", async () => {
+    const store = new FileReplicaStore(rootDir);
+    const projectId = "project/thumbnail cache";
+    const firstRevision = "a".repeat(64);
+    const secondRevision = "b".repeat(64);
+
+    await store.writeCanvasThumbnail(
+      projectId,
+      firstRevision,
+      new Uint8Array([1, 2, 3]),
+    );
+    await store.writeCanvasThumbnail(
+      projectId,
+      secondRevision,
+      new Uint8Array([4, 5, 6]),
+    );
+
+    await expect(
+      store.readCanvasThumbnail(projectId, firstRevision),
+    ).resolves.toBeNull();
+    await expect(
+      store.readCanvasThumbnail(projectId, secondRevision),
+    ).resolves.toEqual(new Uint8Array([4, 5, 6]));
+    await expect(
+      readdir(join(rootDir, encodeURIComponent(projectId), "derived")),
+    ).resolves.toEqual(["main-canvas-thumbnail.cache"]);
+  });
+
   it("recovers a LoroDoc from snapshot plus update log in append order", async () => {
     const store = new FileReplicaStore(rootDir);
     const projectId = "project/recover";

@@ -195,9 +195,28 @@ export function createCanvasProjectHostGateway(
           const nodeId = requiredString(input, "nodeId");
           const receipt = await requireNodeReceipt(input, nodeId);
           const content = await resolvedContent(input, resolved.workspaceRoot);
+          if (input.viewState !== undefined && input.viewStateFile !== undefined) {
+            throw new Error("viewState and viewStateFile are mutually exclusive");
+          }
+          let viewState = input.viewState;
+          if (input.viewStateFile !== undefined) {
+            if (!resolved.workspaceRoot) {
+              throw new Error("viewStateFile requires a cwd linked to a Clash workspace");
+            }
+            const encoded = await resolveWorkspaceTextInput({
+              workspaceRoot: resolved.workspaceRoot,
+              filePath: input.viewStateFile,
+            });
+            try {
+              viewState = JSON.parse(encoded ?? "");
+            } catch (error) {
+              throw new Error(`Invalid View state JSON: ${(error as Error).message}`);
+            }
+          }
           const data = {
             ...(input.data ?? {}),
             ...(input.assetId?.trim() ? { assetId: input.assetId.trim() } : {}),
+            ...(viewState === undefined ? {} : { state: viewState }),
           };
           const value = await request(input, {
             action: "update",

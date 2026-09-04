@@ -30,6 +30,8 @@
     "src/metadata-attachments.ts": "Transitional legacy typed-metadata address for Project Assets and immutable Action revisions; it is not the native Document Asset attachment authority.",
     "src/action-asset-bindings.ts": "Project Loro authority for semantic Action media bindings, direct draft-input replacement, reverse reference checks, explicit unbind, and atomic trash-if-unreferenced.",
     "src/canvas-action-asset-inputs.ts": "Single compiler from editable Canvas node, prompt, and edge projections to semantic draft Action Asset input slots; shared by live writes and one-way legacy materialization.",
+    "src/trajectory-action.ts": "Transport-independent compiler from a selected Canvas producing trajectory to an Action boundary with source/text input node references, step node references, output node references, and non-mutating invocation input rebinding.",
+    "src/project-canvas-preview.ts": "Read-only Main canvas geometry projection for persisted project-card previews; nested node positions use the shared layout coordinate rules.",
     "src/timeline-persistence.ts": "Storage-free Project Timeline write boundary: strips Host projections when Project Asset identity exists and rejects URL/path-only media.",
     "src/timeline-mask.ts": "Implementation-side clip-mask annotations that generate validation, defaults, UI bindings, runtime constants, DSL metadata, examples, and docs.",
     "src/timeline-keyframes.ts": "Item-local transform and mask animation channels plus structural validation.",

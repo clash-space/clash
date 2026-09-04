@@ -16,11 +16,22 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { LoroDoc } from "loro-crdt";
+import { ReplicaEngine } from "@clash/replica";
+import { LoroStateAdapter } from "@clash/replica/loro";
+import {
+  LoroProtocolServerSession,
+  createLoroProtocolBatchId,
+  encodeLoroProtocolUpdateFrames,
+} from "@clash/replica/loro-protocol";
 
 import { log } from "../logger";
 import type { Env } from "../config";
-import { loadDocState, appendUpdate, compactToSnapshot, wipeDocState } from "../loro/storage";
-import { processPendingNodes, recoverOrphanedTasks } from "../loro/NodeProcessor";
+import { CHECKPOINT_REQUESTED_SEQ_KEY, wipeDocState } from "../loro/storage";
+import { createDurableObjectReplicaPorts } from "../loro/replica-ports";
+import {
+  processPendingNodes,
+  recoverOrphanedTasks,
+} from "../loro/NodeProcessor";
 import { pollNodeTasks } from "../loro/TaskPolling";
 import { updateNodeData, appendNodeLog } from "../loro/NodeUpdater";
 import { authenticateRequest } from "../loro/auth";
@@ -57,13 +68,22 @@ const AWARENESS_STALE_MS = 8_000;
 type LoroImportQueueItem = {
   sender?: WebSocket;
   data: Uint8Array;
+  eventId?: string;
+  broadcast?: boolean;
   runRealtimeEffects: boolean;
   resolve?: () => void;
   reject?: (error: unknown) => void;
 };
 
+type ProjectReplicaEngine = ReplicaEngine<LoroDoc, Uint8Array, Uint8Array>;
+
+type ProjectClientInfo = ClientInfo & {
+  syncProtocol?: "loro-v1";
+};
+
 export class ProjectRoom extends DurableObject<Env> {
   private doc: LoroDoc = new LoroDoc();
+  private replica: ProjectReplicaEngine | null = null;
   private projectId = "";
   private initPromise: Promise<void> | null = null;
   private messageQueue: LoroImportQueueItem[] = [];
@@ -80,7 +100,8 @@ export class ProjectRoom extends DurableObject<Env> {
   private unsubscribeLocalUpdates: (() => void) | null = null;
 
   /** Connected client identity map for presence tracking. */
-  private clients: Map<WebSocket, ClientInfo> = new Map();
+  private clients: Map<WebSocket, ProjectClientInfo> = new Map();
+  private protocolSessions = new Map<WebSocket, LoroProtocolServerSession>();
 
   /** Throttle activity broadcasts: nodeId → last broadcast timestamp */
   private activityThrottle: Map<string, number> = new Map();
@@ -123,6 +144,10 @@ export class ProjectRoom extends DurableObject<Env> {
 
   private async handleWebSocketUpgrade(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    const syncProtocol =
+      url.searchParams.get("protocol") === "loro-v1"
+        ? ("loro-v1" as const)
+        : undefined;
 
     // Extract projectId from path: /sync/:projectId
     const pathParts = url.pathname.split("/").filter(Boolean);
@@ -145,7 +170,11 @@ export class ProjectRoom extends DurableObject<Env> {
     let userAvatar: string | undefined;
     if (!isInternal) {
       try {
-        const authResult = await authenticateRequest(request, this.env, projectId);
+        const authResult = await authenticateRequest(
+          request,
+          this.env,
+          projectId,
+        );
         userId = authResult.userId;
         userName = authResult.userName ?? "User";
         userAvatar = authResult.userAvatar;
@@ -173,7 +202,9 @@ export class ProjectRoom extends DurableObject<Env> {
 
     // Verify project ID matches
     if (this.projectId !== projectId) {
-      log.error(`Project ID mismatch: expected ${this.projectId}, got ${projectId}`);
+      log.error(
+        `Project ID mismatch: expected ${this.projectId}, got ${projectId}`,
+      );
       return new Response("Project ID mismatch", { status: 400 });
     }
 
@@ -183,23 +214,32 @@ export class ProjectRoom extends DurableObject<Env> {
     this.ctx.acceptWebSocket(server);
 
     // Register client for presence — persist via serializeAttachment so it survives hibernation
-    const clientInfo: ClientInfo = {
+    const clientInfo: ProjectClientInfo = {
       id: crypto.randomUUID(),
       userId,
       clientType,
       name: userName,
       avatar: userAvatar,
       connectedAt: Date.now(),
+      ...(syncProtocol ? { syncProtocol } : {}),
     };
     server.serializeAttachment(clientInfo);
     this.clients.set(server, clientInfo);
 
-    // Send initial Loro state to new client
-    try {
-      const snapshot = this.doc.export({ mode: "snapshot" });
-      server.send(snapshot);
-    } catch (error) {
-      log.error("Failed to send initial state:", error);
+    if (syncProtocol) {
+      this.protocolSessions.set(
+        server,
+        this.createProtocolSession(server, false),
+      );
+    } else {
+      // Legacy clients receive an eager raw snapshot. Protocol clients first
+      // send JoinRequest with their VersionVector and receive only the delta.
+      try {
+        const snapshot = this.doc.export({ mode: "snapshot" });
+        server.send(snapshot);
+      } catch (error) {
+        log.error("Failed to send initial state:", error);
+      }
     }
 
     // Broadcast updated presence to all clients
@@ -220,17 +260,29 @@ export class ProjectRoom extends DurableObject<Env> {
     // Persist projectId so alarm() can recover after hibernation.
     await this.ctx.storage.put("projectId", projectId);
 
-    // Load via update-log: snapshot + replay all updates since.
-    const state = await loadDocState(this.ctx.storage);
-    this.doc = state.doc;
-    this.nextSeq = state.nextSeq;
-    this.updatesSinceCompact = state.nextSeq - state.snapshotSeq;
+    const ports = createDurableObjectReplicaPorts(this.ctx.storage, {
+      schedule: (scheduledTime) => this.scheduleAlarmAtEarliest(scheduledTime),
+    });
+    const persistedCheckpoint = await ports.checkpoints.load();
+    this.replica = await ReplicaEngine.open({
+      adapter: new LoroStateAdapter(),
+      eventLog: ports.eventLog,
+      checkpoints: ports.checkpoints,
+      scheduler: ports.scheduler,
+      checkpointPolicy: ({ eventsSinceCheckpoint }) =>
+        eventsSinceCheckpoint >= UPDATES_PER_COMPACT,
+    });
+    this.doc = this.replica.read((doc) => doc);
+    this.nextSeq = this.replica.cursor;
+    this.updatesSinceCompact =
+      this.replica.cursor - (persistedCheckpoint?.cursor ?? 0);
 
     const repairVersion = this.doc.version();
     const graphRepair = reconcileCanvasGraph(this.doc);
     const timelineRepair = reconcileProjectTimelineOwnership(this.doc);
     const directorRepair = reconcileProjectDirectorStageOwnership(this.doc);
-    const workspaceRepaired = canvasGraphReconciliationChanged(graphRepair) ||
+    const workspaceRepaired =
+      canvasGraphReconciliationChanged(graphRepair) ||
       timelineRepair.removedActionNodeIds.length > 0 ||
       timelineRepair.detachedTimelineIds.length > 0 ||
       directorRepair.removedActionNodeIds.length > 0 ||
@@ -251,7 +303,7 @@ export class ProjectRoom extends DurableObject<Env> {
     if (enableTaskPolling) {
       // Schedule first alarm for task polling. Persistence is event-driven now,
       // not alarm-driven — the alarm is only for polling external task state.
-      await this.ctx.storage.setAlarm(Date.now() + TASK_POLL_INTERVAL_MS);
+      await this.scheduleAlarmAtEarliest(Date.now() + TASK_POLL_INTERVAL_MS);
 
       // Process any pending nodes and trigger polling.
       await this.taskPoll();
@@ -267,48 +319,137 @@ export class ProjectRoom extends DurableObject<Env> {
   private installLocalUpdatePersistence(): void {
     this.unsubscribeLocalUpdates?.();
     this.unsubscribeLocalUpdates = this.doc.subscribeLocalUpdates((update) => {
-      void this.persistAndMaybeCompact(update);
+      void this.persistAndMaybeCompact(update).catch(() => {
+        // persistAndMaybeCompact already logs with room + sequence context.
+        // Keep the rejected promise observed for locally-created commits.
+      });
     });
   }
 
-  private async persistAndMaybeCompact(update: Uint8Array): Promise<void> {
+  private async persistAndMaybeCompact(
+    update: Uint8Array,
+    eventId = crypto.randomUUID(),
+  ): Promise<void> {
     const tag = `[room proj=${this.projectId.slice(-6)}]`;
+    const seq = this.nextSeq;
     try {
-      const seq = this.nextSeq;
-      this.nextSeq = seq + 1;
-      await appendUpdate(this.ctx.storage, seq, update);
-      this.updatesSinceCompact++;
+      if (!this.replica) throw new Error("Project replica is not initialized");
+      const result = await this.replica.submit({ id: eventId, update });
+      this.nextSeq = this.replica.cursor;
+      if (result.appended) this.updatesSinceCompact++;
       if (
-        !this.compactionInFlight &&
-        this.updatesSinceCompact >= UPDATES_PER_COMPACT
-      ) {
-        this.compactionInFlight = true;
-        // Run after the current write returns so we don't block the caller.
-        queueMicrotask(() => {
-          void this.runCompaction(tag);
-        });
-      } else if (
         this.compactionInFlight &&
         this.updatesSinceCompact >= UPDATES_HARD_COMPACT_THRESHOLD
       ) {
-        log.warn(`${tag} update log past hard threshold (${this.updatesSinceCompact}); compaction stuck?`);
+        log.warn(
+          `${tag} update log past hard threshold (${this.updatesSinceCompact}); compaction stuck?`,
+        );
       }
     } catch (e) {
-      log.error(`${tag} appendUpdate seq=${this.nextSeq - 1} failed:`, e);
+      log.error(`${tag} appendUpdate seq=${seq} failed:`, e);
+      throw e;
     }
   }
 
   private async runCompaction(tag: string): Promise<void> {
+    if (this.compactionInFlight) return;
+    this.compactionInFlight = true;
     try {
-      const compactionSeq = this.nextSeq;
+      if (!this.replica) throw new Error("Project replica is not initialized");
       const t0 = Date.now();
-      await compactToSnapshot(this.ctx.storage, this.doc, compactionSeq);
-      this.updatesSinceCompact = this.nextSeq - compactionSeq;
-      log.info(`${tag} compacted at seq ${compactionSeq} in ${Date.now() - t0}ms`);
+      const checkpoint = await this.replica.checkpoint();
+      this.nextSeq = this.replica.cursor;
+      this.updatesSinceCompact = this.nextSeq - checkpoint.cursor;
+      const requestedCursor = await this.ctx.storage.get<number>(
+        CHECKPOINT_REQUESTED_SEQ_KEY,
+      );
+      if (requestedCursor != null && requestedCursor <= checkpoint.cursor) {
+        await this.ctx.storage.delete(CHECKPOINT_REQUESTED_SEQ_KEY);
+      } else if (requestedCursor != null) {
+        await this.scheduleAlarmAtEarliest(Date.now());
+      }
+      log.info(
+        `${tag} compacted at seq ${checkpoint.cursor} in ${Date.now() - t0}ms`,
+      );
     } catch (e) {
       log.error(`${tag} compaction failed:`, e);
+      throw e;
     } finally {
       this.compactionInFlight = false;
+    }
+  }
+
+  private async scheduleAlarmAtEarliest(scheduledTime: number): Promise<void> {
+    const current = await this.ctx.storage.getAlarm();
+    if (current === null || scheduledTime < current) {
+      await this.ctx.storage.setAlarm(scheduledTime);
+    }
+  }
+
+  private clientInfoFor(ws: WebSocket): ProjectClientInfo | undefined {
+    const known = this.clients.get(ws);
+    if (known) return known;
+    try {
+      const attachment = ws.deserializeAttachment() as ProjectClientInfo | null;
+      if (attachment) this.clients.set(ws, attachment);
+      return attachment ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private isProtocolClient(ws: WebSocket): boolean {
+    return this.clientInfoFor(ws)?.syncProtocol === "loro-v1";
+  }
+
+  private createProtocolSession(
+    ws: WebSocket,
+    assumeJoined: boolean,
+  ): LoroProtocolServerSession {
+    return new LoroProtocolServerSession({
+      roomId: this.projectId,
+      doc: () => this.doc,
+      assumeJoined,
+      send: (frame) => ws.send(frame),
+      commit: async (batchId, updates) => {
+        for (const [index, update] of updates.entries()) {
+          await this.enqueueLoroImport({
+            sender: ws,
+            data: update,
+            eventId: `protocol:${batchId}:${index}`,
+            broadcast: false,
+            runRealtimeEffects: true,
+          });
+        }
+      },
+      broadcast: (batchId, updates) => {
+        this.broadcastCommittedBatch(batchId, updates, ws);
+      },
+    });
+  }
+
+  private broadcastCommittedBatch(
+    batchId: `0x${string}`,
+    updates: Uint8Array[],
+    sender?: WebSocket,
+  ): void {
+    for (const ws of this.ctx.getWebSockets()) {
+      if (ws === sender) continue;
+      try {
+        if (this.isProtocolClient(ws)) {
+          for (const frame of encodeLoroProtocolUpdateFrames(
+            this.projectId,
+            batchId,
+            updates,
+          )) {
+            ws.send(frame);
+          }
+        } else {
+          for (const update of updates) ws.send(update);
+        }
+      } catch (error) {
+        log.error("Failed to broadcast committed replica event:", error);
+      }
     }
   }
 
@@ -324,7 +465,8 @@ export class ProjectRoom extends DurableObject<Env> {
 
     for (const ws of liveWs) {
       if (!knownWs.has(ws)) {
-        const attachment = ws.deserializeAttachment() as ClientInfo | null;
+        const attachment =
+          ws.deserializeAttachment() as ProjectClientInfo | null;
         if (attachment) {
           this.clients.set(ws, attachment);
         }
@@ -478,7 +620,10 @@ export class ProjectRoom extends DurableObject<Env> {
         if (peerWs === ws) continue;
         users.push(peer);
       }
-      const msg: AwarenessBroadcastMessage = { type: "awareness.broadcast", users };
+      const msg: AwarenessBroadcastMessage = {
+        type: "awareness.broadcast",
+        users,
+      };
       try {
         ws.send(JSON.stringify(msg));
       } catch {
@@ -502,7 +647,10 @@ export class ProjectRoom extends DurableObject<Env> {
 
   // ─── Hibernation WebSocket Handlers ──────────────────────────
 
-  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+  async webSocketMessage(
+    ws: WebSocket,
+    message: string | ArrayBuffer,
+  ): Promise<void> {
     // After hibernation, in-memory state is lost — re-initialize if needed
     if (!this.projectId) {
       const storedId = await this.ctx.storage.get<string>("projectId");
@@ -515,6 +663,13 @@ export class ProjectRoom extends DurableObject<Env> {
     // Handle binary messages (Loro CRDT updates)
     if (message instanceof ArrayBuffer) {
       const updates = new Uint8Array(message);
+      if (this.isProtocolClient(ws)) {
+        const session =
+          this.protocolSessions.get(ws) ?? this.createProtocolSession(ws, true);
+        this.protocolSessions.set(ws, session);
+        await session.receive(updates);
+        return;
+      }
       void this.enqueueLoroImport({
         sender: ws,
         data: updates,
@@ -527,6 +682,11 @@ export class ProjectRoom extends DurableObject<Env> {
 
     // Handle collaboration sideband messages.
     if (typeof message === "string") {
+      if (message === "ping") {
+        ws.send("pong");
+        return;
+      }
+      if (message === "pong") return;
       try {
         const parsed = JSON.parse(message);
         await this.handleTextMessage(ws, parsed);
@@ -538,7 +698,10 @@ export class ProjectRoom extends DurableObject<Env> {
   }
 
   /** Handle JSON collaboration sideband messages from clients. */
-  private async handleTextMessage(sender: WebSocket, msg: Record<string, any>): Promise<void> {
+  private async handleTextMessage(
+    sender: WebSocket,
+    msg: Record<string, any>,
+  ): Promise<void> {
     if (this.initPromise) await this.initPromise;
 
     if (msg.type === "awareness.update") {
@@ -556,7 +719,9 @@ export class ProjectRoom extends DurableObject<Env> {
           : undefined;
 
       const selectedNodeIds = Array.isArray(msg.selectedNodeIds)
-        ? msg.selectedNodeIds.filter((id: unknown): id is string => typeof id === "string")
+        ? msg.selectedNodeIds.filter(
+            (id: unknown): id is string => typeof id === "string",
+          )
         : [];
 
       this.awareness.set(sender, {
@@ -594,10 +759,12 @@ export class ProjectRoom extends DurableObject<Env> {
       // Local agent writing understanding results to a node.
       // Each key in `understanding` is overwritten independently (no merge).
       const { nodeId, understanding } = msg;
-      if (!nodeId || !understanding || typeof understanding !== "object") return;
+      if (!nodeId || !understanding || typeof understanding !== "object")
+        return;
 
       const nodesMap = this.doc.getMap("nodes");
-      const existingNode = nodesMap.get(nodeId) as Record<string, any> | undefined;
+      const existingNode = nodesMap.get(nodeId) as
+        Record<string, any> | undefined;
       if (!existingNode) return;
 
       const existingData = existingNode.data || {};
@@ -617,12 +784,18 @@ export class ProjectRoom extends DurableObject<Env> {
       const update = this.doc.export({ mode: "update", from: versionBefore });
       this.broadcastBinary(update);
 
-      log.info("Understanding written", { nodeId, keys: Object.keys(understanding) });
+      log.info("Understanding written", {
+        nodeId,
+        keys: Object.keys(understanding),
+      });
     }
-
   }
 
-  async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+  async webSocketClose(
+    ws: WebSocket,
+    code: number,
+    reason: string,
+  ): Promise<void> {
     // Wrap top-level: previously a sync throw here surfaced as
     // outcome=exception with empty exceptions[] in wrangler tail (CF runtime
     // swallows the details), so we couldn't tell what was failing. Catch +
@@ -630,20 +803,31 @@ export class ProjectRoom extends DurableObject<Env> {
     try {
       this.clients.delete(ws);
       this.awareness.delete(ws);
+      this.protocolSessions.get(ws)?.destroy();
+      this.protocolSessions.delete(ws);
     } catch (e) {
-      log.error(`[room proj=${this.projectId.slice(-6)}] webSocketClose: clients.delete threw:`, e);
+      log.error(
+        `[room proj=${this.projectId.slice(-6)}] webSocketClose: clients.delete threw:`,
+        e,
+      );
     }
     try {
       this.broadcastPresence();
     } catch (e) {
-      log.error(`[room proj=${this.projectId.slice(-6)}] webSocketClose: broadcastPresence threw:`, e);
+      log.error(
+        `[room proj=${this.projectId.slice(-6)}] webSocketClose: broadcastPresence threw:`,
+        e,
+      );
     }
     try {
       // Fan out one extra awareness frame so peers see the cursor disappear
       // immediately rather than waiting for the 8-second staleness sweep.
       this.flushAwarenessBroadcast();
     } catch (e) {
-      log.error(`[room proj=${this.projectId.slice(-6)}] webSocketClose: awareness flush threw:`, e);
+      log.error(
+        `[room proj=${this.projectId.slice(-6)}] webSocketClose: awareness flush threw:`,
+        e,
+      );
     }
     try {
       ws.close(code, reason);
@@ -657,18 +841,29 @@ export class ProjectRoom extends DurableObject<Env> {
     try {
       this.clients.delete(ws);
       this.awareness.delete(ws);
+      this.protocolSessions.get(ws)?.destroy();
+      this.protocolSessions.delete(ws);
     } catch (e) {
-      log.error(`[room proj=${this.projectId.slice(-6)}] webSocketError: clients.delete threw:`, e);
+      log.error(
+        `[room proj=${this.projectId.slice(-6)}] webSocketError: clients.delete threw:`,
+        e,
+      );
     }
     try {
       this.broadcastPresence();
     } catch (e) {
-      log.error(`[room proj=${this.projectId.slice(-6)}] webSocketError: broadcastPresence threw:`, e);
+      log.error(
+        `[room proj=${this.projectId.slice(-6)}] webSocketError: broadcastPresence threw:`,
+        e,
+      );
     }
     try {
       this.flushAwarenessBroadcast();
     } catch (e) {
-      log.error(`[room proj=${this.projectId.slice(-6)}] webSocketError: awareness flush threw:`, e);
+      log.error(
+        `[room proj=${this.projectId.slice(-6)}] webSocketError: awareness flush threw:`,
+        e,
+      );
     }
     try {
       ws.close(1011, "WebSocket error");
@@ -710,7 +905,8 @@ export class ProjectRoom extends DurableObject<Env> {
 
         try {
           const nodesMap = this.doc.getMap("nodes");
-          const shouldRunRealtimeEffects = msg.runRealtimeEffects && !!msg.sender;
+          const shouldRunRealtimeEffects =
+            msg.runRealtimeEffects && !!msg.sender;
           let nodesBefore: Map<string, Record<string, any>> | null = null;
 
           if (shouldRunRealtimeEffects) {
@@ -725,28 +921,33 @@ export class ProjectRoom extends DurableObject<Env> {
           this.unsubscribeLocalUpdates = null;
           let repairUpdate: Uint8Array | null = null;
           try {
-            this.doc.import(msg.data);
+            // ReplicaEngine validates on a fork, durably appends, and only then
+            // applies to the live Loro document.
+            await this.persistAndMaybeCompact(msg.data, msg.eventId);
             const repairVersion = this.doc.version();
             const graphRepair = reconcileCanvasGraph(this.doc);
             const timelineRepair = reconcileProjectTimelineOwnership(this.doc);
-            const directorRepair = reconcileProjectDirectorStageOwnership(this.doc);
-            const workspaceRepaired = canvasGraphReconciliationChanged(graphRepair) ||
+            const directorRepair = reconcileProjectDirectorStageOwnership(
+              this.doc,
+            );
+            const workspaceRepaired =
+              canvasGraphReconciliationChanged(graphRepair) ||
               timelineRepair.removedActionNodeIds.length > 0 ||
               timelineRepair.detachedTimelineIds.length > 0 ||
               directorRepair.removedActionNodeIds.length > 0 ||
               directorRepair.detachedStageIds.length > 0;
             if (workspaceRepaired) {
               this.doc.commit({ origin: "sys:workspace-reconcile" });
-              repairUpdate = this.doc.export({ mode: "update", from: repairVersion });
+              repairUpdate = this.doc.export({
+                mode: "update",
+                from: repairVersion,
+              });
             }
-            // Import and deterministic repair are persisted explicitly and in
-            // order. Keep the subscription detached through these awaits so a
-            // queued normalization callback cannot duplicate the repair log.
-            await this.persistAndMaybeCompact(msg.data);
-
             // Broadcast to all other clients FIRST so they have the base state
             // before receiving any derived updates from processPendingNodes.
-            this.broadcastBinary(msg.data, msg.sender);
+            if (msg.broadcast !== false) {
+              this.broadcastBinary(msg.data, msg.sender);
+            }
             if (repairUpdate?.byteLength) {
               await this.persistAndMaybeCompact(repairUpdate);
               this.broadcastBinary(repairUpdate);
@@ -769,39 +970,54 @@ export class ProjectRoom extends DurableObject<Env> {
             const before = nodesBefore.get(id);
             if (!before) {
               // New node added
-              const label = (after.data?.label as string) ?? (after.data?.name as string) ?? "";
+              const label =
+                (after.data?.label as string) ??
+                (after.data?.name as string) ??
+                "";
               this.broadcastActivity(
                 msg.sender,
                 "added",
                 id,
                 after.type ?? "text",
                 label,
-                typeof after.canvasId === "string" ? after.canvasId : DEFAULT_CANVAS_ID,
+                typeof after.canvasId === "string"
+                  ? after.canvasId
+                  : DEFAULT_CANVAS_ID,
               );
             } else if (JSON.stringify(before) !== JSON.stringify(after)) {
               // Node updated
-              const label = (after.data?.label as string) ?? (after.data?.name as string) ?? "";
+              const label =
+                (after.data?.label as string) ??
+                (after.data?.name as string) ??
+                "";
               this.broadcastActivity(
                 msg.sender,
                 "updated",
                 id,
                 after.type ?? "text",
                 label,
-                typeof after.canvasId === "string" ? after.canvasId : DEFAULT_CANVAS_ID,
+                typeof after.canvasId === "string"
+                  ? after.canvasId
+                  : DEFAULT_CANVAS_ID,
               );
             }
           }
           // Check for deleted nodes
           for (const [id, before] of nodesBefore) {
             if (!seenIds.has(id)) {
-              const label = (before.data?.label as string) ?? (before.data?.name as string) ?? "";
+              const label =
+                (before.data?.label as string) ??
+                (before.data?.name as string) ??
+                "";
               this.broadcastActivity(
                 msg.sender,
                 "deleted",
                 id,
                 before.type ?? "text",
                 label,
-                typeof before.canvasId === "string" ? before.canvasId : DEFAULT_CANVAS_ID,
+                typeof before.canvasId === "string"
+                  ? before.canvasId
+                  : DEFAULT_CANVAS_ID,
               );
             }
           }
@@ -825,14 +1041,7 @@ export class ProjectRoom extends DurableObject<Env> {
    * Broadcast binary Loro update to all connected clients except sender.
    */
   private broadcastBinary(data: Uint8Array, sender?: WebSocket): void {
-    for (const ws of this.ctx.getWebSockets()) {
-      if (ws === sender) continue;
-      try {
-        ws.send(data);
-      } catch (error) {
-        log.error("Failed to broadcast to client:", error);
-      }
-    }
+    this.broadcastCommittedBatch(createLoroProtocolBatchId(), [data], sender);
   }
 
   // ─── Guarded Node Processing ─────────────────────────────────
@@ -865,9 +1074,19 @@ export class ProjectRoom extends DurableObject<Env> {
       const storedId = await this.ctx.storage.get<string>("projectId");
       if (!storedId) return; // No project ever connected, nothing to do
       if (!this.initPromise) {
-        this.initPromise = this.initRoom(storedId);
+        this.initPromise = this.initRoom(storedId, {
+          enableTaskPolling: false,
+        });
       }
       await this.initPromise;
+    }
+
+    const tag = `[room proj=${this.projectId.slice(-6)}]`;
+    const checkpointTarget = await this.ctx.storage.get<number>(
+      CHECKPOINT_REQUESTED_SEQ_KEY,
+    );
+    if (checkpointTarget !== null) {
+      await this.runCompaction(tag);
     }
 
     // Persistence is event-driven now — every doc commit (local via
@@ -878,7 +1097,7 @@ export class ProjectRoom extends DurableObject<Env> {
 
     // Re-schedule next alarm only if clients are connected.
     if (this.ctx.getWebSockets().length > 0) {
-      await this.ctx.storage.setAlarm(Date.now() + TASK_POLL_INTERVAL_MS);
+      await this.scheduleAlarmAtEarliest(Date.now() + TASK_POLL_INTERVAL_MS);
     }
   }
 
@@ -897,10 +1116,8 @@ export class ProjectRoom extends DurableObject<Env> {
     }
 
     try {
-      await recoverOrphanedTasks(
-        this.doc,
-        this.env,
-        (data: Uint8Array) => this.broadcastBinary(data),
+      await recoverOrphanedTasks(this.doc, this.env, (data: Uint8Array) =>
+        this.broadcastBinary(data),
       );
     } catch (e) {
       this.handleTaskPollFailure(tag, "recoverOrphanedTasks", e);
@@ -925,21 +1142,31 @@ export class ProjectRoom extends DurableObject<Env> {
    * project ID, the offending stage, and (if it looks like doc corruption)
    * a hint that the snapshot is bad.
    */
-  private handleTaskPollFailure(tag: string, stage: string, error: unknown): void {
+  private handleTaskPollFailure(
+    tag: string,
+    stage: string,
+    error: unknown,
+  ): void {
     const msg = error instanceof Error ? error.message : String(error);
     const isCorruption =
       msg.includes("Invalid array buffer length") ||
       msg.includes("not a snapshot") ||
       msg.includes("UnknownVersion");
     if (isCorruption) {
-      log.error(`${tag} ${stage} CORRUPT_DOC: ${msg} — snapshot likely poisoned, project will not sync until reset`);
+      log.error(
+        `${tag} ${stage} CORRUPT_DOC: ${msg} — snapshot likely poisoned, project will not sync until reset`,
+      );
     } else {
       log.error(`${tag} ${stage} failed:`, error);
     }
   }
 
   private triggerTaskPolling(): void {
-    this.ctx.storage.setAlarm(Date.now() + TASK_POLL_URGENT_MS);
+    void this.scheduleAlarmAtEarliest(Date.now() + TASK_POLL_URGENT_MS).catch(
+      (error) => {
+        log.error("Failed to schedule urgent task poll:", error);
+      },
+    );
   }
 
   // ─── HTTP Endpoints (replaces onRequest) ─────────────────────
@@ -970,7 +1197,9 @@ export class ProjectRoom extends DurableObject<Env> {
     await this.initPromise;
 
     if (this.projectId !== projectId) {
-      log.error(`Project ID mismatch: expected ${this.projectId}, got ${projectId}`);
+      log.error(
+        `Project ID mismatch: expected ${this.projectId}, got ${projectId}`,
+      );
       return new Response("Project ID mismatch", { status: 400 });
     }
 
@@ -1006,7 +1235,10 @@ export class ProjectRoom extends DurableObject<Env> {
         });
       } catch (error) {
         log.error("Remote Loro snapshot error:", error);
-        return Response.json({ error: "Failed to export snapshot" }, { status: 500 });
+        return Response.json(
+          { error: "Failed to export snapshot" },
+          { status: 500 },
+        );
       }
     }
 
@@ -1023,7 +1255,10 @@ export class ProjectRoom extends DurableObject<Env> {
         return new Response(null, { status: 204 });
       } catch (error) {
         log.error("Remote Loro update error:", error);
-        return Response.json({ error: "Failed to import update" }, { status: 500 });
+        return Response.json(
+          { error: "Failed to import update" },
+          { status: 500 },
+        );
       }
     }
 
@@ -1033,7 +1268,10 @@ export class ProjectRoom extends DurableObject<Env> {
   private async handleHttpRequest(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
-    const loroRemoteResponse = await this.handleLoroRemotePersistenceRequest(request, url);
+    const loroRemoteResponse = await this.handleLoroRemotePersistenceRequest(
+      request,
+      url,
+    );
     if (loroRemoteResponse) return loroRemoteResponse;
 
     // Handle /update-node internal request
@@ -1049,18 +1287,17 @@ export class ProjectRoom extends DurableObject<Env> {
         if (this.initPromise) await this.initPromise;
 
         updateNodeData(this.doc, body.nodeId, body.updates, (data) =>
-          this.broadcastBinary(data)
+          this.broadcastBinary(data),
         );
 
         if (body.log) {
           appendNodeLog(this.doc, body.nodeId, body.log, (data) =>
-            this.broadcastBinary(data)
+            this.broadcastBinary(data),
           );
         }
 
         await this.guardedProcessPendingNodes();
 
-  
         return Response.json({ ok: true });
       } catch (error) {
         log.error("Update node error:", error);
@@ -1096,23 +1333,33 @@ export class ProjectRoom extends DurableObject<Env> {
           listNodeOwnedEdges(this.doc).map(({ id, ...edge }) => [id, edge]),
         );
         const projectMeta = (() => {
-          try { return this.doc.getMap("projectMeta").toJSON(); } catch { return null; }
+          try {
+            return this.doc.getMap("projectMeta").toJSON();
+          } catch {
+            return null;
+          }
         })();
 
-        return Response.json({
-          nodes,
-          edges,
-          projectMeta,
-          counts: {
-            nodes: Object.keys(nodes).length,
-            edges: Object.keys(edges).length,
+        return Response.json(
+          {
+            nodes,
+            edges,
+            projectMeta,
+            counts: {
+              nodes: Object.keys(nodes).length,
+              edges: Object.keys(edges).length,
+            },
           },
-        }, {
-          headers: { "cache-control": "no-store" },
-        });
+          {
+            headers: { "cache-control": "no-store" },
+          },
+        );
       } catch (error) {
         log.error("Loro dump error:", error);
-        return Response.json({ error: "Failed to dump loro state", detail: String(error) }, { status: 500 });
+        return Response.json(
+          { error: "Failed to dump loro state", detail: String(error) },
+          { status: 500 },
+        );
       }
     }
 
@@ -1125,7 +1372,9 @@ export class ProjectRoom extends DurableObject<Env> {
       const isInternal = request.headers.get("x-internal-agent") === "true";
       if (!isInternal) return new Response("forbidden", { status: 403 });
       try {
-        log.warn(`[room proj=${this.projectId.slice(-6)}] /reset-doc invoked — wiping snapshot + update log + closing live WS`);
+        log.warn(
+          `[room proj=${this.projectId.slice(-6)}] /reset-doc invoked — wiping snapshot + update log + closing live WS`,
+        );
         await wipeDocState(this.ctx.storage);
         // Drop in-memory doc + reset seq counters so any subsequent
         // connection initialises fresh from an empty store.
@@ -1138,12 +1387,19 @@ export class ProjectRoom extends DurableObject<Env> {
         this.updatesSinceCompact = 0;
         // Close all live WS so clients reconnect cleanly against the new doc.
         for (const ws of this.ctx.getWebSockets()) {
-          try { ws.close(1012, "doc reset"); } catch { /* already closing */ }
+          try {
+            ws.close(1012, "doc reset");
+          } catch {
+            /* already closing */
+          }
         }
         return Response.json({ ok: true, projectId: this.projectId });
       } catch (error) {
         log.error("Reset error:", error);
-        return Response.json({ error: "Reset failed", detail: String(error) }, { status: 500 });
+        return Response.json(
+          { error: "Reset failed", detail: String(error) },
+          { status: 500 },
+        );
       }
     }
 

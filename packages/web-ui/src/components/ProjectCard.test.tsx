@@ -17,6 +17,7 @@ import {
 } from "@dnd-kit/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { archiveProject } from "@clash/web-ui/lib/clientActions";
+import type { ResolvedAsset } from "@clash/shared-types";
 
 import { ConfirmDialogProvider } from "./ConfirmDialog";
 import ProjectCard from "./ProjectCard";
@@ -112,6 +113,18 @@ describe("ProjectCard", () => {
     );
   }
 
+  function visualAsset(id: string, createdAt: number): ResolvedAsset {
+    return {
+      id,
+      kind: "image",
+      url: `https://media.clash.test/assets/${id}`,
+      createdAt,
+      metadata: {},
+      lifecycle: { state: "active" },
+      status: "ready",
+    };
+  }
+
   it("keeps archive controls outside the project link", () => {
     renderCard();
 
@@ -123,7 +136,7 @@ describe("ProjectCard", () => {
     expect(link.contains(archiveButton)).toBe(false);
   });
 
-  it("keeps preview actions as unframed icon controls", () => {
+  it("keeps preview actions legible over visual media", () => {
     renderCard({}, { onAddProjectReference: vi.fn() });
 
     const addButton = screen.getByRole("button", {
@@ -133,20 +146,13 @@ describe("ProjectCard", () => {
       name: "Archive project Storyboard draft",
     });
 
-    expect(addButton).not.toHaveClass(
-      "bg-warm-surface/90",
-      "shadow-sm",
-      "backdrop-blur-sm",
-    );
-    expect(archiveButton).not.toHaveClass(
-      "clash-project-card-delete",
-      "backdrop-blur-sm",
-    );
+    expect(addButton).toHaveClass("clash-project-card-action");
+    expect(archiveButton).toHaveClass("clash-project-card-action");
   });
 
   it("adds only the stable project reference and keeps its control outside the link", () => {
     const onAddProjectReference = vi.fn();
-    renderCard({ assets: [{ id: "asset-1" }] }, { onAddProjectReference });
+    renderCard({}, { onAddProjectReference });
 
     const link = screen.getByRole("link", { name: /storyboard draft/i });
     const addButton = screen.getByRole("button", {
@@ -230,7 +236,7 @@ describe("ProjectCard", () => {
     expect(onDragStart).not.toHaveBeenCalled();
   });
 
-  it("renders only the explicitly selected Project Asset cover", () => {
+  it("keeps the preview automatic when a legacy cover id is present", () => {
     const { container } = renderCard({
       coverAssetId: "video-cover",
       assets: [
@@ -252,24 +258,47 @@ describe("ProjectCard", () => {
           status: "ready",
         },
       ],
+      canvasPreview: {
+        canvasId: "main",
+        bounds: { x: 0, y: 0, width: 800, height: 450 },
+        nodes: [
+          {
+            id: "newer-node",
+            type: "image",
+            x: 0,
+            y: 0,
+            width: 500,
+            height: 280,
+            assetId: "newer-but-not-cover",
+          },
+          {
+            id: "video-node",
+            type: "video",
+            x: 520,
+            y: 180,
+            width: 280,
+            height: 270,
+            assetId: "video-cover",
+          },
+        ],
+      },
     });
 
     const images = Array.from(
-      container.querySelectorAll<HTMLImageElement>(
+      container.querySelectorAll<SVGImageElement>(
         ".clash-project-card-preview-img",
       ),
     );
 
-    expect(images).toHaveLength(1);
-    expect(images.map((image) => image.getAttribute("src"))).toEqual([
+    expect(images).toHaveLength(2);
+    expect(images.map((image) => image.getAttribute("href"))).toEqual([
+      "https://media.clash.test/assets/newer",
       "https://media.clash.test/thumbnails/video-cover",
     ]);
-    expect(images.every((image) => image.getAttribute("alt") === "")).toBe(
-      true,
-    );
+    expect(images.every((image) => image.closest("svg") !== null)).toBe(true);
   });
 
-  it("does not infer a cover from available Project Assets", () => {
+  it("previews an available visual Project Asset when no cover is selected", () => {
     const { container } = renderCard({
       assets: [
         {
@@ -281,14 +310,289 @@ describe("ProjectCard", () => {
           status: "ready",
         },
       ],
+      canvasPreview: {
+        canvasId: "main",
+        bounds: { x: 40, y: 80, width: 640, height: 360 },
+        nodes: [
+          {
+            id: "available-node",
+            type: "image",
+            x: 40,
+            y: 80,
+            width: 640,
+            height: 360,
+            assetId: "available-image",
+          },
+        ],
+      },
     });
 
     expect(
-      container.querySelector(".clash-project-card-preview-img"),
-    ).toBeNull();
+      container
+        .querySelector<SVGImageElement>(".clash-project-card-preview-img")
+        ?.getAttribute("href"),
+    ).toBe("https://media.clash.test/assets/available-image");
     expect(
       container.querySelector('[data-slot="project-empty-copy"]'),
-    ).toHaveTextContent("Nothing to see. Yet.");
+    ).toBeNull();
+  });
+
+  it("previews at most the four most recently produced visual assets", () => {
+    const { container } = renderCard({
+      assets: [
+        visualAsset("oldest", 100),
+        visualAsset("newest", 500),
+        visualAsset("middle", 300),
+        visualAsset("second-newest", 400),
+        visualAsset("second-oldest", 200),
+      ],
+      canvasPreview: {
+        canvasId: "main",
+        bounds: { x: 0, y: 0, width: 1000, height: 700 },
+        nodes: [
+          {
+            id: "newest-node",
+            type: "image",
+            x: 0,
+            y: 0,
+            width: 300,
+            height: 200,
+            assetId: "newest",
+          },
+          {
+            id: "second-newest-node",
+            type: "image",
+            x: 350,
+            y: 0,
+            width: 300,
+            height: 200,
+            assetId: "second-newest",
+          },
+          {
+            id: "middle-node",
+            type: "image",
+            x: 0,
+            y: 250,
+            width: 300,
+            height: 200,
+            assetId: "middle",
+          },
+          {
+            id: "second-oldest-node",
+            type: "image",
+            x: 350,
+            y: 250,
+            width: 300,
+            height: 200,
+            assetId: "second-oldest",
+          },
+          {
+            id: "oldest-node",
+            type: "image",
+            x: 700,
+            y: 500,
+            width: 300,
+            height: 200,
+            assetId: "oldest",
+          },
+        ],
+      },
+    });
+
+    const sources = Array.from(
+      container.querySelectorAll<SVGImageElement>(
+        ".clash-project-card-preview-img",
+      ),
+      (image) => image.getAttribute("href"),
+    );
+    expect(sources).toEqual([
+      "https://media.clash.test/assets/newest",
+      "https://media.clash.test/assets/second-newest",
+      "https://media.clash.test/assets/middle",
+      "https://media.clash.test/assets/second-oldest",
+    ]);
+  });
+
+  it("renders the actual Main canvas geometry instead of rearranging recent assets", () => {
+    const { container } = renderCard({
+      assets: [
+        {
+          ...visualAsset("landscape", 400),
+          metadata: { width: 1600, height: 900 },
+        },
+        {
+          ...visualAsset("portrait", 300),
+          metadata: { width: 900, height: 1600 },
+        },
+      ],
+      canvasPreview: {
+        canvasId: "main",
+        bounds: { x: -100, y: 50, width: 600, height: 400 },
+        nodes: [
+          {
+            id: "main-image",
+            type: "image",
+            x: 100,
+            y: 200,
+            width: 400,
+            height: 225,
+            assetId: "landscape",
+            label: "Hero",
+          },
+          {
+            id: "main-note",
+            type: "text",
+            x: -100,
+            y: 50,
+            width: 300,
+            height: 400,
+            label: "Outline",
+          },
+        ],
+      },
+    });
+
+    const preview = container.querySelector<SVGElement>(
+      ".clash-project-canvas-preview",
+    );
+    const imageNode = preview?.querySelector<SVGElement>(
+      '[data-canvas-node-id="main-image"]',
+    );
+    const noteNode = preview?.querySelector<SVGElement>(
+      '[data-canvas-node-id="main-note"]',
+    );
+
+    expect(preview).toHaveAttribute("data-canvas-id", "main");
+    expect(imageNode).toHaveAttribute("transform", "translate(100 200)");
+    expect(imageNode?.querySelector("rect")).toHaveAttribute("width", "400");
+    expect(imageNode?.querySelector("rect")).toHaveAttribute("height", "225");
+    expect(noteNode).toHaveAttribute("transform", "translate(-100 50)");
+    expect(
+      container.querySelector(".clash-project-card-preview-panel"),
+    ).toBeNull();
+  });
+
+  it("loads one derived Main snapshot instead of every canvas media node", () => {
+    const { container } = renderCard({
+      assets: [visualAsset("first", 200), visualAsset("second", 100)],
+      canvasThumbnail: {
+        url: "http://127.0.0.1:61631/api/v1/projects/project-1/canvas/thumbnail?revision=abc",
+        revision: "abc",
+        width: 640,
+        height: 360,
+      },
+      canvasPreview: {
+        canvasId: "main",
+        bounds: { x: 0, y: 0, width: 800, height: 450 },
+        nodes: [
+          {
+            id: "first-node",
+            type: "image",
+            x: 0,
+            y: 0,
+            width: 400,
+            height: 225,
+            assetId: "first",
+          },
+          {
+            id: "second-node",
+            type: "image",
+            x: 400,
+            y: 225,
+            width: 400,
+            height: 225,
+            assetId: "second",
+          },
+        ],
+      },
+    });
+
+    const snapshot = container.querySelector<HTMLImageElement>(
+      ".clash-project-card-canvas-thumbnail",
+    );
+    expect(snapshot?.src).toBe(
+      "http://127.0.0.1:61631/api/v1/projects/project-1/canvas/thumbnail?revision=abc",
+    );
+    expect(
+      container.querySelectorAll(".clash-project-card-preview-img"),
+    ).toHaveLength(0);
+    expect(
+      container.querySelector(".clash-project-canvas-preview"),
+    ).not.toBeNull();
+
+    fireEvent.error(snapshot!);
+    expect(snapshot).toHaveAttribute("data-state", "failed");
+  });
+
+  it("distinguishes canvas tools and unloaded media from document nodes", () => {
+    const { container } = renderCard({
+      canvasPreview: {
+        canvasId: "main",
+        bounds: { x: 0, y: 0, width: 1_200, height: 800 },
+        nodes: [
+          {
+            id: "generated-image",
+            type: "image",
+            x: 0,
+            y: 0,
+            width: 400,
+            height: 225,
+            assetId: "not-in-the-bounded-preview-set",
+            label: "Generated image",
+          },
+          {
+            id: "generate-action",
+            type: "action-badge",
+            x: 0,
+            y: 280,
+            width: 260,
+            height: 58,
+            label: "Generate image",
+          },
+          {
+            id: "image-editor",
+            type: "image-editor",
+            x: 460,
+            y: 0,
+            width: 300,
+            height: 300,
+            label: "Image Editor",
+          },
+          {
+            id: "timeline",
+            type: "video-editor",
+            x: 820,
+            y: 0,
+            width: 320,
+            height: 220,
+            label: "Timeline",
+          },
+          {
+            id: "notes",
+            type: "text",
+            x: 460,
+            y: 360,
+            width: 300,
+            height: 240,
+            label: "Notes",
+          },
+        ],
+      },
+    });
+
+    const previewState = (nodeId: string) =>
+      container
+        .querySelector(`[data-canvas-node-id="${nodeId}"]`)
+        ?.getAttribute("data-canvas-node-preview");
+
+    expect(previewState("generated-image")).toBe("media-placeholder");
+    expect(previewState("generate-action")).toBe("action");
+    expect(previewState("image-editor")).toBe("image-editor");
+    expect(previewState("timeline")).toBe("timeline");
+    expect(previewState("notes")).toBe("document");
+    expect(
+      container.querySelectorAll(".clash-project-canvas-preview-content-mark"),
+    ).not.toHaveLength(0);
   });
 
   it("uses a quiet text-only empty state when no cover exists", () => {
@@ -325,13 +629,28 @@ describe("ProjectCard", () => {
           status: "ready",
         },
       ],
+      canvasPreview: {
+        canvasId: "main",
+        bounds: { x: 0, y: 0, width: 400, height: 225 },
+        nodes: [
+          {
+            id: "local-api-node",
+            type: "image",
+            x: 0,
+            y: 0,
+            width: 400,
+            height: 225,
+            assetId: "local-api-asset",
+          },
+        ],
+      },
     });
 
-    const image = container.querySelector<HTMLImageElement>(
+    const image = container.querySelector<SVGImageElement>(
       ".clash-project-card-preview-img",
     );
 
-    expect(image?.getAttribute("src")).toBe(
+    expect(image?.getAttribute("href")).toBe(
       "https://media.clash.test/assets/local-api-asset",
     );
   });

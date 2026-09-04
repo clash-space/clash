@@ -21,6 +21,19 @@ export const AspectRatioSchema = z.object({
 
 export type AspectRatio = z.infer<typeof AspectRatioSchema>;
 
+/** A written positive integer ratio, normalized to its smallest terms. */
+export const AspectRatioStringSchema = z.string().trim().transform((value, ctx) => {
+  const ratio = parseAspectRatio(value);
+  if (!ratio) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Aspect ratio must be two positive integers separated by a colon.',
+    });
+    return z.NEVER;
+  }
+  return aspectRatioLabel(ratio);
+});
+
 function greatestCommonDivisor(a: number, b: number): number {
   return b === 0 ? a : greatestCommonDivisor(b, a % b);
 }

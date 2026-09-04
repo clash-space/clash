@@ -2,6 +2,13 @@ import { createHash, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { LoroDoc } from "loro-crdt";
+import { ReplicaEngine, type ReplicaLinkPort } from "@clash/replica";
+import { LoroStateAdapter } from "@clash/replica/loro";
+import {
+  LoroProtocolServerSession,
+  createLoroProtocolBatchId,
+  encodeLoroProtocolUpdateFrames,
+} from "@clash/replica/loro-protocol";
 import {
   ACTION_ASSET_BINDINGS_CONTAINER,
   ACTION_ASSET_BINDING_SCHEMA_CONTAINER,
@@ -38,9 +45,12 @@ import {
   type ClientType,
   type PresenceClient,
 } from "@clash/shared-types";
-import { WebSocketServer, type WebSocket } from "ws";
+import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { FileReplicaStore } from "./loro/file-replica-store.js";
+import { createFileReplicaPorts } from "./loro/replica-ports.js";
+import { LoroCloudReplicaLink } from "./loro/cloud-replica-link.js";
 import type { LocalWorkflowProcessor } from "./local-processor.js";
+import { projectCanvasPreviewCacheEntryFromDoc } from "./project-canvas-preview-cache.js";
 
 type UpgradeCapableServer = {
   on(
@@ -54,11 +64,17 @@ export interface LocalSyncOptions {
   projectId: string;
   remotePersistence?: RemoteLoroPersistenceSource;
   workflowProcessor?: LocalWorkflowProcessor | null;
+  canvasPreviewCacheEnabled?: boolean;
 }
 
 export interface RemoteLoroPersistence {
   loadSnapshot?(projectId: string): Promise<Uint8Array | null>;
   appendUpdate(projectId: string, update: Uint8Array): Promise<void>;
+  createLink?(options: {
+    projectId: string;
+    doc(): LoroDoc;
+    commit(batchId: string, updates: Uint8Array[]): Promise<void>;
+  }): ReplicaLinkPort<Uint8Array>;
 }
 
 export type RemoteLoroPersistenceSource =
@@ -74,6 +90,7 @@ type SendPeerJson = (msg: Record<string, unknown>) => void;
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 const LOCAL_LORO_COMPACT_UPDATE_THRESHOLD = 16;
 const LOCAL_LORO_COMPACT_BYTES_THRESHOLD = 1024 * 1024;
+const PROJECT_CANVAS_PREVIEW_DEBOUNCE_MS = 350;
 const HOST_OWNED_GENERATOR_AUTHORITY_CONTAINERS = [
   GENERATOR_SCHEMA_CONTAINER,
   PROJECT_GENERATORS_CONTAINER,
@@ -93,6 +110,7 @@ interface LocalPeer {
   sendJson?: SendPeerJson;
   runtimeId?: string;
   presence?: PresenceClient;
+  syncProtocol?: "loro-v1";
 }
 
 export interface HttpRemoteLoroPersistenceOptions {
@@ -367,6 +385,15 @@ export function createHttpRemoteLoroPersistence(
       );
       await assertRemoteOk(response, "update append");
     },
+    createLink({ projectId, doc, commit }) {
+      return new LoroCloudReplicaLink({
+        baseUrl: options.baseUrl,
+        projectId,
+        token: options.token,
+        doc,
+        commit,
+      });
+    },
   };
 }
 
@@ -385,18 +412,26 @@ export function createRemoteLoroPersistenceFromEnv(
 
 async function loadDoc(options: LocalSyncOptions): Promise<{
   doc: LoroDoc;
+  replica: ReplicaEngine<LoroDoc, Uint8Array, Uint8Array>;
   store: FileReplicaStore;
   importedRemoteSnapshot: boolean;
   workspaceRepaired: boolean;
+  remotePersistence?: RemoteLoroPersistence;
 }> {
   const store = new FileReplicaStore(join(options.dataDir, "projects"));
-  let doc: LoroDoc;
+  let replica: ReplicaEngine<LoroDoc, Uint8Array, Uint8Array>;
   try {
-    doc = await store.recover(options.projectId);
+    replica = await ReplicaEngine.open({
+      adapter: new LoroStateAdapter(),
+      ...(await createFileReplicaPorts(store, options.projectId)),
+    });
   } catch (error) {
     console.error("[local-sync] failed to recover local replica", error);
-    doc = new LoroDoc();
+    throw error;
   }
+  const durableDoc = replica.read((state) => state);
+  const doc = LoroDoc.fromSnapshot(durableDoc.export({ mode: "snapshot" }));
+  const durableVersion = durableDoc.version();
 
   let importedRemoteSnapshot = false;
   const remotePersistence = await resolveRemotePersistence(
@@ -430,7 +465,25 @@ async function loadDoc(options: LocalSyncOptions): Promise<{
     projectCoverRepair.changed ||
     assetBindingRepair.restoredProjectAssetIds.length > 0;
 
-  return { doc, store, importedRemoteSnapshot, workspaceRepaired };
+  const recoveredDelta = exactBytes(
+    doc.export({ mode: "update", from: durableVersion }),
+  );
+  durableVersion.free();
+  if (recoveredDelta.byteLength > 0) {
+    await replica.submit({
+      id: `bootstrap:${loroSyncUpdateId(recoveredDelta)}`,
+      update: recoveredDelta,
+    });
+  }
+
+  return {
+    doc,
+    replica,
+    store,
+    importedRemoteSnapshot,
+    workspaceRepaired,
+    remotePersistence,
+  };
 }
 
 export class LocalLoroRoom {
@@ -443,19 +496,22 @@ export class LocalLoroRoom {
   private pendingWorkQueue: Promise<void> = Promise.resolve();
   private pollTimer: ReturnType<typeof setTimeout> | undefined;
   private pollScheduleVersion = 0;
+  private canvasPreviewTimer: ReturnType<typeof setTimeout> | undefined;
+  private canvasPreviewWrites: Promise<void> = Promise.resolve();
   private closed = false;
   private closePromise: Promise<void> | undefined;
+  private remoteLink: ReplicaLinkPort<Uint8Array> | undefined;
 
   private constructor(
     private readonly projectId: string,
     private doc: LoroDoc,
+    private readonly replica: ReplicaEngine<LoroDoc, Uint8Array, Uint8Array>,
     private readonly store: FileReplicaStore,
     private readonly remotePersistence?: RemoteLoroPersistenceSource,
     private readonly workflowProcessor?: LocalWorkflowProcessor,
+    private readonly canvasPreviewCacheEnabled = false,
   ) {
-    this.checkpointedDoc = LoroDoc.fromSnapshot(
-      this.doc.export({ mode: "snapshot" }),
-    );
+    this.checkpointedDoc = this.replica.read((state) => state);
   }
 
   static async open(
@@ -466,12 +522,15 @@ export class LocalLoroRoom {
     const room = new LocalLoroRoom(
       options.projectId,
       loaded.doc,
+      loaded.replica,
       loaded.store,
       options.remotePersistence,
       options.workflowProcessor ?? undefined,
+      options.canvasPreviewCacheEnabled ?? false,
     );
     if (loaded.importedRemoteSnapshot || loaded.workspaceRepaired)
       await room.saveSnapshot();
+    room.attachRemoteLink(loaded.remotePersistence);
     await onCheckpointReadable?.(room);
     await room.processPendingWork();
     return room;
@@ -479,6 +538,11 @@ export class LocalLoroRoom {
 
   snapshot(): Uint8Array {
     return this.doc.export({ mode: "snapshot" });
+  }
+
+  /** Read-only protocol adapter access; mutations still go through receive(). */
+  protocolDocument(): LoroDoc {
+    return this.doc;
   }
 
   private async enqueueProjectOperation<T>(
@@ -587,7 +651,14 @@ export class LocalLoroRoom {
 
   private async refreshFromStoreUnsafe(): Promise<void> {
     const persisted = await this.store.recover(this.projectId);
-    this.checkpointedDoc.import(persisted.export({ mode: "snapshot" }));
+    const durableVersion = this.checkpointedDoc.version();
+    const missingDurableUpdate = exactBytes(
+      persisted.export({ mode: "update", from: durableVersion }),
+    );
+    durableVersion.free();
+    if (missingDurableUpdate.byteLength > 0) {
+      await this.persistUpdate(missingDurableUpdate);
+    }
     const versionBefore = this.doc.version();
     this.doc.import(persisted.export({ mode: "snapshot" }));
     const repairVersion = this.doc.version();
@@ -603,6 +674,7 @@ export class LocalLoroRoom {
     );
     if (update.byteLength > 0) {
       for (const peer of this.peers.values()) peer.sendUpdate(update);
+      this.scheduleCanvasPreviewRefresh();
     }
     if (repairUpdate?.byteLength) {
       await this.persistUpdate(repairUpdate);
@@ -616,6 +688,8 @@ export class LocalLoroRoom {
       sendJson?: SendPeerJson;
       runtimeId?: string;
       presence?: PresenceClient;
+      syncProtocol?: "loro-v1";
+      sendInitialSnapshot?: boolean;
     },
   ): PeerId {
     const id = Symbol("peer");
@@ -624,8 +698,9 @@ export class LocalLoroRoom {
       sendJson: options?.sendJson,
       runtimeId: options?.runtimeId,
       presence: options?.presence,
+      syncProtocol: options?.syncProtocol,
     });
-    send(this.snapshot());
+    if (options?.sendInitialSnapshot !== false) send(this.snapshot());
     this.broadcastPresence();
     return id;
   }
@@ -639,6 +714,45 @@ export class LocalLoroRoom {
     await this.enqueueProjectOperation(() =>
       this.receiveUnsafe(sender, update),
     );
+    await this.processPendingWork();
+  }
+
+  private async receiveCloudUpdates(
+    _batchId: string,
+    updates: Uint8Array[],
+  ): Promise<void> {
+    await this.enqueueProjectOperation(async () => {
+      for (const raw of updates) {
+        const update = exactBytes(raw);
+        await this.persistUpdate(update);
+        this.doc.import(update);
+        for (const peer of this.peers.values()) peer.sendUpdate(update);
+      }
+
+      const repairVersion = this.doc.version();
+      const graphRepair = reconcileCanvasGraph(this.doc);
+      const timelineRepair = reconcileProjectTimelineOwnership(this.doc);
+      const directorRepair = reconcileProjectDirectorStageOwnership(this.doc);
+      const projectCoverRepair = reconcileProjectCoverBindings(this.doc);
+      const assetBindingRepair = reconcileActionAssetBindingTargets(this.doc);
+      const repaired =
+        canvasGraphReconciliationChanged(graphRepair) ||
+        timelineRepair.removedActionNodeIds.length > 0 ||
+        timelineRepair.detachedTimelineIds.length > 0 ||
+        directorRepair.removedActionNodeIds.length > 0 ||
+        directorRepair.detachedStageIds.length > 0 ||
+        projectCoverRepair.changed ||
+        assetBindingRepair.restoredProjectAssetIds.length > 0;
+      const repairUpdate = repaired
+        ? exactBytes(this.doc.export({ mode: "update", from: repairVersion }))
+        : undefined;
+      repairVersion.free();
+      if (repairUpdate?.byteLength) {
+        await this.persistUpdate(repairUpdate);
+        for (const peer of this.peers.values()) peer.sendUpdate(repairUpdate);
+        this.remoteLink?.publish(repairUpdate);
+      }
+    });
     await this.processPendingWork();
   }
 
@@ -681,6 +795,9 @@ export class LocalLoroRoom {
       );
     }
     assertLocalPeerActionAssetBindingMutation(this.doc, candidate);
+    // Persist before mutating the live replica. The candidate import above
+    // guarantees the durable record can be replayed successfully.
+    await this.persistUpdate(updateBytes);
     this.doc.import(updateBytes);
     const repairVersion = this.doc.version();
     const graphRepair = reconcileCanvasGraph(this.doc);
@@ -699,11 +816,12 @@ export class LocalLoroRoom {
     const repairUpdate = workspaceRepaired
       ? exactBytes(this.doc.export({ mode: "update", from: repairVersion }))
       : null;
-    await this.persistUpdate(updateBytes);
-    this.peers.get(sender)?.sendJson?.({
-      type: "sync_ack",
-      updateId: loroSyncUpdateId(updateBytes),
-    });
+    if (this.peers.get(sender)?.syncProtocol !== "loro-v1") {
+      this.peers.get(sender)?.sendJson?.({
+        type: "sync_ack",
+        updateId: loroSyncUpdateId(updateBytes),
+      });
+    }
     for (const [peerId, peer] of this.peers.entries()) {
       if (peerId !== sender) peer.sendUpdate(updateBytes);
     }
@@ -804,24 +922,21 @@ export class LocalLoroRoom {
   }
 
   private async saveSnapshot(): Promise<void> {
-    await this.store.compactSnapshot(
-      this.projectId,
-      this.checkpointedDoc.export({ mode: "snapshot" }),
-      this.checkpointedDoc.version(),
-    );
+    await this.replica.checkpoint();
     this.updatesSinceSnapshot = 0;
     this.updateBytesSinceSnapshot = 0;
   }
 
   private async persistUpdate(update: Uint8Array): Promise<void> {
-    const nextCheckpoint = LoroDoc.fromSnapshot(
-      this.checkpointedDoc.export({ mode: "snapshot" }),
-    );
-    nextCheckpoint.import(update);
-    await this.store.appendUpdate(this.projectId, update);
-    this.checkpointedDoc = nextCheckpoint;
-    this.updatesSinceSnapshot += 1;
-    this.updateBytesSinceSnapshot += update.byteLength;
+    const result = await this.replica.submit({
+      id: loroSyncUpdateId(update),
+      update,
+    });
+    this.checkpointedDoc = this.replica.read((state) => state);
+    if (result.appended) {
+      this.updatesSinceSnapshot += 1;
+      this.updateBytesSinceSnapshot += update.byteLength;
+    }
     if (
       this.updatesSinceSnapshot >= LOCAL_LORO_COMPACT_UPDATE_THRESHOLD ||
       this.updateBytesSinceSnapshot >= LOCAL_LORO_COMPACT_BYTES_THRESHOLD
@@ -835,6 +950,39 @@ export class LocalLoroRoom {
         );
       }
     }
+    this.scheduleCanvasPreviewRefresh();
+  }
+
+  private scheduleCanvasPreviewRefresh(
+    delayMs = PROJECT_CANVAS_PREVIEW_DEBOUNCE_MS,
+  ): void {
+    if (this.closed || !this.canvasPreviewCacheEnabled) return;
+    if (this.canvasPreviewTimer) clearTimeout(this.canvasPreviewTimer);
+    this.canvasPreviewTimer = setTimeout(() => {
+      this.canvasPreviewTimer = undefined;
+      this.enqueueCanvasPreviewRefresh();
+    }, delayMs);
+    this.canvasPreviewTimer.unref?.();
+  }
+
+  private enqueueCanvasPreviewRefresh(): void {
+    const run = this.canvasPreviewWrites
+      .catch(() => undefined)
+      .then(async () => {
+        const entry = await this.enqueueProjectOperation(() =>
+          projectCanvasPreviewCacheEntryFromDoc(this.doc),
+        );
+        const cached = await this.store.readCanvasPreview(this.projectId);
+        if (cached?.sourceVersion === entry.sourceVersion) return;
+        await this.store.writeCanvasPreview(this.projectId, entry);
+      })
+      .catch((error) => {
+        console.error(
+          "[local-sync] failed to refresh Main canvas preview",
+          error,
+        );
+      });
+    this.canvasPreviewWrites = run;
   }
 
   private restoreLiveProjectFromCheckpoint(): void {
@@ -901,8 +1049,16 @@ export class LocalLoroRoom {
       clearTimeout(this.pollTimer);
       this.pollTimer = undefined;
     }
+    if (this.canvasPreviewTimer) {
+      clearTimeout(this.canvasPreviewTimer);
+      this.canvasPreviewTimer = undefined;
+      this.enqueueCanvasPreviewRefresh();
+    }
     await this.pendingWorkQueue.catch(() => undefined);
     await this.projectOperations.catch(() => undefined);
+    await this.canvasPreviewWrites.catch(() => undefined);
+    await this.remoteLink?.close();
+    this.remoteLink = undefined;
     this.peers.clear();
   }
 
@@ -945,17 +1101,43 @@ export class LocalLoroRoom {
   }
 
   private mirrorRemoteUpdate(update: Uint8Array): void {
+    if (this.remoteLink) {
+      void this.remoteLink.publish(update);
+      return;
+    }
     if (!this.remotePersistence) return;
     void resolveRemotePersistence(this.remotePersistence)
-      .then((remotePersistence) =>
-        remotePersistence?.appendUpdate(this.projectId, update),
-      )
+      .then((remotePersistence) => {
+        const link = this.attachRemoteLink(remotePersistence);
+        return link
+          ? link.publish(update)
+          : remotePersistence?.appendUpdate(this.projectId, update);
+      })
       .catch((error) => {
         console.error(
           "[local-sync] failed to mirror update to remote persistence",
           error,
         );
       });
+  }
+
+  private attachRemoteLink(
+    remotePersistence: RemoteLoroPersistence | undefined,
+  ): ReplicaLinkPort<Uint8Array> | undefined {
+    if (this.remoteLink || !remotePersistence?.createLink) {
+      return this.remoteLink;
+    }
+    const link = remotePersistence.createLink({
+      projectId: this.projectId,
+      doc: () => this.doc,
+      commit: (batchId, updates) => this.receiveCloudUpdates(batchId, updates),
+    });
+    this.remoteLink = link;
+    void Promise.resolve(link.start()).catch((error) => {
+      if (this.remoteLink === link) this.remoteLink = undefined;
+      console.error("[local-sync] failed to start cloud replica link", error);
+    });
+    return link;
   }
 
   private broadcastPresence(): void {
@@ -1021,6 +1203,7 @@ export class LocalLoroRoomHub {
             projectId,
             remotePersistence: this.remotePersistence,
             workflowProcessor: this.workflowProcessor,
+            canvasPreviewCacheEnabled: true,
           },
           (opened) => {
             this.checkpointReadableRooms.set(projectId, opened);
@@ -1224,6 +1407,10 @@ export function attachLocalSync(
       ? runtimeHeader[0]
       : runtimeHeader;
     const presence = presenceFromHeaders(request.headers);
+    const syncProtocol =
+      url.searchParams.get("protocol") === "loro-v1"
+        ? ("loro-v1" as const)
+        : undefined;
     wss.handleUpgrade(request, socket, head, (ws) => {
       void bindSocket(
         hub,
@@ -1231,6 +1418,7 @@ export function attachLocalSync(
         ws,
         typeof runtimeId === "string" ? runtimeId : undefined,
         presence,
+        syncProtocol,
       );
     });
   });
@@ -1278,22 +1466,55 @@ async function bindSocket(
   ws: WebSocket,
   runtimeId?: string,
   presence?: PresenceClient,
+  syncProtocol?: "loro-v1",
 ): Promise<void> {
+  // The browser can emit JoinRequest as soon as its `open` event fires, while
+  // loading the file-backed room is still asynchronous. Buffer that small
+  // startup window so the first protocol frame cannot disappear.
+  const pendingMessages: Array<[RawData, boolean]> = [];
+  const bufferMessage = (data: RawData, isBinary: boolean) => {
+    pendingMessages.push([data, isBinary]);
+  };
+  ws.on("message", bufferMessage);
   const room = await hub.room(projectId);
+  const sendProtocolUpdate = (update: Uint8Array) => {
+    for (const frame of encodeLoroProtocolUpdateFrames(
+      projectId,
+      createLoroProtocolBatchId(),
+      [update],
+    )) {
+      if (ws.readyState === ws.OPEN) ws.send(frame);
+    }
+  };
   const peerId = room.addPeer(
     (update) => {
-      if (ws.readyState === ws.OPEN) ws.send(update);
+      if (syncProtocol) sendProtocolUpdate(update);
+      else if (ws.readyState === ws.OPEN) ws.send(update);
     },
     {
       runtimeId,
       presence,
+      syncProtocol,
+      sendInitialSnapshot: !syncProtocol,
       sendJson: (msg) => {
         if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
       },
     },
   );
+  const protocolSession = syncProtocol
+    ? new LoroProtocolServerSession({
+        roomId: projectId,
+        doc: () => room.protocolDocument(),
+        send: (frame) => {
+          if (ws.readyState === ws.OPEN) ws.send(frame);
+        },
+        commit: async (_batchId, updates) => {
+          for (const update of updates) await room.receive(peerId, update);
+        },
+      })
+    : undefined;
 
-  ws.on("message", (data, isBinary) => {
+  const handleMessage = (data: RawData, isBinary: boolean) => {
     if (!isBinary) {
       try {
         const text =
@@ -1304,6 +1525,11 @@ async function bindSocket(
               : Array.isArray(data)
                 ? Buffer.concat(data).toString("utf8")
                 : Buffer.from(data as ArrayBuffer).toString("utf8");
+        if (text === "ping") {
+          if (ws.readyState === ws.OPEN) ws.send("pong");
+          return;
+        }
+        if (text === "pong") return;
         const msg = JSON.parse(text) as Record<string, any>;
         void room.receiveJson(peerId, msg).catch((error) => {
           console.error(
@@ -1322,12 +1548,21 @@ async function bindSocket(
         : Array.isArray(data)
           ? new Uint8Array(Buffer.concat(data))
           : new Uint8Array(data as ArrayBuffer);
-    void room.receive(peerId, bytes).catch((error) => {
+    const receive = protocolSession
+      ? protocolSession.receive(bytes)
+      : room.receive(peerId, bytes);
+    void receive.catch((error) => {
       console.error("[local-sync] failed to import update", error);
     });
-  });
+  };
+  ws.off("message", bufferMessage);
+  ws.on("message", handleMessage);
+  for (const [data, isBinary] of pendingMessages) {
+    handleMessage(data, isBinary);
+  }
 
   ws.on("close", () => {
+    protocolSession?.destroy();
     room.removePeer(peerId);
   });
 }

@@ -24,6 +24,9 @@
       "archive": "Archive session",
       "restore": "Restore session",
       "fork": "Fork session",
+      "rename": "Rename session",
+      "renameLabel": "Rename {{title}}",
+      "loadingMore": "Loading more sessions",
       "actions": "Actions for {{title}}",
       "close": "Close session history",
       "retry": "Retry",
@@ -34,6 +37,11 @@
       "deleteConfirm": "This cannot be undone.",
       "confirmDelete": "Confirm permanent delete",
       "cancel": "Cancel"
+    },
+    "turn": {
+      "copyAnswer": "Copy answer",
+      "answerCopied": "Copied",
+      "continueInNewChat": "Continue in new chat"
     },
     "runtime": {
       "menuTitle": "Run on",
@@ -80,6 +88,7 @@
       "reconnecting": "Reconnecting {{attempt}}/{{maxAttempts}}",
       "switchingTransport": "Switching transport",
       "readyWhenYouAre": "Ready when you are",
+      "interrupted": "Interrupted",
       "workedForSeconds": "Worked for {{count}}s",
       "workedForMinutes": "Worked for {{count}}m",
       "creativeThinking": [

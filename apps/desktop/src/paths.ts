@@ -48,7 +48,7 @@ export function resolveDesktopStatePaths(
 export function resolveWebDistDir(input: WebDistPathInput): string {
   if (input.envWebDistDir) return input.envWebDistDir;
   if (input.isPackaged) return join(input.resourcesPath, "web-dist");
-  return resolve(input.moduleDir, "../../web/dist/client");
+  return resolve(input.moduleDir, "../.vite/renderer/main_window");
 }
 
 export function resolveAcpBinDir(dataDir: string): string {

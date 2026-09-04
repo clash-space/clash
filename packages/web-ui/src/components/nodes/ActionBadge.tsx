@@ -58,6 +58,7 @@ import {
   listCompatibleModelCatalogEntries,
   modelRouteSupportsParameters,
   MODEL_CARDS,
+  resolveAspectRatioParameter,
   snapAspectRatio,
   parsePromptParts,
   extractPromptText,
@@ -135,6 +136,19 @@ import { resolveBuiltInActionKind } from "./generationActionKind";
 
 type ModelParams = Record<string, string | number | boolean>;
 
+export function normalizeActionAspectRatioOptions(
+  parameter: ModelParameter,
+): AspectRatioOption<string | number>[] {
+  return (parameter.options ?? []).map((option) => {
+    const resolved = resolveAspectRatioParameter(parameter, option.value);
+    const label =
+      resolved === "auto" || resolved === "adaptive"
+        ? "Auto"
+        : (resolved ?? option.label);
+    return { ...option, label };
+  });
+}
+
 const FALLBACK_MODEL_BY_KIND: Record<AigcActionKind, string> = {
   image: "nano-banana-2",
   video: "sora-2",
@@ -157,6 +171,21 @@ const PARAM_BOOLEAN_OPTIONS: SelectOption<boolean>[] = [
 const NODE_INTERACTION_BOUNDARY_CLASS = "nodrag nopan";
 const KEYFRAME_FRAME_INDICES_PARAM = "keyframe_frame_indices";
 const KEYFRAME_TIMING_CUSTOMIZED_PARAM = "keyframe_timing_customized";
+const ACTION_DEFINITION_UPDATED_LABEL = "Action definition updated";
+const ACTION_DEFINITION_UPDATED_RUN_LABEL =
+  "Action definition updated. Update before running.";
+
+function executablePluginBindingsMatch(
+  left: ExecutablePluginBinding | undefined,
+  right: ExecutablePluginBinding | undefined,
+): boolean {
+  return (
+    left?.pluginId === right?.pluginId &&
+    left?.version === right?.version &&
+    left?.exportId === right?.exportId &&
+    left?.schemaHash === right?.schemaHash
+  );
+}
 
 function evenlySpacedFrameIndices(count: number, lastFrame: number): number[] {
   if (count <= 0) return [];
@@ -824,6 +853,9 @@ const PromptActionNode = ({
   const [showRefPicker, setShowRefPicker] = useState(false);
   const [paramsPopoverOpen, setParamsPopoverOpen] = useState(false);
   const [aspectRatioPopoverOpen, setAspectRatioPopoverOpen] = useState(false);
+  const [aspectRatioPopoverValue, setAspectRatioPopoverValue] = useState<
+    string | number | undefined
+  >(undefined);
 
   const resolveConfiguredModelId = (
     type: "image-gen" | "video-gen",
@@ -1021,6 +1053,15 @@ const PromptActionNode = ({
     routePluginBinding,
   );
   const effectivePluginBinding = resolvedPluginBinding.binding;
+  const currentCustomPluginBinding = customDef?.pluginBinding;
+  const customActionDefinitionUpdated =
+    isCustom &&
+    data.actionType === actionType &&
+    Boolean(currentCustomPluginBinding) &&
+    !executablePluginBindingsMatch(
+      storedPluginBinding,
+      currentCustomPluginBinding,
+    );
 
   const modelDisplay = isCustom
     ? (customDef?.name ?? customActionId ?? "Custom action")
@@ -1031,12 +1072,16 @@ const PromptActionNode = ({
   const modelPickerLabel = customActionOffline
     ? RUNTIME_OFFLINE_TOOLTIP
     : modelDisplay;
-  const checkpointRunLabel = customActionOffline
-    ? RUNTIME_OFFLINE_TOOLTIP
-    : "Run again with current parameters";
-  const panelRunLabel = customActionOffline
-    ? RUNTIME_OFFLINE_TOOLTIP
-    : "Run action";
+  const checkpointRunLabel = customActionDefinitionUpdated
+    ? ACTION_DEFINITION_UPDATED_RUN_LABEL
+    : customActionOffline
+      ? RUNTIME_OFFLINE_TOOLTIP
+      : "Run again with current parameters";
+  const panelRunLabel = customActionDefinitionUpdated
+    ? ACTION_DEFINITION_UPDATED_RUN_LABEL
+    : customActionOffline
+      ? RUNTIME_OFFLINE_TOOLTIP
+      : "Run action";
 
   // Single derivation — all per-modality questions read fields off `cap`.
   // See packages/shared-types/src/model-capabilities.ts.
@@ -2272,6 +2317,14 @@ const PromptActionNode = ({
         actionType,
         modelId,
         modelParams,
+        ...(isCustom
+          ? {
+              customActionId,
+              customActionParams,
+              pluginBinding:
+                currentCustomPluginBinding ?? storedPluginBinding,
+            }
+          : {}),
         referenceImageOrder: refNodeIds,
         openPanel: true,
       },
@@ -2303,6 +2356,11 @@ const PromptActionNode = ({
     actionType,
     modelId,
     modelParams,
+    isCustom,
+    customActionId,
+    customActionParams,
+    currentCustomPluginBinding,
+    storedPluginBinding,
     refNodeIds,
     projectId,
     getNode,
@@ -2311,6 +2369,27 @@ const PromptActionNode = ({
     loroSync,
     closeActionPanel,
   ]);
+
+  const handleUpdateCustomAction = useCallback(() => {
+    if (!currentCustomPluginBinding || isCheckpointLocked) return;
+    setNodes((nodes) =>
+      nodes.map((node) =>
+        node.id === id
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                pluginBinding: currentCustomPluginBinding,
+              },
+            }
+          : node,
+      ),
+    );
+    loroSync?.updateNode(id, {
+      data: { pluginBinding: currentCustomPluginBinding },
+    });
+    setError(null);
+  }, [currentCustomPluginBinding, id, isCheckpointLocked, loroSync, setNodes]);
 
   const handleLabelChange = (evt: React.ChangeEvent<HTMLInputElement>) => {
     const newLabel = evt.target.value;
@@ -2349,6 +2428,9 @@ const PromptActionNode = ({
     setError(null);
 
     try {
+      if (customActionDefinitionUpdated) {
+        throw new Error(ACTION_DEFINITION_UPDATED_RUN_LABEL);
+      }
       if (referenceValidationError) throw new Error(referenceValidationError);
       // Capture and clear pre-allocated asset ID (provided by backend; treat as single-use)
       const preAllocatedAssetId = data.preAllocatedAssetId as
@@ -2521,6 +2603,7 @@ const PromptActionNode = ({
     projectId,
     addNodeWithAutoLayout,
     cap,
+    customActionDefinitionUpdated,
     referenceValidationError,
   ]);
 
@@ -2984,11 +3067,29 @@ const PromptActionNode = ({
     ? ((isCustom ? customActionParams : modelParams)[aspectRatioParameter.id] ??
       aspectRatioParameter.defaultValue)
     : undefined;
-  const aspectRatioCurrentLabel = aspectRatioParameter
-    ? (aspectRatioParameter.options?.find(
-        (option) => String(option.value) === String(aspectRatioCurrentValue),
-      )?.label ?? String(aspectRatioCurrentValue))
-    : "";
+  const aspectRatioPresentedValue =
+    aspectRatioPopoverValue ?? aspectRatioCurrentValue;
+  const resolvedAspectRatioLabel = resolveAspectRatioParameter(
+    aspectRatioParameter,
+    aspectRatioPresentedValue,
+  );
+  const aspectRatioCurrentLabel =
+    resolvedAspectRatioLabel === "auto" || resolvedAspectRatioLabel === "adaptive"
+      ? "Auto"
+      : (resolvedAspectRatioLabel ?? String(aspectRatioPresentedValue ?? ""));
+  const actionAspectRatioOptions = aspectRatioParameter
+    ? normalizeActionAspectRatioOptions(aspectRatioParameter)
+    : [];
+  const aspectRatioSelectedOption = aspectRatioParameter?.options?.find(
+    (option) => String(option.value) === String(aspectRatioPresentedValue),
+  );
+  const aspectRatioEditorVisible = aspectRatioSelectedOption
+    ? parseAspectRatio(aspectRatioSelectedOption) !== null
+    : aspectRatioPresentedValue !== undefined &&
+      parseAspectRatio({
+        label: String(aspectRatioPresentedValue),
+        value: aspectRatioPresentedValue as string | number,
+      }) !== null;
   const secondaryParamChips = paramChips.filter(
     (chip) => chip.paramId !== aspectRatioParamId,
   );
@@ -2999,6 +3100,7 @@ const PromptActionNode = ({
   const closeConfigPanelControls = useCallback(() => {
     setParamsPopoverOpen(false);
     setAspectRatioPopoverOpen(false);
+    setAspectRatioPopoverValue(undefined);
     setRefPickerTarget(null);
   }, []);
 
@@ -3653,6 +3755,7 @@ const PromptActionNode = ({
               open={aspectRatioPopoverOpen}
               onOpenChange={(nextOpen) => {
                 setAspectRatioPopoverOpen(nextOpen);
+                if (!nextOpen) setAspectRatioPopoverValue(undefined);
                 if (nextOpen) setParamsPopoverOpen(false);
               }}
             >
@@ -3684,7 +3787,13 @@ const PromptActionNode = ({
                 side="top"
                 align="start"
                 sideOffset={-16}
-                className="z-[9999] w-[min(32.5rem,calc(100vw-2rem))] overflow-hidden rounded-[14px] p-5"
+                data-aspect-ratio-popover={
+                  aspectRatioEditorVisible ? "editable" : "automatic"
+                }
+                style={{
+                  width: aspectRatioEditorVisible ? "32.5rem" : "22rem",
+                }}
+                className="z-[9999] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[14px] p-5 transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => event.stopPropagation()}
               >
@@ -3693,16 +3802,14 @@ const PromptActionNode = ({
                 </div>
                 <div className="mt-2.5">
                   <AspectRatioPicker<string | number>
+                    allowCustom={aspectRatioParameter.allowCustom}
                     ariaLabel="Model aspect ratio"
-                    options={
-                      (aspectRatioParameter.options ?? []) as AspectRatioOption<
-                        string | number
-                      >[]
-                    }
-                    value={aspectRatioCurrentValue as string | number}
-                    onValueChange={(nextValue) =>
-                      updateModelParam(aspectRatioParameter.id, nextValue)
-                    }
+                    options={actionAspectRatioOptions}
+                    value={aspectRatioPresentedValue as string | number}
+                    onValueChange={(nextValue) => {
+                      setAspectRatioPopoverValue(nextValue);
+                      updateModelParam(aspectRatioParameter.id, nextValue);
+                    }}
                   />
                 </div>
               </PopoverContent>
@@ -3945,12 +4052,17 @@ const PromptActionNode = ({
                   <Button
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (customActionOffline) return;
+                      if (
+                        customActionOffline ||
+                        customActionDefinitionUpdated
+                      )
+                        return;
                       handleExecute();
                     }}
                     disabled={
                       isExecuting ||
                       customActionOffline ||
+                      customActionDefinitionUpdated ||
                       !!referenceValidationError
                     }
                     leftIcon={
@@ -3970,6 +4082,7 @@ const PromptActionNode = ({
                     aria-label={checkpointRunLabel}
                     aria-disabled={
                       customActionOffline ||
+                      customActionDefinitionUpdated ||
                       !!referenceValidationError ||
                       undefined
                     }
@@ -4042,17 +4155,23 @@ const PromptActionNode = ({
                     className={`nodrag h-7 min-h-7 flex-shrink-0 rounded-lg px-3 text-xs font-semibold text-white transition-transform hover:scale-[1.02] active:scale-95 ${btnClass}`}
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (customActionOffline) return;
+                      if (
+                        customActionOffline ||
+                        customActionDefinitionUpdated
+                      )
+                        return;
                       handleExecute();
                     }}
                     disabled={
                       isExecuting ||
                       customActionOffline ||
+                      customActionDefinitionUpdated ||
                       !!referenceValidationError
                     }
                     aria-label={panelRunLabel}
                     aria-disabled={
                       customActionOffline ||
+                      customActionDefinitionUpdated ||
                       !!referenceValidationError ||
                       undefined
                     }
@@ -4072,6 +4191,33 @@ const PromptActionNode = ({
               </Tooltip>
             </div>
           </div>
+
+          {customActionDefinitionUpdated && (
+            <div
+              role="alert"
+              className="flex items-center justify-between gap-2 border-t border-amber-200/70 px-3 py-2 text-[10px] leading-tight text-amber-800 dark:border-amber-800/60 dark:text-amber-300"
+            >
+              <span>{ACTION_DEFINITION_UPDATED_LABEL}</span>
+              <Button
+                aria-label={
+                  isCheckpointLocked ? "Copy to update" : "Update action"
+                }
+                size="sm"
+                shape="pill"
+                className="h-6 min-h-6 border border-amber-300 bg-transparent px-2 text-[10px] text-amber-900 shadow-none hover:bg-amber-100 dark:border-amber-700 dark:text-amber-200 dark:hover:bg-amber-950/40"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (isCheckpointLocked) {
+                    void handleCopy();
+                    return;
+                  }
+                  handleUpdateCustomAction();
+                }}
+              >
+                {isCheckpointLocked ? "Update copy" : "Update"}
+              </Button>
+            </div>
+          )}
 
           {(referenceValidationError || error) && (
             <div

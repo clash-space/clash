@@ -6,10 +6,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import HomeMarketplaceRecommendations from "./HomeMarketplaceRecommendations";
 
 const items = Array.from({ length: 5 }, (_, index) => ({
-  id: `skill-${index + 1}`,
-  type: "skill" as const,
-  name: `Skill ${index + 1}`,
-  description: `Real registry skill ${index + 1}.`,
+  id: `plugin-${index + 1}`,
+  type: "plugin" as const,
+  name: `Plugin ${index + 1}`,
+  description: `Real registry plugin ${index + 1}.`,
 }));
 
 describe("HomeMarketplaceRecommendations", () => {
@@ -23,6 +23,7 @@ describe("HomeMarketplaceRecommendations", () => {
         <HomeMarketplaceRecommendations
           featuredPlugins={[]}
           installedActionIds={[]}
+          installedPluginIds={[]}
           installedSkillIds={[]}
         />
       </MemoryRouter>,
@@ -39,6 +40,7 @@ describe("HomeMarketplaceRecommendations", () => {
         <HomeMarketplaceRecommendations
           featuredPlugins={items}
           installedActionIds={[]}
+          installedPluginIds={[]}
           installedSkillIds={[]}
         />
       </MemoryRouter>,
@@ -47,8 +49,8 @@ describe("HomeMarketplaceRecommendations", () => {
     expect(
       screen.getByRole("region", { name: "From Marketplace" }),
     ).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Skill 1" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Skill 5" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Plugin 1" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Plugin 5" })).toBeTruthy();
     expect(
       container.querySelectorAll('[data-slot="home-marketplace-item"]'),
     ).toHaveLength(5);
@@ -58,8 +60,8 @@ describe("HomeMarketplaceRecommendations", () => {
         .getAttribute("href"),
     ).toBe("/marketplace/manage");
     expect(
-      screen.getByRole("link", { name: "View Skill 1 details" }),
-    ).toHaveAttribute("href", "/marketplace/skill/skill-1");
+      screen.getByRole("link", { name: "View Plugin 1 details" }),
+    ).toHaveAttribute("href", "/marketplace/plugin/plugin-1");
   });
 
   it("keeps Home as a lightweight discovery preview without Marketplace operations", () => {
@@ -68,6 +70,7 @@ describe("HomeMarketplaceRecommendations", () => {
         <HomeMarketplaceRecommendations
           featuredPlugins={[items[0]]}
           installedActionIds={[]}
+          installedPluginIds={[]}
           installedSkillIds={[]}
         />
       </MemoryRouter>,
@@ -86,12 +89,73 @@ describe("HomeMarketplaceRecommendations", () => {
         <HomeMarketplaceRecommendations
           featuredPlugins={[items[0]]}
           installedActionIds={[]}
-          installedSkillIds={[items[0].id]}
+          installedPluginIds={[items[0].id]}
+          installedSkillIds={[]}
         />
       </MemoryRouter>,
     );
 
     expect(screen.getByText("Installed")).toBeTruthy();
     expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("uses Plugin installation state and type metadata for a feed Plugin", () => {
+    const storyboard = {
+      id: "clash.storyboard",
+      type: "plugin" as const,
+      name: "Storyboard",
+      description: "Draft key elements and shots.",
+      artwork: {
+        src: "/brand/avatar-storyboard.png",
+        alt: "Clash Storyboard plugin",
+      },
+    };
+    const { rerender } = render(
+      <MemoryRouter>
+        <HomeMarketplaceRecommendations
+          featuredPlugins={[storyboard]}
+          installedActionIds={[]}
+          installedPluginIds={[]}
+          installedSkillIds={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Plugin")).toBeTruthy();
+    expect(screen.queryByText("Skill")).toBeNull();
+
+    rerender(
+      <MemoryRouter>
+        <HomeMarketplaceRecommendations
+          featuredPlugins={[storyboard]}
+          installedActionIds={[]}
+          installedPluginIds={[storyboard.id]}
+          installedSkillIds={[]}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Installed")).toBeTruthy();
+  });
+
+  it("uses Skill installation state for a Clash-relevant feed Skill", () => {
+    render(
+      <MemoryRouter>
+        <HomeMarketplaceRecommendations
+          featuredPlugins={[
+            {
+              id: "clash.video.sd25-pe",
+              type: "skill",
+              name: "sd25-pe",
+              description: "Seedance prompt engineering.",
+            },
+          ]}
+          installedActionIds={[]}
+          installedPluginIds={[]}
+          installedSkillIds={["clash.video.sd25-pe"]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Installed")).toBeTruthy();
   });
 });

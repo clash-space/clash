@@ -14,7 +14,10 @@ import {
   type ModelUpstreamRoute,
 } from "@clash/shared-types";
 
-import PromptActionNode, { planKeyframeInsertion } from "./ActionBadge";
+import PromptActionNode, {
+  normalizeActionAspectRatioOptions,
+  planKeyframeInsertion,
+} from "./ActionBadge";
 import { CanvasTransientUiProvider } from "../CanvasTransientUiContext";
 import { CustomActionsProvider } from "../CustomActionsContext";
 
@@ -86,6 +89,7 @@ vi.mock("@xyflow/react", () => ({
 
 vi.mock("framer-motion", () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
+  useReducedMotion: () => true,
   Reorder: {
     Group: ({ children, ...props }: any) => <div {...props}>{children}</div>,
     Item: ({ children, ...props }: any) => <div {...props}>{children}</div>,
@@ -190,6 +194,24 @@ const baseNodeProps = {
 };
 
 describe("ActionBadge canvas subscriptions", () => {
+  it("removes presentation aliases before Action passes ratio options to its picker", () => {
+    expect(
+      normalizeActionAspectRatioOptions({
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        required: false,
+        options: [
+          { label: "Landscape (16:9)", value: "16:9" },
+          { label: "Ultrawide (21:9)", value: "21:9" },
+        ],
+      }),
+    ).toEqual([
+      { label: "16:9", value: "16:9" },
+      { label: "21:9", value: "21:9" },
+    ]);
+  });
+
   it("redistributes untouched timing but preserves custom timing when adding a keyframe", () => {
     expect(planKeyframeInsertion([0, 60, 120], 120, false)).toEqual({
       insertionIndex: 2,
@@ -1084,6 +1106,240 @@ describe("ActionBadge canvas subscriptions", () => {
         aspect_ratio: "9:16",
       }),
     );
+  });
+
+  it("shows only the ratio on a custom action's aspect-ratio toolbar chip", () => {
+    const action = CustomActionDefinitionSchema.parse({
+      id: "custom-ultrawide-image",
+      name: "Custom Ultrawide Image",
+      outputType: "image",
+      presentation: { type: "form" },
+      parameters: [
+        {
+          id: "aspect_ratio",
+          label: "Aspect Ratio",
+          type: "select",
+          options: [
+            { label: "Landscape (16:9)", value: "16:9" },
+            { label: "Ultrawide (21:9)", value: "21:9" },
+          ],
+          defaultValue: "16:9",
+        },
+      ],
+    });
+
+    render(
+      <CanvasTransientUiProvider>
+        <CustomActionsProvider actions={[action]}>
+          <PromptActionNode
+            {...baseNodeProps}
+            id="custom-ratio-action"
+            type="action-badge"
+            data={{
+              actionType: "custom:custom-ultrawide-image",
+              customActionId: "custom-ultrawide-image",
+              customActionParams: { aspect_ratio: "21:9" },
+              content: "A cat",
+              label: "Image Prompt",
+            }}
+          />
+        </CustomActionsProvider>
+      </CanvasTransientUiProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
+
+    expect(screen.getByRole("button", { name: "Aspect Ratio: 21:9" })).toBeTruthy();
+    expect(screen.queryByText("Ultrawide (21:9)")).toBeNull();
+  });
+
+  it("requires an explicit update before running a Custom Action with a newer definition", async () => {
+    const previousBinding = {
+      pluginId: "clash.codex-imagegen",
+      version: "0.1.0",
+      exportId: "generate-image",
+      schemaHash: `sha256:${"a".repeat(64)}` as const,
+    };
+    const currentBinding = {
+      ...previousBinding,
+      version: "0.1.1",
+      schemaHash: `sha256:${"b".repeat(64)}` as const,
+    };
+    const action = CustomActionDefinitionSchema.parse({
+      id: "codex-imagegen",
+      name: "Codex ImageGen",
+      outputType: "image",
+      presentation: { type: "form" },
+      parameters: [],
+      runtime: "local",
+      version: currentBinding.version,
+      pluginBinding: currentBinding,
+    });
+
+    render(
+      <CanvasTransientUiProvider>
+        <CustomActionsProvider actions={[action]}>
+          <PromptActionNode
+            {...baseNodeProps}
+            id="stale-action"
+            type="action-badge"
+            data={{
+              actionType: "custom:codex-imagegen",
+              customActionId: "codex-imagegen",
+              content: "A cat",
+              label: "Codex ImageGen",
+              pluginBinding: previousBinding,
+            }}
+          />
+        </CustomActionsProvider>
+      </CanvasTransientUiProvider>,
+    );
+
+    expect(screen.getByText("Action definition updated")).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "Action definition updated. Update before running.",
+      }),
+    ).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Update action" }));
+
+    await waitFor(() => {
+      const persisted = reactFlowMock.setNodes.mock.calls.some(([update]) => {
+        if (typeof update !== "function") return false;
+        const [nextNode] = update([
+          {
+            id: "stale-action",
+            type: "action-badge",
+            data: { pluginBinding: previousBinding },
+          },
+        ]);
+        return nextNode?.data?.pluginBinding?.schemaHash ===
+          currentBinding.schemaHash;
+      });
+      expect(persisted).toBe(true);
+    });
+  });
+
+  it("copies a checkpointed Custom Action onto its current executable definition", async () => {
+    const previousBinding = {
+      pluginId: "clash.codex-imagegen",
+      version: "0.1.0",
+      exportId: "generate-image",
+      schemaHash: `sha256:${"a".repeat(64)}` as const,
+    };
+    const currentBinding = {
+      ...previousBinding,
+      version: "0.1.1",
+      schemaHash: `sha256:${"b".repeat(64)}` as const,
+    };
+    const action = CustomActionDefinitionSchema.parse({
+      id: "codex-imagegen",
+      name: "Codex ImageGen",
+      outputType: "image",
+      presentation: { type: "form" },
+      parameters: [],
+      runtime: "local",
+      version: currentBinding.version,
+      pluginBinding: currentBinding,
+    });
+    reactFlowMock.getEdges.mockImplementation(
+      () =>
+        [
+          { id: "stale-output", source: "stale-action", target: "output-1" },
+        ] as any,
+    );
+    reactFlowMock.getNode.mockImplementation((nodeId: string) =>
+      nodeId === "stale-action"
+        ? { id: nodeId, position: { x: 10, y: 20 } }
+        : nodeId === "output-1"
+          ? { id: nodeId, type: "image", data: { status: "failed" } }
+          : undefined,
+    );
+
+    render(
+      <CanvasTransientUiProvider>
+        <CustomActionsProvider actions={[action]}>
+          <PromptActionNode
+            {...baseNodeProps}
+            id="stale-action"
+            type="action-badge"
+            data={{
+              actionType: "custom:codex-imagegen",
+              customActionId: "codex-imagegen",
+              customActionParams: { aspect_ratio: "1:1" },
+              content: "A cat",
+              hasRun: true,
+              label: "Codex ImageGen",
+              pluginBinding: previousBinding,
+            }}
+          />
+        </CustomActionsProvider>
+      </CanvasTransientUiProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy to update" }));
+
+    await waitFor(() => {
+      const copied = reactFlowMock.setNodes.mock.calls.some(([update]) => {
+        if (typeof update !== "function") return false;
+        const nextNodes = update([
+          {
+            id: "stale-action",
+            type: "action-badge",
+            position: { x: 10, y: 20 },
+            data: { pluginBinding: previousBinding },
+          },
+        ]);
+        const copy = nextNodes.find((node: any) => node.id !== "stale-action");
+        return (
+          copy?.data?.customActionId === "codex-imagegen" &&
+          copy?.data?.customActionParams?.aspect_ratio === "1:1" &&
+          copy?.data?.pluginBinding?.schemaHash === currentBinding.schemaHash
+        );
+      });
+      expect(copied).toBe(true);
+    });
+  });
+
+  it("shrinks the aspect-ratio popover while Auto hides the numeric editor", async () => {
+    render(
+      <CanvasTransientUiProvider>
+        <PromptActionNode
+          {...baseNodeProps}
+          id="adaptive-ratio-action"
+          type="action-badge"
+          data={{
+            actionType: "video-gen",
+            content: "Animate this reference",
+            label: "Video Prompt",
+            modelId: "minimax-h3",
+            modelParams: {
+              aspect_ratio: "adaptive",
+              duration: 5,
+              resolution: "2K",
+            },
+          }}
+        />
+      </CanvasTransientUiProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
+    fireEvent.click(screen.getByRole("button", { name: "Aspect Ratio: Auto" }));
+
+    const popover = document.querySelector<HTMLElement>(
+      '[data-aspect-ratio-popover]',
+    );
+    expect(popover).toHaveAttribute("data-aspect-ratio-popover", "automatic");
+    expect(popover).toHaveStyle({ width: "22rem" });
+    expect(screen.queryByLabelText("Aspect ratio preview")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "16:9" }));
+
+    await waitFor(() => {
+      expect(popover).toHaveAttribute("data-aspect-ratio-popover", "editable");
+      expect(popover).toHaveStyle({ width: "32.5rem" });
+    });
   });
 
   it("keeps exactly one action configuration panel open", () => {

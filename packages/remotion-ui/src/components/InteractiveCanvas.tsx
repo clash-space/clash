@@ -1411,7 +1411,6 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
             }}
           >
             <Player
-              key={`player-${compositionWidth}-${compositionHeight}`}
               ref={playerRef}
               component={VideoComposition}
               compositionWidth={compositionWidth}
@@ -1570,7 +1569,8 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
             height="100%"
             fill="transparent"
             style={{ pointerEvents: "all" }}
-            onMouseDown={(_e) => {
+            onPointerDown={(event) => {
+              event.stopPropagation();
               onSelectItem?.(null);
             }}
           />

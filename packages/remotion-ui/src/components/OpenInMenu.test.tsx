@@ -78,6 +78,37 @@ describe('OpenInMenu', () => {
     await waitFor(() => expect(onExport).toHaveBeenCalledTimes(1));
   });
 
+  it('shows the active Timeline export inside the Export menu', async () => {
+    render(
+      <OpenInMenu
+        exportProgress={[
+          {
+            renderNodeId: 'render-1',
+            timelineId: 'timeline-1',
+            timelineRevisionId: 'timeline-revision-v1:abc',
+            status: 'rendering',
+            progress: 0.42,
+          },
+        ]}
+        onExport={async () => undefined}
+        availability={availability}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+
+    expect(await screen.findByText('Exporting video')).toBeTruthy();
+    expect(screen.getByText('42%')).toBeTruthy();
+    expect(
+      screen.getByRole('progressbar', { name: 'Video export progress' }),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole('menuitem', { name: 'Export video' })
+        .getAttribute('aria-disabled'),
+    ).toBe('true');
+  });
+
   it('opens an installed editor from the combined menu', async () => {
     const onOpenInNle = vi.fn(async () => undefined);
     render(

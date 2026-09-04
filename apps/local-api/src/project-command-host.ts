@@ -15,6 +15,7 @@ import {
   createMediaAssetCowNodeData,
   createDefaultDirectorStageState,
   coerceModelParameterInput,
+  CustomActionDefinitionSchema,
   ExecutablePluginBindingSchema,
   extractAssetRefs,
   isMediaNodeType,
@@ -27,6 +28,7 @@ import {
   projectTimelineReadToken,
   readProjectAsset,
   TIMELINE_DSL_DEFINITION,
+  StoryboardViewStateSchema,
   validateTimelineDsl,
   validateAgentObservation,
   validateAgentReadProof,
@@ -1209,6 +1211,25 @@ function handleCommand(
       }
       const node = client.readNode(cmd.nodeId);
       if (!node) return { error: `Node not found: ${cmd.nodeId}` };
+      if (node.type === "plugin-view") {
+        const unsupported = Object.keys(updates).filter(
+          (field) => field !== "label" && field !== "state",
+        );
+        if (unsupported.length > 0) {
+          return {
+            error: `Plugin View updates accept only label and structured state; got ${unsupported.join(", ")}`,
+          };
+        }
+        if (Object.prototype.hasOwnProperty.call(updates, "state")) {
+          const state = StoryboardViewStateSchema.safeParse(updates.state);
+          if (!state.success) {
+            return { code: "INVALID_VIEW_STATE", error: state.error.message };
+          }
+          updates.state = state.data;
+        }
+      } else if (Object.prototype.hasOwnProperty.call(updates, "state")) {
+        return { error: "Structured View state can only be applied to a plugin-view node" };
+      }
       const currentReadToken = canvasNodeReadToken(node);
       const observedVersion = typeof cmd.observedVersion === "string" ? cmd.observedVersion : undefined;
       const readProof = typeof cmd.ifMatch === "string"
@@ -1844,9 +1865,51 @@ function handleCommand(
             currentVersion: currentReadToken,
           });
       if (!guard.ok) return guardError(guard);
+      const nodeData = node.data as Record<string, unknown>;
+      const customActionId =
+        typeof nodeData.customActionId === "string"
+          ? nodeData.customActionId
+          : typeof nodeData.actionType === "string" &&
+              nodeData.actionType.startsWith("custom:")
+            ? nodeData.actionType.slice("custom:".length)
+            : undefined;
+      let globalCustomAction:
+        | ReturnType<typeof CustomActionDefinitionSchema.parse>
+        | undefined;
+      if (customActionId && !client.canvas.getCustomAction(customActionId)) {
+        const trusted = CustomActionDefinitionSchema.safeParse(
+          context.trustedCustomActions?.find(
+            (candidate) => candidate.id === customActionId,
+          ),
+        );
+        const nodeBinding = ExecutablePluginBindingSchema.safeParse(
+          nodeData.pluginBinding,
+        );
+        const trustedBinding = trusted.success
+          ? ExecutablePluginBindingSchema.safeParse(
+              trusted.data.pluginBinding,
+            )
+          : null;
+        const exactBinding =
+          nodeBinding.success &&
+          trustedBinding?.success &&
+          nodeBinding.data.pluginId === trustedBinding.data.pluginId &&
+          nodeBinding.data.version === trustedBinding.data.version &&
+          nodeBinding.data.exportId === trustedBinding.data.exportId &&
+          nodeBinding.data.schemaHash === trustedBinding.data.schemaHash;
+        if (!trusted.success || !exactBinding) {
+          return {
+            code: "UNKNOWN_CUSTOM_ACTION",
+            error: `Custom action not installed: ${customActionId}`,
+          };
+        }
+        globalCustomAction = trusted.data;
+      }
       const r = client.canvas.execute(
         cmd.nodeId,
         context.generationId ?? (() => crypto.randomUUID().slice(0, 8)),
+        undefined,
+        globalCustomAction,
       );
       if (r.error) return { error: r.error };
       // Echo `kind` so the CLI can pick the right log line. Both

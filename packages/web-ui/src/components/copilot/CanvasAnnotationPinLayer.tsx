@@ -140,6 +140,7 @@ export function CanvasAnnotationPinLayer({
               <button
                 type="button"
                 data-agent-annotation-canvas-pin=""
+                data-agent-annotation-anchor={pin.id}
                 aria-label={`Annotation ${pin.number}`}
                 aria-pressed={activeId === pin.id}
                 onPointerDown={(event) => event.stopPropagation()}

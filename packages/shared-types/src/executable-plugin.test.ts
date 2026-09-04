@@ -497,6 +497,23 @@ describe("agent-editable executable plugin contract", () => {
     }, request)).toContain("Codex ImageGen");
   });
 
+  it("accepts an arbitrary positive ratio for the Codex ImageGen host tool", () => {
+    const result = sharedTypes.ExecutablePluginBrokerRequestSchema.safeParse({
+      protocol: "clash.plugin.broker-request/v1",
+      requestId: "request-free-ratio",
+      invocationId: "invocation-free-ratio",
+      operation: {
+        kind: "codex.image.generate",
+        prompt: "A paper-cut moon",
+        aspectRatio: "7:5",
+        slot: "image",
+        references: [],
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   it("pins a Canvas invocation to one exact plugin export and schema", () => {
     const bindingSchema = (sharedTypes as Record<string, unknown>).ExecutablePluginBindingSchema as
       | { parse(value: unknown): any; safeParse(value: unknown): { success: boolean } }

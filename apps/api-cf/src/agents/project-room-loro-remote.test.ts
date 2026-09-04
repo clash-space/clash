@@ -1,5 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { LoroDoc } from "loro-crdt";
+import {
+  CrdtType,
+  MessageType,
+  UpdateStatusCode,
+  decode,
+  encode,
+} from "loro-protocol";
 import { Canvas } from "@clash/shared-types";
 
 const mocks = vi.hoisted(() => ({
@@ -37,13 +44,20 @@ vi.mock("../lib/runtime-heartbeat", () => ({
 
 import { ProjectRoom } from "./project-room";
 
-function createMockStorage(data: Map<string, any> = new Map()) {
+function createMockStorage(
+  data: Map<string, any> = new Map(),
+  options: { failEventAppend?: boolean } = {},
+) {
+  let alarm: number | null = null;
   const storage = {
     get: vi.fn(async (key: string) => data.get(key) ?? null),
     put: vi.fn(async (entriesOrKey: Record<string, any> | string, value?: any) => {
       if (typeof entriesOrKey === "string") {
         data.set(entriesOrKey, value);
         return;
+      }
+      if (options.failEventAppend && "loro:next-seq" in entriesOrKey) {
+        throw new Error("event log unavailable");
       }
       for (const [key, entryValue] of Object.entries(entriesOrKey)) {
         data.set(key, entryValue);
@@ -61,20 +75,39 @@ function createMockStorage(data: Map<string, any> = new Map()) {
       const keys = Array.isArray(keyOrKeys) ? keyOrKeys : [keyOrKeys];
       for (const key of keys) data.delete(key);
     }),
-    setAlarm: vi.fn(async () => undefined),
+    getAlarm: vi.fn(async () => alarm),
+    setAlarm: vi.fn(async (scheduledTime: number) => {
+      alarm = scheduledTime;
+    }),
   };
   return { storage: storage as any as DurableObjectStorage, data };
 }
 
-function createRoom() {
-  const { storage, data } = createMockStorage();
-  const ws = { send: vi.fn() };
+function createRoom(
+  options: { failEventAppend?: boolean; protocolClient?: boolean } = {},
+) {
+  const { storage, data } = createMockStorage(new Map(), options);
+  const ws = {
+    send: vi.fn(),
+    deserializeAttachment: vi.fn(() =>
+      options.protocolClient
+        ? {
+            id: "protocol-client",
+            userId: "user",
+            clientType: "browser",
+            name: "User",
+            connectedAt: 0,
+            syncProtocol: "loro-v1",
+          }
+        : null,
+    ),
+  };
   const ctx = {
     storage,
     getWebSockets: vi.fn(() => [ws]),
   } as any as DurableObjectState;
   const room = new ProjectRoom(ctx, { ENVIRONMENT: "development" } as any);
-  return { room, data, ws };
+  return { room, data, storage, ws };
 }
 
 describe("ProjectRoom Loro remote persistence", () => {
@@ -170,5 +203,108 @@ describe("ProjectRoom Loro remote persistence", () => {
     }));
 
     expect(res.status).toBe(403);
+  });
+
+  it("does not acknowledge or broadcast an update that was not durably appended", async () => {
+    const { room, data, ws } = createRoom({ failEventAppend: true });
+    const source = new LoroDoc();
+    source.getMap("nodes").set("n1", {
+      type: "text",
+      data: { label: "Must be durable" },
+    });
+    const update = source.export({ mode: "snapshot" });
+
+    const response = await room.fetch(new Request("https://room/loro/project/updates", {
+      method: "POST",
+      headers: {
+        "x-internal-loro": "true",
+        "x-loro-project-id": "project",
+        "content-type": "application/octet-stream",
+      },
+      body: update,
+    }));
+
+    expect(response.status).toBe(500);
+    expect(data.has("loro:u:000000000000")).toBe(false);
+    expect(ws.send).not.toHaveBeenCalled();
+  });
+
+  it("defers checkpoint compaction until the durable-object alarm runs", async () => {
+    const { room, data, storage } = createRoom();
+    const source = new LoroDoc();
+    source.getMap("nodes").set("n1", {
+      type: "text",
+      data: { label: "Checkpoint later" },
+    });
+    const update = source.export({ mode: "snapshot" });
+
+    for (let i = 0; i < 100; i++) {
+      const response = await room.fetch(new Request("https://room/loro/project/updates", {
+        method: "POST",
+        headers: {
+          "x-internal-loro": "true",
+          "x-loro-project-id": "project",
+          "content-type": "application/octet-stream",
+        },
+        body: update,
+      }));
+      expect(response.status).toBe(204);
+    }
+
+    expect(data.get("loro:next-seq")).toBe(100);
+    expect(data.has("loro:snapshot")).toBe(false);
+    expect(storage.setAlarm).toHaveBeenCalled();
+
+    await room.alarm();
+
+    expect(data.get("loro:snapshot-seq")).toBe(100);
+    expect([...data.keys()].some((key) => key.startsWith("loro:u:"))).toBe(false);
+  });
+
+  it("speaks the official Loro protocol and ACKs only the durable update", async () => {
+    const { room, data, ws } = createRoom({ protocolClient: true });
+    await room.fetch(
+      new Request("https://room/loro/project/snapshot", {
+        headers: {
+          "x-internal-loro": "true",
+          "x-loro-project-id": "project",
+        },
+      }),
+    );
+
+    const join = encode({
+      type: MessageType.JoinRequest,
+      crdt: CrdtType.Loro,
+      roomId: "project",
+      auth: new Uint8Array(),
+      version: new LoroDoc().version().encode(),
+    });
+    await room.webSocketMessage(ws as any, join.slice().buffer);
+    expect(decode(ws.send.mock.calls[0]![0] as Uint8Array)).toMatchObject({
+      type: MessageType.JoinResponseOk,
+      roomId: "project",
+    });
+    ws.send.mockClear();
+
+    const source = new LoroDoc();
+    source.getMap("nodes").set("protocol", { type: "text", data: {} });
+    const update = source.export({ mode: "snapshot" });
+    const batchId = "0x0000000000000042" as const;
+    const frame = encode({
+      type: MessageType.DocUpdate,
+      crdt: CrdtType.Loro,
+      roomId: "project",
+      updates: [update],
+      batchId,
+    });
+
+    await room.webSocketMessage(ws as any, frame.slice().buffer);
+
+    expect(decode(ws.send.mock.calls.at(-1)![0] as Uint8Array)).toMatchObject({
+      type: MessageType.Ack,
+      refId: batchId,
+      status: UpdateStatusCode.Ok,
+    });
+    expect(data.get("loro:event-id:protocol%3A0x0000000000000042%3A0")).toBe(1);
   });
 });

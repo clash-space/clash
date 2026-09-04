@@ -12,6 +12,7 @@ export interface SessionInfo {
   agentMemberId?: string;
   permissionMode?: string;
   acpSessionId?: string;
+  supportsSessionFork?: boolean;
   status?: string;
   archivedAt?: string;
   updatedAt?: string;
@@ -19,7 +20,19 @@ export interface SessionInfo {
 
 type SessionsResponse = {
   sessions?: SessionInfo[];
+  hasMore?: boolean;
+  nextOffset?: number | null;
 };
+
+const SESSION_HISTORY_PAGE_SIZE = 20;
+
+function activeSessionsUrl(projectId: string | undefined, offset: number) {
+  const query = new URLSearchParams();
+  if (projectId) query.set("projectId", projectId);
+  query.set("limit", String(SESSION_HISTORY_PAGE_SIZE));
+  query.set("offset", String(offset));
+  return runtimeApiUrl(`/api/v1/sessions?${query.toString()}`);
+}
 
 function normalizeSession(session: SessionInfo): SessionInfo {
   return {
@@ -65,8 +78,12 @@ export function useSessionHistory(
     "idle" | "loading" | "ready" | "error"
   >("idle");
   const [archiveError, setArchiveError] = useState<string | null>(null);
+  const [hasMoreSessions, setHasMoreSessions] = useState(false);
+  const [isLoadingMoreSessions, setIsLoadingMoreSessions] = useState(false);
   const sessionsRef = useRef(sessions);
   const archivedSessionsRef = useRef(archivedSessions);
+  const nextOffsetRef = useRef<number | null>(0);
+  const loadingMoreRef = useRef(false);
 
   const replaceSessions = useCallback((next: SessionInfo[]) => {
     sessionsRef.current = next;
@@ -80,24 +97,64 @@ export function useSessionHistory(
 
   useEffect(() => {
     if (!loadActive) return;
-    const projectQuery = projectId
-      ? `?projectId=${encodeURIComponent(projectId)}`
-      : "";
-    fetch(runtimeApiUrl(`/api/v1/sessions${projectQuery}`), {
+    let cancelled = false;
+    nextOffsetRef.current = 0;
+    setHasMoreSessions(false);
+    fetch(activeSessionsUrl(projectId, 0), {
       credentials: "include",
     })
       .then(async (res): Promise<SessionsResponse> =>
         res.ok ? ((await res.json()) as SessionsResponse) : { sessions: [] },
       )
       .then((data) => {
+        if (cancelled) return;
         setSessions((previous) => {
           const next = mergeFetchedSessions(previous, data.sessions || []);
           sessionsRef.current = next;
           return next;
         });
+        const hasMore = data.hasMore === true;
+        setHasMoreSessions(hasMore);
+        nextOffsetRef.current = hasMore
+          ? (data.nextOffset ?? (data.sessions?.length || 0))
+          : null;
       })
       .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, [loadActive, projectId]);
+
+  const loadMoreSessions = useCallback(async () => {
+    const offset = nextOffsetRef.current;
+    if (!loadActive || !hasMoreSessions || offset === null) return;
+    if (loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    setIsLoadingMoreSessions(true);
+    try {
+      const response = await fetch(activeSessionsUrl(projectId, offset), {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to load session history (${response.status})`);
+      }
+      const data = (await response.json()) as SessionsResponse;
+      const fetched = data.sessions ?? [];
+      setSessions((previous) => {
+        const next = mergeFetchedSessions(previous, fetched);
+        sessionsRef.current = next;
+        return next;
+      });
+      const hasMore = data.hasMore === true;
+      setHasMoreSessions(hasMore);
+      nextOffsetRef.current = hasMore
+        ? (data.nextOffset ?? offset + fetched.length)
+        : null;
+    } finally {
+      loadingMoreRef.current = false;
+      setIsLoadingMoreSessions(false);
+    }
+  }, [hasMoreSessions, loadActive, projectId]);
 
   // Upsert: the session was already persisted by the create/attach path.
   // This hook only keeps the in-panel history list current.
@@ -207,6 +264,39 @@ export function useSessionHistory(
     [setArchived],
   );
 
+  const renameSession = useCallback(
+    async (threadId: string, title: string) => {
+      const nextTitle = title.trim();
+      if (!nextTitle) throw new Error("Session title cannot be empty");
+      const previousActive = sessionsRef.current;
+      const previousArchived = archivedSessionsRef.current;
+      const rename = (session: SessionInfo) =>
+        session.threadId === threadId
+          ? { ...session, title: nextTitle }
+          : session;
+      replaceSessions(previousActive.map(rename));
+      replaceArchivedSessions(previousArchived.map(rename));
+
+      try {
+        const response = await fetch(
+          runtimeApiUrl(`/api/v1/sessions/${encodeURIComponent(threadId)}`),
+          {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ title: nextTitle }),
+          },
+        );
+        if (!response.ok) throw new Error("Failed to rename session");
+      } catch (error) {
+        replaceSessions(previousActive);
+        replaceArchivedSessions(previousArchived);
+        throw error;
+      }
+    },
+    [replaceArchivedSessions, replaceSessions],
+  );
+
   // Delete: optimistic with rollback
   const deleteSession = useCallback(
     async (threadId: string) => {
@@ -242,10 +332,14 @@ export function useSessionHistory(
     archivedSessions,
     archiveStatus,
     archiveError,
+    hasMoreSessions,
+    isLoadingMoreSessions,
     upsertSession,
+    loadMoreSessions,
     loadArchivedSessions,
     archiveSession,
     restoreSession,
+    renameSession,
     deleteSession,
   };
 }

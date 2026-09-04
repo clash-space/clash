@@ -478,13 +478,15 @@ and never publishes two logical facts. Probe verification means complete fact
 equality, not merely accepting whichever row won; a differing candidate is a
 contract conflict.
 
-Poster frames, waveform peaks, and filmstrips are deliberately outside this
-protocol in the current delivery. Frontend adapters decode them from an
-authorized original-media projection into disposable device caches; no Durable
-step, backend representation identity, publication receipt, metadata field,
-Loro value, or output binding is created, and their availability cannot delay
-or change Durable Run success. A future backend derivation protocol, if chosen,
-is separate deferred work.
+The same engine also owns Local Asset representation work under a separate
+`local-api:representations` owner. Image thumbnails, video first-frame posters,
+and bounded audio waveforms use a stable `(sourceResourceId, recipe)` identity,
+stage or compute their derived result, and CAS-publish one Host-private mapping.
+They retry and recover after restart without re-entering the source generation
+Run. The mapping, recipe, paths, and peaks never enter Project Loro or Action
+bindings, and representation availability cannot delay or change source Asset
+publication. Timeline filmstrips remain disposable frontend caches outside the
+protocol.
 
 ## Provider and Loro boundary
 

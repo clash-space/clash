@@ -6,15 +6,19 @@ import { fileURLToPath } from "node:url";
 
 import { ExecutablePluginManifestSchema } from "@clash/shared-types";
 
-import { activateHostExecutablePluginPackage } from "./runtime/plugin-package.js";
+import {
+  activateHostExecutablePluginPackage,
+  listHostExecutablePluginPackages,
+  removeHostExecutablePluginPackage,
+} from "./runtime/plugin-package.js";
 
 const CODEX_IMAGEGEN_PLUGIN_ID = "clash.codex-imagegen";
 const CODEX_IMAGEGEN_ACTION_ID = "codex-imagegen";
 
-export const CODEX_IMAGEGEN_MARKETPLACE_ACTION = {
-  id: CODEX_IMAGEGEN_ACTION_ID,
+export const CODEX_IMAGEGEN_MARKETPLACE_PLUGIN = {
+  id: CODEX_IMAGEGEN_PLUGIN_ID,
   name: "Codex ImageGen",
-  type: "action",
+  type: "plugin",
   description:
     "Generate or edit images with Codex's built-in image generation tool and your ChatGPT subscription.",
   runtime: "local",
@@ -26,9 +30,39 @@ export const CODEX_IMAGEGEN_MARKETPLACE_ACTION = {
   color: "#57534e",
   tags: ["image", "codex", "local", "chatgpt"],
   promptModalities: ["text", "image"],
+  outputs: [
+    { kind: "generator", name: "Image Generator" },
+    { kind: "action", name: "Generate Image" },
+  ],
   builtIn: true,
   immutable: true,
 } as const;
+
+export const STORYBOARD_MARKETPLACE_PLUGIN = {
+  id: "clash.storyboard",
+  name: "Storyboard",
+  type: "plugin",
+  description:
+    "Draft key elements, shots, audio layers, and loose Project Assets before assembling a Timeline.",
+  artwork: {
+    src: "/brand/avatar-storyboard.png",
+    alt: "Clash Storyboard plugin",
+  },
+  packageId: "clash.storyboard",
+  version: "1.0.0",
+  author: "Clash",
+  runtime: "local",
+  tags: ["storyboard", "view", "canvas", "video"],
+  outputs: [{ kind: "view", name: "Storyboard" }],
+} as const;
+
+export const OFFICIAL_MARKETPLACE_PLUGIN_PACKAGES = [
+  {
+    id: STORYBOARD_MARKETPLACE_PLUGIN.id,
+    workspaceDir: "official/storyboard",
+    packagedDir: "storyboard",
+  },
+] as const;
 
 export class BuiltinPluginImmutableError extends Error {
   readonly status = 409 as const;
@@ -147,6 +181,7 @@ export function bundledPluginPayloadPaths(manifestInput: unknown): string[] {
     ...manifest.contributes.providers.map(({ path }) => path),
     ...manifest.contributes.modelBindings.map(({ path }) => path),
     ...manifest.contributes.generators.map(({ path }) => path),
+    ...manifest.contributes.views.map(({ path }) => path),
     ...manifest.contractTests,
   ];
 }
@@ -260,6 +295,33 @@ function bundledCodexImagegenPaths(): {
   }
 }
 
+export function officialStoryboardPluginPaths(
+  moduleUrl: string = import.meta.url,
+): { manifestPath: string; entrypointPath: string } {
+  const packagedPlugin = resolve(
+    dirname(fileURLToPath(moduleUrl)),
+    "official-plugins",
+    "storyboard",
+  );
+  const packagedManifest = join(packagedPlugin, "manifest.json");
+  const packagedEntrypoint = join(packagedPlugin, "dist", "stdio.mjs");
+  if (existsSync(packagedManifest) && existsSync(packagedEntrypoint)) {
+    return {
+      manifestPath: packagedManifest,
+      entrypointPath: packagedEntrypoint,
+    };
+  }
+
+  const workspacePlugin = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "../../../plugins/official/storyboard",
+  );
+  return {
+    manifestPath: join(workspacePlugin, "manifest.json"),
+    entrypointPath: join(workspacePlugin, "dist", "stdio.mjs"),
+  };
+}
+
 export function createCodexImagegenMarketplace(options: {
   actionsRoot: string;
   manifestPath?: string;
@@ -282,7 +344,7 @@ export function createCodexImagegenMarketplace(options: {
   };
 
   return {
-    actions: [CODEX_IMAGEGEN_MARKETPLACE_ACTION],
+    plugins: [CODEX_IMAGEGEN_MARKETPLACE_PLUGIN],
     async listInstalled() {
       const manifest = await readBundledManifest();
       return [
@@ -294,7 +356,7 @@ export function createCodexImagegenMarketplace(options: {
           builtIn: true,
           immutable: true,
           manifest: JSON.stringify({
-            ...CODEX_IMAGEGEN_MARKETPLACE_ACTION,
+            ...CODEX_IMAGEGEN_MARKETPLACE_PLUGIN,
             id: CODEX_IMAGEGEN_ACTION_ID,
           }),
         },
@@ -313,9 +375,9 @@ export function createCodexImagegenMarketplace(options: {
         bundled: true,
       };
     },
-    async uninstall(actionId: string) {
-      if (actionId !== CODEX_IMAGEGEN_ACTION_ID) {
-        throw new Error(`Unknown local action: ${actionId}`);
+    async uninstall(pluginId: string) {
+      if (pluginId !== CODEX_IMAGEGEN_PLUGIN_ID) {
+        throw new Error(`Unknown local plugin: ${pluginId}`);
       }
       throw new BuiltinPluginImmutableError(CODEX_IMAGEGEN_PLUGIN_ID);
     },
@@ -380,4 +442,60 @@ export async function ensureBundledPlugin(options: {
     options.actionsRoot,
   );
   return { installed: true, targetDir: activated.targetDir };
+}
+
+/** Official packages are catalogued with the Host but activated only by an explicit install. */
+export function createOfficialPluginsMarketplace(options: {
+  actionsRoot: string;
+  manifestPath?: string;
+  entrypointPath?: string;
+}) {
+  const packagePaths = () => {
+    const defaults =
+      options.manifestPath && options.entrypointPath
+        ? undefined
+        : officialStoryboardPluginPaths();
+    return {
+      manifestPath: options.manifestPath ?? defaults!.manifestPath,
+      entrypointPath: options.entrypointPath ?? defaults!.entrypointPath,
+    };
+  };
+
+  return {
+    plugins: [STORYBOARD_MARKETPLACE_PLUGIN],
+    async listInstalled() {
+      const installed = await listHostExecutablePluginPackages(
+        options.actionsRoot,
+      );
+      return installed.filter(
+        (plugin) => plugin.id === STORYBOARD_MARKETPLACE_PLUGIN.id,
+      );
+    },
+    async install(packageId: string) {
+      if (packageId !== STORYBOARD_MARKETPLACE_PLUGIN.packageId) {
+        throw new Error(`Unknown official plugin package: ${packageId}`);
+      }
+      const paths = packagePaths();
+      const manifest = ExecutablePluginManifestSchema.parse(
+        JSON.parse(await readFile(paths.manifestPath, "utf8")),
+      );
+      const result = await ensureBundledPlugin({
+        id: STORYBOARD_MARKETPLACE_PLUGIN.id,
+        actionsRoot: options.actionsRoot,
+        ...paths,
+      });
+      return {
+        id: manifest.id,
+        packageId,
+        version: manifest.version,
+        installed: result.installed,
+      };
+    },
+    async uninstall(pluginId: string) {
+      if (pluginId !== STORYBOARD_MARKETPLACE_PLUGIN.id) {
+        throw new Error(`Unknown official plugin: ${pluginId}`);
+      }
+      await removeHostExecutablePluginPackage(options.actionsRoot, pluginId);
+    },
+  };
 }

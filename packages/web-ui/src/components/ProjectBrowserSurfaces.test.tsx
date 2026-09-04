@@ -30,4 +30,23 @@ describe("ProjectBrowserSurfaces", () => {
     expect(slots.map((slot) => slot.dataset.active)).toEqual(["false", "true"]);
     expect(container.querySelectorAll("webview")).toHaveLength(2);
   });
+
+  it("reserves the Director-style header inset for the collapsed agent launcher", () => {
+    const props = {
+      projectId: "project-1",
+      tabs: [{ id: "browser-1", title: "One", url: "https://one.example" }],
+      activeBrowserId: "browser-1",
+      annotations: [],
+      activeAnnotationId: null,
+      onTabChange: vi.fn(),
+      onCreateAnnotation: vi.fn(),
+      onSelectAnnotation: vi.fn(),
+      headerEndInset: 40,
+    } as const;
+    const { container } = render(<ProjectBrowserSurfaces {...props} />);
+
+    expect(
+      container.querySelector<HTMLElement>("[data-browser-toolbar]"),
+    ).toHaveStyle({ paddingRight: "40px" });
+  });
 });

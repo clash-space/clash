@@ -1,0 +1,48 @@
+{
+  "name": "@clash/replica",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Portable durable replica engine and Loro protocol adapters",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./loro": {
+      "types": "./dist/loro.d.ts",
+      "import": "./dist/loro.js",
+      "default": "./dist/loro.js"
+    },
+    "./loro-protocol": {
+      "types": "./dist/loro-protocol.d.ts",
+      "import": "./dist/loro-protocol.js",
+      "default": "./dist/loro-protocol.js"
+    }
+  },
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "loro-crdt": "^1.10.3",
+    "loro-protocol": "^0.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.0"
+  },
+  "files": [
+    "dist",
+    "src"
+  ]
+}

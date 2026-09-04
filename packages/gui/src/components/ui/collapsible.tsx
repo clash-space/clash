@@ -26,10 +26,17 @@ function CollapsibleContent({
   className,
   ...props
 }: React.ComponentProps<typeof CollapsiblePrimitive.CollapsibleContent>) {
+  const ownsLayoutAnimation = className
+    ?.split(/\s+/)
+    .includes("reasoning-collapse");
+
   return (
     <CollapsiblePrimitive.CollapsibleContent
       data-slot="collapsible-content"
-      className={cn("clash-collapsible-content", className)}
+      className={cn(
+        !ownsLayoutAnimation && "clash-collapsible-content",
+        className,
+      )}
       {...props}
     />
   );

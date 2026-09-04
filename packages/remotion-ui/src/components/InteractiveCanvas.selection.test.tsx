@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 import React from "react";
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InteractiveCanvas } from "./InteractiveCanvas";
 
@@ -87,6 +94,29 @@ afterEach(() => {
 });
 
 describe("InteractiveCanvas selection geometry", () => {
+  it("keeps the preview player mounted when the canvas ratio changes", () => {
+    const { rerender } = render(
+      <InteractiveCanvas
+        {...baseProps}
+        tracks={[]}
+        selectedItemId={null}
+      />,
+    );
+    const player = screen.getByTestId("player");
+
+    rerender(
+      <InteractiveCanvas
+        {...baseProps}
+        compositionWidth={1080}
+        compositionHeight={1920}
+        tracks={[]}
+        selectedItemId={null}
+      />,
+    );
+
+    expect(screen.getByTestId("player")).toBe(player);
+  });
+
   it("does not create canvas hit targets or transform controls for audio items", async () => {
     const audio = {
       id: "audio",
@@ -153,5 +183,41 @@ describe("InteractiveCanvas selection geometry", () => {
     await waitFor(() =>
       expect(getSelectionRect()?.getAttribute("width")).toBe("600"),
     );
+  });
+
+  it("clears the selected item when the pointer presses the Canvas background", async () => {
+    const onSelectItem = vi.fn();
+    const visual = {
+      id: "visual",
+      type: "solid" as const,
+      color: "#f5ddd8",
+      from: 0,
+      durationInFrames: 90,
+      properties: {
+        x: 0,
+        y: 0,
+        width: 0.5,
+        height: 0.5,
+        rotation: 0,
+        opacity: 1,
+      },
+    };
+    const { container } = render(
+      <InteractiveCanvas
+        {...baseProps}
+        tracks={[{ id: "visual-track", name: "Visual", items: [visual] }]}
+        selectedItemId={visual.id}
+        onSelectItem={onSelectItem}
+      />,
+    );
+
+    await waitFor(() => expect(notifyResize).toBeTypeOf("function"));
+    const background = container.querySelector<SVGRectElement>(
+      ".canvas-items > rect",
+    );
+    expect(background).toBeTruthy();
+    fireEvent.pointerDown(background!);
+
+    expect(onSelectItem).toHaveBeenCalledWith(null);
   });
 });

@@ -68,7 +68,9 @@ import {
 import { resolveAssetDropPayload } from "./timeline/assetDropPayload";
 import {
   buildTimelineAssetInsertion,
+  createTimelineInsertProperties,
   hasTimelineAssetInsertReceipt,
+  TIMELINE_INSERT_MEDIA_FIT,
   type TimelineAssetInsertRequest,
 } from "./timeline/insertAssetRequest";
 import {
@@ -1171,30 +1173,7 @@ export const Timeline: React.FC<{
       const sourceNodeId: string | undefined = asset?.sourceNodeId ?? asset?.id;
       const projectAssetId: string | undefined = asset?.projectAssetId;
       if (!projectAssetId) return null;
-      const canvasRatio = compositionWidth / compositionHeight;
-      const assetRatio =
-        asset?.width && asset?.height ? asset.width / asset.height : null;
-      let width = 1;
-      let height = 1;
-      if (assetRatio) {
-        if (assetRatio >= canvasRatio) {
-          width = 1;
-          height = canvasRatio / assetRatio;
-        } else {
-          height = 1;
-          width = assetRatio / canvasRatio;
-        }
-      }
-
-      // 默认变换属性：画布中心 (0, 0)、按素材比例
-      const defaultProperties = {
-        x: 0, // 中心X (像素，相对于画布中心)
-        y: 0, // 中心Y (像素，相对于画布中心)
-        width, // 宽度比例 (0-1)
-        height, // 高度比例 (0-1)
-        rotation: 0, // 无旋转
-        opacity: 1, // 完全不透明
-      };
+      const defaultProperties = createTimelineInsertProperties();
 
       switch (asset.type) {
         case "video":
@@ -1212,6 +1191,7 @@ export const Timeline: React.FC<{
             sourceStartInFrames: 0,
             waveform: asset.waveform,
             properties: defaultProperties,
+            mediaFit: TIMELINE_INSERT_MEDIA_FIT,
           } as Item;
         case "audio":
           return {
@@ -1238,12 +1218,13 @@ export const Timeline: React.FC<{
             durationInFrames: 90,
             src: asset.src,
             properties: defaultProperties,
+            mediaFit: TIMELINE_INSERT_MEDIA_FIT,
           } as Item;
         default:
           return null;
       }
     },
-    [compositionWidth, compositionHeight],
+    [fps],
   );
 
   const applyLibraryDrop = useCallback(

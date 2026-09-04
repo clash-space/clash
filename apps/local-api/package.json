@@ -26,6 +26,7 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run src",
+    "test:sync-chaos": "vitest run src/loro/cloud-replication.chaos.test.ts",
     "test:e2e": "tsx --tsconfig tsconfig.dev.json e2e/daemon-smoke.ts",
     "test:providers": "vitest run src/google-backend.e2e.test.ts src/minimax-backend.e2e.test.ts src/hilo-backend.e2e.test.ts src/volcengine-backend.e2e.test.ts src/volcengine-provider-e2e-cases.test.ts",
     "test:providers:live": "vitest run src/real-generation-google.test.ts src/real-generation-minimax.test.ts src/real-generation-hilo.test.ts",
@@ -54,6 +55,7 @@
     "@clash/action-sdk": "workspace:*",
     "@clash/asset-sdk": "workspace:*",
     "@clash/sdk": "workspace:*",
+    "@clash/replica": "workspace:*",
     "@clash/shared-runtime": "workspace:*",
     "@clash/shared-types": "workspace:*",
     "@ffmpeg-installer/ffmpeg": "1.1.0",
@@ -64,6 +66,7 @@
     "hono": "^4.7.10",
     "loro-crdt": "^1.10.3",
     "saxes": "6.0.0",
+    "sharp": "^0.34.5",
     "ws": "^8.18.0",
     "yaml": "^2.6.0"
   },

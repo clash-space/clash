@@ -26,7 +26,7 @@ export interface Env {
   /** For local dev: direct URL to render-server (bypasses Container) */
   RENDER_SERVER_URL?: string;
   DB: D1Database;
-  // Auth (ported from loro-sync-server)
+  // ProjectRoom authentication
   JWT_SECRET?: string;
   BETTER_AUTH_ORIGIN?: string;
   BETTER_AUTH_BASE_PATH?: string;

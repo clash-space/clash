@@ -9,6 +9,47 @@ afterEach(() => {
 });
 
 describe("Marketplace manage loader", () => {
+  it("loads official plugins and actions while excluding generic skills from the Store", async () => {
+    const storyboard = {
+      id: "clash.storyboard",
+      name: "Storyboard",
+      type: "plugin",
+      packageId: "clash.storyboard",
+    };
+    const action = {
+      id: "codex-imagegen",
+      name: "Codex ImageGen",
+      type: "action",
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const path = new URL(String(input), "http://clash.local").pathname;
+        if (path === "/api/marketplace/registry") {
+          return Response.json({
+            version: 1,
+            actions: [action],
+            plugins: [storyboard],
+            skills: [
+              { id: "clash.openai.define-goal", type: "skill", name: "Define goal" },
+            ],
+          });
+        }
+        if (path === "/api/v1/local/plugins") {
+          return Response.json([{ id: "clash.storyboard" }]);
+        }
+        return Response.json([]);
+      }),
+    );
+
+    await expect(loader()).resolves.toEqual({
+      items: [action, storyboard],
+      installedActionIds: [],
+      installedSkillIds: [],
+      installedPluginIds: ["clash.storyboard"],
+    });
+  });
+
   it("renders an empty marketplace when local installed-item reads time out", async () => {
     vi.stubGlobal(
       "fetch",
@@ -24,6 +65,7 @@ describe("Marketplace manage loader", () => {
       items: [],
       installedActionIds: [],
       installedSkillIds: [],
+      installedPluginIds: [],
     });
   });
 
@@ -55,6 +97,7 @@ describe("Marketplace manage loader", () => {
       items: [registryItem],
       installedActionIds: ["codex-imagegen"],
       installedSkillIds: [],
+      installedPluginIds: [],
     });
   });
 
@@ -86,6 +129,7 @@ describe("Marketplace manage loader", () => {
       items: [],
       installedActionIds: [],
       installedSkillIds: [],
+      installedPluginIds: [],
     });
   });
 
@@ -106,6 +150,7 @@ describe("Marketplace manage loader", () => {
       items: [],
       installedActionIds: [],
       installedSkillIds: [],
+      installedPluginIds: [],
     });
   });
 

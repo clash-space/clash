@@ -575,22 +575,16 @@ describe("Seedance and H3 unified model cards", () => {
     expect(card("minimax-h3-startend").input.inputMode.startEnd).toBeDefined();
   });
 
-  it("routes both H3 cards through independent MiniMax, fal, and Pika providers", () => {
+  it("routes both H3 cards through their built-in MiniMax and Pika providers", () => {
     const omni = card("minimax-h3");
     const frames = card("minimax-h3-startend");
-    expect(omni.availableProviders).toEqual(["minimax", "fal", "pika"]);
-    expect(frames.availableProviders).toEqual(["minimax", "fal", "pika"]);
+    expect(omni.availableProviders).toEqual(["minimax", "pika"]);
+    expect(frames.availableProviders).toEqual(["minimax", "pika"]);
 
     const providers = [
       {
         providerId: "minimax" as const,
         upstreamId: "minimax" as const,
-        enabled: true,
-        configuredCredentials: ["apiKey"],
-      },
-      {
-        providerId: "fal" as const,
-        upstreamId: "fal" as const,
         enabled: true,
         configuredCredentials: ["apiKey"],
       },
@@ -620,27 +614,6 @@ describe("Seedance and H3 unified model cards", () => {
           apiShape: "minimax",
         }),
         expect.objectContaining({
-          providerId: "fal",
-          upstreamModel: "minimax/h3/reference-to-video",
-          apiShape: "fal",
-          defaultParamOverrides: { duration: 5, aspect_ratio: "16:9" },
-          parameterOverrides: expect.arrayContaining([
-            expect.objectContaining({
-              id: "aspect_ratio",
-              description: expect.stringMatching(/reference/i),
-            }),
-          ]),
-          referenceBinding: {
-            type: "positional-tokens",
-            modalityScopedIndexes: true,
-            tokens: {
-              image: "Image {n}",
-              video: "Video {n}",
-              audio: "Audio {n}",
-            },
-          },
-        }),
-        expect.objectContaining({
           providerId: "pika",
           upstreamModel: "minimax/h3/reference-to-video",
           apiShape: "pika",
@@ -661,11 +634,6 @@ describe("Seedance and H3 unified model cards", () => {
         expect.objectContaining({
           providerId: "minimax",
           upstreamModel: "MiniMax-H3",
-        }),
-        expect.objectContaining({
-          providerId: "fal",
-          upstreamModel: "minimax/h3/image-to-video",
-          apiShape: "fal",
         }),
         expect.objectContaining({
           providerId: "pika",

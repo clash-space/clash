@@ -108,7 +108,7 @@ export type PluginProviderInfo = ExecutablePluginProviderDefinition & {
 export interface RegistryItem {
   id: string;
   name: string;
-  type: "action" | "skill";
+  type: "action" | "skill" | "plugin";
   description?: string;
   repository?: string;
   runtime?: string;
@@ -127,6 +127,10 @@ export interface RegistryItem {
   author?: string;
   icon?: string;
   cover?: {
+    src: string;
+    alt?: string;
+  };
+  artwork?: {
     src: string;
     alt?: string;
   };
@@ -289,16 +293,6 @@ export async function updateProjectName(
   await jsonFetch(`/api/v1/projects/${id}`, {
     method: "PATCH",
     body: JSON.stringify({ name }),
-  });
-}
-
-export async function updateProjectCover(
-  id: string,
-  coverAssetId: string | null,
-): Promise<void> {
-  await jsonFetch(`/api/v1/projects/${encodeURIComponent(id)}/cover`, {
-    method: "PUT",
-    body: JSON.stringify({ coverAssetId }),
   });
 }
 
@@ -537,6 +531,7 @@ export interface RegistryData {
   version: number;
   actions: RegistryItem[];
   skills: RegistryItem[];
+  plugins: RegistryItem[];
 }
 
 export async function fetchRegistry(): Promise<RegistryData> {
@@ -598,6 +593,15 @@ export async function marketplaceInstallSkill(
     {
       method: "POST",
     },
+  );
+}
+
+export async function marketplaceInstallPlugin(
+  item: RegistryItem,
+): Promise<void> {
+  await jsonFetch(
+    `/api/marketplace/plugins/${encodeURIComponent(item.packageId ?? item.id)}/install`,
+    { method: "POST" },
   );
 }
 

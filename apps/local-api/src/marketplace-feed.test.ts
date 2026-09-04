@@ -3,25 +3,51 @@ import { describe, expect, it } from "vitest";
 import { selectMarketplaceFeed } from "./marketplace-feed";
 
 describe("Marketplace feed selection", () => {
-  it("returns only configured catalog entries in configured order", () => {
-    const action = {
-      id: "action-1",
-      name: "Action One",
+  it("selects the Clash-relevant mixed feed from the shared catalogs without generic Skills", () => {
+    const orphanAction = {
+      id: "action.orphan",
+      name: "Orphan Action",
       type: "action" as const,
-      packageId: "package.action-1",
     };
-    const skill = {
-      id: "skill-1",
-      name: "Skill One",
+    const codexPlugin = {
+      id: "clash.codex-imagegen",
+      name: "Codex ImageGen",
+      type: "plugin" as const,
+      packageId: "clash.codex-imagegen",
+    };
+    const plugin = {
+      id: "clash.storyboard",
+      name: "Storyboard",
+      type: "plugin" as const,
+      packageId: "clash.storyboard",
+      artwork: { src: "/brand/avatar-storyboard.png" },
+    };
+    const relevantSkill = {
+      id: "clash.video.sd25-pe",
+      name: "sd25-pe",
+      type: "skill" as const,
+    };
+    const unrelatedSkill = {
+      id: "clash.openai.define-goal",
+      name: "define-goal",
       type: "skill" as const,
     };
 
     expect(
       selectMarketplaceFeed({
-        actions: [action],
-        skills: [skill],
-        featuredPluginIds: ["skill-1", "missing", "action-1"],
+        actions: [orphanAction],
+        plugins: [plugin, codexPlugin],
+        skills: [relevantSkill, unrelatedSkill],
       }),
-    ).toEqual([skill, action]);
+    ).toEqual([plugin, codexPlugin, relevantSkill]);
+
+    expect(
+      selectMarketplaceFeed({
+        actions: [orphanAction],
+        plugins: [plugin],
+        skills: [],
+        featuredPluginIds: ["action.orphan", "clash.storyboard"],
+      }),
+    ).toEqual([plugin]);
   });
 });

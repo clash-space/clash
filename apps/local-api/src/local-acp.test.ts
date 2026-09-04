@@ -2908,6 +2908,7 @@ describe("local ACP adapter", () => {
       type: "session.ready",
       session_id: "local-acp-load-replay",
       acp_session_id: "acp-loaded",
+      supports_session_fork: true,
       replay_events: [
         {
           sessionUpdate: "available_commands_update",
@@ -2930,6 +2931,7 @@ describe("local ACP adapter", () => {
       type: "session.ready",
       session_id: "local-acp-load-replay",
       acp_session_id: "acp-loaded",
+      supports_session_fork: true,
     });
     expect(ready).not.toHaveProperty("replay_events");
     expect(JSON.parse(socket.sent[before + 1] ?? "{}")).toEqual({
@@ -4312,6 +4314,7 @@ describe("local ACP adapter", () => {
       type: "session.ready",
       session_id: "local-acp-session-no-replay",
       acp_session_id: "acp-no-replay",
+      supports_session_fork: false,
       config_options: [
         {
           id: "model",
@@ -4348,6 +4351,7 @@ describe("local ACP adapter", () => {
         type: "session.ready",
         session_id: "local-acp-session-no-replay",
         acp_session_id: "acp-no-replay",
+        supports_session_fork: false,
         config_options: [
           {
             id: "model",
@@ -4918,6 +4922,7 @@ describe("local ACP adapter", () => {
               type: "session.ready",
               session_id,
               acp_session_id: "acp-text-model",
+              supports_session_fork: false,
               config_options: [
                 {
                   id: "model",
@@ -4980,6 +4985,7 @@ describe("local ACP adapter", () => {
             session_id: params.session_id,
             acp_session_id:
               index === 0 ? "codex-thread-existing" : "codex-thread-resumed",
+            supports_session_fork: false,
           });
         });
         const dispose = vi.fn<SessionManagerLike["dispose"]>(
@@ -5158,30 +5164,31 @@ describe("local ACP adapter", () => {
     const history = await adapter.listSessionEvents(
       "local-acp-session-history",
     );
-    expect(history?.events.map(({ seq, type, data }) => ({ seq, type, data })))
-      .toEqual([
-        {
-          seq: 1,
-          type: "user_prompt",
-          data: { turn_id: "turn-history", text: "restore me" },
-        },
-        {
-          seq: 2,
-          type: "session.event",
-          data: {
-            turn_id: "turn-history",
-            event: {
-              sessionUpdate: "agent_message_chunk",
-              content: { type: "text", text: "restored" },
-            },
+    expect(
+      history?.events.map(({ seq, type, data }) => ({ seq, type, data })),
+    ).toEqual([
+      {
+        seq: 1,
+        type: "user_prompt",
+        data: { turn_id: "turn-history", text: "restore me" },
+      },
+      {
+        seq: 2,
+        type: "session.event",
+        data: {
+          turn_id: "turn-history",
+          event: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "restored" },
           },
         },
-        {
-          seq: 3,
-          type: "turn_completed",
-          data: { turn_id: "turn-history" },
-        },
-      ]);
+      },
+      {
+        seq: 3,
+        type: "turn_completed",
+        data: { turn_id: "turn-history" },
+      },
+    ]);
   });
 
   it("defers an ACP restart until the active turn completes", async () => {
@@ -5203,6 +5210,7 @@ describe("local ACP adapter", () => {
             type: "session.ready",
             session_id,
             acp_session_id: "codex-thread-busy",
+            supports_session_fork: false,
           });
         }),
         prompt: vi.fn(async () => {

@@ -12,7 +12,6 @@ import {
   type ReactNode,
 } from "react";
 import { SidebarSimple } from "@phosphor-icons/react";
-import { createPortal } from "react-dom";
 
 import { cn } from "./ai-elements/utils";
 import { DESKTOP_SHELL_LAYERS } from "./desktopShellLayers";
@@ -49,7 +48,6 @@ export interface DesktopAutoHideSidebarProps {
   style?: CSSProperties;
   panelClassName?: string;
   recoveryZoneClassName?: string;
-  scrimClassName?: string;
   /** Persists a full/hidden transition owned by the surrounding shell. */
   onCollapsedChange?: (collapsed: boolean) => void;
   /** Optional localStorage key used to persist this sidebar's expanded width. */
@@ -121,7 +119,6 @@ export function DesktopAutoHideSidebar({
   style,
   panelClassName,
   recoveryZoneClassName,
-  scrimClassName,
   onCollapsedChange,
   widthStorageKey,
 }: DesktopAutoHideSidebarProps) {
@@ -384,13 +381,13 @@ export function DesktopAutoHideSidebar({
       inert={hidden}
       style={panelStyle}
       className={cn(
-        "border-r border-warm-border bg-warm-muted",
+        "border-r border-warm-border",
         collapsed
           ? "fixed bottom-2 left-2 top-[calc(var(--clash-desktop-chrome-height,0px)+0.5rem)] h-auto overflow-hidden rounded-lg border"
           : "absolute inset-y-0 left-0 h-full overflow-hidden",
         state === "preview"
-          ? "[box-shadow:var(--clash-shadow-floating)]"
-          : null,
+          ? "bg-warm-surface [box-shadow:var(--clash-shadow-sidebar-preview)]"
+          : "bg-warm-muted",
         MOTION_CLASSES,
         panelClassName,
       )}
@@ -415,93 +412,73 @@ export function DesktopAutoHideSidebar({
   );
 
   return (
-    <>
-      {state === "preview" && typeof document !== "undefined"
-        ? createPortal(
-            <div
-              data-testid="desktop-auto-hide-sidebar-scrim"
-              aria-hidden="true"
-              style={{ zIndex: DESKTOP_SHELL_LAYERS.sidebarScrim }}
-              className={cn(
-                "pointer-events-none fixed inset-0 bg-black/20",
-                "motion-reduce:transition-none",
-                scrimClassName,
-              )}
-            />,
-            document.body,
-          )
-        : null}
-
-      <aside
-        aria-label={label}
-        data-state={state}
-        style={rootStyle}
-        className={cn(
-          "relative h-full shrink-0 overflow-visible",
-          MOTION_CLASSES,
-          className,
-        )}
-      >
-        {/*
+    <aside
+      aria-label={label}
+      data-state={state}
+      style={rootStyle}
+      className={cn(
+        "relative h-full shrink-0 overflow-visible",
+        MOTION_CLASSES,
+        className,
+      )}
+    >
+      {/*
           The recovery button is rendered before the panel so that tabbing off
           it moves focus into the sidebar it just revealed, not past it.
         */}
-        <div
-          ref={hoverRailRef}
-          data-sidebar-rail=""
-          data-sidebar-hover-rail={collapsed ? "" : undefined}
-          data-state={state}
-          onPointerEnter={enterSidebarPointerSurface}
-          onPointerLeave={leaveSidebarPointerSurface}
-          onBlur={(event) => {
-            if (
-              !event.currentTarget.contains(
-                event.relatedTarget as Node | null,
-              ) &&
-              !pointerWithinSidebarRef.current
-            ) {
-              closePreview();
-            }
-          }}
-          style={{
-            zIndex:
-              state === "preview"
-                ? DESKTOP_SHELL_LAYERS.sidebarPreview
-                : DESKTOP_SHELL_LAYERS.sidebarRecovery,
-          }}
-          className={cn(
-            "min-w-0 overflow-visible",
-            collapsed
-              ? "pointer-events-auto fixed bottom-0 left-0 top-[var(--clash-desktop-chrome-height,0px)] w-[14px]"
-              : "relative h-full w-full",
-            MOTION_CLASSES,
-          )}
-        >
-          {collapsed ? (
-            <button
-              type="button"
-              aria-label={`Show ${label}`}
-              onFocus={openPreview}
-              style={{
-                zIndex:
-                  state === "preview"
-                    ? DESKTOP_SHELL_LAYERS.sidebarPreview
-                    : DESKTOP_SHELL_LAYERS.sidebarRecovery,
-              }}
-              className={cn(
-                // Keyboard-equivalent affordance for the otherwise invisible
-                // Linear-style edge rail.
-                "pointer-events-auto absolute inset-0 h-full w-full",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black dark:focus-visible:ring-white",
-                "motion-reduce:transition-none",
-                recoveryZoneClassName,
-              )}
-            />
-          ) : null}
-          {panel}
-        </div>
-      </aside>
-    </>
+      <div
+        ref={hoverRailRef}
+        data-sidebar-rail=""
+        data-sidebar-hover-rail={collapsed ? "" : undefined}
+        data-state={state}
+        onPointerEnter={enterSidebarPointerSurface}
+        onPointerLeave={leaveSidebarPointerSurface}
+        onBlur={(event) => {
+          if (
+            !event.currentTarget.contains(event.relatedTarget as Node | null) &&
+            !pointerWithinSidebarRef.current
+          ) {
+            closePreview();
+          }
+        }}
+        style={{
+          zIndex:
+            state === "preview"
+              ? DESKTOP_SHELL_LAYERS.sidebarPreview
+              : DESKTOP_SHELL_LAYERS.sidebarRecovery,
+        }}
+        className={cn(
+          "min-w-0 overflow-visible",
+          collapsed
+            ? "pointer-events-auto fixed bottom-0 left-0 top-[var(--clash-desktop-chrome-height,0px)] w-[14px]"
+            : "relative h-full w-full",
+          MOTION_CLASSES,
+        )}
+      >
+        {collapsed ? (
+          <button
+            type="button"
+            aria-label={`Show ${label}`}
+            onFocus={openPreview}
+            style={{
+              zIndex:
+                state === "preview"
+                  ? DESKTOP_SHELL_LAYERS.sidebarPreview
+                  : DESKTOP_SHELL_LAYERS.sidebarRecovery,
+            }}
+            className={cn(
+              // Keyboard-equivalent affordance for the otherwise invisible
+              // Linear-style edge rail.
+              "pointer-events-auto absolute inset-0 h-full w-full",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black dark:focus-visible:ring-white",
+              "motion-reduce:transition-none",
+              recoveryZoneClassName,
+            )}
+          />
+        ) : null}
+        {panel}
+      </div>
+    </aside>
   );
 }
 

@@ -25,7 +25,8 @@
       "@clash/shared-types": ["../../shared-types/src/index.ts"],
       "@clash/shared-types/*": ["../../shared-types/src/*.ts"],
       "@clash/shared-runtime": ["../../shared-runtime/src/browser.ts"],
-      "@clash/shared-runtime/*": ["../../shared-runtime/src/*.ts"]
+      "@clash/shared-runtime/*": ["../../shared-runtime/src/*.ts"],
+      "@clash/replica/*": ["../../shared-replica/src/*.ts"]
     }
   },
   "include": ["src/**/*"]

@@ -19,6 +19,7 @@ import {
 
 const marketplaceApi = vi.hoisted(() => ({
   installAction: vi.fn(),
+  installPlugin: vi.fn(),
   installSkill: vi.fn(),
   uninstallAction: vi.fn(),
   uninstallSkill: vi.fn(),
@@ -26,6 +27,7 @@ const marketplaceApi = vi.hoisted(() => ({
 
 vi.mock("@clash/web-ui/lib/clientActions", () => ({
   marketplaceInstallAction: marketplaceApi.installAction,
+  marketplaceInstallPlugin: marketplaceApi.installPlugin,
   marketplaceInstallSkill: marketplaceApi.installSkill,
   marketplaceUninstallAction: marketplaceApi.uninstallAction,
   marketplaceUninstallSkill: marketplaceApi.uninstallSkill,
@@ -78,6 +80,50 @@ describe("MarketplaceClient interactions", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+  });
+
+  it("shows Clash plugins and actions without mixing generic agent skills into the Store", async () => {
+    marketplaceApi.installPlugin.mockResolvedValue({ installed: true });
+    render(
+      <MarketplaceClient
+        items={[
+          ...items,
+          {
+            id: "clash.storyboard",
+            packageId: "clash.storyboard",
+            type: "plugin",
+            name: "Storyboard",
+            author: "Clash",
+            description: "Draft a structured storyboard.",
+          },
+        ]}
+        installedActionIds={[]}
+        installedSkillIds={[]}
+        installedPluginIds={[]}
+        catalogScope="plugins-and-actions"
+      />,
+    );
+
+    expect(
+      screen.getByRole("searchbox", { name: "Search plugins and actions" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Storyboard" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Codex ImageGen" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("heading", { name: "Seedance guide" }),
+    ).toBeNull();
+
+    const storyboard = screen
+      .getByRole("heading", { name: "Storyboard" })
+      .closest('[data-slot="marketplace-item"]') as HTMLElement;
+    fireEvent.click(within(storyboard).getByRole("button", { name: "Install" }));
+    await waitFor(() =>
+      expect(marketplaceApi.installPlugin).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "clash.storyboard" }),
+      ),
+    );
   });
 
   it("combines full-text search with independent AND filter chips", () => {
@@ -285,6 +331,35 @@ describe("MarketplaceClient interactions", () => {
     expect(cover).toHaveAttribute("alt", "Storyboard frames on a canvas");
     expect(cover).toHaveClass("aspect-[3/2]", "object-cover");
     expect(container.querySelector('[data-slot="clash-artwork"]')).toBeNull();
+  });
+
+  it("uses plugin-specific square artwork without treating it as an editorial cover", () => {
+    const { container } = render(
+      <MarketplaceClient
+        items={[
+          {
+            id: "clash.storyboard",
+            type: "plugin",
+            name: "Storyboard",
+            description: "Plan key elements and shots.",
+            author: "Clash",
+            artwork: {
+              src: "/brand/avatar-storyboard.png",
+              alt: "Clash Storyboard plugin",
+            },
+          },
+        ]}
+        installedActionIds={[]}
+        installedSkillIds={[]}
+      />,
+    );
+
+    const artwork = container.querySelector(
+      '[data-slot="publisher-artwork"] img',
+    );
+    expect(artwork).toHaveAttribute("src", "/brand/avatar-storyboard.png");
+    expect(artwork).toHaveAttribute("alt", "Clash Storyboard plugin mark");
+    expect(container.querySelector('[data-slot="marketplace-cover"]')).toBeNull();
   });
 
   it("navigates each plugin card to its canonical detail route", () => {

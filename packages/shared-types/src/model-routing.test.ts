@@ -115,18 +115,7 @@ describe("model upstream routing", () => {
     });
   });
 
-  it("lets a provider implementation override the model reference binding dialect", () => {
-    const falRoute = listModelUpstreamRoutes({
-      modelCode: "seedance-2-ref",
-      kind: "video",
-      configuredProviders: [{
-        id: "fal-primary",
-        providerId: "fal",
-        upstreamId: "fal",
-        enabled: true,
-        configuredCredentials: ["apiKey"],
-      }],
-    })[0];
+  it("lets a built-in provider implementation override the model reference binding dialect", () => {
     const volcengineRoute = listModelUpstreamRoutes({
       modelCode: "seedance-2-ref",
       kind: "video",
@@ -139,11 +128,6 @@ describe("model upstream routing", () => {
       }],
     })[0];
 
-    expect(falRoute?.referenceBinding).toEqual({
-      type: "positional-tokens",
-      modalityScopedIndexes: true,
-      tokens: { image: "@Image{n}", video: "@Video{n}", audio: "@Audio{n}" },
-    });
     expect(volcengineRoute?.referenceBinding).toEqual({
       type: "positional-tokens",
       modalityScopedIndexes: true,
@@ -170,27 +154,43 @@ describe("model upstream routing", () => {
     expect(routeFor("pika")?.inputAdaptation).toBeUndefined();
   });
 
-  it("composes provider-specific parameter candidates into the effective catalog card", () => {
-    const entryFor = (
-      providerId: "fal" | "volcengine-modelark",
-      upstreamId: "fal" | "volcengine-modelark",
-      credentials: Omit<ProviderAccountAvailability, "providerId">,
-    ) =>
-      listModelCatalogEntries({
-        configuredProviders: [{ providerId, upstreamId, enabled: true, ...credentials }],
-      }).find((entry) => entry.model.id === "seedance-2-ref");
+  it("composes built-in provider-specific parameter candidates into the effective catalog card", () => {
+    const volcengine = listModelCatalogEntries({
+      configuredProviders: [
+        {
+          providerId: "volcengine-modelark",
+          upstreamId: "volcengine-modelark",
+          enabled: true,
+          configuredCredentials: ["apiKey"],
+        },
+      ],
+    }).find((entry) => entry.model.id === "seedance-2-ref");
+    const options = (entry: typeof volcengine, id: string) =>
+      entry?.model.parameters
+        .find((parameter) => parameter.id === id)
+        ?.options?.map((option) => option.value);
 
-    const fal = entryFor("fal", "fal", { configuredCredentials: ["apiKey"] });
-    const volcengine = entryFor("volcengine-modelark", "volcengine-modelark", {
-      configuredCredentials: ["apiKey"],
-    });
-    const options = (entry: typeof fal, id: string) =>
-      entry?.model.parameters.find((parameter) => parameter.id === id)?.options?.map((option) => option.value);
-
-    expect(options(fal, "duration")).toEqual(["auto", 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
-    expect(fal?.model.parameters.some((parameter) => parameter.id === "seed")).toBe(true);
-    expect(options(volcengine, "duration")).toEqual(["auto", 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
-    expect(options(volcengine, "resolution")).toEqual(["480p", "720p", "1080p", "4k"]);
+    expect(options(volcengine, "duration")).toEqual([
+      "auto",
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+    ]);
+    expect(options(volcengine, "resolution")).toEqual([
+      "480p",
+      "720p",
+      "1080p",
+      "4k",
+    ]);
     expect(volcengine?.model.defaultParams).toMatchObject({
       duration: "auto",
       aspect_ratio: "auto",
@@ -202,27 +202,20 @@ describe("model upstream routing", () => {
     })).toBeNull();
   });
 
-  it("keeps the full Music 3 card and marks MiniMax-only controls unavailable for fal", () => {
-    const entry = listModelCatalogEntries({
-      configuredProviders: [{
-        providerId: "fal",
-        upstreamId: "fal",
-        enabled: true,
-        configuredCredentials: ["apiKey"],
-      }],
-    }).find((candidate) => candidate.model.id === "minimax-music-3");
+  it("keeps plugin-owned providers out of the uncomposed Music 3 card", () => {
+    const entry = listModelCatalogEntries().find(
+      (candidate) => candidate.model.id === "minimax-music-3",
+    );
 
-    expect(entry?.selectedRoute).toMatchObject({
-      providerId: "fal",
-      upstreamId: "fal",
-      apiShape: "fal",
-      upstreamModel: "fal-ai/minimax-music/v3",
-    });
-    expect(entry?.model.availableProviders).toEqual(["minimax", "fal", "pika"]);
-    expect(entry?.model.parameters.map((parameter) => parameter.id)).toContain("aigc_watermark");
-    expect(entry?.unavailableParameterIds).toContain("aigc_watermark");
-    expect(entry?.model.parameters.find((parameter) => parameter.id === "sample_rate")?.options?.map((option) => option.value))
-      .toEqual([16000, 24000, 32000, 44100]);
+    expect(entry?.model.availableProviders).toEqual(["minimax", "pika"]);
+    expect(entry?.model.parameters.map((parameter) => parameter.id)).toContain(
+      "aigc_watermark",
+    );
+    expect(
+      entry?.model.parameters
+        .find((parameter) => parameter.id === "sample_rate")
+        ?.options?.map((option) => option.value),
+    ).toEqual([16000, 24000, 32000, 44100]);
     expect(entry?.model.musicInput).toMatchObject({
       lyricsParam: "lyrics",
       maxPromptCharacters: 2000,
@@ -716,7 +709,9 @@ describe("model upstream routing", () => {
       ],
     });
 
-    expect(routes.map((route) => route.upstreamId)).toEqual(["fal", "google-ai-studio"]);
+    expect(routes.map((route) => route.upstreamId)).toEqual([
+      "google-ai-studio",
+    ]);
   });
 
   it("keeps mock routes out of hosted resolution unless explicitly allowed", () => {
@@ -769,7 +764,7 @@ describe("model upstream routing", () => {
     expect(route).not.toHaveProperty("requiredSecretIds");
   });
 
-  it("routes GPT Image 2 through the real fal endpoint", () => {
+  it("does not invent a Fal route before plugin bindings are composed", () => {
     const route = resolveModelUpstreamRoute({
       modelCode: "gpt-image-2",
       kind: "image",
@@ -783,12 +778,7 @@ describe("model upstream routing", () => {
       ],
     });
 
-    expect(route).toMatchObject({
-      providerId: "fal",
-      upstreamId: "fal",
-      upstreamModel: "openai/gpt-image-2",
-      apiShape: "fal",
-    });
+    expect(route).toBeNull();
   });
 
   it("routes official Google AI Studio image models when a Gemini API key is configured", () => {
@@ -815,7 +805,7 @@ describe("model upstream routing", () => {
     });
   });
 
-  it("routes Minimax TTS to fal when the fal key is configured", () => {
+  it("does not route MiniMax TTS to Fal before plugin bindings are composed", () => {
     const route = resolveModelUpstreamRoute({
       modelCode: "minimax-tts",
       kind: "audio",
@@ -824,13 +814,7 @@ describe("model upstream routing", () => {
       ],
     });
 
-    expect(route).toMatchObject({
-      modelCode: "minimax-tts",
-      upstreamId: "fal",
-      upstreamModel: "fal-ai/minimax/speech-02-hd",
-      apiShape: "fal",
-      requiredCredentials: ["apiKey"],
-    });
+    expect(route).toBeNull();
   });
 
   it("keeps local ASR model cards available without hosted provider setup", () => {
@@ -1149,7 +1133,8 @@ describe("model upstream routing", () => {
           weight: 10,
         },
         {
-          providerId: "fal",
+          providerId: "replicate",
+          upstreamId: "replicate",
           enabled: true,
           configuredCredentials: ["apiKey"],
           weight: 90,
@@ -1158,10 +1143,10 @@ describe("model upstream routing", () => {
     });
 
     expect(route).toMatchObject({
-      providerId: "fal",
-      upstreamId: "fal",
-      upstreamModel: "fal-ai/nano-banana-2",
-      apiShape: "fal",
+      providerId: "replicate",
+      upstreamId: "replicate",
+      upstreamModel: "google/nano-banana-2",
+      apiShape: "replicate",
     });
   });
 
@@ -1277,8 +1262,8 @@ describe("model upstream routing", () => {
   it("applies provider ordering only to the model it was configured for", () => {
     const configuredProviders = [
       {
-        providerId: "fal",
-        upstreamId: "fal",
+        providerId: "official",
+        upstreamId: "google-ai-studio",
         enabled: true,
         configuredCredentials: ["apiKey"],
         modelPriorities: { "nano-banana-2": 20 },
@@ -1304,7 +1289,7 @@ describe("model upstream routing", () => {
     });
 
     expect(nanoRoute?.providerId).toBe("replicate");
-    expect(fluxRoute?.providerId).toBe("fal");
+    expect(fluxRoute?.providerId).toBe("replicate");
   });
 
   it("normalizes model aliases before applying configured provider scopes and priorities", () => {
@@ -1708,8 +1693,18 @@ describe("model upstream routing", () => {
 
   it("classifies model catalog entries by runnable and configured-provider tiers", () => {
     const configuredProviders: ProviderAccountAvailability[] = [
-      { providerId: "fal", enabled: true, configuredCredentials: ["apiKey"] },
-      { providerId: "official", upstreamId: "openai", enabled: true, configuredCredentials: [] },
+      {
+        providerId: "pika",
+        upstreamId: "pika",
+        enabled: true,
+        configuredCredentials: ["apiKey"],
+      },
+      {
+        providerId: "official",
+        upstreamId: "openai",
+        enabled: true,
+        configuredCredentials: [],
+      },
     ];
 
     const entries = listModelCatalogEntries({ configuredProviders });
@@ -1719,18 +1714,18 @@ describe("model upstream routing", () => {
     expect(nanoBanana).toMatchObject({
       tier: "available",
       selectedRoute: {
-        providerId: "fal",
-        upstreamId: "fal",
+        providerId: "pika",
+        upstreamId: "pika",
       },
     });
     expect(gptImage).toMatchObject({
       tier: "available",
       selectedRoute: {
-        providerId: "fal",
-        upstreamId: "fal",
-        upstreamModel: "openai/gpt-image-2",
+        providerId: "pika",
+        upstreamId: "pika",
+        upstreamModel: "openai/gpt-image-2/text-to-image",
       },
-      candidateProviders: ["fal", "official"],
+      candidateProviders: ["pika", "official"],
     });
   });
 
@@ -1754,36 +1749,35 @@ describe("model upstream routing", () => {
     });
   });
 
-  it("exposes one Seedream card that switches between fal generation and edit endpoints", () => {
-    const seedreamCards = MODEL_CARDS.filter((model) => model.id.startsWith("seedream-4.5"));
+  it("keeps one provider-neutral Seedream card ready for plugin bindings", () => {
+    const seedreamCards = MODEL_CARDS.filter((model) =>
+      model.id.startsWith("seedream-4.5"),
+    );
     expect(seedreamCards).toHaveLength(1);
     expect(seedreamCards[0]).toMatchObject({
       id: "seedream-4.5",
       kind: "image",
-      availableProviders: ["fal"],
       input: {
         inputMode: { images: { max: 10 } },
         promptModalities: ["text", "image"],
       },
     });
     expect(normalizeModelId("seedream-4.5-edit")).toBeNull();
-    expect(resolveModelUpstreamRoute({
-      modelCode: "seedream-4.5",
-      kind: "image",
-      configuredProviders: [{
-        id: "fal-primary",
-        providerId: "fal",
-        upstreamId: "fal",
-        enabled: true,
-        configuredCredentials: ["apiKey"],
-      }],
-    })).toMatchObject({
-      accountId: "fal-primary",
-      providerId: "fal",
-      upstreamId: "fal",
-      upstreamModel: "fal-ai/bytedance/seedream/v4.5/text-to-image",
-      apiShape: "fal",
-    });
+    expect(
+      resolveModelUpstreamRoute({
+        modelCode: "seedream-4.5",
+        kind: "image",
+        configuredProviders: [
+          {
+            id: "fal-primary",
+            providerId: "fal",
+            upstreamId: "fal",
+            enabled: true,
+            configuredCredentials: ["apiKey"],
+          },
+        ],
+      }),
+    ).toBeNull();
   });
 
   it("does not expose legacy fal edit IDs as cards or aliases", () => {
@@ -1826,7 +1820,7 @@ describe("model upstream routing", () => {
     expect(MODEL_CARDS.find((model) => model.id === "minimax-music-3")).toMatchObject({
       name: "MiniMax Music 3.0",
       kind: "audio",
-      availableProviders: ["minimax", "fal", "pika"],
+      availableProviders: ["minimax", "pika"],
       defaultProvider: "minimax",
       musicInput: {
         lyricsTarget: "modelParam",
@@ -1869,7 +1863,7 @@ describe("model upstream routing", () => {
     expect(MODEL_CARDS.find((model) => model.id === "minimax-h3")).toMatchObject({
       name: "MiniMax H3 (全能参考)",
       kind: "video",
-      availableProviders: ["minimax", "fal", "pika"],
+      availableProviders: ["minimax", "pika"],
       defaultProvider: "minimax",
       input: {
         referenceBinding: { type: "ordered-content-parts" },
@@ -1907,7 +1901,7 @@ describe("model upstream routing", () => {
     expect(MODEL_CARDS.find((model) => model.id === "minimax-h3-startend")).toMatchObject({
       name: "MiniMax H3 (Start / End Frame)",
       kind: "video",
-      availableProviders: ["minimax", "fal", "pika"],
+      availableProviders: ["minimax", "pika"],
       defaultProvider: "minimax",
       parameters: [
         expect.objectContaining({ id: "duration" }),
@@ -2005,18 +1999,18 @@ describe("model upstream routing", () => {
       kind: "image",
       configuredProviders: [
         {
-          id: "fal-general",
-          providerId: "fal",
-          upstreamId: "fal",
+          id: "replicate-general",
+          providerId: "replicate",
+          upstreamId: "replicate",
           enabled: true,
           priority: 1,
           modelPriorities: { "gpt-image-2": 50 },
           configuredCredentials: ["apiKey"],
         },
         {
-          id: "fal-images",
-          providerId: "fal",
-          upstreamId: "fal",
+          id: "replicate-images",
+          providerId: "replicate",
+          upstreamId: "replicate",
           enabled: true,
           priority: 20,
           modelPriorities: { "gpt-image-2": 5 },
@@ -2025,8 +2019,8 @@ describe("model upstream routing", () => {
       ],
     });
     expect(route).toMatchObject({
-      accountId: "fal-images",
-      providerId: "fal",
+      accountId: "replicate-images",
+      providerId: "replicate",
       upstreamModel: "openai/gpt-image-2",
     });
   });

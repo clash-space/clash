@@ -3,17 +3,19 @@
   "context_hints": [
     "The Provider id is clash.fal and account authentication is declared in providers/fal.json",
     "The plugin performs one submit or one poll translation per invocation; scheduling and retries belong to the Host Durable Run Engine",
-    "Generated media is returned through the injected SDK upload capability and never downloaded into plugin business code"
+    "Generated provider URLs are returned as typed media results; the Host owns durable ingestion and Project Asset publication"
   ],
   "subdirectories": {
     "providers": "fal.ai Provider declaration and API-key form.",
+    "bindings": "Model-to-fal endpoint bindings and provider-specific parameter overrides.",
     "src": "Typed stdio entrypoint and native fal queue adapter.",
     "contract-tests": "Declarative activation-gating ABI fixtures."
   },
   "key_files": {
     "manifest.json": "Versioned executable package and contribution declarations.",
-    "providers/fal.json": "Provider metadata and account authentication form.",
-    "src/fal-adapter.ts": "Native fal queue submit/poll and Hunyuan3D request translation."
+    "providers/fal.json": "Provider metadata, shared route defaults, and account authentication form.",
+    "src/fal-adapter.ts": "Card-to-fal request translation, typed reference resolution, and queue lifecycle adapter.",
+    "src/fal-executor.ts": "One-step fal queue polling, result parsing, and byte upload transport."
   },
   "verification": ["pnpm --filter @clash-plugin/fal test"]
 }

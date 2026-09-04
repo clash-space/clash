@@ -5,6 +5,18 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        find: /^@clash\/replica\/loro-protocol$/,
+        replacement: resolve(__dirname, "../../packages/shared-replica/src/loro-protocol.ts"),
+      },
+      {
+        find: /^@clash\/replica\/loro$/,
+        replacement: resolve(__dirname, "../../packages/shared-replica/src/loro.ts"),
+      },
+      {
+        find: /^@clash\/replica$/,
+        replacement: resolve(__dirname, "../../packages/shared-replica/src/index.ts"),
+      },
+      {
         find: /^@clash\/shared-types\/(.+)$/,
         replacement: resolve(__dirname, "../../packages/shared-types/src/$1.ts"),
       },

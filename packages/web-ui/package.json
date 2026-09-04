@@ -39,6 +39,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@clash/remotion-components": "workspace:*",
+    "@clash/replica": "workspace:*",
     "@clash/remotion-core": "workspace:*",
     "@clash/remotion-ui": "workspace:*",
     "@milkdown/core": "^7.17.2",

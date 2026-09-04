@@ -595,8 +595,7 @@ function DashboardComposerRuntimeInner(
         onSubmit={(text) => handleSend(text)}
         isProcessing={isPending}
         isCreatingSession={isPending}
-        variant="hero"
-        visualState="compact"
+        variant="default"
         projectId={references.project?.id}
         ensureProjectId={ensureProjectId}
         mentionableNodes={mentionableAssets}
@@ -640,7 +639,11 @@ function DashboardComposerRuntimeInner(
             onSelectConfigOption={handleSelectConfigOption}
           />
         }
-        referenceAccessory={<DashboardComposerSkillReferences />}
+        referenceAccessory={
+          references.skills.length > 0 ? (
+            <DashboardComposerSkillReferences />
+          ) : undefined
+        }
       />
       <ScopedAssetPicker
         open={assetPickerOpen}

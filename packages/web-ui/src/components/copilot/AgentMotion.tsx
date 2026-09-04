@@ -9,8 +9,13 @@ export type AgentMotionProps = {
     label?: string;
     decorative?: boolean;
     gazeTarget?: { x: number; y: number } | null;
+    gazeSource?: AgentGazeSource | null;
 };
 type GazePoint = { x: number; y: number };
+
+export type AgentGazeSource = {
+    subscribe: (listener: (point: GazePoint) => void) => () => void;
+};
 
 function joinClasses(...classes: Array<string | false | null | undefined>) {
     return classes.filter(Boolean).join(' ');
@@ -24,12 +29,45 @@ function prefersReducedMotion() {
     return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
 }
 
+/**
+ * Publishes one pointer stream for a whole agent surface. Consumers update
+ * their eye transforms imperatively, so a moving pointer neither installs one
+ * surface listener per persona nor re-renders the transcript on every frame.
+ */
+export function useAgentGazeSurface() {
+    const listenersRef = useRef(new Set<(point: GazePoint) => void>());
+    const gazeSourceRef = useRef<AgentGazeSource | null>(null);
+    if (!gazeSourceRef.current) {
+        gazeSourceRef.current = {
+            subscribe: (listener) => {
+                listenersRef.current.add(listener);
+                return () => listenersRef.current.delete(listener);
+            },
+        };
+    }
+
+    const bindAgentGazeSurface = useMoveGesture<PointerEvent>(({ event }) => {
+        if (prefersReducedMotion()) return;
+        const point = { x: event.clientX, y: event.clientY };
+        for (const listener of listenersRef.current) listener(point);
+    }, {
+        eventOptions: { passive: true },
+        triggerAllEvents: true,
+    });
+
+    return {
+        bindAgentGazeSurface,
+        gazeSource: gazeSourceRef.current,
+    };
+}
+
 export function AgentMotion({
     state = 'idle',
     className,
     label = 'Clash agent',
     decorative = true,
     gazeTarget = null,
+    gazeSource = null,
 }: AgentMotionProps) {
     const rootRef = useRef<HTMLSpanElement>(null);
     const frameRef = useRef(0);
@@ -109,6 +147,14 @@ export function AgentMotion({
 
         updateEyes(gazeTarget);
     }, [gazeTarget, state, updateEyes]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        if (prefersReducedMotion()) return;
+        if (state !== 'idle' || !gazeSource) return;
+
+        return gazeSource.subscribe(schedulePointerUpdate);
+    }, [gazeSource, schedulePointerUpdate, state]);
 
     return (
         <span

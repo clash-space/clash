@@ -29,6 +29,7 @@ import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { Tooltip } from "../ui/tooltip";
 import { PendingAssetConnectionHint } from "./PendingAssetConnectionHint";
+import { AssetGenerationPreview } from "./AssetGenerationPreview";
 
 const MEDIA_NODE_CONTROL_CLASS =
   "nodrag nopan bg-black/50 text-white backdrop-blur-sm hover:bg-black/70 focus-visible:ring-white/80 focus-visible:ring-offset-black/20";
@@ -271,28 +272,14 @@ const VideoNode = ({
           </div>
         ) : isActiveStatus(status) ? (
           <div
-            className="relative flex items-center justify-center bg-warm-muted text-slate-700 dark:text-slate-300"
+            className="flex items-center justify-center bg-warm-muted text-slate-700 dark:text-slate-300"
             style={{ width: "100%", height: "100%" }}
           >
-            {posterUrl && (
-              <img
-                src={posterUrl}
-                alt=""
-                className="absolute inset-0 h-full w-full object-cover opacity-50"
-              />
+            {pendingAwaitingConnection ? (
+              <PendingAssetConnectionHint />
+            ) : (
+              <AssetGenerationPreview kind="video" />
             )}
-            <div className="relative z-10">
-              {pendingAwaitingConnection ? (
-                <PendingAssetConnectionHint />
-              ) : (
-                <div className="flex flex-col items-center gap-3">
-                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-warm-border border-t-video" />
-                  <span className="text-xs font-medium animate-pulse text-slate-700 dark:text-slate-300 bg-warm-surface/70 px-2 py-0.5 rounded-lg backdrop-blur-sm">
-                    Generating Video...
-                  </span>
-                </div>
-              )}
-            </div>
           </div>
         ) : status === "failed" ? (
           <div

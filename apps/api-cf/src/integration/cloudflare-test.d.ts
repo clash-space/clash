@@ -1,6 +1,11 @@
-declare module "cloudflare:test" {
-  export const SELF: {
-    fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
-  };
-  export const env: import("../config").Env;
+import type { Env as AppEnv } from "../config";
+
+declare global {
+  namespace Cloudflare {
+    interface Env extends AppEnv {
+      TEST_MIGRATIONS?: unknown;
+    }
+  }
 }
+
+export {};

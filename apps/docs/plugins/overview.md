@@ -1,7 +1,7 @@
 # Executable Plugins — Overview
 
-Executable plugins extend Clash with Generator Definitions, runnable Actions,
-provider projectors, and provider executors. A plugin is ordinary trusted code
+Executable plugins extend Clash with declarative Views, Generator Definitions,
+runnable Actions, provider projectors, and provider executors. A plugin is ordinary trusted code
 installed by the user. It owns its vendor protocol and performs its own HTTP,
 filesystem, and process I/O.
 
@@ -14,11 +14,15 @@ filesystem, and process I/O.
 | Model bindings            | `clash.binding/v1`              | Attach the provider to model cards                                |
 | Cards (optional)          | `clash.card/v1`                 | Add models that are not already in the catalog                    |
 | Generators (optional)     | `clash.generator/v1`            | Declare versioned state and one or more materializing Actions     |
+| Views (optional)          | `clash.view/v1`                 | Declare an editor-like structured Project drafting surface        |
 | Contract tests            | `clash.plugin.contract-test/v1` | Exercise the real entrypoint with deterministic Host dependencies |
 | Executable implementation | ESM module or Python entrypoint | Implements the shared invocation/result ABI                       |
 
 A gateway normally contributes zero cards and several bindings: existing
 cards describe the models, while the plugin adds another route to them.
+A View-only plugin may contribute no functions or Generators. Its View can
+still consume installed native Generators through Clash product commands and
+store their Output Commit Project Assets in its structured state.
 
 ## Lifecycle
 
@@ -40,6 +44,12 @@ clash plugin install <package-id>
 clash plugin list
 clash plugin uninstall <plugin-id>
 ```
+
+First-party packages that are available for explicit installation live under
+`plugins/official/*`. Directory placement establishes publisher ownership, not
+startup behavior: only packages named in local-api's closed `BUNDLED_PLUGINS`
+registry are preloaded. An official package absent from that registry follows
+the normal marketplace install and activation lifecycle.
 
 The CLI never installs executable code into a Project Loro document and never
 downloads the retired Python ClashAgent package format. A Project records only

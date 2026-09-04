@@ -22,6 +22,10 @@ import { getTrackHeightForTrack } from './trackGeometry';
 import { getContinuousTransitionBoundaries } from '../../library/applyTimelineLibraryItem';
 import { PrimaryTranscriptWordbar } from './PrimaryTranscriptWordbar';
 import { createWheelAxisLock } from './wheelAxisLock';
+import {
+  createTimelineInsertProperties,
+  TIMELINE_INSERT_MEDIA_FIT,
+} from './insertAssetRequest';
 
 // Declare the global window property for TypeScript
 declare global {
@@ -948,6 +952,8 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
               durationInFrames: (asset && asset.duration) ? secondsToFrames(asset.duration, fps) : 90,
               src: asset ? asset.src : '',
               waveform: asset ? asset.waveform : undefined,
+              properties: createTimelineInsertProperties(),
+              mediaFit: TIMELINE_INSERT_MEDIA_FIT,
             };
             break;
           case 'audio':
@@ -960,6 +966,7 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
               durationInFrames: asset.duration ? secondsToFrames(asset.duration, fps) : 90,
               src: asset.src,
               waveform: asset.waveform,
+              properties: createTimelineInsertProperties(),
             };
             break;
           case 'image':
@@ -971,6 +978,8 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
               from: dropFrame,
               durationInFrames: 90,
               src: asset.src,
+              properties: createTimelineInsertProperties(),
+              mediaFit: TIMELINE_INSERT_MEDIA_FIT,
             };
             break;
         }

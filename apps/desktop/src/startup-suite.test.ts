@@ -1,6 +1,9 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { sourceContains } from "../../../packages/gui/test-support/source-match.js";
+import {
+  sourceContains,
+  sourceMatches,
+} from "../../../packages/gui/test-support/source-match.js";
 import { describe, expect, it } from "vitest";
 
 const desktopRoot = new URL("..", import.meta.url);
@@ -121,37 +124,27 @@ describe("desktop startup test suite", () => {
     expect(source).toContain("[prepare-clash-cli] failed");
   });
 
-  it("owns one strict-port renderer for the Desktop dev lifecycle", () => {
+  it("lets Forge own the Desktop renderer lifecycle", () => {
     const pkg = JSON.parse(readText("package.json")) as {
       scripts: Record<string, string>;
     };
-    const source = existsSync(join(desktopPath, "src/dev.ts"))
-      ? readText("src/dev.ts")
-      : "";
+    const forgeConfig = readText("forge.config.ts");
+    const rendererConfig = readText("vite.renderer.config.ts");
     const main = readText("src/main.ts");
     const hostController = readText("src/controller/host.ts");
+    const runtimeController = readText("src/controller/runtime.ts");
+    const windowsController = readText("src/controller/windows.ts");
 
-    expect(pkg.scripts.dev).toBe("tsx src/dev.ts");
-    expect(source).toContain('"--strictPort"');
-    expect(source).toContain("waitForHttp");
-    expect(source).toContain("assertPortAvailable");
-    expect(source).toContain("CLASH_WEB_URL: rendererUrl");
-    expect(source).toContain('CLASH_PROFILE: "dev"');
-    expect(source).toContain('CLASH_APP_NAME: "Clash Dev"');
+    expect(pkg.scripts.dev).toBe("electron-forge start");
+    expect(pkg.scripts.build).toContain("vite.main.config.ts");
+    expect(pkg.scripts.build).toContain("vite.preload.config.ts");
+    expect(runtimeController).toContain("MAIN_WINDOW_VITE_DEV_SERVER_URL");
     expect(hostController).toContain("app.setName(runtimeAppName)");
     expect(main).toContain("createDesktopRuntimeController");
     expect(main).toContain("createDesktopWindowController");
-    expect(source).toContain('"tsup.dev.config.ts"');
-    const devBuildConfig = readText("tsup.dev.config.ts");
-    expect(devBuildConfig).toContain("watch: [");
-    expect(devBuildConfig).not.toContain('"../local-api/src"');
-    expect(devBuildConfig).toContain('"../../packages/shared-runtime/src"');
-    expect(devBuildConfig).toContain('onSuccess: "electron ."');
-    expect(source).not.toMatch(/"@clash\/shared-runtime",\s*"build"/);
-    expect(source).not.toMatch(/"@clash\/cli",\s*"build"/);
-    expect(source).toContain('CLASH_WEB_E2E_NO_CLOUDFLARE: "1"');
-    expect(source).toContain("shutdownProcessTree");
-    expect(source).not.toContain("shell: true");
+    expect(rendererConfig).toContain("../web/vite.config");
+    expect(forgeConfig).toContain("CLASH_WEB_E2E_NO_CLOUDFLARE");
+    expect(windowsController).toContain('join(moduleDir, "preload.cjs")');
   });
 
   it("keeps Director and Timeline rendering active while the desktop window is occluded", () => {
@@ -170,19 +163,36 @@ describe("desktop startup test suite", () => {
     expect(runtimeController).toContain("electronRunAsNode: true");
   });
 
+  it("offers native retry or quit when the Host cannot start", () => {
+    const source = readText("src/main.ts");
+
+    expect(source).toContain("startDesktopWithRecovery");
+    expect(source).toContain("dialog.showMessageBox");
+    expect(source).toContain('buttons: ["Retry", "Quit"]');
+    expect(source).toContain('return response === 0 ? "retry" : "quit"');
+    expect(
+      sourceMatches(source, /app\s*\.whenReady\(\)[\s\S]*?\.catch\(/),
+    ).toBe(true);
+  });
+
   it("joins the shared local daemon or starts it once instead of creating a second writer", () => {
     const source = readText("src/controller/runtime.ts");
+    const main = readText("src/main.ts");
 
     expect(source).toContain("createLocalDaemonBootstrap");
     expect(source).toContain("ensureDaemon()");
     expect(source).toContain('CLASH_DAEMON_STARTED_BY: "desktop"');
     expect(source).toContain("clashHomeForLocalDataDir(dataDir)");
+    expect(source).toContain("diagnosticLogPath: hostDiagnosticLogPath");
+    expect(main).toContain(
+      'const hostDiagnosticLogPath = join(app.getPath("logs"), "host-startup.log")',
+    );
   });
 
   it("runs TypeScript sources and enables Host watching in desktop development", () => {
     const paths = readText("src/paths.ts");
     const runtime = readText("src/controller/runtime.ts");
-    const dev = readText("src/dev.ts");
+    const forge = readText("forge.config.ts");
 
     expect(paths).toContain('"../../../plugins/clash/src/local-api-entry.ts"');
     expect(paths).toContain('"../../../packages/cli/src/index.ts"');
@@ -196,7 +206,9 @@ describe("desktop startup test suite", () => {
     expect(runtime).toContain("resolveDesktopSourceHostNodeArgs");
     expect(runtime).toContain("CLASH_DESKTOP_SOURCE_HOST_WATCH");
     expect(runtime).toContain("resolveClashDevTsconfigPath(moduleDir)");
-    expect(dev).toContain('process.env.CLASH_DESKTOP_SOURCE_HOST_WATCH ?? "1"');
+    expect(forge).toContain(
+      "process.env.CLASH_DESKTOP_SOURCE_HOST_WATCH ??=",
+    );
   });
 
   it("injects the packaged Python SDK into local-model subprocess discovery", () => {
@@ -309,17 +321,12 @@ describe("desktop startup test suite", () => {
   });
 
   it("selects a Node runtime with the capabilities required by the renderer", () => {
-    const source = readText("src/dev.ts");
     const rootPkg = JSON.parse(readRootText("package.json")) as {
       engines?: { node?: string };
     };
 
     expect(readRootText(".nvmrc").trim()).toBe("24.18.0");
     expect(rootPkg.engines?.node).toBe(">=24.18.0 <25");
-    expect(source).toContain("registerHooks");
-    expect(source).toContain("nvm install && nvm use");
-    expect(source).toContain("process.execPath");
-    expect(source).toContain("process.env.npm_execpath");
   });
 
   it("keeps startup levels as checked-in runnable scripts", () => {

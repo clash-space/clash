@@ -14,5 +14,5 @@ declare module "cloudflare:test" {
 }
 
 beforeAll(async () => {
-  await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
+  await applyD1Migrations(env.DB, env.TEST_MIGRATIONS as D1Migration[]);
 });

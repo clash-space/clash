@@ -97,6 +97,32 @@ describe("local daemon bootstrap", () => {
     expect(unrefs).toBe(1);
   });
 
+  it("captures early daemon output in one truncated diagnostic file", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-daemon-diagnostics-"));
+    const diagnosticLogPath = join(root, "host-startup.log");
+    let spawnOptions: import("node:child_process").SpawnOptions | undefined;
+
+    await writeFile(diagnosticLogPath, "stale failure\n", "utf8");
+    launchDetachedLocalDaemon({
+      entryPath: "/opt/clash/clashd.cjs",
+      dataDir: "/tmp/clash/local-api",
+      runDir: "/tmp/clash/run",
+      cliEntryPath: "/opt/clash/clash.cjs",
+      diagnosticLogPath,
+      spawnProcess: (_command, _args, options) => {
+        spawnOptions = options;
+        return { pid: 4248, unref() {} } as never;
+      },
+    });
+
+    expect(spawnOptions?.stdio).toEqual([
+      "ignore",
+      expect.any(Number),
+      expect.any(Number),
+    ]);
+    expect(await readFile(diagnosticLogPath, "utf8")).toBe("");
+  });
+
   it("can run a validated Electron executable as a detached Node host", () => {
     let command = "";
     let args: readonly string[] = [];
@@ -152,6 +178,56 @@ describe("local daemon bootstrap", () => {
         signal: "SIGTERM",
       },
     ]);
+  });
+
+  it("marks a detached tsx watcher as the stable source-host supervisor", () => {
+    let spawnOptions: import("node:child_process").SpawnOptions | undefined;
+    launchDetachedLocalDaemon({
+      entryPath: "/workspace/plugins/clash/src/local-api-entry.ts",
+      dataDir: "/tmp/clash/local-api",
+      runDir: "/tmp/clash/run",
+      cliEntryPath: "/workspace/packages/cli/src/index.ts",
+      nodeArgs: [
+        "/workspace/node_modules/tsx/dist/cli.mjs",
+        "watch",
+        "--tsconfig",
+        "/workspace/plugins/clash/tsconfig.dev.json",
+      ],
+      spawnProcess: (_command, _args, options) => {
+        spawnOptions = options;
+        return { pid: 4246, unref() {} } as never;
+      },
+    });
+
+    expect(spawnOptions?.env).toMatchObject({
+      CLASH_DAEMON_SOURCE_WATCH: "1",
+    });
+  });
+
+  it("keeps a source watcher's reserved port across replaceable children", () => {
+    let spawnOptions: import("node:child_process").SpawnOptions | undefined;
+    launchDetachedLocalDaemon({
+      entryPath: "/workspace/plugins/clash/src/local-api-entry.ts",
+      dataDir: "/tmp/clash/local-api",
+      runDir: "/tmp/clash/run",
+      cliEntryPath: "/workspace/packages/cli/src/index.ts",
+      nodeArgs: [
+        "/workspace/node_modules/tsx/dist/cli.mjs",
+        "watch",
+        "--tsconfig",
+        "/workspace/plugins/clash/tsconfig.dev.json",
+      ],
+      daemonEnv: { PORT: "49321" },
+      spawnProcess: (_command, _args, options) => {
+        spawnOptions = options;
+        return { pid: 4247, unref() {} } as never;
+      },
+    });
+
+    expect(spawnOptions?.env).toMatchObject({
+      CLASH_DAEMON_SOURCE_WATCH: "1",
+      PORT: "49321",
+    });
   });
 
   it("rejects Electron Node mode outside the verified Node 24 range", () => {
@@ -263,6 +339,35 @@ describe("local daemon bootstrap", () => {
     await expect(bootstrap.ensureDaemon()).rejects.toThrow(
       /alive but unhealthy/i,
     );
+    expect(launches).toBe(0);
+  });
+
+  it("waits for the same live daemon to recover before failing closed", async () => {
+    const runDir = await mkdtemp(
+      join(tmpdir(), "clash-daemon-unhealthy-recovery-"),
+    );
+    const existing = record({ pid: process.pid });
+    await publish(runDir, existing);
+    let probes = 0;
+    let launches = 0;
+    const bootstrap = createLocalDaemonBootstrap({
+      runDir,
+      profile: "prod",
+      probe: async () => {
+        probes += 1;
+        return probes >= 3;
+      },
+      startupTimeoutMs: 100,
+      unhealthyRecoveryTimeoutMs: 100,
+      pollIntervalMs: 5,
+      launch: async () => {
+        launches += 1;
+        return { pid: process.pid };
+      },
+    });
+
+    await expect(bootstrap.ensureDaemon()).resolves.toEqual(existing);
+    expect(probes).toBeGreaterThanOrEqual(3);
     expect(launches).toBe(0);
   });
 

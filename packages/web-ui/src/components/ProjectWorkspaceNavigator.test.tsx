@@ -248,6 +248,142 @@ describe("ProjectWorkspaceNavigator", () => {
     expect(onDeleteTimeline).toHaveBeenCalledWith(timeline);
   });
 
+  it("shows the earliest visual Timeline item as its sidebar first-frame preview", () => {
+    render(
+      <ProjectWorkspaceNavigator
+        canvases={[{ id: "main", name: "Main", position: 0 }]}
+        timelines={[
+          {
+            id: "timeline-preview",
+            name: "Opening cut",
+            owner: { kind: "project" },
+            revisionId: "timeline-revision-v1:preview",
+            state: {
+              tracks: [
+                {
+                  id: "audio",
+                  items: [
+                    { id: "voice", type: "audio", assetId: "voice", from: 0 },
+                  ],
+                },
+                {
+                  id: "video",
+                  items: [
+                    {
+                      id: "later-shot",
+                      type: "video",
+                      assetId: "later-video",
+                      from: 30,
+                    },
+                    {
+                      id: "opening-shot",
+                      type: "image",
+                      assetId: "opening-image",
+                      from: 0,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ]}
+        assets={[
+          resolvedAsset({
+            id: "voice",
+            kind: "audio",
+            url: "/voice.wav",
+          }),
+          resolvedAsset({
+            id: "later-video",
+            kind: "video",
+            url: "/later.mp4",
+            thumbnailUrl: "/later-frame.webp",
+          }),
+          resolvedAsset({
+            id: "opening-image",
+            kind: "image",
+            url: "/opening-frame.webp",
+          }),
+        ]}
+        surface={{ kind: "canvas", canvasId: "main" }}
+        onSelectCanvas={vi.fn()}
+        onSelectTimeline={vi.fn()}
+        onSelectAsset={vi.fn()}
+        onCreateCanvas={vi.fn()}
+        onRenameCanvas={vi.fn()}
+        onDeleteCanvas={vi.fn()}
+        onCreateTimeline={vi.fn()}
+        onAttachTimeline={vi.fn()}
+        onAddAsset={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen
+        .getByRole("img", { name: "Opening cut first frame" })
+        .getAttribute("src"),
+    ).toBe("/opening-frame.webp");
+  });
+
+  it("falls back to the Timeline icon when its first-frame preview fails", () => {
+    render(
+      <ProjectWorkspaceNavigator
+        canvases={[{ id: "main", name: "Main", position: 0 }]}
+        timelines={[
+          {
+            id: "timeline-broken-preview",
+            name: "Broken preview",
+            owner: { kind: "project" },
+            revisionId: "timeline-revision-v1:broken-preview",
+            state: {
+              tracks: [
+                {
+                  id: "video",
+                  items: [
+                    {
+                      id: "opening-shot",
+                      type: "video",
+                      assetId: "opening-video",
+                      from: 0,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ]}
+        assets={[
+          resolvedAsset({
+            id: "opening-video",
+            kind: "video",
+            url: "/opening.mp4",
+            thumbnailUrl: "/broken-frame.webp",
+          }),
+        ]}
+        surface={{ kind: "canvas", canvasId: "main" }}
+        onSelectCanvas={vi.fn()}
+        onSelectTimeline={vi.fn()}
+        onSelectAsset={vi.fn()}
+        onCreateCanvas={vi.fn()}
+        onRenameCanvas={vi.fn()}
+        onDeleteCanvas={vi.fn()}
+        onCreateTimeline={vi.fn()}
+        onAttachTimeline={vi.fn()}
+        onAddAsset={vi.fn()}
+      />,
+    );
+
+    fireEvent.error(
+      screen.getByRole("img", { name: "Broken preview first frame" }),
+    );
+
+    expect(
+      screen
+        .getByRole("tab", { name: "Broken preview" })
+        .querySelector('[data-project-timeline-fallback-icon="true"]'),
+    ).toBeTruthy();
+  });
+
   it("lists independently owned Director Stages as first-class Project surfaces", () => {
     const onSelectDirectorStage = vi.fn();
     const onCreateDirectorStage = vi.fn();

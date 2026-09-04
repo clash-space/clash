@@ -16,6 +16,7 @@ import {
   type ExecutablePluginInvocation,
   type ExecutablePluginReference,
 } from "@clash/shared-types/executable-plugin";
+import { ProjectTimelineEnvelopeSchema } from "@clash/shared-types";
 import {
   renderMedia as remotionRenderMedia,
   selectComposition as remotionSelectComposition,
@@ -58,40 +59,16 @@ function positiveNumber(
   return candidate;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return (
-    value !== null && typeof value === "object" && !Array.isArray(value)
-  );
-}
-
 function frozenTimelineValue(invocation: ExecutablePluginInvocation) {
-  const envelope = invocation.input.values.timeline;
-  if (!isPlainObject(envelope)) {
+  const parsed = ProjectTimelineEnvelopeSchema.safeParse(
+    invocation.input.values.timeline,
+  );
+  if (!parsed.success) {
     throw new Error(
-      "Remotion render requires a frozen timeline state envelope object.",
+      `Remotion render requires a valid shared frozen Timeline envelope: ${parsed.error.message}`,
     );
   }
-  if (typeof envelope.name !== "string" || !envelope.name.trim()) {
-    throw new Error(
-      "Remotion render requires a frozen timeline envelope with a non-empty name.",
-    );
-  }
-  if (!isPlainObject(envelope.owner)) {
-    throw new Error(
-      "Remotion render requires a frozen timeline envelope with an owner.",
-    );
-  }
-  const ownerKind = envelope.owner.kind;
-  if (ownerKind !== "project" && ownerKind !== "canvas-action") {
-    throw new Error(
-      "Remotion render requires a timeline envelope owner of kind project or canvas-action.",
-    );
-  }
-  if (!isPlainObject(envelope.state)) {
-    throw new Error(
-      "Remotion render requires a frozen timeline envelope with a state object.",
-    );
-  }
+  const envelope = parsed.data;
   const timeline = structuredClone(envelope.state) as TimelineRenderInput;
   if (!Array.isArray(timeline.tracks)) {
     throw new Error("Remotion render requires a Timeline tracks array.");

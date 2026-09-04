@@ -31712,10 +31712,10 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
     super.registerTool(CLASH_GENERATORS_TOOL_NAME, {
       title: generatorsDefinition.title,
       description: describeClashTool({
-        useWhen: "you need to discover a registered Project Generator, inspect its head Revision, or run an Action Run against it",
+        useWhen: "the user asks to generate or edit image, video, or audio media for the current Clash Project, or you need to discover, inspect, or run a registered Project Generator",
         effect: "returns live Generators contracts when operation is omitted, or validates and executes one registered Generators leaf exactly once",
         returns: "typed Generators operation contracts or the selected leaf operation's exact result",
-        next: "choose the smallest matching operation, then call clash_generators with operation and arguments"
+        next: "choose the smallest matching operation, submit and poll the Action Run, then read its output commit; never claim complete, finished, or successful project media without that persisted readback"
       }),
       inputSchema: {
         operation: external_exports.string().min(1).optional().describe("Omit this field entirely to reveal live contracts; never send an empty string, list_operations, or contracts. Otherwise pass a command-local Generators operation or complete clash_generators_* leaf name"),

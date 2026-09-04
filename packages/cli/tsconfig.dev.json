@@ -4,6 +4,8 @@
     "lib": ["ES2022", "DOM"],
     "rootDir": "..",
     "paths": {
+      "@clash/action-sdk": ["../action-sdk/src/index.ts"],
+      "@clash/action-sdk/browser": ["../action-sdk/src/browser.ts"],
       "@clash/asset-sdk": ["../asset-sdk/src/index.ts"],
       "@clash/shared-layout": ["../shared-layout/src/index.ts"],
       "@clash/shared-types": ["../shared-types/src/index.ts"],

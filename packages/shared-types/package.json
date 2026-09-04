@@ -40,10 +40,15 @@
       "types": "./dist/executable-plugin.d.ts",
       "import": "./dist/executable-plugin.js",
       "default": "./dist/executable-plugin.js"
+    },
+    "./gpt-image-size": {
+      "types": "./dist/gpt-image-size.d.ts",
+      "import": "./dist/gpt-image-size.js",
+      "default": "./dist/gpt-image-size.js"
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts src/assets.ts src/actions/asset-edit.ts src/timeline-library.ts src/timeline-contract.ts src/executable-plugin.ts --format esm --dts --clean --target es2020",
+    "build": "tsup src/index.ts src/assets.ts src/actions/asset-edit.ts src/timeline-library.ts src/timeline-contract.ts src/executable-plugin.ts src/gpt-image-size.ts --format esm --dts --clean --target es2020",
     "clean": "rm -rf dist",
     "test": "vitest run",
     "test:watch": "vitest",

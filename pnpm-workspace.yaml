@@ -16,6 +16,7 @@ packages:
   - 'packages/cli'
   - 'packages/mcp-server'
   - 'plugins/*'
+  - 'plugins/official/*'
 supportedArchitectures:
   cpu: [arm64, x64]
 allowBuilds:

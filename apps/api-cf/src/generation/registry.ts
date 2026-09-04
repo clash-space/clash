@@ -1,13 +1,10 @@
 import type { GenerationParams } from "./params";
 import type { GenerationAdapter } from "./adapter";
 import { googleAgentPlatformVideoAdapter } from "./adapters/google-agent-platform-video";
-import { falVideoAdapter } from "./adapters/fal-video";
 import { googleAgentPlatformImageAdapter } from "./adapters/google-agent-platform-image";
-import { falImageAdapter } from "./adapters/fal-image";
 import { openaiImageAdapter } from "./adapters/openai-image";
 import { googleAiStudioAudioAdapter } from "./adapters/google-ai-studio-audio";
 import { minimaxAudioAdapter } from "./adapters/minimax-audio";
-import { falAudioAdapter } from "./adapters/fal-audio";
 import { minimaxVideoAdapter } from "./adapters/minimax-video";
 import { googleAiStudioInteractionsAdapter } from "./adapters/google-ai-studio-interactions";
 import { elevenlabsAudioAdapter } from "./adapters/elevenlabs-audio";
@@ -42,12 +39,13 @@ function unsupportedRoute(params: GenerationParams): never {
  *
  * Selection is by `apiShape` or `upstreamId`, never by `providerId`. A provider says whose
  * credential pays; it does not change how the request is shaped, and the same model reached through
- * two providers is often the same wire format.
+ * two providers is often the same wire format. Plugin-owned providers such as
+ * fal are intentionally absent: local and future cloud Hosts invoke the same
+ * provider-executor plugin through Durable Run instead of adding an adapter here.
  *
  * The effective key is the pair (generation type, route key), not the route key alone: three
- * different adapters answer `upstreamId === "google-agent-platform"` and three answer
- * `apiShape === "fal"`, disambiguated only by the `params.type` arm they sit in. Adapter names
- * carry both halves for that reason — `googleAgentPlatformVideoAdapter`, `falImageAdapter`.
+ * different adapters answer `upstreamId === "google-agent-platform"`, disambiguated only by the
+ * `params.type` arm they sit in. Adapter names carry both halves for that reason.
  *
  * Naming them after the key rather than after a model is what keeps them honest as routes are
  * added. An adapter called `veo` did serve exactly the veo models, but only by coincidence of
@@ -67,22 +65,21 @@ export function resolveAdapter(params: GenerationParams): GenerationAdapter {
       if (route?.upstreamId === "kling") return klingVideoAdapter;
       if (route?.upstreamId === "volcengine") return volcengineVideoAdapter;
       if (route?.upstreamId === "minimax") return minimaxVideoAdapter;
-      if (route?.apiShape === "fal") return falVideoAdapter;
       return unsupportedRoute(params);
     }
     case "image_gen": {
       const route = selectedRoute(params);
       if (route?.apiShape === "pika") return pikaMediaAdapter;
       if (route?.upstreamId === "openai") return openaiImageAdapter;
-      if (route?.upstreamId === "google-agent-platform") return googleAgentPlatformImageAdapter;
-      if (route?.apiShape === "fal") return falImageAdapter;
+      if (route?.upstreamId === "google-agent-platform")
+        return googleAgentPlatformImageAdapter;
       return unsupportedRoute(params);
     }
     case "audio_gen": {
       const route = selectedRoute(params);
       if (route?.apiShape === "pika") return pikaMediaAdapter;
-      if (route?.apiShape === "fal") return falAudioAdapter;
-      if (route?.upstreamId === "google-ai-studio") return googleAiStudioAudioAdapter;
+      if (route?.upstreamId === "google-ai-studio")
+        return googleAiStudioAudioAdapter;
       if (route?.upstreamId === "minimax") return minimaxAudioAdapter;
       if (route?.upstreamId === "elevenlabs") return elevenlabsAudioAdapter;
       if (route?.upstreamId === "suno") return sunoAudioAdapter;

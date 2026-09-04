@@ -24,6 +24,7 @@ const assetApi = vi.hoisted(() => ({
 const timelineEditorApi = vi.hoisted(() => ({
   onTranscribeAsset: undefined as undefined | ((asset: any) => Promise<any>),
   onExport: undefined as undefined | (() => Promise<void>),
+  exportProgress: undefined as undefined | Array<Record<string, unknown>>,
   previewCacheScope: undefined as string | undefined,
   innerProjectAssetDrop: vi.fn(),
 }));
@@ -44,6 +45,7 @@ vi.mock("@clash/remotion-ui", () => ({
     onRequestAsset,
     onTranscribeAsset,
     onExport,
+    exportProgress,
     headerLeadingAction,
     editorKey,
     layout,
@@ -52,6 +54,7 @@ vi.mock("@clash/remotion-ui", () => ({
   }: any) => {
     timelineEditorApi.onTranscribeAsset = onTranscribeAsset;
     timelineEditorApi.onExport = onExport;
+    timelineEditorApi.exportProgress = exportProgress;
     timelineEditorApi.previewCacheScope = previewCacheScope;
     stateRef.current = {
       compositionWidth: 1920,
@@ -148,6 +151,7 @@ describe("Project workspace surfaces", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = undefined;
     timelineEditorApi.onTranscribeAsset = undefined;
     timelineEditorApi.onExport = undefined;
+    timelineEditorApi.exportProgress = undefined;
     vi.unstubAllGlobals();
   });
 
@@ -396,6 +400,13 @@ describe("Project workspace surfaces", () => {
 
     const loading = screen.getByRole("status", { name: "Preparing timeline" });
     expect(loading.getAttribute("data-timeline-loading-shell")).toBe("");
+    const gridColumnsClass = loading.className
+      .split(" ")
+      .find((className) => className.startsWith("[grid-template-columns:"));
+    expect(gridColumnsClass).toBeTruthy();
+    expect(gridColumnsClass!.match(/minmax\(0,/g)).toHaveLength(3);
+    expect(gridColumnsClass).toContain("_minmax(0,1fr)_");
+    expect(gridColumnsClass).not.toContain("minmax(min(");
     expect(loading.querySelector('[data-loading-region="media"]')).toBeTruthy();
     expect(
       loading.querySelector('[data-loading-region="preview"]'),
@@ -489,6 +500,36 @@ describe("Project workspace surfaces", () => {
       expect(onExport).toHaveBeenCalledWith("timeline-backend-export"),
     );
     expect(events).toEqual(["save", "export"]);
+  });
+
+  it("forwards the current Timeline export progress to the editor header", async () => {
+    const exportProgress = [
+      {
+        renderNodeId: "render-1",
+        timelineId: "timeline-progress",
+        timelineRevisionId: "timeline-revision-v1:test",
+        status: "rendering" as const,
+      },
+    ];
+    render(
+      <ProjectTimelineEditorSurface
+        timeline={{
+          id: "timeline-progress",
+          name: "Progress Cut",
+          owner: { kind: "project" },
+          revisionId: "timeline-revision-v1:test",
+          state: { tracks: [] },
+        }}
+        mediaInputs={[]}
+        canvases={[]}
+        exportProgress={exportProgress}
+        onSave={vi.fn(() => true)}
+        onOpenCanvas={vi.fn()}
+      />,
+    );
+
+    await screen.findByTestId("remotion-editor");
+    expect(timelineEditorApi.exportProgress).toEqual(exportProgress);
   });
 
   it("reloads a clean editor when an external Timeline revision arrives without writing the stale snapshot", async () => {

@@ -2,10 +2,11 @@
 
 > Status: the Local authority, resolver, Durable publication, and consumer-CAS
 > cutover are implemented, including the fail-closed `asset-inspection/v4`
-> staging/probe/seal boundary. Poster, waveform, and filmstrip generation are
-> device-local frontend presentation concerns in this delivery; backend
-> representations are deferred. Physical purge, Cloud replication, and hosted
-> storage remain design-only in the current work.
+> staging/probe/seal boundary. Local image thumbnails, video first-frame
+> posters, and bounded audio waveforms are Host-private Durable
+> representations; Timeline filmstrips remain device-local presentation data.
+> Physical purge, Cloud replication, and hosted storage remain design-only in
+> the current work.
 
 This guide is the authority for **Media Asset and Resource** identity,
 publication, binding, and lifecycle. Native Generator semantics live in
@@ -69,8 +70,9 @@ relation may connect them; GUI filtering must never infer that relation from id
 equality.
 
 The core Asset model deliberately stops at an authorized projection. Upload
-spinners, browser `blob:` previews, poster fallbacks, waveform/filmstrip
-decoding, hover frames, and delivery caches are a separate presentation plane.
+spinners, browser `blob:` previews, Host-derived representations,
+waveform/filmstrip rendering, hover frames, and delivery caches are a separate
+presentation plane.
 They may fail, expire, or recompute without changing Resource identity,
 Project/Global membership, Action bindings, lifecycle, or Durable Run success.
 Presentation code may consume a stable entry id, availability, and an
@@ -91,11 +93,14 @@ flowchart TD
   end
   subgraph presentation["Replaceable presentation adapters"]
     blob["Upload blob preview"]
-    fallback["Device-local poster frame"]
-    cache["Device-local waveform / filmstrip cache"]
+    representation["Host-private thumbnail / waveform representation"]
+    fallback["Device-local media fallback"]
+    cache["Device-local filmstrip cache"]
   end
   project -. "stable id + availability" .-> blob
-  host -. "authorized locator" .-> fallback
+  host -. "source Resource + recipe" .-> representation
+  representation -. "entry-authorized locator" .-> fallback
+  host -. "authorized original locator" .-> fallback
   host -. "authorized locator" .-> cache
 ```
 
@@ -306,13 +311,13 @@ Resources use the same lifecycle. The Resource identity is a platform-internal
 stable key backed by a content digest; storage paths and object-store keys are
 not part of that identity.
 
-A future backend may materialize immutable derived representations such as a
-video poster or low-resolution proxy, but that protocol is not part of the
-current Local delivery. Current Local treats poster frames, waveform peaks,
-Timeline filmstrips, and current-frame captures uniformly as device-local,
-disposable frontend caches derived by decoding an entry-authorized original
-media projection. They never enter Resource or ProjectAsset metadata, Action
-bindings, Timeline Loro state, or Durable Run completion.
+Current Local materializes image thumbnails, video first-frame posters, and
+bounded audio waveforms as replaceable Host-private representations. One
+versioned recipe consumes an immutable source Resource through the shared
+Durable Run journal and CAS-publishes a private mapping. Timeline filmstrips and
+current-frame captures remain device-local caches. Neither kind enters
+ProjectAsset metadata, Action bindings, Timeline Loro state, or the source
+generation Run's completion.
 
 Canonical publication builds descriptive media facts from the required
 versioned Host byte probe rather than trusting a filename, browser `File.type`,
@@ -553,18 +558,19 @@ type ResolvedAsset = Readonly<{
   status: "uploading" | "ready" | "downloading" | "unavailable" | "failed";
   url?: string;
   thumbnailUrl?: string;
+  waveformUrl?: string;
   progress?: number;
   error?: string;
 }>;
 ```
 
 `url` is the current Host's authorized original-media projection.
-`thumbnailUrl` remains an optional, read-only compatibility projection for
-legacy or remote readers; Current Local does not generate it, request a backend
-poster for it, or treat its presence as evidence of a backend representation
-protocol. A GUI may consume a supplied compatibility value, but its canonical
-Local fallback derives a disposable poster from `url`. Neither field may expose
-an R2 key, canonical local path, cache path, or storage implementation. Transfer
+`thumbnailUrl` and `waveformUrl` are optional, read-only Host projections.
+Current Local supplies them only after the current recipe has a CAS-published
+representation; a GUI may fall back to `url` while derivation is pending or has
+failed. Every representation URL is scoped through the Project or Global Asset
+entry that authorized the read. No field may expose an R2 key, canonical local
+path, cache path, Resource id, recipe key, or storage implementation. Transfer
 progress and errors are device-local and must not enter Project Loro.
 
 ## Product scopes
@@ -734,11 +740,10 @@ The protocol layers are:
   frame-rate/codec facts, and audio layout where applicable. A specific
   operation may require only a subset, but a new publication cannot substitute
   invented defaults for a required fact.
-- **L2/L3 presentation derivatives:** device-local poster frames, blob
-  previews, waveforms, filmstrips, and hover frames, plus any future backend
-  proxy/representation protocol. These are outside the current ingest protocol
-  and never gate Resource finalization, Asset publication, or Durable Run
-  success.
+- **L2/L3 presentation derivatives:** Host-private thumbnails, posters, and
+  waveforms plus device-local blob previews, filmstrips, hover frames, and
+  fallbacks. They are outside the ingest authority protocol and never gate
+  Resource finalization, Asset publication, or the source Durable Run success.
 
 Aspect ratio is not a third stored fact. It is derived from normalized display
 width and height. A generation request's `aspect_ratio` remains frozen Action
@@ -1533,16 +1538,20 @@ Project Loro state.
 ## Previews, thumbnails, and Project covers
 
 Consumers never guess whether a URL is original media or a cover.
-`ResolvedAsset.url` is playable/readable original media. Its optional
-`thumbnailUrl` is only a read-only legacy/remote compatibility input; it does
-not imply that Current Local has a backend poster task, representation registry,
-or thumbnail endpoint. Current Local asks the Host only for the authorized
-original-media projection and lets frontend presentation adapters decode it.
+`ResolvedAsset.url` is playable/readable original media. For image and video
+Assets, `thumbnailUrl` points at a current Host thumbnail/poster representation
+when ready. For audio Assets, `waveformUrl` points at a bounded JSON peak array
+when ready. Both are entry-authorized projections, never identities or raw
+storage locators.
 
-- Poster frames, Timeline filmstrips, current-frame captures, and waveform
-  peaks are device-local, disposable frontend caches.
-- A legacy/remote `thumbnailUrl` may be displayed when already supplied, but
-  Current Local does not request one and falls back to frontend frame decoding.
+- Image thumbnails, video first-frame posters, and audio waveforms are
+  Host-private derived representations keyed by immutable source Resource plus
+  versioned recipe.
+- Timeline filmstrips and current-frame captures remain device-local,
+  disposable frontend caches.
+- A GUI may temporarily fall back to original-media decoding when a
+  representation is absent or its derivation failed; this does not alter Asset
+  readiness.
 - A legacy inline waveform may still be read for migration, but every new Asset
   publication and Timeline save strips it rather than synchronizing sampled
   display data.
@@ -1563,35 +1572,32 @@ for every verified audio stream. It also records explicit audio presence,
 including `hasAudio: false` for a verified silent video. Competing at-least-once
 probes conditionally insert one row; a loser must compare all candidate facts
 with the CAS winner and reports a conflict instead of accepting different
-facts. This registry currently stores probe facts only. It does not store
-poster, waveform, or filmstrip mappings, and public Local `ResolvedAsset` reads
-do not depend on such mappings. Paths, Resource identities, recipes, and
-registry rows remain Host-private and are never written to Project Loro.
+facts. The same database stores representation mappings separately from probe
+facts. `local-asset-representations.ts` consumes the shared Durable Run journal,
+derives at least once, and CAS-publishes one exact winner for
+`(sourceResourceId, recipe)`. Paths, Resource identities, recipes, run attempts,
+and registry rows remain Host-private and are never written to Project Loro.
 
 The current Local model probe admits only glTF 2 (`.glb` or `.gltf`), whose
 header/JSON is verified from bytes. FBX, OBJ, BVH, and USDZ are not advertised as
 supported imports until a byte-verifying canonical probe exists for them.
 
-Poster, waveform, and filmstrip behavior intentionally stops at the device
-boundary in this delivery. Timeline first uses a legacy waveform only while
-reading an old Project; otherwise frontend adapters derive a poster frame,
-peaks, or sampled frames by decoding the authorized original-media projection.
-They keep results in component-lifetime or bounded LRU/TTL device caches and may
-evict and recompute them. None has a backend identity, publication receipt,
-Project binding, synchronized URL, or Durable step in the current Local
-product. A decode failure affects only presentation and never changes the
-original Asset's ready state. The shared read schema retains legacy `waveform`,
-while the Asset SDK's separate publication metadata schema rejects it for every
-new Project or Global entry.
+The representation consumer uses the same retry, attempt leasing, and restart
+recovery mechanics as generation tasks, under a separate owner. Image/video
+results are ordinary sealed immutable image Resources referenced only by the
+private mapping; waveform results are bounded JSON. None has a Project binding,
+synchronized URL, or authority over the source Asset. The shared read schema
+retains legacy inline `waveform`, while the Asset SDK's publication metadata
+schema rejects it for every new Project or Global entry.
 
 There is no generic `/thumbnails/<storage-key>` API. The former api-cf and
 standalone sync-worker route was unauthenticated, treated an object key as
 authority, and could fall back to returning the original video; it has been
 removed together with the Web gateway carve-out. Cloud preview delivery must
 enter through an authenticated Asset-entry resolver and must never restore that
-raw-key fallback. Current Local likewise has no Project/Global thumbnail route.
-Any future backend derivation protocol is a separate design task and cannot be
-inferred from the legacy `thumbnailUrl` compatibility field.
+raw-key fallback. Current Local instead exposes only entry-scoped `/thumbnail`
+and `/waveform` routes after resolving the Project or Global entry and its
+source Resource.
 
 A Project cover is product state, not an arbitrary aggregation of recent URLs.
 It should reference stable `projectAssetId` values plus a layout. A deterministic
@@ -2055,14 +2061,13 @@ conflict may invent a Resource or silently fall back to `asset_refs` after cutov
 
 - **Complete for Local:** return `ResolvedAsset` from local controllers and move
   preview, Canvas, Timeline, local render, CLI, and MCP to the shared resolver.
-- **Complete for new Local writes:** poster frames, waveform peaks, and
-  Timeline filmstrips are all scoped, disposable frontend caches derived from
-  an entry-authorized original-media projection. Current Local has no backend
-  poster request/publication path. Legacy `thumbnailUrl` and inline waveform
-  data are read-only compatibility inputs and are never new authority writes.
-- **Deferred:** any Local or Cloud backend representation registry, derivation
-  task, recipe, staging contract, and reclamation policy for poster, waveform,
-  or filmstrip bytes.
+- **Complete for new Local writes:** image thumbnails, video first-frame
+  posters, and bounded audio waveforms use a Host-private Durable representation
+  registry and entry-authorized projection URLs. Timeline filmstrips remain
+  scoped, disposable frontend caches. Legacy inline waveform data is never a
+  new authority write.
+- **Deferred:** Cloud representation execution and physical reclamation policy,
+  plus any backend Timeline filmstrip representation.
 - **Complete for the retired hosted compatibility path:** remove the public
   `/thumbnails/<storage-key>` route from api-cf, the Web gateway, and the legacy
   standalone sync worker. No storage key now authorizes preview or original-media reads.
@@ -2206,11 +2211,12 @@ do not claim deployed Cloud behavior.
     kind/media-type assertion cannot poison that digest before a corrected
     retry. The documented one-way legacy Project materializer is the only
     compatibility exception and is not a post-cutover product write path.
-19. **Local:** Poster frames are scoped, disposable frontend caches decoded from
-    the entry-authorized original-media projection. Current Local neither
-    requests nor CAS-publishes a backend poster; legacy/remote `thumbnailUrl`
-    remains an optional read-only compatibility input only.
-20. **Local:** Waveform peaks and Timeline filmstrips follow the same frontend
-    presentation-cache rule as poster frames. New Project Asset and Timeline
-    state never synchronizes those samples, URLs, blobs, or cache keys, and
-    their availability never gates Durable Run success.
+19. **Local:** Image thumbnails and video first-frame posters are scoped
+    Host-private representations. The representation consumer CAS-publishes one
+    versioned recipe result per immutable source Resource and exposes it only
+    through an entry-authorized `thumbnailUrl`.
+20. **Local:** Bounded waveform peaks use the same private representation
+    consumer and entry-authorized `waveformUrl`; Timeline filmstrips remain
+    disposable frontend caches. Project Asset and Timeline state never
+    synchronizes representation samples, URLs, blobs, recipes, or cache keys,
+    and their availability never gates source Durable Run success.

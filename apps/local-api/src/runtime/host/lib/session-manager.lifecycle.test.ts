@@ -37,7 +37,11 @@ vi.mock("./session-cwd.js", () => ({
   resolveAgentMcpServers: mocks.resolveAgentMcpServers,
 }));
 
-import { SessionManager, type ManagerOut, type SessionStartParams } from "./session-manager.js";
+import {
+  SessionManager,
+  type ManagerOut,
+  type SessionStartParams,
+} from "./session-manager.js";
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -62,10 +66,13 @@ function sessionParams(sessionId: string): SessionStartParams {
   };
 }
 
-function createAcpSession(options: {
-  prompt?: AcpSession["prompt"];
-  dispose?: AcpSession["dispose"];
-} = {}): AcpSession {
+function createAcpSession(
+  options: {
+    prompt?: AcpSession["prompt"];
+    dispose?: AcpSession["dispose"];
+    supportsSessionFork?: boolean;
+  } = {},
+): AcpSession {
   return {
     id: "runtime-session",
     acpSessionId: "acp-session",
@@ -75,12 +82,12 @@ function createAcpSession(options: {
     configOptions: [],
     modes: undefined,
     promptCapabilities: {},
-    supportsSessionFork: false,
+    supportsSessionFork: options.supportsSessionFork ?? false,
     loadedReplayEvents: [],
     drainPendingEvents() {
       return [];
     },
-    prompt: options.prompt ?? (async function* () {}),
+    prompt: options.prompt ?? async function* () {},
     async setConfigOption() {
       return [];
     },
@@ -109,6 +116,29 @@ describe("SessionManager lifecycle", () => {
     mocks.runtimeStart.mockReset();
     mocks.resolveAgentMcpServers.mockReset();
     mocks.resolveAgentMcpServers.mockResolvedValue([bundledClashMcp]);
+  });
+
+  it("announces ACP session fork support when the harness provides it", async () => {
+    mocks.runtimeStart.mockResolvedValue(
+      createAcpSession({ supportsSessionFork: true }),
+    );
+    const sent: ManagerOut[] = [];
+    const manager = new SessionManager((message) => sent.push(message));
+    const params = sessionParams("session-fork-capability");
+
+    await manager.start(params);
+
+    try {
+      expect(sent).toContainEqual(
+        expect.objectContaining({
+          type: "session.ready",
+          session_id: params.session_id,
+          supports_session_fork: true,
+        }),
+      );
+    } finally {
+      await manager.dispose(params.session_id);
+    }
   });
 
   it("mounts the bundled Clash MCP in ACP session/new during cold start", async () => {
@@ -145,43 +175,51 @@ describe("SessionManager lifecycle", () => {
     await manager.start(params);
 
     expect(mocks.runtimeStart).not.toHaveBeenCalled();
-    expect(sent).toContainEqual(expect.objectContaining({
-      type: "session.error",
-      session_id: params.session_id,
-      message: expect.stringMatching(/bundled Clash MCP/i),
-    }));
-    expect(sent.some((message) => message.type === "session.ready")).toBe(false);
+    expect(sent).toContainEqual(
+      expect.objectContaining({
+        type: "session.error",
+        session_id: params.session_id,
+        message: expect.stringMatching(/bundled Clash MCP/i),
+      }),
+    );
+    expect(sent.some((message) => message.type === "session.ready")).toBe(
+      false,
+    );
   });
 
   it("host-marks product rendering only for the bundled MCP injected into this session", async () => {
-    mocks.resolveAgentMcpServers.mockResolvedValue([{
-      name: "clash",
-      command: process.execPath,
-      args: ["/opt/clash/plugins/clash/runtime/index.js"],
-      env: [],
-      _meta: {
-        "clash.plugin": "builtin",
-        "clash.renderer": "product",
+    mocks.resolveAgentMcpServers.mockResolvedValue([
+      {
+        name: "clash",
+        command: process.execPath,
+        args: ["/opt/clash/plugins/clash/runtime/index.js"],
+        env: [],
+        _meta: {
+          "clash.plugin": "builtin",
+          "clash.renderer": "product",
+        },
       },
-    }]);
-    mocks.runtimeStart.mockResolvedValue(createAcpSession({
-      prompt() {
-        return (async function* () {
-          yield {
-            sessionUpdate: "tool_call",
-            toolCallId: "bundled-clash",
-            rawInput: { server: "clash", tool: "clash_canvas_list" },
-            _meta: { is_mcp_tool_call: true },
-          };
-          yield {
-            sessionUpdate: "tool_call",
-            toolCallId: "other-mcp",
-            rawInput: { server: "charts", tool: "show_sales" },
-            _meta: { is_mcp_tool_call: true },
-          };
-        })();
-      },
-    }));
+    ]);
+    mocks.runtimeStart.mockResolvedValue(
+      createAcpSession({
+        prompt() {
+          return (async function* () {
+            yield {
+              sessionUpdate: "tool_call",
+              toolCallId: "bundled-clash",
+              rawInput: { server: "clash", tool: "clash_canvas_list" },
+              _meta: { is_mcp_tool_call: true },
+            };
+            yield {
+              sessionUpdate: "tool_call",
+              toolCallId: "other-mcp",
+              rawInput: { server: "charts", tool: "show_sales" },
+              _meta: { is_mcp_tool_call: true },
+            };
+          })();
+        },
+      }),
+    );
     const sent: ManagerOut[] = [];
     const manager = new SessionManager((message) => sent.push(message));
     const params = sessionParams("session-trusted-mcp-renderer");
@@ -195,7 +233,12 @@ describe("SessionManager lifecycle", () => {
 
     try {
       const events = sent
-        .filter((message): message is Extract<ManagerOut, { type: "session.event" }> => message.type === "session.event")
+        .filter(
+          (
+            message,
+          ): message is Extract<ManagerOut, { type: "session.event" }> =>
+            message.type === "session.event",
+        )
         .map((message) => message.event);
       expect(events).toEqual([
         expect.objectContaining({
@@ -233,8 +276,12 @@ describe("SessionManager lifecycle", () => {
 
     try {
       expect(startCount).toBe(1);
-      expect(sent.filter((message) => message.type === "session.ready")).toHaveLength(1);
-      expect(sent.some((message) => message.type === "session.error")).toBe(false);
+      expect(
+        sent.filter((message) => message.type === "session.ready"),
+      ).toHaveLength(1);
+      expect(sent.some((message) => message.type === "session.error")).toBe(
+        false,
+      );
     } finally {
       await manager.dispose(params.session_id);
     }
@@ -257,8 +304,12 @@ describe("SessionManager lifecycle", () => {
     try {
       expect(dispose).toHaveBeenCalledOnce();
       expect(manager.has(params.session_id)).toBe(false);
-      expect(sent.some((message) => message.type === "session.ready")).toBe(false);
-      expect(sent.filter((message) => message.type === "session.disposed")).toHaveLength(1);
+      expect(sent.some((message) => message.type === "session.ready")).toBe(
+        false,
+      );
+      expect(
+        sent.filter((message) => message.type === "session.disposed"),
+      ).toHaveLength(1);
     } finally {
       await manager.dispose(params.session_id);
     }
@@ -332,7 +383,9 @@ describe("SessionManager lifecycle", () => {
     promptDone.resolve();
     await prompting;
 
-    const disposedAt = sent.findIndex((message) => message.type === "session.disposed");
+    const disposedAt = sent.findIndex(
+      (message) => message.type === "session.disposed",
+    );
     expect(disposedAt).toBeGreaterThanOrEqual(0);
     expect(sent.slice(disposedAt + 1)).not.toContainEqual(
       expect.objectContaining({
@@ -364,6 +417,8 @@ describe("SessionManager lifecycle", () => {
     expect(settledBeforeStartResolved).toBe(false);
     expect(dispose).toHaveBeenCalledOnce();
     expect(manager.has(params.session_id)).toBe(false);
-    expect(sent.some((message) => message.type === "session.ready")).toBe(false);
+    expect(sent.some((message) => message.type === "session.ready")).toBe(
+      false,
+    );
   });
 });

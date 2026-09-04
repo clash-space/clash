@@ -1,11 +1,15 @@
-import { useCallback, useState, type ReactNode } from "react";
 import {
-  ArrowLeft,
-  CaretDown,
-  CaretUp,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import {
+  ChatCenteredText,
   Crosshair,
   NotePencil,
-  Quotes,
   Trash,
   X,
 } from "@phosphor-icons/react";
@@ -14,8 +18,14 @@ import type {
   AgentAnnotationTarget,
 } from "@clash/shared-types";
 import { useAsset } from "@clash/web-ui/lib/hooks/useAsset";
+import { Button } from "../ui/button";
 import { IconButton } from "../ui/icon-button";
-import { Popover, PopoverAnchor, PopoverContent } from "../ui/popover";
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+  PopoverTrigger,
+} from "../ui/popover";
 import { Textarea } from "../ui/textarea";
 import {
   ContextMenu,
@@ -27,14 +37,6 @@ import {
 } from "../ui/context-menu";
 import { ProjectSurfaceIcon } from "../ProjectSurfaceIcon";
 import { VideoPoster } from "../../features/assets/VideoPoster";
-
-const SURFACE_LABELS = {
-  canvas: "Canvas",
-  timeline: "Timeline",
-  "director-stage": "Director Stage",
-  asset: "Asset",
-  browser: "Browser",
-} as const;
 
 function formatObjectType(objectType: string): string {
   const parts = objectType.split(/[-_\s]+/).filter(Boolean);
@@ -64,21 +66,6 @@ function SurfaceIcon({
       className={className}
       weight="duotone"
     />
-  );
-}
-
-/**
- * Matches the numbered pins that AgentSelectionAnnotationOverlay renders on the
- * creative surfaces: annotation order is the shared numbering.
- */
-function AnnotationNumberBadge({ number }: { number: number }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-brand px-1 text-[11px] font-semibold leading-none text-white"
-    >
-      {number}
-    </span>
   );
 }
 
@@ -136,7 +123,7 @@ function AnnotationAssetThumbnail({
   size = "sm",
 }: {
   target: AgentAnnotationTarget;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "dialog";
 }) {
   const asset = useAsset(target.projectId, target.previewAssetId);
   const isVideo =
@@ -146,13 +133,15 @@ function AnnotationAssetThumbnail({
     asset?.thumbnailUrl || (asset?.status === "ready" && asset.url),
   );
   const sizeClass =
-    size === "lg"
-      ? "h-auto max-h-36 w-auto max-w-full rounded-md"
-      : size === "md"
-        ? "h-7 w-7 rounded-md"
-        : "h-5 w-5 rounded";
+    size === "dialog"
+      ? "h-auto max-h-64 w-auto max-w-full rounded-lg"
+      : size === "lg"
+        ? "h-auto max-h-36 w-auto max-w-full rounded-md"
+        : size === "md"
+          ? "h-7 w-7 rounded-md"
+          : "h-5 w-5 rounded";
 
-  if (size === "lg") {
+  if (size === "lg" || size === "dialog") {
     if (isVideo) {
       if (!asset || !hasVideoPreview) return null;
       return (
@@ -211,287 +200,129 @@ function AnnotationAssetThumbnail({
   );
 }
 
-function AnnotationRow({
+function AnnotationSummaryRow({
   annotation,
   number,
-  expanded,
   disabled,
-  onToggle,
-  onOpen,
-  onChange,
   onRemove,
-  onLocate,
 }: {
   annotation: AgentAnnotationDraft;
   number: number;
-  expanded: boolean;
   disabled: boolean;
-  onToggle: () => void;
-  onOpen?: () => void;
-  onChange?: (note: string) => void;
   onRemove?: () => void;
-  onLocate?: () => void;
 }) {
   const { target } = annotation;
-  const focusEditorAtEnd = useCallback((editor: HTMLTextAreaElement | null) => {
-    if (!editor) return;
-    editor.focus();
-    const end = editor.value.length;
-    editor.setSelectionRange(end, end);
-  }, []);
-
-  const row = (
+  return (
     <li
       data-testid="agent-annotation-item"
       data-agent-annotation-surface={target.surface}
-      data-expanded={expanded ? "true" : "false"}
-      className="group/annotation relative rounded-lg transition-colors hover:bg-warm-muted/50 dark:hover:bg-warm-muted/50"
+      className="flex min-w-0 items-start gap-2 border-b border-warm-border/60 py-2.5 first:pt-0 last:border-b-0 last:pb-0"
     >
-      <div className="flex items-center gap-2 px-2.5 py-1.5">
-        <button
-          type="button"
-          aria-expanded={expanded}
-          aria-label={`Annotation ${number}: ${target.objectLabel}`}
-          onClick={onOpen ?? onToggle}
-          disabled={disabled}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-60"
-        >
-          <AnnotationNumberBadge number={number} />
-          {target.previewAssetId ? (
-            <AnnotationAssetThumbnail target={target} size="md" />
-          ) : (
-            <span
-              className="shrink-0 text-stone-500 dark:text-stone-400"
-              aria-hidden="true"
-            >
-              <SurfaceIcon surface={target.surface} className="h-3.5 w-3.5" />
-            </span>
-          )}
-          <span className="truncate text-[13px] font-medium">
-            {target.objectLabel}
-          </span>
-          <span
-            data-testid="agent-annotation-object-type"
-            className="shrink-0 rounded bg-warm-muted px-1.5 py-0.5 text-[10px] font-medium text-stone-600 dark:bg-warm-muted dark:text-neutral-300"
-          >
-            {formatObjectType(target.objectType)}
-          </span>
-          <span className="truncate text-[11px] text-stone-500 dark:text-stone-400">
-            {target.surfaceLabel}
-          </span>
-          {target.selection ? (
-            <Quotes
-              className="h-3 w-3 shrink-0 text-stone-400"
-              weight="fill"
-              aria-hidden="true"
-            />
-          ) : null}
-          {annotation.note.trim() ? (
-            <span
-              className="h-1.5 w-1.5 shrink-0 rounded-full bg-stone-400"
-              aria-hidden="true"
-            />
-          ) : null}
-        </button>
-        {onLocate ? (
-          <IconButton
-            label={`Locate annotation for ${target.objectLabel}`}
-            icon={<Crosshair className="h-3.5 w-3.5" weight="bold" />}
-            variant="default"
-            size="sm"
-            shape="rounded"
-            onClick={onLocate}
-            disabled={disabled}
-            className="h-6 min-h-6 w-6 min-w-6 text-stone-400 opacity-70 hover:text-slate-900 group-hover/annotation:opacity-100 focus-visible:opacity-100 dark:hover:text-slate-100"
-          />
+      <span
+        data-testid="agent-annotation-number"
+        className="w-6 shrink-0 pt-0.5 text-right text-xs tabular-nums text-content-muted"
+      >
+        {number}.
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-content-muted">
+          <SurfaceIcon surface={target.surface} className="h-3.5 w-3.5" />
+          <span className="truncate">{target.surfaceLabel}</span>
+          <span aria-hidden="true">·</span>
+          <span className="truncate">{formatObjectType(target.objectType)}</span>
+        </div>
+        <p className="mt-0.5 line-clamp-2 text-[13px] font-medium leading-5 text-content-primary">
+          {target.objectLabel}
+        </p>
+        {target.previewAssetId ? (
+          <div className="mt-2">
+            <AnnotationAssetThumbnail target={target} size="lg" />
+          </div>
         ) : null}
-        {onRemove ? (
-          <IconButton
-            label={`Remove annotation for ${target.objectLabel}`}
-            icon={<X className="h-3 w-3" weight="bold" />}
-            variant="default"
-            size="sm"
-            shape="rounded"
-            onClick={onRemove}
-            disabled={disabled}
-            className="h-6 min-h-6 w-6 min-w-6 text-stone-400 opacity-70 hover:text-slate-900 group-hover/annotation:opacity-100 focus-visible:opacity-100 dark:hover:text-slate-100"
-          />
+        {target.selection ? (
+          <p className="mt-1 line-clamp-3 text-xs leading-5 text-content-secondary">
+            {target.selection.exact}
+          </p>
+        ) : null}
+        {annotation.note.trim() ? (
+          <div className="mt-2">
+            <div className="text-[11px] text-content-muted">Comment</div>
+            <p className="mt-0.5 line-clamp-3 text-xs leading-5 text-content-secondary">
+              {annotation.note.trim()}
+            </p>
+          </div>
         ) : null}
       </div>
-      {expanded ? (
-        <div className="border-t border-warm-border/70 px-2.5 pb-2 pt-1.5 dark:border-warm-border/70">
-          <div className="flex min-w-0 items-baseline gap-1.5">
-            <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400">
-              {SURFACE_LABELS[target.surface]}
-            </span>
-            <span className="truncate font-mono text-[10px] text-stone-500 dark:text-stone-400">
-              {target.objectPath}
-            </span>
-          </div>
-          {target.previewAssetId ? (
-            <div className="mt-1.5">
-              <AnnotationAssetThumbnail target={target} size="lg" />
-            </div>
-          ) : null}
-          {target.selection ? (
-            <blockquote className="mt-1.5 flex gap-1.5 rounded-md bg-warm-muted/70 px-2 py-1.5 text-[12px] leading-4 text-stone-600 dark:bg-warm-muted/70 dark:text-neutral-300">
-              <Quotes
-                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-stone-400"
-                weight="fill"
-                aria-hidden="true"
-              />
-              <span className="line-clamp-3">{target.selection.exact}</span>
-            </blockquote>
-          ) : null}
-          <Textarea
-            ref={onChange ? focusEditorAtEnd : undefined}
-            aria-label={`Annotation for ${target.objectLabel}`}
-            value={annotation.note}
-            placeholder={
-              target.selection
-                ? "Add an optional comment…"
-                : "What should the agent inspect or change?"
-            }
-            rows={2}
-            readOnly={!onChange}
-            disabled={disabled}
-            onChange={(event) => onChange?.(event.target.value)}
-            className="mt-1.5 block min-h-9 w-full resize-none border-0 bg-transparent p-0 text-[13px] leading-5 text-slate-900 placeholder:text-stone-400 focus-visible:ring-0 focus-visible:ring-offset-0 dark:text-slate-100 dark:placeholder:text-stone-500"
-          />
-        </div>
+      {onRemove ? (
+        <IconButton
+          label={`Remove annotation ${number}`}
+          icon={<X className="h-3.5 w-3.5" weight="bold" />}
+          variant="default"
+          size="sm"
+          shape="rounded"
+          onClick={onRemove}
+          disabled={disabled}
+          className="h-6 min-h-6 w-6 min-w-6 shrink-0 text-content-muted hover:text-destructive"
+        />
       ) : null}
     </li>
-  );
-  return (
-    <AgentAnnotationActionsContextMenu
-      annotation={annotation}
-      onOpen={onOpen}
-      onLocate={onLocate}
-      onRemove={onRemove}
-    >
-      {row}
-    </AgentAnnotationActionsContextMenu>
   );
 }
 
 export function AgentAnnotationTray({
   annotations,
   disabled = false,
-  onChange,
   onRemove,
-  onLocate,
-  onOpen,
 }: {
   annotations: readonly AgentAnnotationDraft[];
   disabled?: boolean;
-  onChange?: (id: string, note: string) => void;
   onRemove?: (id: string) => void;
-  onLocate?: (id: string) => void;
-  onOpen?: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  // null = automatic (a single annotation opens straight into its details);
-  // COLLAPSED_ALL = the user explicitly closed the auto-opened details.
-  const COLLAPSED_ALL = "__collapsed__";
-  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   if (annotations.length === 0) return null;
   const count = annotations.length;
-  const detailId =
-    expandedId === COLLAPSED_ALL
-      ? null
-      : (expandedId ?? (count === 1 ? annotations[0].id : null));
-  const assetAnnotations = annotations.filter(
-    (annotation) => annotation.target.previewAssetId,
-  );
+  const label = `${count} ${count === 1 ? "annotation" : "annotations"}`;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverAnchor asChild>
-        <div
+      <PopoverTrigger asChild>
+        <button
+          type="button"
           data-testid="agent-annotation-tray"
           data-open={open ? "true" : "false"}
-          className="px-3 pt-3"
+          aria-expanded={open}
+          aria-label={label}
+          disabled={disabled}
+          className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg bg-warm-surface/55 px-2.5 text-xs font-medium text-content-secondary ring-1 ring-warm-border/70 transition-colors hover:bg-warm-muted hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-60"
         >
-          <button
-            type="button"
-            aria-expanded={open}
-            aria-label="Agent annotations"
-            onClick={() => setOpen((value) => !value)}
-            disabled={disabled}
-            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-warm-border bg-warm-surface py-1 pl-2 pr-2.5 text-[12px] font-medium leading-4 text-slate-900 transition-colors hover:bg-warm-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-60 dark:border-warm-border dark:bg-warm-surface dark:text-neutral-100 dark:hover:bg-warm-muted/60"
-          >
-            {assetAnnotations.length > 0 ? (
-              <span className="flex shrink-0 -space-x-1.5" aria-hidden="true">
-                {assetAnnotations.slice(0, 3).map((annotation) => (
-                  <AnnotationAssetThumbnail
-                    key={annotation.id}
-                    target={annotation.target}
-                    size="sm"
-                  />
-                ))}
-              </span>
-            ) : (
-              <NotePencil
-                className="h-3.5 w-3.5 shrink-0 text-stone-500 dark:text-stone-400"
-                weight="duotone"
-                aria-hidden="true"
-              />
-            )}
-            <AnnotationNumberBadge number={count} />
-            <span>{count === 1 ? "annotation" : "annotations"}</span>
-            {open ? (
-              <CaretUp
-                className="h-3 w-3 shrink-0 text-stone-400"
-                weight="bold"
-                aria-hidden="true"
-              />
-            ) : (
-              <CaretDown
-                className="h-3 w-3 shrink-0 text-stone-400"
-                weight="bold"
-                aria-hidden="true"
-              />
-            )}
-          </button>
-        </div>
-      </PopoverAnchor>
+          <ChatCenteredText
+            className="h-3.5 w-3.5 shrink-0"
+            weight="duotone"
+            aria-hidden="true"
+          />
+          <span>{label}</span>
+        </button>
+      </PopoverTrigger>
       <PopoverContent
         side="top"
         align="start"
-        sideOffset={6}
+        sideOffset={8}
         onOpenAutoFocus={(event) => event.preventDefault()}
-        className="w-[min(440px,calc(100vw-24px))] rounded-xl p-1"
+        aria-label="Agent annotations"
+        className="w-[min(420px,calc(100vw-24px))] rounded-xl p-3"
       >
         <ul
           aria-label="Agent annotations"
-          className="max-h-[min(50vh,360px)] overflow-y-auto text-slate-900 dark:text-slate-100"
+          className="max-h-72 overflow-y-auto text-content-primary"
         >
           {annotations.map((annotation, index) => (
-            <AnnotationRow
+            <AnnotationSummaryRow
               key={annotation.id}
               annotation={annotation}
               number={index + 1}
-              expanded={detailId === annotation.id}
               disabled={disabled}
-              onOpen={
-                onOpen
-                  ? () => {
-                      setOpen(false);
-                      onOpen(annotation.id);
-                    }
-                  : undefined
-              }
-              onToggle={() =>
-                setExpandedId(
-                  detailId === annotation.id ? COLLAPSED_ALL : annotation.id,
-                )
-              }
-              onChange={
-                onChange ? (note) => onChange(annotation.id, note) : undefined
-              }
               onRemove={onRemove ? () => onRemove(annotation.id) : undefined}
-              onLocate={onLocate ? () => onLocate(annotation.id) : undefined}
             />
           ))}
         </ul>
@@ -500,21 +331,19 @@ export function AgentAnnotationTray({
   );
 }
 
-export function AgentAnnotationInspector({
+export function AgentAnnotationEditor({
   annotations,
   activeId,
   disabled = false,
-  onSelect,
-  onBack,
+  onClose,
   onChange,
   onRemove,
   onLocate,
 }: {
   annotations: readonly AgentAnnotationDraft[];
-  activeId: string;
+  activeId: string | null;
   disabled?: boolean;
-  onSelect: (id: string) => void;
-  onBack: () => void;
+  onClose: () => void;
   onChange?: (id: string, note: string) => void;
   onRemove?: (id: string) => void;
   onLocate?: (id: string) => void;
@@ -523,193 +352,190 @@ export function AgentAnnotationInspector({
     (annotation) => annotation.id === activeId,
   );
   const annotation = activeIndex >= 0 ? annotations[activeIndex] : null;
-  if (!annotation) return null;
-  const { target } = annotation;
+  const target = annotation?.target;
+  const [draftNote, setDraftNote] = useState(annotation?.note ?? "");
+  const [anchorReady, setAnchorReady] = useState(false);
+  const anchorElementRef = useRef<HTMLElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const virtualAnchorRef = useRef({
+    getBoundingClientRect: () =>
+      anchorElementRef.current?.getBoundingClientRect() ??
+      document.documentElement.getBoundingClientRect(),
+  });
+
+  useEffect(() => {
+    setDraftNote(annotation?.note ?? "");
+  }, [annotation?.id, annotation?.note]);
+
+  useLayoutEffect(() => {
+    let observer: MutationObserver | null = null;
+    const resolveAnchor = () => {
+      const anchor = activeId
+        ? (Array.from(
+            document.querySelectorAll<HTMLElement>(
+              "[data-agent-annotation-anchor]",
+            ),
+          ).find(
+            (candidate) =>
+              candidate.dataset.agentAnnotationAnchor === activeId,
+          ) ?? null)
+        : null;
+      anchorElementRef.current = anchor;
+      setAnchorReady(Boolean(anchor));
+      if (anchor) observer?.disconnect();
+      return Boolean(anchor);
+    };
+
+    if (resolveAnchor() || !activeId) return;
+
+    // Canvas pins are measured in requestAnimationFrame and may mount after
+    // the annotation becomes active. Keep the Radix virtual anchor in sync
+    // across that delayed mount and surface navigation.
+    observer = new MutationObserver(resolveAnchor);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-agent-annotation-anchor"],
+    });
+    resolveAnchor();
+    return () => observer.disconnect();
+  }, [activeId, annotation?.id]);
+
+  const expanded = Boolean(annotation?.note.trim() || draftNote.trim());
+
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const minHeight = expanded ? 64 : 28;
+    const maxHeight = 220;
+    textarea.style.height = "0px";
+    textarea.style.height = `${Math.min(
+      maxHeight,
+      Math.max(minHeight, textarea.scrollHeight),
+    )}px`;
+    textarea.style.overflowY =
+      textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [draftNote, expanded]);
+
+  const save = (event?: FormEvent) => {
+    event?.preventDefault();
+    if (!annotation || disabled || !onChange) return;
+    onChange(annotation.id, draftNote.trim());
+    onClose();
+  };
 
   return (
-    <section
-      data-testid="agent-annotation-inspector"
-      aria-label={`Annotation for ${target.objectLabel}`}
-      className="flex h-full min-h-0 flex-col bg-warm-page text-content-primary"
+    <Popover
+      open={Boolean(annotation && target && anchorReady)}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
     >
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-warm-border px-3">
-        <IconButton
-          label="Back to chat"
-          title="Back to chat"
-          size="sm"
-          shape="rounded"
-          onClick={onBack}
-          icon={<ArrowLeft className="h-4 w-4" weight="bold" />}
-        />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold">
-            {target.objectLabel}
-          </div>
-          <div className="truncate text-[11px] text-content-muted">
-            Annotation {activeIndex + 1} of {annotations.length}
-          </div>
-        </div>
-        {onLocate ? (
-          <IconButton
-            label={`Locate annotation for ${target.objectLabel}`}
-            title="Locate in workspace"
-            size="sm"
-            shape="rounded"
-            onClick={() => onLocate(annotation.id)}
-            icon={<Crosshair className="h-4 w-4" weight="bold" />}
-          />
-        ) : null}
-      </header>
-
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
-        <AgentAnnotationActionsContextMenu
-          annotation={annotation}
-          onLocate={onLocate ? () => onLocate(annotation.id) : undefined}
-          onRemove={onRemove ? () => onRemove(annotation.id) : undefined}
+      <PopoverAnchor virtualRef={virtualAnchorRef} />
+      {annotation && target && anchorReady ? (
+        <PopoverContent
+          side="right"
+          align="center"
+          sideOffset={12}
+          collisionPadding={12}
+          aria-label={`Annotation for ${target.objectLabel}`}
+          data-testid="agent-annotation-editor"
+          data-expanded={expanded ? "true" : "false"}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            anchorElementRef.current?.focus();
+          }}
+          className={`pointer-events-auto w-[min(320px,calc(100vw-24px))] rounded-2xl bg-warm-surface text-content-primary shadow-[var(--clash-shadow-floating)] ring-1 ring-warm-border/70 ${
+            expanded ? "min-h-[136px] p-3" : "min-h-16 px-4 py-2"
+          }`}
         >
-          <div
-            data-testid="agent-annotation-target-summary"
-            className="rounded-xl bg-warm-surface/70 p-3 ring-1 ring-inset ring-warm-border"
-          >
-            <div className="flex min-w-0 items-start gap-2.5">
-              <AnnotationNumberBadge number={activeIndex + 1} />
-              {target.previewAssetId ? (
-                <AnnotationAssetThumbnail target={target} size="md" />
-              ) : (
-                <span
-                  className="mt-0.5 shrink-0 text-content-muted"
-                  aria-hidden="true"
-                >
-                  <SurfaceIcon surface={target.surface} />
-                </span>
-              )}
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold">
-                  {target.objectLabel}
-                </div>
-                <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-content-muted">
-                  <span>{target.surfaceLabel}</span>
-                  <span aria-hidden="true">·</span>
-                  <span className="truncate">
-                    {formatObjectType(target.objectType)}
-                  </span>
-                </div>
-              </div>
+          <form onSubmit={save}>
+            <div
+              className={`flex min-w-0 flex-1 ${
+                expanded ? "items-start px-1" : "items-center"
+              }`}
+            >
+              <Textarea
+                ref={textareaRef}
+                autoFocus
+                rows={1}
+                value={draftNote}
+                aria-label={`Annotation for ${target.objectLabel}`}
+                placeholder="Add an optional comment…"
+                readOnly={!onChange}
+                disabled={disabled}
+                onChange={(event) => setDraftNote(event.target.value)}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === "Enter" &&
+                    (event.metaKey || event.ctrlKey) &&
+                    !event.nativeEvent.isComposing &&
+                    expanded
+                  ) {
+                    save(event);
+                  }
+                }}
+                className={`min-h-0 min-w-0 flex-1 resize-none border-0 bg-transparent px-0 text-sm leading-6 shadow-none placeholder:text-content-muted focus-visible:border-transparent focus-visible:ring-0 ${
+                  expanded ? "w-full py-1" : "py-0.5 pr-3"
+                }`}
+              />
             </div>
-            {target.previewAssetId ? (
-              <div className="mt-3 overflow-hidden rounded-lg bg-warm-muted">
-                <AnnotationAssetThumbnail target={target} size="lg" />
+            {expanded ? (
+              <div className="mt-2 flex items-center justify-between border-t border-warm-border/60 pt-2.5">
+                <div className="flex items-center gap-1">
+                  {onRemove ? (
+                    <IconButton
+                      label="Remove annotation"
+                      title="Remove annotation"
+                      size="sm"
+                      shape="rounded"
+                      disabled={disabled}
+                      onClick={() => {
+                        onRemove(annotation.id);
+                        onClose();
+                      }}
+                      className="text-content-muted hover:bg-destructive/10 hover:text-destructive"
+                      icon={<Trash className="h-4 w-4" weight="bold" />}
+                    />
+                  ) : null}
+                  {onLocate ? (
+                    <IconButton
+                      label="Locate annotation"
+                      title="Locate in workspace"
+                      size="sm"
+                      shape="rounded"
+                      disabled={disabled}
+                      onClick={() => onLocate(annotation.id)}
+                      className="text-content-muted"
+                      icon={<Crosshair className="h-4 w-4" weight="bold" />}
+                    />
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    shape="pill"
+                    onClick={onClose}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="sm"
+                    shape="pill"
+                    disabled={disabled || !onChange}
+                  >
+                    Save
+                  </Button>
+                </div>
               </div>
             ) : null}
-            {target.selection ? (
-              <blockquote className="mt-3 flex gap-2 rounded-r-lg border-l-2 border-brand/45 bg-warm-muted/45 px-3 py-2.5 text-[13px] leading-5 text-content-secondary">
-                <Quotes
-                  className="mt-0.5 h-4 w-4 shrink-0 text-content-muted"
-                  weight="fill"
-                  aria-hidden="true"
-                />
-                <span>{target.selection.exact}</span>
-              </blockquote>
-            ) : (
-              <p className="mt-3 text-[11px] leading-4 text-content-muted">
-                Attached to the whole{" "}
-                {formatObjectType(target.objectType).toLowerCase()}.
-              </p>
-            )}
-          </div>
-        </AgentAnnotationActionsContextMenu>
-
-        <div className="mt-5">
-          <label
-            htmlFor={`annotation-note-${annotation.id}`}
-            className="text-xs font-semibold text-content-secondary"
-          >
-            Instruction for agent
-          </label>
-          <Textarea
-            id={`annotation-note-${annotation.id}`}
-            aria-label={`Annotation for ${target.objectLabel}`}
-            value={annotation.note}
-            placeholder={
-              target.selection
-                ? "Add context for the selected passage…"
-                : "What should the agent inspect or change?"
-            }
-            rows={5}
-            readOnly={!onChange}
-            disabled={disabled}
-            onChange={(event) => onChange?.(annotation.id, event.target.value)}
-            className="mt-2 min-h-32 resize-y rounded-xl border-warm-border bg-warm-surface px-3 py-2.5 text-sm leading-5 shadow-none"
-          />
-          <p className="mt-2 text-[11px] leading-4 text-content-muted">
-            Sent with this exact workspace target and selection.
-          </p>
-        </div>
-
-        {annotations.length > 1 ? (
-          <div className="mt-5 border-t border-warm-border pt-4">
-            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-content-muted">
-              All annotations
-            </div>
-            <div className="space-y-1">
-              {annotations.map((candidate, index) => {
-                const selected = candidate.id === annotation.id;
-                const row = (
-                  <button
-                    type="button"
-                    aria-label={`Open annotation ${index + 1}: ${candidate.target.objectLabel}`}
-                    aria-current={selected ? "true" : undefined}
-                    onClick={() => onSelect(candidate.id)}
-                    className={`flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
-                      selected
-                        ? "bg-warm-muted text-content-primary"
-                        : "text-content-secondary hover:bg-warm-muted/60 hover:text-content-primary"
-                    }`}
-                  >
-                    <AnnotationNumberBadge number={index + 1} />
-                    <SurfaceIcon
-                      surface={candidate.target.surface}
-                      className="h-3.5 w-3.5 shrink-0"
-                    />
-                    <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
-                      {candidate.target.objectLabel}
-                    </span>
-                  </button>
-                );
-                return (
-                  <AgentAnnotationActionsContextMenu
-                    key={candidate.id}
-                    annotation={candidate}
-                    onOpen={() => onSelect(candidate.id)}
-                    onLocate={
-                      onLocate ? () => onLocate(candidate.id) : undefined
-                    }
-                    onRemove={
-                      onRemove ? () => onRemove(candidate.id) : undefined
-                    }
-                  >
-                    {row}
-                  </AgentAnnotationActionsContextMenu>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
-      </div>
-
-      {onRemove ? (
-        <footer className="shrink-0 border-t border-warm-border p-3">
-          <button
-            type="button"
-            onClick={() => onRemove(annotation.id)}
-            disabled={disabled}
-            className="inline-flex h-9 items-center gap-2 rounded-lg px-3 text-[13px] font-medium text-red-600 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/35"
-          >
-            <Trash className="h-4 w-4" weight="bold" />
-            Remove annotation
-          </button>
-        </footer>
+          </form>
+        </PopoverContent>
       ) : null}
-    </section>
+    </Popover>
   );
 }

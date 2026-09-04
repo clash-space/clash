@@ -11,13 +11,17 @@ import {
   ExecutablePluginAssetHandleSchema,
   ExecutablePluginInvocationSchema,
   ExecutablePluginResultSchema,
+  aspectRatioLabel,
+  parseAspectRatio,
   type ExecutablePluginInvocation,
   type ExecutablePluginResult,
 } from "@clash/shared-types/executable-plugin";
 
 export const CODEX_IMAGEGEN_ACTION_ID = "codex-imagegen";
 
-export type CodexImageGenServices = Pick<ExecutorContext, "hostTools">;
+export interface CodexImageGenServices {
+  hostTools: Pick<ExecutorContext["hostTools"], "codexImagegen">;
+}
 
 function promptValue(invocation: ExecutablePluginInvocation): string {
   const value = invocation.input.values.prompt;
@@ -29,13 +33,11 @@ function promptValue(invocation: ExecutablePluginInvocation): string {
 
 function aspectRatioValue(invocation: ExecutablePluginInvocation) {
   const value = invocation.input.values.aspect_ratio;
-  return value === "16:9" ||
-    value === "9:16" ||
-    value === "4:3" ||
-    value === "3:4" ||
-    value === "21:9"
-    ? value
-    : "1:1";
+  const parsed = typeof value === "string" ? parseAspectRatio(value) : undefined;
+  if (!parsed) {
+    throw new Error("Codex ImageGen requires a positive W:H aspect ratio.");
+  }
+  return aspectRatioLabel(parsed);
 }
 
 export async function runCodexImageGeneration(

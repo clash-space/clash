@@ -911,7 +911,6 @@ function openDatabase(path: string): SqliteDatabase {
   database.exec(`
     PRAGMA busy_timeout = 5000;
     PRAGMA journal_mode = WAL;
-    DROP TABLE IF EXISTS local_asset_representations;
     CREATE TABLE IF NOT EXISTS local_asset_inspections (
       source_resource_id TEXT NOT NULL,
       recipe TEXT NOT NULL,

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  marketplaceInstallPlugin,
   marketplaceInstallSkill,
   marketplaceUninstallSkill,
   type RegistryItem,
@@ -38,6 +39,23 @@ describe("marketplace skill actions", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/marketplace/skills/clash.video.sd25-pe/install",
       expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("asks local-api to install an official executable plugin by package id", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ installed: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await marketplaceInstallPlugin({
+      id: "clash.storyboard",
+      packageId: "clash.storyboard",
+      name: "Storyboard",
+      type: "plugin",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/marketplace/plugins/clash.storyboard/install",
+      expect.objectContaining({ method: "POST" }),
     );
   });
 });

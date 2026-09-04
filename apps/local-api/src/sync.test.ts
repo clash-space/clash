@@ -14,6 +14,14 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LoroDoc } from "loro-crdt";
+import {
+  CrdtType,
+  MessageType,
+  UpdateStatusCode,
+  decode,
+  encode,
+  type ProtocolMessage,
+} from "loro-protocol";
 
 import { createMockExternalAigcService } from "./local-aigc.js";
 import {
@@ -567,6 +575,51 @@ describe("LocalLoroRoom", () => {
     expect(processCalls).toBe(1);
   });
 
+  it("asynchronously refreshes the persisted Main canvas preview after a Project update", async () => {
+    const projectId = "project/async-main-preview";
+    const hub = new LocalLoroRoomHub(dataDir, undefined, null);
+
+    await hub.mutateProject(projectId, (doc) => {
+      doc.getMap("nodes").set("hero", {
+        id: "hero",
+        type: "image",
+        canvasId: "main",
+        position: { x: 120, y: 80 },
+        width: 640,
+        height: 360,
+        data: {
+          label: "Hero",
+          assetId: "asset-hero",
+        },
+      });
+      return { value: undefined };
+    });
+
+    const store = new FileReplicaStore(join(dataDir, "projects"));
+    await vi.waitFor(
+      async () => {
+        await expect(store.readCanvasPreview(projectId)).resolves.toMatchObject(
+          {
+            sourceVersion: expect.any(String),
+            preview: {
+              canvasId: "main",
+              bounds: { x: 120, y: 80, width: 640, height: 360 },
+              nodes: [
+                expect.objectContaining({
+                  id: "hero",
+                  assetId: "asset-hero",
+                }),
+              ],
+            },
+          },
+        );
+      },
+      { timeout: 2_000, interval: 25 },
+    );
+
+    await hub.close();
+  });
+
   it("keeps an imported snapshot invisible to Project rooms until the receiver commit finishes", async () => {
     const projectId = "project/import-reservation";
     const imported = new LoroDoc();
@@ -772,6 +825,18 @@ describe("LocalLoroRoom", () => {
   });
 
   it("acknowledges a peer update after persisting it", async () => {
+    const order: string[] = [];
+    const originalAppendUpdate = FileReplicaStore.prototype.appendUpdate;
+    vi
+      .spyOn(FileReplicaStore.prototype, "appendUpdate")
+      .mockImplementation(async function (
+        this: FileReplicaStore,
+        projectId,
+        update,
+      ) {
+        order.push("append");
+        await originalAppendUpdate.call(this, projectId, update);
+      });
     const room = await LocalLoroRoom.open({
       dataDir,
       projectId: "project/sync-ack",
@@ -779,7 +844,10 @@ describe("LocalLoroRoom", () => {
     });
     const sideband: Record<string, unknown>[] = [];
     const peer = room.addPeer(() => {}, {
-      sendJson: (message) => sideband.push(message),
+      sendJson: (message) => {
+        sideband.push(message);
+        if (message.type === "sync_ack") order.push("ack");
+      },
     });
     const clientDoc = new LoroDoc();
     clientDoc.getMap("nodes").set("pending-node", {
@@ -796,19 +864,8 @@ describe("LocalLoroRoom", () => {
       type: "sync_ack",
       updateId: updateId(update),
     });
-    expect(
-      countUpdateLogRecords(
-        await readFile(
-          join(
-            dataDir,
-            "projects",
-            encodeURIComponent("project/sync-ack"),
-            "loro",
-            "updates.log",
-          ),
-        ),
-      ),
-    ).toBe(1);
+    expect(order.indexOf("append")).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf("ack")).toBeGreaterThan(order.indexOf("append"));
   });
 
   it("rejects a peer-authored Project Asset before it can bypass Host L0/L1 publication", async () => {
@@ -2769,23 +2826,27 @@ describe("LocalLoroRoom", () => {
       taskId: "timeline-render:render-node-1",
       input: {
         values: {
-          timelineDsl: {
-            durationInFrames: 60,
-            tracks: [
-              expect.objectContaining({
-                items: [
-                  expect.objectContaining({
-                    id: "music-1",
-                    assetId: "music-asset-1",
-                    audioDucking: {
-                      amountDb: -18,
-                      attackFrames: 6,
-                      releaseFrames: 12,
-                    },
-                  }),
-                ],
-              }),
-            ],
+          timeline: {
+            name: "Timeline",
+            owner: { kind: "project" },
+            state: {
+              durationInFrames: 60,
+              tracks: [
+                expect.objectContaining({
+                  items: [
+                    expect.objectContaining({
+                      id: "music-1",
+                      assetId: "music-asset-1",
+                      audioDucking: {
+                        amountDb: -18,
+                        attackFrames: 6,
+                        releaseFrames: 12,
+                      },
+                    }),
+                  ],
+                }),
+              ],
+            },
           },
         },
         references: [
@@ -2803,7 +2864,7 @@ describe("LocalLoroRoom", () => {
       },
     });
     expect(
-      renderRequest.input.values.timelineDsl.tracks[0].items[0],
+      renderRequest.input.values.timeline.state.tracks[0].items[0],
     ).not.toHaveProperty("src");
     const finalDoc = new LoroDoc();
     finalDoc.import(room.snapshot());
@@ -3150,6 +3211,55 @@ describe("LocalLoroRoom", () => {
     );
   });
 
+  it("attaches a server-to-server replica link and durably imports cloud updates", async () => {
+    const published: Uint8Array[] = [];
+    let cloudCommit:
+      | ((batchId: string, updates: Uint8Array[]) => Promise<void>)
+      | undefined;
+    const link = {
+      start: vi.fn(),
+      publish: vi.fn((update: Uint8Array) => {
+        published.push(update);
+      }),
+      close: vi.fn(),
+    };
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/cloud-link",
+      remotePersistence: {
+        appendUpdate: vi.fn(),
+        createLink: ({ commit }) => {
+          cloudCommit = commit;
+          return link;
+        },
+      },
+      workflowProcessor: null,
+    });
+    expect(link.start).toHaveBeenCalledTimes(1);
+
+    const local = new LoroDoc();
+    local.getMap("nodes").set("local", { type: "text", data: { label: "Local" } });
+    await room.receive(room.addPeer(() => {}), local.export({ mode: "snapshot" }));
+    expect(published.length).toBeGreaterThan(0);
+
+    const cloud = new LoroDoc();
+    cloud.getMap("nodes").set("cloud", { type: "text", data: { label: "Cloud" } });
+    await cloudCommit?.("0x0000000000000099", [
+      cloud.export({ mode: "snapshot" }),
+    ]);
+
+    const reopened = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/cloud-link",
+      workflowProcessor: null,
+    });
+    expect(
+      await reopened.inspectProject((doc) => doc.getMap("nodes").get("cloud")),
+    ).toMatchObject({ data: { label: "Cloud" } });
+    await room.close();
+    expect(link.close).toHaveBeenCalledTimes(1);
+  });
+
   it("resolves remote persistence dynamically for later mirrored updates", async () => {
     const appendUpdate = vi.fn(
       async (_projectId: string, _update: Uint8Array) => {},
@@ -3273,7 +3383,7 @@ describe("LocalLoroRoom", () => {
     });
 
     const compactSpy = vi
-      .spyOn(FileReplicaStore.prototype, "compactSnapshot")
+      .spyOn(FileReplicaStore.prototype, "saveReplicaCheckpointCursor")
       .mockRejectedValueOnce(new Error("injected compaction failure"));
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
@@ -3540,6 +3650,76 @@ describe("LocalLoroRoom", () => {
 });
 
 describe("attachLocalSync", () => {
+  it("serves the official Loro protocol over the same local project room", async () => {
+    const server = createServer();
+    const hub = attachLocalSync(server, { dataDir });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const port = (server.address() as { port: number }).port;
+    const projectId = "project/protocol";
+    const ws = new WebSocket(
+      `ws://127.0.0.1:${port}/sync/${encodeURIComponent(projectId)}?protocol=loro-v1`,
+    );
+    const messages: ProtocolMessage[] = [];
+    ws.on("message", (data, isBinary) => {
+      if (isBinary) messages.push(decode(new Uint8Array(data as Buffer)));
+    });
+    await new Promise<void>((resolve, reject) => {
+      ws.once("open", resolve);
+      ws.once("error", reject);
+    });
+
+    ws.send(
+      encode({
+        type: MessageType.JoinRequest,
+        crdt: CrdtType.Loro,
+        roomId: projectId,
+        auth: new Uint8Array(),
+        version: new LoroDoc().version().encode(),
+      }),
+    );
+    await vi.waitFor(() => {
+      expect(messages.some((message) => message.type === MessageType.JoinResponseOk)).toBe(true);
+    });
+
+    const source = new LoroDoc();
+    source.getMap("nodes").set("protocol-node", {
+      type: "text",
+      data: { label: "Protocol" },
+    });
+    const update = source.export({ mode: "snapshot" });
+    const batchId = "0x0000000000000021" as const;
+    ws.send(
+      encode({
+        type: MessageType.DocUpdate,
+        crdt: CrdtType.Loro,
+        roomId: projectId,
+        updates: [update],
+        batchId,
+      }),
+    );
+
+    await vi.waitFor(() => {
+      expect(messages).toContainEqual(
+        expect.objectContaining({
+          type: MessageType.Ack,
+          refId: batchId,
+          status: UpdateStatusCode.Ok,
+        }),
+      );
+    });
+    expect(
+      await hub.inspectProject(projectId, (doc) =>
+        doc.getMap("nodes").get("protocol-node"),
+      ),
+    ).toMatchObject({ data: { label: "Protocol" } });
+
+    await closeWebSocket(ws);
+    await hub.close();
+    await closeServer(server);
+  });
+
   it("broadcasts local agent presence and structured Canvas activity", async () => {
     const server = createServer();
     attachLocalSync(server, { dataDir });

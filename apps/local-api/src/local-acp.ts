@@ -1160,6 +1160,7 @@ function isSessionReadyMessage(msg: unknown): msg is {
   type: "session.ready";
   session_id: string;
   acp_session_id?: string;
+  supports_session_fork?: boolean;
   config_options?: unknown[];
   modes?: unknown;
   replay_events?: unknown[];
@@ -3235,7 +3236,8 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        await (this.persistTurnError(entry, turnId, message) ?? Promise.resolve());
+        await (this.persistTurnError(entry, turnId, message) ??
+          Promise.resolve());
         this.sendToSession(entry, {
           type: "session.error",
           session_id: entry.id,
@@ -3301,7 +3303,8 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        await (this.persistTurnError(entry, turnId, message) ?? Promise.resolve());
+        await (this.persistTurnError(entry, turnId, message) ??
+          Promise.resolve());
         this.sendToSession(entry, {
           type: "session.error",
           session_id: entry.id,

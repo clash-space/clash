@@ -3,6 +3,7 @@ import { chmodSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { extname, join } from "node:path";
 import {
   DEFAULT_CANVAS_ID,
+  StoryboardViewStateSchema,
   type ProjectHostCommand,
   type ResolvedAsset,
 } from "@clash/shared-types";
@@ -614,6 +615,8 @@ canvasCommand
   .option("--content <content>", "New content")
   .option("--content-file <path>", "Workspace-relative UTF-8 file read once as exact content; the path is not persisted. Mutually exclusive with --content.")
   .option("--asset-id <id>", "Bind an existing asset (image/video/audio) to this node — its preview will render")
+  .option("--view-state-json <json>", "Complete structured plugin View state as JSON")
+  .option("--view-state-file <path>", "Workspace-relative JSON file containing complete plugin View state")
   .option(
     "--data <key=value...>",
     "Arbitrary node-data field (repeatable). Example: --data status=completed --data description='hello'",
@@ -647,6 +650,24 @@ canvasCommand
     const extraData: Record<string, unknown> = {};
     if (options.assetId) extraData.assetId = options.assetId;
     for (const [k, v] of (options.data ?? [])) extraData[k] = v;
+    if (options.viewStateJson !== undefined && options.viewStateFile !== undefined) {
+      console.error("Error: --view-state-json and --view-state-file are mutually exclusive");
+      process.exit(1);
+    }
+    if (options.viewStateJson !== undefined || options.viewStateFile !== undefined) {
+      const encoded = options.viewStateFile !== undefined
+        ? await resolveWorkspaceTextInput({
+            workspaceRoot: context.workspaceRoot ?? process.cwd(),
+            filePath: options.viewStateFile,
+          })
+        : options.viewStateJson;
+      try {
+        extraData.state = StoryboardViewStateSchema.parse(JSON.parse(encoded ?? ""));
+      } catch (error) {
+        console.error(`Error: Invalid View state JSON: ${(error as Error).message}`);
+        process.exit(1);
+      }
+    }
     const guard = validateCanvasUpdateDataFields(Object.keys(extraData));
     if (!guard.ok) {
       console.error(`Error: ${guard.error}`);
@@ -657,7 +678,7 @@ canvasCommand
       typeof options.label !== "string" &&
       typeof content !== "string"
     ) {
-      console.error("Provide at least one field to update (--label, --content, --content-file, --asset-id, --data k=v)");
+      console.error("Provide at least one field to update (--label, --content, --content-file, --asset-id, --view-state-file, --data k=v)");
       process.exit(1);
     }
 

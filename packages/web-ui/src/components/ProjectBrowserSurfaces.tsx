@@ -2,6 +2,7 @@ import type {
   AgentAnnotationDraft,
   AgentAnnotationTarget,
 } from "@clash/shared-types";
+import type { BrowserAgentContext } from "../lib/copilotWorkspaceContext";
 import { BrowserSurface } from "./BrowserSurface";
 import type { ProjectBrowserTab } from "./ProjectWorkspaceNavigator";
 
@@ -9,15 +10,18 @@ export function ProjectBrowserSurfaces({
   projectId,
   tabs,
   activeBrowserId,
+  headerEndInset = 0,
   annotations,
   activeAnnotationId,
   onTabChange,
   onCreateAnnotation,
   onSelectAnnotation,
+  onAgentContextChange,
 }: {
   projectId: string;
   tabs: readonly ProjectBrowserTab[];
   activeBrowserId: string | null;
+  headerEndInset?: number;
   annotations: readonly AgentAnnotationDraft[];
   activeAnnotationId: string | null;
   onTabChange: (
@@ -26,6 +30,10 @@ export function ProjectBrowserSurfaces({
   ) => void;
   onCreateAnnotation: (target: AgentAnnotationTarget) => string;
   onSelectAnnotation: (annotationId: string) => void;
+  onAgentContextChange?: (
+    browserId: string,
+    context: BrowserAgentContext,
+  ) => void;
 }) {
   return tabs.map((tab) => {
     const active = tab.id === activeBrowserId;
@@ -42,11 +50,13 @@ export function ProjectBrowserSurfaces({
         <BrowserSurface
           projectId={projectId}
           tab={tab}
+          headerEndInset={headerEndInset}
           annotations={annotations}
           activeAnnotationId={activeAnnotationId}
           onTabChange={(patch) => onTabChange(tab.id, patch)}
           onCreateAnnotation={onCreateAnnotation}
           onSelectAnnotation={onSelectAnnotation}
+          onAgentContextChange={onAgentContextChange}
         />
       </div>
     );

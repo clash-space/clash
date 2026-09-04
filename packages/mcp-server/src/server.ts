@@ -604,6 +604,15 @@ const toolDefinitions: Record<
       data: z
         .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
         .optional(),
+      viewState: z
+        .unknown()
+        .optional()
+        .describe("Complete structured plugin View state; read the node first and preserve all four Storyboard groups"),
+      viewStateFile: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Workspace-relative JSON file containing complete plugin View state; mutually exclusive with viewState"),
     },
   },
   clash_canvas_move: {

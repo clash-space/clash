@@ -76,6 +76,35 @@ describe("declarative model-card configuration constraints", () => {
     }, { rejectUnknownParameters: true })).toMatch(/unsupported_knob.*not declared/i);
   });
 
+  it("accepts well-formed custom ratios only when the Card declares them", () => {
+    const model = ModelCardSchema.parse({
+      id: "free-ratio-image",
+      name: "Free ratio image",
+      provider: "Local",
+      kind: "image",
+      parameters: [{
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        allowCustom: true,
+        options: [{ label: "Square", value: "1:1" }],
+        defaultValue: "1:1",
+      }],
+      defaultParams: { aspect_ratio: "1:1" },
+      defaultAspectRatio: "1:1",
+      input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
+    });
+
+    expect(validateModelCardConfiguration(model, {
+      prompt: "A paper city",
+      modelParams: { aspect_ratio: "7:5" },
+    })).toBeNull();
+    expect(validateModelCardConfiguration(model, {
+      prompt: "A paper city",
+      modelParams: { aspect_ratio: "wide-ish" },
+    })).toMatch(/valid custom ratio/i);
+  });
+
   it("coerces external values to the exact candidate type declared by each Card", () => {
     // Both directions matter. `safety_tolerance` genuinely declares string
     // candidates, while durations are numeric seconds in every card.

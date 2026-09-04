@@ -1,6 +1,6 @@
 /**
  * Authentication utilities for WebSocket connections.
- * Ported from loro-sync-server/src/auth.ts — adapted to api-cf Env.
+ * Supports authenticated browser and CLI WebSocket connections to ProjectRoom.
  */
 
 import * as jose from 'jose';

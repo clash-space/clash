@@ -38,6 +38,7 @@ import {
   type ProjectCanvas,
   type ProjectTimeline,
   type ResolvedAsset,
+  type TimelineExportProgress,
 } from "@clash/shared-types";
 import { stripSrcFromTracks } from "@clash/web-ui/lib/timelineDsl";
 import { resolveAssetMediaUrl } from "../features/assets/media-url";
@@ -91,7 +92,7 @@ function TimelineEditorLoadingShell() {
       role="status"
       aria-label="Preparing timeline"
       data-timeline-loading-shell=""
-      className="grid h-full min-h-0 [--clash-timeline-gutter:var(--clash-project-chrome-gutter,0.5rem)] [--clash-timeline-control-gap:var(--clash-control-gap,0.25rem)] [--clash-timeline-control-size:var(--clash-project-control-height,2rem)] gap-[var(--clash-timeline-gutter)] overflow-hidden bg-warm-page pb-[var(--clash-timeline-gutter)] pl-[var(--clash-timeline-gutter)] pr-[var(--clash-timeline-gutter)] [grid-template-columns:minmax(min(12rem,25%),300px)_minmax(min(21rem,42%),1fr)_minmax(min(13rem,28%),clamp(280px,22%,340px))] [grid-template-rows:var(--clash-project-sidebar-header-height,2.5rem)_minmax(0,1fr)_280px]"
+      className="grid h-full min-h-0 [--clash-timeline-gutter:var(--clash-project-chrome-gutter,0.5rem)] [--clash-timeline-control-gap:var(--clash-control-gap,0.25rem)] [--clash-timeline-control-size:var(--clash-project-control-height,2rem)] gap-[var(--clash-timeline-gutter)] overflow-hidden bg-warm-page pb-[var(--clash-timeline-gutter)] pl-[var(--clash-timeline-gutter)] pr-[var(--clash-timeline-gutter)] [grid-template-columns:minmax(0,min(25%,300px))_minmax(0,1fr)_minmax(0,min(28%,340px))] [grid-template-rows:var(--clash-project-sidebar-header-height,2.5rem)_minmax(0,1fr)_280px]"
     >
       <header
         data-loading-region="command-bar"
@@ -420,7 +421,8 @@ export function ProjectAssetSurface({
           {label}
         </span>
         {headerAction}
-        {ready && renderEditor &&
+        {ready &&
+        renderEditor &&
         !editing &&
         (asset.kind === "image" || asset.kind === "video") ? (
           <Button
@@ -497,6 +499,7 @@ export function ProjectTimelineEditorSurface({
   canvases,
   onSave,
   onExport,
+  exportProgress,
   onOpenCanvas,
   onRequestAsset,
   insertAssetRequest,
@@ -522,6 +525,7 @@ export function ProjectTimelineEditorSurface({
     expectedReadToken: string,
   ) => boolean;
   onExport?: (timelineId: string) => Promise<void> | void;
+  exportProgress?: readonly TimelineExportProgress[];
   onOpenCanvas: (canvasId: string) => void;
   onRequestAsset?: () => void;
   insertAssetRequest?: TimelineAssetInsertRequest;
@@ -984,6 +988,7 @@ export function ProjectTimelineEditorSurface({
               onInsertAssetRequestHandled={onInsertAssetRequestHandled}
               onAdmitTimelineLibraryMedia={onAdmitTimelineLibraryMedia}
               onExport={onExport ? exportTimelineVideo : undefined}
+              exportProgress={exportProgress}
               onOpenInNle={
                 globalThis.__CLASH_DESKTOP__?.openInNle ? openInNle : undefined
               }

@@ -233,7 +233,7 @@ Available tools for agents:
 
 ### AIGC Tasks Table (D1/SQLite)
 
-**Location**: [apps/loro-sync-server/migrations/0002_create_aigc_tasks.sql](../apps/loro-sync-server/migrations/0002_create_aigc_tasks.sql)
+**Historical note**: this schema belonged to the removed standalone sync Worker. Hosted generation now uses `GenerationWorkflow`; current D1 schema migrations live in [`apps/web/drizzle/`](../apps/web/drizzle/).
 
 ```sql
 CREATE TABLE aigc_tasks (
@@ -904,7 +904,7 @@ Future:   API Gateway → Redis Queue → Worker pool → PostgreSQL
 ### Shared
 
 - **Type Definitions**: [packages/shared-types/src/tasks.ts](../packages/shared-types/src/tasks.ts)
-- **Database Migrations**: [apps/loro-sync-server/migrations/](../apps/loro-sync-server/migrations/)
+- **Database Migrations**: [apps/web/drizzle/](../apps/web/drizzle/)
 
 ---
 

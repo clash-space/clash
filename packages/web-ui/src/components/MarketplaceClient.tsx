@@ -8,13 +8,15 @@ import { AppPage, AppPageHeader } from "./AppPage";
 import { ArtworkSlot } from "./ui/artwork-slot";
 import { BrandAsset } from "./BrandAsset";
 
-type MarketplaceTypeFilter = "action" | "skill";
+type MarketplaceTypeFilter = "action" | "skill" | "plugin";
 
 interface Props {
   items: RegistryItem[];
   installedActionIds: string[];
   installedSkillIds: string[];
+  installedPluginIds?: string[];
   mode?: "public" | "manage";
+  catalogScope?: "all" | "plugins-and-actions";
   canAddReference?: boolean;
   onAddReference?: AddMarketplaceSkillReference;
 }
@@ -23,7 +25,9 @@ export default function MarketplaceClient({
   items,
   installedActionIds,
   installedSkillIds,
+  installedPluginIds = [],
   mode = "manage",
+  catalogScope = "all",
   canAddReference = false,
   onAddReference,
 }: Props) {
@@ -40,10 +44,17 @@ export default function MarketplaceClient({
     () => new Set(installedSkillIds),
     [installedSkillIds],
   );
+  const installedPlugins = useMemo(
+    () => new Set(installedPluginIds),
+    [installedPluginIds],
+  );
   const canManage = mode === "manage";
 
   const filtered = useMemo(() => {
-    let result = items;
+    let result =
+      catalogScope === "plugins-and-actions"
+        ? items.filter((item) => item.type !== "skill")
+        : items;
     if (typeFilters.length > 0) {
       result = result.filter((item) =>
         typeFilters.every((typeFilter) => item.type === typeFilter),
@@ -60,15 +71,20 @@ export default function MarketplaceClient({
       );
     }
     return result;
-  }, [items, query, typeFilters]);
+  }, [catalogScope, items, query, typeFilters]);
 
   const typeFilterOptions: Array<{
     value: MarketplaceTypeFilter;
     label: string;
-  }> = [
-    { value: "action", label: "Actions" },
-    { value: "skill", label: "Skills" },
-  ];
+  }> = catalogScope === "plugins-and-actions"
+    ? [
+        { value: "plugin", label: "Plugins" },
+        { value: "action", label: "Actions" },
+      ]
+    : [
+        { value: "action", label: "Actions" },
+        { value: "skill", label: "Skills" },
+      ];
   const emptyMessage = query.trim()
     ? `No results for "${query}"`
     : typeFilters.length > 0
@@ -82,8 +98,12 @@ export default function MarketplaceClient({
           title="Marketplace"
           description={
             canManage
-              ? "Install actions and skills for your workspace"
-              : "Actions and skills for Clash agents"
+              ? catalogScope === "plugins-and-actions"
+                ? "Install Clash plugins and actions for your workspace"
+                : "Install actions and skills for your workspace"
+              : catalogScope === "plugins-and-actions"
+                ? "Plugins and actions for Clash projects"
+                : "Actions and skills for Clash agents"
           }
         />
 
@@ -104,12 +124,18 @@ export default function MarketplaceClient({
                   setTypeFilters(
                     values.filter(
                       (value): value is MarketplaceTypeFilter =>
-                        value === "action" || value === "skill",
+                        value === "action" ||
+                        value === "skill" ||
+                        value === "plugin",
                     ),
                   ),
               },
             ]}
-            searchLabel="Search actions and skills"
+            searchLabel={
+              catalogScope === "plugins-and-actions"
+                ? "Search plugins and actions"
+                : "Search actions and skills"
+            }
             context="page"
             spacing="none"
           />
@@ -148,7 +174,9 @@ export default function MarketplaceClient({
                 initiallyInstalled={
                   item.type === "action"
                     ? installedActions.has(item.id)
-                    : installedSkills.has(item.id)
+                    : item.type === "plugin"
+                      ? installedPlugins.has(item.id)
+                      : installedSkills.has(item.id)
                 }
                 canManage={canManage}
                 canAddReference={item.type === "skill" && allowReferences}

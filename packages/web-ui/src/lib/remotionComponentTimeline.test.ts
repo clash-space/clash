@@ -84,4 +84,85 @@ describe("appendRemotionComponentToTimelineState", () => {
       items: [expect.objectContaining({ type: "composition" })],
     });
   });
+
+  it("does not duplicate a component that is already connected", () => {
+    const state = {
+      tracks: [{
+        id: "visual-overlays",
+        name: "Overlays",
+        role: "overlay" as const,
+        category: "visual" as const,
+        items: [{
+          id: "remotion-fixed-node-id",
+          type: "composition" as const,
+          compositionKind: "custom" as const,
+          runtime: "remotion" as const,
+          compositionId: "LiveCard",
+          sourceNodeId: "fixed-node-id",
+          sourcePath: "components/fixed-node-id.tsx",
+          from: 24,
+          durationInFrames: 90,
+        }],
+      }],
+    };
+
+    const next = appendRemotionComponentToTimelineState(state, {
+      nodeId: "fixed-node-id",
+      componentId: "LiveCard",
+      label: "Live card",
+      durationInFrames: 90,
+    });
+
+    expect(next).toBe(state);
+    expect(next.tracks[0]?.items).toHaveLength(1);
+    expect(next.tracks[0]?.items[0]?.from).toBe(24);
+  });
+
+  it("derives the Timeline update from a Remotion-to-Editor connection", async () => {
+    const module = await import("./remotionComponentTimeline");
+    const derive = (module as Record<string, unknown>)
+      .deriveRemotionComponentConnectionUpdate as
+      | ((input: Record<string, unknown>) => {
+          timelineId: string;
+          state: Record<string, unknown> & { tracks: Array<{ items: Array<Record<string, unknown>> }> };
+        } | null)
+      | undefined;
+
+    expect(derive).toBeTypeOf("function");
+    if (!derive) return;
+
+    const update = derive({
+      sourceId: "remotion-card",
+      targetId: "timeline-action",
+      nodes: [
+        {
+          id: "remotion-card",
+          type: "remotion-component",
+          data: {
+            label: "Live card",
+            componentId: "LiveCard",
+            durationInFrames: 90,
+          },
+        },
+        {
+          id: "timeline-action",
+          type: "video-editor",
+          data: { timelineId: "timeline-main" },
+        },
+      ],
+      timelines: [{ id: "timeline-main", state: { tracks: [] } }],
+    });
+
+    expect(update).toMatchObject({
+      timelineId: "timeline-main",
+      state: {
+        tracks: [{
+          items: [{
+            runtime: "remotion",
+            sourceNodeId: "remotion-card",
+          }],
+        }],
+      },
+    });
+  });
 });

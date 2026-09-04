@@ -168,6 +168,7 @@ describe("Canvas Project persistence", () => {
         localPath: "/Users/alice/.clash/assets/image.png",
         filePath: "C:\\Users\\alice\\.clash\\assets\\image.png",
         thumbnail: "https://host-a.invalid/signed/thumb.png",
+        waveformUrl: "https://host-a.invalid/assets/asset-audio/waveform",
         poster: "https://host-a.invalid/signed/poster.png",
         referenceImageUrls: ["https://host-a.invalid/signed/reference.png"],
         referenceVideoUrls: ["https://host-a.invalid/signed/reference.mp4"],
@@ -195,6 +196,9 @@ describe("Canvas Project persistence", () => {
     });
     expect(canvas.readNode("uploading-image")?.data).not.toHaveProperty(
       "previewUrl",
+    );
+    expect(canvas.readNode("uploading-image")?.data).not.toHaveProperty(
+      "waveformUrl",
     );
   });
 
@@ -501,6 +505,44 @@ describe("Canvas Action Asset binding authority", () => {
 });
 
 describe("buildGenerationPayload", () => {
+  it("carries a custom action's selected aspect ratio into its pending media node", () => {
+    const customDef = CustomActionDefinitionSchema.parse({
+      id: "custom-ultrawide-image",
+      name: "Custom Ultrawide Image",
+      outputType: "image",
+      parameters: [
+        {
+          id: "aspect_ratio",
+          label: "Aspect Ratio",
+          type: "select",
+          options: [
+            { label: "Landscape (16:9)", value: "landscape_16_9" },
+            { label: "Ultrawide (21:9)", value: "ultrawide" },
+          ],
+          defaultValue: "landscape_16_9",
+        },
+      ],
+    });
+
+    const result = buildGenerationPayload({
+      prompt: "A cat",
+      refNodes: [],
+      configId: customDef.id,
+      config: {
+        kind: "custom",
+        customDef,
+        customActionParams: { aspect_ratio: "ultrawide" },
+      },
+      actionType: "custom:custom-ultrawide-image",
+    });
+    const node = buildPendingAssetNode({
+      ...result.pendingInput,
+      nodeId: "pending-ultrawide-image",
+    });
+
+    expect(node.data.aspectRatio).toBe("21:9");
+  });
+
   it("rejects undeclared built-in model parameters before creating a pending asset", () => {
     const modelCard = MODEL_CARDS.find(
       (card) => card.id === "nano-banana-2-lite",
@@ -1223,6 +1265,22 @@ describe("NodeDataSchema", () => {
 });
 
 describe("buildPendingAssetNode", () => {
+  it("keeps a provider sentinel canonical on the pending node", () => {
+    const card = MODEL_CARDS.find((candidate) => candidate.id === "minimax-h3");
+    expect(card).toBeDefined();
+    const aspectRatio = card!.defaultParams.aspect_ratio;
+
+    const node = buildPendingAssetNode({
+      nodeId: "vid-adaptive-ratio",
+      prompt: "Make the reference move",
+      modelId: card!.id,
+      modelParams: { aspect_ratio: aspectRatio },
+      actionType: ACTION_TYPE.VideoGen,
+    });
+
+    expect(node.data.aspectRatio).toBe(aspectRatio);
+  });
+
   it("copies the exact plugin binding onto the pending child", () => {
     const pluginBinding = {
       pluginId: "clash.minimax",

@@ -17,6 +17,7 @@ import {
   RF_NODE_TYPE,
   buildPendingAssetNode,
   buildGenerationPayload,
+  type CustomActionDefinition,
   type UpstreamRef,
 } from "./canvas.js";
 import { MODEL_CARDS, normalizeModelId, type ModelCard } from "./models.js";
@@ -46,6 +47,7 @@ import {
   isCanvasManagedAssetAction,
 } from "./canvas-action-asset-inputs.js";
 import { readProjectAsset } from "./project-assets.js";
+import { ProjectTimelineEnvelopeSchema } from "./timeline-generator-projection.js";
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -133,6 +135,7 @@ export function projectVisibleNodeData(
   delete visible.filePath;
   delete visible.thumbnail;
   delete visible.thumbnailUrl;
+  delete visible.waveformUrl;
   delete visible.poster;
   delete visible.posterUrl;
   delete visible.coverUrl;
@@ -925,6 +928,8 @@ export class Canvas {
     generateId: () => string,
     /** Answer with this account and no other. */
     providerAccountId?: string,
+    /** Host-global plugin definition; never copied into Project state. */
+    customActionDefinition?: CustomActionDefinition,
   ): ExecuteResult {
     const node = this.readNode(nodeId);
     if (!node) {
@@ -955,7 +960,12 @@ export class Canvas {
         error: null,
       };
     }
-    const r = this.executeGeneration(nodeId, generateId, providerAccountId);
+    const r = this.executeGeneration(
+      nodeId,
+      generateId,
+      providerAccountId,
+      customActionDefinition,
+    );
     if (r.error) {
       return {
         kind: null,
@@ -989,6 +999,8 @@ export class Canvas {
      * into the pending Project node.
      */
     _providerAccountId?: string,
+    /** Host-global plugin definition; never copied into Project state. */
+    customActionDefinition?: CustomActionDefinition,
   ): ExecuteGenerationResult {
     const node = this.readNode(nodeId);
     if (!node) {
@@ -1067,7 +1079,11 @@ export class Canvas {
       const customActionId =
         (nodeData.customActionId as string) ||
         actionType.replace("custom:", "");
-      const customDef = this.getCustomAction(customActionId);
+      const customDef =
+        this.getCustomAction(customActionId) ??
+        (customActionDefinition?.id === customActionId
+          ? customActionDefinition
+          : null);
       if (!customDef) {
         return {
           assetNodeId: "",
@@ -1364,6 +1380,11 @@ export class Canvas {
     const data: Record<string, unknown> = {
       label: "Rendered Video",
       status: TaskStatus.Pending,
+      timeline: ProjectTimelineEnvelopeSchema.parse({
+        name: timeline.name,
+        owner: timeline.owner,
+        state: { ...timelineDsl, durationInFrames: renderDurationInFrames },
+      }),
       timelineDsl: { ...timelineDsl, durationInFrames: renderDurationInFrames },
       ...(timelineId ? { sourceTimelineId: timelineId } : {}),
       sourceTimelineActionId: frozenPreflight.owner.actionId,

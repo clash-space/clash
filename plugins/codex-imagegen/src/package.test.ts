@@ -167,6 +167,41 @@ describe("Codex ImageGen executable action package", () => {
     });
   });
 
+  it("forwards a reduced arbitrary ratio to the Codex host tool", async () => {
+    const generate = vi.fn(async () => ({
+      assetId: "generated-free-ratio",
+      uri: "clash-asset://generated-free-ratio",
+      kind: "image" as const,
+      mediaType: "image/png",
+    }));
+
+    await imagegen.runCodexImageGeneration(
+      {
+        protocol: "clash.plugin.invoke/v1",
+        invocationId: "invocation-free-ratio",
+        taskId: "task-free-ratio",
+        projectId: "project-1",
+        target: {
+          pluginId: "clash.codex-imagegen",
+          version: "0.1.0",
+          exportId: "generate-image",
+          schemaHash: `sha256:${"a".repeat(64)}`,
+          kind: "action",
+        },
+        input: {
+          values: { prompt: "A paper-cut moon", aspect_ratio: "14:10" },
+          references: [],
+        },
+        actor: { kind: "user", id: "user-1" },
+      },
+      { hostTools: { codexImagegen: { generate } } },
+    );
+
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({ aspectRatio: "7:5" }),
+    );
+  });
+
   it("exports the same action as an inert transport-neutral plugin module", async () => {
     const plugin = (imagegen as Record<string, unknown>).plugin as
       | {

@@ -31,6 +31,7 @@ import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { Tooltip } from "../ui/tooltip";
 import { PendingAssetConnectionHint } from "./PendingAssetConnectionHint";
+import { AssetGenerationPreview } from "./AssetGenerationPreview";
 
 const MEDIA_NODE_CONTROL_CLASS =
   "nodrag nopan bg-black/50 text-white backdrop-blur-sm hover:bg-black/70 focus-visible:ring-white/80 focus-visible:ring-offset-black/20";
@@ -60,8 +61,19 @@ const ImageNode = ({
   const pendingAwaitingConnection =
     data.status === "pending" && loroSync?.connected === false;
 
-  const aspectRatioDimensions = calculateDimensionsFromAspectRatio(
-    data.aspectRatio,
+  const legacyCustomAspectRatio = (() => {
+    if (typeof data.aspectRatio === "string") return undefined;
+    const value = data.customActionParams?.aspect_ratio;
+    if (typeof value !== "string") return undefined;
+    const match = /^\s*(\d+)\s*:\s*(\d+)\s*$/.exec(value);
+    if (!match || Number(match[1]) <= 0 || Number(match[2]) <= 0)
+      return undefined;
+    return `${Number(match[1])}:${Number(match[2])}`;
+  })();
+  const effectiveAspectRatio = data.aspectRatio ?? legacyCustomAspectRatio;
+  const aspectRatioDimensions = useMemo(
+    () => calculateDimensionsFromAspectRatio(effectiveAspectRatio),
+    [effectiveAspectRatio],
   );
   const measuredWidth = width;
   const measuredHeight = height;
@@ -74,11 +86,16 @@ const ImageNode = ({
   const currentSize = useMemo(
     () =>
       resolveInitialMediaSize({
-        measuredWidth,
-        measuredHeight,
+        measuredWidth: legacyCustomAspectRatio ? undefined : measuredWidth,
+        measuredHeight: legacyCustomAspectRatio ? undefined : measuredHeight,
         aspectRatioDimensions,
       }),
-    [measuredWidth, measuredHeight, aspectRatioDimensions],
+    [
+      legacyCustomAspectRatio,
+      measuredWidth,
+      measuredHeight,
+      aspectRatioDimensions,
+    ],
   );
 
   const nodeWidth = currentSize.width;
@@ -96,6 +113,39 @@ const ImageNode = ({
   }, [data.status, data.description]);
 
   // Loro sync handles state updates - no polling needed
+
+  // Older custom-action outputs persisted their provider parameters but
+  // omitted the derived aspectRatio, so layout stored the 400×400 fallback.
+  // Repair that legacy projection once; new nodes receive aspectRatio before
+  // insertion and skip this path entirely.
+  useEffect(() => {
+    if (!legacyCustomAspectRatio) return;
+    const target = aspectRatioDimensions;
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id !== id) return node;
+        return {
+          ...node,
+          width: target.width,
+          height: target.height,
+          style: {
+            ...node.style,
+            width: target.width,
+            height: target.height,
+          },
+          data: {
+            ...node.data,
+            aspectRatio: legacyCustomAspectRatio,
+          },
+        };
+      }),
+    );
+    loroSync?.updateNode(id, {
+      width: target.width,
+      height: target.height,
+      data: { aspectRatio: legacyCustomAspectRatio },
+    });
+  }, [aspectRatioDimensions, id, legacyCustomAspectRatio, loroSync, setNodes]);
 
   // Reconciliation effect: whenever asset.metadata is available, compare
   // it to Loro's measuredSize. If they disagree — either first write
@@ -288,12 +338,7 @@ const ImageNode = ({
             {pendingAwaitingConnection ? (
               <PendingAssetConnectionHint />
             ) : (
-              <div className="flex flex-col items-center gap-3">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-warm-border border-t-image" />
-                <span className="text-xs font-medium animate-pulse">
-                  Generating Image...
-                </span>
-              </div>
+              <AssetGenerationPreview kind="image" />
             )}
           </div>
         ) : status === "failed" ? (

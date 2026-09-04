@@ -45,12 +45,14 @@ import {
   type ExecutablePluginFunctionExport,
   type ExecutablePluginModelBindingRegistration,
   type ExecutablePluginGeneratorRegistration,
+  type ExecutablePluginViewRegistration,
   type GeneratorDefinition,
   type ExecutablePluginActivationReceipt,
   type ExecutablePluginCardDocument,
   type ExecutablePluginProviderDocument,
   type ExecutablePluginModelBindingDocument,
   type ExecutablePluginGeneratorDocument,
+  type ExecutablePluginViewDocument,
   type ExecutablePluginContractTestDocument,
   resolvePluginLanguage,
 } from "@clash/shared-types";
@@ -133,6 +135,7 @@ interface HostedActionPackage {
   providers: Record<string, ExecutablePluginProviderDocument>;
   modelBindings: Record<string, ExecutablePluginModelBindingDocument>;
   generators: Record<string, ExecutablePluginGeneratorDocument>;
+  views: Record<string, ExecutablePluginViewDocument>;
   contractTests: Record<string, ExecutablePluginContractTestDocument>;
 }
 
@@ -170,6 +173,12 @@ async function readHostedPackage(dir: string): Promise<HostedActionPackage> {
       await readFile(join(dir, generator.path), "utf8"),
     );
   }
+  const views: Record<string, unknown> = {};
+  for (const view of localManifest.contributes.views) {
+    views[view.path] = JSON.parse(
+      await readFile(join(dir, view.path), "utf8"),
+    );
+  }
   const contractTests: Record<string, unknown> = {};
   for (const path of localManifest.contractTests) {
     contractTests[path] = JSON.parse(await readFile(join(dir, path), "utf8"));
@@ -179,6 +188,7 @@ async function readHostedPackage(dir: string): Promise<HostedActionPackage> {
       providers,
       modelBindings,
       generators,
+      views,
     }),
     manifest: localManifest,
   };
@@ -201,6 +211,7 @@ function executablePluginSchemaHash(
   providers: Record<string, ExecutablePluginProviderDocument> = {},
   modelBindings: Record<string, ExecutablePluginModelBindingDocument> = {},
   generators: Record<string, ExecutablePluginGeneratorDocument> = {},
+  views: Record<string, ExecutablePluginViewDocument> = {},
 ): `sha256:${string}` {
   return `sha256:${createHash("sha256")
     .update(
@@ -213,6 +224,7 @@ function executablePluginSchemaHash(
         providers,
         modelBindings,
         generators,
+        views,
       }),
     )
     .digest("hex")}`;
@@ -282,6 +294,7 @@ export async function createExecutablePluginActivationReceipt(
       hostedPackage.providers,
       hostedPackage.modelBindings,
       hostedPackage.generators,
+      hostedPackage.views,
     ),
     contentHash: await executablePluginDirectoryContentHash(pluginDir),
     activatedAt: new Date().toISOString(),
@@ -296,6 +309,7 @@ async function verifyExecutablePluginActivation(
   providers: Record<string, ExecutablePluginProviderDocument>,
   modelBindings: Record<string, ExecutablePluginModelBindingDocument>,
   generators: Record<string, ExecutablePluginGeneratorDocument>,
+  views: Record<string, ExecutablePluginViewDocument>,
 ): Promise<void> {
   const receiptFile = executablePluginActivationReceiptPath(
     actionsRoot,
@@ -318,6 +332,7 @@ async function verifyExecutablePluginActivation(
     providers,
     modelBindings,
     generators,
+    views,
   );
   const contentHash = await executablePluginDirectoryContentHash(pluginDir);
   if (
@@ -341,6 +356,7 @@ interface LoadedAction {
   providers: Record<string, ExecutablePluginProviderDocument>;
   modelBindings: Record<string, ExecutablePluginModelBindingDocument>;
   generators: Record<string, ExecutablePluginGeneratorDocument>;
+  views: Record<string, ExecutablePluginViewDocument>;
   schemaHash: `sha256:${string}`;
 }
 
@@ -469,7 +485,7 @@ export class ActionsHost {
         const hostedPackage = await readHostedPackage(
           dirname(packaged.manifestPath),
         );
-        const { manifest, cards, providers, modelBindings, generators } =
+        const { manifest, cards, providers, modelBindings, generators, views } =
           hostedPackage;
         if (manifest.id !== registration.id) {
           throw new Error(
@@ -482,6 +498,7 @@ export class ActionsHost {
           providers,
           modelBindings,
           generators,
+          views,
         );
         const endpoint = createModulePluginEndpoint({
           manifest,
@@ -504,6 +521,7 @@ export class ActionsHost {
             providers,
             modelBindings,
             generators,
+            views,
             schemaHash,
           },
           endpoint,
@@ -550,7 +568,7 @@ export class ActionsHost {
       );
       return "skipped";
     }
-    const { manifest, cards, providers, modelBindings, generators } =
+    const { manifest, cards, providers, modelBindings, generators, views } =
       hostedPackage;
     if (this.trustedBundledPluginIds.has(manifest.id)) {
       process.stderr.write(
@@ -567,6 +585,7 @@ export class ActionsHost {
         providers,
         modelBindings,
         generators,
+        views,
       );
     } catch (error) {
       process.stderr.write(
@@ -597,12 +616,14 @@ export class ActionsHost {
       providers,
       modelBindings,
       generators,
+      views,
       schemaHash: executablePluginSchemaHash(
         manifest,
         cards,
         providers,
         modelBindings,
         generators,
+        views,
       ),
     };
     const supervised: SupervisedProcessStdio = {
@@ -798,6 +819,27 @@ export class ActionsHost {
     for (const supervised of this.actions.values()) {
       const { manifest, generators, schemaHash } = supervised.loaded;
       for (const document of Object.values(generators)) {
+        registrations.push({
+          pluginId: manifest.id,
+          version: manifest.version,
+          schemaHash,
+          document,
+        });
+      }
+    }
+    return registrations.sort((left, right) =>
+      `${left.pluginId}:${left.document.spec.definitionId}`.localeCompare(
+        `${right.pluginId}:${right.document.spec.definitionId}`,
+      ),
+    );
+  }
+
+  /** Activated declarative Views; no executable endpoint or Generator ownership is implied. */
+  listViews(): ExecutablePluginViewRegistration[] {
+    const registrations: ExecutablePluginViewRegistration[] = [];
+    for (const supervised of this.actions.values()) {
+      const { manifest, views, schemaHash } = supervised.loaded;
+      for (const document of Object.values(views)) {
         registrations.push({
           pluginId: manifest.id,
           version: manifest.version,
@@ -1091,6 +1133,7 @@ export class ActionsHost {
           hostedPackage.providers,
           hostedPackage.modelBindings,
           hostedPackage.generators,
+          hostedPackage.views,
         );
       } catch (error) {
         const active = this.actions.get(manifest.id);
@@ -1662,6 +1705,7 @@ export async function runExecutablePluginContractTests(
     providers,
     modelBindings,
     generators,
+    views,
     contractTests,
   } = hostedPackage;
   if (
@@ -1721,6 +1765,7 @@ export async function runExecutablePluginContractTests(
     providers,
     modelBindings,
     generators,
+    views,
   );
   const completed: ExecutablePluginContractTestRun["tests"] = [];
 

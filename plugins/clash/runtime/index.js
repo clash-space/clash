@@ -30151,7 +30151,7 @@ function N3(Z, $, J, X, V) {
   return Z.registerResource($, J, { mimeType: p, ...X }, V);
 }
 
-// ../../packages/mcp-server/dist/chunk-23W7M4SG.js
+// ../../packages/mcp-server/dist/chunk-S6T5CQ5C.js
 import { readFileSync } from "fs";
 
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/index.js
@@ -32093,35 +32093,6 @@ var EMPTY_COMPLETION_RESULT = {
     hasMore: false
   }
 };
-
-// ../../packages/shared-runtime/dist/runtime-config.js
-var desktopChromeMetrics = {
-  tabStripHeight: 40,
-  nativeWindowButtonFrameSize: 20,
-  trafficLightInsetX: 12,
-  trafficLightOpticalOffsetY: 2,
-  toolbarLeftInset: 92
-};
-var desktopTrafficLightPosition = {
-  x: desktopChromeMetrics.trafficLightInsetX,
-  y: Math.round((desktopChromeMetrics.tabStripHeight - desktopChromeMetrics.nativeWindowButtonFrameSize) / 2) + desktopChromeMetrics.trafficLightOpticalOffsetY
-};
-
-// ../../packages/shared-runtime/dist/metadata-body-blobs.js
-import { createHash } from "crypto";
-import { readFile as readFile2 } from "fs/promises";
-import { join as join2 } from "path";
-
-// ../../packages/shared-runtime/dist/content-addressed-file.js
-import { randomUUID } from "crypto";
-import { chmod, link, mkdir, open, readFile, rename, rm } from "fs/promises";
-import { dirname, join } from "path";
-import { setTimeout as delay } from "timers/promises";
-
-// ../../packages/shared-runtime/dist/workspace-bundle.js
-import { createHash as createHash3, randomUUID as randomUUID3 } from "crypto";
-import { constants as constants2, chmod as chmod3, link as link2, lstat as lstat2, mkdir as mkdir3, open as open3, readdir as readdir2, unlink, writeFile } from "fs/promises";
-import { basename, dirname as dirname3, join as join4, relative as relative2, resolve as resolve2, sep as sep2 } from "path";
 
 // ../../node_modules/.pnpm/zod@3.24.4/node_modules/zod/lib/index.mjs
 var util2;
@@ -36184,7 +36155,7 @@ var z2 = /* @__PURE__ */ Object.freeze({
   ZodError: ZodError3
 });
 
-// ../../packages/shared-types/dist/chunk-GWDIKZMB.js
+// ../../packages/shared-types/dist/chunk-EQ2BPN4E.js
 var AssetKindSchema = z2.enum(["image", "video", "audio", "model"]);
 var ResourceIdSchema = z2.string().trim().min(1);
 var ResourceSchema2 = z2.object({
@@ -36277,6 +36248,8 @@ var ProjectAssetEntrySchema = z2.object({
   kind: AssetKindSchema,
   source: ProjectAssetSourceSchema,
   lifecycle: ProjectAssetLifecycleSchema,
+  /** Immutable wall-clock production/admission time in Unix milliseconds. */
+  createdAt: z2.number().int().nonnegative().optional(),
   name: z2.string().trim().min(1).optional(),
   metadata: ProjectAssetMetadataSchema,
   provenance: ProjectAssetProvenanceSchema.optional()
@@ -36318,6 +36291,8 @@ var ActionAssetBindingSchema = z2.object({
 var ResolvedAssetSchema = z2.object({
   id: z2.string().trim().min(1),
   kind: AssetKindSchema,
+  /** Project Asset production time, or a Host Resource time for legacy entries. */
+  createdAt: z2.number().int().nonnegative().optional(),
   name: z2.string().trim().min(1).optional(),
   metadata: ProjectAssetMetadataSchema,
   provenance: ProjectAssetProvenanceSchema.optional(),
@@ -36332,6 +36307,8 @@ var ResolvedAssetSchema = z2.object({
   ]),
   url: z2.string().url().optional(),
   thumbnailUrl: z2.string().url().optional(),
+  /** Host-authorized projection of a bounded waveform representation. */
+  waveformUrl: z2.string().url().optional(),
   progress: z2.number().min(0).max(1).optional(),
   error: z2.string().trim().min(1).optional()
 }).strict();
@@ -36395,7 +36372,175 @@ var AssetRefRowSchema = z2.object({
   importedAt: z2.number()
 });
 
-// ../../packages/shared-types/dist/chunk-UZSXLAEL.js
+// ../../packages/shared-types/dist/chunk-YKBFTDJ4.js
+var ActionFamilySchema = z2.enum(["generate", "edit", "custom"]);
+var ActionOperationSpecSchema = z2.object({
+  id: z2.string().min(1),
+  outputKind: AssetKindSchema
+});
+var ActionSpecSchema = z2.object({
+  id: z2.string().min(1),
+  version: z2.string().min(1),
+  name: z2.string().min(1),
+  family: ActionFamilySchema,
+  inputKinds: z2.array(AssetKindSchema).min(1),
+  operations: z2.array(ActionOperationSpecSchema).min(1)
+});
+var ActionInvocationModeSchema = z2.enum(["explicit", "implicit"]);
+var ActionSurfaceSchema = z2.enum(["canvas", "asset-preview"]);
+var ACTION_INVOCATION_MODE = {
+  Explicit: "explicit",
+  Implicit: "implicit"
+};
+function invocationModeForSurface(surface) {
+  return surface === "canvas" ? ACTION_INVOCATION_MODE.Explicit : ACTION_INVOCATION_MODE.Implicit;
+}
+var ASSET_ACTION_ID = {
+  ImageEditor: "image-editor",
+  VideoClipper: "video-clipper"
+};
+var CropRectSchema = z2.object({
+  x: z2.number().int().nonnegative(),
+  y: z2.number().int().nonnegative(),
+  width: z2.number().int().positive(),
+  height: z2.number().int().positive()
+});
+var ImageEditParamsSchema = z2.object({
+  crop: CropRectSchema.optional(),
+  rotation: z2.union([z2.literal(0), z2.literal(90), z2.literal(180), z2.literal(270)]).optional()
+});
+var VideoClipParamsSchema = z2.discriminatedUnion("mode", [
+  z2.object({
+    mode: z2.literal("screenshot"),
+    frameTimeSec: z2.number().nonnegative()
+  }),
+  z2.object({
+    mode: z2.literal("crop"),
+    startSec: z2.number().nonnegative(),
+    endSec: z2.number().positive()
+  })
+]).superRefine((value, context) => {
+  if (value.mode === "crop" && value.endSec <= value.startSec) {
+    context.addIssue({
+      code: z2.ZodIssueCode.custom,
+      message: "endSec must be greater than startSec",
+      path: ["endSec"]
+    });
+  }
+});
+var BUILT_IN_ASSET_ACTION_SPECS = {
+  [ASSET_ACTION_ID.ImageEditor]: ActionSpecSchema.parse({
+    id: ASSET_ACTION_ID.ImageEditor,
+    version: "1",
+    name: "Image Editor",
+    family: "edit",
+    inputKinds: ["image"],
+    operations: [{ id: "transform", outputKind: "image" }]
+  }),
+  [ASSET_ACTION_ID.VideoClipper]: ActionSpecSchema.parse({
+    id: ASSET_ACTION_ID.VideoClipper,
+    version: "1",
+    name: "Video Clipper",
+    family: "edit",
+    inputKinds: ["video"],
+    operations: [
+      { id: "screenshot", outputKind: "image" },
+      { id: "crop", outputKind: "video" }
+    ]
+  })
+};
+var InvocationBaseSchema = z2.object({
+  projectId: z2.string().min(1),
+  mode: ActionInvocationModeSchema,
+  surface: ActionSurfaceSchema
+});
+var ImageEditActionInvocationSchema = InvocationBaseSchema.extend({
+  actionId: z2.literal(ASSET_ACTION_ID.ImageEditor),
+  source: z2.object({ assetId: z2.string().min(1), kind: z2.literal("image") }),
+  params: ImageEditParamsSchema
+});
+var VideoEditActionInvocationSchema = InvocationBaseSchema.extend({
+  actionId: z2.literal(ASSET_ACTION_ID.VideoClipper),
+  source: z2.object({ assetId: z2.string().min(1), kind: z2.literal("video") }),
+  params: VideoClipParamsSchema
+});
+var AssetEditActionInvocationSchema = z2.discriminatedUnion("actionId", [
+  ImageEditActionInvocationSchema,
+  VideoEditActionInvocationSchema
+]).refine((value) => value.mode === invocationModeForSurface(value.surface), {
+  message: "Invocation mode must match its surface",
+  path: ["mode"]
+});
+
+// ../../packages/shared-runtime/dist/asset-edit-plugin.js
+var PLUGIN_SCHEMA_HASH = `sha256:${"a".repeat(64)}`;
+
+// ../../packages/shared-runtime/dist/runtime-config.js
+var desktopChromeMetrics = {
+  tabStripHeight: 40,
+  nativeWindowButtonFrameSize: 20,
+  trafficLightInsetX: 12,
+  trafficLightOpticalOffsetY: 2,
+  toolbarLeftInset: 92
+};
+var desktopTrafficLightPosition = {
+  x: desktopChromeMetrics.trafficLightInsetX,
+  y: Math.round((desktopChromeMetrics.tabStripHeight - desktopChromeMetrics.nativeWindowButtonFrameSize) / 2) + desktopChromeMetrics.trafficLightOpticalOffsetY
+};
+
+// ../../packages/shared-runtime/dist/metadata-body-blobs.js
+import { createHash } from "crypto";
+import { readFile as readFile2 } from "fs/promises";
+import { join as join2 } from "path";
+
+// ../../packages/shared-runtime/dist/content-addressed-file.js
+import { randomUUID } from "crypto";
+import { chmod, link, mkdir, open, readFile, rename, rm } from "fs/promises";
+import { dirname, join } from "path";
+import { setTimeout as delay } from "timers/promises";
+
+// ../../packages/shared-runtime/dist/workspace-bundle.js
+import { createHash as createHash3, randomUUID as randomUUID3 } from "crypto";
+import { constants as constants2, chmod as chmod3, link as link2, lstat as lstat2, mkdir as mkdir3, open as open3, readdir as readdir2, unlink, writeFile } from "fs/promises";
+import { basename, dirname as dirname3, join as join4, relative as relative2, resolve as resolve2, sep as sep2 } from "path";
+
+// ../../packages/shared-types/dist/chunk-MMCIZQ23.js
+var AspectRatioSchema = z2.object({
+  width: z2.number().int().positive(),
+  height: z2.number().int().positive()
+}).strict();
+var AspectRatioStringSchema = z2.string().trim().transform((value, ctx) => {
+  const ratio = parseAspectRatio(value);
+  if (!ratio) {
+    ctx.addIssue({
+      code: z2.ZodIssueCode.custom,
+      message: "Aspect ratio must be two positive integers separated by a colon."
+    });
+    return z2.NEVER;
+  }
+  return aspectRatioLabel(ratio);
+});
+function greatestCommonDivisor(a, b) {
+  return b === 0 ? a : greatestCommonDivisor(b, a % b);
+}
+function reduceAspectRatio(ratio) {
+  const divisor = greatestCommonDivisor(ratio.width, ratio.height);
+  return { width: ratio.width / divisor, height: ratio.height / divisor };
+}
+function aspectRatioLabel(ratio) {
+  const reduced = reduceAspectRatio(ratio);
+  return `${reduced.width}:${reduced.height}`;
+}
+function parseAspectRatio(text) {
+  const match = /^\s*(\d+)\s*[:x×]\s*(\d+)\s*$/i.exec(text);
+  if (!match) return void 0;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    return void 0;
+  }
+  return { width, height };
+}
 var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
 var pluginIdSchema = z2.string().trim().superRefine((value, ctx) => {
   const segments = value.split(".");
@@ -37747,6 +37892,9 @@ var ModelParameterSchema = z2.object({
   /** Provider-fixed output characteristic. It remains visible in the common
    * parameter surface, but UI and external payloads cannot override it. */
   readOnly: z2.boolean().optional(),
+  /** Select controls may accept values beyond their preset menu. Aspect-ratio
+   * custom values remain positive integer W:H pairs. */
+  allowCustom: z2.boolean().optional(),
   required: z2.boolean().default(false),
   options: z2.array(
     z2.object({
@@ -37760,6 +37908,13 @@ var ModelParameterSchema = z2.object({
   placeholder: z2.string().optional(),
   defaultValue: z2.union([z2.string(), z2.number(), z2.boolean()]).optional()
 });
+function acceptsCustomModelParameterValue(parameter, value) {
+  if (parameter.type !== "select" || !parameter.allowCustom) return false;
+  if (parameter.id === "aspect_ratio") {
+    return typeof value === "string" && parseAspectRatio(value) !== void 0;
+  }
+  return typeof value === "string" || typeof value === "number";
+}
 var ReferenceMediaConstraintsSchema = z2.object({
   mimeTypes: z2.array(z2.string().min(1)).optional(),
   fileExtensions: z2.array(z2.string().min(1)).optional(),
@@ -38040,7 +38195,7 @@ var ModelCardSchema = z2.object({
     if (value === void 0) return;
     if (parameter.type === "select") {
       const optionValues = parameter.options?.map((option) => option.value) ?? [];
-      if (!optionValues.some((candidate) => sameCandidate(candidate, value))) {
+      if (!optionValues.some((candidate) => sameCandidate(candidate, value)) && !acceptsCustomModelParameterValue(parameter, value)) {
         ctx.addIssue({
           code: "custom",
           path,
@@ -38090,6 +38245,13 @@ var ModelCardSchema = z2.object({
     }
     parameterIds.add(parameter.id);
     parametersById.set(parameter.id, parameter);
+    if (parameter.allowCustom && parameter.type !== "select") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["parameters", index, "allowCustom"],
+        message: "Only select parameters may allow custom values."
+      });
+    }
     if (parameter.type === "select") {
       if (!parameter.options?.length) {
         ctx.addIssue({
@@ -43765,10 +43927,6 @@ var MEDIA_ANALYSIS_DOCUMENT_KIND_BY_CATEGORY = {
   ocr: "media.analysis.ocr",
   "audio-semantics": "media.analysis.audio-semantics"
 };
-var AspectRatioSchema = z2.object({
-  width: z2.number().int().positive(),
-  height: z2.number().int().positive()
-}).strict();
 var PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 var SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 var SHA256_PATTERN = /^sha256:[0-9a-f]{64}$/;
@@ -43841,6 +43999,11 @@ var ExecutablePluginModelBindingExportSchema = z2.object({
 var ExecutablePluginGeneratorExportSchema = z2.object({
   id: z2.string().trim().regex(PLUGIN_ID_PATTERN),
   kind: z2.literal("generator"),
+  path: PluginRelativePathSchema
+}).strict();
+var ExecutablePluginViewExportSchema = z2.object({
+  id: z2.string().trim().regex(PLUGIN_ID_PATTERN),
+  kind: z2.literal("view"),
   path: PluginRelativePathSchema
 }).strict();
 var ExecutableActionPresentationSchema = z2.discriminatedUnion("type", [
@@ -43999,6 +44162,99 @@ var ExecutablePluginGeneratorDocumentSchema = z2.object({
   kind: z2.literal("generator"),
   spec: GeneratorDefinitionSpecSchema
 }).strict();
+var StoryboardViewResourceSchema = z2.object({
+  id: z2.string().trim().min(1),
+  projectAssetId: z2.string().trim().min(1),
+  mediaKind: z2.enum(["image", "video", "audio", "model"]),
+  modelName: z2.string().trim().min(1).optional(),
+  generatedBy: z2.object({
+    generatorId: z2.string().trim().min(1),
+    generatorRevisionId: z2.string().trim().min(1),
+    actionRunId: z2.string().trim().min(1),
+    outputCommitId: z2.string().trim().min(1),
+    outputSlot: z2.string().trim().min(1).optional()
+  }).strict().optional()
+}).strict();
+var StoryboardViewDescriptionPartSchema = z2.discriminatedUnion("type", [
+  z2.object({ type: z2.literal("text"), text: z2.string() }).strict(),
+  z2.object({
+    type: z2.literal("entity-reference"),
+    entityId: z2.string().trim().min(1)
+  }).strict()
+]);
+var StoryboardViewMaterialSchema = z2.object({
+  id: z2.string().trim().min(1),
+  label: z2.string().trim().min(1).optional(),
+  mediaKind: z2.enum(["image", "video", "audio", "model"]),
+  promptDraft: z2.object({
+    id: z2.string().trim().min(1),
+    text: z2.string()
+  }).strict().optional(),
+  candidates: z2.array(StoryboardViewResourceSchema).default([]),
+  selectedCandidateId: z2.string().trim().min(1).optional()
+}).strict().superRefine((material, ctx) => {
+  if (material.selectedCandidateId && !material.candidates.some(
+    (candidate) => candidate.id === material.selectedCandidateId
+  )) {
+    ctx.addIssue({
+      code: z2.ZodIssueCode.custom,
+      path: ["selectedCandidateId"],
+      message: "A selected candidate must belong to the same material slot."
+    });
+  }
+  const candidateIds = /* @__PURE__ */ new Set();
+  material.candidates.forEach((candidate, index) => {
+    if (candidateIds.has(candidate.id)) {
+      ctx.addIssue({
+        code: z2.ZodIssueCode.custom,
+        path: ["candidates", index, "id"],
+        message: "Candidate ids must be unique within a material slot."
+      });
+    }
+    candidateIds.add(candidate.id);
+    if (candidate.mediaKind !== material.mediaKind) {
+      ctx.addIssue({
+        code: z2.ZodIssueCode.custom,
+        path: ["candidates", index, "mediaKind"],
+        message: "A candidate must match its material slot media kind."
+      });
+    }
+  });
+});
+var StoryboardViewItemBaseSchema = z2.object({
+  id: z2.string().trim().min(1),
+  label: z2.string().trim().min(1).optional(),
+  description: z2.array(StoryboardViewDescriptionPartSchema).default([]),
+  details: z2.string().optional(),
+  materials: z2.array(StoryboardViewMaterialSchema).default([])
+});
+var StoryboardViewItemSchema = StoryboardViewItemBaseSchema.strict();
+var StoryboardViewShotSchema = StoryboardViewItemBaseSchema.extend({
+  durationSeconds: z2.number().finite().positive().optional()
+}).strict();
+var StoryboardViewStateSchema = z2.object({
+  keyElements: z2.array(StoryboardViewItemSchema),
+  shots: z2.array(StoryboardViewShotSchema),
+  audioLayers: z2.array(StoryboardViewItemSchema),
+  uncategorized: z2.array(StoryboardViewResourceSchema)
+}).strict();
+var ExecutablePluginViewDocumentSchema = z2.object({
+  apiVersion: z2.literal("clash.view/v1"),
+  kind: z2.literal("view"),
+  spec: z2.object({
+    definitionId: z2.string().trim().regex(PLUGIN_ID_PATTERN),
+    name: z2.string().trim().min(1),
+    description: z2.string().trim().min(1).optional(),
+    presentation: z2.object({ type: z2.literal("storyboard") }).strict(),
+    initialState: StoryboardViewStateSchema
+  }).strict()
+}).strict();
+var ExecutablePluginViewReferenceSchema = z2.object({
+  pluginId: pluginIdSchema,
+  definitionId: z2.string().trim().regex(PLUGIN_ID_PATTERN),
+  version: z2.string().trim().regex(SEMVER_PATTERN),
+  schemaHash: z2.string().regex(SHA256_PATTERN)
+}).strict();
 var ExecutablePluginProviderDefinitionSchema = z2.object({
   /**
    * What this provider needs to authenticate, and how to draw it.
@@ -44132,6 +44388,12 @@ var ExecutablePluginGeneratorRegistrationSchema = z2.object({
   version: z2.string().trim().regex(SEMVER_PATTERN),
   schemaHash: z2.string().regex(SHA256_PATTERN),
   document: ExecutablePluginGeneratorDocumentSchema
+}).strict();
+var ExecutablePluginViewRegistrationSchema = z2.object({
+  pluginId: pluginIdSchema,
+  version: z2.string().trim().regex(SEMVER_PATTERN),
+  schemaHash: z2.string().regex(SHA256_PATTERN),
+  document: ExecutablePluginViewDocumentSchema
 }).strict();
 var ExecutablePluginBindingSchema = z2.object({
   pluginId: pluginIdSchema,
@@ -44639,7 +44901,7 @@ var ExecutablePluginBrokerOperationSchema = z2.union([
   z2.object({
     kind: z2.literal("codex.image.generate"),
     prompt: z2.string().trim().min(1).max(2e4),
-    aspectRatio: z2.enum(["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"]).default("1:1"),
+    aspectRatio: AspectRatioStringSchema.default("1:1"),
     slot: z2.string().trim().min(1),
     references: z2.array(
       ExecutablePluginAssetHandleObjectSchema.extend({
@@ -44743,6 +45005,7 @@ var ExecutablePluginContributionsSchema = z2.object({
   providers: z2.array(ExecutablePluginProviderExportSchema).default([]),
   modelBindings: z2.array(ExecutablePluginModelBindingExportSchema).default([]),
   generators: z2.array(ExecutablePluginGeneratorExportSchema).default([]),
+  views: z2.array(ExecutablePluginViewExportSchema).default([]),
   functions: z2.array(ExecutablePluginFunctionExportSchema).default([]),
   hostTools: z2.array(z2.enum(["codex.imagegen", "speech.transcribe", "media.analyze", "director.stage.capture-frame", "video.enhance"])).default([])
 }).strict();
@@ -44764,6 +45027,7 @@ var ExecutablePluginManifestSchema = z2.object({
     ["providers", manifest.contributes.providers],
     ["modelBindings", manifest.contributes.modelBindings],
     ["generators", manifest.contributes.generators],
+    ["views", manifest.contributes.views],
     ["functions", manifest.contributes.functions]
   ]) {
     const ids = /* @__PURE__ */ new Set();
@@ -44793,7 +45057,8 @@ var ExecutablePluginManifestSchema = z2.object({
   for (const artifact of [
     ...manifest.contributes.providers,
     ...manifest.contributes.modelBindings,
-    ...manifest.contributes.generators
+    ...manifest.contributes.generators,
+    ...manifest.contributes.views
   ]) {
     if (artifactPaths.has(artifact.path)) {
       ctx.addIssue({
@@ -50118,110 +50383,6 @@ var MEDIA_REFERENCE_PLURAL_NOUN = Object.fromEntries(
 var MEDIA_REFERENCE_COUNT_NOUN = Object.fromEntries(
   MEDIA_REFERENCE_FIELDS.map((field32) => [field32.modality, field32.countNoun])
 );
-var ActionFamilySchema = z2.enum(["generate", "edit", "custom"]);
-var ActionExecutorSchema = z2.enum([
-  "model",
-  "client-render",
-  "server-transform",
-  "runtime"
-]);
-var ActionOperationSpecSchema = z2.object({
-  id: z2.string().min(1),
-  executor: ActionExecutorSchema,
-  outputKind: AssetKindSchema
-});
-var ActionSpecSchema = z2.object({
-  id: z2.string().min(1),
-  version: z2.string().min(1),
-  name: z2.string().min(1),
-  family: ActionFamilySchema,
-  inputKinds: z2.array(AssetKindSchema).min(1),
-  operations: z2.array(ActionOperationSpecSchema).min(1)
-});
-var ActionInvocationModeSchema = z2.enum(["explicit", "implicit"]);
-var ActionSurfaceSchema = z2.enum(["canvas", "asset-preview"]);
-var ACTION_INVOCATION_MODE = {
-  Explicit: "explicit",
-  Implicit: "implicit"
-};
-function invocationModeForSurface(surface) {
-  return surface === "canvas" ? ACTION_INVOCATION_MODE.Explicit : ACTION_INVOCATION_MODE.Implicit;
-}
-var ASSET_ACTION_ID = {
-  ImageEditor: "image-editor",
-  VideoClipper: "video-clipper"
-};
-var CropRectSchema = z2.object({
-  x: z2.number().int().nonnegative(),
-  y: z2.number().int().nonnegative(),
-  width: z2.number().int().positive(),
-  height: z2.number().int().positive()
-});
-var ImageEditParamsSchema = z2.object({
-  crop: CropRectSchema.optional(),
-  rotation: z2.union([z2.literal(0), z2.literal(90), z2.literal(180), z2.literal(270)]).optional()
-});
-var VideoClipParamsSchema = z2.discriminatedUnion("mode", [
-  z2.object({ mode: z2.literal("screenshot"), frameTimeSec: z2.number().nonnegative() }),
-  z2.object({
-    mode: z2.literal("crop"),
-    startSec: z2.number().nonnegative(),
-    endSec: z2.number().positive()
-  })
-]).superRefine((value, context) => {
-  if (value.mode === "crop" && value.endSec <= value.startSec) {
-    context.addIssue({
-      code: z2.ZodIssueCode.custom,
-      message: "endSec must be greater than startSec",
-      path: ["endSec"]
-    });
-  }
-});
-var BUILT_IN_ASSET_ACTION_SPECS = {
-  [ASSET_ACTION_ID.ImageEditor]: ActionSpecSchema.parse({
-    id: ASSET_ACTION_ID.ImageEditor,
-    version: "1",
-    name: "Image Editor",
-    family: "edit",
-    inputKinds: ["image"],
-    operations: [
-      { id: "transform", executor: "client-render", outputKind: "image" }
-    ]
-  }),
-  [ASSET_ACTION_ID.VideoClipper]: ActionSpecSchema.parse({
-    id: ASSET_ACTION_ID.VideoClipper,
-    version: "1",
-    name: "Video Clipper",
-    family: "edit",
-    inputKinds: ["video"],
-    operations: [
-      { id: "screenshot", executor: "client-render", outputKind: "image" },
-      { id: "crop", executor: "server-transform", outputKind: "video" }
-    ]
-  })
-};
-var InvocationBaseSchema = z2.object({
-  projectId: z2.string().min(1),
-  mode: ActionInvocationModeSchema,
-  surface: ActionSurfaceSchema
-});
-var ImageEditActionInvocationSchema = InvocationBaseSchema.extend({
-  actionId: z2.literal(ASSET_ACTION_ID.ImageEditor),
-  source: z2.object({ assetId: z2.string().min(1), kind: z2.literal("image") }),
-  params: ImageEditParamsSchema
-});
-var VideoEditActionInvocationSchema = InvocationBaseSchema.extend({
-  actionId: z2.literal(ASSET_ACTION_ID.VideoClipper),
-  source: z2.object({ assetId: z2.string().min(1), kind: z2.literal("video") }),
-  params: VideoClipParamsSchema
-});
-var AssetEditActionInvocationSchema = z2.discriminatedUnion("actionId", [
-  ImageEditActionInvocationSchema,
-  VideoEditActionInvocationSchema
-]).refine((value) => value.mode === invocationModeForSurface(value.surface), {
-  message: "Invocation mode must match its surface",
-  path: ["mode"]
-});
 var PositionSchema2 = z2.object({
   x: z2.number(),
   y: z2.number()
@@ -51379,6 +51540,9 @@ var addCommand = z2.object({
     "text",
     "group",
     "remotion",
+    "image",
+    "video",
+    "audio",
     "image_gen",
     "video_gen",
     "audio_gen",
@@ -51391,6 +51555,7 @@ var addCommand = z2.object({
   parentId: id.optional(),
   modelId: id.optional(),
   actionId: id.optional(),
+  assetId: id.optional(),
   refs: z2.array(id).optional(),
   params: z2.record(id, primitiveParameter).optional(),
   actorClientType,
@@ -51846,6 +52011,33 @@ var MODEL_UPSTREAM_ROUTES = [
   ...MOCK_DECLARED_ROUTES,
   ...MOCK_ROUTES
 ];
+var ProjectCanvasPreviewNodeSchema = z2.object({
+  id: z2.string().trim().min(1),
+  type: z2.string().trim().min(1),
+  x: z2.number().finite(),
+  y: z2.number().finite(),
+  width: z2.number().finite().positive(),
+  height: z2.number().finite().positive(),
+  parentId: z2.string().trim().min(1).optional(),
+  assetId: z2.string().trim().min(1).optional(),
+  label: z2.string().trim().min(1).optional()
+}).strict();
+var ProjectCanvasPreviewSchema = z2.object({
+  canvasId: z2.string().trim().min(1),
+  bounds: z2.object({
+    x: z2.number().finite(),
+    y: z2.number().finite(),
+    width: z2.number().finite().nonnegative(),
+    height: z2.number().finite().nonnegative()
+  }).strict().nullable(),
+  nodes: z2.array(ProjectCanvasPreviewNodeSchema)
+}).strict();
+var ProjectCanvasThumbnailSchema = z2.object({
+  url: z2.string().url(),
+  revision: z2.string().regex(/^[a-f0-9]{64}$/u),
+  width: z2.number().int().positive(),
+  height: z2.number().int().positive()
+}).strict();
 var CopilotProjectAssetReferenceSchema = z2.object({
   projectAssetId: z2.string().trim().min(1),
   kind: AssetKindSchema,
@@ -52597,7 +52789,7 @@ async function resolveWorkspaceTextInput(input) {
   }
   const bytes = await readFile3(realCandidate);
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
   } catch {
     throw new Error("Content file must contain valid UTF-8");
   }
@@ -54238,7 +54430,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
   }
 };
 
-// ../../packages/mcp-server/dist/chunk-23W7M4SG.js
+// ../../packages/mcp-server/dist/chunk-S6T5CQ5C.js
 import { createHash as createHash4, randomUUID as randomUUID5 } from "crypto";
 import { readFile as readFile6, stat as stat3 } from "fs/promises";
 import { basename as basename3, resolve as resolve6 } from "path";
@@ -54690,6 +54882,7 @@ function createCanvasProjectHostGateway(client = createProjectHostClient()) {
             ...input.parentId?.trim() ? { parentId: input.parentId.trim() } : {},
             ...input.modelId?.trim() ? { modelId: input.modelId.trim() } : {},
             ...input.actionId?.trim() ? { actionId: input.actionId.trim() } : {},
+            ...input.assetId?.trim() ? { assetId: input.assetId.trim() } : {},
             ...input.refs ? { refs: input.refs } : {},
             ...input.params ? { params: input.params } : {},
             actorClientType: "mcp"
@@ -54722,9 +54915,28 @@ function createCanvasProjectHostGateway(client = createProjectHostClient()) {
           const nodeId = requiredString2(input, "nodeId");
           const receipt = await requireNodeReceipt(input, nodeId);
           const content = await resolvedContent(input, resolved.workspaceRoot);
+          if (input.viewState !== void 0 && input.viewStateFile !== void 0) {
+            throw new Error("viewState and viewStateFile are mutually exclusive");
+          }
+          let viewState = input.viewState;
+          if (input.viewStateFile !== void 0) {
+            if (!resolved.workspaceRoot) {
+              throw new Error("viewStateFile requires a cwd linked to a Clash workspace");
+            }
+            const encoded = await resolveWorkspaceTextInput({
+              workspaceRoot: resolved.workspaceRoot,
+              filePath: input.viewStateFile
+            });
+            try {
+              viewState = JSON.parse(encoded ?? "");
+            } catch (error57) {
+              throw new Error(`Invalid View state JSON: ${error57.message}`);
+            }
+          }
           const data = {
             ...input.data ?? {},
-            ...input.assetId?.trim() ? { assetId: input.assetId.trim() } : {}
+            ...input.assetId?.trim() ? { assetId: input.assetId.trim() } : {},
+            ...viewState === void 0 ? {} : { state: viewState }
           };
           const value = await request(input, {
             action: "update",
@@ -55403,15 +55615,15 @@ var toolDefinitions = {
   clash_canvas_add: {
     title: "Add Canvas node",
     description: describeClashTool({
-      useWhen: "the creative outcome needs a new text, group, editable Remotion TSX component, or generation Action node",
-      effect: "creates one persisted Canvas node; type 'remotion' stores a distinct remotion-component with a stable node ID and editable TSX content",
+      useWhen: "the creative outcome needs a new text, group, editable Remotion TSX component, generation Action, or an existing Project Asset projected independently onto the Canvas",
+      effect: "creates one persisted Canvas node; image, video, and audio require an existing active matching Project Asset and create no fabricated lineage edge. Asset nodes can only be connected to generation nodes.",
       returns: "the created node and its stable ID",
       next: "read the node; execute only generation Actions, while Remotion components are referenced by sourceNodeId from a Timeline and rendered through timeline render"
     }),
     inputSchema: {
       ...scope,
       type: external_exports.string().min(1).describe(
-        "Node type: text, group, remotion, image_gen, video_gen, audio_gen, or text_gen"
+        "Node type: text, group, remotion, image, video, audio, image_gen, video_gen, audio_gen, text_gen, or model_gen"
       ),
       label: external_exports.string().min(1),
       content: external_exports.string().optional().describe(
@@ -55424,6 +55636,7 @@ var toolDefinitions = {
       parentId: external_exports.string().optional(),
       modelId: external_exports.string().optional(),
       actionId: external_exports.string().optional(),
+      assetId: external_exports.string().min(1).optional().describe("Existing active Project Asset ID; required for type image, video, or audio"),
       refs: external_exports.array(external_exports.string()).optional(),
       params: external_exports.record(external_exports.string(), external_exports.union([external_exports.string(), external_exports.number(), external_exports.boolean()])).optional()
     }
@@ -55455,7 +55668,9 @@ var toolDefinitions = {
         "Workspace-relative UTF-8 file read once as exact content; mutually exclusive with content and never persisted as a path"
       ),
       assetId: external_exports.string().optional(),
-      data: external_exports.record(external_exports.string(), external_exports.union([external_exports.string(), external_exports.number(), external_exports.boolean()])).optional()
+      data: external_exports.record(external_exports.string(), external_exports.union([external_exports.string(), external_exports.number(), external_exports.boolean()])).optional(),
+      viewState: external_exports.unknown().optional().describe("Complete structured plugin View state; read the node first and preserve all four Storyboard groups"),
+      viewStateFile: external_exports.string().min(1).optional().describe("Workspace-relative JSON file containing complete plugin View state; mutually exclusive with viewState")
     }
   },
   clash_canvas_move: {
@@ -55491,8 +55706,8 @@ var toolDefinitions = {
   clash_canvas_replace_asset: {
     title: "Replace Canvas media asset",
     description: describeClashTool({
-      useWhen: "a media node should point at a different immutable asset without mutating the source node",
-      effect: "creates a copy-on-write media node bound to the replacement asset",
+      useWhen: "an immutable media node with downstream references must be replaced while preserving those existing references",
+      effect: "creates a copy-on-write media node bound to the replacement asset; independent Project Assets must use Add Canvas node instead",
       returns: "the replacement node and its new stable ID",
       next: "read the returned node and verify its asset identity before using it downstream"
     }),
@@ -127639,6 +127854,8 @@ var ProjectAssetEntrySchema2 = z5.object({
   kind: AssetKindSchema2,
   source: ProjectAssetSourceSchema2,
   lifecycle: ProjectAssetLifecycleSchema2,
+  /** Immutable wall-clock production/admission time in Unix milliseconds. */
+  createdAt: z5.number().int().nonnegative().optional(),
   name: z5.string().trim().min(1).optional(),
   metadata: ProjectAssetMetadataSchema2,
   provenance: ProjectAssetProvenanceSchema2.optional()
@@ -127680,6 +127897,8 @@ var ActionAssetBindingSchema2 = z5.object({
 var ResolvedAssetSchema2 = z5.object({
   id: z5.string().trim().min(1),
   kind: AssetKindSchema2,
+  /** Project Asset production time, or a Host Resource time for legacy entries. */
+  createdAt: z5.number().int().nonnegative().optional(),
   name: z5.string().trim().min(1).optional(),
   metadata: ProjectAssetMetadataSchema2,
   provenance: ProjectAssetProvenanceSchema2.optional(),
@@ -127694,6 +127913,8 @@ var ResolvedAssetSchema2 = z5.object({
   ]),
   url: z5.string().url().optional(),
   thumbnailUrl: z5.string().url().optional(),
+  /** Host-authorized projection of a bounded waveform representation. */
+  waveformUrl: z5.string().url().optional(),
   progress: z5.number().min(0).max(1).optional(),
   error: z5.string().trim().min(1).optional()
 }).strict();
@@ -127756,6 +127977,42 @@ var AssetRefRowSchema2 = z5.object({
   projectId: z5.string(),
   importedAt: z5.number()
 });
+var AspectRatioSchema2 = z5.object({
+  width: z5.number().int().positive(),
+  height: z5.number().int().positive()
+}).strict();
+var AspectRatioStringSchema2 = z5.string().trim().transform((value, ctx) => {
+  const ratio = parseAspectRatio3(value);
+  if (!ratio) {
+    ctx.addIssue({
+      code: z5.ZodIssueCode.custom,
+      message: "Aspect ratio must be two positive integers separated by a colon."
+    });
+    return z5.NEVER;
+  }
+  return aspectRatioLabel2(ratio);
+});
+function greatestCommonDivisor2(a, b) {
+  return b === 0 ? a : greatestCommonDivisor2(b, a % b);
+}
+function reduceAspectRatio2(ratio) {
+  const divisor = greatestCommonDivisor2(ratio.width, ratio.height);
+  return { width: ratio.width / divisor, height: ratio.height / divisor };
+}
+function aspectRatioLabel2(ratio) {
+  const reduced = reduceAspectRatio2(ratio);
+  return `${reduced.width}:${reduced.height}`;
+}
+function parseAspectRatio3(text) {
+  const match = /^\s*(\d+)\s*[:x×]\s*(\d+)\s*$/i.exec(text);
+  if (!match) return void 0;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    return void 0;
+  }
+  return { width, height };
+}
 var SEGMENT2 = /^[a-z0-9][a-z0-9-]*$/;
 var pluginIdSchema2 = z5.string().trim().superRefine((value, ctx) => {
   const segments = value.split(".");
@@ -129107,6 +129364,9 @@ var ModelParameterSchema2 = z5.object({
   /** Provider-fixed output characteristic. It remains visible in the common
    * parameter surface, but UI and external payloads cannot override it. */
   readOnly: z5.boolean().optional(),
+  /** Select controls may accept values beyond their preset menu. Aspect-ratio
+   * custom values remain positive integer W:H pairs. */
+  allowCustom: z5.boolean().optional(),
   required: z5.boolean().default(false),
   options: z5.array(
     z5.object({
@@ -129120,6 +129380,13 @@ var ModelParameterSchema2 = z5.object({
   placeholder: z5.string().optional(),
   defaultValue: z5.union([z5.string(), z5.number(), z5.boolean()]).optional()
 });
+function acceptsCustomModelParameterValue2(parameter, value) {
+  if (parameter.type !== "select" || !parameter.allowCustom) return false;
+  if (parameter.id === "aspect_ratio") {
+    return typeof value === "string" && parseAspectRatio3(value) !== void 0;
+  }
+  return typeof value === "string" || typeof value === "number";
+}
 var ReferenceMediaConstraintsSchema2 = z5.object({
   mimeTypes: z5.array(z5.string().min(1)).optional(),
   fileExtensions: z5.array(z5.string().min(1)).optional(),
@@ -129400,7 +129667,7 @@ var ModelCardSchema2 = z5.object({
     if (value === void 0) return;
     if (parameter.type === "select") {
       const optionValues = parameter.options?.map((option) => option.value) ?? [];
-      if (!optionValues.some((candidate) => sameCandidate(candidate, value))) {
+      if (!optionValues.some((candidate) => sameCandidate(candidate, value)) && !acceptsCustomModelParameterValue2(parameter, value)) {
         ctx.addIssue({
           code: "custom",
           path,
@@ -129450,6 +129717,13 @@ var ModelCardSchema2 = z5.object({
     }
     parameterIds.add(parameter.id);
     parametersById.set(parameter.id, parameter);
+    if (parameter.allowCustom && parameter.type !== "select") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["parameters", index, "allowCustom"],
+        message: "Only select parameters may allow custom values."
+      });
+    }
     if (parameter.type === "select") {
       if (!parameter.options?.length) {
         ctx.addIssue({
@@ -135125,10 +135399,6 @@ var MEDIA_ANALYSIS_DOCUMENT_KIND_BY_CATEGORY2 = {
   ocr: "media.analysis.ocr",
   "audio-semantics": "media.analysis.audio-semantics"
 };
-var AspectRatioSchema2 = z5.object({
-  width: z5.number().int().positive(),
-  height: z5.number().int().positive()
-}).strict();
 var PLUGIN_ID_PATTERN2 = /^[a-z0-9][a-z0-9._-]*$/;
 var SEMVER_PATTERN2 = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 var SHA256_PATTERN2 = /^sha256:[0-9a-f]{64}$/;
@@ -135201,6 +135471,11 @@ var ExecutablePluginModelBindingExportSchema2 = z5.object({
 var ExecutablePluginGeneratorExportSchema2 = z5.object({
   id: z5.string().trim().regex(PLUGIN_ID_PATTERN2),
   kind: z5.literal("generator"),
+  path: PluginRelativePathSchema2
+}).strict();
+var ExecutablePluginViewExportSchema2 = z5.object({
+  id: z5.string().trim().regex(PLUGIN_ID_PATTERN2),
+  kind: z5.literal("view"),
   path: PluginRelativePathSchema2
 }).strict();
 var ExecutableActionPresentationSchema2 = z5.discriminatedUnion("type", [
@@ -135359,6 +135634,99 @@ var ExecutablePluginGeneratorDocumentSchema2 = z5.object({
   kind: z5.literal("generator"),
   spec: GeneratorDefinitionSpecSchema2
 }).strict();
+var StoryboardViewResourceSchema2 = z5.object({
+  id: z5.string().trim().min(1),
+  projectAssetId: z5.string().trim().min(1),
+  mediaKind: z5.enum(["image", "video", "audio", "model"]),
+  modelName: z5.string().trim().min(1).optional(),
+  generatedBy: z5.object({
+    generatorId: z5.string().trim().min(1),
+    generatorRevisionId: z5.string().trim().min(1),
+    actionRunId: z5.string().trim().min(1),
+    outputCommitId: z5.string().trim().min(1),
+    outputSlot: z5.string().trim().min(1).optional()
+  }).strict().optional()
+}).strict();
+var StoryboardViewDescriptionPartSchema2 = z5.discriminatedUnion("type", [
+  z5.object({ type: z5.literal("text"), text: z5.string() }).strict(),
+  z5.object({
+    type: z5.literal("entity-reference"),
+    entityId: z5.string().trim().min(1)
+  }).strict()
+]);
+var StoryboardViewMaterialSchema2 = z5.object({
+  id: z5.string().trim().min(1),
+  label: z5.string().trim().min(1).optional(),
+  mediaKind: z5.enum(["image", "video", "audio", "model"]),
+  promptDraft: z5.object({
+    id: z5.string().trim().min(1),
+    text: z5.string()
+  }).strict().optional(),
+  candidates: z5.array(StoryboardViewResourceSchema2).default([]),
+  selectedCandidateId: z5.string().trim().min(1).optional()
+}).strict().superRefine((material, ctx) => {
+  if (material.selectedCandidateId && !material.candidates.some(
+    (candidate) => candidate.id === material.selectedCandidateId
+  )) {
+    ctx.addIssue({
+      code: z5.ZodIssueCode.custom,
+      path: ["selectedCandidateId"],
+      message: "A selected candidate must belong to the same material slot."
+    });
+  }
+  const candidateIds = /* @__PURE__ */ new Set();
+  material.candidates.forEach((candidate, index) => {
+    if (candidateIds.has(candidate.id)) {
+      ctx.addIssue({
+        code: z5.ZodIssueCode.custom,
+        path: ["candidates", index, "id"],
+        message: "Candidate ids must be unique within a material slot."
+      });
+    }
+    candidateIds.add(candidate.id);
+    if (candidate.mediaKind !== material.mediaKind) {
+      ctx.addIssue({
+        code: z5.ZodIssueCode.custom,
+        path: ["candidates", index, "mediaKind"],
+        message: "A candidate must match its material slot media kind."
+      });
+    }
+  });
+});
+var StoryboardViewItemBaseSchema2 = z5.object({
+  id: z5.string().trim().min(1),
+  label: z5.string().trim().min(1).optional(),
+  description: z5.array(StoryboardViewDescriptionPartSchema2).default([]),
+  details: z5.string().optional(),
+  materials: z5.array(StoryboardViewMaterialSchema2).default([])
+});
+var StoryboardViewItemSchema2 = StoryboardViewItemBaseSchema2.strict();
+var StoryboardViewShotSchema2 = StoryboardViewItemBaseSchema2.extend({
+  durationSeconds: z5.number().finite().positive().optional()
+}).strict();
+var StoryboardViewStateSchema2 = z5.object({
+  keyElements: z5.array(StoryboardViewItemSchema2),
+  shots: z5.array(StoryboardViewShotSchema2),
+  audioLayers: z5.array(StoryboardViewItemSchema2),
+  uncategorized: z5.array(StoryboardViewResourceSchema2)
+}).strict();
+var ExecutablePluginViewDocumentSchema2 = z5.object({
+  apiVersion: z5.literal("clash.view/v1"),
+  kind: z5.literal("view"),
+  spec: z5.object({
+    definitionId: z5.string().trim().regex(PLUGIN_ID_PATTERN2),
+    name: z5.string().trim().min(1),
+    description: z5.string().trim().min(1).optional(),
+    presentation: z5.object({ type: z5.literal("storyboard") }).strict(),
+    initialState: StoryboardViewStateSchema2
+  }).strict()
+}).strict();
+var ExecutablePluginViewReferenceSchema2 = z5.object({
+  pluginId: pluginIdSchema2,
+  definitionId: z5.string().trim().regex(PLUGIN_ID_PATTERN2),
+  version: z5.string().trim().regex(SEMVER_PATTERN2),
+  schemaHash: z5.string().regex(SHA256_PATTERN2)
+}).strict();
 var ExecutablePluginProviderDefinitionSchema2 = z5.object({
   /**
    * What this provider needs to authenticate, and how to draw it.
@@ -135492,6 +135860,12 @@ var ExecutablePluginGeneratorRegistrationSchema2 = z5.object({
   version: z5.string().trim().regex(SEMVER_PATTERN2),
   schemaHash: z5.string().regex(SHA256_PATTERN2),
   document: ExecutablePluginGeneratorDocumentSchema2
+}).strict();
+var ExecutablePluginViewRegistrationSchema2 = z5.object({
+  pluginId: pluginIdSchema2,
+  version: z5.string().trim().regex(SEMVER_PATTERN2),
+  schemaHash: z5.string().regex(SHA256_PATTERN2),
+  document: ExecutablePluginViewDocumentSchema2
 }).strict();
 var ExecutablePluginBindingSchema2 = z5.object({
   pluginId: pluginIdSchema2,
@@ -135999,7 +136373,7 @@ var ExecutablePluginBrokerOperationSchema2 = z5.union([
   z5.object({
     kind: z5.literal("codex.image.generate"),
     prompt: z5.string().trim().min(1).max(2e4),
-    aspectRatio: z5.enum(["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"]).default("1:1"),
+    aspectRatio: AspectRatioStringSchema2.default("1:1"),
     slot: z5.string().trim().min(1),
     references: z5.array(
       ExecutablePluginAssetHandleObjectSchema2.extend({
@@ -136103,6 +136477,7 @@ var ExecutablePluginContributionsSchema2 = z5.object({
   providers: z5.array(ExecutablePluginProviderExportSchema2).default([]),
   modelBindings: z5.array(ExecutablePluginModelBindingExportSchema2).default([]),
   generators: z5.array(ExecutablePluginGeneratorExportSchema2).default([]),
+  views: z5.array(ExecutablePluginViewExportSchema2).default([]),
   functions: z5.array(ExecutablePluginFunctionExportSchema2).default([]),
   hostTools: z5.array(z5.enum(["codex.imagegen", "speech.transcribe", "media.analyze", "director.stage.capture-frame", "video.enhance"])).default([])
 }).strict();
@@ -136124,6 +136499,7 @@ var ExecutablePluginManifestSchema2 = z5.object({
     ["providers", manifest.contributes.providers],
     ["modelBindings", manifest.contributes.modelBindings],
     ["generators", manifest.contributes.generators],
+    ["views", manifest.contributes.views],
     ["functions", manifest.contributes.functions]
   ]) {
     const ids = /* @__PURE__ */ new Set();
@@ -136153,7 +136529,8 @@ var ExecutablePluginManifestSchema2 = z5.object({
   for (const artifact of [
     ...manifest.contributes.providers,
     ...manifest.contributes.modelBindings,
-    ...manifest.contributes.generators
+    ...manifest.contributes.generators,
+    ...manifest.contributes.views
   ]) {
     if (artifactPaths.has(artifact.path)) {
       ctx.addIssue({
@@ -140961,6 +141338,104 @@ var TimelineLibraryItemSchema2 = z5.discriminatedUnion("category", [
   FilterLibraryItemSchema2,
   AdjustmentLibraryItemSchema2
 ]);
+var ActionFamilySchema2 = z5.enum(["generate", "edit", "custom"]);
+var ActionOperationSpecSchema2 = z5.object({
+  id: z5.string().min(1),
+  outputKind: AssetKindSchema2
+});
+var ActionSpecSchema2 = z5.object({
+  id: z5.string().min(1),
+  version: z5.string().min(1),
+  name: z5.string().min(1),
+  family: ActionFamilySchema2,
+  inputKinds: z5.array(AssetKindSchema2).min(1),
+  operations: z5.array(ActionOperationSpecSchema2).min(1)
+});
+var ActionInvocationModeSchema2 = z5.enum(["explicit", "implicit"]);
+var ActionSurfaceSchema2 = z5.enum(["canvas", "asset-preview"]);
+var ACTION_INVOCATION_MODE2 = {
+  Explicit: "explicit",
+  Implicit: "implicit"
+};
+function invocationModeForSurface2(surface) {
+  return surface === "canvas" ? ACTION_INVOCATION_MODE2.Explicit : ACTION_INVOCATION_MODE2.Implicit;
+}
+var ASSET_ACTION_ID2 = {
+  ImageEditor: "image-editor",
+  VideoClipper: "video-clipper"
+};
+var CropRectSchema2 = z5.object({
+  x: z5.number().int().nonnegative(),
+  y: z5.number().int().nonnegative(),
+  width: z5.number().int().positive(),
+  height: z5.number().int().positive()
+});
+var ImageEditParamsSchema2 = z5.object({
+  crop: CropRectSchema2.optional(),
+  rotation: z5.union([z5.literal(0), z5.literal(90), z5.literal(180), z5.literal(270)]).optional()
+});
+var VideoClipParamsSchema2 = z5.discriminatedUnion("mode", [
+  z5.object({
+    mode: z5.literal("screenshot"),
+    frameTimeSec: z5.number().nonnegative()
+  }),
+  z5.object({
+    mode: z5.literal("crop"),
+    startSec: z5.number().nonnegative(),
+    endSec: z5.number().positive()
+  })
+]).superRefine((value, context) => {
+  if (value.mode === "crop" && value.endSec <= value.startSec) {
+    context.addIssue({
+      code: z5.ZodIssueCode.custom,
+      message: "endSec must be greater than startSec",
+      path: ["endSec"]
+    });
+  }
+});
+var BUILT_IN_ASSET_ACTION_SPECS2 = {
+  [ASSET_ACTION_ID2.ImageEditor]: ActionSpecSchema2.parse({
+    id: ASSET_ACTION_ID2.ImageEditor,
+    version: "1",
+    name: "Image Editor",
+    family: "edit",
+    inputKinds: ["image"],
+    operations: [{ id: "transform", outputKind: "image" }]
+  }),
+  [ASSET_ACTION_ID2.VideoClipper]: ActionSpecSchema2.parse({
+    id: ASSET_ACTION_ID2.VideoClipper,
+    version: "1",
+    name: "Video Clipper",
+    family: "edit",
+    inputKinds: ["video"],
+    operations: [
+      { id: "screenshot", outputKind: "image" },
+      { id: "crop", outputKind: "video" }
+    ]
+  })
+};
+var InvocationBaseSchema2 = z5.object({
+  projectId: z5.string().min(1),
+  mode: ActionInvocationModeSchema2,
+  surface: ActionSurfaceSchema2
+});
+var ImageEditActionInvocationSchema2 = InvocationBaseSchema2.extend({
+  actionId: z5.literal(ASSET_ACTION_ID2.ImageEditor),
+  source: z5.object({ assetId: z5.string().min(1), kind: z5.literal("image") }),
+  params: ImageEditParamsSchema2
+});
+var VideoEditActionInvocationSchema2 = InvocationBaseSchema2.extend({
+  actionId: z5.literal(ASSET_ACTION_ID2.VideoClipper),
+  source: z5.object({ assetId: z5.string().min(1), kind: z5.literal("video") }),
+  params: VideoClipParamsSchema2
+});
+var AssetEditActionInvocationSchema2 = z5.discriminatedUnion("actionId", [
+  ImageEditActionInvocationSchema2,
+  VideoEditActionInvocationSchema2
+]).refine((value) => value.mode === invocationModeForSurface2(value.surface), {
+  message: "Invocation mode must match its surface",
+  path: ["mode"]
+});
 var ACTION_BADGE_NODE_SIZE2 = Object.freeze({
   width: 260,
   height: 58
@@ -141386,110 +141861,6 @@ var MEDIA_REFERENCE_PLURAL_NOUN2 = Object.fromEntries(
 var MEDIA_REFERENCE_COUNT_NOUN2 = Object.fromEntries(
   MEDIA_REFERENCE_FIELDS2.map((field32) => [field32.modality, field32.countNoun])
 );
-var ActionFamilySchema2 = z5.enum(["generate", "edit", "custom"]);
-var ActionExecutorSchema2 = z5.enum([
-  "model",
-  "client-render",
-  "server-transform",
-  "runtime"
-]);
-var ActionOperationSpecSchema2 = z5.object({
-  id: z5.string().min(1),
-  executor: ActionExecutorSchema2,
-  outputKind: AssetKindSchema2
-});
-var ActionSpecSchema2 = z5.object({
-  id: z5.string().min(1),
-  version: z5.string().min(1),
-  name: z5.string().min(1),
-  family: ActionFamilySchema2,
-  inputKinds: z5.array(AssetKindSchema2).min(1),
-  operations: z5.array(ActionOperationSpecSchema2).min(1)
-});
-var ActionInvocationModeSchema2 = z5.enum(["explicit", "implicit"]);
-var ActionSurfaceSchema2 = z5.enum(["canvas", "asset-preview"]);
-var ACTION_INVOCATION_MODE2 = {
-  Explicit: "explicit",
-  Implicit: "implicit"
-};
-function invocationModeForSurface2(surface) {
-  return surface === "canvas" ? ACTION_INVOCATION_MODE2.Explicit : ACTION_INVOCATION_MODE2.Implicit;
-}
-var ASSET_ACTION_ID2 = {
-  ImageEditor: "image-editor",
-  VideoClipper: "video-clipper"
-};
-var CropRectSchema2 = z5.object({
-  x: z5.number().int().nonnegative(),
-  y: z5.number().int().nonnegative(),
-  width: z5.number().int().positive(),
-  height: z5.number().int().positive()
-});
-var ImageEditParamsSchema2 = z5.object({
-  crop: CropRectSchema2.optional(),
-  rotation: z5.union([z5.literal(0), z5.literal(90), z5.literal(180), z5.literal(270)]).optional()
-});
-var VideoClipParamsSchema2 = z5.discriminatedUnion("mode", [
-  z5.object({ mode: z5.literal("screenshot"), frameTimeSec: z5.number().nonnegative() }),
-  z5.object({
-    mode: z5.literal("crop"),
-    startSec: z5.number().nonnegative(),
-    endSec: z5.number().positive()
-  })
-]).superRefine((value, context) => {
-  if (value.mode === "crop" && value.endSec <= value.startSec) {
-    context.addIssue({
-      code: z5.ZodIssueCode.custom,
-      message: "endSec must be greater than startSec",
-      path: ["endSec"]
-    });
-  }
-});
-var BUILT_IN_ASSET_ACTION_SPECS2 = {
-  [ASSET_ACTION_ID2.ImageEditor]: ActionSpecSchema2.parse({
-    id: ASSET_ACTION_ID2.ImageEditor,
-    version: "1",
-    name: "Image Editor",
-    family: "edit",
-    inputKinds: ["image"],
-    operations: [
-      { id: "transform", executor: "client-render", outputKind: "image" }
-    ]
-  }),
-  [ASSET_ACTION_ID2.VideoClipper]: ActionSpecSchema2.parse({
-    id: ASSET_ACTION_ID2.VideoClipper,
-    version: "1",
-    name: "Video Clipper",
-    family: "edit",
-    inputKinds: ["video"],
-    operations: [
-      { id: "screenshot", executor: "client-render", outputKind: "image" },
-      { id: "crop", executor: "server-transform", outputKind: "video" }
-    ]
-  })
-};
-var InvocationBaseSchema2 = z5.object({
-  projectId: z5.string().min(1),
-  mode: ActionInvocationModeSchema2,
-  surface: ActionSurfaceSchema2
-});
-var ImageEditActionInvocationSchema2 = InvocationBaseSchema2.extend({
-  actionId: z5.literal(ASSET_ACTION_ID2.ImageEditor),
-  source: z5.object({ assetId: z5.string().min(1), kind: z5.literal("image") }),
-  params: ImageEditParamsSchema2
-});
-var VideoEditActionInvocationSchema2 = InvocationBaseSchema2.extend({
-  actionId: z5.literal(ASSET_ACTION_ID2.VideoClipper),
-  source: z5.object({ assetId: z5.string().min(1), kind: z5.literal("video") }),
-  params: VideoClipParamsSchema2
-});
-var AssetEditActionInvocationSchema2 = z5.discriminatedUnion("actionId", [
-  ImageEditActionInvocationSchema2,
-  VideoEditActionInvocationSchema2
-]).refine((value) => value.mode === invocationModeForSurface2(value.surface), {
-  message: "Invocation mode must match its surface",
-  path: ["mode"]
-});
 var PositionSchema22 = z5.object({
   x: z5.number(),
   y: z5.number()
@@ -143142,6 +143513,9 @@ var addCommand2 = z5.object({
     "text",
     "group",
     "remotion",
+    "image",
+    "video",
+    "audio",
     "image_gen",
     "video_gen",
     "audio_gen",
@@ -143154,6 +143528,7 @@ var addCommand2 = z5.object({
   parentId: id2.optional(),
   modelId: id2.optional(),
   actionId: id2.optional(),
+  assetId: id2.optional(),
   refs: z5.array(id2).optional(),
   params: z5.record(id2, primitiveParameter2).optional(),
   actorClientType: actorClientType2,
@@ -143609,6 +143984,33 @@ var MODEL_UPSTREAM_ROUTES2 = [
   ...MOCK_DECLARED_ROUTES2,
   ...MOCK_ROUTES2
 ];
+var ProjectCanvasPreviewNodeSchema2 = z5.object({
+  id: z5.string().trim().min(1),
+  type: z5.string().trim().min(1),
+  x: z5.number().finite(),
+  y: z5.number().finite(),
+  width: z5.number().finite().positive(),
+  height: z5.number().finite().positive(),
+  parentId: z5.string().trim().min(1).optional(),
+  assetId: z5.string().trim().min(1).optional(),
+  label: z5.string().trim().min(1).optional()
+}).strict();
+var ProjectCanvasPreviewSchema2 = z5.object({
+  canvasId: z5.string().trim().min(1),
+  bounds: z5.object({
+    x: z5.number().finite(),
+    y: z5.number().finite(),
+    width: z5.number().finite().nonnegative(),
+    height: z5.number().finite().nonnegative()
+  }).strict().nullable(),
+  nodes: z5.array(ProjectCanvasPreviewNodeSchema2)
+}).strict();
+var ProjectCanvasThumbnailSchema2 = z5.object({
+  url: z5.string().url(),
+  revision: z5.string().regex(/^[a-f0-9]{64}$/u),
+  width: z5.number().int().positive(),
+  height: z5.number().int().positive()
+}).strict();
 var CopilotProjectAssetReferenceSchema2 = z5.object({
   projectAssetId: z5.string().trim().min(1),
   kind: AssetKindSchema2,
@@ -183595,6 +183997,8 @@ var ProjectAssetEntrySchema3 = z24.object({
   kind: AssetKindSchema3,
   source: ProjectAssetSourceSchema3,
   lifecycle: ProjectAssetLifecycleSchema3,
+  /** Immutable wall-clock production/admission time in Unix milliseconds. */
+  createdAt: z24.number().int().nonnegative().optional(),
   name: z24.string().trim().min(1).optional(),
   metadata: ProjectAssetMetadataSchema3,
   provenance: ProjectAssetProvenanceSchema3.optional()
@@ -183636,6 +184040,8 @@ var ActionAssetBindingSchema3 = z24.object({
 var ResolvedAssetSchema3 = z24.object({
   id: z24.string().trim().min(1),
   kind: AssetKindSchema3,
+  /** Project Asset production time, or a Host Resource time for legacy entries. */
+  createdAt: z24.number().int().nonnegative().optional(),
   name: z24.string().trim().min(1).optional(),
   metadata: ProjectAssetMetadataSchema3,
   provenance: ProjectAssetProvenanceSchema3.optional(),
@@ -183650,6 +184056,8 @@ var ResolvedAssetSchema3 = z24.object({
   ]),
   url: z24.string().url().optional(),
   thumbnailUrl: z24.string().url().optional(),
+  /** Host-authorized projection of a bounded waveform representation. */
+  waveformUrl: z24.string().url().optional(),
   progress: z24.number().min(0).max(1).optional(),
   error: z24.string().trim().min(1).optional()
 }).strict();
@@ -183712,6 +184120,42 @@ var AssetRefRowSchema3 = z24.object({
   projectId: z24.string(),
   importedAt: z24.number()
 });
+var AspectRatioSchema3 = z24.object({
+  width: z24.number().int().positive(),
+  height: z24.number().int().positive()
+}).strict();
+var AspectRatioStringSchema3 = z24.string().trim().transform((value, ctx) => {
+  const ratio = parseAspectRatio4(value);
+  if (!ratio) {
+    ctx.addIssue({
+      code: z24.ZodIssueCode.custom,
+      message: "Aspect ratio must be two positive integers separated by a colon."
+    });
+    return z24.NEVER;
+  }
+  return aspectRatioLabel3(ratio);
+});
+function greatestCommonDivisor3(a, b) {
+  return b === 0 ? a : greatestCommonDivisor3(b, a % b);
+}
+function reduceAspectRatio3(ratio) {
+  const divisor = greatestCommonDivisor3(ratio.width, ratio.height);
+  return { width: ratio.width / divisor, height: ratio.height / divisor };
+}
+function aspectRatioLabel3(ratio) {
+  const reduced = reduceAspectRatio3(ratio);
+  return `${reduced.width}:${reduced.height}`;
+}
+function parseAspectRatio4(text) {
+  const match = /^\s*(\d+)\s*[:x×]\s*(\d+)\s*$/i.exec(text);
+  if (!match) return void 0;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    return void 0;
+  }
+  return { width, height };
+}
 var SEGMENT3 = /^[a-z0-9][a-z0-9-]*$/;
 var pluginIdSchema3 = z24.string().trim().superRefine((value, ctx) => {
   const segments = value.split(".");
@@ -185063,6 +185507,9 @@ var ModelParameterSchema3 = z24.object({
   /** Provider-fixed output characteristic. It remains visible in the common
    * parameter surface, but UI and external payloads cannot override it. */
   readOnly: z24.boolean().optional(),
+  /** Select controls may accept values beyond their preset menu. Aspect-ratio
+   * custom values remain positive integer W:H pairs. */
+  allowCustom: z24.boolean().optional(),
   required: z24.boolean().default(false),
   options: z24.array(
     z24.object({
@@ -185076,6 +185523,13 @@ var ModelParameterSchema3 = z24.object({
   placeholder: z24.string().optional(),
   defaultValue: z24.union([z24.string(), z24.number(), z24.boolean()]).optional()
 });
+function acceptsCustomModelParameterValue3(parameter, value) {
+  if (parameter.type !== "select" || !parameter.allowCustom) return false;
+  if (parameter.id === "aspect_ratio") {
+    return typeof value === "string" && parseAspectRatio4(value) !== void 0;
+  }
+  return typeof value === "string" || typeof value === "number";
+}
 var ReferenceMediaConstraintsSchema3 = z24.object({
   mimeTypes: z24.array(z24.string().min(1)).optional(),
   fileExtensions: z24.array(z24.string().min(1)).optional(),
@@ -185356,7 +185810,7 @@ var ModelCardSchema3 = z24.object({
     if (value === void 0) return;
     if (parameter.type === "select") {
       const optionValues = parameter.options?.map((option) => option.value) ?? [];
-      if (!optionValues.some((candidate) => sameCandidate(candidate, value))) {
+      if (!optionValues.some((candidate) => sameCandidate(candidate, value)) && !acceptsCustomModelParameterValue3(parameter, value)) {
         ctx.addIssue({
           code: "custom",
           path,
@@ -185406,6 +185860,13 @@ var ModelCardSchema3 = z24.object({
     }
     parameterIds.add(parameter.id);
     parametersById.set(parameter.id, parameter);
+    if (parameter.allowCustom && parameter.type !== "select") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["parameters", index, "allowCustom"],
+        message: "Only select parameters may allow custom values."
+      });
+    }
     if (parameter.type === "select") {
       if (!parameter.options?.length) {
         ctx.addIssue({
@@ -191081,10 +191542,6 @@ var MEDIA_ANALYSIS_DOCUMENT_KIND_BY_CATEGORY3 = {
   ocr: "media.analysis.ocr",
   "audio-semantics": "media.analysis.audio-semantics"
 };
-var AspectRatioSchema3 = z24.object({
-  width: z24.number().int().positive(),
-  height: z24.number().int().positive()
-}).strict();
 var PLUGIN_ID_PATTERN3 = /^[a-z0-9][a-z0-9._-]*$/;
 var SEMVER_PATTERN3 = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 var SHA256_PATTERN3 = /^sha256:[0-9a-f]{64}$/;
@@ -191157,6 +191614,11 @@ var ExecutablePluginModelBindingExportSchema3 = z24.object({
 var ExecutablePluginGeneratorExportSchema3 = z24.object({
   id: z24.string().trim().regex(PLUGIN_ID_PATTERN3),
   kind: z24.literal("generator"),
+  path: PluginRelativePathSchema3
+}).strict();
+var ExecutablePluginViewExportSchema3 = z24.object({
+  id: z24.string().trim().regex(PLUGIN_ID_PATTERN3),
+  kind: z24.literal("view"),
   path: PluginRelativePathSchema3
 }).strict();
 var ExecutableActionPresentationSchema3 = z24.discriminatedUnion("type", [
@@ -191315,6 +191777,99 @@ var ExecutablePluginGeneratorDocumentSchema3 = z24.object({
   kind: z24.literal("generator"),
   spec: GeneratorDefinitionSpecSchema3
 }).strict();
+var StoryboardViewResourceSchema3 = z24.object({
+  id: z24.string().trim().min(1),
+  projectAssetId: z24.string().trim().min(1),
+  mediaKind: z24.enum(["image", "video", "audio", "model"]),
+  modelName: z24.string().trim().min(1).optional(),
+  generatedBy: z24.object({
+    generatorId: z24.string().trim().min(1),
+    generatorRevisionId: z24.string().trim().min(1),
+    actionRunId: z24.string().trim().min(1),
+    outputCommitId: z24.string().trim().min(1),
+    outputSlot: z24.string().trim().min(1).optional()
+  }).strict().optional()
+}).strict();
+var StoryboardViewDescriptionPartSchema3 = z24.discriminatedUnion("type", [
+  z24.object({ type: z24.literal("text"), text: z24.string() }).strict(),
+  z24.object({
+    type: z24.literal("entity-reference"),
+    entityId: z24.string().trim().min(1)
+  }).strict()
+]);
+var StoryboardViewMaterialSchema3 = z24.object({
+  id: z24.string().trim().min(1),
+  label: z24.string().trim().min(1).optional(),
+  mediaKind: z24.enum(["image", "video", "audio", "model"]),
+  promptDraft: z24.object({
+    id: z24.string().trim().min(1),
+    text: z24.string()
+  }).strict().optional(),
+  candidates: z24.array(StoryboardViewResourceSchema3).default([]),
+  selectedCandidateId: z24.string().trim().min(1).optional()
+}).strict().superRefine((material, ctx) => {
+  if (material.selectedCandidateId && !material.candidates.some(
+    (candidate) => candidate.id === material.selectedCandidateId
+  )) {
+    ctx.addIssue({
+      code: z24.ZodIssueCode.custom,
+      path: ["selectedCandidateId"],
+      message: "A selected candidate must belong to the same material slot."
+    });
+  }
+  const candidateIds = /* @__PURE__ */ new Set();
+  material.candidates.forEach((candidate, index) => {
+    if (candidateIds.has(candidate.id)) {
+      ctx.addIssue({
+        code: z24.ZodIssueCode.custom,
+        path: ["candidates", index, "id"],
+        message: "Candidate ids must be unique within a material slot."
+      });
+    }
+    candidateIds.add(candidate.id);
+    if (candidate.mediaKind !== material.mediaKind) {
+      ctx.addIssue({
+        code: z24.ZodIssueCode.custom,
+        path: ["candidates", index, "mediaKind"],
+        message: "A candidate must match its material slot media kind."
+      });
+    }
+  });
+});
+var StoryboardViewItemBaseSchema3 = z24.object({
+  id: z24.string().trim().min(1),
+  label: z24.string().trim().min(1).optional(),
+  description: z24.array(StoryboardViewDescriptionPartSchema3).default([]),
+  details: z24.string().optional(),
+  materials: z24.array(StoryboardViewMaterialSchema3).default([])
+});
+var StoryboardViewItemSchema3 = StoryboardViewItemBaseSchema3.strict();
+var StoryboardViewShotSchema3 = StoryboardViewItemBaseSchema3.extend({
+  durationSeconds: z24.number().finite().positive().optional()
+}).strict();
+var StoryboardViewStateSchema3 = z24.object({
+  keyElements: z24.array(StoryboardViewItemSchema3),
+  shots: z24.array(StoryboardViewShotSchema3),
+  audioLayers: z24.array(StoryboardViewItemSchema3),
+  uncategorized: z24.array(StoryboardViewResourceSchema3)
+}).strict();
+var ExecutablePluginViewDocumentSchema3 = z24.object({
+  apiVersion: z24.literal("clash.view/v1"),
+  kind: z24.literal("view"),
+  spec: z24.object({
+    definitionId: z24.string().trim().regex(PLUGIN_ID_PATTERN3),
+    name: z24.string().trim().min(1),
+    description: z24.string().trim().min(1).optional(),
+    presentation: z24.object({ type: z24.literal("storyboard") }).strict(),
+    initialState: StoryboardViewStateSchema3
+  }).strict()
+}).strict();
+var ExecutablePluginViewReferenceSchema3 = z24.object({
+  pluginId: pluginIdSchema3,
+  definitionId: z24.string().trim().regex(PLUGIN_ID_PATTERN3),
+  version: z24.string().trim().regex(SEMVER_PATTERN3),
+  schemaHash: z24.string().regex(SHA256_PATTERN3)
+}).strict();
 var ExecutablePluginProviderDefinitionSchema3 = z24.object({
   /**
    * What this provider needs to authenticate, and how to draw it.
@@ -191448,6 +192003,12 @@ var ExecutablePluginGeneratorRegistrationSchema3 = z24.object({
   version: z24.string().trim().regex(SEMVER_PATTERN3),
   schemaHash: z24.string().regex(SHA256_PATTERN3),
   document: ExecutablePluginGeneratorDocumentSchema3
+}).strict();
+var ExecutablePluginViewRegistrationSchema3 = z24.object({
+  pluginId: pluginIdSchema3,
+  version: z24.string().trim().regex(SEMVER_PATTERN3),
+  schemaHash: z24.string().regex(SHA256_PATTERN3),
+  document: ExecutablePluginViewDocumentSchema3
 }).strict();
 var ExecutablePluginBindingSchema3 = z24.object({
   pluginId: pluginIdSchema3,
@@ -191955,7 +192516,7 @@ var ExecutablePluginBrokerOperationSchema3 = z24.union([
   z24.object({
     kind: z24.literal("codex.image.generate"),
     prompt: z24.string().trim().min(1).max(2e4),
-    aspectRatio: z24.enum(["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"]).default("1:1"),
+    aspectRatio: AspectRatioStringSchema3.default("1:1"),
     slot: z24.string().trim().min(1),
     references: z24.array(
       ExecutablePluginAssetHandleObjectSchema3.extend({
@@ -192059,6 +192620,7 @@ var ExecutablePluginContributionsSchema3 = z24.object({
   providers: z24.array(ExecutablePluginProviderExportSchema3).default([]),
   modelBindings: z24.array(ExecutablePluginModelBindingExportSchema3).default([]),
   generators: z24.array(ExecutablePluginGeneratorExportSchema3).default([]),
+  views: z24.array(ExecutablePluginViewExportSchema3).default([]),
   functions: z24.array(ExecutablePluginFunctionExportSchema3).default([]),
   hostTools: z24.array(z24.enum(["codex.imagegen", "speech.transcribe", "media.analyze", "director.stage.capture-frame", "video.enhance"])).default([])
 }).strict();
@@ -192080,6 +192642,7 @@ var ExecutablePluginManifestSchema3 = z24.object({
     ["providers", manifest.contributes.providers],
     ["modelBindings", manifest.contributes.modelBindings],
     ["generators", manifest.contributes.generators],
+    ["views", manifest.contributes.views],
     ["functions", manifest.contributes.functions]
   ]) {
     const ids = /* @__PURE__ */ new Set();
@@ -192109,7 +192672,8 @@ var ExecutablePluginManifestSchema3 = z24.object({
   for (const artifact of [
     ...manifest.contributes.providers,
     ...manifest.contributes.modelBindings,
-    ...manifest.contributes.generators
+    ...manifest.contributes.generators,
+    ...manifest.contributes.views
   ]) {
     if (artifactPaths.has(artifact.path)) {
       ctx.addIssue({
@@ -196917,6 +197481,104 @@ var TimelineLibraryItemSchema3 = z24.discriminatedUnion("category", [
   FilterLibraryItemSchema3,
   AdjustmentLibraryItemSchema3
 ]);
+var ActionFamilySchema3 = z24.enum(["generate", "edit", "custom"]);
+var ActionOperationSpecSchema3 = z24.object({
+  id: z24.string().min(1),
+  outputKind: AssetKindSchema3
+});
+var ActionSpecSchema3 = z24.object({
+  id: z24.string().min(1),
+  version: z24.string().min(1),
+  name: z24.string().min(1),
+  family: ActionFamilySchema3,
+  inputKinds: z24.array(AssetKindSchema3).min(1),
+  operations: z24.array(ActionOperationSpecSchema3).min(1)
+});
+var ActionInvocationModeSchema3 = z24.enum(["explicit", "implicit"]);
+var ActionSurfaceSchema3 = z24.enum(["canvas", "asset-preview"]);
+var ACTION_INVOCATION_MODE3 = {
+  Explicit: "explicit",
+  Implicit: "implicit"
+};
+function invocationModeForSurface3(surface) {
+  return surface === "canvas" ? ACTION_INVOCATION_MODE3.Explicit : ACTION_INVOCATION_MODE3.Implicit;
+}
+var ASSET_ACTION_ID3 = {
+  ImageEditor: "image-editor",
+  VideoClipper: "video-clipper"
+};
+var CropRectSchema3 = z24.object({
+  x: z24.number().int().nonnegative(),
+  y: z24.number().int().nonnegative(),
+  width: z24.number().int().positive(),
+  height: z24.number().int().positive()
+});
+var ImageEditParamsSchema3 = z24.object({
+  crop: CropRectSchema3.optional(),
+  rotation: z24.union([z24.literal(0), z24.literal(90), z24.literal(180), z24.literal(270)]).optional()
+});
+var VideoClipParamsSchema3 = z24.discriminatedUnion("mode", [
+  z24.object({
+    mode: z24.literal("screenshot"),
+    frameTimeSec: z24.number().nonnegative()
+  }),
+  z24.object({
+    mode: z24.literal("crop"),
+    startSec: z24.number().nonnegative(),
+    endSec: z24.number().positive()
+  })
+]).superRefine((value, context) => {
+  if (value.mode === "crop" && value.endSec <= value.startSec) {
+    context.addIssue({
+      code: z24.ZodIssueCode.custom,
+      message: "endSec must be greater than startSec",
+      path: ["endSec"]
+    });
+  }
+});
+var BUILT_IN_ASSET_ACTION_SPECS3 = {
+  [ASSET_ACTION_ID3.ImageEditor]: ActionSpecSchema3.parse({
+    id: ASSET_ACTION_ID3.ImageEditor,
+    version: "1",
+    name: "Image Editor",
+    family: "edit",
+    inputKinds: ["image"],
+    operations: [{ id: "transform", outputKind: "image" }]
+  }),
+  [ASSET_ACTION_ID3.VideoClipper]: ActionSpecSchema3.parse({
+    id: ASSET_ACTION_ID3.VideoClipper,
+    version: "1",
+    name: "Video Clipper",
+    family: "edit",
+    inputKinds: ["video"],
+    operations: [
+      { id: "screenshot", outputKind: "image" },
+      { id: "crop", outputKind: "video" }
+    ]
+  })
+};
+var InvocationBaseSchema3 = z24.object({
+  projectId: z24.string().min(1),
+  mode: ActionInvocationModeSchema3,
+  surface: ActionSurfaceSchema3
+});
+var ImageEditActionInvocationSchema3 = InvocationBaseSchema3.extend({
+  actionId: z24.literal(ASSET_ACTION_ID3.ImageEditor),
+  source: z24.object({ assetId: z24.string().min(1), kind: z24.literal("image") }),
+  params: ImageEditParamsSchema3
+});
+var VideoEditActionInvocationSchema3 = InvocationBaseSchema3.extend({
+  actionId: z24.literal(ASSET_ACTION_ID3.VideoClipper),
+  source: z24.object({ assetId: z24.string().min(1), kind: z24.literal("video") }),
+  params: VideoClipParamsSchema3
+});
+var AssetEditActionInvocationSchema3 = z24.discriminatedUnion("actionId", [
+  ImageEditActionInvocationSchema3,
+  VideoEditActionInvocationSchema3
+]).refine((value) => value.mode === invocationModeForSurface3(value.surface), {
+  message: "Invocation mode must match its surface",
+  path: ["mode"]
+});
 var ACTION_BADGE_NODE_SIZE3 = Object.freeze({
   width: 260,
   height: 58
@@ -197342,110 +198004,6 @@ var MEDIA_REFERENCE_PLURAL_NOUN3 = Object.fromEntries(
 var MEDIA_REFERENCE_COUNT_NOUN3 = Object.fromEntries(
   MEDIA_REFERENCE_FIELDS3.map((field32) => [field32.modality, field32.countNoun])
 );
-var ActionFamilySchema3 = z24.enum(["generate", "edit", "custom"]);
-var ActionExecutorSchema3 = z24.enum([
-  "model",
-  "client-render",
-  "server-transform",
-  "runtime"
-]);
-var ActionOperationSpecSchema3 = z24.object({
-  id: z24.string().min(1),
-  executor: ActionExecutorSchema3,
-  outputKind: AssetKindSchema3
-});
-var ActionSpecSchema3 = z24.object({
-  id: z24.string().min(1),
-  version: z24.string().min(1),
-  name: z24.string().min(1),
-  family: ActionFamilySchema3,
-  inputKinds: z24.array(AssetKindSchema3).min(1),
-  operations: z24.array(ActionOperationSpecSchema3).min(1)
-});
-var ActionInvocationModeSchema3 = z24.enum(["explicit", "implicit"]);
-var ActionSurfaceSchema3 = z24.enum(["canvas", "asset-preview"]);
-var ACTION_INVOCATION_MODE3 = {
-  Explicit: "explicit",
-  Implicit: "implicit"
-};
-function invocationModeForSurface3(surface) {
-  return surface === "canvas" ? ACTION_INVOCATION_MODE3.Explicit : ACTION_INVOCATION_MODE3.Implicit;
-}
-var ASSET_ACTION_ID3 = {
-  ImageEditor: "image-editor",
-  VideoClipper: "video-clipper"
-};
-var CropRectSchema3 = z24.object({
-  x: z24.number().int().nonnegative(),
-  y: z24.number().int().nonnegative(),
-  width: z24.number().int().positive(),
-  height: z24.number().int().positive()
-});
-var ImageEditParamsSchema3 = z24.object({
-  crop: CropRectSchema3.optional(),
-  rotation: z24.union([z24.literal(0), z24.literal(90), z24.literal(180), z24.literal(270)]).optional()
-});
-var VideoClipParamsSchema3 = z24.discriminatedUnion("mode", [
-  z24.object({ mode: z24.literal("screenshot"), frameTimeSec: z24.number().nonnegative() }),
-  z24.object({
-    mode: z24.literal("crop"),
-    startSec: z24.number().nonnegative(),
-    endSec: z24.number().positive()
-  })
-]).superRefine((value, context) => {
-  if (value.mode === "crop" && value.endSec <= value.startSec) {
-    context.addIssue({
-      code: z24.ZodIssueCode.custom,
-      message: "endSec must be greater than startSec",
-      path: ["endSec"]
-    });
-  }
-});
-var BUILT_IN_ASSET_ACTION_SPECS3 = {
-  [ASSET_ACTION_ID3.ImageEditor]: ActionSpecSchema3.parse({
-    id: ASSET_ACTION_ID3.ImageEditor,
-    version: "1",
-    name: "Image Editor",
-    family: "edit",
-    inputKinds: ["image"],
-    operations: [
-      { id: "transform", executor: "client-render", outputKind: "image" }
-    ]
-  }),
-  [ASSET_ACTION_ID3.VideoClipper]: ActionSpecSchema3.parse({
-    id: ASSET_ACTION_ID3.VideoClipper,
-    version: "1",
-    name: "Video Clipper",
-    family: "edit",
-    inputKinds: ["video"],
-    operations: [
-      { id: "screenshot", executor: "client-render", outputKind: "image" },
-      { id: "crop", executor: "server-transform", outputKind: "video" }
-    ]
-  })
-};
-var InvocationBaseSchema3 = z24.object({
-  projectId: z24.string().min(1),
-  mode: ActionInvocationModeSchema3,
-  surface: ActionSurfaceSchema3
-});
-var ImageEditActionInvocationSchema3 = InvocationBaseSchema3.extend({
-  actionId: z24.literal(ASSET_ACTION_ID3.ImageEditor),
-  source: z24.object({ assetId: z24.string().min(1), kind: z24.literal("image") }),
-  params: ImageEditParamsSchema3
-});
-var VideoEditActionInvocationSchema3 = InvocationBaseSchema3.extend({
-  actionId: z24.literal(ASSET_ACTION_ID3.VideoClipper),
-  source: z24.object({ assetId: z24.string().min(1), kind: z24.literal("video") }),
-  params: VideoClipParamsSchema3
-});
-var AssetEditActionInvocationSchema3 = z24.discriminatedUnion("actionId", [
-  ImageEditActionInvocationSchema3,
-  VideoEditActionInvocationSchema3
-]).refine((value) => value.mode === invocationModeForSurface3(value.surface), {
-  message: "Invocation mode must match its surface",
-  path: ["mode"]
-});
 var PositionSchema23 = z24.object({
   x: z24.number(),
   y: z24.number()
@@ -198606,6 +199164,9 @@ var addCommand3 = z24.object({
     "text",
     "group",
     "remotion",
+    "image",
+    "video",
+    "audio",
     "image_gen",
     "video_gen",
     "audio_gen",
@@ -198618,6 +199179,7 @@ var addCommand3 = z24.object({
   parentId: id3.optional(),
   modelId: id3.optional(),
   actionId: id3.optional(),
+  assetId: id3.optional(),
   refs: z24.array(id3).optional(),
   params: z24.record(id3, primitiveParameter3).optional(),
   actorClientType: actorClientType3,
@@ -199073,6 +199635,33 @@ var MODEL_UPSTREAM_ROUTES3 = [
   ...MOCK_DECLARED_ROUTES3,
   ...MOCK_ROUTES3
 ];
+var ProjectCanvasPreviewNodeSchema3 = z24.object({
+  id: z24.string().trim().min(1),
+  type: z24.string().trim().min(1),
+  x: z24.number().finite(),
+  y: z24.number().finite(),
+  width: z24.number().finite().positive(),
+  height: z24.number().finite().positive(),
+  parentId: z24.string().trim().min(1).optional(),
+  assetId: z24.string().trim().min(1).optional(),
+  label: z24.string().trim().min(1).optional()
+}).strict();
+var ProjectCanvasPreviewSchema3 = z24.object({
+  canvasId: z24.string().trim().min(1),
+  bounds: z24.object({
+    x: z24.number().finite(),
+    y: z24.number().finite(),
+    width: z24.number().finite().nonnegative(),
+    height: z24.number().finite().nonnegative()
+  }).strict().nullable(),
+  nodes: z24.array(ProjectCanvasPreviewNodeSchema3)
+}).strict();
+var ProjectCanvasThumbnailSchema3 = z24.object({
+  url: z24.string().url(),
+  revision: z24.string().regex(/^[a-f0-9]{64}$/u),
+  width: z24.number().int().positive(),
+  height: z24.number().int().positive()
+}).strict();
 var CopilotProjectAssetReferenceSchema3 = z24.object({
   projectAssetId: z24.string().trim().min(1),
   kind: AssetKindSchema3,
@@ -200312,14 +200901,14 @@ function registerDirectorPluginMcp(server, adapter, bundledAppJavascript, option
 // src/plugin-host.ts
 import { fileURLToPath } from "url";
 import { createRequire as createRequire3 } from "module";
-import { basename as basename5, dirname as dirname11, join as join13, resolve as resolve12 } from "path";
+import { basename as basename5, dirname as dirname12, join as join13, resolve as resolve12 } from "path";
 
 // ../../packages/shared-runtime/dist/local-daemon.js
 import { spawn } from "child_process";
 import { createHash as createHash6, randomUUID as randomUUID6 } from "crypto";
-import { readFileSync as readFileSync2 } from "fs";
+import { closeSync, mkdirSync, openSync, readFileSync as readFileSync2 } from "fs";
 import { mkdir as mkdir7, open as open4, readFile as readFile7, rm as rm3 } from "fs/promises";
-import { join as join11 } from "path";
+import { dirname as dirname10, join as join11 } from "path";
 var DAEMON_SUPPORTED_NODE_RANGE = ">=24.18.0 <25";
 function resolveLocalDaemonRuntimeFingerprint(entryPath) {
   return `sha256:${createHash6("sha256").update(readFileSync2(entryPath)).digest("hex")}`;
@@ -200340,6 +200929,7 @@ function launchDetachedLocalDaemon(options) {
   const launchedProcessExists = options.processExists ?? processExists;
   const killProcess = options.killProcess ?? process.kill;
   const env = options.env ?? process.env;
+  const sourceWatchSupervisor = options.nodeArgs?.includes("watch") === true;
   if (options.nodePath && !isDaemonNodeVersionSupported(options.nodeVersion, DAEMON_SUPPORTED_NODE_RANGE)) {
     throw new Error(`Explicit daemon Node ${options.nodeVersion ?? "unknown"} does not satisfy ${DAEMON_SUPPORTED_NODE_RANGE}.`);
   }
@@ -200354,24 +200944,37 @@ function launchDetachedLocalDaemon(options) {
     supportedRange: DAEMON_SUPPORTED_NODE_RANGE,
     candidates: defaultDaemonNodeCandidates(env)
   });
-  const child = spawnProcess(runtime.nodePath, [...options.nodeArgs ?? [], options.entryPath], {
-    detached: true,
-    env: {
-      ...env,
-      ...options.daemonEnv ?? {},
-      CLASH_LOCAL_DATA_DIR: options.dataDir,
-      CLASH_HOST_RUN_DIR: options.runDir,
-      CLASH_CLI_ENTRY_PATH: options.cliEntryPath,
-      CLASH_LOCAL_API_WRAPPER_ENTRY: "1",
-      CLASH_DAEMON_RUNTIME_FINGERPRINT: options.runtimeFingerprint,
-      // Electron Node mode is still a detached Node process; without this
-      // explicit opt-in an Electron executable would recursively open the GUI.
-      ELECTRON_RUN_AS_NODE: options.electronRunAsNode ? "1" : void 0,
-      CLASH_DAEMON_NODE_PATH: runtime.nodePath,
-      PORT: "0"
-    },
-    stdio: "ignore"
-  });
+  let diagnosticFd;
+  if (options.diagnosticLogPath) {
+    mkdirSync(dirname10(options.diagnosticLogPath), { recursive: true });
+    diagnosticFd = openSync(options.diagnosticLogPath, "w", 384);
+  }
+  let child;
+  try {
+    child = spawnProcess(runtime.nodePath, [...options.nodeArgs ?? [], options.entryPath], {
+      detached: true,
+      env: {
+        ...env,
+        ...options.daemonEnv ?? {},
+        CLASH_LOCAL_DATA_DIR: options.dataDir,
+        CLASH_HOST_RUN_DIR: options.runDir,
+        CLASH_CLI_ENTRY_PATH: options.cliEntryPath,
+        CLASH_LOCAL_API_WRAPPER_ENTRY: "1",
+        // The watcher, rather than its replaceable child, owns discovery.
+        CLASH_DAEMON_SOURCE_WATCH: sourceWatchSupervisor ? "1" : void 0,
+        CLASH_DAEMON_RUNTIME_FINGERPRINT: options.runtimeFingerprint,
+        // Electron Node mode is still a detached Node process; without this
+        // explicit opt-in an Electron executable would recursively open the GUI.
+        ELECTRON_RUN_AS_NODE: options.electronRunAsNode ? "1" : void 0,
+        CLASH_DAEMON_NODE_PATH: runtime.nodePath,
+        PORT: options.daemonEnv?.PORT ?? "0"
+      },
+      stdio: diagnosticFd === void 0 ? "ignore" : ["ignore", diagnosticFd, diagnosticFd]
+    });
+  } finally {
+    if (diagnosticFd !== void 0)
+      closeSync(diagnosticFd);
+  }
   if (!child.pid)
     throw new Error("Failed to start Clash daemon process");
   const pid = child.pid;
@@ -200594,7 +201197,7 @@ function createLocalDaemonBootstrap(options) {
 
 // ../../packages/shared-runtime/dist/local-paths.js
 import { homedir } from "os";
-import { basename as basename4, dirname as dirname10, join as join12, resolve as resolve11 } from "path";
+import { basename as basename4, dirname as dirname11, join as join12, resolve as resolve11 } from "path";
 function resolveClashProfile(env = process.env) {
   const profile = env.CLASH_PROFILE?.trim() || "prod";
   if (profile === "dev" || profile === "prod")
@@ -200616,7 +201219,7 @@ function clashHomeForLocalDataDir(localDataDir, explicitClashHome) {
   if (explicitClashHome?.trim())
     return resolve11(explicitClashHome);
   const resolved = resolve11(localDataDir);
-  return basename4(resolved) === "local-api" ? dirname10(resolved) : resolved;
+  return basename4(resolved) === "local-api" ? dirname11(resolved) : resolved;
 }
 
 // src/plugin-host.ts
@@ -200626,9 +201229,9 @@ function resolvePluginHostRuntimeLayout(options = {}) {
   const moduleUrl = options.moduleUrl ?? import.meta.url;
   const env = options.env ?? process.env;
   const modulePath = fileURLToPath(moduleUrl);
-  const moduleDir = dirname11(modulePath);
+  const moduleDir = dirname12(modulePath);
   const source = env.CLASH_SOURCE_RUNTIME === "1" || basename5(moduleDir) === "src";
-  const builtinPluginRoot = dirname11(moduleDir);
+  const builtinPluginRoot = dirname12(moduleDir);
   if (!source) {
     return {
       source: false,
@@ -200780,7 +201383,7 @@ import { randomUUID as randomUUID7 } from "crypto";
 import {
   chmodSync,
   existsSync as existsSync2,
-  mkdirSync,
+  mkdirSync as mkdirSync2,
   readFileSync as readFileSync3,
   renameSync,
   rmSync,
@@ -200794,7 +201397,7 @@ import { join as join14 } from "path";
 import { isAbsolute as isAbsolute6, relative as relative6, resolve as resolve13 } from "path";
 import { build } from "esbuild";
 import { mkdir as mkdir8, access } from "fs/promises";
-import { dirname as dirname12, isAbsolute as isAbsolute22, relative as relative22, resolve as resolve22 } from "path";
+import { dirname as dirname13, isAbsolute as isAbsolute22, relative as relative22, resolve as resolve22 } from "path";
 var util7;
 (function(util24) {
   util24.assertEqual = (val) => val;
@@ -204946,6 +205549,8 @@ var ProjectAssetEntrySchema4 = z7.object({
   kind: AssetKindSchema4,
   source: ProjectAssetSourceSchema4,
   lifecycle: ProjectAssetLifecycleSchema4,
+  /** Immutable wall-clock production/admission time in Unix milliseconds. */
+  createdAt: z7.number().int().nonnegative().optional(),
   name: z7.string().trim().min(1).optional(),
   metadata: ProjectAssetMetadataSchema4,
   provenance: ProjectAssetProvenanceSchema4.optional()
@@ -204987,6 +205592,8 @@ var ActionAssetBindingSchema4 = z7.object({
 var ResolvedAssetSchema4 = z7.object({
   id: z7.string().trim().min(1),
   kind: AssetKindSchema4,
+  /** Project Asset production time, or a Host Resource time for legacy entries. */
+  createdAt: z7.number().int().nonnegative().optional(),
   name: z7.string().trim().min(1).optional(),
   metadata: ProjectAssetMetadataSchema4,
   provenance: ProjectAssetProvenanceSchema4.optional(),
@@ -205001,6 +205608,8 @@ var ResolvedAssetSchema4 = z7.object({
   ]),
   url: z7.string().url().optional(),
   thumbnailUrl: z7.string().url().optional(),
+  /** Host-authorized projection of a bounded waveform representation. */
+  waveformUrl: z7.string().url().optional(),
   progress: z7.number().min(0).max(1).optional(),
   error: z7.string().trim().min(1).optional()
 }).strict();
@@ -205063,6 +205672,42 @@ var AssetRefRowSchema4 = z7.object({
   projectId: z7.string(),
   importedAt: z7.number()
 });
+var AspectRatioSchema4 = z7.object({
+  width: z7.number().int().positive(),
+  height: z7.number().int().positive()
+}).strict();
+var AspectRatioStringSchema4 = z7.string().trim().transform((value, ctx) => {
+  const ratio = parseAspectRatio5(value);
+  if (!ratio) {
+    ctx.addIssue({
+      code: z7.ZodIssueCode.custom,
+      message: "Aspect ratio must be two positive integers separated by a colon."
+    });
+    return z7.NEVER;
+  }
+  return aspectRatioLabel4(ratio);
+});
+function greatestCommonDivisor4(a, b) {
+  return b === 0 ? a : greatestCommonDivisor4(b, a % b);
+}
+function reduceAspectRatio4(ratio) {
+  const divisor = greatestCommonDivisor4(ratio.width, ratio.height);
+  return { width: ratio.width / divisor, height: ratio.height / divisor };
+}
+function aspectRatioLabel4(ratio) {
+  const reduced = reduceAspectRatio4(ratio);
+  return `${reduced.width}:${reduced.height}`;
+}
+function parseAspectRatio5(text) {
+  const match = /^\s*(\d+)\s*[:x×]\s*(\d+)\s*$/i.exec(text);
+  if (!match) return void 0;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    return void 0;
+  }
+  return { width, height };
+}
 var SEGMENT4 = /^[a-z0-9][a-z0-9-]*$/;
 var pluginIdSchema4 = z7.string().trim().superRefine((value, ctx) => {
   const segments = value.split(".");
@@ -206414,6 +207059,9 @@ var ModelParameterSchema4 = z7.object({
   /** Provider-fixed output characteristic. It remains visible in the common
    * parameter surface, but UI and external payloads cannot override it. */
   readOnly: z7.boolean().optional(),
+  /** Select controls may accept values beyond their preset menu. Aspect-ratio
+   * custom values remain positive integer W:H pairs. */
+  allowCustom: z7.boolean().optional(),
   required: z7.boolean().default(false),
   options: z7.array(
     z7.object({
@@ -206427,6 +207075,13 @@ var ModelParameterSchema4 = z7.object({
   placeholder: z7.string().optional(),
   defaultValue: z7.union([z7.string(), z7.number(), z7.boolean()]).optional()
 });
+function acceptsCustomModelParameterValue4(parameter, value) {
+  if (parameter.type !== "select" || !parameter.allowCustom) return false;
+  if (parameter.id === "aspect_ratio") {
+    return typeof value === "string" && parseAspectRatio5(value) !== void 0;
+  }
+  return typeof value === "string" || typeof value === "number";
+}
 var ReferenceMediaConstraintsSchema4 = z7.object({
   mimeTypes: z7.array(z7.string().min(1)).optional(),
   fileExtensions: z7.array(z7.string().min(1)).optional(),
@@ -206707,7 +207362,7 @@ var ModelCardSchema4 = z7.object({
     if (value === void 0) return;
     if (parameter.type === "select") {
       const optionValues = parameter.options?.map((option) => option.value) ?? [];
-      if (!optionValues.some((candidate) => sameCandidate(candidate, value))) {
+      if (!optionValues.some((candidate) => sameCandidate(candidate, value)) && !acceptsCustomModelParameterValue4(parameter, value)) {
         ctx.addIssue({
           code: "custom",
           path,
@@ -206757,6 +207412,13 @@ var ModelCardSchema4 = z7.object({
     }
     parameterIds.add(parameter.id);
     parametersById.set(parameter.id, parameter);
+    if (parameter.allowCustom && parameter.type !== "select") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["parameters", index, "allowCustom"],
+        message: "Only select parameters may allow custom values."
+      });
+    }
     if (parameter.type === "select") {
       if (!parameter.options?.length) {
         ctx.addIssue({
@@ -212432,10 +213094,6 @@ var MEDIA_ANALYSIS_DOCUMENT_KIND_BY_CATEGORY4 = {
   ocr: "media.analysis.ocr",
   "audio-semantics": "media.analysis.audio-semantics"
 };
-var AspectRatioSchema4 = z7.object({
-  width: z7.number().int().positive(),
-  height: z7.number().int().positive()
-}).strict();
 var PLUGIN_ID_PATTERN4 = /^[a-z0-9][a-z0-9._-]*$/;
 var SEMVER_PATTERN4 = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 var SHA256_PATTERN4 = /^sha256:[0-9a-f]{64}$/;
@@ -212508,6 +213166,11 @@ var ExecutablePluginModelBindingExportSchema4 = z7.object({
 var ExecutablePluginGeneratorExportSchema4 = z7.object({
   id: z7.string().trim().regex(PLUGIN_ID_PATTERN4),
   kind: z7.literal("generator"),
+  path: PluginRelativePathSchema4
+}).strict();
+var ExecutablePluginViewExportSchema4 = z7.object({
+  id: z7.string().trim().regex(PLUGIN_ID_PATTERN4),
+  kind: z7.literal("view"),
   path: PluginRelativePathSchema4
 }).strict();
 var ExecutableActionPresentationSchema4 = z7.discriminatedUnion("type", [
@@ -212665,6 +213328,99 @@ var ExecutablePluginGeneratorDocumentSchema4 = z7.object({
   apiVersion: z7.literal("clash.generator/v1"),
   kind: z7.literal("generator"),
   spec: GeneratorDefinitionSpecSchema4
+}).strict();
+var StoryboardViewResourceSchema4 = z7.object({
+  id: z7.string().trim().min(1),
+  projectAssetId: z7.string().trim().min(1),
+  mediaKind: z7.enum(["image", "video", "audio", "model"]),
+  modelName: z7.string().trim().min(1).optional(),
+  generatedBy: z7.object({
+    generatorId: z7.string().trim().min(1),
+    generatorRevisionId: z7.string().trim().min(1),
+    actionRunId: z7.string().trim().min(1),
+    outputCommitId: z7.string().trim().min(1),
+    outputSlot: z7.string().trim().min(1).optional()
+  }).strict().optional()
+}).strict();
+var StoryboardViewDescriptionPartSchema4 = z7.discriminatedUnion("type", [
+  z7.object({ type: z7.literal("text"), text: z7.string() }).strict(),
+  z7.object({
+    type: z7.literal("entity-reference"),
+    entityId: z7.string().trim().min(1)
+  }).strict()
+]);
+var StoryboardViewMaterialSchema4 = z7.object({
+  id: z7.string().trim().min(1),
+  label: z7.string().trim().min(1).optional(),
+  mediaKind: z7.enum(["image", "video", "audio", "model"]),
+  promptDraft: z7.object({
+    id: z7.string().trim().min(1),
+    text: z7.string()
+  }).strict().optional(),
+  candidates: z7.array(StoryboardViewResourceSchema4).default([]),
+  selectedCandidateId: z7.string().trim().min(1).optional()
+}).strict().superRefine((material, ctx) => {
+  if (material.selectedCandidateId && !material.candidates.some(
+    (candidate) => candidate.id === material.selectedCandidateId
+  )) {
+    ctx.addIssue({
+      code: z7.ZodIssueCode.custom,
+      path: ["selectedCandidateId"],
+      message: "A selected candidate must belong to the same material slot."
+    });
+  }
+  const candidateIds = /* @__PURE__ */ new Set();
+  material.candidates.forEach((candidate, index) => {
+    if (candidateIds.has(candidate.id)) {
+      ctx.addIssue({
+        code: z7.ZodIssueCode.custom,
+        path: ["candidates", index, "id"],
+        message: "Candidate ids must be unique within a material slot."
+      });
+    }
+    candidateIds.add(candidate.id);
+    if (candidate.mediaKind !== material.mediaKind) {
+      ctx.addIssue({
+        code: z7.ZodIssueCode.custom,
+        path: ["candidates", index, "mediaKind"],
+        message: "A candidate must match its material slot media kind."
+      });
+    }
+  });
+});
+var StoryboardViewItemBaseSchema4 = z7.object({
+  id: z7.string().trim().min(1),
+  label: z7.string().trim().min(1).optional(),
+  description: z7.array(StoryboardViewDescriptionPartSchema4).default([]),
+  details: z7.string().optional(),
+  materials: z7.array(StoryboardViewMaterialSchema4).default([])
+});
+var StoryboardViewItemSchema4 = StoryboardViewItemBaseSchema4.strict();
+var StoryboardViewShotSchema4 = StoryboardViewItemBaseSchema4.extend({
+  durationSeconds: z7.number().finite().positive().optional()
+}).strict();
+var StoryboardViewStateSchema4 = z7.object({
+  keyElements: z7.array(StoryboardViewItemSchema4),
+  shots: z7.array(StoryboardViewShotSchema4),
+  audioLayers: z7.array(StoryboardViewItemSchema4),
+  uncategorized: z7.array(StoryboardViewResourceSchema4)
+}).strict();
+var ExecutablePluginViewDocumentSchema4 = z7.object({
+  apiVersion: z7.literal("clash.view/v1"),
+  kind: z7.literal("view"),
+  spec: z7.object({
+    definitionId: z7.string().trim().regex(PLUGIN_ID_PATTERN4),
+    name: z7.string().trim().min(1),
+    description: z7.string().trim().min(1).optional(),
+    presentation: z7.object({ type: z7.literal("storyboard") }).strict(),
+    initialState: StoryboardViewStateSchema4
+  }).strict()
+}).strict();
+var ExecutablePluginViewReferenceSchema4 = z7.object({
+  pluginId: pluginIdSchema4,
+  definitionId: z7.string().trim().regex(PLUGIN_ID_PATTERN4),
+  version: z7.string().trim().regex(SEMVER_PATTERN4),
+  schemaHash: z7.string().regex(SHA256_PATTERN4)
 }).strict();
 var ExecutablePluginProviderDefinitionSchema4 = z7.object({
   /**
@@ -212832,6 +213588,12 @@ var ExecutablePluginGeneratorRegistrationSchema4 = z7.object({
   version: z7.string().trim().regex(SEMVER_PATTERN4),
   schemaHash: z7.string().regex(SHA256_PATTERN4),
   document: ExecutablePluginGeneratorDocumentSchema4
+}).strict();
+var ExecutablePluginViewRegistrationSchema4 = z7.object({
+  pluginId: pluginIdSchema4,
+  version: z7.string().trim().regex(SEMVER_PATTERN4),
+  schemaHash: z7.string().regex(SHA256_PATTERN4),
+  document: ExecutablePluginViewDocumentSchema4
 }).strict();
 var ExecutablePluginBindingSchema4 = z7.object({
   pluginId: pluginIdSchema4,
@@ -213339,7 +214101,7 @@ var ExecutablePluginBrokerOperationSchema4 = z7.union([
   z7.object({
     kind: z7.literal("codex.image.generate"),
     prompt: z7.string().trim().min(1).max(2e4),
-    aspectRatio: z7.enum(["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"]).default("1:1"),
+    aspectRatio: AspectRatioStringSchema4.default("1:1"),
     slot: z7.string().trim().min(1),
     references: z7.array(
       ExecutablePluginAssetHandleObjectSchema4.extend({
@@ -213443,6 +214205,7 @@ var ExecutablePluginContributionsSchema4 = z7.object({
   providers: z7.array(ExecutablePluginProviderExportSchema4).default([]),
   modelBindings: z7.array(ExecutablePluginModelBindingExportSchema4).default([]),
   generators: z7.array(ExecutablePluginGeneratorExportSchema4).default([]),
+  views: z7.array(ExecutablePluginViewExportSchema4).default([]),
   functions: z7.array(ExecutablePluginFunctionExportSchema4).default([]),
   hostTools: z7.array(z7.enum(["codex.imagegen", "speech.transcribe", "media.analyze", "director.stage.capture-frame", "video.enhance"])).default([])
 }).strict();
@@ -213464,6 +214227,7 @@ var ExecutablePluginManifestSchema4 = z7.object({
     ["providers", manifest.contributes.providers],
     ["modelBindings", manifest.contributes.modelBindings],
     ["generators", manifest.contributes.generators],
+    ["views", manifest.contributes.views],
     ["functions", manifest.contributes.functions]
   ]) {
     const ids = /* @__PURE__ */ new Set();
@@ -213493,7 +214257,8 @@ var ExecutablePluginManifestSchema4 = z7.object({
   for (const artifact of [
     ...manifest.contributes.providers,
     ...manifest.contributes.modelBindings,
-    ...manifest.contributes.generators
+    ...manifest.contributes.generators,
+    ...manifest.contributes.views
   ]) {
     if (artifactPaths.has(artifact.path)) {
       ctx.addIssue({
@@ -213552,6 +214317,7 @@ function validateExecutablePluginPackage2(manifestInput, cardDocuments, contract
   const providers = {};
   const modelBindings = {};
   const generators = {};
+  const views = {};
   const contractTests = {};
   for (const cardExport of manifest.contributes.cards) {
     if (!Object.prototype.hasOwnProperty.call(cardDocuments, cardExport.path)) {
@@ -213670,6 +214436,19 @@ function validateExecutablePluginPackage2(manifestInput, cardDocuments, contract
     }
     generators[generatorExport.path] = generator;
   }
+  for (const viewExport of manifest.contributes.views) {
+    const input = artifacts.views?.[viewExport.path];
+    if (input === void 0) {
+      throw new Error(`Missing declared View document: ${viewExport.path}`);
+    }
+    const view = ExecutablePluginViewDocumentSchema4.parse(input);
+    if (view.spec.definitionId !== viewExport.id) {
+      throw new Error(
+        `View ${viewExport.path} id ${view.spec.definitionId} does not match export id ${viewExport.id}.`
+      );
+    }
+    views[viewExport.path] = view;
+  }
   for (const path of manifest.contractTests) {
     if (!Object.prototype.hasOwnProperty.call(contractTestDocuments, path)) {
       throw new Error(`Missing declared contract test: ${path}`);
@@ -213691,6 +214470,7 @@ function validateExecutablePluginPackage2(manifestInput, cardDocuments, contract
     providers,
     modelBindings,
     generators,
+    views,
     contractTests
   };
 }
@@ -218470,6 +219250,104 @@ var TimelineLibraryItemSchema4 = z7.discriminatedUnion("category", [
   FilterLibraryItemSchema4,
   AdjustmentLibraryItemSchema4
 ]);
+var ActionFamilySchema4 = z7.enum(["generate", "edit", "custom"]);
+var ActionOperationSpecSchema4 = z7.object({
+  id: z7.string().min(1),
+  outputKind: AssetKindSchema4
+});
+var ActionSpecSchema4 = z7.object({
+  id: z7.string().min(1),
+  version: z7.string().min(1),
+  name: z7.string().min(1),
+  family: ActionFamilySchema4,
+  inputKinds: z7.array(AssetKindSchema4).min(1),
+  operations: z7.array(ActionOperationSpecSchema4).min(1)
+});
+var ActionInvocationModeSchema4 = z7.enum(["explicit", "implicit"]);
+var ActionSurfaceSchema4 = z7.enum(["canvas", "asset-preview"]);
+var ACTION_INVOCATION_MODE4 = {
+  Explicit: "explicit",
+  Implicit: "implicit"
+};
+function invocationModeForSurface4(surface) {
+  return surface === "canvas" ? ACTION_INVOCATION_MODE4.Explicit : ACTION_INVOCATION_MODE4.Implicit;
+}
+var ASSET_ACTION_ID4 = {
+  ImageEditor: "image-editor",
+  VideoClipper: "video-clipper"
+};
+var CropRectSchema4 = z7.object({
+  x: z7.number().int().nonnegative(),
+  y: z7.number().int().nonnegative(),
+  width: z7.number().int().positive(),
+  height: z7.number().int().positive()
+});
+var ImageEditParamsSchema4 = z7.object({
+  crop: CropRectSchema4.optional(),
+  rotation: z7.union([z7.literal(0), z7.literal(90), z7.literal(180), z7.literal(270)]).optional()
+});
+var VideoClipParamsSchema4 = z7.discriminatedUnion("mode", [
+  z7.object({
+    mode: z7.literal("screenshot"),
+    frameTimeSec: z7.number().nonnegative()
+  }),
+  z7.object({
+    mode: z7.literal("crop"),
+    startSec: z7.number().nonnegative(),
+    endSec: z7.number().positive()
+  })
+]).superRefine((value, context) => {
+  if (value.mode === "crop" && value.endSec <= value.startSec) {
+    context.addIssue({
+      code: z7.ZodIssueCode.custom,
+      message: "endSec must be greater than startSec",
+      path: ["endSec"]
+    });
+  }
+});
+var BUILT_IN_ASSET_ACTION_SPECS4 = {
+  [ASSET_ACTION_ID4.ImageEditor]: ActionSpecSchema4.parse({
+    id: ASSET_ACTION_ID4.ImageEditor,
+    version: "1",
+    name: "Image Editor",
+    family: "edit",
+    inputKinds: ["image"],
+    operations: [{ id: "transform", outputKind: "image" }]
+  }),
+  [ASSET_ACTION_ID4.VideoClipper]: ActionSpecSchema4.parse({
+    id: ASSET_ACTION_ID4.VideoClipper,
+    version: "1",
+    name: "Video Clipper",
+    family: "edit",
+    inputKinds: ["video"],
+    operations: [
+      { id: "screenshot", outputKind: "image" },
+      { id: "crop", outputKind: "video" }
+    ]
+  })
+};
+var InvocationBaseSchema4 = z7.object({
+  projectId: z7.string().min(1),
+  mode: ActionInvocationModeSchema4,
+  surface: ActionSurfaceSchema4
+});
+var ImageEditActionInvocationSchema4 = InvocationBaseSchema4.extend({
+  actionId: z7.literal(ASSET_ACTION_ID4.ImageEditor),
+  source: z7.object({ assetId: z7.string().min(1), kind: z7.literal("image") }),
+  params: ImageEditParamsSchema4
+});
+var VideoEditActionInvocationSchema4 = InvocationBaseSchema4.extend({
+  actionId: z7.literal(ASSET_ACTION_ID4.VideoClipper),
+  source: z7.object({ assetId: z7.string().min(1), kind: z7.literal("video") }),
+  params: VideoClipParamsSchema4
+});
+var AssetEditActionInvocationSchema4 = z7.discriminatedUnion("actionId", [
+  ImageEditActionInvocationSchema4,
+  VideoEditActionInvocationSchema4
+]).refine((value) => value.mode === invocationModeForSurface4(value.surface), {
+  message: "Invocation mode must match its surface",
+  path: ["mode"]
+});
 var ACTION_BADGE_NODE_SIZE4 = Object.freeze({
   width: 260,
   height: 58
@@ -218895,110 +219773,6 @@ var MEDIA_REFERENCE_PLURAL_NOUN4 = Object.fromEntries(
 var MEDIA_REFERENCE_COUNT_NOUN4 = Object.fromEntries(
   MEDIA_REFERENCE_FIELDS4.map((field32) => [field32.modality, field32.countNoun])
 );
-var ActionFamilySchema4 = z7.enum(["generate", "edit", "custom"]);
-var ActionExecutorSchema4 = z7.enum([
-  "model",
-  "client-render",
-  "server-transform",
-  "runtime"
-]);
-var ActionOperationSpecSchema4 = z7.object({
-  id: z7.string().min(1),
-  executor: ActionExecutorSchema4,
-  outputKind: AssetKindSchema4
-});
-var ActionSpecSchema4 = z7.object({
-  id: z7.string().min(1),
-  version: z7.string().min(1),
-  name: z7.string().min(1),
-  family: ActionFamilySchema4,
-  inputKinds: z7.array(AssetKindSchema4).min(1),
-  operations: z7.array(ActionOperationSpecSchema4).min(1)
-});
-var ActionInvocationModeSchema4 = z7.enum(["explicit", "implicit"]);
-var ActionSurfaceSchema4 = z7.enum(["canvas", "asset-preview"]);
-var ACTION_INVOCATION_MODE4 = {
-  Explicit: "explicit",
-  Implicit: "implicit"
-};
-function invocationModeForSurface4(surface) {
-  return surface === "canvas" ? ACTION_INVOCATION_MODE4.Explicit : ACTION_INVOCATION_MODE4.Implicit;
-}
-var ASSET_ACTION_ID4 = {
-  ImageEditor: "image-editor",
-  VideoClipper: "video-clipper"
-};
-var CropRectSchema4 = z7.object({
-  x: z7.number().int().nonnegative(),
-  y: z7.number().int().nonnegative(),
-  width: z7.number().int().positive(),
-  height: z7.number().int().positive()
-});
-var ImageEditParamsSchema4 = z7.object({
-  crop: CropRectSchema4.optional(),
-  rotation: z7.union([z7.literal(0), z7.literal(90), z7.literal(180), z7.literal(270)]).optional()
-});
-var VideoClipParamsSchema4 = z7.discriminatedUnion("mode", [
-  z7.object({ mode: z7.literal("screenshot"), frameTimeSec: z7.number().nonnegative() }),
-  z7.object({
-    mode: z7.literal("crop"),
-    startSec: z7.number().nonnegative(),
-    endSec: z7.number().positive()
-  })
-]).superRefine((value, context) => {
-  if (value.mode === "crop" && value.endSec <= value.startSec) {
-    context.addIssue({
-      code: z7.ZodIssueCode.custom,
-      message: "endSec must be greater than startSec",
-      path: ["endSec"]
-    });
-  }
-});
-var BUILT_IN_ASSET_ACTION_SPECS4 = {
-  [ASSET_ACTION_ID4.ImageEditor]: ActionSpecSchema4.parse({
-    id: ASSET_ACTION_ID4.ImageEditor,
-    version: "1",
-    name: "Image Editor",
-    family: "edit",
-    inputKinds: ["image"],
-    operations: [
-      { id: "transform", executor: "client-render", outputKind: "image" }
-    ]
-  }),
-  [ASSET_ACTION_ID4.VideoClipper]: ActionSpecSchema4.parse({
-    id: ASSET_ACTION_ID4.VideoClipper,
-    version: "1",
-    name: "Video Clipper",
-    family: "edit",
-    inputKinds: ["video"],
-    operations: [
-      { id: "screenshot", executor: "client-render", outputKind: "image" },
-      { id: "crop", executor: "server-transform", outputKind: "video" }
-    ]
-  })
-};
-var InvocationBaseSchema4 = z7.object({
-  projectId: z7.string().min(1),
-  mode: ActionInvocationModeSchema4,
-  surface: ActionSurfaceSchema4
-});
-var ImageEditActionInvocationSchema4 = InvocationBaseSchema4.extend({
-  actionId: z7.literal(ASSET_ACTION_ID4.ImageEditor),
-  source: z7.object({ assetId: z7.string().min(1), kind: z7.literal("image") }),
-  params: ImageEditParamsSchema4
-});
-var VideoEditActionInvocationSchema4 = InvocationBaseSchema4.extend({
-  actionId: z7.literal(ASSET_ACTION_ID4.VideoClipper),
-  source: z7.object({ assetId: z7.string().min(1), kind: z7.literal("video") }),
-  params: VideoClipParamsSchema4
-});
-var AssetEditActionInvocationSchema4 = z7.discriminatedUnion("actionId", [
-  ImageEditActionInvocationSchema4,
-  VideoEditActionInvocationSchema4
-]).refine((value) => value.mode === invocationModeForSurface4(value.surface), {
-  message: "Invocation mode must match its surface",
-  path: ["mode"]
-});
 var PositionSchema24 = z7.object({
   x: z7.number(),
   y: z7.number()
@@ -220156,6 +220930,9 @@ var addCommand4 = z7.object({
     "text",
     "group",
     "remotion",
+    "image",
+    "video",
+    "audio",
     "image_gen",
     "video_gen",
     "audio_gen",
@@ -220168,6 +220945,7 @@ var addCommand4 = z7.object({
   parentId: id4.optional(),
   modelId: id4.optional(),
   actionId: id4.optional(),
+  assetId: id4.optional(),
   refs: z7.array(id4).optional(),
   params: z7.record(id4, primitiveParameter4).optional(),
   actorClientType: actorClientType4,
@@ -220623,6 +221401,33 @@ var MODEL_UPSTREAM_ROUTES4 = [
   ...MOCK_DECLARED_ROUTES4,
   ...MOCK_ROUTES4
 ];
+var ProjectCanvasPreviewNodeSchema4 = z7.object({
+  id: z7.string().trim().min(1),
+  type: z7.string().trim().min(1),
+  x: z7.number().finite(),
+  y: z7.number().finite(),
+  width: z7.number().finite().positive(),
+  height: z7.number().finite().positive(),
+  parentId: z7.string().trim().min(1).optional(),
+  assetId: z7.string().trim().min(1).optional(),
+  label: z7.string().trim().min(1).optional()
+}).strict();
+var ProjectCanvasPreviewSchema4 = z7.object({
+  canvasId: z7.string().trim().min(1),
+  bounds: z7.object({
+    x: z7.number().finite(),
+    y: z7.number().finite(),
+    width: z7.number().finite().nonnegative(),
+    height: z7.number().finite().nonnegative()
+  }).strict().nullable(),
+  nodes: z7.array(ProjectCanvasPreviewNodeSchema4)
+}).strict();
+var ProjectCanvasThumbnailSchema4 = z7.object({
+  url: z7.string().url(),
+  revision: z7.string().regex(/^[a-f0-9]{64}$/u),
+  width: z7.number().int().positive(),
+  height: z7.number().int().positive()
+}).strict();
 var CopilotProjectAssetReferenceSchema4 = z7.object({
   projectAssetId: z7.string().trim().min(1),
   kind: AssetKindSchema4,
@@ -221363,13 +222168,13 @@ function wait(milliseconds) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 function withConfigLock(dir, task) {
-  mkdirSync(dir, { recursive: true, mode: 448 });
+  mkdirSync2(dir, { recursive: true, mode: 448 });
   chmodSync(dir, 448);
   const lockPath = join22(dir, ".config.lock");
   const deadline = Date.now() + 5e3;
   while (true) {
     try {
-      mkdirSync(lockPath, { mode: 448 });
+      mkdirSync2(lockPath, { mode: 448 });
       writeFileSync(
         join22(lockPath, "owner"),
         `pid=${process.pid}
@@ -221429,7 +222234,7 @@ function migrateLegacyConfig(env = process.env) {
   const legacy = readObject(legacyPath);
   const configPath = configFilePath(env);
   const credentialsPath = credentialsFilePath(env);
-  mkdirSync(dir, { recursive: true, mode: 448 });
+  mkdirSync2(dir, { recursive: true, mode: 448 });
   withConfigLock(dir, () => {
     const existing = loadConfigFiles(env);
     updateYamlServerUrl(
@@ -221544,7 +222349,7 @@ async function buildPluginEntrypoint(pluginDirInput, runtime) {
   } catch {
     throw new Error(`Plugin build source is missing: ${plan.source}`);
   }
-  await mkdir8(dirname12(outputPath), { recursive: true });
+  await mkdir8(dirname13(outputPath), { recursive: true });
   const result2 = await build({
     entryPoints: [sourcePath],
     outfile: outputPath,
@@ -221724,6 +222529,22 @@ function validateDownloadedActionPackage(input) {
       );
     }
   }
+  const viewDocuments = {};
+  for (const view of contributions.views) {
+    const encoded = files[view.path];
+    if (typeof encoded !== "string") {
+      throw new Error(`Missing declared View document: ${view.path}`);
+    }
+    try {
+      viewDocuments[view.path] = JSON.parse(
+        Buffer.from(encoded, "base64").toString("utf8")
+      );
+    } catch (error57) {
+      throw new Error(
+        `Invalid View JSON at ${view.path}: ${error57.message}`
+      );
+    }
+  }
   const contractTestDocuments = {};
   for (const path of parsedManifest.contractTests) {
     const encoded = files[path];
@@ -221747,7 +222568,8 @@ function validateDownloadedActionPackage(input) {
     {
       providers: providerDocuments,
       modelBindings: modelBindingDocuments,
-      generators: generatorDocuments
+      generators: generatorDocuments,
+      views: viewDocuments
     }
   );
   return {
@@ -221755,7 +222577,8 @@ function validateDownloadedActionPackage(input) {
     format: "executable-plugin",
     manifest: validated.manifest,
     files,
-    generators: validated.generators
+    generators: validated.generators,
+    views: validated.views
   };
 }
 async function checkoutExecutablePluginDraft(options) {

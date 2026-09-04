@@ -97,17 +97,34 @@ describe("desktop Electron runtime", () => {
       'turbo run build --filter="@clash-plugin/*"',
     );
     const hostBuild = desktopPrepare.indexOf(
-      "turbo run build --filter=clash --filter=@clash/web --filter=@clash/desktop",
+      "turbo run build --filter=clash --filter=@clash/desktop",
     );
     expect(bundledPluginBuild).toBeGreaterThan(-1);
     expect(hostBuild).toBeGreaterThan(bundledPluginBuild);
     for (const script of [
+      "pack:dir",
+      "pack:dmg",
       "pack:desktop:mac:arm64",
       "pack:desktop:mac:x64",
       "pack:desktop:win",
       "pack:desktop:linux",
     ]) {
-      expect(rootManifest.scripts?.[script] ?? "").toContain(
+      const packageScript = script.startsWith("pack:desktop:")
+        ? manifest.scripts?.[script.replace("pack:desktop:", "pack:")]
+        : manifest.scripts?.[script];
+      expect(packageScript ?? "").toContain(
+        "pnpm --dir ../.. prepare:desktop-pack",
+      );
+    }
+    for (const script of [
+      "pack:desktop:dir",
+      "pack:desktop:dmg",
+      "pack:desktop:mac:arm64",
+      "pack:desktop:mac:x64",
+      "pack:desktop:win",
+      "pack:desktop:linux",
+    ]) {
+      expect(rootManifest.scripts?.[script] ?? "").not.toContain(
         "pnpm prepare:desktop-pack",
       );
     }
@@ -122,6 +139,10 @@ describe("desktop Electron runtime", () => {
     expect(builderConfig).toContain(
       "artifactName: Clash-Desktop-Linux-x64.${ext}",
     );
+    expect(builderConfig).toContain(
+      "from: build/clash-runtime/node_modules",
+    );
+    expect(builderConfig).toContain("to: clash-runtime/node_modules");
     expect(builderConfig).toMatch(
       /^win:\n(?:(?!^[A-Za-z]).*\n)*? {2}executableName: clash$/m,
     );

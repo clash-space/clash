@@ -207,6 +207,9 @@ function parseProjectAsset(
     kind: field(raw, "kind"),
     source: sourceFromFields(raw, context),
     lifecycle: lifecycleFromFields(raw),
+    ...(field(raw, "createdAt") === undefined
+      ? {}
+      : { createdAt: field(raw, "createdAt") }),
     ...(nonEmptyString(field(raw, "name")) ? { name: field(raw, "name") } : {}),
     metadata: field(raw, "metadata"),
     ...(field(raw, "provenance") === undefined
@@ -334,6 +337,8 @@ function writeEntry(fields: LoroMap, entry: ProjectAssetEntry): void {
   fields.set("source", entry.source);
   fields.set("metadata", entry.metadata);
   fields.set("lifecycleState", entry.lifecycle.state);
+  if (entry.createdAt === undefined) fields.delete("createdAt");
+  else fields.set("createdAt", entry.createdAt);
   if (entry.name === undefined) fields.delete("name");
   else fields.set("name", entry.name);
   if (entry.provenance === undefined) fields.delete("provenance");

@@ -479,6 +479,7 @@ export {
   ExecutablePluginProviderExportSchema,
   ExecutablePluginModelBindingExportSchema,
   ExecutablePluginGeneratorExportSchema,
+  ExecutablePluginViewExportSchema,
   ExecutablePluginActivationReceiptSchema,
   ExecutableActionCardSchema,
   ExecutableActionPresentationSchema,
@@ -492,6 +493,15 @@ export {
   ExecutablePluginModelBindingRegistrationSchema,
   ExecutablePluginGeneratorDocumentSchema,
   ExecutablePluginGeneratorRegistrationSchema,
+  ExecutablePluginViewDocumentSchema,
+  ExecutablePluginViewReferenceSchema,
+  ExecutablePluginViewRegistrationSchema,
+  StoryboardViewDescriptionPartSchema,
+  StoryboardViewItemSchema,
+  StoryboardViewMaterialSchema,
+  StoryboardViewResourceSchema,
+  StoryboardViewShotSchema,
+  StoryboardViewStateSchema,
   ExecutablePluginContractTestDocumentSchema,
   ExecutablePluginBindingSchema,
   ExecutablePluginAssetHandleSchema,
@@ -533,6 +543,7 @@ export {
   type ExecutablePluginProviderExport,
   type ExecutablePluginModelBindingExport,
   type ExecutablePluginGeneratorExport,
+  type ExecutablePluginViewExport,
   type ExecutablePluginActivationReceipt,
   type ExecutableActionCard,
   type ExecutableActionPresentation,
@@ -546,6 +557,14 @@ export {
   type ExecutablePluginModelBindingRegistration,
   type ExecutablePluginGeneratorDocument,
   type ExecutablePluginGeneratorRegistration,
+  type ExecutablePluginViewDocument,
+  type ExecutablePluginViewReference,
+  type ExecutablePluginViewRegistration,
+  type StoryboardViewResource,
+  type StoryboardViewItem,
+  type StoryboardViewMaterial,
+  type StoryboardViewShot,
+  type StoryboardViewState,
   type ExecutablePluginContractTestDocument,
   type ExecutablePluginBinding,
   type ExecutablePluginAssetHandle,
@@ -725,6 +744,7 @@ export {
   MOCK_MODEL_CARDS,
   normalizeModelId,
   resolveAspectRatio,
+  resolveAspectRatioParameter,
   snapAspectRatio,
   type ModelInputMode,
   type ModelInputPresentation,
@@ -1094,6 +1114,16 @@ export type {
   TaskStatusResult,
 } from "./canvas-ops.js";
 
+export {
+  ProjectCanvasPreviewNodeSchema,
+  ProjectCanvasPreviewSchema,
+  ProjectCanvasThumbnailSchema,
+  projectCanvasPreviewFromDoc,
+  type ProjectCanvasPreviewNode,
+  type ProjectCanvasPreview,
+  type ProjectCanvasThumbnail,
+} from "./project-canvas-preview.js";
+
 // Loro sync client
 export {
   computeActionBuildPlan,
@@ -1111,8 +1141,24 @@ export {
 } from "./action-build-plan.js";
 
 export {
+  bindTrajectoryActionInputs,
+  compileTrajectoryAction,
+  type BindTrajectoryActionInputsResult,
+  type CompileTrajectoryActionInput,
+  type CompileTrajectoryActionResult,
+  type TrajectoryAction,
+  type TrajectoryActionGraphEdge,
+  type TrajectoryActionGraphNode,
+  type TrajectoryActionInputRef,
+  type TrajectoryActionPort,
+  type TrajectoryActionStep,
+  type TrajectoryActionValueType,
+} from "./trajectory-action.js";
+
+export {
   DEFAULT_CANVAS_ID,
   createProjectCanvas,
+  createProjectPluginView,
   createProjectTimeline,
   copyTimelineActionToCanvas,
   deleteProjectCanvas,
@@ -1138,6 +1184,7 @@ export {
   type ProjectCanvas,
   type ProjectCanvasDeleteResult,
   type ProjectCanvasMutationResult,
+  type ProjectPluginViewMutationResult,
   type ProjectTimeline,
   type ProjectTimelineDeleteResult,
   type ProjectTimelineMutationResult,
@@ -1147,9 +1194,13 @@ export {
 } from "./project-workspace.js";
 export {
   canonicalTimelineRenderDsl,
+  listTimelineExportProgress,
   PROJECT_ASSET_RENDER_CANVAS_ID,
   requestTimelineRender,
+  TimelineExportProgressSchema,
+  timelineExportProgressFromRenderNode,
   type RenderableTimelineDsl,
+  type TimelineExportProgress,
   type TimelineRenderRequestInput,
   type TimelineRenderRequestResult,
 } from "./timeline-render.js";
@@ -1299,8 +1350,10 @@ export {
   type ProjectTimelinePersistenceResult,
 } from "./timeline-persistence.js";
 export {
+  ProjectTimelineEnvelopeSchema,
   projectTimelineFromGeneratorRevision,
   projectTimelineToGeneratorRevisionState,
+  type ProjectTimelineEnvelope,
   type ProjectTimelineFromGeneratorRevisionResult,
   type ProjectTimelineToGeneratorRevisionStateResult,
 } from "./timeline-generator-projection.js";

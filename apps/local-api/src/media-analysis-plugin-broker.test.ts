@@ -48,7 +48,7 @@ function context(
       name: pluginId,
       runtime: { kind: "local" as const, transport: "stdio" as const, entrypoint: "dist/stdio.mjs", args: [] },
       contributes: {
-        cards: [], providers: [], modelBindings: [], generators: [],
+        cards: [], providers: [], modelBindings: [], generators: [], views: [],
         functions: [{ id: "analyze", kind: "action" as const, operations: ["submit"] as ["submit"] }],
         hostTools: ["media.analyze" as const],
       },

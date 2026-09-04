@@ -23,7 +23,7 @@ describe("BrowserSurface", () => {
       "https://www.google.com/search?q=ok",
     );
 
-    render(
+    const { container } = render(
       <BrowserSurface
         projectId="project-1"
         tab={{
@@ -46,6 +46,7 @@ describe("BrowserSurface", () => {
     expect(
       screen.getByRole("textbox", { name: "Browser address" }),
     ).toBeTruthy();
+    expect(container.querySelector("webview")).toHaveAttribute("allowpopups");
   });
 
   it("submits Chinese omnibox text to a reachable localized search", async () => {
@@ -82,6 +83,123 @@ describe("BrowserSurface", () => {
       ),
     );
     language.mockRestore();
+  });
+
+  it("tracks server redirects as native same-tab navigation", async () => {
+    const onTabChange = vi.fn();
+    const { container } = render(
+      <BrowserSurface
+        projectId="project-1"
+        tab={{
+          id: "browser-1",
+          title: "Sign in",
+          url: "https://accounts.example/start",
+        }}
+        annotations={[]}
+        activeAnnotationId={null}
+        onTabChange={onTabChange}
+        onCreateAnnotation={vi.fn()}
+        onSelectAnnotation={vi.fn()}
+      />,
+    );
+    const webview = container.querySelector("webview") as HTMLElement & {
+      canGoBack(): boolean;
+      canGoForward(): boolean;
+      getURL(): string;
+    };
+    webview.canGoBack = () => true;
+    webview.canGoForward = () => false;
+    webview.getURL = () => "https://app.example/callback";
+    const redirect = new Event("did-redirect-navigation") as Event & {
+      url: string;
+    };
+    redirect.url = "https://app.example/callback";
+
+    fireEvent(webview, redirect);
+
+    await waitFor(() =>
+      expect(onTabChange).toHaveBeenCalledWith({
+        url: "https://app.example/callback",
+      }),
+    );
+    expect(screen.getByRole("textbox", { name: "Browser address" })).toHaveValue(
+      "app.example/callback",
+    );
+  });
+
+  it("publishes a safe page summary for the active agent", async () => {
+    const onAgentContextChange = vi.fn();
+    const props = {
+      projectId: "project-1",
+      tab: {
+        id: "browser-1",
+        title: "Clash docs",
+        url: "https://clash.example/docs",
+      },
+      annotations: [],
+      activeAnnotationId: null,
+      onTabChange: vi.fn(),
+      onCreateAnnotation: vi.fn(),
+      onSelectAnnotation: vi.fn(),
+      onAgentContextChange,
+    } as const;
+    const { container } = render(<BrowserSurface {...props} />);
+    const webview = container.querySelector("webview") as HTMLElement & {
+      canGoBack(): boolean;
+      canGoForward(): boolean;
+      getURL(): string;
+      getTitle(): string;
+      executeJavaScript<T>(): Promise<T>;
+    };
+    webview.canGoBack = () => false;
+    webview.canGoForward = () => false;
+    webview.getURL = () => "https://clash.example/docs";
+    webview.getTitle = () => "Clash docs";
+    webview.executeJavaScript = async <T,>() =>
+      ({
+        url: "https://clash.example/docs",
+        title: "Clash docs",
+        text: "Build the final cut",
+        interactiveElements: [
+          { tag: "button", label: "Start creating", selector: "#start" },
+        ],
+      }) as T;
+
+    fireEvent(webview, new Event("dom-ready"));
+
+    await waitFor(() =>
+      expect(onAgentContextChange).toHaveBeenCalledWith(
+        "browser-1",
+        expect.objectContaining({
+          url: "https://clash.example/docs",
+          title: "Clash docs",
+          text: "Build the final cut",
+        }),
+      ),
+    );
+
+    onAgentContextChange.mockClear();
+    fireEvent(webview, new Event("did-navigate-in-page"));
+    await waitFor(() => expect(onAgentContextChange).toHaveBeenCalledOnce());
+  });
+
+  it("keeps a visible workbench boundary on the browser frame", () => {
+    render(
+      <BrowserSurface
+        projectId="project-1"
+        tab={{ id: "browser-1", title: "Browser", url: "about:blank" }}
+        annotations={[]}
+        activeAnnotationId={null}
+        onTabChange={vi.fn()}
+        onCreateAnnotation={vi.fn()}
+        onSelectAnnotation={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("region", { name: "Browser: Browser" })).toHaveClass(
+      "border-r",
+      "border-warm-border",
+    );
   });
 
   it("maps Backchat viewport coordinates to positioned annotation markers", () => {

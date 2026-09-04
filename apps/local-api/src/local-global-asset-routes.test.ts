@@ -1,6 +1,10 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
+import sharp from "sharp";
 
 import {
   createProjectAsset,
@@ -11,13 +15,22 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createLocalApiApp } from "./app.js";
-import type { LocalAssetInspector } from "./local-asset-inspections.js";
+import {
+  createLocalAssetInspectionService,
+  type LocalAssetInspector,
+} from "./local-asset-inspections.js";
+import {
+  createLocalAssetRepresentationService,
+  type LocalAssetRepresentationService,
+} from "./local-asset-representations.js";
 import { createLocalGlobalAssetService } from "./local-global-assets.js";
 import { createLocalMetadataStore } from "./local-metadata-store.js";
 import { createLocalProjectAssetService } from "./local-project-assets.js";
 import { FileReplicaStore } from "./loro/file-replica-store.js";
+import { localFfmpegPath } from "./local-media-binaries.js";
 
 const temporaryDirectories: string[] = [];
+const representationServices: LocalAssetRepresentationService[] = [];
 const origin = "http://127.0.0.1:49152";
 
 async function fixture(
@@ -68,17 +81,31 @@ async function fixture(
             : resource.contentType
               ? { contentType: resource.contentType }
               : {});
+  const assetInspection = createLocalAssetInspectionService({
+    dataDir,
+    clashRoot,
+    inspectResource: inspectAssetResource,
+  });
+  const assetRepresentations = createLocalAssetRepresentationService({
+    dataDir,
+    clashRoot,
+    assetInspection,
+  });
+  representationServices.push(assetRepresentations);
   const app = createLocalApiApp({
     dataDir,
     clashRoot,
     userId: "local-user",
     projectAssetProjectionOrigin: origin,
-    inspectAssetResource,
+    assetInspection,
+    assetRepresentations,
   });
   return { app, clashRoot, dataDir };
 }
 
-function mediaForm(name: string, type: string, kind: string, value: string) {
+const execFileAsync = promisify(execFile);
+
+function mediaForm(name: string, type: string, kind: string, value: BlobPart) {
   const form = new FormData();
   form.set("file", new File([value], name, { type }));
   form.set("kind", kind);
@@ -90,7 +117,7 @@ function projectMediaForm(
   name: string,
   type: string,
   kind: string,
-  value: string,
+  value: BlobPart,
 ) {
   const form = mediaForm(name, type, kind, value);
   form.set("projectAssetId", projectAssetId);
@@ -102,7 +129,7 @@ function globalMediaForm(
   name: string,
   type: string,
   kind: string,
-  value: string,
+  value: BlobPart,
 ) {
   const form = mediaForm(name, type, kind, value);
   form.set("globalAssetId", globalAssetId);
@@ -117,6 +144,9 @@ function expectStorageNeutralHttpShape(value: unknown) {
 
 afterEach(async () => {
   await Promise.all(
+    representationServices.splice(0).map((service) => service.close()),
+  );
+  await Promise.all(
     temporaryDirectories
       .splice(0)
       .map((directory) => rm(directory, { recursive: true, force: true })),
@@ -124,6 +154,59 @@ afterEach(async () => {
 });
 
 describe("personal Global Asset routes", () => {
+  it("derives and serves an authorized image thumbnail without changing the source Asset", async () => {
+    const { app } = await fixture();
+    const projectCollection = `${origin}/api/v1/projects/project-thumbnail/assets`;
+    const sourceBytes = await sharp({
+      create: {
+        width: 12,
+        height: 8,
+        channels: 3,
+        background: { r: 220, g: 40, b: 60 },
+      },
+    })
+      .png()
+      .toBuffer();
+    const form = new FormData();
+    form.set(
+      "file",
+      new File([new Uint8Array(sourceBytes)], "source.png", {
+        type: "image/png",
+      }),
+    );
+    form.set("kind", "image");
+    form.set("projectAssetId", "asset:thumbnail-source");
+
+    const imported = await app.request(`${projectCollection}/import-file`, {
+      method: "POST",
+      body: form,
+    });
+    expect(imported.status, await imported.clone().text()).toBe(201);
+
+    let asset = (await imported.json()) as ResolvedAsset;
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      if (asset.thumbnailUrl?.endsWith("/thumbnail")) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const read = await app.request(
+        `${projectCollection}/${encodeURIComponent(asset.id)}`,
+      );
+      expect(read.status, await read.clone().text()).toBe(200);
+      asset = (await read.json()) as ResolvedAsset;
+    }
+
+    expect(asset.thumbnailUrl).toBe(
+      `${projectCollection}/${encodeURIComponent(asset.id)}/thumbnail`,
+    );
+    expect(asset.url).toBe(
+      `${projectCollection}/${encodeURIComponent(asset.id)}/media`,
+    );
+    const thumbnail = await app.request(asset.thumbnailUrl!);
+    expect(thumbnail.status, await thumbnail.clone().text()).toBe(200);
+    expect(thumbnail.headers.get("content-type")).toBe("image/webp");
+    const metadata = await sharp(await thumbnail.arrayBuffer()).metadata();
+    expect(metadata).toMatchObject({ width: 12, height: 8, format: "webp" });
+  });
+
   it("rejects a multipart import without a stable Global Asset id before publishing an Asset", async () => {
     const { app } = await fixture();
     const collection = `${origin}/api/v1/libraries/personal/assets`;
@@ -328,10 +411,26 @@ describe("personal Global Asset routes", () => {
     expect(probes).toBe(2);
   });
 
-  it("keeps video poster derivation frontend-only across Project and Global reads", async () => {
-    const { app, dataDir } = await fixture();
+  it("derives one video poster representation for Project and Global authorized reads", async () => {
+    const { app, clashRoot, dataDir } = await fixture();
     const projectCollection = `${origin}/api/v1/projects/project-poster/assets`;
     const globalCollection = `${origin}/api/v1/libraries/personal/assets`;
+    const videoPath = join(clashRoot, "poster-source.mp4");
+    const ffmpeg = localFfmpegPath();
+    expect(ffmpeg).not.toBeNull();
+    await execFileAsync(ffmpeg!, [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=0x3b82f6:s=20x12:d=0.25",
+      "-pix_fmt",
+      "yuv420p",
+      "-y",
+      videoPath,
+    ]);
+    const videoBytes = await readFile(videoPath);
     const imported = await app.request(`${projectCollection}/import-file`, {
       method: "POST",
       body: projectMediaForm(
@@ -339,18 +438,21 @@ describe("personal Global Asset routes", () => {
         "source.mp4",
         "video/mp4",
         "video",
-        "video source bytes",
+        videoBytes,
       ),
     });
     expect(imported.status, await imported.clone().text()).toBe(201);
     const projectAsset = (await imported.json()) as ResolvedAsset;
-    expect(projectAsset).not.toHaveProperty("thumbnailUrl");
     expectStorageNeutralHttpShape(projectAsset);
 
     const projectPoster = await app.request(
       `${projectCollection}/${encodeURIComponent(projectAsset.id)}/thumbnail`,
     );
-    expect(projectPoster.status).toBe(404);
+    expect(projectPoster.status, await projectPoster.clone().text()).toBe(200);
+    expect(projectPoster.headers.get("content-type")).toBe("image/webp");
+    await expect(
+      sharp(await projectPoster.clone().arrayBuffer()).metadata(),
+    ).resolves.toMatchObject({ width: 20, height: 12, format: "webp" });
 
     const published = await app.request(`${globalCollection}/publish`, {
       method: "POST",
@@ -362,13 +464,24 @@ describe("personal Global Asset routes", () => {
     });
     expect(published.status, await published.clone().text()).toBe(201);
     const globalAsset = (await published.json()) as ResolvedAsset;
-    expect(globalAsset).not.toHaveProperty("thumbnailUrl");
+    expect(globalAsset.thumbnailUrl).toBe(
+      `${globalCollection}/${encodeURIComponent(globalAsset.id)}/thumbnail`,
+    );
     expectStorageNeutralHttpShape(globalAsset);
 
     const globalPoster = await app.request(
       `${globalCollection}/${encodeURIComponent(globalAsset.id)}/thumbnail`,
     );
-    expect(globalPoster.status).toBe(404);
+    expect(globalPoster.status, await globalPoster.clone().text()).toBe(200);
+    expect(
+      createHash("sha256")
+        .update(new Uint8Array(await projectPoster.arrayBuffer()))
+        .digest("hex"),
+    ).toBe(
+      createHash("sha256")
+        .update(new Uint8Array(await globalPoster.arrayBuffer()))
+        .digest("hex"),
+    );
 
     const { DatabaseSync } = await import("node:sqlite");
     const database = new DatabaseSync(join(dataDir, "local.sqlite"));
@@ -376,13 +489,88 @@ describe("personal Global Asset routes", () => {
       expect(
         database
           .prepare(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+            "SELECT COUNT(*) AS count FROM local_asset_representations WHERE source_resource_id = (SELECT resource_id FROM local_resources WHERE kind = 'video' LIMIT 1)",
           )
-          .get("local_asset_representations"),
-      ).toBeUndefined();
+          .get(),
+      ).toEqual({ count: 1 });
     } finally {
       database.close();
     }
+  });
+
+  it("derives a bounded audio waveform behind an authorized Asset URL", async () => {
+    const { app, clashRoot } = await fixture();
+    const projectCollection = `${origin}/api/v1/projects/project-waveform/assets`;
+    const globalCollection = `${origin}/api/v1/libraries/personal/assets`;
+    const audioPath = join(clashRoot, "waveform-source.wav");
+    const ffmpeg = localFfmpegPath();
+    expect(ffmpeg).not.toBeNull();
+    await execFileAsync(ffmpeg!, [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:duration=0.25",
+      "-c:a",
+      "pcm_s16le",
+      "-y",
+      audioPath,
+    ]);
+    const imported = await app.request(`${projectCollection}/import-file`, {
+      method: "POST",
+      body: projectMediaForm(
+        "asset:waveform-source",
+        "source.wav",
+        "audio/wav",
+        "audio",
+        await readFile(audioPath),
+      ),
+    });
+    expect(imported.status, await imported.clone().text()).toBe(201);
+    const asset = (await imported.json()) as ResolvedAsset & {
+      waveformUrl?: string;
+    };
+
+    const waveformUrl = `${projectCollection}/${encodeURIComponent(asset.id)}/waveform`;
+    const waveform = await app.request(waveformUrl);
+    expect(waveform.status, await waveform.clone().text()).toBe(200);
+    const payload = (await waveform.json()) as {
+      recipe: string;
+      peaks: number[];
+    };
+    expect(payload.recipe).toMatch(/^audio-waveform\/v1:/);
+    expect(payload.peaks).toHaveLength(128);
+    expect(Math.max(...payload.peaks)).toBe(1);
+    expect(payload.peaks.some((peak) => peak > 0.25)).toBe(true);
+
+    const read = await app.request(
+      `${projectCollection}/${encodeURIComponent(asset.id)}`,
+    );
+    expect(read.status, await read.clone().text()).toBe(200);
+    await expect(read.json()).resolves.toMatchObject({ waveformUrl });
+
+    const published = await app.request(`${globalCollection}/publish`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-waveform",
+        projectAssetId: asset.id,
+      }),
+    });
+    expect(published.status, await published.clone().text()).toBe(201);
+    const globalAsset = (await published.json()) as ResolvedAsset & {
+      waveformUrl?: string;
+    };
+    const globalWaveformUrl = `${globalCollection}/${encodeURIComponent(
+      globalAsset.id,
+    )}/waveform`;
+    expect(globalAsset.waveformUrl).toBe(globalWaveformUrl);
+    const globalWaveform = await app.request(globalWaveformUrl);
+    expect(globalWaveform.status, await globalWaveform.clone().text()).toBe(
+      200,
+    );
+    await expect(globalWaveform.json()).resolves.toEqual(payload);
   });
 
   it("keeps Project cover identity independent from this device's byte availability", async () => {

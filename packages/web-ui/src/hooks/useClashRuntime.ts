@@ -185,6 +185,7 @@ export interface RuntimeSessionInfo {
   agentMemberId?: string;
   permissionMode?: string;
   acpSessionId?: string;
+  supportsSessionFork?: boolean;
   status?: string;
   updatedAt?: string;
 }
@@ -528,6 +529,27 @@ function canonicalRuntimeEvent({
   }) as OpenMAEvent;
 }
 
+function decodeRuntimeAgentUIEvent(
+  sessionId: string,
+  input: unknown,
+  context: Parameters<typeof decodeAcpSessionUpdate>[2],
+): OpenMAEvent | null {
+  const decoded = decodeAcpSessionUpdate(sessionId, input, context).event;
+  const parsed = parseAcpEvent(input);
+  if (
+    parsed.kind === "silent" &&
+    (decoded.type === "agent.message" ||
+      decoded.type === "agent.message_chunk" ||
+      decoded.type === "agent.thinking" ||
+      decoded.type === "system.notice" ||
+      decoded.type === "raw.event" ||
+      decoded.type === "vendor.event")
+  ) {
+    return null;
+  }
+  return decoded;
+}
+
 function persistedEventData(value: unknown): Record<string, unknown> {
   if (typeof value === "string") {
     try {
@@ -569,21 +591,25 @@ function decodePersistedRuntimeEvent(
   if (row.type === "user_prompt" && turnId) {
     const text = typeof data.text === "string" ? data.text : "";
     return [
-      canonical("user.message", {
-        message_id: `user-${turnId}`,
-        text,
-      }, "user"),
+      canonical(
+        "user.message",
+        {
+          message_id: `user-${turnId}`,
+          text,
+        },
+        "user",
+      ),
       canonical("session.running", {}, "running"),
     ];
   }
   if (row.type === "session.event" && data.event !== undefined) {
-    return decodeAcpSessionUpdate(sessionId, data.event, {
+    return decodeRuntimeAgentUIEvent(sessionId, data.event, {
       eventId: `clash-history:${row.seq}:acp`,
       occurredAt,
       ...(turnId ? { turnId } : {}),
       seq: row.seq,
       ...(harness ? { harness } : {}),
-    }).event;
+    });
   }
   if (row.type === "turn_completed" || row.type === "session.complete") {
     return turnId ? canonical("turn.completed", {}) : null;
@@ -1553,17 +1579,16 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       const store = agentUIStoreRef.current;
       const sessionId = store.getState().sessionId;
       const seq = ++runtimeEventSeq.current;
-      store.dispatch(
-        decodeAcpSessionUpdate(sessionId, event, {
-          eventId: `clash-runtime:${seq}:acp`,
-          occurredAt: new Date().toISOString(),
-          ...(turnId ? { turnId } : {}),
-          seq,
-          ...(selectedAgentIdRef.current
-            ? { harness: selectedAgentIdRef.current }
-            : {}),
-        }).event,
-      );
+      const decoded = decodeRuntimeAgentUIEvent(sessionId, event, {
+        eventId: `clash-runtime:${seq}:acp`,
+        occurredAt: new Date().toISOString(),
+        ...(turnId ? { turnId } : {}),
+        seq,
+        ...(selectedAgentIdRef.current
+          ? { harness: selectedAgentIdRef.current }
+          : {}),
+      });
+      if (decoded) store.dispatch(decoded);
     },
     [],
   );
@@ -1747,6 +1772,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         type: string;
         session_id?: string;
         acp_session_id?: string;
+        supports_session_fork?: boolean;
         turn_id?: string;
         event?: unknown;
         config_options?: unknown;
@@ -1804,6 +1830,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
                 ? {
                     ...session,
                     acpSessionId: msg.acp_session_id,
+                    supportsSessionFork: msg.supports_session_fork === true,
                     status: "active",
                   }
                 : session,

@@ -4,6 +4,7 @@ import {
   mkdir,
   open,
   readFile,
+  readdir,
   rename,
   rm,
   truncate,
@@ -12,6 +13,10 @@ import {
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { LoroDoc } from "loro-crdt";
+import {
+  ProjectCanvasPreviewSchema,
+  type ProjectCanvasPreview,
+} from "@clash/shared-types";
 
 export interface FileReplicaStoreOptions {
   publishImportedSnapshot?: (
@@ -28,6 +33,34 @@ export interface ImportedProjectReservation {
   snapshotSha256: string;
 }
 
+export interface CachedProjectCanvasPreview {
+  sourceVersion: string;
+  generatedAt: string;
+  preview: ProjectCanvasPreview;
+}
+
+function parseCachedProjectCanvasPreview(
+  value: unknown,
+): CachedProjectCanvasPreview | null {
+  if (typeof value !== "object" || value === null) return null;
+  const candidate = value as Record<string, unknown>;
+  if (
+    typeof candidate.sourceVersion !== "string" ||
+    !candidate.sourceVersion.trim() ||
+    typeof candidate.generatedAt !== "string" ||
+    !candidate.generatedAt.trim()
+  ) {
+    return null;
+  }
+  const preview = ProjectCanvasPreviewSchema.safeParse(candidate.preview);
+  if (!preview.success) return null;
+  return {
+    sourceVersion: candidate.sourceVersion,
+    generatedAt: candidate.generatedAt,
+    preview: preview.data,
+  };
+}
+
 function exactBytes(view: Uint8Array): Uint8Array {
   return view.byteOffset === 0 && view.byteLength === view.buffer.byteLength
     ? view
@@ -42,6 +75,16 @@ function isMissingFile(error: unknown): boolean {
     (error as NodeJS.ErrnoException).code === "ENOENT"
   );
 }
+
+function canvasThumbnailRevision(value: string): string {
+  const revision = value.trim();
+  if (!/^[a-f0-9]{64}$/u.test(revision)) {
+    throw new TypeError("Project canvas thumbnail revision is invalid.");
+  }
+  return revision;
+}
+
+const CANVAS_THUMBNAIL_CACHE_MAGIC = "CLASH_MAIN_CANVAS_THUMBNAIL_V1\n";
 
 export class FileReplicaStore {
   private readonly writeQueues = new Map<string, Promise<unknown>>();
@@ -185,6 +228,165 @@ export class FileReplicaStore {
       if (isMissingFile(error)) return null;
       throw error;
     }
+  }
+
+  async loadReplicaCheckpointCursor(projectId: string): Promise<number> {
+    let raw: string;
+    try {
+      raw = await readFile(this.replicaCheckpointCursorPath(projectId), "utf8");
+    } catch (error) {
+      if (isMissingFile(error)) return 0;
+      throw error;
+    }
+    const cursor = Number(raw.trim());
+    if (!Number.isSafeInteger(cursor) || cursor < 0) {
+      throw new Error(`Project ${projectId} has a corrupt replica checkpoint cursor.`);
+    }
+    return cursor;
+  }
+
+  async saveReplicaCheckpointCursor(
+    projectId: string,
+    cursor: number,
+  ): Promise<void> {
+    if (!Number.isSafeInteger(cursor) || cursor < 0) {
+      throw new TypeError("Replica checkpoint cursor is invalid.");
+    }
+    await this.enqueueProjectWrite(projectId, async () => {
+      const dir = this.loroDir(projectId);
+      await mkdir(dir, { recursive: true });
+      const temporaryPath = join(
+        dir,
+        `checkpoint.cursor.${process.pid}.${randomUUID()}.tmp`,
+      );
+      try {
+        const handle = await open(temporaryPath, "wx", 0o600);
+        try {
+          await handle.writeFile(`${cursor}\n`, "utf8");
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+        await rename(temporaryPath, this.replicaCheckpointCursorPath(projectId));
+        await this.syncDirectory(dir);
+      } finally {
+        await rm(temporaryPath, { force: true }).catch(() => undefined);
+      }
+    });
+  }
+
+  async readCanvasPreview(
+    projectId: string,
+  ): Promise<CachedProjectCanvasPreview | null> {
+    let raw: string;
+    try {
+      raw = await readFile(this.canvasPreviewPath(projectId), "utf8");
+    } catch (error) {
+      if (isMissingFile(error)) return null;
+      throw error;
+    }
+    return parseCachedProjectCanvasPreview(JSON.parse(raw) as unknown);
+  }
+
+  async writeCanvasPreview(
+    projectId: string,
+    entry: CachedProjectCanvasPreview,
+  ): Promise<void> {
+    const normalized = parseCachedProjectCanvasPreview(entry);
+    if (!normalized) {
+      throw new TypeError("Cached Project canvas preview is invalid.");
+    }
+    await this.enqueueProjectWrite(projectId, async () => {
+      const dir = this.derivedDir(projectId);
+      await mkdir(dir, { recursive: true });
+      const finalPath = this.canvasPreviewPath(projectId);
+      const temporaryPath = join(
+        dir,
+        `main-canvas-preview.${process.pid}.${randomUUID()}.tmp`,
+      );
+      try {
+        const handle = await open(temporaryPath, "wx", 0o600);
+        try {
+          await handle.writeFile(`${JSON.stringify(normalized)}\n`, "utf8");
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+        await rename(temporaryPath, finalPath);
+      } finally {
+        await rm(temporaryPath, { force: true }).catch(() => undefined);
+      }
+    });
+  }
+
+  async readCanvasThumbnail(
+    projectId: string,
+    sourceVersion: string,
+  ): Promise<Uint8Array | null> {
+    const revision = canvasThumbnailRevision(sourceVersion);
+    try {
+      const persisted = await readFile(this.canvasThumbnailPath(projectId));
+      const header = Buffer.from(
+        `${CANVAS_THUMBNAIL_CACHE_MAGIC}${revision}\n`,
+        "utf8",
+      );
+      if (
+        persisted.byteLength <= header.byteLength ||
+        !persisted.subarray(0, header.byteLength).equals(header)
+      ) {
+        return null;
+      }
+      return exactBytes(persisted.subarray(header.byteLength));
+    } catch (error) {
+      if (isMissingFile(error)) return null;
+      throw error;
+    }
+  }
+
+  async writeCanvasThumbnail(
+    projectId: string,
+    sourceVersion: string,
+    bytes: Uint8Array,
+  ): Promise<void> {
+    const revision = canvasThumbnailRevision(sourceVersion);
+    if (bytes.byteLength === 0) {
+      throw new TypeError("Cached Project canvas thumbnail must not be empty.");
+    }
+    await this.enqueueProjectWrite(projectId, async () => {
+      const dir = this.derivedDir(projectId);
+      await mkdir(dir, { recursive: true });
+      const finalPath = this.canvasThumbnailPath(projectId);
+      const temporaryPath = join(
+        dir,
+        `main-canvas-thumbnail.${process.pid}.${randomUUID()}.tmp`,
+      );
+      try {
+        const handle = await open(temporaryPath, "wx", 0o600);
+        try {
+          await handle.writeFile(
+            Buffer.concat([
+              Buffer.from(
+                `${CANVAS_THUMBNAIL_CACHE_MAGIC}${revision}\n`,
+                "utf8",
+              ),
+              Buffer.from(bytes),
+            ]),
+          );
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+        await rename(temporaryPath, finalPath);
+        const legacyFiles = (await readdir(dir)).filter((name) =>
+          /^main-canvas-thumbnail\.[a-f0-9]{64}\.webp$/u.test(name),
+        );
+        await Promise.all(
+          legacyFiles.map((name) => rm(join(dir, name), { force: true })),
+        );
+      } finally {
+        await rm(temporaryPath, { force: true }).catch(() => undefined);
+      }
+    });
   }
 
   async appendUpdate(projectId: string, update: Uint8Array): Promise<void> {
@@ -381,6 +583,12 @@ export class FileReplicaStore {
     }
   }
 
+  async truncateReplicaEventLog(projectId: string): Promise<void> {
+    await this.enqueueProjectWrite(projectId, () =>
+      this.truncateUpdateLog(projectId),
+    );
+  }
+
   async recover(projectId: string): Promise<LoroDoc> {
     return this.recoverUnsafe(projectId);
   }
@@ -407,6 +615,10 @@ export class FileReplicaStore {
     return join(this.projectDir(projectId), "loro");
   }
 
+  private derivedDir(projectId: string): string {
+    return join(this.projectDir(projectId), "derived");
+  }
+
   private projectDir(projectId: string): string {
     return join(this.rootDir, encodeURIComponent(projectId));
   }
@@ -419,8 +631,20 @@ export class FileReplicaStore {
     return join(this.loroDir(projectId), "updates.log");
   }
 
+  private replicaCheckpointCursorPath(projectId: string): string {
+    return join(this.loroDir(projectId), "checkpoint.cursor");
+  }
+
   private importReservationPath(projectId: string): string {
     return join(this.loroDir(projectId), "import-reservation.json");
+  }
+
+  private canvasPreviewPath(projectId: string): string {
+    return join(this.derivedDir(projectId), "main-canvas-preview.json");
+  }
+
+  private canvasThumbnailPath(projectId: string): string {
+    return join(this.derivedDir(projectId), "main-canvas-thumbnail.cache");
   }
 
   private validateImportReservation(

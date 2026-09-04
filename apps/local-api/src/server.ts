@@ -56,7 +56,10 @@ import {
 import { createProviderPluginProjector } from "./provider-plugin-projector.js";
 import { createProviderPluginExecutor } from "./provider-plugin-executor.js";
 import { createExecutablePluginActionInvoker } from "./plugin-action-runtime.js";
-import { createCodexImagegenMarketplace } from "./bundled-plugins.js";
+import {
+  createCodexImagegenMarketplace,
+  createOfficialPluginsMarketplace,
+} from "./bundled-plugins.js";
 import { selectMarketplaceFeed } from "./marketplace-feed.js";
 import {
   TRUSTED_BUNDLED_PLUGIN_MODULES,
@@ -71,7 +74,10 @@ import {
   validateHostExecutablePluginPackageContracts,
   type HostExecutablePluginPackage,
 } from "./runtime/plugin-package.js";
-import { createCodexImageGenerator } from "./codex-imagegen.js";
+import {
+  preflightCodexImageGenerator,
+  type CodexImageGeneratorPreflightResult,
+} from "./codex-imagegen.js";
 import {
   attachLocalAcpSessions,
   createLocalAcpCapabilityCacheStore,
@@ -84,6 +90,7 @@ import {
 } from "./local-acp.js";
 import { createMockFalQueueService } from "./fal-mock.js";
 import { createLocalWorkflowProcessor } from "./local-processor.js";
+import { localDurableRunOwnerId } from "./durable-run-coordinator.js";
 import { createSqliteDurableRunJournal } from "./durable-run-journal.js";
 import {
   providerAccountsForRuntime,
@@ -102,6 +109,7 @@ import {
   createLocalFfprobeAssetInspector,
   localFfprobePath,
 } from "./local-asset-inspections.js";
+import { createLocalAssetRepresentationService } from "./local-asset-representations.js";
 import { createLocalPluginAssetStagingStore } from "./local-plugin-asset-staging.js";
 import type { LocalPluginAssetStagingStore } from "./local-plugin-asset-staging.js";
 import { createLocalExecutorAssetCapabilityIssuer } from "./executor-asset-capability.js";
@@ -186,6 +194,8 @@ export interface LocalApiServerOptions {
     ownerClientId?: string;
     startedBy?: HostStartedBy;
   };
+  /** Injectable for packaged hosts and deterministic startup tests. */
+  codexImagegenPreflight?: () => Promise<CodexImageGeneratorPreflightResult>;
 }
 
 /**
@@ -468,6 +478,7 @@ function createMockAcpSessionManager(send: SessionSender): SessionManagerLike {
         type: "session.ready",
         session_id,
         acp_session_id: "mock-acp-session",
+        supports_session_fork: false,
       });
     },
     prompt: async ({ session_id, turn_id, text }) => {
@@ -773,6 +784,7 @@ export function createLocalPluginBrokerServices(options: {
   directorStageRenderer?: LocalDirectorStageRenderer;
   analyzeMedia?: LocalExecutablePluginBrokerOptions["analyzeMedia"];
   enhanceVideo?: LocalExecutablePluginBrokerOptions["enhanceVideo"];
+  generateCodexImage?: LocalExecutablePluginBrokerOptions["generateCodexImage"];
 }) {
   const providerStore = createLocalProviderStore(options.dataDir);
   const metadataStore = createLocalMetadataStore(options.dataDir);
@@ -894,7 +906,9 @@ export function createLocalPluginBrokerServices(options: {
       ]);
       return providerAccountsForRuntime(accounts, "local-user", oauthRecords);
     },
-    generateCodexImage: createCodexImageGenerator(),
+    ...(options.generateCodexImage
+      ? { generateCodexImage: options.generateCodexImage }
+      : {}),
     ...(options.directorStageRenderer
       ? {
           captureDirectorStageFrame: async ({
@@ -1177,7 +1191,7 @@ export function createWorkflowPluginBindingResolver(options: {
   };
 }
 
-export function startLocalApiServer(options: LocalApiServerOptions) {
+export async function startLocalApiServer(options: LocalApiServerOptions) {
   // The recorder/replayer is intentionally imported only for the explicit test harness option.
   // Its module also supports child-process `--import` startup, so a production Host must not load
   // it (and therefore must not install a process-wide HTTP interceptor) by default.
@@ -1199,19 +1213,42 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
         );
   const clashHome = clashHomeForLocalDataDir(options.dataDir);
   const actionsRoot = join(clashHome, "actions");
+  const codexImagegen = await (
+    options.codexImagegenPreflight ?? preflightCodexImageGenerator
+  )().catch(
+    (): CodexImageGeneratorPreflightResult => ({
+      available: false,
+      reason: "login-check-failed",
+    }),
+  );
+  if (!codexImagegen.available) {
+    console.info(
+      `[local-api] Codex ImageGen disabled (${codexImagegen.reason}).`,
+    );
+  }
   const discoveryEnabled = options.discovery?.enabled !== false;
   const pendingDiscoveryHostId = discoveryEnabled ? randomUUID() : undefined;
   const discoveryProfile = resolveClashProfile(process.env);
+  // `tsx watch` replaces this server process; its stable parent owns the lease.
+  const sourceWatchLifecyclePid =
+    process.env.CLASH_DAEMON_SOURCE_WATCH === "1" ? process.ppid : undefined;
   const codexImagegenMarketplace = createCodexImagegenMarketplace({
+    actionsRoot,
+  });
+  const officialPluginsMarketplace = createOfficialPluginsMarketplace({
     actionsRoot,
   });
   const npxSkillsMarketplace = createNpxSkillsMarketplace({
     registry: skillMarketplaceRegistry,
   });
-  const marketplaceActions = [...codexImagegenMarketplace.actions];
   const marketplaceSkills = [...npxSkillsMarketplace.skills];
+  const marketplacePlugins = [
+    ...(codexImagegen.available ? codexImagegenMarketplace.plugins : []),
+    ...officialPluginsMarketplace.plugins,
+  ];
+  const codexImagegenPluginId = codexImagegenMarketplace.plugins[0]!.id;
   const marketplaceFeed = selectMarketplaceFeed({
-    actions: marketplaceActions,
+    plugins: marketplacePlugins,
     skills: marketplaceSkills,
   });
   const projectAssetFileReplica = new FileReplicaStore(
@@ -1277,6 +1314,9 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     },
     uploadOrigin: localOrigin,
     publicAssetStorage,
+    ...(codexImagegen.available
+      ? { generateCodexImage: codexImagegen.generate }
+      : {}),
     directorStageRenderer: options.directorStageRenderer,
     analyzeMedia: async (input) => {
       if (!mediaAnalysisService) {
@@ -1318,6 +1358,11 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       return directPluginHost
         ? directPluginHost.listGenerators()
         : pluginHostClient.listGenerators();
+    },
+    async listViews() {
+      return directPluginHost
+        ? directPluginHost.listViews()
+        : pluginHostClient.listViews();
     },
     async resolveGeneratorDefinition(pluginId: string, definitionId: string) {
       return directPluginHost
@@ -1368,7 +1413,11 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       const host = new ActionsHost({
         actionsRoot,
         pluginBroker,
-        trustedBundledPluginModules: TRUSTED_BUNDLED_PLUGIN_MODULES,
+        trustedBundledPluginModules: codexImagegen.available
+          ? TRUSTED_BUNDLED_PLUGIN_MODULES
+          : TRUSTED_BUNDLED_PLUGIN_MODULES.filter(
+              ({ id }) => id !== codexImagegenPluginId,
+            ),
         loadTrustedBundledPluginModule,
         ...(options.providerHttpInstrumentation
           ? { providerHttpInstrumentation: options.providerHttpInstrumentation }
@@ -1451,6 +1500,10 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     await ensurePluginRuntime();
     return pluginExecutionClient.listGenerators();
   };
+  const listPluginViews = async () => {
+    await ensurePluginRuntime();
+    return pluginExecutionClient.listViews();
+  };
   const resolvePluginGeneratorDefinition = async (
     pluginId: string,
     definitionId: string,
@@ -1525,6 +1578,11 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     dataDir: options.dataDir,
     clashRoot: clashHome,
     ...(inspectAssetResource ? { inspectResource: inspectAssetResource } : {}),
+  });
+  const assetRepresentations = createLocalAssetRepresentationService({
+    dataDir: options.dataDir,
+    clashRoot: clashHome,
+    assetInspection,
   });
   const externalAigcOptions = {
     fal: falMock,
@@ -1670,7 +1728,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     hostIdentity: pendingDiscoveryHostId
       ? {
           hostId: pendingDiscoveryHostId,
-          pid: process.pid,
+          pid: sourceWatchLifecyclePid ?? process.pid,
           profile: discoveryProfile,
           protocolVersion: LOCAL_HOST_PROTOCOL_VERSION,
           ...(process.env.CLASH_DAEMON_RUNTIME_FINGERPRINT
@@ -1741,6 +1799,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     },
     providerPluginExecutor,
     assetInspection,
+    assetRepresentations,
     ...(options.providerGenerationDeadlineMs === undefined
       ? {}
       : {
@@ -1783,19 +1842,25 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
         );
       },
     },
-    marketplaceActions,
     listInstalledMarketplaceActions: () =>
-      codexImagegenMarketplace.listInstalled(),
-    installMarketplaceAction: (packageId) =>
-      codexImagegenMarketplace.install(packageId),
-    uninstallMarketplaceAction: (actionId) =>
-      codexImagegenMarketplace.uninstall(actionId),
+      codexImagegen.available
+        ? codexImagegenMarketplace.listInstalled()
+        : Promise.resolve([]),
     marketplaceSkills,
     marketplaceFeed,
     listInstalledMarketplaceSkills: () => npxSkillsMarketplace.listInstalled(),
     installMarketplaceSkill: (skillId) => npxSkillsMarketplace.install(skillId),
     uninstallMarketplaceSkill: (skillId) =>
       npxSkillsMarketplace.uninstall(skillId),
+    marketplacePlugins,
+    installMarketplacePlugin: (packageId) =>
+      codexImagegen.available && packageId === codexImagegenPluginId
+        ? codexImagegenMarketplace.install(packageId)
+        : officialPluginsMarketplace.install(packageId),
+    uninstallMarketplacePlugin: (pluginId) =>
+      codexImagegen.available && pluginId === codexImagegenPluginId
+        ? codexImagegenMarketplace.uninstall(pluginId)
+        : officialPluginsMarketplace.uninstall(pluginId),
     pluginPackages: {
       list: () => listHostExecutablePluginPackages(actionsRoot),
       validate: (input) =>
@@ -1818,6 +1883,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     },
     listPluginCards,
     listPluginGenerators,
+    listPluginViews,
     resolveGeneratorDefinition: resolvePluginGeneratorDefinition,
     directorStageRenderer: options.directorStageRenderer,
     listPluginModelBindings,
@@ -1829,6 +1895,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
   const workflowProcessor = createLocalWorkflowProcessor({
     dataDir: options.dataDir,
     assetInspection,
+    assetRepresentations,
     mediaBaseUrl: resolveMediaBaseUrl(() => boundPort),
     ...(options.providerGenerationDeadlineMs === undefined
       ? {}
@@ -1848,7 +1915,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     executablePluginAction,
     resolvePluginBinding: workflowPluginBindingResolver,
     durableProviderRuns: {
-      ownerId: pendingDiscoveryHostId ?? "local-api",
+      ownerId: localDurableRunOwnerId(pendingDiscoveryHostId),
       providerPluginExecutor,
     },
     textAgent: localAcp.runTextTask
@@ -1928,6 +1995,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
             discoveryRunDir,
             pendingDiscoveryHostId,
             discoveryProfile,
+            sourceWatchLifecyclePid,
           );
         }
         // Recovery is owner-driven, not client-driven. Do not await Project processing here: a
@@ -1956,6 +2024,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       configWatcherClosed = true;
       stopConfigWatcher();
       await Promise.all([
+        assetRepresentations.close(),
         localAcp.disposeAll(),
         options.directorStageRenderer?.dispose(),
         Promise.resolve(pluginBroker.close?.()),
@@ -1971,7 +2040,10 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
           }),
       ]);
     },
-    () => publishedDiscoveryHostId,
+    () =>
+      sourceWatchLifecyclePid === undefined
+        ? publishedDiscoveryHostId
+        : undefined,
     discoveryRunDir,
   );
   server.once("error", (error) => {
@@ -1997,6 +2069,7 @@ async function writeServerDiscoveryRecord(
   runDir: string,
   hostId: string,
   profile: "dev" | "prod",
+  lifecyclePid?: number,
 ): Promise<string> {
   const record = createHostDiscoveryRecord({
     hostId,
@@ -2006,6 +2079,7 @@ async function writeServerDiscoveryRecord(
     startedBy: options.discovery?.startedBy ?? "cli",
     ownerClientId: options.discovery?.ownerClientId,
     profile,
+    pid: lifecyclePid,
   });
   await writeHostDiscovery(record, { runDir });
   return record.hostId;

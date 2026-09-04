@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { sourceContains } from "../test-support/source-match";
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(join(root, path), "utf8");
@@ -22,9 +23,7 @@ describe("agent annotation surface integration", () => {
     const directorViewport = read(
       "packages/director-ui/src/DirectorViewport.tsx",
     );
-    const contextMenu = read(
-      "packages/gui/src/components/ui/context-menu.tsx",
-    );
+    const contextMenu = read("packages/gui/src/components/ui/context-menu.tsx");
 
     expect(contextMenu).toContain('from "radix-ui"');
     expect(projectEditor).toContain("<AgentAnnotationContextMenu");
@@ -76,7 +75,7 @@ describe("agent annotation surface integration", () => {
     expect(selectionOverlay).toContain("data-agent-annotation-highlight");
     expect(selectionOverlay).toContain("data-agent-annotation-pin");
     // Object-level annotations on every surface share one DOM-anchored pin
-    // layer, and every pin routes into the same right-side inspector.
+    // layer, and every pin routes into the same source-anchored editor.
     expect(projectEditor).toContain("<AgentAnnotationDomPinLayer");
     const domPinLayer = read(
       "packages/web-ui/src/components/copilot/AnnotationDomPinLayer.tsx",
@@ -98,7 +97,7 @@ describe("agent annotation surface integration", () => {
     expect(directorStage).toContain("annotationTarget");
   });
 
-  it("opens every annotation path in one right-side inspector with shared context actions", () => {
+  it("opens every annotation path beside its workspace marker without expanding the agent panel", () => {
     const projectEditor = read(
       "packages/web-ui/src/components/ProjectEditor.tsx",
     );
@@ -118,18 +117,42 @@ describe("agent annotation surface integration", () => {
     const selectionOverlay = read(
       "packages/web-ui/src/components/copilot/AgentSelectionAnnotationOverlay.tsx",
     );
-
-    expect(projectEditor).toContain("activeAnnotationId");
-    expect(projectEditor).toContain("openAgentAnnotation");
-    expect(copilot).toContain("<AgentAnnotationInspector");
-    expect(chatInput).toContain("onAnnotationOpen");
-    expect(annotationBlock).toContain(
-      "export function AgentAnnotationInspector",
+    const openAnnotation = projectEditor.slice(
+      projectEditor.indexOf("const openAgentAnnotation"),
+      projectEditor.indexOf("const queueAgentAnnotation"),
     );
-    expect(annotationBlock).toContain("AgentAnnotationActionsContextMenu");
-    expect(canvasPins).toContain("AgentAnnotationActionsContextMenu");
-    expect(domPins).toContain("AgentAnnotationActionsContextMenu");
-    expect(selectionOverlay).toContain("AgentAnnotationActionsContextMenu");
+
+    expect(
+      sourceContains(openAnnotation, "setActiveAnnotationId(annotationId)"),
+    ).toBe(true);
+    expect(sourceContains(openAnnotation, "setIsSidebarCollapsed")).toBe(false);
+    expect(sourceContains(projectEditor, "<AgentAnnotationEditor")).toBe(true);
+    expect(sourceContains(copilot, "AgentAnnotationEditor")).toBe(false);
+    expect(sourceContains(copilot, "AgentAnnotationInspector")).toBe(false);
+    expect(sourceContains(chatInput, "onAnnotationOpen")).toBe(false);
+    expect(sourceContains(chatInput, "onAnnotationChange")).toBe(false);
+    expect(sourceContains(chatInput, "onAnnotationLocate")).toBe(false);
+    expect(
+      sourceContains(annotationBlock, "export function AgentAnnotationEditor"),
+    ).toBe(true);
+    expect(annotationBlock).toContain("[data-agent-annotation-anchor]");
+    expect(canvasPins).toContain("data-agent-annotation-anchor={pin.id}");
+    expect(domPins).toContain("data-agent-annotation-anchor={pin.id}");
+    expect(selectionOverlay).toContain(
+      "data-agent-annotation-anchor={annotation.id}",
+    );
+    expect(
+      sourceContains(annotationBlock, "AgentAnnotationActionsContextMenu"),
+    ).toBe(true);
+    expect(
+      sourceContains(canvasPins, "AgentAnnotationActionsContextMenu"),
+    ).toBe(true);
+    expect(sourceContains(domPins, "AgentAnnotationActionsContextMenu")).toBe(
+      true,
+    );
+    expect(
+      sourceContains(selectionOverlay, "AgentAnnotationActionsContextMenu"),
+    ).toBe(true);
   });
 
   it("opens Text assets in the document editor instead of treating them as Canvas locators", () => {

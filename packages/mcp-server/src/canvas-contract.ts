@@ -38,6 +38,10 @@ export type CanvasToolInput = {
   refs?: string[];
   params?: Record<string, string | number | boolean>;
   data?: Record<string, string | number | boolean>;
+  /** Full structured state for a plugin-view node; Host validates the View schema atomically. */
+  viewState?: unknown;
+  /** Workspace-relative JSON file containing viewState. */
+  viewStateFile?: string;
   assetId?: string;
   newNodeId?: string;
   x?: number;
@@ -127,6 +131,11 @@ export function buildCanvasCliArgs(
       if (input.label !== undefined) args.push("--label", input.label);
       if (input.content !== undefined) args.push("--content", input.content);
       if (input.contentFile !== undefined) args.push("--content-file", input.contentFile);
+      if (input.viewState !== undefined && input.viewStateFile !== undefined) {
+        throw new Error("viewState and viewStateFile are mutually exclusive");
+      }
+      if (input.viewState !== undefined) args.push("--view-state-json", JSON.stringify(input.viewState));
+      if (input.viewStateFile !== undefined) args.push("--view-state-file", input.viewStateFile);
       if (input.assetId?.trim()) args.push("--asset-id", input.assetId.trim());
       appendRecord(args, "--data", input.data);
       break;

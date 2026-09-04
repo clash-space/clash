@@ -1,0 +1,14 @@
+{
+  "summary": "Portable event-backed replica engine plus CRDT-specific adapters.",
+  "context_hints": [
+    "ReplicaEngine owns durability ordering, replay, checkpoint scheduling, and projection offsets.",
+    "CRDT versions remain adapter-owned; do not collapse Loro VersionVectors or Yjs state vectors into the engine cursor.",
+    "Transport, storage, checkpoint, projection, fan-out, replica-link, and scheduling are ports.",
+    "Full Loro snapshots are the safe default. A shallow checkpoint requires a product-owned GC frontier that accounts for admitted offline replicas."
+  ],
+  "key_files": {
+    "src/replica-engine.ts": "Generic durable replica engine.",
+    "src/loro.ts": "Loro state adapter.",
+    "src/loro-protocol.ts": "Transport-neutral official Loro protocol session."
+  }
+}

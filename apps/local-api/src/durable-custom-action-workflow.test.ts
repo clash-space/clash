@@ -12,6 +12,8 @@ import {
 import { createLocalDurableRun } from "./durable-run-coordinator.js";
 import { createSqliteDurableRunJournal } from "./durable-run-journal.js";
 import { createLocalWorkflowProcessor } from "./local-processor.js";
+import { createLocalPluginAssetStagingStore } from "./local-plugin-asset-staging.js";
+import { createLocalAssetInspectionService } from "./local-asset-inspections.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -81,6 +83,85 @@ function customActionDoc(input: {
 }
 
 describe("durable executable custom Action", () => {
+  it("publishes a typed image plugin output through the generic durable media slot", async () => {
+    const dataDir = await temporaryDataDir();
+    const doc = customActionDoc({
+      prompt: "A cat",
+      tone: "natural",
+      referenceAssetId: "asset-original",
+    });
+    const node = doc.getMap("nodes").get("action-node") as Record<string, any>;
+    doc.getMap("nodes").set("action-node", {
+      ...node,
+      type: "image",
+      data: {
+        ...node.data,
+        outputType: "image",
+        actionType: "custom:codex-imagegen",
+        customActionId: "codex-imagegen",
+      },
+    });
+    const staging = createLocalPluginAssetStagingStore({ dataDir });
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+
+    const processor = createLocalWorkflowProcessor({
+      dataDir,
+      assetInspection: createLocalAssetInspectionService({
+        dataDir,
+        inspectResource: async ({ resource }) => ({
+          contentType: resource.contentType ?? "image/png",
+          width: 1,
+          height: 1,
+          rotationDegrees: 0,
+        }),
+      }),
+      executablePluginAction: async (request) => {
+        const invocationId = "typed-image-result";
+        const staged = await staging.stage({
+          projectId: "project-1",
+          taskId: request.taskId,
+          slot: "image",
+          pluginId: binding.pluginId,
+          pluginVersion: binding.version,
+          invocationId,
+          kind: "image",
+          mediaType: "image/png",
+          bytes: png,
+        });
+        return {
+          protocol: "clash.plugin.result/v1",
+          invocationId,
+          status: "completed",
+          outputs: [
+            {
+              slot: "image",
+              kind: "asset",
+              asset: {
+                assetId: staged.projectAssetId,
+                uri: `clash-asset://${staged.projectAssetId}`,
+                kind: "image",
+                mediaType: "image/png",
+              },
+            },
+          ],
+        };
+      },
+    });
+    for (let step = 0; step < 3; step += 1) {
+      await processor.process({ doc, projectId: "project-1" });
+    }
+
+    expect(doc.getMap("nodes").get("action-node")).toMatchObject({
+      data: {
+        status: "completed",
+        assetId: expect.stringMatching(/^plugin-output:/),
+      },
+    });
+  });
+
   it("does not let a legacy generating run reserve the node from its current revision", async () => {
     const dataDir = await temporaryDataDir();
     const doc = customActionDoc({

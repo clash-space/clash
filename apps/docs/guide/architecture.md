@@ -250,22 +250,26 @@ flowchart TB
     transport["Transport projection\nloopback URL or signed capability"]
     gui["GUI presentation adapters"]
     blob["Immediate blob preview"]
-    deviceCache["Disposable poster / waveform / filmstrip cache"]
+    derived["Host-private durable thumbnail / waveform representation"]
+    deviceCache["Disposable filmstrip / fallback cache"]
   end
   resolver -. "authorized replaceable projection" .-> transport
   transport --> gui
   gui --> blob
+  resolver -. "source Resource + recipe" .-> derived
+  derived -. "entry-authorized URL" .-> gui
   gui --> deviceCache
 ```
 
-The adapter layer is outside the authority loop: its object URLs, decoded
-poster frames, peaks, filmstrip samples, progress UI, and retry state are
-disposable. Current Local derives all three from the authorized original-media
-projection in frontend code; it does not request a backend representation.
-They cannot become Resource or Asset identity, synchronized metadata, an
-Action binding, or a condition for declaring a Durable Run complete. Code for
-those concerns therefore lives behind presentation/cache/transport adapters
-rather than in the Asset SDK authority ports or Durable engine.
+The adapter layer is outside the authority loop. Current Local materializes
+image thumbnails, video first-frame posters, and bounded audio waveforms as
+Host-private representations keyed by immutable Resource plus recipe. Their
+mapping uses the shared Durable Run journal for retry and restart recovery, but
+the result remains replaceable derived state exposed only through an
+entry-authorized projection. Filmstrip samples and browser fallbacks remain
+disposable device caches. None can become Asset identity, synchronized
+metadata, an Action binding, or a condition for declaring the source Asset or
+its producing Run complete.
 
 A loose import publishes only its Project Asset. A generated output always
 publishes the Project Asset and its complete output binding set atomically;
@@ -274,8 +278,9 @@ imports that declare Action bindings use that same one-mutation boundary.
 The byte producer and every retryable processor may run at least once. Stable
 consumer keys make the published facts singular: the probe registry uses
 Resource plus recipe version, while durable Action output uses `actionRunId +
-outputSlot`. Poster, waveform, and filmstrip caches are not consumers in that
-protocol. The Local publisher stages and probes before it atomically writes the
+outputSlot`. Representation runs use their own stable source-Resource plus
+recipe consumer key; filmstrip caches are not consumers in that protocol. The
+Local publisher stages and probes before it atomically writes the
 Project Asset and output binding; a crash never requires calling the Provider
 again once its result is checkpointed.
 

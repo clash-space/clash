@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 describe("AgentAnnotationDomPinLayer", () => {
-  it("routes DOM surface pins to the shared annotation inspector", () => {
+  it("routes DOM surface pins to the source-anchored annotation editor", () => {
     const target = document.createElement("div");
     target.dataset.agentAnnotationObjectId = "clip-1";
     vi.spyOn(target, "getBoundingClientRect").mockReturnValue({

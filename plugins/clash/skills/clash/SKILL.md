@@ -32,15 +32,28 @@ stop with an infrastructure error. Never replace a failed product operation
 with handwritten lookalike state, a direct FFmpeg render, or other
 filesystem-only evidence.
 
+An MCP startup, CLI startup, or transport error is not evidence that a
+workspace is unbound or uninitialized. Preserve any existing project binding;
+report or recover the runtime failure through the selected interface, and
+switch to the peer interface only when the first interface is unavailable. Do
+not respond to a transport failure by running init.
+
 ## Confirm the workspace
 
-Resolve the intended working directory before writing. Initialization creates
-only the Clash project binding under `.clash/project.toml`; it must not replace
-the repository's own instructions or source files.
+Resolve the intended working directory before writing. An existing
+`.clash/project.toml` is the workspace binding: use it immediately and do not
+run `clash init` or call `clash_workspace_init`. The first product action in a
+bound project should be the narrowest relevant read or operation. A
+runner-provided ready receipt has the same meaning and also skips init.
 
-- CLI: run `clash init --json`, or `clash init --project <id> --json` when the
+Only run `clash init` or call `clash_workspace_init` when the user explicitly
+asks to create or bind a Clash workspace and `.clash/project.toml` is missing.
+Initialization creates only that project binding; it must not replace the
+repository's own instructions or source files:
+
+- CLI: use `clash init --json`, or `clash init --project <id> --json` when the
   project identity is known.
-- MCP: call `clash_workspace_init` with the absolute `cwd` and optional
+- MCP: use `clash_workspace_init` with the absolute `cwd` and optional
   `projectId`.
 
 Both entry points return the same initialization contract. Inspect the result:
@@ -49,10 +62,10 @@ means the existing project binding was preserved. A conflicting requested
 project identity must fail rather than overwrite `.clash/project.toml`.
 
 Do not assume every working directory is new or backed by Git. If it is already
-bound, continue with the returned `projectId`; if it is unbound, let init
-generate a local ID or provide the explicitly intended ID. In a runner-managed
-headless workspace, init is infrastructure-owned and should already be complete
-before the task is handed to the agent.
+bound, continue with the marker's `projectId`; if it is unbound and binding was
+explicitly requested, let init generate a local ID or provide the intended ID.
+In a runner-managed headless workspace, init is infrastructure-owned and should
+already be complete before the task is handed to the agent.
 
 ## Navigate progressively
 
@@ -130,6 +143,28 @@ payload:
 If a required Generator definition or action is unavailable, report the Clash
 capability gap. Do not silently fall back to a global media skill, write a
 lookalike file, or claim that an external tool result belongs to the Project.
+
+## Fill plugin Views as structured Project drafts
+
+A plugin View is a `plugin-view` Canvas node, normally on the implicit `main`
+Canvas. Read it with `clash_canvas_get` before changing it. For the Storyboard
+View, preserve all four top-level groups: `keyElements`, `shots`,
+`audioLayers`, and `uncategorized`. An element, shot, or audio entry owns
+material slots; each slot owns zero or more Project Asset candidates and an
+optional `selectedCandidateId`. Shot descriptions may contain structured
+`entity-reference` parts rather than flattened display text.
+
+Apply the complete draft through `clash_canvas_update` using `viewState`, or
+edit a workspace JSON draft and pass `viewStateFile`. The Host validates the
+whole View state under the node read receipt, so preserve entries you did not
+intend to change and re-read after applying. Never patch the immutable View
+definition reference.
+
+When filling a material slot through generation, follow the native Generator
+workflow above first. After `output_commit_get`, add the committed Project Asset
+as a candidate and retain `generatorId`, `generatorRevisionId`, `actionRunId`,
+`outputCommitId`, and `outputSlot` in `generatedBy`. Selecting a final candidate
+is a separate View update; the View plugin itself contributes no Generator.
 
 ## Operate and verify
 

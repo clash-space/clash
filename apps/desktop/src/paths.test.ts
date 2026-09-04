@@ -63,14 +63,19 @@ describe("desktop paths", () => {
     ).toBe(join("/app/resources", "web-dist"));
   });
 
-  it("loads the workspace web build in development", () => {
+  it("loads the Desktop-owned renderer build outside a packaged app", () => {
     expect(
       resolveWebDistDir({
         isPackaged: false,
         moduleDir: "/repo/apps/desktop/dist",
         resourcesPath: "/app/resources",
       }),
-    ).toBe(resolve("/repo/apps/desktop/dist", "../../web/dist/client"));
+    ).toBe(
+      resolve(
+        "/repo/apps/desktop/dist",
+        "../.vite/renderer/main_window",
+      ),
+    );
   });
 
   it("uses the managed ACP install directory in packaged apps", () => {

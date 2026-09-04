@@ -78,6 +78,30 @@ describe("ProjectEditor workspace model", () => {
     ).toBe(false);
   });
 
+  it("places sidebar-created plugin surfaces on the implicit Main Canvas", () => {
+    expect(
+      sourceMatches(
+        source,
+        /const createPluginViewFromNavigator[\s\S]{0,1600}createPluginView\(\{[\s\S]{0,500}canvasId:\s*DEFAULT_CANVAS_ID/,
+      ),
+      "Plugin View direct-add must target Main",
+    ).toBe(true);
+    expect(
+      sourceMatches(
+        source,
+        /const createTimelineFromNavigator[\s\S]{0,1600}attachTimeline\(\{[\s\S]{0,300}canvasId:\s*DEFAULT_CANVAS_ID/,
+      ),
+      "Timeline direct-add must target Main",
+    ).toBe(true);
+    expect(
+      sourceMatches(
+        source,
+        /const createDirectorStageFromNavigator[\s\S]{0,1600}attachDirectorStage\(\{[\s\S]{0,300}canvasId:\s*DEFAULT_CANVAS_ID/,
+      ),
+      "Director Stage direct-add must target Main",
+    ).toBe(true);
+  });
+
   it("persists the project navigator through the shared workspace shell", () => {
     expect(source).toMatch(
       /localStorage\.getItem\(["']project-navigator-collapsed["']\)/,

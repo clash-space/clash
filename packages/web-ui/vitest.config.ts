@@ -111,6 +111,10 @@ export default defineConfig({
         find: /^@clash\/shared-runtime$/,
         replacement: resolve(__dirname, "../shared-runtime/src/browser.ts"),
       },
+      {
+        find: /^@clash\/replica\/loro-protocol$/,
+        replacement: resolve(__dirname, "../shared-replica/src/loro-protocol.ts"),
+      },
     ],
   },
   test: {

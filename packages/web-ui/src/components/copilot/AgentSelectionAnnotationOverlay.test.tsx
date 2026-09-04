@@ -158,7 +158,7 @@ describe("AgentSelectionAnnotationOverlay", () => {
     ).toBeTruthy();
   });
 
-  it("opens the shared annotation inspector when the highlighted passage is clicked", () => {
+  it("opens the source-anchored annotation editor when the highlighted passage is clicked", () => {
     const onSelect = vi.fn();
     const { container } = render(
       <div className="relative h-96 w-96">

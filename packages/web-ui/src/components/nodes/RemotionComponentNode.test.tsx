@@ -6,8 +6,11 @@ import RemotionComponentNode from "./RemotionComponentNode";
 
 const mocks = vi.hoisted(() => ({
   updateNode: vi.fn(() => true),
-  applyTimelineState: vi.fn((_id: string, _state: Record<string, unknown>) => true),
+  applyTimelineState: vi.fn(
+    (_id: string, _state: Record<string, unknown>) => true,
+  ),
   setNodes: vi.fn(),
+  getNode: vi.fn(),
   timeline: {
     id: "timeline-main",
     name: "Main cut",
@@ -16,14 +19,29 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@xyflow/react", () => ({
-  Handle: () => null,
+  Handle: ({ type, position }: { type: string; position: string }) => (
+    <div data-testid={`${type}-handle-${position}`} />
+  ),
   Position: { Left: "left", Right: "right" },
-  useReactFlow: () => ({ setNodes: mocks.setNodes }),
+  useReactFlow: () => ({
+    setNodes: mocks.setNodes,
+    getNode: mocks.getNode,
+  }),
 }));
 
 vi.mock("@remotion/player", () => ({
-  Player: ({ inputProps }: { inputProps: { source: string } }) => (
-    <div data-testid="remotion-player" data-source={inputProps.source} />
+  Player: ({
+    inputProps,
+    controls,
+  }: {
+    inputProps: { source: string };
+    controls?: boolean;
+  }) => (
+    <div
+      data-testid="remotion-player"
+      data-source={inputProps.source}
+      data-controls={String(controls)}
+    />
   ),
 }));
 
@@ -40,12 +58,19 @@ vi.mock("../LoroSyncContext", () => ({
 }));
 
 vi.mock("./NodeModalDialog", () => ({
-  NodeModalDialog: ({ open, children }: { open: boolean; children: React.ReactNode }) =>
-    open ? <div role="dialog">{children}</div> : null,
+  NodeModalDialog: ({
+    open,
+    children,
+  }: {
+    open: boolean;
+    children: React.ReactNode;
+  }) => (open ? <div role="dialog">{children}</div> : null),
 }));
 
 vi.mock("../ui/select", () => ({
-  SelectMenu: ({ value }: { value: string }) => <div data-testid="timeline-select">{value}</div>,
+  SelectMenu: ({ value }: { value: string }) => (
+    <div data-testid="timeline-select">{value}</div>
+  ),
 }));
 
 const baseProps = {
@@ -78,14 +103,101 @@ describe("RemotionComponentNode", () => {
     mocks.updateNode.mockClear();
     mocks.applyTimelineState.mockClear();
     mocks.setNodes.mockClear();
+    mocks.getNode.mockReset();
   });
 
   it("is a distinct code-editable node with a real Remotion Player preview", () => {
     render(<RemotionComponentNode {...baseProps} />);
 
-    expect(screen.getByTestId("remotion-player").getAttribute("data-source")).toContain("Before");
+    expect(
+      screen.getByTestId("remotion-player").getAttribute("data-source"),
+    ).toContain("Before");
     expect(screen.getByRole("button", { name: "Edit code" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /render|export/i })).toBeNull();
+  });
+
+  it("shapes the Canvas node preview from the component composition", () => {
+    const { rerender } = render(<RemotionComponentNode {...baseProps} />);
+
+    const portraitNode = screen.getByTestId("remotion-component-node");
+    const portraitPreview = screen.getByTestId("remotion-component-preview");
+    const portraitWidth = Number.parseFloat(portraitPreview.style.width);
+    const portraitHeight = Number.parseFloat(portraitPreview.style.height);
+
+    expect(portraitWidth / portraitHeight).toBeCloseTo(720 / 1280, 2);
+    expect(portraitNode.style.width).toBe(portraitPreview.style.width);
+
+    rerender(
+      <RemotionComponentNode
+        {...baseProps}
+        data={{
+          ...baseProps.data,
+          compositionWidth: 1920,
+          compositionHeight: 1080,
+        }}
+      />,
+    );
+
+    const landscapeNode = screen.getByTestId("remotion-component-node");
+    const landscapePreview = screen.getByTestId("remotion-component-preview");
+    const landscapeWidth = Number.parseFloat(landscapePreview.style.width);
+    const landscapeHeight = Number.parseFloat(landscapePreview.style.height);
+
+    expect(landscapeWidth / landscapeHeight).toBeCloseTo(1920 / 1080, 2);
+    expect(landscapeNode.style.width).toBe(landscapePreview.style.width);
+    expect(landscapeWidth).toBeGreaterThan(portraitWidth);
+  });
+
+  it("keeps the Canvas preview available as a node drag surface", () => {
+    render(<RemotionComponentNode {...baseProps} />);
+
+    const preview = screen.getByTestId("remotion-component-preview");
+    expect(preview.className).toContain("pointer-events-none");
+    expect(preview.className).not.toContain("nodrag");
+    expect(screen.getByTestId("remotion-player").dataset.controls).toBe(
+      "false",
+    );
+  });
+
+  it("repairs a legacy React Flow hitbox to match the visible component card", () => {
+    let projected = [
+      {
+        id: baseProps.id,
+        width: 420,
+        height: 320,
+        style: { width: 420, height: 320, zIndex: 1000 },
+      },
+    ];
+    mocks.getNode.mockReturnValue(projected[0]);
+    mocks.setNodes.mockImplementationOnce(
+      (update: (nodes: typeof projected) => typeof projected) => {
+        projected = update(projected);
+      },
+    );
+
+    render(<RemotionComponentNode {...baseProps} width={420} height={320} />);
+
+    expect(projected[0]).toMatchObject({
+      width: 281,
+      height: 544,
+      style: { width: 281, height: 544, zIndex: 1000 },
+    });
+    expect(mocks.updateNode).toHaveBeenCalledWith(baseProps.id, {
+      width: 281,
+      height: 544,
+      style: { width: 281, height: 544, zIndex: 1000 },
+    });
+  });
+
+  it("uses the component composition shape in the code editor preview", () => {
+    render(<RemotionComponentNode {...baseProps} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit code" }));
+    const preview = screen.getByTestId("remotion-component-editor-preview");
+    const width = Number.parseFloat(preview.style.width);
+    const height = Number.parseFloat(preview.style.height);
+
+    expect(width / height).toBeCloseTo(720 / 1280, 2);
   });
 
   it("modifies source on the same Canvas node id", () => {
@@ -94,7 +206,9 @@ describe("RemotionComponentNode", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit code" }));
     const editor = screen.getByRole("textbox", { name: "Remotion TSX source" });
     fireEvent.change(editor, {
-      target: { value: "export default function Greeting(){ return <div>After</div>; }" },
+      target: {
+        value: "export default function Greeting(){ return <div>After</div>; }",
+      },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save component" }));
 
@@ -105,32 +219,13 @@ describe("RemotionComponentNode", () => {
     });
   });
 
-  it("adds only a live sourceNodeId reference to Timeline", () => {
+  it("uses a Canvas connection as its only Timeline handoff", () => {
     render(<RemotionComponentNode {...baseProps} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add to Timeline" }));
-
-    expect(mocks.applyTimelineState).toHaveBeenCalledTimes(1);
-    expect(mocks.applyTimelineState).toHaveBeenCalledWith(
-      "timeline-main",
-      expect.objectContaining({
-        tracks: [
-          expect.objectContaining({
-            items: [
-              expect.objectContaining({
-                type: "composition",
-                runtime: "remotion",
-                sourceNodeId: "remotion-greeting",
-              }),
-            ],
-          }),
-        ],
-      }),
-    );
-    const next = mocks.applyTimelineState.mock.calls[0]?.[1] as {
-      tracks: Array<{ items: Array<Record<string, unknown>> }>;
-    };
-    expect(next.tracks[0]?.items[0]).not.toHaveProperty("componentSource");
-    expect(next.tracks[0]?.items[0]).not.toHaveProperty("renderedAssetPath");
+    expect(screen.getByTestId("source-handle-right")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Add to Timeline" }),
+    ).toBeNull();
+    expect(screen.queryByTestId("timeline-select")).toBeNull();
   });
 });

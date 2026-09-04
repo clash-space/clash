@@ -93,7 +93,13 @@ export function UserMessage({
 
   return (
     <div className="flex w-full justify-end">
-      <div className="flex max-w-[min(34rem,72%)] flex-col items-end">
+      <div
+        className="flex flex-col items-end"
+        data-chat-user-message="true"
+        style={{
+          maxWidth: "min(34rem, var(--chat-user-message-max-width, 72%))",
+        }}
+      >
         {annotations.length === 0 && cleaned ? (
           <div
             className="clash-user-message-bubble break-words px-3 py-2"
@@ -102,9 +108,7 @@ export function UserMessage({
             <ReactMarkdown
               components={{
                 p: ({ children }) => (
-                  <p className="mb-1 last:mb-0">
-                    {children}
-                  </p>
+                  <p className="mb-1 last:mb-0">{children}</p>
                 ),
                 img: ({ src, alt }) => {
                   const mentionMatch = alt?.match(/^mention:([^:]+):(.+)$/);

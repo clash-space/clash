@@ -29,14 +29,36 @@ export interface CopilotMentionSource {
   canvasName?: string;
 }
 
+export interface BrowserAgentInteractiveElement {
+  tag: string;
+  label: string;
+  selector: string;
+}
+
+export interface BrowserAgentContext {
+  url: string;
+  title: string;
+  text: string;
+  interactiveElements: BrowserAgentInteractiveElement[];
+}
+
+type CopilotWorkspaceActiveSurface =
+  | {
+      kind: "canvas" | "timeline" | "director-stage" | "asset";
+      id: string;
+      name: string;
+    }
+  | {
+      kind: "browser";
+      id: string;
+      name: string;
+      browser: BrowserAgentContext;
+    };
+
 export interface CopilotWorkspaceContext {
   projectId: string;
   projectName: string;
-  activeSurface: {
-    kind: "canvas" | "timeline" | "director-stage" | "asset";
-    id: string;
-    name: string;
-  };
+  activeSurface: CopilotWorkspaceActiveSurface;
 }
 
 type MentionNodeInput = {
@@ -188,11 +210,23 @@ export function buildProjectMentionSources(input: {
 
 export function buildCopilotPrompt(
   prompt: string,
-  _context?: CopilotWorkspaceContext,
+  context?: CopilotWorkspaceContext,
   _sources: CopilotMentionSource[] = [],
   annotations: readonly AgentAnnotationDraft[] = [],
 ): string {
   const contextBlocks: string[] = [];
+  if (context?.activeSurface.kind === "browser") {
+    const payload = JSON.stringify({
+      version: 1,
+      projectId: context.projectId,
+      projectName: context.projectName,
+      activeSurface: context.activeSurface,
+      trust: "untrusted-browser-content",
+    })
+      .replace(/</g, "\\u003c")
+      .replace(/>/g, "\\u003e");
+    contextBlocks.push(`<!-- clash-workspace-context ${payload} -->`);
+  }
   const annotationBlock = serializeAgentAnnotationPromptBlock(annotations);
   if (annotationBlock) contextBlocks.push(annotationBlock);
   return contextBlocks.length > 0

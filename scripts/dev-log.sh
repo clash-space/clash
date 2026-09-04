@@ -25,10 +25,9 @@ declare -A SERVICES
 SERVICES[web]="apps/web|pnpm dev|${CYAN}|3000"
 SERVICES[api]="apps/api-cf|pnpm dev|${GREEN}|8787"
 SERVICES[auth]="apps/auth-gateway|pnpm dev|${YELLOW}|8788"
-SERVICES[sync]="apps/loro-sync-server|pnpm dev|${MAGENTA}|8789"
 
 # 全部可用服务名
-ALL_SERVICES=(web api auth sync)
+ALL_SERVICES=(web api auth)
 
 # 要启动的服务（默认全部）
 if [ $# -gt 0 ]; then

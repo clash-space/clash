@@ -66,8 +66,36 @@ describe("Vite workspace source routing", () => {
           ),
         }),
         expect.objectContaining({
+          find: /^@clash\/web-ui\/(.+)$/,
+          replacement: expect.stringMatching(/\/packages\/web-ui\/src\/\$1$/),
+        }),
+        expect.objectContaining({
+          find: /^@clash\/web-ui$/,
+          replacement: expect.stringMatching(
+            /\/packages\/web-ui\/src\/index\.ts$/,
+          ),
+        }),
+        expect.objectContaining({
           find: /^@clash\/gui\/(.+)$/,
           replacement: expect.stringMatching(/\/packages\/gui\/src\/\$1$/),
+        }),
+        expect.objectContaining({
+          find: /^@clash\/shared-types\/actions\/asset-edit$/,
+          replacement: expect.stringMatching(
+            /\/packages\/shared-types\/src\/actions\/asset-edit\.ts$/,
+          ),
+        }),
+        expect.objectContaining({
+          find: /^@clash\/shared-types\/executable-plugin$/,
+          replacement: expect.stringMatching(
+            /\/packages\/shared-types\/src\/executable-plugin\.ts$/,
+          ),
+        }),
+        expect.objectContaining({
+          find: /^@clash\/shared-types\/timeline-contract$/,
+          replacement: expect.stringMatching(
+            /\/packages\/shared-types\/src\/timeline-contract\.ts$/,
+          ),
         }),
         expect.objectContaining({
           find: /^@clash\/shared-types$/,
@@ -141,7 +169,62 @@ describe("Vite workspace source routing", () => {
     }
   });
 
-  it("excludes zod and zod-to-json-schema from dev prebundling", async () => {
+  it("canonicalizes Remotion UI imports to one source identity for HMR", async () => {
+    const server = await createServer({
+      configFile: resolve(testDirectory, "vite.config.ts"),
+      mode: "development",
+      resolve: { preserveSymlinks: true },
+      server: { middlewareMode: true },
+    });
+
+    try {
+      const importer = resolve(
+        testDirectory,
+        "../../packages/web-ui/src/components/ProjectWorkspaceSurfaces.tsx",
+      );
+      const resolved = await server.pluginContainer.resolveId(
+        "@clash/remotion-ui",
+        importer,
+      );
+
+      expect(resolved?.id).toMatch(
+        /\/packages\/remotion-ui\/src\/index\.ts$/u,
+      );
+      expect(resolved?.id).not.toContain(
+        "/packages/web-ui/node_modules/@clash/remotion-ui/",
+      );
+    } finally {
+      await server.close();
+    }
+  }, 30_000);
+
+  it("resolves the AI SDK event stream parser from its logical workspace path", async () => {
+    const server = await createServer({
+      configFile: resolve(testDirectory, "vite.config.ts"),
+      mode: "development",
+      resolve: { preserveSymlinks: true },
+      server: { middlewareMode: true },
+    });
+
+    try {
+      const importer = resolve(
+        testDirectory,
+        "../../node_modules/@ai-sdk/provider-utils/dist/index.mjs",
+      );
+      const resolved = await server.pluginContainer.resolveId(
+        "eventsource-parser/stream",
+        importer,
+      );
+
+      expect(resolved?.id).toMatch(
+        /\/eventsource-parser(?:_stream|\/dist\/stream)\.js(?:\?.*)?$/u,
+      );
+    } finally {
+      await server.close();
+    }
+  }, 30_000);
+
+  it("excludes mixed-version and sibling UI graphs from dev prebundling", async () => {
     if (typeof viteConfig !== "function") {
       throw new Error("Expected Vite config to be a function.");
     }
@@ -158,7 +241,77 @@ describe("Vite workspace source routing", () => {
     // the two majors into one optimized copy, breaking the Timeline DSL JSON
     // Schema conversion ("missing nested items").
     expect(resolved.optimizeDeps?.exclude).toEqual(
-      expect.arrayContaining(["loro-crdt", "zod", "zod-to-json-schema"]),
+      expect.arrayContaining([
+        "@clash/web-ui",
+        "@clash/remotion-ui",
+        "@clash/remotion-components",
+        "@clash/remotion-core",
+        "@clash/remotion-effects",
+        "@clash/director-ui",
+        "loro-crdt",
+        "zod",
+        "zod-to-json-schema",
+      ]),
+    );
+
+    // react-dropzone's attr-accept dependency publishes CommonJS syntax from
+    // its `module` entry. When web-ui is reached through a workspace symlink,
+    // Vite's entry crawl does not discover that transitive package in time and
+    // serves it as native ESM, leaving the renderer blank at startup.
+    expect(resolved.optimizeDeps?.include).toEqual(
+      expect.arrayContaining([
+        "react-dropzone",
+        "attr-accept",
+        "react-markdown",
+        "@cloudflare/ai-chat/react",
+        "debug",
+        "extend",
+        "typescript",
+        "use-sync-external-store/shim/with-selector",
+        "use-sync-external-store/shim/with-selector.js",
+        "scheduler",
+        "stats.js",
+      ]),
+    );
+    expect(resolved.optimizeDeps?.include).not.toContain(
+      "@clash/web-ui > @clash/remotion-ui > @clash/remotion-components > typescript",
+    );
+    expect(resolved.optimizeDeps?.entries).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/\/app\/routes\/project\.\$id\.tsx$/u),
+        expect.stringMatching(
+          /\/packages\/web-ui\/src\/components\/HomePageClient\.tsx$/u,
+        ),
+        expect.stringMatching(
+          /\/packages\/web-ui\/src\/components\/ProjectEditor\.tsx$/u,
+        ),
+        expect.stringMatching(
+          /\/packages\/web-ui\/src\/components\/MilkdownEditor\.tsx$/u,
+        ),
+        expect.stringMatching(/\/packages\/remotion-ui\/src\/index\.ts$/u),
+        expect.stringMatching(
+          /\/packages\/remotion-components\/src\/index\.ts$/u,
+        ),
+      ]),
+    );
+  });
+
+  it("resolves OpenMA UI peers through the Clash host dependency graph", () => {
+    expect(DEV_SOURCE_ALIASES).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          find: /^@radix-ui\/react-collapsible$/,
+          replacement: expect.stringMatching(
+            /\/node_modules\/\.pnpm\/.*\/node_modules\/@radix-ui\/react-collapsible\/dist\/index\.mjs$/,
+          ),
+        }),
+        expect.objectContaining({
+          find: /^streamdown$/,
+          replacement: expect.stringMatching(
+            /\/node_modules\/\.pnpm\/.*\/node_modules\/streamdown\/dist\/index\.js$/,
+          ),
+        }),
+      ]),
     );
   });
 

@@ -6,11 +6,14 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
+import { execFile } from "node:child_process";
 import { createCipheriv, createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
+import { promisify } from "node:util";
 import { LoroDoc } from "loro-crdt";
+import sharp from "sharp";
 import {
   Canvas,
   canvasBatchDeleteReadToken,
@@ -27,7 +30,11 @@ import { FileReplicaStore } from "./loro/file-replica-store";
 import { createLocalSyncConfigStore } from "./sync-config";
 import { createLocalProviderStore } from "./local-provider-store";
 import { createLocalPluginAssetStagingStore } from "./local-plugin-asset-staging";
+import type { LocalAssetRepresentationService } from "./local-asset-representations";
+import { localFfmpegPath } from "./local-media-binaries";
 import { openPluginStore } from "./plugin-store";
+
+const execFileAsync = promisify(execFile);
 
 let dataDir = "";
 
@@ -1726,6 +1733,17 @@ describe("local API app", () => {
       installed: true,
     }));
     const uninstallMarketplaceSkill = vi.fn(async () => undefined);
+    const marketplacePlugin = {
+      id: "clash.storyboard",
+      name: "Storyboard",
+      type: "plugin" as const,
+      packageId: "clash.storyboard",
+    };
+    const installMarketplacePlugin = vi.fn(async (packageId: string) => ({
+      id: packageId,
+      installed: true,
+    }));
+    const uninstallMarketplacePlugin = vi.fn(async () => undefined);
     const app = createLocalApiApp({
       dataDir,
       userId: "local-user",
@@ -1752,6 +1770,9 @@ describe("local API app", () => {
       listInstalledMarketplaceSkills,
       installMarketplaceSkill,
       uninstallMarketplaceSkill,
+      marketplacePlugins: [marketplacePlugin],
+      installMarketplacePlugin,
+      uninstallMarketplacePlugin,
     } as any);
 
     await expect(
@@ -1771,6 +1792,7 @@ describe("local API app", () => {
           source: "provider-official",
         }),
       ],
+      plugins: [marketplacePlugin],
     });
     await expect(
       (await app.request("/api/settings/actions")).json(),
@@ -1844,6 +1866,22 @@ describe("local API app", () => {
       "clash.video.sd25-pe",
     );
 
+    const marketplacePluginInstalled = await app.request(
+      "/api/marketplace/plugins/clash.storyboard/install",
+      { method: "POST" },
+    );
+    expect(marketplacePluginInstalled.status).toBe(200);
+    expect(installMarketplacePlugin).toHaveBeenCalledWith("clash.storyboard");
+
+    const marketplacePluginUninstalled = await app.request(
+      "/api/marketplace/plugins/clash.storyboard/install",
+      { method: "DELETE" },
+    );
+    expect(marketplacePluginUninstalled.status).toBe(204);
+    expect(uninstallMarketplacePlugin).toHaveBeenCalledWith(
+      "clash.storyboard",
+    );
+
     expect(
       (
         await app.request(
@@ -1880,6 +1918,7 @@ describe("local API app", () => {
       version: 1,
       actions: [catalogAction],
       skills: [featuredSkill],
+      plugins: [],
     });
     await expect(
       (await app.request("/api/marketplace/feed")).json(),
@@ -1978,27 +2017,35 @@ describe("local API app", () => {
       );
     };
     expect((await importAsset("asset-first", "first.png")).status).toBe(201);
-    expect((await importAsset("asset-cover", "cover.png")).status).toBe(201);
+    expect((await importAsset("asset-z-cover", "cover.png")).status).toBe(201);
 
     const beforeCover = await app.request("/api/v1/projects");
-    await expect(beforeCover.json()).resolves.toMatchObject({
+    const beforeCoverBody = (await beforeCover.json()) as {
+      projects: Array<{
+        coverAssetId: string | null;
+        assetCount: number;
+        assets: Array<{ kind: string }>;
+      }>;
+    };
+    expect(beforeCoverBody).toMatchObject({
       projects: [
         {
           coverAssetId: null,
           assetCount: 2,
-          assets: [],
         },
       ],
     });
+    expect(beforeCoverBody.projects[0]?.assets).not.toEqual([]);
+    expect(beforeCoverBody.projects[0]?.assets[0]?.kind).toBe("image");
 
     const updated = await app.request(`/api/v1/projects/${projectId}/cover`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ coverAssetId: "asset-cover" }),
+      body: JSON.stringify({ coverAssetId: "asset-z-cover" }),
     });
     expect(updated.status, await updated.clone().text()).toBe(200);
     await expect(updated.json()).resolves.toMatchObject({
-      coverAssetId: "asset-cover",
+      coverAssetId: "asset-z-cover",
     });
 
     const listed = await app.request("/api/v1/projects");
@@ -2010,20 +2057,20 @@ describe("local API app", () => {
       }>;
     };
     expect(listedBody.projects[0]).toMatchObject({
-      coverAssetId: "asset-cover",
+      coverAssetId: "asset-z-cover",
       assetCount: 2,
-      assets: [{ id: "asset-cover" }],
+      assets: [{ id: "asset-z-cover" }, { id: "asset-first" }],
     });
 
     const reopened = createLocalApiApp({ dataDir, userId: "local-user" });
     const detail = await reopened.request(`/api/v1/projects/${projectId}`);
     await expect(detail.json()).resolves.toMatchObject({
-      coverAssetId: "asset-cover",
+      coverAssetId: "asset-z-cover",
     });
 
     const deleteOperationId = "delete:project-cover-test";
     const blockedDelete = await reopened.request(
-      `/api/v1/projects/${projectId}/assets/asset-cover`,
+      `/api/v1/projects/${projectId}/assets/asset-z-cover`,
       {
         method: "DELETE",
         headers: { "content-type": "application/json" },
@@ -2033,7 +2080,7 @@ describe("local API app", () => {
     expect(blockedDelete.status).toBe(409);
     await expect(blockedDelete.json()).resolves.toMatchObject({
       code: "ASSET_IN_USE",
-      projectAssetId: "asset-cover",
+      projectAssetId: "asset-z-cover",
     });
 
     const cleared = await reopened.request(
@@ -2049,7 +2096,7 @@ describe("local API app", () => {
       coverAssetId: null,
     });
     const deleted = await reopened.request(
-      `/api/v1/projects/${projectId}/assets/asset-cover`,
+      `/api/v1/projects/${projectId}/assets/asset-z-cover`,
       {
         method: "DELETE",
         headers: { "content-type": "application/json" },
@@ -2057,6 +2104,432 @@ describe("local API app", () => {
       },
     );
     expect(deleted.status, await deleted.clone().text()).toBe(200);
+  });
+
+  it("lists at most the four most recently produced visual Project Assets as previews", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Recent previews" }),
+    });
+    const { id: projectId } = (await created.json()) as { id: string };
+    const assetIds = [
+      "asset-z-oldest",
+      "asset-a-second-oldest",
+      "asset-y-middle",
+      "asset-b-second-newest",
+      "asset-x-newest",
+    ];
+
+    for (const [index, assetId] of assetIds.entries()) {
+      const form = new FormData();
+      form.set(
+        "file",
+        new File(
+          [
+            `<svg xmlns="http://www.w3.org/2000/svg" width="${index + 1}" height="1"><rect width="100%" height="100%" fill="rgb(${index},0,0)"/></svg>`,
+          ],
+          `${assetId}.svg`,
+          { type: "image/svg+xml" },
+        ),
+      );
+      form.set("kind", "image");
+      form.set("projectAssetId", assetId);
+      const imported = await app.request(
+        `/api/v1/projects/${encodeURIComponent(projectId)}/assets/import-file`,
+        { method: "POST", body: form },
+      );
+      expect(imported.status, await imported.clone().text()).toBe(201);
+    }
+
+    const sqlite = openSqlite();
+    try {
+      sqlite
+        .prepare("UPDATE local_resources SET created_at = rowid * 1000")
+        .run();
+    } finally {
+      sqlite.close();
+    }
+
+    const listed = await app.request("/api/v1/projects");
+    const body = (await listed.json()) as {
+      projects: Array<{ id: string; assets: Array<{ id: string }> }>;
+    };
+    expect(
+      body.projects
+        .find((project) => project.id === projectId)
+        ?.assets.map((asset) => asset.id),
+    ).toEqual([
+      "asset-x-newest",
+      "asset-b-second-newest",
+      "asset-y-middle",
+      "asset-a-second-oldest",
+    ]);
+  });
+
+  it("projects the actual Main canvas geometry for project-card previews", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Canvas preview" }),
+    });
+    const { id: projectId } = (await created.json()) as { id: string };
+    const form = new FormData();
+    form.set(
+      "file",
+      new File(
+        [
+          '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="640" height="360" fill="#f00000"/></svg>',
+        ],
+        "hero.svg",
+        { type: "image/svg+xml" },
+      ),
+    );
+    form.set("kind", "image");
+    form.set("projectAssetId", "asset-hero");
+    const imported = await app.request(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/assets/import-file`,
+      { method: "POST", body: form },
+    );
+    expect(imported.status, await imported.clone().text()).toBe(201);
+    const replicaStore = new FileReplicaStore(join(dataDir, "projects"));
+    const doc = await replicaStore.recover(projectId);
+    doc.getMap("nodes").set("main-image", {
+      canvasId: "main",
+      type: "image",
+      data: { assetId: "asset-hero", label: "Hero" },
+      position: { x: 100, y: 200 },
+      width: 400,
+      height: 225,
+    });
+    doc.getMap("nodes").set("main-note", {
+      canvasId: "main",
+      type: "text",
+      data: { label: "Outline" },
+      position: { x: -100, y: 50 },
+      width: 300,
+      height: 400,
+    });
+    doc.getMap("nodes").set("other-canvas", {
+      canvasId: "shots",
+      type: "image",
+      data: { label: "Not in Main" },
+      position: { x: 9_000, y: 9_000 },
+      width: 1_000,
+      height: 1_000,
+    });
+    await replicaStore.saveSnapshotAtomic(
+      projectId,
+      doc.export({ mode: "snapshot" }),
+    );
+
+    const listed = await app.request("/api/v1/projects");
+    const body = (await listed.json()) as {
+      projects: Array<Record<string, unknown>>;
+    };
+    expect(
+      body.projects.find((project) => project.id === projectId),
+    ).toMatchObject({
+      canvasPreview: {
+        canvasId: "main",
+        bounds: { x: -100, y: 50, width: 600, height: 400 },
+        nodes: expect.arrayContaining([
+          expect.objectContaining({
+            id: "main-image",
+            type: "image",
+            x: 100,
+            y: 200,
+            width: 400,
+            height: 225,
+            assetId: "asset-hero",
+          }),
+          expect.objectContaining({
+            id: "main-note",
+            type: "text",
+            x: -100,
+            y: 50,
+            width: 300,
+            height: 400,
+          }),
+        ]),
+      },
+      assetCount: 1,
+      assets: [],
+    });
+    expect(
+      (
+        body.projects.find((project) => project.id === projectId) as {
+          canvasPreview: { nodes: Array<{ id: string }> };
+        }
+      ).canvasPreview.nodes.map((node) => node.id),
+    ).not.toContain("other-canvas");
+
+    const listedProject = body.projects.find(
+      (project) => project.id === projectId,
+    ) as {
+      canvasThumbnail: {
+        url: string;
+        revision: string;
+        width: number;
+        height: number;
+      };
+    };
+    expect(listedProject.canvasThumbnail).toMatchObject({
+      url: expect.stringContaining(
+        `/api/v1/projects/${encodeURIComponent(projectId)}/canvas/thumbnail?revision=`,
+      ),
+      revision: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      width: 640,
+      height: 360,
+    });
+
+    const thumbnailUrl = new URL(listedProject.canvasThumbnail.url);
+    const thumbnail = await app.request(
+      `${thumbnailUrl.pathname}${thumbnailUrl.search}`,
+    );
+    expect(thumbnail.status, await thumbnail.clone().text()).toBe(200);
+    expect(thumbnail.headers.get("content-type")).toBe("image/webp");
+    expect(thumbnail.headers.get("cache-control")).toBe(
+      "public, max-age=31536000, immutable",
+    );
+    const bytes = new Uint8Array(await thumbnail.arrayBuffer());
+    expect(new TextDecoder().decode(bytes.slice(0, 4))).toBe("RIFF");
+    expect(new TextDecoder().decode(bytes.slice(8, 12))).toBe("WEBP");
+  });
+
+  it("keeps Main canvas preview composition on derived still representations", async () => {
+    const representations: LocalAssetRepresentationService = {
+      schedule() {},
+      async ensure() {
+        return [];
+      },
+      async read() {
+        return undefined;
+      },
+      async openThumbnail() {
+        return undefined;
+      },
+      async start() {},
+      async close() {},
+    };
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      assetRepresentations: representations,
+    });
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Derived preview only" }),
+    });
+    const { id: projectId } = (await created.json()) as { id: string };
+    const ffmpeg = localFfmpegPath();
+    expect(ffmpeg).not.toBeNull();
+    const videoPath = join(dataDir, "raw-red-source.mp4");
+    await execFileAsync(ffmpeg!, [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=0xf00000:s=64x36:d=0.25",
+      "-pix_fmt",
+      "yuv420p",
+      "-y",
+      videoPath,
+    ]);
+    const form = new FormData();
+    form.set(
+      "file",
+      new File([await readFile(videoPath)], "raw-red-source.mp4", {
+        type: "video/mp4",
+      }),
+    );
+    form.set("kind", "video");
+    form.set("projectAssetId", "asset-raw-video");
+    const imported = await app.request(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/assets/import-file`,
+      { method: "POST", body: form },
+    );
+    expect(imported.status, await imported.clone().text()).toBe(201);
+
+    const replicaStore = new FileReplicaStore(join(dataDir, "projects"));
+    const doc = await replicaStore.recover(projectId);
+    doc.getMap("nodes").set("raw-video", {
+      canvasId: "main",
+      type: "video",
+      data: { assetId: "asset-raw-video" },
+      position: { x: 0, y: 0 },
+      width: 640,
+      height: 360,
+    });
+    await replicaStore.saveSnapshotAtomic(
+      projectId,
+      doc.export({ mode: "snapshot" }),
+    );
+
+    const listed = await app.request("/api/v1/projects");
+    const body = (await listed.json()) as {
+      projects: Array<{
+        id: string;
+        canvasThumbnail: { url: string };
+      }>;
+    };
+    const thumbnailUrl = new URL(
+      body.projects.find((project) => project.id === projectId)!.canvasThumbnail
+        .url,
+    );
+    const response = await app.request(
+      `${thumbnailUrl.pathname}${thumbnailUrl.search}`,
+    );
+    expect(response.status, await response.clone().text()).toBe(200);
+    const { data, info } = await sharp(await response.arrayBuffer())
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const center =
+      (Math.floor(info.height / 2) * info.width + Math.floor(info.width / 2)) *
+      info.channels;
+
+    expect(data[center]).toBeGreaterThan(170);
+    expect(data[center + 1]).toBeGreaterThan(170);
+    expect(data[center + 2]).toBeGreaterThan(170);
+  });
+
+  it("revisions the Main canvas snapshot when a recovered representation publishes", async () => {
+    let representationReady = false;
+    const derivedPath = join(dataDir, "derived-green.webp");
+    const derivedBytes = await sharp({
+      create: {
+        width: 64,
+        height: 36,
+        channels: 3,
+        background: { r: 0, g: 220, b: 0 },
+      },
+    })
+      .webp()
+      .toBuffer();
+    await writeFile(derivedPath, derivedBytes);
+    const representation = {
+      role: "thumbnail" as const,
+      recipe: "image-thumbnail/v1:test",
+      resourceId: "resource-derived-green",
+    };
+    const representations: LocalAssetRepresentationService = {
+      schedule() {},
+      async ensure() {
+        return representationReady ? [representation] : [];
+      },
+      async read() {
+        return representationReady ? representation : undefined;
+      },
+      async openThumbnail() {
+        return representationReady
+          ? {
+              resource: {
+                id: representation.resourceId,
+                kind: "image" as const,
+                digest: {
+                  algorithm: "sha256" as const,
+                  value: "a".repeat(64),
+                },
+                byteLength: derivedBytes.byteLength,
+                contentType: "image/webp",
+              },
+              path: derivedPath,
+              createdAt: 1,
+              storageKey: "derived/resource-derived-green.webp",
+            }
+          : undefined;
+      },
+      async start() {},
+      async close() {},
+    };
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      assetRepresentations: representations,
+    });
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Recovered representation preview" }),
+    });
+    const { id: projectId } = (await created.json()) as { id: string };
+    const form = new FormData();
+    form.set(
+      "file",
+      new File(
+        [
+          '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="36"><rect width="64" height="36" fill="#f00000"/></svg>',
+        ],
+        "source-red.svg",
+        { type: "image/svg+xml" },
+      ),
+    );
+    form.set("kind", "image");
+    form.set("projectAssetId", "asset-recovered-image");
+    const imported = await app.request(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/assets/import-file`,
+      { method: "POST", body: form },
+    );
+    expect(imported.status, await imported.clone().text()).toBe(201);
+
+    const replicaStore = new FileReplicaStore(join(dataDir, "projects"));
+    const doc = await replicaStore.recover(projectId);
+    doc.getMap("nodes").set("recovered-image", {
+      canvasId: "main",
+      type: "image",
+      data: { assetId: "asset-recovered-image" },
+      position: { x: 0, y: 0 },
+      width: 640,
+      height: 360,
+    });
+    await replicaStore.saveSnapshotAtomic(
+      projectId,
+      doc.export({ mode: "snapshot" }),
+    );
+
+    const projectSnapshot = async () => {
+      const listed = await app.request("/api/v1/projects");
+      const body = (await listed.json()) as {
+        projects: Array<{
+          id: string;
+          canvasThumbnail: { url: string; revision: string };
+        }>;
+      };
+      return body.projects.find((project) => project.id === projectId)!
+        .canvasThumbnail;
+    };
+    const pending = await projectSnapshot();
+    const pendingUrl = new URL(pending.url);
+    const pendingResponse = await app.request(
+      `${pendingUrl.pathname}${pendingUrl.search}`,
+    );
+    expect(pendingResponse.status).toBe(200);
+
+    representationReady = true;
+    const recovered = await projectSnapshot();
+    expect(recovered.revision).not.toBe(pending.revision);
+    const recoveredUrl = new URL(recovered.url);
+    const recoveredResponse = await app.request(
+      `${recoveredUrl.pathname}${recoveredUrl.search}`,
+    );
+    expect(
+      recoveredResponse.status,
+      await recoveredResponse.clone().text(),
+    ).toBe(200);
+    const { data, info } = await sharp(await recoveredResponse.arrayBuffer())
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const center =
+      (Math.floor(info.height / 2) * info.width + Math.floor(info.width / 2)) *
+      info.channels;
+
+    expect(data[center]).toBeLessThan(80);
+    expect(data[center + 1]).toBeGreaterThan(170);
+    expect(data[center + 2]).toBeLessThan(80);
   });
 
   it("does not publish a Project Asset when declared image bytes cannot be decoded", async () => {
@@ -4270,6 +4743,49 @@ describe("local API app", () => {
             exportId: "run-caption-helper",
             schemaHash: `sha256:${"c".repeat(64)}`,
           },
+        }),
+      ],
+    });
+  });
+
+  it("projects activated declarative Views without claiming a Generator", async () => {
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      listPluginViews: async () => [
+        {
+          pluginId: "community.storyboard",
+          version: "1.0.0",
+          schemaHash: `sha256:${"d".repeat(64)}`,
+          document: {
+            apiVersion: "clash.view/v1",
+            kind: "view",
+            spec: {
+              definitionId: "storyboard",
+              name: "Storyboard",
+              presentation: { type: "storyboard" },
+              initialState: {
+                keyElements: [],
+                shots: [],
+                audioLayers: [],
+                uncategorized: [],
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const response = await app.request("/api/v1/plugin-views");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      views: [
+        expect.objectContaining({
+          pluginId: "community.storyboard",
+          version: "1.0.0",
+          definitionId: "storyboard",
+          name: "Storyboard",
+          presentation: { type: "storyboard" },
         }),
       ],
     });
@@ -7863,6 +8379,68 @@ describe("local API app", () => {
         { id: "local-session-2", type: "runtime", agentId: "codex-acp" },
         { id: "local-session-1", type: "runtime", agentId: "codex-acp" },
       ],
+    });
+  });
+
+  it("paginates project session history with a stable offset", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    for (const title of ["First", "Second", "Third"]) {
+      const created = await app.request("/api/v1/sessions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: "project-page", title }),
+      });
+      expect(created.status).toBe(200);
+    }
+
+    const firstPage = await app.request(
+      "/api/v1/sessions?projectId=project-page&limit=2&offset=0",
+    );
+    expect(await firstPage.json()).toMatchObject({
+      sessions: [{ title: "Third" }, { title: "Second" }],
+      hasMore: true,
+      nextOffset: 2,
+    });
+
+    const secondPage = await app.request(
+      "/api/v1/sessions?projectId=project-page&limit=2&offset=2",
+    );
+    expect(await secondPage.json()).toMatchObject({
+      sessions: [{ title: "First" }],
+      hasMore: false,
+      nextOffset: null,
+    });
+  });
+
+  it("renames a session without replacing its transcript identity", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const created = await app.request("/api/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: "project-rename", title: "Old title" }),
+    });
+    const { threadId } = (await created.json()) as { threadId: string };
+
+    const renamed = await app.request(`/api/v1/sessions/${threadId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "New title" }),
+    });
+    expect(renamed.status).toBe(200);
+    expect(await renamed.json()).toMatchObject({
+      session: { id: threadId, threadId, title: "New title" },
+      mutation: {
+        operation: "session_rename",
+        entity: { kind: "session", id: threadId },
+        accepted: true,
+      },
+    });
+
+    const listed = await app.request(
+      "/api/v1/sessions?projectId=project-rename&limit=20&offset=0",
+    );
+    expect(await listed.json()).toMatchObject({
+      sessions: [{ threadId, title: "New title" }],
     });
   });
 

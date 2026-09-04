@@ -34,7 +34,6 @@ apps/
 │   └── drizzle/          # 从旧 apps/web 原样搬过来
 ├── api-cf/               # 不动（Hono + DOs + Workflow + Container）
 ├── render-server/        # 不动（Docker + ffmpeg/remotion）
-└── loro-sync-server/     # 已废弃但物理目录还在，不在 workspace 里
 
 packages/
 └── web-ui/               # 新：跨 web + electron 的 UI 包
@@ -111,7 +110,7 @@ packages/
 
 - [ ] SSR 开回去（见上）
 - [ ] `drizzle-orm`, `drizzle-kit` 升级到 better-auth 要求的版本
-- [ ] `apps/loro-sync-server/` 物理目录删掉（逻辑上废弃了，占 git diff）
+- [x] `apps/loro-sync-server/` 物理目录已删除；云端 Loro 同步统一由 `apps/api-cf` 承载。
 - [ ] 跑一次完整端到端：登录 → 建项目 → 打开画布 → 上传素材。我这里只验证了 HTML shell 能返回，没跑 API 逻辑。
 - [ ] 把 `apps/render-server/Dockerfile` 的路径从 `apps/web/...` 里的老引用检查一下（迁移过程中可能没动到但值得扫一眼）
 - [ ] Electron shell：新建 `apps/desktop`，装 `electron` + `react-router` + `vite`，consume `@clash/web-ui`，HashRouter 起手。packages/web-ui 已经准备好了

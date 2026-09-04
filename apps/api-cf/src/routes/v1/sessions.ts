@@ -44,7 +44,7 @@ function publicSession(row: SessionRow) {
   };
 }
 
-// GET /api/v1/sessions?projectId=xxx&archived=active|only|include
+// GET /api/v1/sessions?projectId=xxx&archived=active|only|include&limit=20&offset=0
 sessionRoutes.get("/", async (c) => {
   const userId = getUserId(c);
   const projectId = c.req.query("projectId");
@@ -54,7 +54,7 @@ sessionRoutes.get("/", async (c) => {
   }
 
   const predicates = ["user_id = ?"];
-  const bindings: string[] = [userId];
+  const bindings: Array<string | number> = [userId];
   if (projectId) {
     predicates.push("project_id = ?");
     bindings.push(projectId);
@@ -62,23 +62,56 @@ sessionRoutes.get("/", async (c) => {
   if (archived === "active") predicates.push("archived_at IS NULL");
   if (archived === "only") predicates.push("archived_at IS NOT NULL");
 
+  const rawLimit = c.req.query("limit");
+  const rawOffset = c.req.query("offset");
+  const paginated = rawLimit !== undefined || rawOffset !== undefined;
+  const limit = rawLimit === undefined ? 50 : Number(rawLimit);
+  const offset = rawOffset === undefined ? 0 : Number(rawOffset);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    return c.json({ error: "limit must be an integer from 1 to 100" }, 400);
+  }
+  if (!Number.isInteger(offset) || offset < 0) {
+    return c.json({ error: "offset must be a non-negative integer" }, 400);
+  }
   const { results } = await c.env.DB.prepare(
-    `SELECT id, thread_id, project_id, title, archived_at, created_at, updated_at FROM chat_session WHERE ${predicates.join(" AND ")} ORDER BY updated_at DESC LIMIT 50`,
+    `SELECT id, thread_id, project_id, title, archived_at, created_at, updated_at FROM chat_session WHERE ${predicates.join(" AND ")} ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
   )
-    .bind(...bindings)
+    .bind(...bindings, paginated ? limit + 1 : limit, offset)
     .all<SessionRow>();
 
-  return c.json({ sessions: (results ?? []).map(publicSession) });
+  const rows = results ?? [];
+  const hasMore = paginated && rows.length > limit;
+  const sessions = rows.slice(0, limit).map(publicSession);
+  return c.json(
+    paginated
+      ? {
+          sessions,
+          hasMore,
+          nextOffset: hasMore ? offset + sessions.length : null,
+        }
+      : { sessions },
+  );
 });
 
 sessionRoutes.patch("/:threadId", async (c) => {
   const userId = getUserId(c);
   const threadId = c.req.param("threadId");
-  const body: { archived?: unknown } = await c.req
-    .json<{ archived?: unknown }>()
+  const body: { archived?: unknown; title?: unknown } = await c.req
+    .json<{ archived?: unknown; title?: unknown }>()
     .catch(() => ({}));
-  if (typeof body.archived !== "boolean") {
-    return c.json({ error: "archived must be a boolean" }, 400);
+  const isRename = body.title !== undefined;
+  const title = typeof body.title === "string" ? body.title.trim() : "";
+  if (isRename && !title) {
+    return c.json({ error: "title must not be empty" }, 400);
+  }
+  if (isRename && body.archived !== undefined) {
+    return c.json(
+      { error: "rename and archive must be separate mutations" },
+      400,
+    );
+  }
+  if (!isRename && typeof body.archived !== "boolean") {
+    return c.json({ error: "archived or title is required" }, 400);
   }
   const session = await c.env.DB.prepare(
     "SELECT id FROM chat_session WHERE thread_id = ? AND user_id = ? LIMIT 1",
@@ -87,6 +120,14 @@ sessionRoutes.patch("/:threadId", async (c) => {
     .first();
   if (!session) return c.json({ error: "Session not found" }, 404);
 
+  if (isRename) {
+    await c.env.DB.prepare(
+      "UPDATE chat_session SET title = ?, updated_at = unixepoch() WHERE thread_id = ? AND user_id = ?",
+    )
+      .bind(title, threadId, userId)
+      .run();
+    return c.json({ ok: true, title, threadId });
+  }
   await c.env.DB.prepare(
     body.archived
       ? "UPDATE chat_session SET archived_at = unixepoch(), updated_at = unixepoch() WHERE thread_id = ? AND user_id = ?"

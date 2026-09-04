@@ -95,4 +95,35 @@ describe("project browser tabs", () => {
     );
     expect(module.loadProjectBrowserSession(localStorage, "project-2")).toBeNull();
   });
+
+  it("opens a site-requested URL in a new project browser tab", async () => {
+    const modulePath = "./projectBrowserTabs";
+    const module = await import(/* @vite-ignore */ modulePath);
+    const openWithUrl = module.openProjectBrowserTab as (
+      tabs: [],
+      id: string,
+      initial: { url: string; title?: string },
+    ) => { tab: { id: string; title: string; url: string } };
+
+    expect(
+      openWithUrl([], "browser-redirect", {
+        url: "https://app.example/redirected",
+      }).tab,
+    ).toEqual({
+      id: "browser-redirect",
+      title: "app.example",
+      url: "https://app.example/redirected",
+    });
+  });
+
+  it("preserves native foreground and background tab disposition", async () => {
+    const modulePath = "./projectBrowserTabs";
+    const module = await import(/* @vite-ignore */ modulePath);
+
+    expect(module.shouldActivateProjectBrowserTab("foreground-tab")).toBe(true);
+    expect(module.shouldActivateProjectBrowserTab("new-window")).toBe(true);
+    expect(module.shouldActivateProjectBrowserTab("background-tab")).toBe(
+      false,
+    );
+  });
 });

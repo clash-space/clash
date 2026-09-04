@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, waitFor } from "@testing-library/react";
 
 import { ProjectProvider } from "../ProjectContext";
 import ImageNode from "./ImageNode";
 import VideoNode from "./VideoNode";
+
+const reactFlowMock = vi.hoisted(() => ({
+  setNodes: vi.fn(),
+}));
 
 vi.mock("@xyflow/react", () => ({
   Handle: ({ type, position, ...props }: any) => (
@@ -15,7 +19,7 @@ vi.mock("@xyflow/react", () => ({
     Right: "right",
   },
   useReactFlow: () => ({
-    setNodes: vi.fn(),
+    setNodes: reactFlowMock.setNodes,
   }),
 }));
 
@@ -75,6 +79,45 @@ const baseNodeProps = {
 };
 
 describe("media node sizing", () => {
+  beforeEach(() => {
+    reactFlowMock.setNodes.mockReset();
+  });
+
+  it("repairs an existing custom image node from its saved aspect-ratio parameter", async () => {
+    render(
+      <ProjectProvider projectId="project-test" initialModelCatalog={[]}>
+        <ImageNode
+          {...baseNodeProps}
+          id="legacy-custom-image"
+          type="image"
+          width={400}
+          height={400}
+          data={{
+            actionType: "custom:codex-imagegen",
+            customActionParams: { aspect_ratio: "21:9" },
+            label: "A cat",
+            status: "pending",
+          }}
+        />
+      </ProjectProvider>,
+    );
+
+    await waitFor(() => expect(reactFlowMock.setNodes).toHaveBeenCalled());
+    const update = reactFlowMock.setNodes.mock.calls[0][0];
+    const [repaired] = update([
+      {
+        id: "legacy-custom-image",
+        data: {},
+        width: 400,
+        height: 400,
+        style: { width: 400, height: 400 },
+      },
+    ]);
+
+    expect(repaired.data.aspectRatio).toBe("21:9");
+    expect(repaired.width / repaired.height).toBeCloseTo(21 / 9, 2);
+  });
+
   it("renders image nodes from node props width and height without subscribing to all nodes", () => {
     const { container } = render(
       <ProjectProvider projectId="project-test" initialModelCatalog={[]}>

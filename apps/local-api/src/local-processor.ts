@@ -23,9 +23,11 @@ import {
   parseDocumentBody,
   parsePromptParts,
   ProjectAssetEntrySchema,
+  ProjectTimelineEnvelopeSchema,
   readProjectAsset,
   readProjectActionRun,
   readGeneratorRevision,
+  readProjectTimeline,
   validateReferenceMedia,
   validateRefs,
   MEDIA_REFERENCE_FIELDS,
@@ -40,6 +42,7 @@ import type {
   ActionAssetBinding,
   ModelCard,
   ProjectAssetEntry,
+  ProjectTimelineEnvelope,
   ReferenceMediaMetadata,
   TextAppliedRevision,
   DocumentAssetRevision,
@@ -55,6 +58,7 @@ import {
 import {
   createLocalDurableRunCoordinator,
   DEFAULT_LOCAL_PROVIDER_RUN_DEADLINE_MS,
+  pluginOutputSlotsForDurableRun,
   type FrozenLocalProviderExecutorInput,
 } from "./durable-run-coordinator.js";
 import { createSqliteDurableRunJournal } from "./durable-run-journal.js";
@@ -68,6 +72,7 @@ import { createLocalPluginAssetStagingStore } from "./local-plugin-asset-staging
 import { createLocalDurableOutputStagingStore } from "./local-durable-output-staging.js";
 import { createLocalGeneratorRunBridge } from "./local-generator-run-bridge.js";
 import type { LocalAssetInspectionService } from "./local-asset-inspections.js";
+import type { LocalAssetRepresentationService } from "./local-asset-representations.js";
 import { storeTextRevisionContentBlob } from "./text-revision-content.js";
 import type {
   ExecutablePluginActionInvoker,
@@ -114,6 +119,11 @@ export interface LocalWorkflowProcessorOptions {
   dataDir: string;
   /** Process-owned Resource inspection registry shared with Asset HTTP reads. */
   assetInspection?: LocalAssetInspectionService;
+  /** Process-owned derived representation consumer shared with Asset HTTP reads. */
+  assetRepresentations?: Pick<
+    LocalAssetRepresentationService,
+    "schedule" | "read"
+  >;
   userId?: string;
   mediaBaseUrl?: string | (() => string);
   aigc?: ExternalAigcService;
@@ -870,9 +880,12 @@ function pendingKindForNode(
   if (data.status !== "pending" && data.status !== "generating") return null;
   if (
     node.type === "video" &&
-    data.timelineDsl &&
-    typeof data.timelineDsl === "object" &&
-    !Array.isArray(data.timelineDsl)
+    ((data.timeline &&
+      typeof data.timeline === "object" &&
+      !Array.isArray(data.timeline)) ||
+      (data.timelineDsl &&
+        typeof data.timelineDsl === "object" &&
+        !Array.isArray(data.timelineDsl)))
   ) {
     return null;
   }
@@ -881,6 +894,36 @@ function pendingKindForNode(
   const expectedActionType = `${kind}-gen`;
   if (data.actionType && data.actionType !== expectedActionType) return null;
   return kind;
+}
+
+function timelineRenderEnvelope(
+  doc: LoroDoc,
+  data: Record<string, unknown>,
+): ProjectTimelineEnvelope | null {
+  const direct = ProjectTimelineEnvelopeSchema.safeParse(data.timeline);
+  if (direct.success) return direct.data;
+
+  if (
+    !data.timelineDsl ||
+    typeof data.timelineDsl !== "object" ||
+    Array.isArray(data.timelineDsl) ||
+    typeof data.sourceTimelineId !== "string"
+  ) {
+    return null;
+  }
+  const timeline = readProjectTimeline(doc, data.sourceTimelineId);
+  if (
+    !timeline ||
+    timeline.revisionId !== data.sourceTimelineRevisionId
+  ) {
+    return null;
+  }
+  const legacy = ProjectTimelineEnvelopeSchema.safeParse({
+    name: timeline.name,
+    owner: timeline.owner,
+    state: data.timelineDsl,
+  });
+  return legacy.success ? legacy.data : null;
 }
 
 function timelineRenderInputOwner(
@@ -897,13 +940,16 @@ function timelineRenderInputOwner(
 
 function frozenRemotionTimelineInput(options: {
   doc: LoroDoc;
-  timelineDsl: Record<string, any>;
+  timeline: ProjectTimelineEnvelope;
   inputOwner: Extract<ActionBindingOwner, { kind: "run" }>;
 }): {
-  timelineDsl: Record<string, any>;
+  timeline: ProjectTimelineEnvelope;
   references: ExecutablePluginReference[];
 } {
-  const timelineDsl = structuredClone(options.timelineDsl);
+  const timeline = ProjectTimelineEnvelopeSchema.parse(
+    structuredClone(options.timeline),
+  );
+  const timelineDsl = timeline.state as Record<string, any>;
   const nodes = options.doc.getMap("nodes");
   const bindings = listActionAssetBindingsForOwner(
     options.doc,
@@ -995,7 +1041,13 @@ function frozenRemotionTimelineInput(options: {
       });
     }
   }
-  return { timelineDsl, references };
+  return {
+    timeline: ProjectTimelineEnvelopeSchema.parse({
+      ...timeline,
+      state: timelineDsl,
+    }),
+    references,
+  };
 }
 
 export function createLocalWorkflowProcessor(
@@ -1028,6 +1080,9 @@ export function createLocalWorkflowProcessor(
     },
     ...(options.assetInspection
       ? { assetInspection: options.assetInspection }
+      : {}),
+    ...(options.assetRepresentations
+      ? { assetRepresentations: options.assetRepresentations }
       : {}),
   });
   const pluginAssetStaging = createLocalPluginAssetStagingStore({
@@ -1486,9 +1541,13 @@ export function createLocalWorkflowProcessor(
               resolveProviderExecutorBinding:
                 options.resolveProviderExecutorBinding,
             });
+            const expectedReceiptSlots = pluginOutputSlotsForDurableRun(
+              frozen,
+              run.outputSlot,
+            );
             if (
               staged.taskId !== expectedReceiptTaskId ||
-              staged.slot !== run.outputSlot ||
+              !expectedReceiptSlots.includes(staged.slot) ||
               staged.pluginId !== expectedOwner.pluginId ||
               staged.pluginVersion !== expectedOwner.pluginVersion ||
               (expectedOwner.accountId !== undefined &&
@@ -1739,6 +1798,9 @@ export function createLocalWorkflowProcessor(
                     ]);
               publishedAsset = publication.entry;
               changed = publication.changed || changed;
+              options.assetRepresentations?.schedule(
+                verified.source.resourceId,
+              );
             }
             if (frozen.delivery) {
               if (!publishedAsset) {
@@ -2196,15 +2258,18 @@ export function createLocalWorkflowProcessor(
           node.data && typeof node.data === "object"
             ? (node.data as Record<string, any>)
             : {};
-        const hasTimelineRenderDsl =
+        const hasTimelineRenderPayload =
           node.type === "video" &&
           (renderData.status === "pending" ||
             renderData.status === "generating") &&
           !renderData.assetId &&
-          renderData.timelineDsl &&
-          typeof renderData.timelineDsl === "object" &&
-          !Array.isArray(renderData.timelineDsl);
-        if (hasTimelineRenderDsl && !timelineRenderInputOwner(renderData)) {
+          ((renderData.timeline &&
+            typeof renderData.timeline === "object" &&
+            !Array.isArray(renderData.timeline)) ||
+            (renderData.timelineDsl &&
+              typeof renderData.timelineDsl === "object" &&
+              !Array.isArray(renderData.timelineDsl)));
+        if (hasTimelineRenderPayload && !timelineRenderInputOwner(renderData)) {
           nodes.set(nodeId, {
             ...node,
             data: {
@@ -2218,8 +2283,25 @@ export function createLocalWorkflowProcessor(
           changed = true;
           continue;
         }
+        const frozenTimeline = hasTimelineRenderPayload
+          ? timelineRenderEnvelope(doc, renderData)
+          : null;
+        if (hasTimelineRenderPayload && !frozenTimeline) {
+          nodes.set(nodeId, {
+            ...node,
+            data: {
+              ...renderData,
+              status: "failed",
+              failureCode: "TIMELINE_RENDER_INPUT_INVALID",
+              error:
+                "Timeline render is missing its shared frozen Timeline envelope.",
+            },
+          });
+          changed = true;
+          continue;
+        }
         const isTimelineRender =
-          hasTimelineRenderDsl &&
+          frozenTimeline !== null &&
           renderData.status === "pending" &&
           !renderData.pendingTask &&
           !renderData.assetId;
@@ -2251,7 +2333,7 @@ export function createLocalWorkflowProcessor(
               ),
               input: frozenRemotionTimelineInput({
                 doc,
-                timelineDsl: renderData.timelineDsl,
+                timeline: frozenTimeline,
                 inputOwner,
               }),
             };
@@ -2286,8 +2368,8 @@ export function createLocalWorkflowProcessor(
                 input: {
                   values: {
                     outputSlot: identity.outputSlot,
-                    timelineDsl: jsonSnapshot(
-                      pluginExecution.input.timelineDsl,
+                    timeline: jsonSnapshot(
+                      pluginExecution.input.timeline,
                     ),
                     inputOwner: jsonSnapshot(inputOwner),
                     prompt: `Render Timeline ${String(renderData.sourceTimelineId ?? nodeId)}`,

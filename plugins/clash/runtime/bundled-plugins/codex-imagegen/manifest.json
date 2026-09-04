@@ -1,7 +1,7 @@
 {
   "apiVersion": "clash.plugin/v1",
   "id": "clash.codex-imagegen",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "name": "Codex ImageGen",
   "description": "Generate or edit images with Codex's built-in image generation tool and the signed-in ChatGPT subscription.",
   "author": "Clash",

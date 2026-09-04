@@ -22,6 +22,7 @@
     "video-thumbnail-implementation.md": "Historical Python/Loro thumbnail pipeline superseded by device-local frontend poster, waveform, and filmstrip caches.",
     "video-optimization.md": "Historical video-preview experiments; Current Local derives disposable previews from an entry-authorized original-media projection.",
     "loro-crdt-explained.md": "Deep dive into the Loro CRDT implementation for real-time sync.",
+    "distributed-loro-sync-backend-research.md": "Research and selection guide for distributed Loro event relay, PubSub fan-out, durable logs, binary checkpoints, actor/FIFO alternatives, and Kubernetes deployment shapes; not an implementation contract.",
     "local-loro-host-architecture.md": "Local-first Loro architecture: Local Host, actors, persistent replicas, cloud alignment, and presence boundaries.",
     "local-host-cli-implementation-plan.md": "Implementation plan for project context, Local Host persistence, CLI commands, actor presence, and cloud code reuse.",
     "official-custom-views-action-runtime-plan.md": "Superseded proposal for Official/Custom Views; its AssetRevision and ActionRun model is historical, not an implementation contract.",

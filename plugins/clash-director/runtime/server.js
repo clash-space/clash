@@ -39515,10 +39515,10 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
     super.registerTool(CLASH_GENERATORS_TOOL_NAME, {
       title: generatorsDefinition.title,
       description: describeClashTool({
-        useWhen: "you need to discover a registered Project Generator, inspect its head Revision, or run an Action Run against it",
+        useWhen: "the user asks to generate or edit image, video, or audio media for the current Clash Project, or you need to discover, inspect, or run a registered Project Generator",
         effect: "returns live Generators contracts when operation is omitted, or validates and executes one registered Generators leaf exactly once",
         returns: "typed Generators operation contracts or the selected leaf operation's exact result",
-        next: "choose the smallest matching operation, then call clash_generators with operation and arguments"
+        next: "choose the smallest matching operation, submit and poll the Action Run, then read its output commit; never claim complete, finished, or successful project media without that persisted readback"
       }),
       inputSchema: {
         operation: external_exports.string().min(1).optional().describe("Omit this field entirely to reveal live contracts; never send an empty string, list_operations, or contracts. Otherwise pass a command-local Generators operation or complete clash_generators_* leaf name"),
@@ -43933,7 +43933,7 @@ var z2 = /* @__PURE__ */ Object.freeze({
   ZodError: ZodError3
 });
 
-// ../../packages/shared-types/dist/chunk-GWDIKZMB.js
+// ../../packages/shared-types/dist/chunk-EQ2BPN4E.js
 var AssetKindSchema = z2.enum(["image", "video", "audio", "model"]);
 var ResourceIdSchema = z2.string().trim().min(1);
 var ResourceSchema2 = z2.object({
@@ -44026,6 +44026,8 @@ var ProjectAssetEntrySchema = z2.object({
   kind: AssetKindSchema,
   source: ProjectAssetSourceSchema,
   lifecycle: ProjectAssetLifecycleSchema,
+  /** Immutable wall-clock production/admission time in Unix milliseconds. */
+  createdAt: z2.number().int().nonnegative().optional(),
   name: z2.string().trim().min(1).optional(),
   metadata: ProjectAssetMetadataSchema,
   provenance: ProjectAssetProvenanceSchema.optional()
@@ -44067,6 +44069,8 @@ var ActionAssetBindingSchema = z2.object({
 var ResolvedAssetSchema = z2.object({
   id: z2.string().trim().min(1),
   kind: AssetKindSchema,
+  /** Project Asset production time, or a Host Resource time for legacy entries. */
+  createdAt: z2.number().int().nonnegative().optional(),
   name: z2.string().trim().min(1).optional(),
   metadata: ProjectAssetMetadataSchema,
   provenance: ProjectAssetProvenanceSchema.optional(),
@@ -44081,6 +44085,8 @@ var ResolvedAssetSchema = z2.object({
   ]),
   url: z2.string().url().optional(),
   thumbnailUrl: z2.string().url().optional(),
+  /** Host-authorized projection of a bounded waveform representation. */
+  waveformUrl: z2.string().url().optional(),
   progress: z2.number().min(0).max(1).optional(),
   error: z2.string().trim().min(1).optional()
 }).strict();
@@ -44144,7 +44150,43 @@ var AssetRefRowSchema = z2.object({
   importedAt: z2.number()
 });
 
-// ../../packages/shared-types/dist/chunk-UZSXLAEL.js
+// ../../packages/shared-types/dist/chunk-MMCIZQ23.js
+var AspectRatioSchema = z2.object({
+  width: z2.number().int().positive(),
+  height: z2.number().int().positive()
+}).strict();
+var AspectRatioStringSchema = z2.string().trim().transform((value, ctx) => {
+  const ratio = parseAspectRatio(value);
+  if (!ratio) {
+    ctx.addIssue({
+      code: z2.ZodIssueCode.custom,
+      message: "Aspect ratio must be two positive integers separated by a colon."
+    });
+    return z2.NEVER;
+  }
+  return aspectRatioLabel(ratio);
+});
+function greatestCommonDivisor(a, b) {
+  return b === 0 ? a : greatestCommonDivisor(b, a % b);
+}
+function reduceAspectRatio(ratio) {
+  const divisor = greatestCommonDivisor(ratio.width, ratio.height);
+  return { width: ratio.width / divisor, height: ratio.height / divisor };
+}
+function aspectRatioLabel(ratio) {
+  const reduced = reduceAspectRatio(ratio);
+  return `${reduced.width}:${reduced.height}`;
+}
+function parseAspectRatio(text) {
+  const match = /^\s*(\d+)\s*[:x×]\s*(\d+)\s*$/i.exec(text);
+  if (!match) return void 0;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    return void 0;
+  }
+  return { width, height };
+}
 var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
 var pluginIdSchema = z2.string().trim().superRefine((value, ctx) => {
   const segments = value.split(".");
@@ -45496,6 +45538,9 @@ var ModelParameterSchema = z2.object({
   /** Provider-fixed output characteristic. It remains visible in the common
    * parameter surface, but UI and external payloads cannot override it. */
   readOnly: z2.boolean().optional(),
+  /** Select controls may accept values beyond their preset menu. Aspect-ratio
+   * custom values remain positive integer W:H pairs. */
+  allowCustom: z2.boolean().optional(),
   required: z2.boolean().default(false),
   options: z2.array(
     z2.object({
@@ -45509,6 +45554,13 @@ var ModelParameterSchema = z2.object({
   placeholder: z2.string().optional(),
   defaultValue: z2.union([z2.string(), z2.number(), z2.boolean()]).optional()
 });
+function acceptsCustomModelParameterValue(parameter, value) {
+  if (parameter.type !== "select" || !parameter.allowCustom) return false;
+  if (parameter.id === "aspect_ratio") {
+    return typeof value === "string" && parseAspectRatio(value) !== void 0;
+  }
+  return typeof value === "string" || typeof value === "number";
+}
 var ReferenceMediaConstraintsSchema = z2.object({
   mimeTypes: z2.array(z2.string().min(1)).optional(),
   fileExtensions: z2.array(z2.string().min(1)).optional(),
@@ -45789,7 +45841,7 @@ var ModelCardSchema = z2.object({
     if (value === void 0) return;
     if (parameter.type === "select") {
       const optionValues = parameter.options?.map((option) => option.value) ?? [];
-      if (!optionValues.some((candidate) => sameCandidate(candidate, value))) {
+      if (!optionValues.some((candidate) => sameCandidate(candidate, value)) && !acceptsCustomModelParameterValue(parameter, value)) {
         ctx.addIssue({
           code: "custom",
           path,
@@ -45839,6 +45891,13 @@ var ModelCardSchema = z2.object({
     }
     parameterIds.add(parameter.id);
     parametersById.set(parameter.id, parameter);
+    if (parameter.allowCustom && parameter.type !== "select") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["parameters", index, "allowCustom"],
+        message: "Only select parameters may allow custom values."
+      });
+    }
     if (parameter.type === "select") {
       if (!parameter.options?.length) {
         ctx.addIssue({
@@ -51514,10 +51573,6 @@ var MEDIA_ANALYSIS_DOCUMENT_KIND_BY_CATEGORY = {
   ocr: "media.analysis.ocr",
   "audio-semantics": "media.analysis.audio-semantics"
 };
-var AspectRatioSchema = z2.object({
-  width: z2.number().int().positive(),
-  height: z2.number().int().positive()
-}).strict();
 var PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 var SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 var SHA256_PATTERN = /^sha256:[0-9a-f]{64}$/;
@@ -51590,6 +51645,11 @@ var ExecutablePluginModelBindingExportSchema = z2.object({
 var ExecutablePluginGeneratorExportSchema = z2.object({
   id: z2.string().trim().regex(PLUGIN_ID_PATTERN),
   kind: z2.literal("generator"),
+  path: PluginRelativePathSchema
+}).strict();
+var ExecutablePluginViewExportSchema = z2.object({
+  id: z2.string().trim().regex(PLUGIN_ID_PATTERN),
+  kind: z2.literal("view"),
   path: PluginRelativePathSchema
 }).strict();
 var ExecutableActionPresentationSchema = z2.discriminatedUnion("type", [
@@ -51748,6 +51808,99 @@ var ExecutablePluginGeneratorDocumentSchema = z2.object({
   kind: z2.literal("generator"),
   spec: GeneratorDefinitionSpecSchema
 }).strict();
+var StoryboardViewResourceSchema = z2.object({
+  id: z2.string().trim().min(1),
+  projectAssetId: z2.string().trim().min(1),
+  mediaKind: z2.enum(["image", "video", "audio", "model"]),
+  modelName: z2.string().trim().min(1).optional(),
+  generatedBy: z2.object({
+    generatorId: z2.string().trim().min(1),
+    generatorRevisionId: z2.string().trim().min(1),
+    actionRunId: z2.string().trim().min(1),
+    outputCommitId: z2.string().trim().min(1),
+    outputSlot: z2.string().trim().min(1).optional()
+  }).strict().optional()
+}).strict();
+var StoryboardViewDescriptionPartSchema = z2.discriminatedUnion("type", [
+  z2.object({ type: z2.literal("text"), text: z2.string() }).strict(),
+  z2.object({
+    type: z2.literal("entity-reference"),
+    entityId: z2.string().trim().min(1)
+  }).strict()
+]);
+var StoryboardViewMaterialSchema = z2.object({
+  id: z2.string().trim().min(1),
+  label: z2.string().trim().min(1).optional(),
+  mediaKind: z2.enum(["image", "video", "audio", "model"]),
+  promptDraft: z2.object({
+    id: z2.string().trim().min(1),
+    text: z2.string()
+  }).strict().optional(),
+  candidates: z2.array(StoryboardViewResourceSchema).default([]),
+  selectedCandidateId: z2.string().trim().min(1).optional()
+}).strict().superRefine((material, ctx) => {
+  if (material.selectedCandidateId && !material.candidates.some(
+    (candidate) => candidate.id === material.selectedCandidateId
+  )) {
+    ctx.addIssue({
+      code: z2.ZodIssueCode.custom,
+      path: ["selectedCandidateId"],
+      message: "A selected candidate must belong to the same material slot."
+    });
+  }
+  const candidateIds = /* @__PURE__ */ new Set();
+  material.candidates.forEach((candidate, index) => {
+    if (candidateIds.has(candidate.id)) {
+      ctx.addIssue({
+        code: z2.ZodIssueCode.custom,
+        path: ["candidates", index, "id"],
+        message: "Candidate ids must be unique within a material slot."
+      });
+    }
+    candidateIds.add(candidate.id);
+    if (candidate.mediaKind !== material.mediaKind) {
+      ctx.addIssue({
+        code: z2.ZodIssueCode.custom,
+        path: ["candidates", index, "mediaKind"],
+        message: "A candidate must match its material slot media kind."
+      });
+    }
+  });
+});
+var StoryboardViewItemBaseSchema = z2.object({
+  id: z2.string().trim().min(1),
+  label: z2.string().trim().min(1).optional(),
+  description: z2.array(StoryboardViewDescriptionPartSchema).default([]),
+  details: z2.string().optional(),
+  materials: z2.array(StoryboardViewMaterialSchema).default([])
+});
+var StoryboardViewItemSchema = StoryboardViewItemBaseSchema.strict();
+var StoryboardViewShotSchema = StoryboardViewItemBaseSchema.extend({
+  durationSeconds: z2.number().finite().positive().optional()
+}).strict();
+var StoryboardViewStateSchema = z2.object({
+  keyElements: z2.array(StoryboardViewItemSchema),
+  shots: z2.array(StoryboardViewShotSchema),
+  audioLayers: z2.array(StoryboardViewItemSchema),
+  uncategorized: z2.array(StoryboardViewResourceSchema)
+}).strict();
+var ExecutablePluginViewDocumentSchema = z2.object({
+  apiVersion: z2.literal("clash.view/v1"),
+  kind: z2.literal("view"),
+  spec: z2.object({
+    definitionId: z2.string().trim().regex(PLUGIN_ID_PATTERN),
+    name: z2.string().trim().min(1),
+    description: z2.string().trim().min(1).optional(),
+    presentation: z2.object({ type: z2.literal("storyboard") }).strict(),
+    initialState: StoryboardViewStateSchema
+  }).strict()
+}).strict();
+var ExecutablePluginViewReferenceSchema = z2.object({
+  pluginId: pluginIdSchema,
+  definitionId: z2.string().trim().regex(PLUGIN_ID_PATTERN),
+  version: z2.string().trim().regex(SEMVER_PATTERN),
+  schemaHash: z2.string().regex(SHA256_PATTERN)
+}).strict();
 var ExecutablePluginProviderDefinitionSchema = z2.object({
   /**
    * What this provider needs to authenticate, and how to draw it.
@@ -51881,6 +52034,12 @@ var ExecutablePluginGeneratorRegistrationSchema = z2.object({
   version: z2.string().trim().regex(SEMVER_PATTERN),
   schemaHash: z2.string().regex(SHA256_PATTERN),
   document: ExecutablePluginGeneratorDocumentSchema
+}).strict();
+var ExecutablePluginViewRegistrationSchema = z2.object({
+  pluginId: pluginIdSchema,
+  version: z2.string().trim().regex(SEMVER_PATTERN),
+  schemaHash: z2.string().regex(SHA256_PATTERN),
+  document: ExecutablePluginViewDocumentSchema
 }).strict();
 var ExecutablePluginBindingSchema = z2.object({
   pluginId: pluginIdSchema,
@@ -52388,7 +52547,7 @@ var ExecutablePluginBrokerOperationSchema = z2.union([
   z2.object({
     kind: z2.literal("codex.image.generate"),
     prompt: z2.string().trim().min(1).max(2e4),
-    aspectRatio: z2.enum(["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"]).default("1:1"),
+    aspectRatio: AspectRatioStringSchema.default("1:1"),
     slot: z2.string().trim().min(1),
     references: z2.array(
       ExecutablePluginAssetHandleObjectSchema.extend({
@@ -52492,6 +52651,7 @@ var ExecutablePluginContributionsSchema = z2.object({
   providers: z2.array(ExecutablePluginProviderExportSchema).default([]),
   modelBindings: z2.array(ExecutablePluginModelBindingExportSchema).default([]),
   generators: z2.array(ExecutablePluginGeneratorExportSchema).default([]),
+  views: z2.array(ExecutablePluginViewExportSchema).default([]),
   functions: z2.array(ExecutablePluginFunctionExportSchema).default([]),
   hostTools: z2.array(z2.enum(["codex.imagegen", "speech.transcribe", "media.analyze", "director.stage.capture-frame", "video.enhance"])).default([])
 }).strict();
@@ -52513,6 +52673,7 @@ var ExecutablePluginManifestSchema = z2.object({
     ["providers", manifest.contributes.providers],
     ["modelBindings", manifest.contributes.modelBindings],
     ["generators", manifest.contributes.generators],
+    ["views", manifest.contributes.views],
     ["functions", manifest.contributes.functions]
   ]) {
     const ids = /* @__PURE__ */ new Set();
@@ -52542,7 +52703,8 @@ var ExecutablePluginManifestSchema = z2.object({
   for (const artifact of [
     ...manifest.contributes.providers,
     ...manifest.contributes.modelBindings,
-    ...manifest.contributes.generators
+    ...manifest.contributes.generators,
+    ...manifest.contributes.views
   ]) {
     if (artifactPaths.has(artifact.path)) {
       ctx.addIssue({
@@ -57429,6 +57591,106 @@ var TimelineLibraryItemSchema = z2.discriminatedUnion("category", [
   AdjustmentLibraryItemSchema
 ]);
 
+// ../../packages/shared-types/dist/chunk-YKBFTDJ4.js
+var ActionFamilySchema = z2.enum(["generate", "edit", "custom"]);
+var ActionOperationSpecSchema = z2.object({
+  id: z2.string().min(1),
+  outputKind: AssetKindSchema
+});
+var ActionSpecSchema = z2.object({
+  id: z2.string().min(1),
+  version: z2.string().min(1),
+  name: z2.string().min(1),
+  family: ActionFamilySchema,
+  inputKinds: z2.array(AssetKindSchema).min(1),
+  operations: z2.array(ActionOperationSpecSchema).min(1)
+});
+var ActionInvocationModeSchema = z2.enum(["explicit", "implicit"]);
+var ActionSurfaceSchema = z2.enum(["canvas", "asset-preview"]);
+var ACTION_INVOCATION_MODE = {
+  Explicit: "explicit",
+  Implicit: "implicit"
+};
+function invocationModeForSurface(surface) {
+  return surface === "canvas" ? ACTION_INVOCATION_MODE.Explicit : ACTION_INVOCATION_MODE.Implicit;
+}
+var ASSET_ACTION_ID = {
+  ImageEditor: "image-editor",
+  VideoClipper: "video-clipper"
+};
+var CropRectSchema = z2.object({
+  x: z2.number().int().nonnegative(),
+  y: z2.number().int().nonnegative(),
+  width: z2.number().int().positive(),
+  height: z2.number().int().positive()
+});
+var ImageEditParamsSchema = z2.object({
+  crop: CropRectSchema.optional(),
+  rotation: z2.union([z2.literal(0), z2.literal(90), z2.literal(180), z2.literal(270)]).optional()
+});
+var VideoClipParamsSchema = z2.discriminatedUnion("mode", [
+  z2.object({
+    mode: z2.literal("screenshot"),
+    frameTimeSec: z2.number().nonnegative()
+  }),
+  z2.object({
+    mode: z2.literal("crop"),
+    startSec: z2.number().nonnegative(),
+    endSec: z2.number().positive()
+  })
+]).superRefine((value, context) => {
+  if (value.mode === "crop" && value.endSec <= value.startSec) {
+    context.addIssue({
+      code: z2.ZodIssueCode.custom,
+      message: "endSec must be greater than startSec",
+      path: ["endSec"]
+    });
+  }
+});
+var BUILT_IN_ASSET_ACTION_SPECS = {
+  [ASSET_ACTION_ID.ImageEditor]: ActionSpecSchema.parse({
+    id: ASSET_ACTION_ID.ImageEditor,
+    version: "1",
+    name: "Image Editor",
+    family: "edit",
+    inputKinds: ["image"],
+    operations: [{ id: "transform", outputKind: "image" }]
+  }),
+  [ASSET_ACTION_ID.VideoClipper]: ActionSpecSchema.parse({
+    id: ASSET_ACTION_ID.VideoClipper,
+    version: "1",
+    name: "Video Clipper",
+    family: "edit",
+    inputKinds: ["video"],
+    operations: [
+      { id: "screenshot", outputKind: "image" },
+      { id: "crop", outputKind: "video" }
+    ]
+  })
+};
+var InvocationBaseSchema = z2.object({
+  projectId: z2.string().min(1),
+  mode: ActionInvocationModeSchema,
+  surface: ActionSurfaceSchema
+});
+var ImageEditActionInvocationSchema = InvocationBaseSchema.extend({
+  actionId: z2.literal(ASSET_ACTION_ID.ImageEditor),
+  source: z2.object({ assetId: z2.string().min(1), kind: z2.literal("image") }),
+  params: ImageEditParamsSchema
+});
+var VideoEditActionInvocationSchema = InvocationBaseSchema.extend({
+  actionId: z2.literal(ASSET_ACTION_ID.VideoClipper),
+  source: z2.object({ assetId: z2.string().min(1), kind: z2.literal("video") }),
+  params: VideoClipParamsSchema
+});
+var AssetEditActionInvocationSchema = z2.discriminatedUnion("actionId", [
+  ImageEditActionInvocationSchema,
+  VideoEditActionInvocationSchema
+]).refine((value) => value.mode === invocationModeForSurface(value.surface), {
+  message: "Invocation mode must match its surface",
+  path: ["mode"]
+});
+
 // ../../packages/shared-types/dist/index.js
 import { LoroMap as LoroMap3 } from "loro-crdt";
 import { LoroMap } from "loro-crdt";
@@ -57867,110 +58129,6 @@ var MEDIA_REFERENCE_PLURAL_NOUN = Object.fromEntries(
 var MEDIA_REFERENCE_COUNT_NOUN = Object.fromEntries(
   MEDIA_REFERENCE_FIELDS.map((field3) => [field3.modality, field3.countNoun])
 );
-var ActionFamilySchema = z2.enum(["generate", "edit", "custom"]);
-var ActionExecutorSchema = z2.enum([
-  "model",
-  "client-render",
-  "server-transform",
-  "runtime"
-]);
-var ActionOperationSpecSchema = z2.object({
-  id: z2.string().min(1),
-  executor: ActionExecutorSchema,
-  outputKind: AssetKindSchema
-});
-var ActionSpecSchema = z2.object({
-  id: z2.string().min(1),
-  version: z2.string().min(1),
-  name: z2.string().min(1),
-  family: ActionFamilySchema,
-  inputKinds: z2.array(AssetKindSchema).min(1),
-  operations: z2.array(ActionOperationSpecSchema).min(1)
-});
-var ActionInvocationModeSchema = z2.enum(["explicit", "implicit"]);
-var ActionSurfaceSchema = z2.enum(["canvas", "asset-preview"]);
-var ACTION_INVOCATION_MODE = {
-  Explicit: "explicit",
-  Implicit: "implicit"
-};
-function invocationModeForSurface(surface) {
-  return surface === "canvas" ? ACTION_INVOCATION_MODE.Explicit : ACTION_INVOCATION_MODE.Implicit;
-}
-var ASSET_ACTION_ID = {
-  ImageEditor: "image-editor",
-  VideoClipper: "video-clipper"
-};
-var CropRectSchema = z2.object({
-  x: z2.number().int().nonnegative(),
-  y: z2.number().int().nonnegative(),
-  width: z2.number().int().positive(),
-  height: z2.number().int().positive()
-});
-var ImageEditParamsSchema = z2.object({
-  crop: CropRectSchema.optional(),
-  rotation: z2.union([z2.literal(0), z2.literal(90), z2.literal(180), z2.literal(270)]).optional()
-});
-var VideoClipParamsSchema = z2.discriminatedUnion("mode", [
-  z2.object({ mode: z2.literal("screenshot"), frameTimeSec: z2.number().nonnegative() }),
-  z2.object({
-    mode: z2.literal("crop"),
-    startSec: z2.number().nonnegative(),
-    endSec: z2.number().positive()
-  })
-]).superRefine((value, context) => {
-  if (value.mode === "crop" && value.endSec <= value.startSec) {
-    context.addIssue({
-      code: z2.ZodIssueCode.custom,
-      message: "endSec must be greater than startSec",
-      path: ["endSec"]
-    });
-  }
-});
-var BUILT_IN_ASSET_ACTION_SPECS = {
-  [ASSET_ACTION_ID.ImageEditor]: ActionSpecSchema.parse({
-    id: ASSET_ACTION_ID.ImageEditor,
-    version: "1",
-    name: "Image Editor",
-    family: "edit",
-    inputKinds: ["image"],
-    operations: [
-      { id: "transform", executor: "client-render", outputKind: "image" }
-    ]
-  }),
-  [ASSET_ACTION_ID.VideoClipper]: ActionSpecSchema.parse({
-    id: ASSET_ACTION_ID.VideoClipper,
-    version: "1",
-    name: "Video Clipper",
-    family: "edit",
-    inputKinds: ["video"],
-    operations: [
-      { id: "screenshot", executor: "client-render", outputKind: "image" },
-      { id: "crop", executor: "server-transform", outputKind: "video" }
-    ]
-  })
-};
-var InvocationBaseSchema = z2.object({
-  projectId: z2.string().min(1),
-  mode: ActionInvocationModeSchema,
-  surface: ActionSurfaceSchema
-});
-var ImageEditActionInvocationSchema = InvocationBaseSchema.extend({
-  actionId: z2.literal(ASSET_ACTION_ID.ImageEditor),
-  source: z2.object({ assetId: z2.string().min(1), kind: z2.literal("image") }),
-  params: ImageEditParamsSchema
-});
-var VideoEditActionInvocationSchema = InvocationBaseSchema.extend({
-  actionId: z2.literal(ASSET_ACTION_ID.VideoClipper),
-  source: z2.object({ assetId: z2.string().min(1), kind: z2.literal("video") }),
-  params: VideoClipParamsSchema
-});
-var AssetEditActionInvocationSchema = z2.discriminatedUnion("actionId", [
-  ImageEditActionInvocationSchema,
-  VideoEditActionInvocationSchema
-]).refine((value) => value.mode === invocationModeForSurface(value.surface), {
-  message: "Invocation mode must match its surface",
-  path: ["mode"]
-});
 var PositionSchema2 = z2.object({
   x: z2.number(),
   y: z2.number()
@@ -59626,6 +59784,9 @@ var addCommand = z2.object({
     "text",
     "group",
     "remotion",
+    "image",
+    "video",
+    "audio",
     "image_gen",
     "video_gen",
     "audio_gen",
@@ -59638,6 +59799,7 @@ var addCommand = z2.object({
   parentId: id.optional(),
   modelId: id.optional(),
   actionId: id.optional(),
+  assetId: id.optional(),
   refs: z2.array(id).optional(),
   params: z2.record(id, primitiveParameter).optional(),
   actorClientType,
@@ -60093,6 +60255,33 @@ var MODEL_UPSTREAM_ROUTES = [
   ...MOCK_DECLARED_ROUTES,
   ...MOCK_ROUTES
 ];
+var ProjectCanvasPreviewNodeSchema = z2.object({
+  id: z2.string().trim().min(1),
+  type: z2.string().trim().min(1),
+  x: z2.number().finite(),
+  y: z2.number().finite(),
+  width: z2.number().finite().positive(),
+  height: z2.number().finite().positive(),
+  parentId: z2.string().trim().min(1).optional(),
+  assetId: z2.string().trim().min(1).optional(),
+  label: z2.string().trim().min(1).optional()
+}).strict();
+var ProjectCanvasPreviewSchema = z2.object({
+  canvasId: z2.string().trim().min(1),
+  bounds: z2.object({
+    x: z2.number().finite(),
+    y: z2.number().finite(),
+    width: z2.number().finite().nonnegative(),
+    height: z2.number().finite().nonnegative()
+  }).strict().nullable(),
+  nodes: z2.array(ProjectCanvasPreviewNodeSchema)
+}).strict();
+var ProjectCanvasThumbnailSchema = z2.object({
+  url: z2.string().url(),
+  revision: z2.string().regex(/^[a-f0-9]{64}$/u),
+  width: z2.number().int().positive(),
+  height: z2.number().int().positive()
+}).strict();
 var CopilotProjectAssetReferenceSchema = z2.object({
   projectAssetId: z2.string().trim().min(1),
   kind: AssetKindSchema,

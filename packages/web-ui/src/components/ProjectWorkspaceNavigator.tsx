@@ -10,6 +10,7 @@ import {
   Images,
   MagnifyingGlass,
   Plus,
+  Shapes,
   TextT,
   Trash,
   UploadSimple,
@@ -58,11 +59,16 @@ import {
 import { Tab, TabList, TabProvider } from "./ui/tabs";
 import { AssetThumbnail } from "../features/assets/AssetThumbnail";
 import { projectAssetDisplayName } from "../features/assets/projectAssetPresentation";
-import { projectAssetPlaybackUrl } from "../features/assets/media-url";
+import {
+  assetThumbnailImageUrl,
+  projectAssetPlaybackUrl,
+} from "../features/assets/media-url";
 import { CanvasIcon } from "./ProjectSurfaceIcon";
+import type { ExecutablePluginViewDefinition } from "../hooks/useExecutablePluginViews";
 
 export type ProjectWorkspaceSurface =
   | { kind: "canvas"; canvasId: string }
+  | { kind: "plugin-view"; nodeId: string; canvasId: string }
   | { kind: "timeline"; timelineId: string }
   | { kind: "director-stage"; stageId: string }
   | { kind: "text-asset"; nodeId: string; canvasId: string }
@@ -84,6 +90,14 @@ export interface ProjectTextAsset {
   label: string;
 }
 
+export interface ProjectPluginView {
+  nodeId: string;
+  canvasId: string;
+  label: string;
+  pluginId: string;
+  definitionId: string;
+}
+
 interface ProjectWorkspaceNavigatorProps {
   header?: ReactNode;
   footer?: ReactNode;
@@ -92,16 +106,21 @@ interface ProjectWorkspaceNavigatorProps {
   directorStages?: ProjectDirectorStage[];
   assets: ResolvedAsset[];
   textAssets?: ProjectTextAsset[];
+  pluginViews?: ProjectPluginView[];
+  pluginViewDefinitions?: ExecutablePluginViewDefinition[];
   globalAssets?: ResolvedAsset[];
   browsers?: ProjectBrowserTab[];
   surface: ProjectWorkspaceSurface;
   onSelectCanvas: (canvasId: string) => void;
+  onSelectPluginView?: (view: ProjectPluginView) => void;
   onSelectTimeline: (timelineId: string) => void;
   onSelectDirectorStage?: (stageId: string) => void;
   onSelectAsset: (assetId: string) => void;
   onSelectTextAsset?: (asset: ProjectTextAsset) => void;
   onSelectBrowser?: (browserId: string) => void;
   onCreateCanvas: () => void;
+  onCreatePluginView?: (definition: ExecutablePluginViewDefinition) => void;
+  onDeletePluginView?: (view: ProjectPluginView) => void;
   onRenameCanvas: (canvas: ProjectCanvas) => void;
   onDeleteCanvas: (canvas: ProjectCanvas) => void;
   onCreateTimeline: () => void;
@@ -128,7 +147,7 @@ const sidebarActionSlotClass =
   "clash-project-sidebar-action-slot h-6 min-h-6 w-6 min-w-6";
 
 type ProjectFolderId =
-  "canvases" | "browsers" | "timelines" | "director-stages" | "assets";
+  "canvases" | "views" | "browsers" | "timelines" | "director-stages" | "assets";
 
 interface ProjectFolderSectionProps {
   id: ProjectFolderId;
@@ -266,6 +285,7 @@ function SidebarItemContextMenu({
 
 type ProjectSearchResult =
   | { kind: "canvas"; id: string; label: string; searchText: string }
+  | { kind: "plugin-view"; id: string; label: string; searchText: string }
   | { kind: "browser"; id: string; label: string; searchText: string }
   | { kind: "timeline"; id: string; label: string; searchText: string }
   | { kind: "director-stage"; id: string; label: string; searchText: string }
@@ -299,6 +319,10 @@ function timelineTabId(timelineId: string): string {
   return `project-timeline-${timelineId}`;
 }
 
+function pluginViewTabId(nodeId: string): string {
+  return `project-plugin-view-${nodeId}`;
+}
+
 function browserTabId(browserId: string): string {
   return `project-browser-${browserId}`;
 }
@@ -317,6 +341,7 @@ function textAssetTabId(nodeId: string): string {
 
 function selectedTabId(surface: ProjectWorkspaceSurface): string {
   if (surface.kind === "canvas") return canvasTabId(surface.canvasId);
+  if (surface.kind === "plugin-view") return pluginViewTabId(surface.nodeId);
   if (surface.kind === "browser") return browserTabId(surface.browserId);
   if (surface.kind === "timeline") return timelineTabId(surface.timelineId);
   if (surface.kind === "director-stage")
@@ -334,6 +359,83 @@ function assetNavigationLabel(asset: ResolvedAsset): {
   return { label, path };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function timelineFirstFrameAsset(
+  timeline: ProjectTimeline,
+  assetsById: ReadonlyMap<string, ResolvedAsset>,
+): ResolvedAsset | null {
+  if (!isRecord(timeline.state) || !Array.isArray(timeline.state.tracks)) {
+    return null;
+  }
+
+  let first: { asset: ResolvedAsset; from: number; order: number } | null = null;
+  let order = 0;
+  for (const track of timeline.state.tracks) {
+    if (!isRecord(track) || !Array.isArray(track.items)) continue;
+    for (const item of track.items) {
+      const itemOrder = order++;
+      if (!isRecord(item) || typeof item.assetId !== "string") continue;
+      const asset = assetsById.get(item.assetId);
+      if (!asset || (asset.kind !== "image" && asset.kind !== "video")) {
+        continue;
+      }
+      const from =
+        typeof item.from === "number" && Number.isFinite(item.from)
+          ? item.from
+          : 0;
+      if (
+        !first ||
+        from < first.from ||
+        (from === first.from && itemOrder < first.order)
+      ) {
+        first = { asset, from, order: itemOrder };
+      }
+    }
+  }
+  return first?.asset ?? null;
+}
+
+function TimelineSidebarPreview({
+  timeline,
+  asset,
+  active,
+}: {
+  timeline: ProjectTimeline;
+  asset: ResolvedAsset | null;
+  active: boolean;
+}) {
+  const source = asset ? assetThumbnailImageUrl(asset) : null;
+  const [failedSource, setFailedSource] = useState<string | null>(null);
+  if (!source || failedSource === source) {
+    return (
+      <FilmSlate
+        data-project-timeline-fallback-icon="true"
+        className={
+          active
+            ? "h-3.5 w-3.5 shrink-0 text-brand"
+            : "h-3.5 w-3.5 shrink-0 text-stone-400"
+        }
+        weight={active ? "fill" : "regular"}
+      />
+    );
+  }
+
+  return (
+    <span className="flex h-5 w-5 shrink-0 overflow-hidden rounded-[3px] border border-warm-border/80 bg-warm-muted">
+      <img
+        src={source}
+        alt={`${timeline.name} first frame`}
+        className="h-full w-full object-cover"
+        draggable={false}
+        onError={() => setFailedSource(source)}
+      />
+    </span>
+  );
+}
+
 export default function ProjectWorkspaceNavigator({
   header,
   footer,
@@ -342,16 +444,21 @@ export default function ProjectWorkspaceNavigator({
   directorStages = [],
   assets,
   textAssets = [],
+  pluginViews = [],
+  pluginViewDefinitions = [],
   globalAssets = [],
   browsers = [],
   surface,
   onSelectCanvas,
+  onSelectPluginView,
   onSelectTimeline,
   onSelectDirectorStage,
   onSelectAsset,
   onSelectTextAsset,
   onSelectBrowser,
   onCreateCanvas,
+  onCreatePluginView,
+  onDeletePluginView,
   onRenameCanvas,
   onDeleteCanvas,
   onCreateTimeline,
@@ -379,10 +486,15 @@ export default function ProjectWorkspaceNavigator({
     () => assets.filter((asset) => asset.lifecycle.state === "trashed"),
     [assets],
   );
+  const activeAssetsById = useMemo(
+    () => new Map(activeAssets.map((asset) => [asset.id, asset])),
+    [activeAssets],
+  );
   const [openFolders, setOpenFolders] = useState<
     Record<ProjectFolderId, boolean>
   >({
     canvases: true,
+    views: true,
     browsers: true,
     timelines: true,
     "director-stages": true,
@@ -396,6 +508,12 @@ export default function ProjectWorkspaceNavigator({
         id: canvas.id,
         label: canvas.name,
         searchText: `${canvas.name} canvas canvases`,
+      })),
+      ...pluginViews.map((view) => ({
+        kind: "plugin-view" as const,
+        id: view.nodeId,
+        label: view.label,
+        searchText: `${view.label} ${view.pluginId} ${view.definitionId} plugin view`,
       })),
       ...browsers.map((browser) => ({
         kind: "browser" as const,
@@ -443,6 +561,7 @@ export default function ProjectWorkspaceNavigator({
     browsers,
     canvases,
     directorStages,
+    pluginViews,
     searchQuery,
     textAssets,
     timelines,
@@ -458,6 +577,10 @@ export default function ProjectWorkspaceNavigator({
       const [kind, ...idParts] = selectedValue.split(":");
       const id = idParts.join(":");
       if (kind === "canvas") onSelectCanvas(id);
+      if (kind === "plugin-view") {
+        const view = pluginViews.find((candidate) => candidate.nodeId === id);
+        if (view) onSelectPluginView?.(view);
+      }
       if (kind === "browser") onSelectBrowser?.(id);
       if (kind === "timeline") onSelectTimeline(id);
       if (kind === "director-stage") onSelectDirectorStage?.(id);
@@ -472,10 +595,12 @@ export default function ProjectWorkspaceNavigator({
       closeSearch,
       onSelectAsset,
       onSelectCanvas,
+      onSelectPluginView,
       onSelectBrowser,
       onSelectDirectorStage,
       onSelectTextAsset,
       onSelectTimeline,
+      pluginViews,
       textAssets,
     ],
   );
@@ -513,6 +638,8 @@ export default function ProjectWorkspaceNavigator({
     const folderId: ProjectFolderId =
       surface.kind === "canvas"
         ? "canvases"
+        : surface.kind === "plugin-view"
+          ? "views"
         : surface.kind === "browser"
           ? "browsers"
           : surface.kind === "timeline"
@@ -539,6 +666,13 @@ export default function ProjectWorkspaceNavigator({
     );
     if (canvas) {
       onSelectCanvas(canvas.id);
+      return;
+    }
+    const pluginView = pluginViews.find(
+      (candidate) => pluginViewTabId(candidate.nodeId) === tabId,
+    );
+    if (pluginView) {
+      onSelectPluginView?.(pluginView);
       return;
     }
     const browser = browsers.find(
@@ -713,6 +847,88 @@ export default function ProjectWorkspaceNavigator({
             })}
           </ProjectFolderSection>
 
+          <ProjectFolderSection
+            id="views"
+            label="Views"
+            open={openFolders.views}
+            onToggle={() => toggleFolder("views")}
+            addControl={
+              pluginViewDefinitions.length > 0 && onCreatePluginView ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <IconButton
+                      label="Add View"
+                      icon={<Plus className="h-3 w-3" weight="bold" />}
+                      size="sm"
+                      shape="rounded"
+                      className={`${sidebarActionSlotClass} rounded-md bg-transparent text-content-muted hover:bg-warm-hover hover:text-content-primary`}
+                    />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="right" align="start" className="min-w-52 rounded-xl p-1">
+                    {pluginViewDefinitions.map((definition) => (
+                      <DropdownMenuItem
+                        key={`${definition.pluginId}:${definition.definitionId}:${definition.version}`}
+                        onSelect={() => onCreatePluginView(definition)}
+                      >
+                        <Shapes className="h-4 w-4 text-brand" weight="duotone" />
+                        {definition.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : undefined
+            }
+          >
+            {pluginViews.map((view) => {
+              const active = surface.kind === "plugin-view" && surface.nodeId === view.nodeId;
+              return (
+                <SidebarItemContextMenu
+                  key={view.nodeId}
+                  label={view.label}
+                  actions={onDeletePluginView ? [{
+                    key: "delete",
+                    label: "Delete",
+                    danger: true,
+                    icon: <Trash className="h-4 w-4 shrink-0" />,
+                    onSelect: () => onDeletePluginView(view),
+                  }] : []}
+                >
+                  <div className="group/menu-item relative min-w-0">
+                    <Tab
+                      id={pluginViewTabId(view.nodeId)}
+                      aria-label={view.label}
+                      className={rowClass(active)}
+                    >
+                      <Shapes
+                        className={active ? "h-3.5 w-3.5 text-brand" : "h-3.5 w-3.5 text-stone-400"}
+                        weight={active ? "fill" : "regular"}
+                      />
+                      <span className="truncate">{view.label}</span>
+                    </Tab>
+                    {onDeletePluginView ? (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <IconButton
+                            label={`View actions for ${view.label}`}
+                            icon={<DotsThree className="h-4 w-4" weight="bold" />}
+                            size="sm"
+                            shape="rounded"
+                            className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-content-muted opacity-0 hover:bg-warm-hover hover:text-content-primary group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
+                          />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent side="right" align="start" className="min-w-36 rounded-md p-1">
+                          <DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={() => onDeletePluginView(view)}>
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : null}
+                  </div>
+                </SidebarItemContextMenu>
+              );
+            })}
+          </ProjectFolderSection>
+
           {onCreateBrowser ? (
             <ProjectFolderSection
               id="browsers"
@@ -806,19 +1022,20 @@ export default function ProjectWorkspaceNavigator({
               const active =
                 surface.kind === "timeline" &&
                 surface.timelineId === timeline.id;
+              const firstFrameAsset = timelineFirstFrameAsset(
+                timeline,
+                activeAssetsById,
+              );
               const tab = (
                 <Tab
                   id={timelineTabId(timeline.id)}
                   aria-label={timeline.name}
                   className={rowClass(active)}
                 >
-                  <FilmSlate
-                    className={
-                      active
-                        ? "h-3.5 w-3.5 text-brand"
-                        : "h-3.5 w-3.5 text-stone-400"
-                    }
-                    weight={active ? "fill" : "regular"}
+                  <TimelineSidebarPreview
+                    timeline={timeline}
+                    asset={firstFrameAsset}
+                    active={active}
                   />
                   <span className="truncate">{timeline.name}</span>
                 </Tab>
@@ -1360,6 +1577,8 @@ export default function ProjectWorkspaceNavigator({
                 const kindLabel =
                   result.kind === "asset"
                     ? "Asset"
+                    : result.kind === "plugin-view"
+                      ? "View"
                     : result.kind === "canvas"
                       ? "Canvas"
                       : result.kind === "browser"
@@ -1370,6 +1589,8 @@ export default function ProjectWorkspaceNavigator({
                 const ResultIcon =
                   result.kind === "asset"
                     ? ImageIcon
+                    : result.kind === "plugin-view"
+                      ? Shapes
                     : result.kind === "canvas"
                       ? CanvasIcon
                       : result.kind === "browser"

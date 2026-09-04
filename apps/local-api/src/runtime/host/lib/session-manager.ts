@@ -311,6 +311,7 @@ export type ManagerOut =
       type: "session.ready";
       session_id: string;
       acp_session_id: string;
+      supports_session_fork: boolean;
       config_options?: unknown[];
       modes?: unknown;
       replay_events?: unknown[];
@@ -453,6 +454,7 @@ export class SessionManager {
       type: "session.ready",
       session_id: sessionId,
       acp_session_id: session.acp.acpSessionId,
+      supports_session_fork: session.acp.supportsSessionFork,
       config_options: [...session.acp.configOptions],
       ...(modes ? { modes } : {}),
       ...((session.acp.loadedReplayEvents?.length ?? 0) > 0

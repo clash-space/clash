@@ -9,15 +9,18 @@ import { HomeSectionActionLink, HomeSectionHeader } from "./HomeSectionHeader";
 export default function HomeMarketplaceRecommendations({
   featuredPlugins,
   installedActionIds,
+  installedPluginIds,
   installedSkillIds,
 }: {
   featuredPlugins: RegistryItem[];
   installedActionIds: string[];
+  installedPluginIds: string[];
   installedSkillIds: string[];
 }) {
   if (featuredPlugins.length === 0) return null;
 
   const installedActions = new Set(installedActionIds);
+  const installedPlugins = new Set(installedPluginIds);
   const installedSkills = new Set(installedSkillIds);
 
   return (
@@ -40,7 +43,9 @@ export default function HomeMarketplaceRecommendations({
           const installed =
             item.type === "action"
               ? installedActions.has(item.id)
-              : installedSkills.has(item.id);
+              : item.type === "plugin"
+                ? installedPlugins.has(item.id)
+                : installedSkills.has(item.id);
 
           return (
             <li
@@ -74,7 +79,9 @@ export default function HomeMarketplaceRecommendations({
                     {installed
                       ? "Installed"
                       : item.type === "action"
-                        ? "Action"
+                      ? "Action"
+                      : item.type === "plugin"
+                        ? "Plugin"
                         : "Skill"}
                   </span>
                 </div>

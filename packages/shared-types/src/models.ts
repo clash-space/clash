@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
-import { AigcActionKindSchema, type AigcActionKind } from './actions.js';
-import { AssetKindSchema } from './assets.js';
+import { AigcActionKindSchema, type AigcActionKind } from "./actions.js";
+import { AssetKindSchema } from "./assets.js";
+import { parseAspectRatio as parseWrittenAspectRatio } from "./aspect-ratio.js";
 
 import { GPT_IMAGE_ASPECT_RATIOS, GPT_IMAGE_RESOLUTION_TIERS } from './gpt-image-size.js';
 import { CANONICAL_RESOLUTION_TIERS, type CanonicalResolutionTier } from './resolution-tiers.js';
@@ -374,6 +375,9 @@ export const ModelParameterSchema = z.object({
   /** Provider-fixed output characteristic. It remains visible in the common
    * parameter surface, but UI and external payloads cannot override it. */
   readOnly: z.boolean().optional(),
+  /** Select controls may accept values beyond their preset menu. Aspect-ratio
+   * custom values remain positive integer W:H pairs. */
+  allowCustom: z.boolean().optional(),
   required: z.boolean().default(false),
   options: z
     .array(
@@ -390,6 +394,19 @@ export const ModelParameterSchema = z.object({
   defaultValue: z.union([z.string(), z.number(), z.boolean()]).optional(),
 });
 export type ModelParameter = z.infer<typeof ModelParameterSchema>;
+
+export function acceptsCustomModelParameterValue(
+  parameter: Pick<ModelParameter, "allowCustom" | "id" | "type">,
+  value: unknown,
+): boolean {
+  if (parameter.type !== "select" || !parameter.allowCustom) return false;
+  if (parameter.id === "aspect_ratio") {
+    return (
+      typeof value === "string" && parseWrittenAspectRatio(value) !== undefined
+    );
+  }
+  return typeof value === "string" || typeof value === "number";
+}
 
 /**
  * Input shape a model accepts. Each declared field is an independent input
@@ -757,7 +774,8 @@ export const ModelCardSchema = z
         const optionValues =
           parameter.options?.map((option) => option.value) ?? [];
         if (
-          !optionValues.some((candidate) => sameCandidate(candidate, value))
+          !optionValues.some((candidate) => sameCandidate(candidate, value)) &&
+          !acceptsCustomModelParameterValue(parameter, value)
         ) {
           ctx.addIssue({
             code: 'custom',
@@ -810,7 +828,15 @@ export const ModelCardSchema = z
       parameterIds.add(parameter.id);
       parametersById.set(parameter.id, parameter);
 
-      if (parameter.type === 'select') {
+      if (parameter.allowCustom && parameter.type !== "select") {
+        ctx.addIssue({
+          code: "custom",
+          path: ["parameters", index, "allowCustom"],
+          message: "Only select parameters may allow custom values.",
+        });
+      }
+
+      if (parameter.type === "select") {
         if (!parameter.options?.length) {
           ctx.addIssue({
             code: 'custom',
@@ -1034,6 +1060,42 @@ export const ModelCardSchema = z
   });
 export type ModelCard = z.infer<typeof ModelCardSchema>;
 
+const EMBEDDED_ASPECT_RATIO_PATTERN = /(\d+)\s*[:x×]\s*(\d+)/i;
+
+/**
+ * Resolve the geometric ratio represented by one aspect-ratio parameter value.
+ *
+ * Parameter values remain provider-facing (for example `landscape_16_9`), while
+ * labels may contain presentation copy such as `Landscape (16:9)`. Consumers
+ * that size a Canvas node need the ratio itself, never either of those aliases.
+ */
+export function resolveAspectRatioParameter(
+  parameter: Pick<ModelParameter, "defaultValue" | "options"> | undefined,
+  value: string | number | boolean | undefined,
+  fallback?: string,
+): string | undefined {
+  if (!parameter) return fallback;
+  const effectiveValue = value ?? parameter.defaultValue;
+  if (effectiveValue === undefined) return fallback;
+
+  const option = parameter.options?.find(
+    (candidate) => String(candidate.value) === String(effectiveValue),
+  );
+  for (const candidate of [effectiveValue, option?.label, option?.value]) {
+    if (candidate === undefined) continue;
+    const match = String(candidate).match(EMBEDDED_ASPECT_RATIO_PATTERN);
+    if (!match) continue;
+    const width = Number(match[1]);
+    const height = Number(match[2]);
+    if (width > 0 && height > 0) return `${width}:${height}`;
+  }
+
+  if (effectiveValue === "auto" || effectiveValue === "adaptive") {
+    return effectiveValue;
+  }
+  return fallback;
+}
+
 /**
  * Resolve the canonical aspect ratio from model-specific params.
  * Uses the model's parameter options to reverse-map provider values to our format.
@@ -1053,21 +1115,13 @@ export function resolveAspectRatio(
   const paramId = "aspect_ratio";
   const arParam = card.parameters.find((p) => p.id === paramId);
   if (!arParam) return card.defaultAspectRatio;
-
-  // Get current value from modelParams
-  const value = modelParams[paramId];
-  if (!value) return card.defaultAspectRatio;
-
-  // If value is already canonical format (N:M), return directly
-  if (typeof value === 'string' && /^\d+:\d+$/.test(value)) return value;
-
-  // Product-level sentinels are already canonical values. Do not replace them
-  // with their presentation labels (for example `auto` -> `Auto`).
-  if (value === 'auto') return value;
-
-  // Reverse-lookup: provider value → our label
-  const option = arParam.options?.find((o) => o.value === value);
-  return option?.label ?? card.defaultAspectRatio;
+  return (
+    resolveAspectRatioParameter(
+      arParam,
+      modelParams[paramId],
+      card.defaultAspectRatio,
+    ) ?? card.defaultAspectRatio
+  );
 }
 
 /**
@@ -1406,15 +1460,15 @@ const MODEL_CARD_DEFINITIONS = [
   },
   // ─── Image: Nano Banana 2 (fal.ai) ──────────────────────────
   {
-    id: 'nano-banana-2',
-    name: 'Nano Banana 2',
-    aliases: ['gemini-3.1-flash-image'],
-    provider: 'Google',
-    availableProviders: ['official', 'fal', 'pika', 'replicate'],
-    defaultProvider: 'official',
-    kind: 'image',
-    defaultAspectRatio: '16:9',
-    description: 'State-of-the-art fast image generation and editing.',
+    id: "nano-banana-2",
+    name: "Nano Banana 2",
+    aliases: ["gemini-3.1-flash-image"],
+    provider: "Google",
+    availableProviders: ["official", "pika", "replicate"],
+    defaultProvider: "official",
+    kind: "image",
+    defaultAspectRatio: "16:9",
+    description: "State-of-the-art fast image generation and editing.",
     parameters: [
       {
         id: "aspect_ratio",
@@ -1494,14 +1548,15 @@ const MODEL_CARD_DEFINITIONS = [
   },
   // ─── Image: GPT Image 2 (OpenAI) ────────────────────────────
   {
-    id: 'gpt-image-2',
-    name: 'GPT Image 2',
-    provider: 'OpenAI',
-    availableProviders: ['official', 'fal', 'pika', 'replicate'],
-    defaultProvider: 'official',
-    kind: 'image',
-    defaultAspectRatio: '1:1',
-    description: 'OpenAI GPT Image 2 — high-quality image generation and editing.',
+    id: "gpt-image-2",
+    name: "GPT Image 2",
+    provider: "OpenAI",
+    availableProviders: ["official", "pika", "replicate"],
+    defaultProvider: "official",
+    kind: "image",
+    defaultAspectRatio: "1:1",
+    description:
+      "OpenAI GPT Image 2 — high-quality image generation and editing.",
     parameters: [
       {
         id: "aspect_ratio",
@@ -1595,14 +1650,13 @@ const MODEL_CARD_DEFINITIONS = [
   },
   // ─── Image: Seedream 4.5 (fal.ai) ───────────────────────────
   {
-    id: 'seedream-4.5',
-    name: 'Seedream 4.5',
-    provider: 'ByteDance',
-    availableProviders: ['fal'],
-    defaultProvider: 'fal',
-    kind: 'image',
-    defaultAspectRatio: '1:1',
-    description: 'ByteDance Seedream 4.5 image generation and editing through fal.ai.',
+    id: "seedream-4.5",
+    name: "Seedream 4.5",
+    provider: "ByteDance",
+    kind: "image",
+    defaultAspectRatio: "1:1",
+    description:
+      "ByteDance Seedream 4.5 image generation and editing through fal.ai.",
     parameters: [
       aspectRatioParameter({
         ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map((r) => r.value),
@@ -1651,14 +1705,14 @@ const MODEL_CARD_DEFINITIONS = [
   },
   // ─── Image: FLUX Schnell (fal.ai) ────────────────────────────
   {
-    id: 'flux-schnell',
-    name: 'FLUX Schnell',
-    provider: 'fal.ai',
-    availableProviders: ['fal', 'replicate'],
-    defaultProvider: 'fal',
-    kind: 'image',
-    defaultAspectRatio: '16:9',
-    description: 'Ultra-fast image generation, ~1s per image.',
+    id: "flux-schnell",
+    name: "FLUX Schnell",
+    provider: "fal.ai",
+    availableProviders: ["replicate"],
+    defaultProvider: "replicate",
+    kind: "image",
+    defaultAspectRatio: "16:9",
+    description: "Ultra-fast image generation, ~1s per image.",
     parameters: [
       aspectRatioParameter({
         ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map((r) => r.value),
@@ -1693,14 +1747,12 @@ const MODEL_CARD_DEFINITIONS = [
   },
   // ─── Image: FLUX Dev (fal.ai) ────────────────────────────────
   {
-    id: 'flux-dev',
-    name: 'FLUX Dev',
-    provider: 'fal.ai',
-    availableProviders: ['fal'],
-    defaultProvider: 'fal',
-    kind: 'image',
-    defaultAspectRatio: '16:9',
-    description: 'High-quality image generation with great prompt following.',
+    id: "flux-dev",
+    name: "FLUX Dev",
+    provider: "fal.ai",
+    kind: "image",
+    defaultAspectRatio: "16:9",
+    description: "High-quality image generation with great prompt following.",
     parameters: [
       aspectRatioParameter({
         ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map((r) => r.value),
@@ -1799,14 +1851,12 @@ const MODEL_CARD_DEFINITIONS = [
   // ─── Video: Sora 2 (fal.ai) ─────────────────────────────────
   {
     // Single card — provider auto-routes to /text-to-video or /image-to-video.
-    id: 'sora-2',
-    name: 'Sora 2',
-    provider: 'fal.ai',
-    availableProviders: ['fal'],
-    defaultProvider: 'fal',
-    kind: 'video',
-    defaultAspectRatio: '16:9',
-    description: 'OpenAI Sora 2 — text-to-video or animate a still image.',
+    id: "sora-2",
+    name: "Sora 2",
+    provider: "fal.ai",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    description: "OpenAI Sora 2 — text-to-video or animate a still image.",
     parameters: [
       {
         id: 'duration',
@@ -1851,14 +1901,15 @@ const MODEL_CARD_DEFINITIONS = [
   // bytedance/seedance-2.0/image-to-video (a single image is just the start
   // slot; optional end slot constrains the final frame).
   {
-    id: 'seedance-2-startend',
-    name: 'Seedance 2.0 (Start/End)',
-    provider: 'fal.ai',
-    availableProviders: ['volcengine-modelark', 'fal', 'pika', 'replicate'],
-    defaultProvider: 'volcengine-modelark',
-    kind: 'video',
-    defaultAspectRatio: '16:9',
-    description: 'Seedance 2.0 — animate from a start frame, optionally constrained to a target end frame.',
+    id: "seedance-2-startend",
+    name: "Seedance 2.0 (Start/End)",
+    provider: "fal.ai",
+    availableProviders: ["volcengine-modelark", "pika", "replicate"],
+    defaultProvider: "volcengine-modelark",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    description:
+      "Seedance 2.0 — animate from a start frame, optionally constrained to a target end frame.",
     parameters: [
       {
         id: 'duration',
@@ -1916,15 +1967,16 @@ const MODEL_CARD_DEFINITIONS = [
   // images (≤9), videos (≤3), audios (≤3). Positional prompt references
   // (@Image1, @Video2, @Audio1).
   {
-    id: 'seedance-2-ref',
-    aliases: ['seedance-2-text'],
-    name: 'Seedance 2.0 (全能参考)',
-    provider: 'ByteDance',
-    availableProviders: ['volcengine-modelark', 'fal', 'pika', 'replicate'],
-    defaultProvider: 'volcengine-modelark',
-    kind: 'video',
-    defaultAspectRatio: '16:9',
-    description: 'Seedance 2.0 all-purpose generation with optional image, video, and audio references.',
+    id: "seedance-2-ref",
+    aliases: ["seedance-2-text"],
+    name: "Seedance 2.0 (全能参考)",
+    provider: "ByteDance",
+    availableProviders: ["volcengine-modelark", "pika", "replicate"],
+    defaultProvider: "volcengine-modelark",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    description:
+      "Seedance 2.0 all-purpose generation with optional image, video, and audio references.",
     parameters: [
       {
         id: 'duration',
@@ -2289,15 +2341,22 @@ const MODEL_CARD_DEFINITIONS = [
   },
   // ─── Video: MiniMax H3 all-purpose reference ───────────────
   {
-    id: 'minimax-h3',
-    name: 'MiniMax H3 (全能参考)',
-    aliases: ['MiniMax-H3', 'hailuo-3', 'minimax-hailuo-3', 'minimax-h3-ref', 'minimax-h3-reference'],
-    provider: 'MiniMax',
-    availableProviders: ['minimax', 'fal', 'pika'],
-    defaultProvider: 'minimax',
-    kind: 'video',
-    defaultAspectRatio: '16:9',
-    description: 'MiniMax H3 all-purpose generation with optional ordered image, video, and audio references.',
+    id: "minimax-h3",
+    name: "MiniMax H3 (全能参考)",
+    aliases: [
+      "MiniMax-H3",
+      "hailuo-3",
+      "minimax-hailuo-3",
+      "minimax-h3-ref",
+      "minimax-h3-reference",
+    ],
+    provider: "MiniMax",
+    availableProviders: ["minimax", "pika"],
+    defaultProvider: "minimax",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    description:
+      "MiniMax H3 all-purpose generation with optional ordered image, video, and audio references.",
     parameters: [
       {
         id: 'duration',
@@ -2355,16 +2414,18 @@ const MODEL_CARD_DEFINITIONS = [
   },
   // ─── Video: MiniMax H3 first / last frame ──────────────────
   {
-    id: 'minimax-h3-startend',
-    name: 'MiniMax H3 (Start / End Frame)',
-    aliases: ['minimax-h3-start-end'],
-    provider: 'MiniMax',
-    availableProviders: ['minimax', 'fal', 'pika'],
-    defaultProvider: 'minimax',
-    kind: 'video',
-    defaultAspectRatio: '16:9',
-    description: 'Animate from a required start frame toward an optional end frame with MiniMax H3.',
-    promptGuidance: 'Use start and end frames with matching aspect ratios. The output ratio follows the input frames.',
+    id: "minimax-h3-startend",
+    name: "MiniMax H3 (Start / End Frame)",
+    aliases: ["minimax-h3-start-end"],
+    provider: "MiniMax",
+    availableProviders: ["minimax", "pika"],
+    defaultProvider: "minimax",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    description:
+      "Animate from a required start frame toward an optional end frame with MiniMax H3.",
+    promptGuidance:
+      "Use start and end frames with matching aspect ratios. The output ratio follows the input frames.",
     parameters: [
       {
         id: 'duration',
@@ -2400,14 +2461,14 @@ const MODEL_CARD_DEFINITIONS = [
   },
   // ─── Video: Kling 3 Pro (fal.ai) — first frame + optional end frame ────
   {
-    id: 'kling-3',
-    name: 'Kling 3 Pro',
-    provider: 'fal.ai',
-    availableProviders: ['kling', 'fal', 'pika'],
-    defaultProvider: 'kling',
-    kind: 'video',
-    defaultAspectRatio: '16:9',
-    description: 'Kling 3 Pro — first + optional end frame, with native audio.',
+    id: "kling-3",
+    name: "Kling 3 Pro",
+    provider: "fal.ai",
+    availableProviders: ["kling", "pika"],
+    defaultProvider: "kling",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    description: "Kling 3 Pro — first + optional end frame, with native audio.",
     parameters: [
       durationParameter({
         seconds: Array.from({ length: 13 }, (_, index) => index + 3),
@@ -2428,30 +2489,32 @@ const MODEL_CARD_DEFINITIONS = [
   },
   // ─── Video: FLUX 3 (BFL official + fal.ai) ─────────────────
   {
-    id: 'flux-3-video',
-    aliases: ['flux3-video', 'flux-3'],
-    name: 'FLUX 3 Video',
-    provider: 'Black Forest Labs',
-    availableProviders: ['official', 'fal', 'pika'],
-    defaultProvider: 'official',
-    kind: 'video',
-    defaultAspectRatio: '16:9',
-    description: 'FLUX 3 text-to-video with synchronized audio and clips up to 20 seconds.',
+    id: "flux-3-video",
+    aliases: ["flux3-video", "flux-3"],
+    name: "FLUX 3 Video",
+    provider: "Black Forest Labs",
+    availableProviders: ["official", "pika"],
+    defaultProvider: "official",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    description:
+      "FLUX 3 text-to-video with synchronized audio and clips up to 20 seconds.",
     parameters: flux3VideoParameters(),
     defaultParams: FLUX3_VIDEO_DEFAULT_PARAMS,
     input: { requiresPrompt: true, inputMode: {}, promptModalities: ['text'] },
     maxRuntimeMs: 30 * 60 * 1000,
   },
   {
-    id: 'flux-3-video-keyframes',
-    aliases: ['flux3-keyframes', 'flux-3-image-to-video'],
-    name: 'FLUX 3 Video (Keyframes)',
-    provider: 'Black Forest Labs',
-    availableProviders: ['official', 'fal'],
-    defaultProvider: 'official',
-    kind: 'video',
-    defaultAspectRatio: '16:9',
-    description: 'Animate one image or connect up to ten ordered keyframes with FLUX 3.',
+    id: "flux-3-video-keyframes",
+    aliases: ["flux3-keyframes", "flux-3-image-to-video"],
+    name: "FLUX 3 Video (Keyframes)",
+    provider: "Black Forest Labs",
+    availableProviders: ["official"],
+    defaultProvider: "official",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    description:
+      "Animate one image or connect up to ten ordered keyframes with FLUX 3.",
     parameters: flux3VideoParameters({ allowAutoDuration: false }),
     defaultParams: FLUX3_KEYFRAME_VIDEO_DEFAULT_PARAMS,
     input: {
@@ -2464,15 +2527,16 @@ const MODEL_CARD_DEFINITIONS = [
     maxRuntimeMs: 30 * 60 * 1000,
   },
   {
-    id: 'flux-3-video-continue',
-    aliases: ['flux3-continue', 'flux-3-extend-video'],
-    name: 'FLUX 3 Video (Continue)',
-    provider: 'Black Forest Labs',
-    availableProviders: ['official', 'fal'],
-    defaultProvider: 'official',
-    kind: 'video',
-    defaultAspectRatio: '16:9',
-    description: 'Continue one existing MP4 clip from its final frames with synchronized audio.',
+    id: "flux-3-video-continue",
+    aliases: ["flux3-continue", "flux-3-extend-video"],
+    name: "FLUX 3 Video (Continue)",
+    provider: "Black Forest Labs",
+    availableProviders: ["official"],
+    defaultProvider: "official",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    description:
+      "Continue one existing MP4 clip from its final frames with synchronized audio.",
     parameters: flux3VideoParameters(),
     defaultParams: FLUX3_VIDEO_DEFAULT_PARAMS,
     input: {
@@ -2498,14 +2562,15 @@ const MODEL_CARD_DEFINITIONS = [
   },
   // ─── Image: Recraft V4 Pro (fal.ai) ──────────────────────────
   {
-    id: 'recraft-v4',
-    name: 'Recraft V4',
-    provider: 'fal.ai',
-    availableProviders: ['fal', 'pika'],
-    defaultProvider: 'fal',
-    kind: 'image',
-    defaultAspectRatio: '16:9',
-    description: 'Designer-grade image generation with color control and text rendering.',
+    id: "recraft-v4",
+    name: "Recraft V4",
+    provider: "fal.ai",
+    availableProviders: ["pika"],
+    defaultProvider: "pika",
+    kind: "image",
+    defaultAspectRatio: "16:9",
+    description:
+      "Designer-grade image generation with color control and text rendering.",
     parameters: [
       aspectRatioParameter({
         ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map((r) => r.value),
@@ -2519,14 +2584,12 @@ const MODEL_CARD_DEFINITIONS = [
   },
   // ─── Image: FLUX 2 Pro (fal.ai) ──────────────────────────────
   {
-    id: 'flux-2-pro',
-    name: 'FLUX 2 Pro',
-    provider: 'fal.ai',
-    availableProviders: ['fal'],
-    defaultProvider: 'fal',
-    kind: 'image',
-    defaultAspectRatio: '4:3',
-    description: 'Latest FLUX flagship — high-quality image generation.',
+    id: "flux-2-pro",
+    name: "FLUX 2 Pro",
+    provider: "fal.ai",
+    kind: "image",
+    defaultAspectRatio: "4:3",
+    description: "Latest FLUX flagship — high-quality image generation.",
     parameters: [
       aspectRatioParameter({
         ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map((r) => r.value),
@@ -3324,14 +3387,14 @@ const MODEL_CARD_DEFINITIONS = [
     maxRuntimeMs: 5 * 60 * 1000,
   },
   {
-    id: 'minimax-tts',
-    name: 'MiniMax TTS',
-    provider: 'MiniMax',
-    availableProviders: ['minimax', 'fal'],
-    defaultProvider: 'minimax',
-    kind: 'audio',
-    defaultAspectRatio: '1:1',
-    description: 'High-quality Chinese and English text-to-speech.',
+    id: "minimax-tts",
+    name: "MiniMax TTS",
+    provider: "MiniMax",
+    availableProviders: ["minimax"],
+    defaultProvider: "minimax",
+    kind: "audio",
+    defaultAspectRatio: "1:1",
+    description: "High-quality Chinese and English text-to-speech.",
     parameters: [
       {
         id: 'voice_id',
@@ -3374,16 +3437,18 @@ const MODEL_CARD_DEFINITIONS = [
     input: { requiresPrompt: true, inputMode: {} },
   },
   {
-    id: 'minimax-music-3',
-    name: 'MiniMax Music 3.0',
-    aliases: ['music-3.0', 'minimax-music-3.0'],
-    provider: 'MiniMax',
-    availableProviders: ['minimax', 'fal', 'pika'],
-    defaultProvider: 'minimax',
-    kind: 'audio',
-    defaultAspectRatio: '1:1',
-    description: 'Generate complete songs or instrumentals with MiniMax Music 3.0.',
-    promptGuidance: 'Describe the music in Prompt. Enter lyrics directly in Lyrics, or leave it empty to use automatic lyrics or instrumental mode.',
+    id: "minimax-music-3",
+    name: "MiniMax Music 3.0",
+    aliases: ["music-3.0", "minimax-music-3.0"],
+    provider: "MiniMax",
+    availableProviders: ["minimax", "pika"],
+    defaultProvider: "minimax",
+    kind: "audio",
+    defaultAspectRatio: "1:1",
+    description:
+      "Generate complete songs or instrumentals with MiniMax Music 3.0.",
+    promptGuidance:
+      "Describe the music in Prompt. Enter lyrics directly in Lyrics, or leave it empty to use automatic lyrics or instrumental mode.",
     parameters: [
       {
         id: 'lyrics_optimizer',
@@ -4621,51 +4686,6 @@ type ModelProviderImplementationRow = readonly [
   },
 ];
 
-const SEEDANCE_2_FAL_PARAMETER_OVERRIDES: ModelParameter[] = [
-  {
-    id: 'duration',
-    label: 'Duration',
-    type: 'select',
-    required: false,
-    options: [
-      { label: 'Auto', value: 'auto' },
-      ...Array.from({ length: 12 }, (_, index) => ({ label: `${index + 4}s`, value: index + 4 })),
-    ],
-    defaultValue: 'auto',
-  },
-];
-
-const MINIMAX_H3_FAL_PARAMETER_OVERRIDES: ModelParameter[] = [{
-  id: 'duration',
-  label: 'Duration',
-  type: 'select',
-  required: false,
-  options: Array.from({ length: 11 }, (_, index) => ({
-    label: `${index + 5}s`,
-    value: index + 5,
-  })),
-  defaultValue: 5,
-}];
-
-const MINIMAX_H3_FAL_OMNI_PARAMETER_OVERRIDES: ModelParameter[] = [
-  ...MINIMAX_H3_FAL_PARAMETER_OVERRIDES,
-  {
-    id: 'aspect_ratio',
-    label: 'Aspect Ratio',
-    type: 'select',
-    required: false,
-    description: 'Auto is supported when at least one image, video, or audio reference is attached.',
-    options: [
-      { label: "Auto (with reference)", value: "adaptive" },
-      ...["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].map((value) => ({
-        label: value,
-        value,
-      })),
-    ],
-    defaultValue: "16:9",
-  },
-];
-
 const PIKA_EXECUTOR_OPTIONS = {
   executorPluginId: "clash.pika",
   executorExportId: "pika-execute",
@@ -4985,155 +5005,6 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
   ],
   ["piper-huayan-tts", "local", "local", "local-tts", "zh_CN-huayan-medium", 1],
   ["piper-lessac-tts", "local", "local", "local-tts", "en_US-lessac-medium", 1],
-  [
-    "flux-schnell",
-    "fal",
-    "fal",
-    "fal",
-    "fal-ai/flux/schnell",
-    20,
-    { credentials: ["apiKey"] },
-  ],
-  [
-    "flux-dev",
-    "fal",
-    "fal",
-    "fal",
-    "fal-ai/flux/dev",
-    20,
-    { credentials: ["apiKey"] },
-  ],
-  [
-    "gpt-image-2",
-    "fal",
-    "fal",
-    "fal",
-    "openai/gpt-image-2",
-    20,
-    { credentials: ["apiKey"] },
-  ],
-  [
-    "nano-banana-2",
-    "fal",
-    "fal",
-    "fal",
-    "fal-ai/nano-banana-2",
-    20,
-    { credentials: ["apiKey"] },
-  ],
-  [
-    "seedream-4.5",
-    "fal",
-    "fal",
-    "fal",
-    "fal-ai/bytedance/seedream/v4.5/text-to-image",
-    20,
-    { credentials: ["apiKey"] },
-  ],
-  [
-    "recraft-v4",
-    "fal",
-    "fal",
-    "fal",
-    "fal-ai/recraft/v4/pro/text-to-image",
-    20,
-    { credentials: ["apiKey"] },
-  ],
-  [
-    "flux-2-pro",
-    "fal",
-    "fal",
-    "fal",
-    "fal-ai/flux-2-pro",
-    20,
-    { credentials: ["apiKey"] },
-  ],
-  [
-    "sora-2",
-    "fal",
-    "fal",
-    "fal",
-    "fal-ai/sora-2/text-to-video",
-    20,
-    { credentials: ["apiKey"] },
-  ],
-  [
-    "kling-3",
-    "fal",
-    "fal",
-    "fal",
-    "fal-ai/kling-video/v3/pro/image-to-video",
-    20,
-    { credentials: ["apiKey"] },
-  ],
-  [
-    "flux-3-video",
-    "fal",
-    "fal",
-    "fal",
-    "blackforestlabs/flux-3/text-to-video",
-    20,
-    { credentials: ["apiKey"] },
-  ],
-  [
-    "flux-3-video-keyframes",
-    "fal",
-    "fal",
-    "fal",
-    "blackforestlabs/flux-3/keyframes-to-video",
-    20,
-    { credentials: ["apiKey"] },
-  ],
-  [
-    "flux-3-video-continue",
-    "fal",
-    "fal",
-    "fal",
-    "blackforestlabs/flux-3/extend-video",
-    20,
-    { credentials: ["apiKey"] },
-  ],
-  [
-    "seedance-2-startend",
-    "fal",
-    "fal",
-    "fal",
-    "bytedance/seedance-2.0/image-to-video",
-    20,
-    {
-      credentials: ['apiKey'],
-      parameterOverrides: SEEDANCE_2_FAL_PARAMETER_OVERRIDES,
-      defaultParamOverrides: { duration: 'auto' },
-    },
-  ],
-  [
-    'seedance-2-ref',
-    'fal',
-    'fal',
-    'fal',
-    'bytedance/seedance-2.0/reference-to-video',
-    20,
-    {
-      credentials: ['apiKey'],
-      parameterOverrides: SEEDANCE_2_FAL_PARAMETER_OVERRIDES,
-      defaultParamOverrides: { duration: 'auto' },
-      excludedParameterIds: ['edit_mode'],
-      referenceBinding: {
-        type: 'positional-tokens',
-        modalityScopedIndexes: true,
-        tokens: { image: '@Image{n}', video: '@Video{n}', audio: '@Audio{n}' },
-      },
-    },
-  ],
-  [
-    "minimax-tts",
-    "fal",
-    "fal",
-    "fal",
-    "fal-ai/minimax/speech-02-hd",
-    20,
-    { credentials: ["apiKey"] },
-  ],
   [
     "pika-2.5",
     "pika",
@@ -6012,49 +5883,6 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
       executorPluginId: "clash.minimax",
       executorExportId: "minimax-execute",
       assetInputs: IMAGE_PROVIDER_ASSET_INPUTS,
-    },
-  ],
-  [
-    'minimax-music-3',
-    'fal',
-    'fal',
-    'fal',
-    'fal-ai/minimax-music/v3',
-    9,
-    {
-      credentials: ['apiKey'],
-      excludedParameterIds: ['aigc_watermark'],
-    },
-  ],
-  [
-    'minimax-h3',
-    'fal',
-    'fal',
-    'fal',
-    'minimax/h3/reference-to-video',
-    9,
-    {
-      credentials: ['apiKey'],
-      referenceBinding: {
-        type: 'positional-tokens',
-        modalityScopedIndexes: true,
-        tokens: { image: 'Image {n}', video: 'Video {n}', audio: 'Audio {n}' },
-      },
-      parameterOverrides: MINIMAX_H3_FAL_OMNI_PARAMETER_OVERRIDES,
-      defaultParamOverrides: { duration: 5, aspect_ratio: '16:9' },
-    },
-  ],
-  [
-    'minimax-h3-startend',
-    'fal',
-    'fal',
-    'fal',
-    'minimax/h3/image-to-video',
-    9,
-    {
-      credentials: ['apiKey'],
-      parameterOverrides: MINIMAX_H3_FAL_PARAMETER_OVERRIDES,
-      defaultParamOverrides: { duration: 5 },
     },
   ],
   [

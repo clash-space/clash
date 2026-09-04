@@ -111,8 +111,13 @@ export interface ProjectAssetAuthorityPort {
 export type ResourceRegistryIntent = "read" | "create-owned" | "admit-linked";
 
 export type ResourceRegistryResolution =
-  | { status: "uploading"; resource: Resource; progress?: number }
-  | { status: "ready"; resource: Resource }
+  | {
+      status: "uploading";
+      resource: Resource;
+      progress?: number;
+      createdAt?: number;
+    }
+  | { status: "ready"; resource: Resource; createdAt?: number }
   | { status: "unavailable"; error?: string }
   | { status: "failed"; error: string };
 
@@ -129,7 +134,12 @@ export interface ResourceRegistryPort {
 }
 
 export type ResourceProjectionResolution =
-  | { status: "ready"; url: string; thumbnailUrl?: string }
+  | {
+      status: "ready";
+      url: string;
+      thumbnailUrl?: string;
+      waveformUrl?: string;
+    }
   | { status: "downloading"; progress?: number }
   | { status: "unavailable"; error?: string }
   | { status: "failed"; error: string };
@@ -200,6 +210,7 @@ function baseResolved(entry: ProjectAssetEntry) {
   return {
     id: entry.id,
     kind: entry.kind,
+    ...(entry.createdAt === undefined ? {} : { createdAt: entry.createdAt }),
     ...(entry.name === undefined ? {} : { name: entry.name }),
     metadata: entry.metadata,
     ...(entry.provenance === undefined ? {} : { provenance: entry.provenance }),
@@ -323,6 +334,9 @@ export async function resolveProjectAsset(
       return parseResolved(
         {
           ...base,
+          ...(entry.createdAt === undefined && registry.createdAt !== undefined
+            ? { createdAt: registry.createdAt }
+            : {}),
           status: "uploading",
           ...(registry.progress === undefined
             ? {}
@@ -343,6 +357,12 @@ export async function resolveProjectAsset(
       );
     case "ready": {
       const resource = parseResource(registry.resource, entry);
+      const readyBase = {
+        ...base,
+        ...(entry.createdAt === undefined && registry.createdAt !== undefined
+          ? { createdAt: registry.createdAt }
+          : {}),
+      };
       const projection: ResourceProjectionResolution =
         await ports.projection.resolve({
           projectId,
@@ -363,19 +383,22 @@ export async function resolveProjectAsset(
         case "ready":
           return parseResolved(
             {
-              ...base,
+              ...readyBase,
               status: "ready",
               url: projection.url,
               ...(projection.thumbnailUrl === undefined
                 ? {}
                 : { thumbnailUrl: projection.thumbnailUrl }),
+              ...(projection.waveformUrl === undefined
+                ? {}
+                : { waveformUrl: projection.waveformUrl }),
             },
             "PROJECTION_CONTRACT_VIOLATION",
           );
         case "downloading":
           return parseResolved(
             {
-              ...base,
+              ...readyBase,
               status: "downloading",
               ...(projection.progress === undefined
                 ? {}
@@ -387,7 +410,7 @@ export async function resolveProjectAsset(
         case "failed":
           return parseResolved(
             {
-              ...base,
+              ...readyBase,
               status: projection.status,
               ...(projection.error === undefined
                 ? {}

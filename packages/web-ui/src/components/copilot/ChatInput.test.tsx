@@ -906,7 +906,7 @@ describe("ChatInput", () => {
     expect(densityRule).toMatch(/width:\s*var\(--control-height-sm\)/);
   });
 
-  it("adapts the shared dashboard Composer into a taller body with a bottom rail", () => {
+  it("lets the shared compact Composer own dashboard internal geometry", () => {
     const restingHeight = Number.parseFloat(
       globalCss.match(
         /--clash-dashboard-composer-resting-height:\s*([\d.]+)rem/,
@@ -914,26 +914,24 @@ describe("ChatInput", () => {
     );
     expect(restingHeight).toBeGreaterThan(4);
 
-    const surfaceRule = globalCss.match(
-      /\.clash-dashboard-composer-dock \.clash-chat-input-surface\s*\{[\s\S]*?\}/,
-    )?.[0];
-    expect(surfaceRule).toMatch(/display:\s*flex/);
-    expect(surfaceRule).toMatch(/align-items:\s*stretch/);
-    expect(surfaceRule).not.toContain("var(--clash-shadow-floating)");
-    expect(surfaceRule).toMatch(/0 0 0 1px/);
-
-    const layoutRule = globalCss.match(
-      /\.clash-dashboard-composer-dock \.clash-chat-input-hero-layout\s*\{[\s\S]*?\}/,
-    )?.[0];
-    expect(layoutRule).toMatch(/width:\s*100%/);
-    expect(layoutRule).toMatch(/display:\s*flex/);
-    expect(layoutRule).toMatch(/flex-direction:\s*column/);
-
-    const toolbarRule = globalCss.match(
-      /\.clash-dashboard-composer-dock \.clash-chat-input-toolbar-row\s*\{[\s\S]*?\}/,
-    )?.[0];
-    expect(toolbarRule).toMatch(/width:\s*100%/);
-    expect(toolbarRule).toMatch(/margin-top:\s*auto/);
+    expect(
+      sourceMatches(
+        globalCss,
+        /\.clash-dashboard-composer-dock \.clash-chat-input-surface\s*\{/,
+      ),
+    ).toBe(false);
+    expect(
+      sourceMatches(
+        globalCss,
+        /\.clash-dashboard-composer-dock \.clash-chat-input-hero-layout/,
+      ),
+    ).toBe(false);
+    expect(
+      sourceMatches(
+        globalCss,
+        /\.clash-dashboard-composer-dock \.clash-chat-input-toolbar-row/,
+      ),
+    ).toBe(false);
 
     const dockRule = globalCss.match(
       /\.clash-dashboard-composer-dock\s*\{[\s\S]*?\}/,
@@ -941,32 +939,13 @@ describe("ChatInput", () => {
     expect(dockRule).toMatch(/bottom:\s*max\(\s*0\.5rem/);
   });
 
-  it("keeps the dashboard Composer shell visible while its editor is focused", () => {
-    const focusRule = globalCss.match(
-      /\.clash-dashboard-composer-dock\s+\.clash-chat-input-surface:has\(\.clash-chat-input-editor:focus-within\)\s*\{[\s\S]*?\}/,
-    )?.[0];
-
-    expect(focusRule).toBeTruthy();
+  it("does not fork shared Composer hover or focus appearance on dashboard", () => {
     expect(
-      sourceMatches(focusRule!, /background:\s*var\(--clash-warm-surface\)/),
-    ).toBe(true);
-    expect(sourceMatches(focusRule!, /box-shadow:[\s\S]*?0 0 0 1px/)).toBe(
-      true,
-    );
-  });
-
-  it("keeps the dashboard Composer shell visible while it is hovered", () => {
-    const hoverRule = globalCss.match(
-      /\.clash-dashboard-composer-dock\s+\.clash-chat-input-surface:hover\s*\{[\s\S]*?\}/,
-    )?.[0];
-
-    expect(hoverRule).toBeTruthy();
-    expect(
-      sourceMatches(hoverRule!, /background:\s*var\(--clash-warm-surface\)/),
-    ).toBe(true);
-    expect(sourceMatches(hoverRule!, /box-shadow:[\s\S]*?0 0 0 1px/)).toBe(
-      true,
-    );
+      sourceMatches(
+        globalCss,
+        /\.clash-dashboard-composer-dock\s+\.clash-chat-input-surface:(?:hover|has)/,
+      ),
+    ).toBe(false);
   });
 
   it("does not state-tag the default composer layout wrapper", async () => {
@@ -1182,32 +1161,19 @@ describe("ChatInput", () => {
     ).toBe(true);
   });
 
-  it("starts dashboard text on the first editor line while the toolbar stays pinned below", () => {
-    const editorRule = globalCss.match(
-      /\.clash-dashboard-composer-dock \.clash-chat-input-editor--hero\s*\{[\s\S]*?\}/,
-    )?.[0];
-    const wrapperRule = globalCss.match(
-      /\.clash-dashboard-composer-dock\s*\.clash-chat-input-editor--hero\s*\.milkdown-editor-wrapper\s*\{[\s\S]*?\}/,
-    )?.[0];
-    const proseMirrorRule = globalCss.match(
-      /\.clash-dashboard-composer-dock[\s\S]*?\.clash-chat-input-editor--hero[\s\S]*?\.ProseMirror\s*\{[\s\S]*?\}/,
-    )?.[0];
-    const toolbarRule = globalCss.match(
-      /\.clash-dashboard-composer-dock \.clash-chat-input-toolbar-row\s*\{[\s\S]*?\}/,
-    )?.[0];
-
-    expect(editorRule).toMatch(/--composer-text-inline-inset:\s*0\.5rem/);
-    expect(editorRule).toMatch(/--composer-text-line-height:\s*1\.3125rem/);
-    expect(editorRule).toMatch(/align-items:\s*flex-start/);
-    expect(editorRule).toMatch(
-      /padding-block-start:\s*var\(--composer-text-block-inset\)/,
-    );
-    expect(editorRule).not.toMatch(/align-items:\s*center/);
-    expect(wrapperRule).toMatch(/align-items:\s*flex-start/);
-    expect(proseMirrorRule).toMatch(
-      /line-height:\s*var\(--composer-text-line-height\)/,
-    );
-    expect(toolbarRule).toMatch(/margin-top:\s*auto/);
+  it("starts dashboard text with the shared default editor inset", () => {
+    expect(
+      sourceMatches(
+        globalCss,
+        /\.composer-card\s+\.clash-chat-input-editor--default\s+\.milkdown-editor-wrapper\s*\{[^}]*padding:\s*0 !important;/,
+      ),
+    ).toBe(true);
+    expect(
+      sourceMatches(
+        globalCss,
+        /\.clash-dashboard-composer-dock \.clash-chat-input-editor--hero/,
+      ),
+    ).toBe(false);
   });
 
   it("uses opaque neutral tokens and a restrained shadow for composer focus", () => {
@@ -1256,11 +1222,27 @@ describe("ChatInput", () => {
 
     const editorArea = container.querySelector(".clash-chat-input-editor");
     expect(editorArea?.className).toContain("clash-chat-input-editor--default");
-    const backchatCaretRule = globalCss.match(
-      /\[data-chat-surface="main"\]\s+\.composer-card\s+\.clash-chat-input-editor--default\s+\.milkdown-editor-wrapper\s*\{[\s\S]*?\}/,
-    )?.[0];
-    expect(backchatCaretRule).toBeTruthy();
-    expect(backchatCaretRule).toMatch(/padding:\s*0 !important;/);
+    expect(
+      sourceMatches(
+        globalCss,
+        /\.composer-card\s+\.clash-chat-input-editor--default\s+\.milkdown-editor-wrapper\s*\{[^}]*padding:\s*0 !important;/,
+      ),
+    ).toBe(true);
+  });
+
+  it("anchors text at the top of the compact three-row composer without losing balanced outer insets", () => {
+    expect(
+      sourceMatches(
+        globalCss,
+        /\[data-chat-density="compact"\]\s+\.composer-card\s+\.clash-chat-input-editor--default\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*flex-start;[^}]*padding-block-start:\s*0\.3125rem;/,
+      ),
+    ).toBe(true);
+    expect(
+      sourceMatches(
+        globalCss,
+        /\[data-chat-density="compact"\][\s\S]*?\.clash-chat-input-editor--default[\s\S]*?\.ProseMirror\s*\{[^}]*min-height:\s*1\.25rem;[^}]*line-height:\s*1\.25rem;/,
+      ),
+    ).toBe(true);
   });
 
   it("left-aligns the hero editor instead of centering the caret", async () => {
@@ -1446,10 +1428,8 @@ describe("ChatInput", () => {
     );
   });
 
-  it("routes annotation clicks to the shared inspector instead of editing in a popover", async () => {
-    const onAnnotationOpen = vi.fn();
+  it("uses Backchat's compact annotation strip instead of a thumbnail and count capsule", async () => {
     const onAnnotationRemove = vi.fn();
-    const onAnnotationLocate = vi.fn();
     const annotation: AgentAnnotationDraft = {
       id: "annotation-canvas-1",
       kind: "agent-annotation" as const,
@@ -1474,9 +1454,7 @@ describe("ChatInput", () => {
           onInputChange={() => undefined}
           onSubmit={() => undefined}
           annotationBlocks={[annotation]}
-          onAnnotationOpen={onAnnotationOpen}
           onAnnotationRemove={onAnnotationRemove}
-          onAnnotationLocate={onAnnotationLocate}
         />
       </Suspense>,
     );
@@ -1484,25 +1462,21 @@ describe("ChatInput", () => {
     await screen.findByTestId("milkdown-editor");
 
     const tray = screen.getByTestId("agent-annotation-tray");
-    expect(tray.textContent).toContain("1");
-    expect(tray.textContent).toContain("annotation");
-
-    fireEvent.click(screen.getByRole("button", { name: "Agent annotations" }));
-
-    const item = screen.getByTestId("agent-annotation-item");
-    expect(item.dataset.expanded).toBe("true");
-    expect(item.textContent).toContain("Canvas");
-    expect(item.textContent).toContain("Main");
-    expect(item.textContent).toContain("Hero still");
-    expect(item.textContent).toContain("Image");
-    fireEvent.click(
-      screen.getByRole("button", { name: "Annotation 1: Hero still" }),
+    expect(tray.textContent).toBe("1 annotation");
+    expect(screen.queryByAltText("Hero still")).toBeNull();
+    expect(tray.parentElement).toBe(
+      tray.closest('[data-slot="composer-inline-content"]'),
     );
 
-    expect(onAnnotationOpen).toHaveBeenCalledWith("annotation-canvas-1");
+    fireEvent.click(screen.getByRole("button", { name: "1 annotation" }));
+
+    const item = screen.getByTestId("agent-annotation-item");
+    expect(item.textContent).toContain("Main");
+    expect(item.textContent).toContain("Hero still");
+    expect(item.textContent).toContain("Use the wider crop.");
     expect(
-      screen.queryByRole("textbox", { name: "Annotation for Hero still" }),
-    ).toBeNull();
+      screen.getByRole("button", { name: "Remove annotation 1" }),
+    ).toBeTruthy();
   });
 
   it("opens the annotation list only when clicked", async () => {
@@ -1544,13 +1518,13 @@ describe("ChatInput", () => {
     );
     expect(screen.queryByTestId("agent-annotation-item")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Agent annotations" }));
+    fireEvent.click(screen.getByRole("button", { name: "1 annotation" }));
     fireEvent.mouseLeave(tray);
     expect(screen.getByTestId("agent-annotation-tray").dataset.open).toBe(
       "true",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Agent annotations" }));
+    fireEvent.click(screen.getByRole("button", { name: "1 annotation" }));
     expect(screen.getByTestId("agent-annotation-tray").dataset.open).toBe(
       "false",
     );
@@ -1592,29 +1566,14 @@ describe("ChatInput", () => {
     );
 
     await screen.findByTestId("milkdown-editor");
-    fireEvent.click(screen.getByRole("button", { name: "Agent annotations" }));
+    fireEvent.click(screen.getByRole("button", { name: "2 annotations" }));
 
     // Order in the tray is the pin numbering used on the creative surfaces.
     expect(
-      screen.getByRole("button", { name: "Annotation 1: Sound Design" }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Annotation 2: Music" }),
-    ).toBeTruthy();
-
-    // With multiple annotations, rows start collapsed until clicked.
-    const items = screen.getAllByTestId("agent-annotation-item");
-    expect(items.map((item) => item.dataset.expanded)).toEqual([
-      "false",
-      "false",
-    ]);
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Annotation 2: Music" }),
-    );
-    expect(
-      screen.getByText("timelines/timeline-1/tracks/track-music"),
-    ).toBeTruthy();
+      screen.getAllByTestId("agent-annotation-number").map((item) => item.textContent),
+    ).toEqual(["1.", "2."]);
+    expect(screen.getByText("Sound Design")).toBeTruthy();
+    expect(screen.getByText("Music")).toBeTruthy();
   });
 
   it("submits an annotation block without requiring duplicate prose in the editor", async () => {
@@ -1698,14 +1657,12 @@ describe("ChatInput", () => {
 
     await screen.findByTestId("milkdown-editor");
 
-    fireEvent.click(screen.getByRole("button", { name: "Agent annotations" }));
+    fireEvent.click(screen.getByRole("button", { name: "1 annotation" }));
 
     expect(
       screen.getByText("Director：14 tests Web 相关回归：62 tests"),
     ).toBeTruthy();
-    expect(
-      screen.getByPlaceholderText("Add an optional comment…"),
-    ).toBeTruthy();
+    expect(screen.queryByRole("textbox")).toBeNull();
 
     const sendButton = screen.getByRole("button", {
       name: "copilot.chatInput.send",

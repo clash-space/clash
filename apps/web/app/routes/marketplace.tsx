@@ -7,9 +7,15 @@ interface RegistryData {
   version: number;
   actions: RegistryItem[];
   skills: RegistryItem[];
+  plugins: RegistryItem[];
 }
 
-const emptyRegistry: RegistryData = { version: 1, actions: [], skills: [] };
+const emptyRegistry: RegistryData = {
+  version: 1,
+  actions: [],
+  skills: [],
+  plugins: [],
+};
 
 async function fetchRegistry() {
   const controller = new AbortController();
@@ -30,22 +36,25 @@ async function fetchRegistry() {
 export async function loader() {
   const registryRes = await fetchRegistry();
 
-  const items = [...registryRes.actions, ...registryRes.skills];
+  const items = [...registryRes.actions, ...(registryRes.plugins ?? [])];
   return {
     items,
     installedActionIds: [],
     installedSkillIds: [],
+    installedPluginIds: [],
   };
 }
 
 export default function MarketplaceRoute() {
-  const { items, installedActionIds, installedSkillIds } =
+  const { items, installedActionIds, installedSkillIds, installedPluginIds } =
     useLoaderData<typeof loader>();
   return (
     <MarketplaceClient
       items={items}
       installedActionIds={installedActionIds}
       installedSkillIds={installedSkillIds}
+      installedPluginIds={installedPluginIds}
+      catalogScope="plugins-and-actions"
       mode="public"
     />
   );

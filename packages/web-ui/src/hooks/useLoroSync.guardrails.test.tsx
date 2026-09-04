@@ -19,6 +19,12 @@ import {
   readProjectTimeline,
   type HostMutationRecord,
 } from "@clash/shared-types";
+import {
+  CrdtType,
+  MessageType,
+  decode,
+  encode,
+} from "@clash/replica/loro-protocol";
 
 class FakeWebSocket {
   static CONNECTING = 0;
@@ -126,7 +132,7 @@ describe("useLoroSync guardrails", () => {
     );
     await waitFor(() => expect(result.current.connected).toBe(true));
     expect(FakeWebSocket.instances[0]?.url).toBe(
-      "ws://127.0.0.1:50138/sync/host-failover",
+      "ws://127.0.0.1:50138/sync/host-failover?protocol=loro-v1",
     );
 
     act(() => FakeWebSocket.instances[0]?.drop());
@@ -144,17 +150,36 @@ describe("useLoroSync guardrails", () => {
       () => {
         expect(refreshRuntime).toHaveBeenCalledTimes(1);
         expect(FakeWebSocket.instances[1]?.url).toBe(
-          "ws://127.0.0.1:55137/sync/host-failover",
+          "ws://127.0.0.1:55137/sync/host-failover?protocol=loro-v1",
         );
       },
       { timeout: 2_000 },
     );
-    const replayedSnapshot = FakeWebSocket.instances[1]?.sent.find(
-      (value): value is Uint8Array => value instanceof Uint8Array,
-    );
-    expect(replayedSnapshot).toBeInstanceOf(Uint8Array);
-    const replayed = new (await import("loro-crdt")).LoroDoc();
-    replayed.import(replayedSnapshot!);
+    const { LoroDoc } = await import("loro-crdt");
+    const server = new LoroDoc();
+    const serverVersion = server.version();
+    await act(async () => {
+      await FakeWebSocket.instances[1]?.onmessage?.({
+        data: encode({
+          type: MessageType.JoinResponseOk,
+          crdt: CrdtType.Loro,
+          roomId: "host-failover",
+          permission: "write",
+          version: serverVersion.encode(),
+        }).buffer,
+      });
+    });
+    serverVersion.free();
+    const replayedUpdate = FakeWebSocket.instances[1]?.sent
+      .filter((value): value is Uint8Array => value instanceof Uint8Array)
+      .map((value) => decode(value))
+      .find((message) => message.type === MessageType.DocUpdate);
+    expect(replayedUpdate?.type).toBe(MessageType.DocUpdate);
+    if (!replayedUpdate || replayedUpdate.type !== MessageType.DocUpdate) {
+      throw new Error("missing offline replay update");
+    }
+    const replayed = new LoroDoc();
+    replayed.importBatch(replayedUpdate.updates);
     expect(replayed.getMap("nodes").get("pending-generation")).toMatchObject({
       data: { status: "pending", prompt: "dog" },
     });
@@ -441,6 +466,58 @@ describe("useLoroSync guardrails", () => {
     );
     expect(result.current.doc?.getMap("canvases").get("main")).toBeTruthy();
     expect(result.current.doc?.getMap("canvases").get("shots")).toBeTruthy();
+  });
+
+  it("can attach a directly added plugin surface to Main while another Canvas is selected", async () => {
+    const { result } = renderHook(() =>
+      useLoroSync({
+        projectId: "direct-plugin-main-hook",
+        canvasId: "shots",
+        syncServerUrl: "ws://localhost:7777",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.isInitialized).toBe(true));
+    act(() => {
+      expect(
+        result.current.createCanvas({ id: "shots", name: "Shots" }).ok,
+      ).toBe(true);
+      expect(
+        result.current.createTimeline({
+          id: "timeline-direct",
+          name: "Direct Timeline",
+          state: { tracks: [] },
+        }).ok,
+      ).toBe(true);
+      expect(
+        result.current.attachTimeline({
+          timelineId: "timeline-direct",
+          canvasId: "main",
+          actionNodeId: "timeline-direct-view",
+          position: { x: 0, y: 0 },
+        }).ok,
+      ).toBe(true);
+    });
+
+    expect(
+      readProjectTimeline(result.current.doc!, "timeline-direct"),
+    ).toMatchObject({
+      owner: {
+        kind: "canvas-action",
+        canvasId: "main",
+        actionNodeId: "timeline-direct-view",
+      },
+    });
+    expect(
+      new Canvas(result.current.doc!, () => {}, "main").readNode(
+        "timeline-direct-view",
+      ),
+    ).toBeTruthy();
+    expect(
+      new Canvas(result.current.doc!, () => {}, "shots").readNode(
+        "timeline-direct-view",
+      ),
+    ).toBeNull();
   });
 
   it("adds a project asset node to an explicit Canvas without changing the selected Canvas", async () => {

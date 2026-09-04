@@ -220,10 +220,14 @@ it("presents Codex ImageGen as an immutable built-in without creating an actions
     actionsRoot,
     manifestPath: join(source, "manifest.json"),
   });
-  expect(marketplace.actions).toEqual([
+  expect(marketplace.plugins).toEqual([
     expect.objectContaining({
-      id: "codex-imagegen",
+      id: "clash.codex-imagegen",
+      type: "plugin",
       packageId: "clash.codex-imagegen",
+      outputs: expect.arrayContaining([
+        expect.objectContaining({ kind: "generator" }),
+      ]),
     }),
   ]);
   await expect(marketplace.listInstalled()).resolves.toEqual([
@@ -243,9 +247,109 @@ it("presents Codex ImageGen as an immutable built-in without creating an actions
     bundled: true,
   });
   expect(existsSync(actionsRoot)).toBe(false);
-  await expect(marketplace.uninstall("codex-imagegen")).rejects.toMatchObject({
+  await expect(
+    marketplace.uninstall("clash.codex-imagegen"),
+  ).rejects.toMatchObject({
     status: 409,
     code: "BUILTIN_PLUGIN_IMMUTABLE",
   });
   await expect(marketplace.listInstalled()).resolves.toHaveLength(1);
+});
+
+it("installs the official Storyboard package only when the marketplace requests it", async () => {
+  const createMarketplace = (bundledPlugins as Record<string, unknown>)
+    .createOfficialPluginsMarketplace as
+    | ((options: Record<string, unknown>) => {
+        plugins: unknown[];
+        listInstalled(): Promise<unknown[]>;
+        install(packageId: string): Promise<Record<string, unknown>>;
+        uninstall(pluginId: string): Promise<void>;
+      })
+    | undefined;
+  expect(createMarketplace).toBeTypeOf("function");
+  if (!createMarketplace) return;
+
+  const root = await mkdtemp(join(tmpdir(), "clash-storyboard-marketplace-"));
+  const source = join(root, "source");
+  const actionsRoot = join(root, "actions");
+  await mkdir(join(source, "dist"), { recursive: true });
+  await mkdir(join(source, "views"), { recursive: true });
+  await writeFile(join(source, "dist", "stdio.mjs"), "// storyboard\n");
+  await writeFile(
+    join(source, "views", "storyboard.json"),
+    JSON.stringify({
+      apiVersion: "clash.view/v1",
+      kind: "view",
+      spec: {
+        definitionId: "storyboard",
+        name: "Storyboard",
+        presentation: { type: "storyboard" },
+        initialState: {
+          keyElements: [],
+          shots: [],
+          audioLayers: [],
+          uncategorized: [],
+        },
+      },
+    }),
+  );
+  await writeFile(
+    join(source, "manifest.json"),
+    JSON.stringify({
+      apiVersion: "clash.plugin/v1",
+      id: "clash.storyboard",
+      version: "1.0.0",
+      name: "Storyboard",
+      runtime: {
+        kind: "local",
+        transport: "stdio",
+        entrypoint: "dist/stdio.mjs",
+      },
+      contributes: {
+        views: [
+          { id: "storyboard", kind: "view", path: "views/storyboard.json" },
+        ],
+      },
+    }),
+  );
+
+  const marketplace = createMarketplace({
+    actionsRoot,
+    manifestPath: join(source, "manifest.json"),
+    entrypointPath: join(source, "dist", "stdio.mjs"),
+  });
+  expect(marketplace.plugins).toEqual([
+    expect.objectContaining({
+      id: "clash.storyboard",
+      type: "plugin",
+      packageId: "clash.storyboard",
+      artwork: {
+        src: "/brand/avatar-storyboard.png",
+        alt: "Clash Storyboard plugin",
+      },
+    }),
+  ]);
+  await expect(marketplace.listInstalled()).resolves.toEqual([]);
+  await expect(marketplace.install("clash.storyboard")).resolves.toMatchObject({
+    id: "clash.storyboard",
+    installed: true,
+  });
+  await expect(marketplace.listInstalled()).resolves.toEqual([
+    expect.objectContaining({ id: "clash.storyboard", version: "1.0.0" }),
+  ]);
+  await marketplace.uninstall("clash.storyboard");
+  await expect(marketplace.listInstalled()).resolves.toEqual([]);
+
+  const tamperedManifest = JSON.parse(
+    await readFile(join(source, "manifest.json"), "utf8"),
+  ) as { id: string };
+  tamperedManifest.id = "evil.storyboard";
+  await writeFile(
+    join(source, "manifest.json"),
+    JSON.stringify(tamperedManifest),
+  );
+  await expect(marketplace.install("clash.storyboard")).rejects.toThrow(
+    /clash\.storyboard.*evil\.storyboard/i,
+  );
+  expect(existsSync(join(actionsRoot, "clash.storyboard"))).toBe(false);
 });

@@ -6,6 +6,7 @@
     "Contains Remotion packages for video generation components"
   ],
   "subdirectories": {
+    "shared-replica": "Portable durable replica engine and Loro protocol adapters; infrastructure is supplied through ports.",
     "shared-artifact-evals": "Outcome-driven headless creative benchmark runner and artifact graders.",
     "mcp-server": "Internal typed peer capability surface and Canvas App used by the bundled Clash plugin; calls local-api directly and is not a standalone daemon.",
     "shared-mcp": "Shared Clash MCP server and fail-closed wire-schema compatibility boundary.",

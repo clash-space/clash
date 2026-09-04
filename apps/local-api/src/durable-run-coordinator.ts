@@ -48,6 +48,17 @@ type ProviderKind = ProviderPluginExecutorRequest["kind"];
 /** One Host policy shared by every local Provider-backed product surface. */
 export const DEFAULT_LOCAL_PROVIDER_RUN_DEADLINE_MS = 30 * 60_000;
 
+/**
+ * Durable ownership names the logical local service that owns one profile's journal, not the
+ * ephemeral discovery process advertising its current port. Keeping this stable lets hot reload
+ * and ordinary Desktop restarts resume work recorded in the same local data directory.
+ */
+export function localDurableRunOwnerId(
+  _discoveryHostId?: string,
+): "local-api" {
+  return "local-api";
+}
+
 export interface FrozenProjectAssetDelivery {
   kind: "project-asset";
   /** Product Action identity used by the output ActionAssetBinding. */
@@ -517,23 +528,19 @@ function customActionStep(
     };
   }
 
-  // v1 adapter rule, not a general multi-output contract: Action Cards declare one outputType
-  // but no output ports. Shipped custom Actions use value/result for text and asset/media for
-  // media. Host-local executors freeze their exact durable slot instead.
   const output = result.outputs[0]!;
-  const expectedSlot =
-    frozen.targetKind === "action"
-      ? (frozen.pluginOutputSlot ??
-        (frozen.kind === "text" ? "result" : "media"))
-      : run.outputSlot;
-  if (output.slot !== expectedSlot) {
+  const expectedSlots = pluginOutputSlotsForDurableRun(
+    frozen,
+    run.outputSlot,
+  );
+  if (!expectedSlots.includes(output.slot)) {
     return {
       status: "failed",
       error: {
         code: "contract_violation",
         message:
           `Action plugin ${frozen.binding.pluginId}/${frozen.binding.exportId} returned ` +
-          `output slot ${output.slot}; expected ${expectedSlot}.`,
+          `output slot ${output.slot}; expected ${expectedSlots.join(" or ")}.`,
         retryable: false,
         requestState: "accepted",
       },
@@ -597,6 +604,28 @@ function customActionStep(
     status: "completed",
     outputs: [{ ...output, slot: run.outputSlot }],
   };
+}
+
+/**
+ * Plugin-side output ports accepted by one frozen durable run.
+ *
+ * v1 Action Cards declare one outputType but no output-port field. A media Action therefore owns
+ * the typed port named by that outputType (`image`, `video`, or `audio`); `media` remains accepted
+ * for Actions written against the original generic-port convention. Other executors freeze their
+ * exact durable slot. The same rule validates both the returned envelope and its Host staging
+ * receipt so normalization cannot make an otherwise valid receipt look foreign.
+ */
+export function pluginOutputSlotsForDurableRun(
+  frozen: Pick<
+    FrozenLocalProviderExecutorInput,
+    "targetKind" | "pluginOutputSlot" | "kind"
+  >,
+  durableOutputSlot: string,
+): string[] {
+  if (frozen.targetKind !== "action") return [durableOutputSlot];
+  if (frozen.pluginOutputSlot) return [frozen.pluginOutputSlot];
+  if (frozen.kind === "text") return ["result"];
+  return [frozen.kind, "media"];
 }
 
 function generatorActionStep(

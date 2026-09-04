@@ -1,6 +1,9 @@
 import React from "react";
 import type { TimelineLibraryCategory } from "@clash/shared-types/timeline-library";
-import type { AgentAnnotationObjectRef } from "@clash/shared-types";
+import type {
+  AgentAnnotationObjectRef,
+  TimelineExportProgress,
+} from "@clash/shared-types";
 import {
   EditorProvider,
   getEditorAssetKey,
@@ -87,6 +90,8 @@ const EDITOR_WORKSPACE_ORDER: EditorWorkspace[] = [
 ];
 const SIDE_PANEL_MIN_WIDTH = 220;
 const SIDE_PANEL_MAX_WIDTH = 480;
+const INSPECTOR_PANEL_MIN_WIDTH = 240;
+const INSPECTOR_PANEL_MAX_WIDTH = 520;
 const TIMELINE_MIN_HEIGHT = 180;
 const TIMELINE_MAX_HEIGHT = 560;
 const panelCollapseTransitionClass =
@@ -105,6 +110,15 @@ const isEditableEditorShortcutTarget = (
   return Boolean(
     target.closest(
       'input, textarea, select, [contenteditable="true"], [role="slider"], [role="spinbutton"]',
+    ),
+  );
+};
+
+const isInteractiveEditorTarget = (target: EventTarget | null): boolean => {
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(
+    target.closest(
+      'button, a, input, textarea, select, [contenteditable="true"], [role="button"], [role="slider"], [role="spinbutton"], [role="combobox"]',
     ),
   );
 };
@@ -264,6 +278,8 @@ type EditorProps = {
   editorKey?: string;
   /** Export video callback */
   onExport?: () => Promise<void>;
+  /** Persisted render jobs for this Timeline, including optional real progress. */
+  exportProgress?: readonly TimelineExportProgress[];
   /** Creates a revision-pinned interchange package and opens the selected NLE. */
   onOpenInNle?: (target: NleTarget) => Promise<void>;
   /** Installed external editors detected by the desktop main process. */
@@ -300,6 +316,7 @@ export const Editor: React.FC<EditorProps> = ({
   onAdmitTimelineLibraryMedia,
   editorKey,
   onExport,
+  exportProgress,
   onOpenInNle,
   nleAvailability = null,
   nleAvailabilityError,
@@ -315,6 +332,7 @@ export const Editor: React.FC<EditorProps> = ({
     React.useState<TimelineLibraryCategory | null>("fx");
   const [sidePanelCollapsed, setSidePanelCollapsed] = React.useState(false);
   const [sidePanelWidth, setSidePanelWidth] = React.useState(300);
+  const [inspectorWidth, setInspectorWidth] = React.useState(300);
   const [timelineHeight, setTimelineHeight] = React.useState(280);
   const [layoutResizing, setLayoutResizing] = React.useState(false);
   const [inspectorCollapsed, setInspectorCollapsed] = React.useState(false);
@@ -325,6 +343,11 @@ export const Editor: React.FC<EditorProps> = ({
   const editorRootRef = React.useRef<HTMLDivElement>(null);
   const activeWorkspaceRef = React.useRef<EditorWorkspace>("canvas");
   const sidePanelResizeRef = React.useRef<{
+    pointerId: number;
+    startX: number;
+    startWidth: number;
+  } | null>(null);
+  const inspectorResizeRef = React.useRef<{
     pointerId: number;
     startX: number;
     startWidth: number;
@@ -361,7 +384,7 @@ export const Editor: React.FC<EditorProps> = ({
     const rootWidth =
       editorRootRef.current?.getBoundingClientRect().width ?? 1440;
     const reservedPreviewWidth = 336;
-    const reservedInspectorWidth = inspectorCollapsed ? 0 : 208;
+    const reservedInspectorWidth = inspectorCollapsed ? 0 : inspectorWidth;
     const reservedGutters = 16;
     return Math.min(
       SIDE_PANEL_MAX_WIDTH,
@@ -373,7 +396,24 @@ export const Editor: React.FC<EditorProps> = ({
           reservedGutters,
       ),
     );
-  }, [inspectorCollapsed]);
+  }, [inspectorCollapsed, inspectorWidth]);
+  const getInspectorMaximum = React.useCallback(() => {
+    const rootWidth =
+      editorRootRef.current?.getBoundingClientRect().width ?? 1440;
+    const reservedPreviewWidth = 336;
+    const reservedSidePanelWidth = sidePanelCollapsed ? 0 : sidePanelWidth;
+    const reservedGutters = 16;
+    return Math.min(
+      INSPECTOR_PANEL_MAX_WIDTH,
+      Math.max(
+        INSPECTOR_PANEL_MIN_WIDTH,
+        rootWidth -
+          reservedPreviewWidth -
+          reservedSidePanelWidth -
+          reservedGutters,
+      ),
+    );
+  }, [sidePanelCollapsed, sidePanelWidth]);
   const resizeSidePanelBy = React.useCallback(
     (delta: number) => {
       setSidePanelWidth((width) =>
@@ -397,6 +437,18 @@ export const Editor: React.FC<EditorProps> = ({
       clampLayoutSize(height + delta, TIMELINE_MIN_HEIGHT, maximum),
     );
   }, []);
+  const resizeInspectorBy = React.useCallback(
+    (delta: number) => {
+      setInspectorWidth((width) =>
+        clampLayoutSize(
+          width + delta,
+          INSPECTOR_PANEL_MIN_WIDTH,
+          getInspectorMaximum(),
+        ),
+      );
+    },
+    [getInspectorMaximum],
+  );
   const handleSidePanelResizePointerDown = React.useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       event.preventDefault();
@@ -428,6 +480,44 @@ export const Editor: React.FC<EditorProps> = ({
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (sidePanelResizeRef.current?.pointerId !== event.pointerId) return;
       sidePanelResizeRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      setLayoutResizing(false);
+    },
+    [],
+  );
+  const handleInspectorResizePointerDown = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      inspectorResizeRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startWidth: inspectorWidth,
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setLayoutResizing(true);
+    },
+    [inspectorWidth],
+  );
+  const handleInspectorResizePointerMove = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const resize = inspectorResizeRef.current;
+      if (!resize || resize.pointerId !== event.pointerId) return;
+      setInspectorWidth(
+        clampLayoutSize(
+          resize.startWidth + resize.startX - event.clientX,
+          INSPECTOR_PANEL_MIN_WIDTH,
+          getInspectorMaximum(),
+        ),
+      );
+    },
+    [getInspectorMaximum],
+  );
+  const finishInspectorResize = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (inspectorResizeRef.current?.pointerId !== event.pointerId) return;
+      inspectorResizeRef.current = null;
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
@@ -483,16 +573,34 @@ export const Editor: React.FC<EditorProps> = ({
   React.useEffect(() => {
     const root = editorRootRef.current;
     if (!root || typeof ResizeObserver === "undefined") return;
-    const keepPanelInsideWorkspace = () => {
+    const keepSidePanelInsideWorkspace = () => {
       setSidePanelWidth((width) =>
         clampLayoutSize(width, SIDE_PANEL_MIN_WIDTH, getSidePanelMaximum()),
       );
     };
-    const observer = new ResizeObserver(keepPanelInsideWorkspace);
+    const observer = new ResizeObserver(keepSidePanelInsideWorkspace);
     observer.observe(root);
-    keepPanelInsideWorkspace();
+    keepSidePanelInsideWorkspace();
     return () => observer.disconnect();
   }, [getSidePanelMaximum]);
+
+  React.useEffect(() => {
+    const root = editorRootRef.current;
+    if (!root || typeof ResizeObserver === "undefined") return;
+    const keepInspectorInsideWorkspace = () => {
+      setInspectorWidth((width) =>
+        clampLayoutSize(
+          width,
+          INSPECTOR_PANEL_MIN_WIDTH,
+          getInspectorMaximum(),
+        ),
+      );
+    };
+    const observer = new ResizeObserver(keepInspectorInsideWorkspace);
+    observer.observe(root);
+    keepInspectorInsideWorkspace();
+    return () => observer.disconnect();
+  }, [getInspectorMaximum]);
 
   React.useEffect(() => {
     const handleWorkspaceShortcut = (event: KeyboardEvent) => {
@@ -633,7 +741,7 @@ export const Editor: React.FC<EditorProps> = ({
                   : "min(13rem,28%)",
                 "--clash-timeline-inspector-width": inspectorCollapsed
                   ? "0px"
-                  : "clamp(280px,22%,340px)",
+                  : `${inspectorWidth}px`,
               } as React.CSSProperties
             }
             className={`clash-timeline-editor group/timeline-editor grid h-full min-h-0 [--clash-timeline-gutter:var(--clash-project-chrome-gutter,0.5rem)] [--clash-timeline-control-gap:var(--clash-control-gap,0.25rem)] [--clash-timeline-control-size:var(--clash-project-control-height,2rem)] gap-[var(--clash-timeline-gutter)] overflow-hidden bg-warm-page pb-[var(--clash-timeline-gutter)] pl-[var(--clash-timeline-gutter)] ${reserveHeaderEndGutter ? "pr-[var(--clash-timeline-gutter)]" : ""} motion-reduce:transition-none [grid-template-columns:minmax(var(--clash-timeline-side-panel-min-width),var(--clash-timeline-side-panel-width))_minmax(var(--clash-timeline-preview-min-width),1fr)_minmax(var(--clash-timeline-inspector-min-width),var(--clash-timeline-inspector-width))] [grid-template-rows:var(--clash-project-sidebar-header-height,2.5rem)_minmax(0,1fr)_var(--clash-timeline-height)] ${
@@ -700,6 +808,7 @@ export const Editor: React.FC<EditorProps> = ({
                   {onExport || onOpenInNle ? (
                     <OpenInMenu
                       onExport={onExport}
+                      exportProgress={exportProgress}
                       onOpenInNle={onOpenInNle}
                       availability={nleAvailability}
                       availabilityError={nleAvailabilityError}
@@ -800,8 +909,23 @@ export const Editor: React.FC<EditorProps> = ({
               data-editor-workspace="canvas"
               aria-hidden={transcriptWorkspaceActive}
               tabIndex={-1}
-              onPointerDownCapture={() => {
+              onPointerDownCapture={(event) => {
                 activeWorkspaceRef.current = "canvas";
+                if (!isEditableEditorShortcutTarget(event.target)) {
+                  event.currentTarget.focus({ preventScroll: true });
+                }
+              }}
+              onMouseDownCapture={(event) => {
+                activeWorkspaceRef.current = "canvas";
+                if (!isEditableEditorShortcutTarget(event.target)) {
+                  event.currentTarget.focus({ preventScroll: true });
+                }
+              }}
+              onClickCapture={(event) => {
+                activeWorkspaceRef.current = "canvas";
+                if (!isInteractiveEditorTarget(event.target)) {
+                  event.currentTarget.focus({ preventScroll: true });
+                }
               }}
               onFocusCapture={() => {
                 activeWorkspaceRef.current = "canvas";
@@ -821,6 +945,29 @@ export const Editor: React.FC<EditorProps> = ({
                 />
               </div>
             </main>
+            {!inspectorCollapsed && !transcriptWorkspaceActive ? (
+              <div
+                data-editor-resize-handle="inspector"
+                role="separator"
+                aria-label="Resize Properties panel"
+                aria-orientation="vertical"
+                aria-valuemin={INSPECTOR_PANEL_MIN_WIDTH}
+                aria-valuemax={INSPECTOR_PANEL_MAX_WIDTH}
+                aria-valuenow={Math.round(inspectorWidth)}
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowLeft") resizeInspectorBy(12);
+                  if (event.key === "ArrowRight") resizeInspectorBy(-12);
+                }}
+                onPointerDown={handleInspectorResizePointerDown}
+                onPointerMove={handleInspectorResizePointerMove}
+                onPointerUp={finishInspectorResize}
+                onPointerCancel={finishInspectorResize}
+                className="group/inspector-resize z-20 flex w-3 -translate-x-[calc(50%+var(--clash-timeline-gutter)/2)] cursor-col-resize touch-none items-center justify-center justify-self-start outline-none [grid-column:3] [grid-row:2]"
+              >
+                <span className="h-12 w-0.5 rounded-full bg-stone-300/0 transition-colors group-hover/inspector-resize:bg-brand/45 group-focus/inspector-resize:bg-brand/60" />
+              </div>
+            ) : null}
             <aside
               data-editor-region="inspector"
               aria-label="Timeline Properties"
@@ -930,8 +1077,23 @@ export const Editor: React.FC<EditorProps> = ({
                 <div
                   data-editor-workspace="canvas"
                   tabIndex={-1}
-                  onPointerDownCapture={() => {
+                  onPointerDownCapture={(event) => {
                     activeWorkspaceRef.current = "canvas";
+                    if (!isEditableEditorShortcutTarget(event.target)) {
+                      event.currentTarget.focus({ preventScroll: true });
+                    }
+                  }}
+                  onMouseDownCapture={(event) => {
+                    activeWorkspaceRef.current = "canvas";
+                    if (!isEditableEditorShortcutTarget(event.target)) {
+                      event.currentTarget.focus({ preventScroll: true });
+                    }
+                  }}
+                  onClickCapture={(event) => {
+                    activeWorkspaceRef.current = "canvas";
+                    if (!isInteractiveEditorTarget(event.target)) {
+                      event.currentTarget.focus({ preventScroll: true });
+                    }
                   }}
                   onFocusCapture={() => {
                     activeWorkspaceRef.current = "canvas";

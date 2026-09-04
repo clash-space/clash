@@ -3,17 +3,19 @@ import MarketplaceClient from "@clash/web-ui/components/MarketplaceClient";
 import { loadMarketplaceData } from "../lib/marketplaceData";
 
 export async function loader() {
-  return loadMarketplaceData();
+  return loadMarketplaceData({ includeSkills: false });
 }
 
 export default function MarketplaceManageRoute() {
-  const { items, installedActionIds, installedSkillIds } =
+  const { items, installedActionIds, installedSkillIds, installedPluginIds } =
     useLoaderData<typeof loader>();
   return (
     <MarketplaceClient
       items={items}
       installedActionIds={installedActionIds}
       installedSkillIds={installedSkillIds}
+      installedPluginIds={installedPluginIds}
+      catalogScope="plugins-and-actions"
       mode="manage"
     />
   );

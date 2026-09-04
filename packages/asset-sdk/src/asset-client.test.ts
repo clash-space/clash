@@ -90,6 +90,47 @@ describe("resolveProjectAsset", () => {
     });
   });
 
+  it("projects a Host-authorized waveform locator without persisting samples", async () => {
+    const adapters = ports({
+      projection: {
+        resolve: vi.fn(async () => ({
+          status: "ready" as const,
+          url: "https://host.example/assets/asset-1",
+          waveformUrl: "https://host.example/assets/asset-1/waveform",
+        })),
+      },
+    });
+
+    await expect(
+      resolveProjectAsset(adapters, {
+        projectId: "project-1",
+        entry: entry(),
+      }),
+    ).resolves.toMatchObject({
+      waveformUrl: "https://host.example/assets/asset-1/waveform",
+      metadata: expect.not.objectContaining({ waveform: expect.anything() }),
+    });
+  });
+
+  it("projects the immutable production time reported by the Resource registry", async () => {
+    const adapters = ports({
+      registry: {
+        resolve: vi.fn(async ({ entry: value }) => ({
+          status: "ready" as const,
+          resource: resource(value.source.resourceId),
+          createdAt: 1_777_777_777_000,
+        })),
+      },
+    });
+
+    await expect(
+      resolveProjectAsset(adapters, {
+        projectId: "project-1",
+        entry: entry(),
+      }),
+    ).resolves.toMatchObject({ createdAt: 1_777_777_777_000 });
+  });
+
   it.each([
     [
       { status: "uploading", resource: resource(), progress: 0.25 },

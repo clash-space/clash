@@ -462,13 +462,6 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
     priority: 1,
   },
   {
-    providerId: "fal",
-    upstreamId: "fal",
-    apiShape: "fal",
-    priority: 20,
-    requiredCredentials: [API_KEY_CREDENTIAL],
-  },
-  {
     providerId: "official",
     upstreamId: "bfl",
     region: "global",
@@ -579,22 +572,6 @@ export const MODEL_UPSTREAM_ROUTES: ModelUpstreamRoute[] = [
 ];
 
 export const MODEL_PROVIDER_ROUTES = MODEL_UPSTREAM_ROUTES;
-
-function directFalRoute(query: ModelUpstreamRouteQuery): ModelUpstreamRoute | null {
-  if (!query.modelCode.startsWith("fal-ai/") && !query.modelCode.startsWith("bytedance/")) {
-    return null;
-  }
-  return {
-    modelCode: query.modelCode,
-    kind: query.kind ?? "image",
-    providerId: query.allowMock ? "mock" : "fal",
-    upstreamId: query.allowMock ? "mock" : "fal",
-    upstreamModel: query.modelCode,
-    apiShape: "fal",
-    priority: 50,
-    requiredCredentials: query.allowMock ? undefined : [API_KEY_CREDENTIAL],
-  };
-}
 
 function providerIdForRoute(route: ModelUpstreamRoute): ProviderAccountId {
   if (route.providerId) return route.providerId;
@@ -922,7 +899,6 @@ function isEnabled(route: ModelUpstreamRoute, query: ModelUpstreamRouteQuery): b
 }
 
 function candidateRoutes(query: ModelUpstreamRouteQuery): ModelUpstreamRoute[] {
-  const direct = directFalRoute(query);
   const modelCode = normalizeModelId(query.modelCode) ?? query.modelCode.trim();
   const routes = query.models
     ? [
@@ -930,14 +906,12 @@ function candidateRoutes(query: ModelUpstreamRouteQuery): ModelUpstreamRoute[] {
         ...(query.allowMock ? MOCK_ROUTES : []),
       ]
     : MODEL_UPSTREAM_ROUTES;
-  return direct
-    ? [direct]
-    : routes.filter(
-        (route) =>
-          route.modelCode === modelCode &&
-          (!query.kind || route.kind === query.kind) &&
-          modelRouteSupportsParameters(route, query.requestedParameterIds ?? []),
-      );
+  return routes.filter(
+    (route) =>
+      route.modelCode === modelCode &&
+      (!query.kind || route.kind === query.kind) &&
+      modelRouteSupportsParameters(route, query.requestedParameterIds ?? []),
+  );
 }
 
 export function activeModelParameterIds(

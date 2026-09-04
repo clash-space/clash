@@ -1,7 +1,13 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { runtimeApiUrl } from "@clash/web-ui/lib/runtimeConfig";
+import {
+  getRuntimeCapabilities,
+  runtimeApiUrl,
+} from "@clash/web-ui/lib/runtimeConfig";
 
 export async function loader(_: LoaderFunctionArgs) {
+  if (getRuntimeCapabilities().auth.mode === "local-user") {
+    return { isAuthenticated: true };
+  }
   try {
     const response = await fetch(
       runtimeApiUrl("/api/better-auth/get-session"),

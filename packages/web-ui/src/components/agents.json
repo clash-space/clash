@@ -19,6 +19,7 @@
     "ProjectBrowserSurfaces.tsx": "Keeps every Project sidebar browser tab mounted while exposing only the selected webview surface.",
     "DashboardComposerContext.tsx": "Route-stable Dashboard draft and Project/Skill reference state, including the shared drag-and-drop boundary and focus handoff.",
     "DashboardComposerDock.tsx": "Persistent Home/Marketplace bottom Composer dock with an external compact searchable Project scope tag, in-surface Skill references, shared Backchat runtime controls, and one same-document transition into Project.",
+    "ProjectCard.tsx": "Project-browser card that loads one Host-derived Main canvas WebP per revision and keeps the lightweight geometry SVG as a no-media loading/error fallback.",
     "MarketplacePluginDetail.tsx": "Canonical Marketplace plugin detail surface with shared breadcrumb navigation and registry-declared metadata, inputs, outputs, and required capabilities.",
     "marketplaceRouting.ts": "Single canonical path builder for action and skill detail links used by Marketplace cards and the Home featured feed.",
     "desktopShellLayers.ts": "Semantic desktop shell elevation order shared by Dashboard task surfaces and transient sidebar preview layers.",
@@ -27,6 +28,8 @@
     "copilot/AgentAnnotationContextMenu.tsx": "Shared context-menu action that sends an addressable workspace object into the composer.",
     "copilot/AgentSelectionAnnotationOverlay.tsx": "Captures native text selections inside creative surfaces, renders numbered anchored highlights, and queues an optional comment through the shared agent annotation contract.",
     "LoroSyncContext.tsx": "React Context provider for the Loro CRDT sync engine.",
+    "CanvasViewContext.tsx": "Navigation context for generator-free Canvas View nodes that open their referenced draft Canvas.",
+    "nodes/CanvasViewNode.tsx": "View-only Canvas plugin card; it opens a referenced Canvas and intentionally exposes no Generator action or output handle.",
     "VideoEditorContext.tsx": "State management for the video editing timeline.",
     "GlobalAssetsClient.tsx": "Personal Global library UI over the shared import, trash, and observed-operation restore lifecycle."
   },

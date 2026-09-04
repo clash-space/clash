@@ -1,23 +1,12 @@
 /**
- * Media understanding: ASR (audio/video) + visual analysis (image/video).
+ * Legacy hosted visual analysis for image/video assets.
+ * ASR is owned by the local executable ASR plugin.
  * Writes results to node.data.understanding.
  */
-import { fal } from "@fal-ai/client";
 import { log } from "../../logger";
-import { transcribeAudio } from "../../services/asr";
 import { analyzeVisual } from "../../services/visual-understanding";
 import type { GenerationContext } from "../context";
 import type { GenerationAdapter } from "../adapter";
-import { credentialsForProvider } from "./provider-credentials";
-
-async function uploadR2ToFal(bucket: R2Bucket, key: string, falApiKey: string): Promise<string> {
-  fal.config({ credentials: falApiKey });
-  const obj = await bucket.get(key);
-  if (!obj) throw new Error(`R2 object not found: ${key}`);
-  const buf = await obj.arrayBuffer();
-  const ct = obj.httpMetadata?.contentType || "audio/mpeg";
-  return fal.storage.upload(new Blob([buf], { type: ct }));
-}
 
 export const understandAdapter: GenerationAdapter = {
   name: "understand",
@@ -28,32 +17,13 @@ export const understandAdapter: GenerationAdapter = {
     const mime = params.mimeType ?? "";
     if (!r2Key) throw new Error("understand task requires r2Key");
 
-    const isAudio = mime.startsWith("audio/");
     const isVideo = mime.startsWith("video/");
     const isImage = mime.startsWith("image/");
     const understanding: Record<string, unknown> = {};
 
-    if (isAudio || isVideo) {
-      understanding.transcription = await ctx.step(
-        "transcribe",
-        { retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "5 minutes" },
-        async () => {
-          log.info("ASR started", ctx.tag);
-          const falKey = (await credentialsForProvider(ctx, "fal", ["apiKey"], {
-            upstreamId: "fal",
-            modelCode: params.modelName,
-          })).apiKey;
-          const audioUrl = await uploadR2ToFal(env.R2_BUCKET, r2Key, falKey);
-          const result = await transcribeAudio(falKey, audioUrl, {
-            language: params.language,
-          });
-          log.info("ASR completed", {
-            ...ctx.tag,
-            textLength: result.text.length,
-            segments: result.segments.length,
-          });
-          return result;
-        },
+    if (!isImage && !isVideo) {
+      throw new Error(
+        "Hosted ASR has been retired; invoke the local executable ASR plugin.",
       );
     }
 

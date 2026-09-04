@@ -1,6 +1,6 @@
 /**
  * Node Update Utilities for Loro Document
- * Ported from loro-sync-server/src/sync/NodeUpdater.ts — no changes needed.
+ * Shared by ProjectRoom's hosted generation reconciliation paths.
  */
 
 import { LoroDoc } from 'loro-crdt';

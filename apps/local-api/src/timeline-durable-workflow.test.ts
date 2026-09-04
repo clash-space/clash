@@ -369,9 +369,13 @@ describe("Local durable Timeline render workflow", () => {
         nodeId: "render-plugin",
         input: {
           values: expect.objectContaining({
-            timelineDsl: expect.objectContaining({
-              tracks: expect.any(Array),
-            }),
+            timeline: {
+              name: "Media cut",
+              owner: { kind: "project" },
+              state: expect.objectContaining({
+                tracks: expect.any(Array),
+              }),
+            },
           }),
           references: [
             {

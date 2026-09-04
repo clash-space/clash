@@ -250,6 +250,7 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
             content,
             lyrics,
             dataPrompt,
+            pluginBinding,
             refNodeIds,
             getNodes,
             currentUserId,

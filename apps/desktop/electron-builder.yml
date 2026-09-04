@@ -16,7 +16,7 @@ files:
   - "!*.test.*"
 
 extraResources:
-  - from: ../web/dist/client
+  - from: .vite/renderer/main_window
     to: web-dist
   - from: ../render-server/.remotion-bundle
     to: remotion-bundle
@@ -28,6 +28,13 @@ extraResources:
       - "!**/*.py[cod]"
   - from: build/clash-runtime
     to: clash-runtime
+    filter:
+      - "**/*"
+  # electron-builder excludes nested node_modules from a broad extraResources
+  # copy. Stage the Host runtime dependencies explicitly so native optional
+  # packages (for example sharp/@img) survive into the installed app.
+  - from: build/clash-runtime/node_modules
+    to: clash-runtime/node_modules
     filter:
       - "**/*"
 

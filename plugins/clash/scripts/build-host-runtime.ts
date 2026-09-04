@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { build } from "esbuild";
 import {
   BUNDLED_PLUGINS,
+  OFFICIAL_MARKETPLACE_PLUGIN_PACKAGES,
   bundledPluginPayloadFiles,
 } from "../../../apps/local-api/src/bundled-plugins.js";
 import { assertDependencyDistIsFresh } from "./host-runtime-freshness.js";
@@ -19,6 +20,9 @@ assertDependencyDistIsFresh([
   resolve(import.meta.dirname, "../../../packages/shared-types"),
   resolve(import.meta.dirname, "../../../apps/local-api"),
   ...BUNDLED_PLUGINS.map((plugin) =>
+    resolve(import.meta.dirname, `../../${plugin.workspaceDir}`),
+  ),
+  ...OFFICIAL_MARKETPLACE_PLUGIN_PACKAGES.map((plugin) =>
     resolve(import.meta.dirname, `../../${plugin.workspaceDir}`),
   ),
 ]);
@@ -82,6 +86,26 @@ await rm(bundledPluginRuntimeRoot, { recursive: true, force: true });
 for (const plugin of BUNDLED_PLUGINS) {
   const sourceRoot = resolve(repoRoot, "plugins", plugin.workspaceDir);
   const targetRoot = resolve(bundledPluginRuntimeRoot, plugin.workspaceDir);
+  const declaredFiles = new Set(
+    await bundledPluginPayloadFiles(
+      JSON.parse(await readFile(resolve(sourceRoot, "manifest.json"), "utf8")),
+      sourceRoot,
+    ),
+  );
+  for (const relativePath of declaredFiles) {
+    const target = resolve(targetRoot, relativePath);
+    await mkdir(dirname(target), { recursive: true });
+    await cp(resolve(sourceRoot, relativePath), target);
+  }
+}
+
+// Official Marketplace packages ship beside the Host so installation is local and deterministic,
+// but they stay outside bundled-plugins and are never loaded until the user installs one.
+const officialPluginRuntimeRoot = resolve(runtimeDir, "official-plugins");
+await rm(officialPluginRuntimeRoot, { recursive: true, force: true });
+for (const plugin of OFFICIAL_MARKETPLACE_PLUGIN_PACKAGES) {
+  const sourceRoot = resolve(repoRoot, "plugins", plugin.workspaceDir);
+  const targetRoot = resolve(officialPluginRuntimeRoot, plugin.packagedDir);
   const declaredFiles = new Set(
     await bundledPluginPayloadFiles(
       JSON.parse(await readFile(resolve(sourceRoot, "manifest.json"), "utf8")),

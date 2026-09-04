@@ -26,6 +26,8 @@
         "path": "bindings/kling-image-o1.json"
       }
     ],
+    "generators": [],
+    "views": [],
     "functions": [
       {
         "id": "acme-execute",
@@ -140,6 +142,29 @@ schema hashes; an artifact never declares a module/process execution realm.
 
 See [Asset + Generator Model](/guide/asset-generator-model) for revision, Run,
 copy-on-write, and delivery status.
+
+## View definition (`clash.view/v1`)
+
+A View is a declarative editor and state contract. It does not imply an
+executable function or Generator:
+
+```json
+{
+  "contributes": {
+    "views": [
+      { "id": "storyboard", "kind": "view", "path": "views/storyboard.json" }
+    ],
+    "generators": [],
+    "functions": []
+  }
+}
+```
+
+Directly adding an activated View creates a `plugin-view` node on the implicit
+`main` Canvas. The View owns structured draft state. When it needs generated
+media, the product invokes an independently installed native Generator and
+attaches its Output Commit Project Asset as a candidate; the View package does
+not acquire Generator ownership.
 
 ## Provider definition (`clash.provider/v1`)
 

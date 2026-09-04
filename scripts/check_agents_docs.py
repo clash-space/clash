@@ -14,7 +14,6 @@ REQUIRED_FIELDS = ["summary", "context_hints", "subdirectories", "key_files"]
 MANDATORY_DIRS = [
     "apps/api",
     "apps/web",
-    "apps/loro-sync-server",
     "apps/auth-gateway",
     "packages/shared-types",
     "docs"

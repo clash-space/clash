@@ -10,19 +10,19 @@ The current contract is defined in
 “Previews, thumbnails, and Project covers”. In particular:
 
 - consumers receive original media through `ResolvedAsset.url`;
-- Current Local derives poster frames in frontend presentation code and keeps
-  them in disposable device caches, just like waveform peaks and filmstrips;
-- an already-supplied legacy/remote `ResolvedAsset.thumbnailUrl` may be read as
-  a compatibility input, but it does not imply a Local backend poster protocol;
+- Current Local CAS-publishes a first-frame WebP representation per immutable
+  video Resource and versioned recipe through the shared Durable Run journal;
+- `ResolvedAsset.thumbnailUrl` is an entry-authorized projection of that
+  representation; frontend decoding remains a fallback while it is absent;
 - `/thumbnails/<storage-key>` is removed. A storage key is neither an Asset
   identity nor authorization, and missing posters never fall back to serving
   the original video through that path.
 
-Provider execution, retry, recovery, and output publication are separately
+Provider execution, representation retry/recovery, and output publication are
 defined by the
 [`Durable Run protocol`](../apps/docs/guide/durable-run-protocol.md); the legacy
-thumbnail task in this snapshot is not part of that protocol.
+Python thumbnail task in this snapshot is not part of that protocol.
 
-Backend poster generation, including any future Cloud OSS staging,
-collaboration synchronization, and physical reclamation, is deferred. Do not
-revive the retired endpoint or copy its examples into a new service.
+Cloud OSS representation staging, collaboration synchronization, and physical
+reclamation remain deferred. Do not revive the retired raw-storage-key endpoint
+or copy its examples into a new service.

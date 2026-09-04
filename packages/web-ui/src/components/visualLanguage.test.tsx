@@ -337,17 +337,11 @@ describe("visual language surfaces", () => {
     );
 
     expect(
-      sourceMatches(
-        source,
-        /--color-fg-muted:\s*var\(--clash-content-muted\)/,
-      ),
+      sourceMatches(source, /--color-fg-muted:\s*var\(--clash-content-muted\)/),
       "Backchat process text must use Clash's muted content color",
     ).toBe(true);
     expect(
-      sourceMatches(
-        source,
-        /--color-bg-surface:\s*var\(--clash-warm-muted\)/,
-      ),
+      sourceMatches(source, /--color-bg-surface:\s*var\(--clash-warm-muted\)/),
       "Backchat disclosure hover surfaces must use Clash's muted surface",
     ).toBe(true);
   });
@@ -487,7 +481,7 @@ describe("visual language surfaces", () => {
     ).toBe(true);
   });
 
-  it("moves the collapsed project avatar between Canvas and the production header", () => {
+  it("moves the neutral collapsed chat launcher between Canvas and the production header", () => {
     const projectSource = readFileSync(
       join(process.cwd(), "packages/web-ui/src/components/ProjectEditor.tsx"),
       "utf8",
@@ -597,6 +591,14 @@ describe("visual language surfaces", () => {
     ).toBe(true);
     expect(
       sourceMatches(copilotSource, /AgentMotion/),
+      "must not reappear",
+    ).toBe(false);
+    expect(
+      sourceMatches(copilotSource, /ChatCircleDots/),
+      "mechanism missing",
+    ).toBe(true);
+    expect(
+      sourceContains(copilotSource, 'data-slot="copilot-launcher-icon"'),
       "mechanism missing",
     ).toBe(true);
     expect(
@@ -626,13 +628,13 @@ describe("visual language surfaces", () => {
         cssSource,
         /\.dark \.clash-copilot-launcher--header \.clash-agent-motion\s*\{[^}]*color: #d6d3d1;/,
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       sourceMatches(
         cssSource,
         /\.clash-copilot-launcher--header \.clash-agent-motion__svg\s*\{[^}]*opacity: 0\.9;/,
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       sourceMatches(copilotSource, /clash-copilot-panel-shell fixed z-50/),
       "mechanism missing",
@@ -781,7 +783,7 @@ describe("visual language surfaces", () => {
     expect(
       sourceMatches(
         copilotSource,
-        /clash-copilot-panel-header relative z-20 flex shrink-0 items-center gap-2 px-4 py-3/,
+        /clash-copilot-panel-header relative z-20 flex h-\[38px\] shrink-0 items-center gap-2 px-4/,
       ),
       "mechanism missing",
     ).toBe(true);
@@ -790,8 +792,8 @@ describe("visual language surfaces", () => {
         copilotSource,
         /import \{ CopilotRailSlot \} from '\.\/copilot\/CopilotRail'/,
       ),
-      "mechanism missing",
-    ).toBe(true);
+      "must not reappear",
+    ).toBe(false);
     expect(
       sourceMatches(
         copilotSource,
@@ -826,8 +828,8 @@ describe("visual language surfaces", () => {
         copilotSource,
         /<CopilotRailSlot className="h-8">[\s\S]*<AgentMotion/,
       ),
-      "mechanism missing",
-    ).toBe(true);
+      "must not reappear",
+    ).toBe(false);
     expect(sourceMatches(copilotSource, /-ml-1\.5/), "must not reappear").toBe(
       false,
     );
@@ -851,8 +853,8 @@ describe("visual language surfaces", () => {
         copilotSource,
         /AgentMotion[\s\S]*state=\{state\}[\s\S]*className="clash-agent-motion--compact h-6 w-6"[\s\S]*gazeTarget=\{gazeTarget \?\? null\}/,
       ),
-      "mechanism missing",
-    ).toBe(true);
+      "must not reappear",
+    ).toBe(false);
     expect(
       sourceContains(copilotSource, "toolbarAccessory={"),
       "mechanism missing",
@@ -1290,14 +1292,18 @@ describe("visual language surfaces", () => {
         cssSource,
         /\.clash-dashboard-composer-dock \.clash-chat-input-hero-layout\s*\{[\s\S]*?flex-direction:\s*column/,
       ),
-      "dashboard composer must keep editor and toolbar on separate tiers",
-    ).toBe(true);
+      "dashboard must not fork the shared Composer layout",
+    ).toBe(false);
     expect(
       sourceMatches(
         cssSource,
         /\.clash-dashboard-composer-dock \.clash-chat-input-toolbar-row\s*\{[\s\S]*?margin-top:\s*auto/,
       ),
-      "shared toolbar must anchor to the lower tier",
+      "dashboard must not fork the shared toolbar geometry",
+    ).toBe(false);
+    expect(
+      sourceMatches(heroSource, /variant="default"/),
+      "dashboard must render the shared default Composer",
     ).toBe(true);
     expect(
       sourceMatches(
@@ -1820,10 +1826,7 @@ describe("visual language surfaces", () => {
       "route error detail must use the neutral muted contract",
     ).toBe(true);
     expect(
-      sourceMatches(
-        root,
-        /clash-route-error-surface[^"\n]*backdrop-blur/,
-      ),
+      sourceMatches(root, /clash-route-error-surface[^"\n]*backdrop-blur/),
     ).toBe(false);
   });
 
@@ -1995,9 +1998,10 @@ describe("visual language surfaces", () => {
       sourceMatches(source, /clash-auth-primary/),
       "mechanism missing",
     ).toBe(true);
-    expect(sourceMatches(source, /InlineAlert|feedback-error-surface/), "mechanism missing").toBe(
-      true,
-    );
+    expect(
+      sourceMatches(source, /InlineAlert|feedback-error-surface/),
+      "mechanism missing",
+    ).toBe(true);
   });
 
   it("keeps CLI authorization routes in Clash auth surfaces instead of generic black setup chrome", () => {

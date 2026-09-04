@@ -58,6 +58,9 @@ declare global {
     | {
         isDesktop: true;
         newWindow: () => Promise<{ windowId: number; windowCount: number }>;
+        onProjectBrowserOpenTab?: (
+          listener: (request: { url: string; disposition: string }) => void,
+        ) => () => void;
         refreshRuntime?: () => Promise<RuntimeEndpointConfig>;
         authorizeProvider?: (request: {
           verificationUri: string;

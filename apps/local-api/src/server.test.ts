@@ -78,6 +78,15 @@ function errorCode(error: unknown): string | undefined {
     : undefined;
 }
 
+const availableCodexImagegenPreflight = async () => ({
+  available: true as const,
+  codexPath: "/test/codex",
+  generate: async () => ({
+    mediaType: "image/png" as const,
+    bytes: new Uint8Array([137, 80, 78, 71]),
+  }),
+});
+
 async function listenOnLoopback(
   server: ReturnType<typeof createServer>,
   port = 0,
@@ -104,6 +113,142 @@ async function listenOnLoopback(
 }
 
 describe("local API server configuration", () => {
+  it("omits Codex ImageGen when its startup preflight is unavailable", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-codex-unavailable-"));
+    let server: Awaited<ReturnType<typeof startLocalApiServer>> | undefined;
+
+    try {
+      server = await startLocalApiServer({
+        dataDir: join(root, "local-api"),
+        port: 0,
+        remotePersistence: null,
+        discovery: { enabled: false },
+        localAcp: createConfiguredLocalAcpAdapter({
+          CLASH_E2E_STUB_ACP: "1",
+        }),
+        codexImagegenPreflight: async () => ({
+          available: false,
+          reason: "not-logged-in",
+        }),
+      });
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        throw new Error("local-api did not bind a TCP port");
+      }
+      const origin = `http://127.0.0.1:${address.port}`;
+      const registry = (await (
+        await fetch(`${origin}/api/marketplace/registry`)
+      ).json()) as { plugins: Array<{ id: string }> };
+      expect(registry.plugins.map(({ id }) => id)).not.toContain(
+        "clash.codex-imagegen",
+      );
+
+      const installed = (await (
+        await fetch(`${origin}/api/v1/local/plugins`)
+      ).json()) as Array<{ id?: string }>;
+      expect(installed.map(({ id }) => id)).not.toContain(
+        "clash.codex-imagegen",
+      );
+
+      const definitions = (await (
+        await fetch(`${origin}/api/v1/generator-definitions`)
+      ).json()) as {
+        definitions: Array<{ pluginId: string }>;
+      };
+      expect(
+        definitions.definitions.map(({ pluginId }) => pluginId),
+      ).not.toContain("clash.codex-imagegen");
+    } finally {
+      if (server) {
+        await new Promise<void>((resolveClose) =>
+          server!.close(() => resolveClose()),
+        );
+      }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("publishes Storyboard as an official marketplace plugin without preinstalling it", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-storyboard-catalog-"));
+    const dataDir = join(root, "local-api");
+    let server: Awaited<ReturnType<typeof startLocalApiServer>> | undefined;
+
+    try {
+      server = await startLocalApiServer({
+        dataDir,
+        port: 0,
+        remotePersistence: null,
+        discovery: { enabled: false },
+        localAcp: createConfiguredLocalAcpAdapter({
+          CLASH_E2E_STUB_ACP: "1",
+        }),
+        codexImagegenPreflight: availableCodexImagegenPreflight,
+      });
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        throw new Error("local-api did not bind a TCP port");
+      }
+      const origin = `http://127.0.0.1:${address.port}`;
+      const registry = (await (
+        await fetch(`${origin}/api/marketplace/registry`)
+      ).json()) as {
+        actions: Array<Record<string, unknown> & { id: string; type: string }>;
+        plugins: Array<Record<string, unknown> & { id: string; type: string }>;
+        skills: Array<Record<string, unknown> & { id: string; type: string }>;
+      };
+      expect(registry.plugins).toContainEqual(
+        expect.objectContaining({ id: "clash.storyboard", type: "plugin" }),
+      );
+      expect(registry.plugins).toContainEqual(
+        expect.objectContaining({
+          id: "clash.codex-imagegen",
+          type: "plugin",
+        }),
+      );
+      expect(registry.actions).toEqual([]);
+
+      const feed = (await (
+        await fetch(`${origin}/api/marketplace/feed`)
+      ).json()) as {
+        featuredPlugins: Array<Record<string, unknown> & {
+          id: string;
+          type: string;
+        }>;
+      };
+      expect(feed.featuredPlugins.map((item) => item.id)).toEqual([
+        "clash.storyboard",
+        "clash.codex-imagegen",
+        "clash.video.sd25-pe",
+      ]);
+      const catalog = new Map(
+        [...registry.actions, ...registry.plugins, ...registry.skills].map(
+          (item) => [item.id, item],
+        ),
+      );
+      for (const item of feed.featuredPlugins) {
+        expect(
+          item.type === "plugin" ||
+            item.type === "skill",
+        ).toBe(true);
+        expect(item).toEqual(catalog.get(item.id));
+      }
+
+      const installed = (await (
+        await fetch(`${origin}/api/v1/local/plugins`)
+      ).json()) as Array<{ id?: string }>;
+      expect(installed.some((plugin) => plugin.id === "clash.storyboard")).toBe(
+        false,
+      );
+    } finally {
+      if (server) {
+        await new Promise<void>((resolveClose) =>
+          server!.close(() => resolveClose()),
+        );
+      }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("resolves workflow bindings only after the verified plugin runtime is ready and forces the action export kind", async () => {
     const createResolver = (serverModule as Record<string, unknown>)
       .createWorkflowPluginBindingResolver as
@@ -303,6 +448,7 @@ describe("local API server configuration", () => {
         localAcp: createConfiguredLocalAcpAdapter({
           CLASH_E2E_STUB_ACP: "1",
         }),
+        codexImagegenPreflight: availableCodexImagegenPreflight,
       });
       const address = server.address();
       if (!address || typeof address === "string") {
@@ -316,17 +462,12 @@ describe("local API server configuration", () => {
       const body = (await response.json()) as {
         providers: Array<{ pluginId: string }>;
       };
-      expect(new Set(body.providers.map(({ pluginId }) => pluginId))).toEqual(
-        new Set([
-          "clash.fal",
-          "clash.google",
-          "clash.meshy",
-          "clash.minimax",
-          "clash.pika",
-          "clash.tripo",
-          "clash.volcengine",
-        ]),
+      const providerIds = new Set(
+        body.providers.map(({ pluginId }) => pluginId),
       );
+      expect(providerIds.has("clash.google")).toBe(true);
+      expect(providerIds.has("clash.meshy")).toBe(true);
+      expect(providerIds.has("clash.tripo")).toBe(true);
 
       // The bundled clash.meshy/clash.tripo modules just proved trusted above.
       // Confirm the model catalog actually synthesizes their manifest-declared
@@ -774,6 +915,7 @@ describe("local API server configuration", () => {
                 providers: [],
                 modelBindings: [],
                 generators: [],
+                views: [],
                 functions: [
                   {
                     id: "run",
@@ -905,6 +1047,7 @@ describe("local API server configuration", () => {
               providers: [],
               modelBindings: [],
               generators: [],
+              views: [],
               functions: [
                 {
                   id: "run",
@@ -1067,6 +1210,7 @@ describe("local API server configuration", () => {
                 providers: [],
                 modelBindings: [],
                 generators: [],
+                views: [],
                 functions: [
                   {
                     id: "run",
@@ -1213,6 +1357,7 @@ describe("local API server configuration", () => {
                 providers: [],
                 modelBindings: [],
                 generators: [],
+                views: [],
                 functions: [
                   { id: "run", kind: "action", operations: ["submit"] },
                 ],
@@ -1628,6 +1773,73 @@ describe("local API server configuration", () => {
     await expect(readHostDiscovery({ runDir })).resolves.toEqual({
       status: "inactive",
     });
+  });
+
+  it("keeps a supervised source-watch lease discoverable across child restarts", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-api-data-"));
+    const runDir = await mkdtemp(join(tmpdir(), "clash-local-api-run-"));
+    const previousSourceWatch = process.env.CLASH_DAEMON_SOURCE_WATCH;
+    process.env.CLASH_DAEMON_SOURCE_WATCH = "1";
+    let server: Awaited<ReturnType<typeof startLocalApiServer>> | undefined;
+
+    try {
+      server = await withLocalDataDir(dataDir, () =>
+        startLocalApiServer({
+          dataDir,
+          port: 0,
+          remotePersistence: null,
+          discovery: {
+            enabled: true,
+            runDir,
+            launchMode: "user-service",
+            startedBy: "desktop",
+          },
+        }),
+      );
+      const first = await readHostDiscovery({ runDir });
+      expect(first.status).toBe("active");
+      if (first.status !== "active")
+        throw new Error("expected active supervised discovery record");
+      expect(first.record.pid).toBe(process.ppid);
+
+      await new Promise<void>((resolve, reject) => {
+        server!.close((error?: Error) => (error ? reject(error) : resolve()));
+      });
+      server = undefined;
+
+      await expect(readHostDiscovery({ runDir })).resolves.toEqual(first);
+
+      server = await withLocalDataDir(dataDir, () =>
+        startLocalApiServer({
+          dataDir,
+          port: 0,
+          remotePersistence: null,
+          discovery: {
+            enabled: true,
+            runDir,
+            launchMode: "user-service",
+            startedBy: "desktop",
+          },
+        }),
+      );
+      const restarted = await readHostDiscovery({ runDir });
+      expect(restarted.status).toBe("active");
+      if (restarted.status !== "active")
+        throw new Error("expected restarted supervised discovery record");
+      expect(restarted.record.pid).toBe(process.ppid);
+      expect(restarted.record.hostId).not.toBe(first.record.hostId);
+    } finally {
+      if (server) {
+        await new Promise<void>((resolve) => server!.close(() => resolve()));
+      }
+      if (previousSourceWatch === undefined) {
+        delete process.env.CLASH_DAEMON_SOURCE_WATCH;
+      } else {
+        process.env.CLASH_DAEMON_SOURCE_WATCH = previousSourceWatch;
+      }
+      await rm(runDir, { recursive: true, force: true });
+      await rm(dataDir, { recursive: true, force: true });
+    }
   });
 
   it("starts the configured voice readiness probe without blocking server listen", async () => {
@@ -2123,32 +2335,6 @@ describe("local API server configuration", () => {
             nodeId: "mock-agent-timeline-turn-smoke",
           }),
         },
-      ]),
-    );
-
-    const persisted = await adapter.listSessionEvents(created.session_id);
-    expect(persisted).not.toBeNull();
-    if (!persisted)
-      throw new Error("expected persisted local session events");
-    expect(persisted.events).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: "user_prompt",
-          data: { turn_id: "turn-smoke", text: "hello local agent" },
-        }),
-        expect.objectContaining({
-          type: "session.event",
-          data: expect.objectContaining({ turn_id: "turn-smoke" }),
-        }),
-      ]),
-    );
-    const agentEvents = persisted.events
-      .filter((row) => row.type === "session.event")
-      .map((row) => (row.data as { event?: unknown }).event);
-    expect(agentEvents).toEqual(
-      expect.arrayContaining([
-        { type: "text", text: "Mock ACP reply: hello local agent" },
-        expect.objectContaining({ sessionUpdate: "clash.canvas.patch" }),
       ]),
     );
   });

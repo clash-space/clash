@@ -6,12 +6,14 @@ interface RegistryData {
   version: number;
   actions: RegistryItem[];
   skills: RegistryItem[];
+  plugins: RegistryItem[];
 }
 
 export interface MarketplaceData {
   items: RegistryItem[];
   installedActionIds: string[];
   installedSkillIds: string[];
+  installedPluginIds: string[];
 }
 
 interface MarketplaceFeedResponse {
@@ -22,15 +24,22 @@ interface MarketplaceFeedResponse {
 export interface MarketplaceFeedData {
   featuredPlugins: RegistryItem[];
   installedActionIds: string[];
+  installedPluginIds: string[];
   installedSkillIds: string[];
 }
 
-const emptyRegistry: RegistryData = { version: 1, actions: [], skills: [] };
+const emptyRegistry: RegistryData = {
+  version: 1,
+  actions: [],
+  skills: [],
+  plugins: [],
+};
 
 export const emptyMarketplaceData: MarketplaceData = {
   items: [],
   installedActionIds: [],
   installedSkillIds: [],
+  installedPluginIds: [],
 };
 
 const emptyMarketplaceFeedResponse: MarketplaceFeedResponse = {
@@ -41,6 +50,7 @@ const emptyMarketplaceFeedResponse: MarketplaceFeedResponse = {
 export const emptyMarketplaceFeedData: MarketplaceFeedData = {
   featuredPlugins: [],
   installedActionIds: [],
+  installedPluginIds: [],
   installedSkillIds: [],
 };
 
@@ -66,6 +76,7 @@ async function fetchRegistry(): Promise<RegistryData> {
       version: typeof registry.version === "number" ? registry.version : 1,
       actions: Array.isArray(registry.actions) ? registry.actions : [],
       skills: Array.isArray(registry.skills) ? registry.skills : [],
+      plugins: Array.isArray(registry.plugins) ? registry.plugins : [],
     };
   } catch {
     return emptyRegistry;
@@ -105,28 +116,39 @@ async function fetchInstalled<T>(path: string): Promise<T[]> {
   }
 }
 
-export async function loadMarketplaceData(): Promise<MarketplaceData> {
-  const [registry, actions, skills] = await Promise.all([
+export async function loadMarketplaceData(options?: {
+  includeSkills?: boolean;
+}): Promise<MarketplaceData> {
+  const [registry, actions, skills, plugins] = await Promise.all([
     fetchRegistry(),
     fetchInstalled<{ actionId?: unknown }>("/api/settings/actions"),
     fetchInstalled<{ skillId?: unknown }>("/api/settings/skills"),
+    fetchInstalled<{ id?: unknown }>("/api/v1/local/plugins"),
   ]);
 
   return {
-    items: [...registry.actions, ...registry.skills],
+    items: [
+      ...registry.actions,
+      ...registry.plugins,
+      ...(options?.includeSkills === false ? [] : registry.skills),
+    ],
     installedActionIds: actions.flatMap((action) =>
       typeof action.actionId === "string" ? [action.actionId] : [],
     ),
     installedSkillIds: skills.flatMap((skill) =>
       typeof skill.skillId === "string" ? [skill.skillId] : [],
     ),
+    installedPluginIds: plugins.flatMap((plugin) =>
+      typeof plugin.id === "string" ? [plugin.id] : [],
+    ),
   };
 }
 
 export async function loadMarketplaceFeedData(): Promise<MarketplaceFeedData> {
-  const [feed, actions, skills] = await Promise.all([
+  const [feed, actions, plugins, skills] = await Promise.all([
     fetchMarketplaceFeed(),
     fetchInstalled<{ actionId?: unknown }>("/api/settings/actions"),
+    fetchInstalled<{ id?: unknown }>("/api/v1/local/plugins"),
     fetchInstalled<{ skillId?: unknown }>("/api/settings/skills"),
   ]);
 
@@ -134,6 +156,9 @@ export async function loadMarketplaceFeedData(): Promise<MarketplaceFeedData> {
     featuredPlugins: feed.featuredPlugins,
     installedActionIds: actions.flatMap((action) =>
       typeof action.actionId === "string" ? [action.actionId] : [],
+    ),
+    installedPluginIds: plugins.flatMap((plugin) =>
+      typeof plugin.id === "string" ? [plugin.id] : [],
     ),
     installedSkillIds: skills.flatMap((skill) =>
       typeof skill.skillId === "string" ? [skill.skillId] : [],

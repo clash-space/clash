@@ -11,6 +11,7 @@
         "label": "Aspect Ratio",
         "type": "select",
         "required": false,
+        "allowCustom": true,
         "options": [
           { "label": "Square (1:1)", "value": "1:1" },
           { "label": "Landscape (16:9)", "value": "16:9" },

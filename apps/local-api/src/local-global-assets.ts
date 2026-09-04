@@ -28,6 +28,7 @@ import {
   type LocalAssetInspectionService,
 } from "./local-asset-inspections.js";
 import type { LocalAssetInspectionFacts } from "./local-asset-inspections.js";
+import type { LocalAssetRepresentationService } from "./local-asset-representations.js";
 
 export type LocalGlobalAssetErrorCode =
   | "GLOBAL_ASSET_NOT_FOUND"
@@ -114,6 +115,22 @@ function mediaUrl(
   return `${origin.replace(/\/+$/, "")}/api/v1/libraries/${encodeURIComponent(libraryId)}/assets/${encodeURIComponent(globalAssetId)}/media`;
 }
 
+function thumbnailUrl(
+  origin: string,
+  libraryId: string,
+  globalAssetId: string,
+): string {
+  return `${origin.replace(/\/+$/, "")}/api/v1/libraries/${encodeURIComponent(libraryId)}/assets/${encodeURIComponent(globalAssetId)}/thumbnail`;
+}
+
+function waveformUrl(
+  origin: string,
+  libraryId: string,
+  globalAssetId: string,
+): string {
+  return `${origin.replace(/\/+$/, "")}/api/v1/libraries/${encodeURIComponent(libraryId)}/assets/${encodeURIComponent(globalAssetId)}/waveform`;
+}
+
 function legacyStorageKey(asset: Asset): string {
   const localBlobKey = asset.metadata?.localBlobKey;
   if (typeof localBlobKey === "string" && localBlobKey.trim()) {
@@ -186,6 +203,10 @@ export function createLocalGlobalAssetService(options: {
   projectionOrigin: string | (() => string);
   legacyUserId?: string;
   assetInspection?: LocalAssetInspectionService;
+  assetRepresentations?: Pick<
+    LocalAssetRepresentationService,
+    "schedule" | "read"
+  >;
 }): LocalGlobalAssetService {
   const metadata = createLocalMetadataStore(options.dataDir);
   const resources = createLocalResourceStore({
@@ -247,10 +268,26 @@ export function createLocalGlobalAssetService(options: {
             ? options.projectionOrigin()
             : options.projectionOrigin;
         const url = mediaUrl(origin, libraryId, entry.id);
+        const representationRole =
+          entry.kind === "audio" ? "waveform" : "thumbnail";
+        const representation = options.assetRepresentations
+          ? await options.assetRepresentations.read(
+              entry.resourceId,
+              representationRole,
+            )
+          : undefined;
+        options.assetRepresentations?.schedule(entry.resourceId);
         return {
           status: "ready" as const,
           url,
-          ...(entry.kind === "image" ? { thumbnailUrl: url } : {}),
+          ...(representation?.role === "thumbnail"
+            ? { thumbnailUrl: thumbnailUrl(origin, libraryId, entry.id) }
+            : entry.kind === "image"
+              ? { thumbnailUrl: url }
+              : {}),
+          ...(representation?.role === "waveform"
+            ? { waveformUrl: waveformUrl(origin, libraryId, entry.id) }
+            : {}),
         };
       },
     },

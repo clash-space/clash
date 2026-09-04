@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import type { RegistryItem } from "@clash/web-ui/lib/clientActions";
 import {
   marketplaceInstallAction,
+  marketplaceInstallPlugin,
   marketplaceInstallSkill,
 } from "@clash/web-ui/lib/clientActions";
 
@@ -96,6 +97,16 @@ export function MarketplaceItemArtwork({
     );
   }
 
+  if (item.artwork) {
+    return (
+      <ClashPublisherArtwork
+        src={item.artwork.src}
+        label={item.artwork.alt ?? item.name}
+        tone={marketplaceItemTone(item)}
+      />
+    );
+  }
+
   const publisherArtwork = marketplacePublisherArtwork(item);
   const tone = marketplaceItemTone(item);
 
@@ -153,7 +164,14 @@ export function MarketplacePluginDeclarations({
   item: RegistryItem;
 }) {
   const metadata = [
-    ["Type", item.type === "action" ? "Action" : "Skill"],
+    [
+      "Type",
+      item.type === "action"
+        ? "Action"
+        : item.type === "plugin"
+          ? "Plugin"
+          : "Skill",
+    ],
     ["Plugin ID", item.id],
     ["Publisher", item.author],
     ["Version", item.version ?? item.sourceVersion],
@@ -263,6 +281,8 @@ export function MarketplaceItemCard({
   const [addingReference, setAddingReference] = useState(false);
   const installed = initiallyInstalled || installedLocally;
   const isAction = item.type === "action";
+  const isPlugin = item.type === "plugin";
+  const isSkill = item.type === "skill";
   const installedRef = useRef(installed);
   const installRequestRef = useRef<Promise<boolean> | null>(null);
   const referenceRequestRef = useRef<Promise<void> | null>(null);
@@ -285,6 +305,8 @@ export function MarketplaceItemCard({
         try {
           if (isAction) {
             await marketplaceInstallAction(item);
+          } else if (isPlugin) {
+            await marketplaceInstallPlugin(item);
           } else {
             await marketplaceInstallSkill(item);
           }
@@ -303,7 +325,7 @@ export function MarketplaceItemCard({
       installRequestRef.current = request;
       return request;
     },
-    [isAction, item],
+    [isAction, isPlugin, item],
   );
 
   const install = async () => {
@@ -344,7 +366,7 @@ export function MarketplaceItemCard({
   ]);
 
   const referenceEnabled =
-    !isAction && canAddReference && Boolean(onAddReference);
+    isSkill && canAddReference && Boolean(onAddReference);
   const draggable = useMarketplaceSkillReferenceDraggable({
     item,
     enabled: referenceEnabled && !isReferenceAdded,

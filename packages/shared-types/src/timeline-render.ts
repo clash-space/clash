@@ -1,6 +1,8 @@
 import type { LoroDoc } from "loro-crdt";
+import { z } from "zod";
 import { Canvas } from "./canvas-ops.js";
 import { PROJECT_ASSET_RENDER_CANVAS_ID } from "./timeline-contract.js";
+import { ProjectTimelineEnvelopeSchema } from "./timeline-generator-projection.js";
 import {
   freezeProjectTimelineRunAssetInputs,
   projectTimelineRenderActionRunId,
@@ -37,6 +39,93 @@ export type RenderableTimelineDsl = {
   durationInFrames?: number;
   [key: string]: unknown;
 };
+
+export const TimelineExportProgressSchema = z
+  .object({
+    renderNodeId: z.string().min(1),
+    timelineId: z.string().min(1),
+    timelineRevisionId: z.string().min(1),
+    status: z.enum(["queued", "rendering", "completed", "failed"]),
+    progress: z.number().min(0).max(1).optional(),
+    error: z.string().min(1).optional(),
+  })
+  .strict();
+
+export type TimelineExportProgress = z.infer<
+  typeof TimelineExportProgressSchema
+>;
+
+/**
+ * Projects a persisted render node into the framework-neutral export state
+ * consumed by Timeline hosts and UI packages. Numeric progress is optional:
+ * the durable renderer currently guarantees lifecycle state, not a percentage.
+ */
+export function timelineExportProgressFromRenderNode(
+  renderNodeId: string,
+  node: unknown,
+): TimelineExportProgress | null {
+  if (!node || typeof node !== "object") return null;
+  const record = node as Record<string, unknown>;
+  if (record.type !== "video") return null;
+  const data = record.data;
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const renderData = data as Record<string, unknown>;
+  if (
+    typeof renderData.sourceTimelineId !== "string" ||
+    !renderData.sourceTimelineId ||
+    typeof renderData.sourceTimelineRevisionId !== "string" ||
+    !renderData.sourceTimelineRevisionId
+  ) {
+    return null;
+  }
+
+  const status =
+    renderData.status === "pending"
+      ? "queued"
+      : renderData.status === "generating"
+        ? "rendering"
+        : renderData.status === "completed"
+          ? "completed"
+          : renderData.status === "failed"
+            ? "failed"
+            : null;
+  if (!status) return null;
+
+  const progress =
+    typeof renderData.progress === "number" &&
+    Number.isFinite(renderData.progress) &&
+    renderData.progress >= 0 &&
+    renderData.progress <= 1
+      ? renderData.progress
+      : undefined;
+  const error =
+    status === "failed" &&
+    typeof renderData.error === "string" &&
+    renderData.error.trim()
+      ? renderData.error.trim()
+      : undefined;
+
+  return TimelineExportProgressSchema.parse({
+    renderNodeId,
+    timelineId: renderData.sourceTimelineId,
+    timelineRevisionId: renderData.sourceTimelineRevisionId,
+    status,
+    ...(progress === undefined ? {} : { progress }),
+    ...(error === undefined ? {} : { error }),
+  });
+}
+
+export function listTimelineExportProgress(
+  doc: LoroDoc,
+  timelineId: string,
+): TimelineExportProgress[] {
+  const progress: TimelineExportProgress[] = [];
+  for (const [renderNodeId, node] of doc.getMap("nodes").entries()) {
+    const entry = timelineExportProgressFromRenderNode(renderNodeId, node);
+    if (entry?.timelineId === timelineId) progress.push(entry);
+  }
+  return progress;
+}
 
 export function canonicalTimelineRenderDsl(
   state: unknown,
@@ -160,6 +249,11 @@ export function requestTimelineRender(
     data: {
       label: "Rendered Video",
       status: "pending",
+      timeline: ProjectTimelineEnvelopeSchema.parse({
+        name: timeline.name,
+        owner: timeline.owner,
+        state: timelineDsl,
+      }),
       timelineDsl,
       sourceTimelineId: timeline.id,
       sourceTimelineActionId: frozenPreflight.owner.actionId,

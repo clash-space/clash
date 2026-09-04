@@ -2,6 +2,11 @@ import { LoroMap, type LoroDoc } from "loro-crdt";
 import { agentReadToken } from "./agent-read-proof.js";
 import { Canvas } from "./canvas-ops.js";
 import {
+  ExecutablePluginJsonValueSchema,
+  ExecutablePluginViewReferenceSchema,
+  type ExecutablePluginViewReference,
+} from "./executable-plugin.js";
+import {
   validateTimelineDsl,
   type TimelineDslValidationIssue,
 } from "./timeline-dsl-schema.js";
@@ -44,6 +49,10 @@ export type ProjectCanvasMutationResult =
 
 export type ProjectCanvasDeleteResult =
   | { ok: true; canvasId: string }
+  | { ok: false; error: string };
+
+export type ProjectPluginViewMutationResult =
+  | { ok: true; nodeId: string; canvasId: string }
   | { ok: false; error: string };
 
 export type TimelineOwner =
@@ -401,6 +410,47 @@ export function createProjectCanvas(
   return { ok: true, canvas };
 }
 
+/** Creates a declarative plugin View node. Direct Add always defaults to the implicit Main Canvas. */
+export function createProjectPluginView(
+  doc: LoroDoc,
+  input: {
+    nodeId: string;
+    label: string;
+    view: ExecutablePluginViewReference;
+    state: unknown;
+    canvasId?: string;
+  },
+): ProjectPluginViewMutationResult {
+  const nodeId = input.nodeId.trim();
+  const label = input.label.trim();
+  const canvasId = input.canvasId?.trim() || DEFAULT_CANVAS_ID;
+  if (!nodeId) return { ok: false, error: "View node id is required" };
+  if (!label) return { ok: false, error: "View label is required" };
+  const view = ExecutablePluginViewReferenceSchema.safeParse(input.view);
+  if (!view.success) return { ok: false, error: view.error.message };
+  const state = ExecutablePluginJsonValueSchema.safeParse(input.state);
+  if (!state.success || state.data === null || Array.isArray(state.data)) {
+    return { ok: false, error: "View state must be a JSON object" };
+  }
+  const canvases = doc.getMap("canvases");
+  if (canvasId === DEFAULT_CANVAS_ID && canvases.size === 0) {
+    ensureProjectCanvas(doc);
+  }
+  if (!canvases.get(canvasId)) {
+    return { ok: false, error: `Canvas ${canvasId} not found` };
+  }
+  if (doc.getMap("nodes").get(nodeId)) {
+    return { ok: false, error: `Node ${nodeId} already exists` };
+  }
+  const created = new Canvas(doc, () => {}, canvasId).createNode(
+    nodeId,
+    "plugin-view",
+    { label, view: view.data, state: state.data },
+  );
+  if (created.error) return { ok: false, error: created.error };
+  return { ok: true, nodeId, canvasId };
+}
+
 export function renameProjectCanvas(
   doc: LoroDoc,
   canvasId: string,
@@ -539,7 +589,7 @@ export function attachTimelineToCanvas(
     timelineId: string;
     canvasId: string;
     actionNodeId: string;
-    position: { x: number; y: number };
+    position?: { x: number; y: number };
   },
 ): ProjectTimelineMutationResult {
   const timelines = doc.getMap("timelines");
@@ -555,8 +605,7 @@ export function attachTimelineToCanvas(
   if (!canvases.get(input.canvasId)) {
     return { ok: false, error: `Canvas ${input.canvasId} not found` };
   }
-  const nodes = doc.getMap("nodes");
-  if (nodes.get(input.actionNodeId)) {
+  if (doc.getMap("nodes").get(input.actionNodeId)) {
     return { ok: false, error: `Node ${input.actionNodeId} already exists` };
   }
 
@@ -568,15 +617,20 @@ export function attachTimelineToCanvas(
       actionNodeId: input.actionNodeId,
     },
   };
+  const hostCanvas = new Canvas(doc, () => {}, input.canvasId);
+  const view = hostCanvas.createNode(
+    input.actionNodeId,
+    "video-editor",
+    { timelineId: input.timelineId, label: timeline.name },
+    input.position,
+  );
+  if (view.error) return { ok: false, error: view.error };
   const bindingError = rehomeProjectTimelineAssetInputs(doc, timeline, next);
-  if (bindingError) return bindingError;
+  if (bindingError) {
+    hostCanvas.deleteNode(input.actionNodeId);
+    return bindingError;
+  }
   ensureTimelineFields(doc, input.timelineId, timeline).set("owner", next.owner);
-  nodes.set(input.actionNodeId, {
-    canvasId: input.canvasId,
-    type: "video-editor",
-    data: { timelineId: input.timelineId, label: timeline.name },
-    position: input.position,
-  });
   return { ok: true, timeline: next };
 }
 

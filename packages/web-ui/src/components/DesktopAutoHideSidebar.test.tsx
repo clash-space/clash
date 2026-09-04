@@ -90,7 +90,7 @@ describe("DesktopAutoHideSidebar", () => {
     expect(screen.getByText("Inner action")).toBeInTheDocument();
   });
 
-  it("previews over a scrim while the shared Linear rail is hovered, leaving collapsed state untouched", () => {
+  it("previews over the unchanged workspace while the shared rail is hovered, leaving collapsed state untouched", () => {
     const { rerender } = render(
       <DesktopAutoHideSidebar collapsed expandedWidth={320} label={label}>
         <button type="button">Inner action</button>
@@ -107,9 +107,9 @@ describe("DesktopAutoHideSidebar", () => {
     expect(previewPanel).not.toHaveAttribute("aria-hidden", "true");
     expect(previewPanel).not.toHaveAttribute("inert");
     expect(previewPanel?.className).toContain("fixed");
-    const scrim = screen.getByTestId("desktop-auto-hide-sidebar-scrim");
-    expect(scrim).toBeInTheDocument();
-    expect(scrim.parentElement).toBe(document.body);
+    expect(
+      screen.queryByTestId("desktop-auto-hide-sidebar-scrim"),
+    ).not.toBeInTheDocument();
 
     fireEvent.pointerLeave(getHoverRail());
     region = getRegion();
@@ -146,7 +146,7 @@ describe("DesktopAutoHideSidebar", () => {
     expect(className).toMatch(/dark:focus-visible:ring-white/);
   });
 
-  it("dims behind a restrained scrim without blurring the backdrop", () => {
+  it("uses a white preview surface with a restrained bottom shadow", () => {
     render(
       <DesktopAutoHideSidebar collapsed expandedWidth={320} label={label}>
         <button type="button">Inner action</button>
@@ -155,9 +155,15 @@ describe("DesktopAutoHideSidebar", () => {
 
     fireEvent.pointerEnter(getRecoveryZone());
 
-    const scrim = screen.getByTestId("desktop-auto-hide-sidebar-scrim");
-    expect(scrim.className).toContain("bg-black/20");
-    expect(scrim.className).not.toContain("backdrop-blur");
+    const panel = getRegion().querySelector<HTMLElement>(
+      "[data-sidebar-panel]",
+    )!;
+    expect(panel.className).toContain("bg-warm-surface");
+    expect(panel.className).not.toContain("bg-warm-muted");
+    expect(panel.className).toContain(
+      "[box-shadow:var(--clash-shadow-sidebar-preview)]",
+    );
+    expect(panel.className).not.toContain("backdrop-blur");
   });
 
   it("renders the panel as an opaque token surface with no translucency or backdrop blur", () => {
@@ -181,7 +187,7 @@ describe("DesktopAutoHideSidebar", () => {
     expect(panel.className).not.toMatch(/bg-neutral-900\//);
   });
 
-  it("lifts only the preview panel, using the floating shadow token instead of shadow-xl", () => {
+  it("lifts only the preview panel with the sidebar preview shadow token", () => {
     render(
       <DesktopAutoHideSidebar collapsed expandedWidth={320} label={label}>
         <button type="button">Inner action</button>
@@ -199,7 +205,7 @@ describe("DesktopAutoHideSidebar", () => {
       "[data-sidebar-panel]",
     )!;
     expect(previewPanel.className).toContain(
-      "[box-shadow:var(--clash-shadow-floating)]",
+      "[box-shadow:var(--clash-shadow-sidebar-preview)]",
     );
     expect(previewPanel.className).not.toContain("shadow-xl");
   });
@@ -372,7 +378,7 @@ describe("DesktopAutoHideSidebar", () => {
     expect(getRegion()).toHaveAttribute("data-state", "preview");
   });
 
-  it("keeps the edge-to-panel pointer bridge above the scrim while previewing", () => {
+  it("keeps the edge-to-panel pointer bridge open without covering the canvas", () => {
     vi.useFakeTimers();
     render(
       <DesktopAutoHideSidebar collapsed expandedWidth={320} label={label}>
@@ -383,26 +389,21 @@ describe("DesktopAutoHideSidebar", () => {
     const zone = getRecoveryZone();
     fireEvent.pointerEnter(zone);
 
-    const scrim = screen.getByTestId("desktop-auto-hide-sidebar-scrim");
     const panel = getRegion().querySelector<HTMLElement>(
       "[data-sidebar-panel]",
     )!;
     expect(getRegion()).toHaveAttribute("data-state", "preview");
     expect(getHoverRail().className).toContain("w-[14px]");
     expect(panel.className).toContain("left-2");
-    expect(Number(zone.style.zIndex)).toBeGreaterThan(
-      Number(scrim.style.zIndex),
-    );
-
-    // Linear's scrim is visual only. It may never become a competing pointer
-    // surface between the edge rail and its floated sidebar descendant.
-    expect(scrim.className).toContain("pointer-events-none");
+    expect(
+      screen.queryByTestId("desktop-auto-hide-sidebar-scrim"),
+    ).not.toBeInTheDocument();
 
     fireEvent.pointerEnter(panel);
     expect(getRegion()).toHaveAttribute("data-state", "preview");
   });
 
-  it("stacks a preview scrim above the dashboard task layer and the sidebar above both", () => {
+  it("stacks the preview sidebar above the dashboard task without a dimming layer", () => {
     render(
       <>
         <DesktopAutoHideSidebar collapsed expandedWidth={320} label={label}>
@@ -417,14 +418,14 @@ describe("DesktopAutoHideSidebar", () => {
     fireEvent.pointerEnter(getRecoveryZone());
 
     const dock = screen.getByRole("region", { name: "Dashboard composer" });
-    const scrim = screen.getByTestId("desktop-auto-hide-sidebar-scrim");
     const sidebar = getRegion();
     const dockLayer = Number(dock.style.zIndex);
-    const scrimLayer = Number(scrim.style.zIndex);
     const sidebarLayer = Number(sidebar.style.zIndex);
 
-    expect(dockLayer).toBeLessThan(scrimLayer);
-    expect(scrimLayer).toBeLessThan(sidebarLayer);
+    expect(dockLayer).toBeLessThan(sidebarLayer);
+    expect(
+      screen.queryByTestId("desktop-auto-hide-sidebar-scrim"),
+    ).not.toBeInTheDocument();
   });
 
   it("places the recovery button before the panel so keyboard focus moves into the previewed sidebar", () => {

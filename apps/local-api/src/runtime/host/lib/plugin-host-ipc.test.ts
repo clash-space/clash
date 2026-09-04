@@ -11,6 +11,51 @@ import {
 } from "./plugin-host-ipc";
 
 describe("local plugin host IPC", () => {
+  it("lists generator-free View registrations over the host socket", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-view-ipc-"));
+    const socketPath = join(root, "plugin-host.sock");
+    const registration = {
+      pluginId: "community.storyboard",
+      version: "1.0.0",
+      schemaHash: `sha256:${"a".repeat(64)}` as const,
+      document: {
+        apiVersion: "clash.view/v1" as const,
+        kind: "view" as const,
+        spec: {
+          definitionId: "storyboard",
+          name: "Storyboard",
+          presentation: { type: "storyboard" as const },
+          initialState: {
+            keyElements: [],
+            shots: [],
+            audioLayers: [],
+            uncategorized: [],
+          },
+        },
+      },
+    };
+    const server = await startPluginHostIpcServer({
+      socketPath,
+      host: {
+        listCards: () => [],
+        listViews: () => [registration],
+        resolveBinding: () => {
+          throw new Error("not used");
+        },
+        invoke: async () => {
+          throw new Error("not used");
+        },
+      },
+    });
+    const client = new PluginHostClient({ socketPath });
+
+    try {
+      await expect(client.listViews()).resolves.toEqual([registration]);
+    } finally {
+      await server.close();
+    }
+  });
+
   it("lists realm-neutral Generator registrations over the host socket", async () => {
     const root = await mkdtemp(join(tmpdir(), "clash-generator-ipc-"));
     const socketPath = join(root, "plugin-host.sock");

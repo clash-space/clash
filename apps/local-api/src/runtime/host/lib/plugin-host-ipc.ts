@@ -14,6 +14,7 @@ import {
   ExecutablePluginCardRegistrationSchema,
   ExecutablePluginFunctionExportSchema,
   ExecutablePluginGeneratorRegistrationSchema,
+  ExecutablePluginViewRegistrationSchema,
   ExecutablePluginModelBindingRegistrationSchema,
   ExecutablePluginProviderRegistrationSchema,
   ExecutablePluginInvocationSchema,
@@ -23,6 +24,7 @@ import {
   type ExecutablePluginCardRegistration,
   type ExecutablePluginFunctionExport,
   type ExecutablePluginGeneratorRegistration,
+  type ExecutablePluginViewRegistration,
   type ExecutablePluginModelBindingRegistration,
   type ExecutablePluginProviderRegistration,
   type ExecutablePluginInvocation,
@@ -37,6 +39,7 @@ export interface PluginInvocationHost {
   listProviders?(): ExecutablePluginProviderRegistration[];
   listModelBindings?(): ExecutablePluginModelBindingRegistration[];
   listGenerators?(): ExecutablePluginGeneratorRegistration[];
+  listViews?(): ExecutablePluginViewRegistration[];
   resolveGeneratorDefinition?(
     pluginId: string,
     definitionId: string,
@@ -72,6 +75,9 @@ type PluginHostRequest = PluginHostRequestBase &
       }
     | {
         operation: "list-generators";
+      }
+    | {
+        operation: "list-views";
       }
     | {
         operation: "list-function-exports";
@@ -232,7 +238,8 @@ function parseRequest(value: unknown): PluginHostRequest {
   if (
     request.operation === "list-providers" ||
     request.operation === "list-model-bindings" ||
-    request.operation === "list-generators"
+    request.operation === "list-generators" ||
+    request.operation === "list-views"
   ) {
     return {
       protocol: "clash.plugin-host/v1",
@@ -380,6 +387,16 @@ async function handleRequest(
         status: "ok",
         result: ExecutablePluginGeneratorRegistrationSchema.array().parse(
           host.listGenerators?.() ?? [],
+        ),
+      };
+    }
+    if (request.operation === "list-views") {
+      return {
+        protocol: "clash.plugin-host/v1",
+        requestId,
+        status: "ok",
+        result: ExecutablePluginViewRegistrationSchema.array().parse(
+          host.listViews?.() ?? [],
         ),
       };
     }
@@ -601,6 +618,16 @@ export class PluginHostClient {
         protocol: "clash.plugin-host/v1",
         requestId: randomUUID(),
         operation: "list-generators",
+      }),
+    );
+  }
+
+  async listViews(): Promise<ExecutablePluginViewRegistration[]> {
+    return ExecutablePluginViewRegistrationSchema.array().parse(
+      await this.request({
+        protocol: "clash.plugin-host/v1",
+        requestId: randomUUID(),
+        operation: "list-views",
       }),
     );
   }

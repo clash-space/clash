@@ -1,24 +1,16 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentAnnotationDraft } from "@clash/shared-types";
 
-import { AgentAnnotationInspector } from "./AgentAnnotationBlock";
-
-const previewAsset = vi.hoisted(() => ({
-  id: "video-asset",
-  kind: "video" as const,
-  status: "ready" as const,
-  url: "https://media.clash.test/video-asset.mp4",
-  thumbnailUrl: undefined as string | undefined,
-  metadata: {},
-  lifecycle: { state: "active" as const },
-}));
-
-vi.mock("@clash/web-ui/lib/hooks/useAsset", () => ({
-  useAsset: () => previewAsset,
-}));
+import { AgentAnnotationEditor } from "./AgentAnnotationBlock";
 
 const annotation: AgentAnnotationDraft = {
   id: "annotation-1",
@@ -41,59 +33,126 @@ const annotation: AgentAnnotationDraft = {
   },
 };
 
-describe("AgentAnnotationInspector", () => {
-  afterEach(cleanup);
+describe("AgentAnnotationEditor", () => {
+  afterEach(() => {
+    cleanup();
+    document
+      .querySelectorAll("[data-agent-annotation-anchor]")
+      .forEach((element) => element.remove());
+  });
 
-  it("exposes the active annotation actions from the target summary context menu", () => {
+  function appendAnnotationAnchor() {
+    const anchor = document.createElement("button");
+    anchor.dataset.agentAnnotationAnchor = annotation.id;
+    vi.spyOn(anchor, "getBoundingClientRect").mockReturnValue({
+      left: 220,
+      top: 160,
+      right: 244,
+      bottom: 184,
+      width: 24,
+      height: 24,
+      x: 220,
+      y: 160,
+      toJSON: () => ({}),
+    });
+    document.body.append(anchor);
+    return anchor;
+  }
+
+  it("opens beside the annotation marker as a non-modal Backchat editor", () => {
+    appendAnnotationAnchor();
+    const onClose = vi.fn();
+
+    render(
+      <AgentAnnotationEditor
+        annotations={[annotation]}
+        activeId={annotation.id}
+        onClose={onClose}
+      />,
+    );
+
+    const editor = screen.getByRole("dialog", {
+      name: "Annotation for Launch script",
+    });
+    expect(editor.getAttribute("aria-modal")).toBeNull();
+    expect(screen.getByTestId("agent-annotation-editor")).toBe(editor);
+    expect(screen.getByPlaceholderText("Add an optional comment…")).toBeTruthy();
+    expect(screen.queryByTestId("agent-annotation-dialog")).toBeNull();
+    expect(screen.queryByText("Instruction for agent")).toBeNull();
+  });
+
+  it("waits for a canvas marker that mounts after the annotation becomes active", async () => {
+    render(
+      <AgentAnnotationEditor
+        annotations={[annotation]}
+        activeId={annotation.id}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId("agent-annotation-editor")).toBeNull();
+    appendAnnotationAnchor();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("agent-annotation-editor")).toBeTruthy(),
+    );
+  });
+
+  it("keeps edits local until Save and lets Cancel discard the draft", () => {
+    appendAnnotationAnchor();
+    const onChange = vi.fn();
+    const onClose = vi.fn();
+
+    render(
+      <AgentAnnotationEditor
+        annotations={[annotation]}
+        activeId={annotation.id}
+        onClose={onClose}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Annotation for Launch script" }),
+      { target: { value: "Use a measurable launch date." } },
+    );
+
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("saves the expanded editor and exposes real locate and remove actions", () => {
+    appendAnnotationAnchor();
+    const onChange = vi.fn();
     const onLocate = vi.fn();
     const onRemove = vi.fn();
 
     render(
-      <AgentAnnotationInspector
+      <AgentAnnotationEditor
         annotations={[annotation]}
         activeId={annotation.id}
-        onSelect={vi.fn()}
-        onBack={vi.fn()}
+        onClose={vi.fn()}
+        onChange={onChange}
         onLocate={onLocate}
         onRemove={onRemove}
       />,
     );
 
-    fireEvent.contextMenu(
-      screen.getByTestId("agent-annotation-target-summary"),
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Annotation for Launch script" }),
+      { target: { value: "Use a measurable launch date." } },
     );
-
+    fireEvent.click(screen.getByRole("button", { name: "Locate annotation" }));
+    expect(onLocate).toHaveBeenCalledWith(annotation.id);
     expect(
-      screen.getByRole("menuitem", { name: "Locate in workspace" }),
+      screen.getByRole("button", { name: "Remove annotation" }),
     ).toBeTruthy();
-    expect(
-      screen.getByRole("menuitem", { name: "Remove annotation" }),
-    ).toBeTruthy();
-  });
-
-  it("uses the shared fixed-frame fallback instead of a fragment video preview", () => {
-    render(
-      <AgentAnnotationInspector
-        annotations={[
-          {
-            ...annotation,
-            target: {
-              ...annotation.target,
-              objectType: "canvas-video",
-              previewAssetId: previewAsset.id,
-            },
-          },
-        ]}
-        activeId={annotation.id}
-        onSelect={vi.fn()}
-        onBack={vi.fn()}
-      />,
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onChange).toHaveBeenCalledWith(
+      annotation.id,
+      "Use a measurable launch date.",
     );
-
-    const sources = Array.from(document.querySelectorAll("video"), (video) =>
-      video.getAttribute("src"),
-    );
-    expect(sources).toContain(previewAsset.url);
-    expect(sources.some((source) => source?.includes("#t="))).toBe(false);
   });
 });

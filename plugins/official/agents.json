@@ -1,0 +1,15 @@
+{
+  "summary": "Official executable plugin packages that Clash may distribute for explicit installation without preloading them.",
+  "context_hints": [
+    "A package being under plugins/official makes it first-party and discoverable; it does not make it bundled",
+    "Official packages in this directory must remain out of BUNDLED_PLUGINS unless preload behavior is an intentional product change",
+    "Packages use the normal clash.plugin/v1 manifest and activation lifecycle"
+  ],
+  "subdirectories": {
+    "storyboard": "Official View-only Storyboard plugin, installed and activated explicitly."
+  },
+  "verification": [
+    "pnpm --filter @clash-plugin/storyboard test",
+    "pnpm --filter @clash/local-api test -- src/bundled-plugins-set.test.ts"
+  ]
+}
